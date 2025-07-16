@@ -34,7 +34,7 @@ export default function TabLayout() {
           marginHorizontal: 2,
           paddingVertical: 8,
         },
-        tabBarActiveBackgroundColor: colors.primary,
+        tabBarActiveBackgroundColor: '#7861fa',
         tabBarLabelStyle: {
           fontSize: 12,
           fontWeight: '600',
