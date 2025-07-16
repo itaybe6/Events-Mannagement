@@ -1,7 +1,7 @@
 import React from "react";
 import { Tabs } from "expo-router";
 import { colors } from "@/constants/colors";
-import { Home, Users, Gift, Calendar, Settings } from "lucide-react-native";
+import { Home, Users, Gift, Settings } from "lucide-react-native";
 import { Platform } from "react-native";
 
 export default function TabLayout() {
@@ -75,18 +75,6 @@ export default function TabLayout() {
           title: "מתנות",
           tabBarIcon: ({ color, focused }) => (
             <Gift 
-              size={20} 
-              color={focused ? colors.white : colors.gray[600]} 
-            />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="planning"
-        options={{
-          title: "תכנון",
-          tabBarIcon: ({ color, focused }) => (
-            <Calendar 
               size={20} 
               color={focused ? colors.white : colors.gray[600]} 
             />

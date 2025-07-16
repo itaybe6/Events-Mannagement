@@ -1,5 +1,5 @@
 export const colors = {
-  primary: '#4A6FA5', // Soft blue
+  primary: '#7861fa', // Purple color as requested
   secondary: '#E5989B', // Soft pink
   background: '#FFFFFF',
   card: '#F8F9FA',
