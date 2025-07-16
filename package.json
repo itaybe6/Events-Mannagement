@@ -3,9 +3,9 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
-    "start": "bunx rork start -p rkvx6rg2nhprha38ss6kx --tunnel",
-    "start-web": "bunx rork start -p rkvx6rg2nhprha38ss6kx --web --tunnel",
-    "start-web-dev": "DEBUG=expo* bunx rork start -p rkvx6rg2nhprha38ss6kx --web --tunnel"
+    "start": "npx expo start --tunnel",
+    "start-web": "npx expo start --web --tunnel",
+    "start-web-dev": "DEBUG=expo* npx expo start --web --tunnel"
   },
   "dependencies": {
     "@expo/vector-icons": "^14.1.0",
@@ -27,7 +27,6 @@
     "expo-symbols": "~0.4.4",
     "expo-system-ui": "~5.0.6",
     "expo-web-browser": "~14.1.6",
-    "lucide-react-native": "^0.475.0",
     "nativewind": "^4.1.23",
     "react": "19.0.0",
     "react-dom": "19.0.0",
@@ -37,7 +36,8 @@
     "react-native-screens": "~4.10.0",
     "react-native-svg": "15.11.2",
     "react-native-web": "^0.20.0",
-    "zustand": "^5.0.2"
+    "zustand": "^5.0.2",
+    "react-native-vector-icons": "^10.0.0"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
