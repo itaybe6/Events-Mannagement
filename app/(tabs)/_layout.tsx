@@ -30,7 +30,7 @@ export default function TabLayout() {
           borderTopWidth: 0,
         },
         tabBarItemStyle: {
-          borderRadius: 25,
+          borderRadius: 35,
           marginHorizontal: 2,
           paddingVertical: 8,
         },
