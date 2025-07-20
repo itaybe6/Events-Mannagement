@@ -1,17 +1,16 @@
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useFonts } from "expo-font";
-import { Stack } from "expo-router";
+import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
 import { I18nManager } from 'react-native';
+import { useUserStore } from '@/store/userStore';
 
 // Force RTL layout for Hebrew
 I18nManager.allowRTL(true);
 I18nManager.forceRTL(true);
 
-export const unstable_settings = {
-  initialRouteName: "(tabs)",
-};
+
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -42,12 +41,30 @@ export default function RootLayout() {
 }
 
 function RootLayoutNav() {
+  const { isLoggedIn } = useUserStore();
+  const segments = useSegments();
+  const router = useRouter();
+
+  useEffect(() => {
+    // אם המשתמש מחובר והוא בעמוד ההתחברות - העבר לטאבים
+    if (isLoggedIn && segments[0] === 'login') {
+      const { userType } = useUserStore.getState();
+      if (userType === 'admin') {
+        router.replace('/(tabs)/clients');
+      } else {
+        router.replace('/(tabs)');
+      }
+    }
+  }, [isLoggedIn, segments]);
+
   return (
     <Stack
       screenOptions={{
         headerBackTitle: "חזרה",
       }}
+      initialRouteName="login"
     >
+      <Stack.Screen name="login" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="modal" options={{ presentation: "modal" }} />
       <Stack.Screen name="gift/payment" options={{ title: "תשלום מתנה" }} />

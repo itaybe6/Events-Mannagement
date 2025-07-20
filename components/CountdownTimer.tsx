@@ -74,7 +74,7 @@ const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 16,
+    padding: 12,
   },
   timerContainer: {
     flexDirection: 'row',
@@ -83,22 +83,22 @@ const styles = StyleSheet.create({
   },
   timeUnit: {
     alignItems: 'center',
-    marginHorizontal: 4,
+    marginHorizontal: 3,
   },
   timeValue: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: 'bold',
     color: colors.primary,
   },
   timeLabel: {
-    fontSize: 12,
+    fontSize: 10,
     color: colors.gray[600],
-    marginTop: 4,
+    marginTop: 2,
   },
   separator: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: 'bold',
     color: colors.primary,
-    marginHorizontal: 2,
+    marginHorizontal: 1,
   },
 });

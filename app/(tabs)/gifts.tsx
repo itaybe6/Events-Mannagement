@@ -1,14 +1,23 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
-import { Link } from 'expo-router';
+import { Link, useRouter } from 'expo-router';
 import { useEventStore } from '@/store/eventStore';
+import { useUserStore } from '@/store/userStore';
 import { colors } from '@/constants/colors';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
-import { Gift, CreditCard, ArrowUpRight } from 'lucide-react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function GiftsScreen() {
   const { gifts } = useEventStore();
+  const { isLoggedIn } = useUserStore();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!isLoggedIn) {
+      router.replace('/login');
+    }
+  }, [isLoggedIn, router]);
   const [activeTab, setActiveTab] = useState<'all' | 'received' | 'processing'>('all');
 
   const filteredGifts = gifts.filter(gift => {
@@ -44,7 +53,7 @@ export default function GiftsScreen() {
               <Text style={styles.summaryValue}>₪{totalAmount.toLocaleString()}</Text>
             </View>
             <View style={styles.summaryIconContainer}>
-              <Gift size={24} color={colors.primary} />
+              <Ionicons name="gift" size={24} color={colors.primary} />
             </View>
           </View>
         </Card>

@@ -1,98 +1,253 @@
-import React from "react";
-import { Tabs } from "expo-router";
+import React, { useEffect } from "react";
+import { Tabs, useRouter } from "expo-router";
 import { colors } from "@/constants/colors";
-import { Home, Users, Gift, Settings } from "lucide-react-native";
-import { Platform } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { Platform, StyleSheet, View, TouchableOpacity } from "react-native";
+import { useUserStore } from "@/store/userStore";
 
 export default function TabLayout() {
+  const router = useRouter();
+  const { userType, isLoggedIn, userData } = useUserStore();
+  
+  useEffect(() => {
+    console.log('🔍 TabLayout Effect - userType changed:', {
+      userType,
+      isLoggedIn,
+      userData
+    });
+  }, [userType, isLoggedIn, userData]);
+
+  const headerRight = () => (
+    <TouchableOpacity 
+      style={styles.notificationButton}
+      onPress={() => router.push('/notifications')}
+    >
+      <Ionicons name="notifications" size={24} color={colors.primary} />
+    </TouchableOpacity>
+  );
+
+  // Force re-render when userType changes
+  const tabKey = `tabs-${userType || 'default'}`;
+  console.log('🔄 TabLayout rendering with key:', tabKey);
+
   return (
     <Tabs
+      key={tabKey}
       screenOptions={{
         tabBarActiveTintColor: colors.white,
-        tabBarInactiveTintColor: colors.gray[600],
+        tabBarInactiveTintColor: colors.gray[500],
         headerShown: true,
-        tabBarLabelPosition: 'beside-icon',
+        headerTitle: "",
+        headerStyle: {
+          backgroundColor: colors.gray[100],
+          elevation: 0,
+          shadowOpacity: 0,
+          borderBottomWidth: 0,
+        },
+        headerRight: headerRight,
+        tabBarShowLabel: false,
         tabBarStyle: {
           position: 'absolute',
-          bottom: Platform.OS === 'ios' ? 25 : 15,
-          left: 20,
-          right: 20,
+          bottom: Platform.OS === 'ios' ? 30 : 20,
+          left: 15,
+          right: 15,
           height: 65,
           backgroundColor: colors.white,
           borderRadius: 35,
-          paddingHorizontal: 10,
+          paddingHorizontal: 15,
           paddingVertical: 8,
-          shadowColor: colors.black,
-          shadowOffset: { width: 0, height: 10 },
-          shadowOpacity: 0.15,
-          shadowRadius: 20,
-          elevation: 10,
+          paddingTop: 12,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: -10 },
+          shadowOpacity: 0.25,
+          shadowRadius: 30,
+          elevation: 25,
           borderTopWidth: 0,
+          borderWidth: 1,
+          borderColor: 'rgba(0,0,0,0.08)',
         },
         tabBarItemStyle: {
-          borderRadius: 35,
-          marginHorizontal: 2,
-          paddingVertical: 8,
-        },
-        tabBarActiveBackgroundColor: '#7861fa',
-        tabBarLabelStyle: {
-          fontSize: 12,
-          fontWeight: '600',
-          marginLeft: Platform.OS === 'ios' ? 4 : 2,
+          marginHorizontal: 3,
+          paddingVertical: 6,
+          paddingHorizontal: 8,
+          height: 30,
+          justifyContent: 'center',
+          alignItems: 'center',
         },
         tabBarIconStyle: {
-          marginRight: Platform.OS === 'ios' ? 0 : 2,
+          marginRight: 0,
+          marginLeft: 0,
         },
       }}
     >
+      {/* All existing screens with conditional visibility */}
       <Tabs.Screen
         name="index"
         options={{
+          href: userType === 'couple' ? undefined : null,
           title: "בית",
-          tabBarIcon: ({ color, focused }) => (
-            <Home 
-              size={20} 
-              color={focused ? colors.white : colors.gray[600]} 
-            />
+          tabBarIcon: ({ focused }) => (
+            <View style={[
+              styles.iconContainer,
+              focused && styles.activeIconContainer
+            ]}>
+              <Ionicons 
+                name="home" 
+                size={24} 
+                color={focused ? colors.white : colors.gray[500]} 
+              />
+            </View>
           ),
         }}
       />
+      
       <Tabs.Screen
         name="guests"
         options={{
+          href: userType === 'couple' ? undefined : null,
           title: "אורחים",
-          tabBarIcon: ({ color, focused }) => (
-            <Users 
-              size={20} 
-              color={focused ? colors.white : colors.gray[600]} 
-            />
+          tabBarIcon: ({ focused }) => (
+            <View style={[
+              styles.iconContainer,
+              focused && styles.activeIconContainer
+            ]}>
+              <Ionicons 
+                name="people" 
+                size={24} 
+                color={focused ? colors.white : colors.gray[500]} 
+              />
+            </View>
           ),
         }}
       />
+      
+      <Tabs.Screen
+        name="planning"
+        options={{
+          href: userType === 'couple' ? undefined : null,
+          title: "תכנון",
+          tabBarIcon: ({ focused }) => (
+            <View style={[
+              styles.iconContainer,
+              focused && styles.activeIconContainer
+            ]}>
+              <Ionicons 
+                name="calendar" 
+                size={24} 
+                color={focused ? colors.white : colors.gray[500]} 
+              />
+            </View>
+          ),
+        }}
+      />
+      
       <Tabs.Screen
         name="gifts"
         options={{
+          href: userType === 'couple' ? undefined : null,
           title: "מתנות",
-          tabBarIcon: ({ color, focused }) => (
-            <Gift 
-              size={20} 
-              color={focused ? colors.white : colors.gray[600]} 
-            />
+          tabBarIcon: ({ focused }) => (
+            <View style={[
+              styles.iconContainer,
+              focused && styles.activeIconContainer
+            ]}>
+              <Ionicons 
+                name="gift" 
+                size={24} 
+                color={focused ? colors.white : colors.gray[500]} 
+              />
+            </View>
           ),
         }}
       />
+      
+      <Tabs.Screen
+        name="clients"
+        options={{
+          href: userType === 'admin' ? undefined : null,
+          title: "לקוחות",
+          tabBarIcon: ({ focused }) => (
+            <View style={[
+              styles.iconContainer,
+              focused && styles.activeIconContainer
+            ]}>
+              <Ionicons 
+                name="business" 
+                size={24} 
+                color={focused ? colors.white : colors.gray[500]} 
+              />
+            </View>
+          ),
+        }}
+      />
+      
+      <Tabs.Screen
+        name="users"
+        options={{
+          href: userType === 'admin' ? undefined : null,
+          title: "ניהול משתמשים",
+          tabBarIcon: ({ focused }) => (
+            <View style={[
+              styles.iconContainer,
+              focused && styles.activeIconContainer
+            ]}>
+              <Ionicons 
+                name="people-circle" 
+                size={24} 
+                color={focused ? colors.white : colors.gray[500]} 
+              />
+            </View>
+          ),
+        }}
+      />
+      
       <Tabs.Screen
         name="settings"
         options={{
           title: "הגדרות",
-          tabBarIcon: ({ color, focused }) => (
-            <Settings 
-              size={20} 
-              color={focused ? colors.white : colors.gray[600]} 
-            />
+          tabBarIcon: ({ focused }) => (
+            <View style={[
+              styles.iconContainer,
+              focused && styles.activeIconContainer
+            ]}>
+              <Ionicons 
+                name={userType === 'admin' ? "cog" : "person-circle"} 
+                size={24} 
+                color={focused ? colors.white : colors.gray[500]} 
+              />
+            </View>
           ),
         }}
       />
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  iconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  activeIconContainer: {
+    backgroundColor: '#e8a7a8',
+    borderWidth: 2,
+    borderColor: '#d4969a',
+  },
+  notificationButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.white,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 15,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+});

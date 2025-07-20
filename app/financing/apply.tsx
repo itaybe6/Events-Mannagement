@@ -6,7 +6,7 @@ import { colors } from '@/constants/colors';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { Input } from '@/components/Input';
-import { CreditCard, DollarSign, Calendar, CheckCircle } from 'lucide-react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function FinancingApplyScreen() {
   const { currentEvent } = useEventStore();

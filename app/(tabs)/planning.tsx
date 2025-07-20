@@ -1,13 +1,23 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useEventStore } from '@/store/eventStore';
+import { useUserStore } from '@/store/userStore';
 import { colors } from '@/constants/colors';
 import { TaskItem } from '@/components/TaskItem';
 import { Button } from '@/components/Button';
-import { Plus, Calendar, CheckCircle, Circle } from 'lucide-react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function PlanningScreen() {
   const { currentEvent, updateTask, deleteTask, addTask } = useEventStore();
+  const { isLoggedIn } = useUserStore();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!isLoggedIn) {
+      router.replace('/login');
+    }
+  }, [isLoggedIn, router]);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [showAddTask, setShowAddTask] = useState(false);
   const [filter, setFilter] = useState<'all' | 'completed' | 'pending'>('all');
@@ -59,7 +69,7 @@ export default function PlanningScreen() {
           style={styles.addButton}
           onPress={() => setShowAddTask(!showAddTask)}
         >
-          <Plus size={20} color={colors.white} />
+          <Ionicons name="add" size={20} color={colors.white} />
         </TouchableOpacity>
       </View>
 

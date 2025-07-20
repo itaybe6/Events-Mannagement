@@ -1,15 +1,24 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { ScrollView, View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
-import { Link } from 'expo-router';
+import { Link, useRouter } from 'expo-router';
 import { useEventStore } from '@/store/eventStore';
+import { useUserStore } from '@/store/userStore';
 import { colors } from '@/constants/colors';
 import { Card } from '@/components/Card';
 import { CountdownTimer } from '@/components/CountdownTimer';
 import { StatCard } from '@/components/StatCard';
-import { Users, Gift, CalendarCheck, CreditCard } from 'lucide-react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function HomeScreen() {
   const { currentEvent, guests, gifts } = useEventStore();
+  const { isLoggedIn } = useUserStore();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!isLoggedIn) {
+      router.replace('/login');
+    }
+  }, [isLoggedIn, router]);
 
   if (!currentEvent) {
     return (
@@ -57,43 +66,34 @@ export default function HomeScreen() {
         <StatCard
           title="אורחים שאישרו"
           value={`${confirmedGuests}/${guests.length}`}
-          icon={<Users size={20} color={colors.primary} />}
+          icon={<Ionicons name="people" size={20} color={colors.primary} />}
         />
         <StatCard
           title="מתנות"
           value={`₪${totalGifts.toLocaleString()}`}
-          icon={<Gift size={20} color={colors.secondary} />}
+          icon={<Ionicons name="gift" size={20} color={colors.secondary} />}
           color={colors.secondary}
         />
         <StatCard
           title="משימות שהושלמו"
           value={`${completedTasks}/${currentEvent.tasks.length}`}
-          icon={<CalendarCheck size={20} color={colors.success} />}
+          icon={<Ionicons name="calendar" size={20} color={colors.success} />}
           color={colors.success}
         />
         <StatCard
           title="אורחים בהמתנה"
           value={pendingGuests}
-          icon={<Users size={20} color={colors.warning} />}
+          icon={<Ionicons name="people" size={20} color={colors.warning} />}
           color={colors.warning}
         />
       </View>
 
       <Text style={styles.sectionTitle}>פעולות מהירות</Text>
       <View style={styles.quickActionsContainer}>
-        <Link href="/gift/payment" asChild>
-          <TouchableOpacity style={styles.quickAction}>
-            <View style={[styles.actionIcon, { backgroundColor: `${colors.secondary}20` }]}>
-              <Gift size={24} color={colors.secondary} />
-            </View>
-            <Text style={styles.actionText}>הוספת מתנה</Text>
-          </TouchableOpacity>
-        </Link>
-
         <Link href="/rsvp/invite" asChild>
           <TouchableOpacity style={styles.quickAction}>
             <View style={[styles.actionIcon, { backgroundColor: `${colors.primary}20` }]}>
-              <Users size={24} color={colors.primary} />
+              <Ionicons name="people" size={24} color={colors.primary} />
             </View>
             <Text style={styles.actionText}>הזמנת אורחים</Text>
           </TouchableOpacity>
@@ -102,27 +102,14 @@ export default function HomeScreen() {
         <Link href="/seating/edit" asChild>
           <TouchableOpacity style={styles.quickAction}>
             <View style={[styles.actionIcon, { backgroundColor: `${colors.info}20` }]}>
-              <CalendarCheck size={24} color={colors.info} />
+              <Ionicons name="calendar" size={24} color={colors.info} />
             </View>
             <Text style={styles.actionText}>סידור ישיבה</Text>
           </TouchableOpacity>
         </Link>
-
-        <Link href="/financing/apply" asChild>
-          <TouchableOpacity style={styles.quickAction}>
-            <View style={[styles.actionIcon, { backgroundColor: `${colors.success}20` }]}>
-              <CreditCard size={24} color={colors.success} />
-            </View>
-            <Text style={styles.actionText}>מימון אירוע</Text>
-          </TouchableOpacity>
-        </Link>
       </View>
 
-      <Link href="/profile/share" asChild>
-        <TouchableOpacity style={styles.shareProfileButton}>
-          <Text style={styles.shareProfileText}>שיתוף פרופיל האירוע</Text>
-        </TouchableOpacity>
-      </Link>
+
     </ScrollView>
   );
 }
@@ -226,16 +213,5 @@ const styles = StyleSheet.create({
     color: colors.text,
     textAlign: 'center',
   },
-  shareProfileButton: {
-    backgroundColor: colors.primary,
-    borderRadius: 8,
-    padding: 16,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  shareProfileText: {
-    color: colors.white,
-    fontSize: 16,
-    fontWeight: '600',
-  },
+
 });

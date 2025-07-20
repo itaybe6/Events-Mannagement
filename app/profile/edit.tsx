@@ -6,7 +6,7 @@ import { colors } from '@/constants/colors';
 import { Button } from '@/components/Button';
 import { Input } from '@/components/Input';
 import { Card } from '@/components/Card';
-import { Camera, Calendar, Clock } from 'lucide-react-native';
+import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { Platform } from 'react-native';
 
@@ -42,6 +42,7 @@ export default function ProfileEditScreen() {
     }
   };
 
+  console.log(123);
   const formatDate = (date: Date) => {
     return date.toLocaleDateString('he-IL', {
       year: 'numeric',

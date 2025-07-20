@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Task } from '@/types';
 import { colors } from '@/constants/colors';
-import { CheckCircle, Circle, Edit, Trash2 } from 'lucide-react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 interface TaskItemProps {
   task: Task;
@@ -34,12 +34,12 @@ export const TaskItem: React.FC<TaskItemProps> = ({
       <View style={styles.leftActions}>
         {onEdit && (
           <TouchableOpacity style={styles.actionButton} onPress={onEdit}>
-            <Edit size={16} color={colors.primary} />
+            <Ionicons name="create" size={16} color={colors.primary} />
           </TouchableOpacity>
         )}
         {onDelete && (
           <TouchableOpacity style={styles.actionButton} onPress={onDelete}>
-            <Trash2 size={16} color={colors.error} />
+            <Ionicons name="trash" size={16} color={colors.error} />
           </TouchableOpacity>
         )}
       </View>
@@ -65,9 +65,9 @@ export const TaskItem: React.FC<TaskItemProps> = ({
 
       <TouchableOpacity style={styles.checkbox} onPress={onToggle}>
         {task.completed ? (
-          <CheckCircle size={24} color={colors.success} />
+          <Ionicons name="checkmark-circle" size={24} color={colors.success} />
         ) : (
-          <Circle size={24} color={isOverdue() ? colors.error : colors.gray[400]} />
+          <Ionicons name="ellipse-outline" size={24} color={isOverdue() ? colors.error : colors.gray[400]} />
         )}
       </TouchableOpacity>
     </View>

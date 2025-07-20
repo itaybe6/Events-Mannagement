@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Modal, FlatList } from 'react-native';
 import { router } from 'expo-router';
 import { useEventStore } from '@/store/eventStore';
 import { colors } from '@/constants/colors';
 import { Button } from '@/components/Button';
 import { Input } from '@/components/Input';
 import { Card } from '@/components/Card';
-import { Send, Plus, Trash2, MessageSquare, Share2 } from 'lucide-react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { Platform } from 'react-native';
+import * as Contacts from 'expo-contacts';
 
 export default function InviteScreen() {
   const { currentEvent, addGuest, addMessage } = useEventStore();
@@ -25,6 +26,9 @@ export default function InviteScreen() {
   );
   const [messageType, setMessageType] = useState<'SMS' | 'וואטסאפ'>('וואטסאפ');
   const [errors, setErrors] = useState<{[key: string]: {name?: string; phone?: string}}>({}); 
+  const [contactsModalVisible, setContactsModalVisible] = useState(false);
+  const [deviceContacts, setDeviceContacts] = useState<any[]>([]);
+  const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set());
 
   if (!currentEvent) {
     return (
@@ -36,6 +40,56 @@ export default function InviteScreen() {
 
   const addGuestField = () => {
     setGuests([...guests, { name: '', phone: '' }]);
+  };
+
+  const importContacts = async () => {
+    try {
+      const { status } = await Contacts.requestPermissionsAsync();
+      if (status === 'granted') {
+        const { data } = await Contacts.getContactsAsync({
+          fields: [Contacts.Fields.Name, Contacts.Fields.PhoneNumbers],
+        });
+        
+        // Filter contacts that have phone numbers
+        const contactsWithPhones = data.filter(contact => 
+          contact.phoneNumbers && contact.phoneNumbers.length > 0
+        );
+        
+        setDeviceContacts(contactsWithPhones);
+        setContactsModalVisible(true);
+      } else {
+        Alert.alert('נדרשת הרשאה', 'כדי לייבא אנשי קשר, יש צורך בהרשאה לגישה לאנשי הקשר');
+      }
+    } catch (error) {
+      Alert.alert('שגיאה', 'לא ניתן לגשת לאנשי הקשר');
+    }
+  };
+
+  const toggleContactSelection = (contactId: string) => {
+    const newSelected = new Set(selectedContacts);
+    if (newSelected.has(contactId)) {
+      newSelected.delete(contactId);
+    } else {
+      newSelected.add(contactId);
+    }
+    setSelectedContacts(newSelected);
+  };
+
+  const addSelectedContacts = () => {
+    const newGuests = [...guests];
+    
+    selectedContacts.forEach(contactId => {
+      const contact = deviceContacts.find(c => c.id === contactId);
+      if (contact) {
+        const phoneNumber = contact.phoneNumbers[0]?.number || '';
+        const name = contact.name || '';
+        newGuests.push({ name, phone: phoneNumber });
+      }
+    });
+    
+    setGuests(newGuests);
+    setSelectedContacts(new Set());
+    setContactsModalVisible(false);
   };
 
   const removeGuestField = (index: number) => {
@@ -145,6 +199,7 @@ export default function InviteScreen() {
   };
 
   return (
+    <>
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
       <View style={styles.header}>
         <Text style={styles.title}>הזמנת אורחים</Text>
@@ -178,7 +233,8 @@ export default function InviteScreen() {
               onPress={() => removeGuestField(index)}
               disabled={guests.length === 1}
             >
-              <Trash2 
+              <Ionicons 
+                name="trash" 
                 size={20} 
                 color={guests.length === 1 ? colors.gray[400] : colors.error} 
               />
@@ -186,10 +242,17 @@ export default function InviteScreen() {
           </View>
         ))}
         
-        <TouchableOpacity style={styles.addGuestButton} onPress={addGuestField}>
-          <Plus size={16} color={colors.primary} />
-          <Text style={styles.addGuestText}>הוסף אורח</Text>
-        </TouchableOpacity>
+        <View style={styles.addButtonsContainer}>
+          <TouchableOpacity style={styles.addGuestButton} onPress={addGuestField}>
+            <Ionicons name="add" size={16} color={colors.primary} />
+            <Text style={styles.addGuestText}>הוסף אורח</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity style={styles.importContactsButton} onPress={importContacts}>
+            <Ionicons name="people" size={16} color={colors.secondary} />
+            <Text style={styles.importContactsText}>ייבא מאנשי קשר</Text>
+          </TouchableOpacity>
+        </View>
       </Card>
 
       <Card style={styles.messageCard}>
@@ -250,7 +313,7 @@ export default function InviteScreen() {
             fullWidth
           />
           <View style={styles.sendIconContainer}>
-            <Send size={16} color={colors.white} />
+            <Ionicons name="send" size={16} color={colors.white} />
           </View>
         </View>
         
@@ -265,11 +328,70 @@ export default function InviteScreen() {
             fullWidth
           />
           <View style={styles.shareIconContainer}>
-            <Share2 size={16} color={colors.primary} />
+            <Ionicons name="share-outline" size={16} color={colors.primary} />
           </View>
         </View>
       </View>
     </ScrollView>
+    
+    {/* Contacts Modal */}
+    <Modal
+      visible={contactsModalVisible}
+      transparent={true}
+      animationType="slide"
+      onRequestClose={() => setContactsModalVisible(false)}
+    >
+      <View style={styles.modalContainer}>
+        <View style={styles.modalContent}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>בחר אנשי קשר</Text>
+            <TouchableOpacity 
+              onPress={() => setContactsModalVisible(false)}
+              style={styles.closeButton}
+            >
+              <Ionicons name="close" size={24} color={colors.text} />
+            </TouchableOpacity>
+          </View>
+          
+          <FlatList
+            data={deviceContacts}
+            keyExtractor={(item) => item.id}
+            style={styles.contactsList}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={[
+                  styles.contactItem,
+                  selectedContacts.has(item.id) && styles.selectedContactItem
+                ]}
+                onPress={() => toggleContactSelection(item.id)}
+              >
+                <View style={styles.contactInfo}>
+                  <Text style={styles.contactName}>{item.name || 'ללא שם'}</Text>
+                  <Text style={styles.contactPhone}>
+                    {item.phoneNumbers[0]?.number || 'ללא מספר'}
+                  </Text>
+                </View>
+                <View style={styles.checkboxContainer}>
+                  {selectedContacts.has(item.id) && (
+                    <Ionicons name="checkmark" size={20} color={colors.primary} />
+                  )}
+                </View>
+              </TouchableOpacity>
+            )}
+          />
+          
+          <View style={styles.modalActions}>
+            <Button
+              title={`הוסף ${selectedContacts.size} אנשי קשר`}
+              onPress={addSelectedContacts}
+              disabled={selectedContacts.size === 0}
+              style={styles.addContactsButton}
+            />
+          </View>
+        </View>
+      </View>
+    </Modal>
+    </>
   );
 }
 
@@ -333,6 +455,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   addGuestButton: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -419,5 +542,100 @@ const styles = StyleSheet.create({
     left: 16,
     top: '50%',
     transform: [{ translateY: -8 }],
+  },
+  addButtonsContainer: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  importContactsButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: colors.secondary,
+    borderRadius: 8,
+    backgroundColor: colors.white,
+  },
+  importContactsText: {
+    color: colors.secondary,
+    fontWeight: '500',
+    marginLeft: 8,
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: colors.white,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '80%',
+    paddingTop: 20,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.gray[200],
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.text,
+  },
+  closeButton: {
+    padding: 4,
+  },
+  contactsList: {
+    flex: 1,
+    paddingHorizontal: 20,
+  },
+  contactItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.gray[100],
+  },
+  selectedContactItem: {
+    backgroundColor: colors.primary + '10',
+  },
+  contactInfo: {
+    flex: 1,
+    alignItems: 'flex-end',
+  },
+  contactName: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: colors.text,
+    marginBottom: 2,
+  },
+  contactPhone: {
+    fontSize: 14,
+    color: colors.gray[600],
+  },
+  checkboxContainer: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 12,
+  },
+  modalActions: {
+    padding: 20,
+    borderTopWidth: 1,
+    borderTopColor: colors.gray[200],
+  },
+  addContactsButton: {
+    marginTop: 0,
   },
 });

@@ -1,6 +1,7 @@
 export const colors = {
   primary: '#7861fa', // Purple color as requested
   secondary: '#E5989B', // Soft pink
+  orange: '#e8a7a8', // Pink color for login screen
   background: '#FFFFFF',
   card: '#F8F9FA',
   text: '#333333',
@@ -12,6 +13,7 @@ export const colors = {
   info: '#2196F3',
   white: '#FFFFFF',
   black: '#000000',
+  surface: '#FFFFFF',
   gray: {
     100: '#F8F9FA',
     200: '#E9ECEF',

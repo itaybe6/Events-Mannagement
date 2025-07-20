@@ -5,7 +5,7 @@ import { colors } from '@/constants/colors';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { CountdownTimer } from '@/components/CountdownTimer';
-import { Share2, Copy, MapPin, Calendar, Heart } from 'lucide-react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { Platform } from 'react-native';
 
 export default function ProfileShareScreen() {
@@ -117,14 +117,14 @@ export default function ProfileShareScreen() {
         <View style={styles.shareOptions}>
           <TouchableOpacity style={styles.shareOption} onPress={handleShare}>
             <View style={[styles.shareIconContainer, { backgroundColor: `${colors.primary}20` }]}>
-              <Share2 size={24} color={colors.primary} />
+              <Ionicons name="share-outline" size={24} color={colors.primary} />
             </View>
             <Text style={styles.shareOptionText}>שיתוף</Text>
           </TouchableOpacity>
           
           <TouchableOpacity style={styles.shareOption} onPress={handleCopyLink}>
             <View style={[styles.shareIconContainer, { backgroundColor: `${colors.secondary}20` }]}>
-              <Copy size={24} color={colors.secondary} />
+              <Ionicons name="copy-outline" size={24} color={colors.secondary} />
             </View>
             <Text style={styles.shareOptionText}>
               {copied ? 'הועתק!' : 'העתק קישור'}
@@ -139,7 +139,7 @@ export default function ProfileShareScreen() {
               https://easy2give.com/event/{currentEvent.id}
             </Text>
             <TouchableOpacity style={styles.copyButton} onPress={handleCopyLink}>
-              <Copy size={16} color={colors.white} />
+              <Ionicons name="copy-outline" size={16} color={colors.white} />
             </TouchableOpacity>
           </View>
         </Card>

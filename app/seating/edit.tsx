@@ -14,7 +14,7 @@ import { useEventStore } from '@/store/eventStore';
 import { colors } from '@/constants/colors';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
-import { Plus, Users, Trash2, Edit, Save, List, Map } from 'lucide-react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 // Mock component for drag and drop functionality
@@ -34,7 +34,7 @@ const DraggableGuest = ({ guest, onDrop, tableId }: any) => {
           style={styles.removeFromTableButton}
           onPress={() => onDrop(guest.id, null)}
         >
-          <Trash2 size={12} color={colors.white} />
+          <Ionicons name="trash" size={12} color={colors.white} />
         </TouchableOpacity>
       )}
     </TouchableOpacity>
@@ -134,7 +134,7 @@ export default function SeatingEditScreen() {
                   style={styles.saveTableButton}
                   onPress={() => handleSaveTable(table.id)}
                 >
-                  <Save size={16} color={colors.success} />
+                  <Ionicons name="checkmark" size={16} color={colors.success} />
                 </TouchableOpacity>
                 <TextInput
                   style={styles.editTableNameInput}
@@ -153,7 +153,7 @@ export default function SeatingEditScreen() {
                     setNewTableName(table.name);
                   }}
                 >
-                  <Edit size={16} color={colors.primary} />
+                  <Ionicons name="create" size={16} color={colors.primary} />
                 </TouchableOpacity>
                 <Text style={styles.tableName}>{table.name}</Text>
               </View>
@@ -253,16 +253,16 @@ export default function SeatingEditScreen() {
             onPress={() => setViewMode(viewMode === 'list' ? 'map' : 'list')}
           >
             {viewMode === 'list' ? (
-              <Map size={20} color={colors.primary} />
+              <Ionicons name="map" size={20} color={colors.primary} />
             ) : (
-              <List size={20} color={colors.primary} />
+              <Ionicons name="list" size={20} color={colors.primary} />
             )}
           </TouchableOpacity>
           <TouchableOpacity 
             style={styles.addButton}
             onPress={handleAddTable}
           >
-            <Plus size={20} color={colors.white} />
+            <Ionicons name="add" size={20} color={colors.white} />
           </TouchableOpacity>
         </View>
       </View>

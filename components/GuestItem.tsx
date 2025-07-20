@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Guest } from '@/types';
 import { colors } from '@/constants/colors';
-import { Check, X, Clock, Edit, Trash2 } from 'lucide-react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 interface GuestItemProps {
   guest: Guest;
@@ -33,11 +33,11 @@ export const GuestItem: React.FC<GuestItemProps> = ({
   const getStatusIcon = () => {
     switch (guest.status) {
       case 'מגיע':
-        return <Check size={16} color={colors.success} />;
+        return <Ionicons name="checkmark" size={16} color={colors.success} />;
       case 'לא מגיע':
-        return <X size={16} color={colors.error} />;
+        return <Ionicons name="close" size={16} color={colors.error} />;
       case 'ממתין':
-        return <Clock size={16} color={colors.warning} />;
+        return <Ionicons name="time" size={16} color={colors.warning} />;
       default:
         return null;
     }
@@ -67,19 +67,19 @@ export const GuestItem: React.FC<GuestItemProps> = ({
                 style={[styles.statusButton, styles.comingButton]}
                 onPress={() => onStatusChange('מגיע')}
               >
-                <Check size={16} color={colors.white} />
+                <Ionicons name="checkmark" size={16} color={colors.white} />
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.statusButton, styles.notComingButton]}
                 onPress={() => onStatusChange('לא מגיע')}
               >
-                <X size={16} color={colors.white} />
+                <Ionicons name="close" size={16} color={colors.white} />
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.statusButton, styles.pendingButton]}
                 onPress={() => onStatusChange('ממתין')}
               >
-                <Clock size={16} color={colors.white} />
+                <Ionicons name="time" size={16} color={colors.white} />
               </TouchableOpacity>
             </View>
           )}
@@ -90,7 +90,7 @@ export const GuestItem: React.FC<GuestItemProps> = ({
                 style={styles.actionButton}
                 onPress={onEdit}
               >
-                <Edit size={16} color={colors.primary} />
+                <Ionicons name="create" size={16} color={colors.primary} />
               </TouchableOpacity>
             )}
             {onDelete && (
@@ -98,7 +98,7 @@ export const GuestItem: React.FC<GuestItemProps> = ({
                 style={styles.actionButton}
                 onPress={onDelete}
               >
-                <Trash2 size={16} color={colors.error} />
+                <Ionicons name="trash" size={16} color={colors.error} />
               </TouchableOpacity>
             )}
           </View>

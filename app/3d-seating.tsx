@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, Image, ScrollView } from 'react-native';
 import { colors } from '@/constants/colors';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
-import { Box, Star, Bell } from 'lucide-react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function ThreeDSeatingScreen() {
   return (
