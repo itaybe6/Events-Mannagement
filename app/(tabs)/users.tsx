@@ -9,7 +9,8 @@ import {
   Alert,
   Modal,
   KeyboardAvoidingView,
-  Platform
+  Platform,
+  ActivityIndicator
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useUserStore } from '@/store/userStore';
@@ -21,6 +22,12 @@ import { userService, UserWithMetadata } from '@/lib/services/userService';
 import { authService } from '@/lib/services/authService';
 import { basicPingTest } from '@/lib/basicPingTest';
 
+const USER_FILTERS = [
+  { label: 'הכל', value: 'all' },
+  { label: 'מנהלים', value: 'admin' },
+  { label: 'חתן/כלה', value: 'couple' },
+];
+
 export default function UsersScreen() {
   const { isLoggedIn, userType } = useUserStore();
   const router = useRouter();
@@ -28,6 +35,7 @@ export default function UsersScreen() {
   const [loading, setLoading] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [isDemoMode, setIsDemoMode] = useState(false);
+  const [userFilter, setUserFilter] = useState('all');
   
   // Form state
   const [newUser, setNewUser] = useState({
@@ -39,84 +47,40 @@ export default function UsersScreen() {
   });
 
   useEffect(() => {
-    console.log('👤 Users screen loading...');
-    console.log('👤 User logged in:', isLoggedIn);
-    console.log('👤 User type:', userType);
-    
     if (!isLoggedIn || userType !== 'admin') {
-      console.log('👤 Redirecting to login - not admin or not logged in');
       router.replace('/login');
       return;
     }
-    console.log('👤 Admin user confirmed, loading data...');
-    // Run direct fetch test
-    basicPingTest();
-    // Test connection first, then load users
     testConnection();
     loadUsers();
   }, [isLoggedIn, userType]);
 
   const testConnection = async () => {
     try {
-      console.log('🧪 Testing Supabase connection from Users screen...');
       const connectionResult = await authService.testConnection();
-      console.log('🧪 Connection test result:', connectionResult);
-      
       if (!connectionResult.success) {
-        const isNetworkError = connectionResult.message.includes('Network') || connectionResult.message.includes('network');
-        const isTableError = connectionResult.message.includes('does not exist') || connectionResult.message.includes('PGRST116');
-        
-        let helpMessage = '';
-        if (isNetworkError) {
-          helpMessage = '\n\n🔧 פתרונות אפשריים:\n• בדוק חיבור לאינטרנט\n• ודא ש-URL של Supabase נכון\n• בדוק שהמפתחות נכונים\n• נסה להפעיל מחדש את האפליקציה';
-        } else if (isTableError) {
-          helpMessage = '\n\n🔧 פתרון:\n• היכנס ל-Supabase Dashboard\n• לך ל-SQL Editor\n• הרץ את הקוד מהקובץ supabase/schema.sql';
-        } else {
-          helpMessage = '\n\n🔧 פתרונות אפשריים:\n• בדוק הגדרות RLS ב-Supabase\n• ודא שה-Service Role Key נכון\n• בדוק הרשאות הטבלה';
-        }
-        
-        Alert.alert(
-          'אבחון בעיות דאטאבייס',
-          `${connectionResult.message}${helpMessage}`,
-          [
-            { text: 'אישור', style: 'default' },
-            { 
-              text: 'בדוק הגדרות DB', 
-              style: 'default',
-              onPress: () => checkDatabaseSetup()
-            }
-          ]
-        );
-        return;
+        setIsDemoMode(true);
+        Alert.alert('אבחון בעיות דאטאבייס', connectionResult.message, [{ text: 'הבנתי' }]);
+      } else {
+        setIsDemoMode(false);
       }
-      
-      // If connection is good, check database setup
-      await checkDatabaseSetup();
-      
     } catch (error) {
-      console.error('❌ Connection test error:', error);
-      Alert.alert(
-        'שגיאה',
-        `שגיאה בבדיקת החיבור: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        [{ text: 'אישור', style: 'default' }]
-      );
+      setIsDemoMode(true);
     }
   };
 
   const checkDatabaseSetup = async () => {
     try {
-      console.log('🔧 Checking database setup...');
       const setupResult = await authService.setupDatabase();
-      console.log('🔧 Database setup result:', setupResult);
-      
-      Alert.alert(
-        setupResult.success ? 'הדאטאבייס תקין ✅' : 'בעיה בהגדרת הדאטאבייס ⚠️',
-        setupResult.message,
-        [{ text: 'אישור', style: 'default' }]
-      );
-      
+      // הצג רק אם יש בעיה
+      if (!setupResult.success) {
+        Alert.alert(
+          'בעיה בהגדרת הדאטאבייס ⚠️',
+          setupResult.message,
+          [{ text: 'אישור', style: 'default' }]
+        );
+      }
     } catch (error) {
-      console.error('❌ Database setup check error:', error);
       Alert.alert(
         'שגיאה בבדיקת הדאטאבייס',
         `שגיאה: ${error instanceof Error ? error.message : 'Unknown error'}`,
@@ -128,53 +92,15 @@ export default function UsersScreen() {
   const loadUsers = async () => {
     try {
       setLoading(true);
-      console.log('👥 Loading users from Supabase via userService...');
       const usersData = await userService.getAllUsers();
-      console.log('👥 Loaded users successfully:', usersData);
       setUsers(usersData);
     } catch (error) {
-      console.error('❌ Error loading users from Supabase:', error);
       
       // Check if it's a network error
       const isNetworkError = error instanceof Error && 
         (error.message.includes('Network') || error.message.includes('fetch'));
       
       if (isNetworkError) {
-        console.log('🔄 Network error detected, switching to demo mode...');
-        // Load demo data
-        const demoUsers: UserWithMetadata[] = [
-          {
-            id: 'demo-admin',
-            name: 'מנהל מערכת (דמו)',
-            email: 'admin@demo.com',
-            userType: 'admin',
-            created_at: '2025-01-01T00:00:00Z',
-            updated_at: '2025-01-15T00:00:00Z',
-            events_count: 0,
-            last_login: '2025-01-15T00:00:00Z'
-          },
-          {
-            id: 'demo-couple-1',
-            name: 'דני ורותי (דמו)',
-            email: 'couple1@demo.com',
-            userType: 'couple',
-            created_at: '2025-01-01T00:00:00Z',
-            updated_at: '2025-01-15T00:00:00Z',
-            events_count: 1,
-            last_login: '2025-01-15T00:00:00Z'
-          },
-          {
-            id: 'demo-couple-2',
-            name: 'משה ושרה (דמו)',
-            email: 'couple2@demo.com',
-            userType: 'couple',
-            created_at: '2025-01-05T00:00:00Z',
-            updated_at: '2025-01-10T00:00:00Z',
-            events_count: 0,
-            last_login: '2025-01-10T00:00:00Z'
-          }
-        ];
-        setUsers(demoUsers);
         setIsDemoMode(true);
         
         Alert.alert(
@@ -233,7 +159,6 @@ export default function UsersScreen() {
       setLoading(true);
       
       if (isDemoMode) {
-        console.log('🎭 Demo mode - simulating user creation...');
         
         // Create demo user
         const demoUserData: UserWithMetadata = {
@@ -268,20 +193,12 @@ export default function UsersScreen() {
         return;
       }
 
-      console.log('➕ Creating user in Supabase:', {
-        name: newUser.name,
-        email: newUser.email,
-        user_type: newUser.user_type
-      });
-
       const newUserData = await userService.createUser(
         newUser.email,
         newUser.password,
         newUser.name,
         newUser.user_type
       );
-
-      console.log('✅ User created successfully:', newUserData);
 
       // Add to local state
       setUsers(prevUsers => [...prevUsers, newUserData]);
@@ -303,7 +220,6 @@ export default function UsersScreen() {
         [{ text: 'מעולה', style: 'default' }]
       );
     } catch (error) {
-      console.error('❌ Error creating user:', error);
       Alert.alert('שגיאה', 'לא ניתן להוסיף את המשתמש');
     } finally {
       setLoading(false);
@@ -321,10 +237,8 @@ export default function UsersScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              console.log('🗑️ Deleting user from Supabase:', userId);
               
               await userService.deleteUser(userId);
-              console.log('✅ User deleted successfully');
               
               // Remove from local state
               setUsers(prevUsers => prevUsers.filter(user => user.id !== userId));
@@ -335,7 +249,6 @@ export default function UsersScreen() {
                 [{ text: 'אישור', style: 'default' }]
               );
             } catch (error) {
-              console.error('❌ Error deleting user from Supabase:', error);
               
               let errorMessage = 'לא ניתן למחוק את המשתמש מהדאטאבייס';
               if (error instanceof Error) {
@@ -366,103 +279,80 @@ export default function UsersScreen() {
     return userType === 'admin' ? 'shield-checkmark' : 'heart';
   };
 
-  const renderUserCard = (user: UserWithMetadata) => (
-    <Card key={user.id} style={styles.userCard}>
-      <View style={styles.userHeader}>
-        <View style={styles.userInfo}>
-          <View style={styles.userTitle}>
-            <Text style={styles.userName}>{user.name}</Text>
-            <View style={[
-              styles.userTypeBadge,
-              { backgroundColor: user.userType === 'admin' ? colors.warning : colors.primary }
-            ]}>
-              <Ionicons 
-                name={getUserTypeIcon(user.userType)} 
-                size={12} 
-                color={colors.white} 
-              />
-              <Text style={styles.userTypeText}>
-                {getUserTypeText(user.userType)}
-              </Text>
-            </View>
-          </View>
-          <Text style={styles.userEmail}>{user.email}</Text>
-        </View>
-        
-        <TouchableOpacity 
-          style={styles.deleteButton}
-          onPress={() => handleDeleteUser(user.id, user.name)}
-        >
-          <Ionicons name="trash" size={20} color={colors.error} />
-        </TouchableOpacity>
-      </View>
-      
-      <View style={styles.userFooter}>
-        <Text style={styles.dateText}>
-          נוצר: {formatDate(user.created_at)}
-        </Text>
-        <Text style={styles.dateText}>
-          עודכן: {formatDate(user.updated_at)}
-        </Text>
-      </View>
-    </Card>
-  );
+  // סינון משתמשים
+  const filteredUsers = userFilter === 'all'
+    ? users
+    : users.filter(u => u.userType === userFilter);
 
   return (
-    <View style={styles.container}>
-      <ScrollView 
-        style={styles.scrollView}
-        contentContainerStyle={styles.contentContainer}
-      >
-        <View style={styles.header}>
-          <Text style={styles.title}>ניהול משתמשים</Text>
-          <Text style={styles.subtitle}>
-            סה"כ {users.length} משתמשים במערכת
+    <ScrollView style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.title}>ניהול משתמשים</Text>
+        <Text style={styles.subtitle}>סה"כ {filteredUsers.length} משתמשים</Text>
+        <View style={styles.databaseInfo}>
+          <Ionicons
+            name={isDemoMode ? "cloud-offline" : "cloud"}
+            size={16}
+            color={isDemoMode ? colors.warning : colors.success}
+          />
+          <Text style={[
+            styles.databaseText,
+            { color: isDemoMode ? colors.warning : colors.success }
+          ]}>
+            {isDemoMode ? "מצב דמו - אין חיבור לדאטאבייס" : "מחובר לדאטאבייס Supabase"}
           </Text>
-          <View style={styles.databaseInfo}>
-            <Ionicons 
-              name={isDemoMode ? "cloud-offline" : "cloud"} 
-              size={16} 
-              color={isDemoMode ? colors.warning : colors.success} 
-            />
-            <Text style={[
-              styles.databaseText, 
-              { color: isDemoMode ? colors.warning : colors.success }
-            ]}>
-              {isDemoMode ? "מצב דמו - אין חיבור לדאטאבייס" : "מחובר לדאטאבייס Supabase"}
-            </Text>
-          </View>
         </View>
+      </View>
 
-        <View style={styles.buttonRow}>
-          <TouchableOpacity 
-            style={styles.addButton}
-            onPress={() => setShowAddModal(true)}
+      {/* שורת סינון */}
+      <View style={styles.filterRow}>
+        {USER_FILTERS.map(f => (
+          <TouchableOpacity
+            key={f.value}
+            style={[styles.filterButton, userFilter === f.value && styles.filterButtonActive]}
+            onPress={() => setUserFilter(f.value)}
           >
-            <Ionicons name="person-add" size={20} color={colors.white} />
-            <Text style={styles.addButtonText}>הוסף משתמש חדש</Text>
+            <Text style={[styles.filterButtonText, userFilter === f.value && styles.filterButtonTextActive]}>{f.label}</Text>
           </TouchableOpacity>
+        ))}
+      </View>
 
-          <TouchableOpacity style={styles.testButton} onPress={testConnection}>
-            <Ionicons name="medical" size={18} color={colors.primary} />
-            <Text style={styles.testButtonText}>אבחן בעיות</Text>
-          </TouchableOpacity>
-        </View>
+      <View style={styles.buttonRow}>
+        <TouchableOpacity style={styles.addButton} onPress={() => setShowAddModal(true)}>
+          <Ionicons name="person-add" size={20} color={colors.white} />
+          <Text style={styles.addButtonText}>הוסף משתמש חדש</Text>
+        </TouchableOpacity>
+      </View>
 
-        <View style={styles.usersList}>
-          {users.length > 0 ? (
-            users.map(renderUserCard)
-          ) : (
-            <Card style={styles.emptyState}>
-              <Ionicons name="people-outline" size={60} color={colors.gray[400]} />
-              <Text style={styles.emptyStateTitle}>אין משתמשים במערכת</Text>
-              <Text style={styles.emptyStateText}>
-                התחל בהוספת משתמש ראשון למערכת
-              </Text>
-            </Card>
-          )}
-        </View>
-      </ScrollView>
+      <View style={styles.usersList}>
+        {loading ? (
+          <ActivityIndicator size="large" color={colors.primary} />
+        ) : filteredUsers.length === 0 ? (
+          <View style={styles.emptyStateCard}>
+            <Ionicons name="people-outline" size={60} color={colors.gray[400]} />
+            <Text style={styles.emptyStateTitle}>אין משתמשים להצגה</Text>
+          </View>
+        ) : (
+          filteredUsers.map(user => (
+            <View key={user.id} style={styles.userCard}>
+              <View style={styles.userHeaderRow}>
+                <Ionicons
+                  name={user.userType === 'admin' ? 'shield-checkmark' : 'heart'}
+                  size={28}
+                  color={user.userType === 'admin' ? colors.primary : colors.orange}
+                  style={styles.userTypeIcon}
+                />
+                <TouchableOpacity style={styles.deleteButton} onPress={() => handleDeleteUser(user.id, user.name)}>
+                  <Ionicons name="trash" size={20} color={colors.error} />
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.userName}>{user.name}</Text>
+              <Text style={styles.userEmail}>{user.email}</Text>
+              <Text style={styles.userTypeBadge}>{user.userType === 'admin' ? 'מנהל' : 'חתן/כלה'}</Text>
+            </View>
+          ))
+        )}
+      </View>
 
       {/* Add User Modal */}
       <Modal
@@ -574,14 +464,14 @@ export default function UsersScreen() {
           </ScrollView>
         </KeyboardAvoidingView>
       </Modal>
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.gray[100],
+    backgroundColor: colors.background,
   },
   scrollView: {
     flex: 1,
@@ -590,33 +480,39 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   header: {
-    marginBottom: 20,
+    padding: 24,
+    alignItems: 'flex-end', // יישור לימין
   },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
     color: colors.text,
-    marginBottom: 4,
+    textAlign: 'right', // יישור לימין
+    marginBottom: 8,
   },
   subtitle: {
     fontSize: 16,
     color: colors.textLight,
+    textAlign: 'right', // יישור לימין
+    marginBottom: 8,
   },
   databaseInfo: {
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 8,
     gap: 6,
+    alignSelf: 'flex-end', // יישור לימין
   },
   databaseText: {
     fontSize: 14,
-    color: colors.success,
     fontWeight: '500',
+    textAlign: 'right', // יישור לימין
   },
   buttonRow: {
     flexDirection: 'row',
     gap: 12,
     marginBottom: 20,
+    justifyContent: 'flex-end', // יישור לימין
   },
   addButton: {
     flexDirection: 'row',
@@ -632,6 +528,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     marginLeft: 8,
+    textAlign: 'right', // יישור לימין
   },
   testButton: {
     flexDirection: 'row',
@@ -650,56 +547,89 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginLeft: 6,
   },
-  usersList: {
-    gap: 12,
-  },
-  userCard: {
-    padding: 16,
-  },
-  userHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
+  filterRow: {
+    flexDirection: 'row-reverse',
+    justifyContent: 'flex-start', // יישור לימין
+    gap: 8,
+    marginHorizontal: 16,
     marginBottom: 12,
   },
-  userInfo: {
-    flex: 1,
+  filterButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    backgroundColor: colors.gray[200],
+    marginRight: 6, // יישור לימין
   },
-  userTitle: {
-    flexDirection: 'row',
+  filterButtonActive: {
+    backgroundColor: colors.primary,
+  },
+  filterButtonText: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '500',
+    textAlign: 'right',
+  },
+  filterButtonTextActive: {
+    color: colors.white,
+  },
+  usersList: {
+    gap: 12,
+    alignItems: 'flex-end', // יישור לימין
+    paddingHorizontal: 16,
+  },
+  userCard: {
+    width: '100%',
+    backgroundColor: colors.white,
+    borderRadius: 16,
+    padding: 18,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+    shadowColor: colors.black,
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    alignItems: 'flex-end',
+  },
+  userHeaderRow: {
+    flexDirection: 'row-reverse',
     alignItems: 'center',
-    marginBottom: 4,
-    gap: 8,
+    justifyContent: 'space-between',
+    width: '100%',
+    marginBottom: 8,
+  },
+  userTypeIcon: {
+    marginLeft: 8,
   },
   userName: {
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: 'bold',
     color: colors.text,
-  },
-  userTypeBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    gap: 4,
-  },
-  userTypeText: {
-    fontSize: 10,
-    color: colors.white,
-    fontWeight: '600',
+    textAlign: 'right',
+    marginBottom: 2,
   },
   userEmail: {
     fontSize: 14,
     color: colors.textLight,
+    textAlign: 'right',
+    marginBottom: 2,
+  },
+  userTypeBadge: {
+    fontSize: 13,
+    color: colors.primary,
+    backgroundColor: colors.gray[100],
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 2,
+    alignSelf: 'flex-end',
+    marginTop: 4,
+    textAlign: 'right',
+    fontWeight: '600',
   },
   deleteButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.gray[100],
-    justifyContent: 'center',
-    alignItems: 'center',
+    padding: 4,
+    marginRight: 8,
   },
   userFooter: {
     flexDirection: 'row',
@@ -801,5 +731,14 @@ const styles = StyleSheet.create({
   submitButton: {
     marginTop: 20,
     marginBottom: 40,
+  },
+  emptyStateCard: {
+    width: '100%',
+    backgroundColor: colors.gray[100],
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 32,
+    marginTop: 32,
   },
 }); 

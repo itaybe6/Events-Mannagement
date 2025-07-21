@@ -8,7 +8,7 @@ import { useUserStore } from "@/store/userStore";
 export default function TabLayout() {
   const router = useRouter();
   const { userType, isLoggedIn, userData } = useUserStore();
-  
+
   useEffect(() => {
     console.log('🔍 TabLayout Effect - userType changed:', {
       userType,
@@ -18,7 +18,7 @@ export default function TabLayout() {
   }, [userType, isLoggedIn, userData]);
 
   const headerRight = () => (
-    <TouchableOpacity 
+    <TouchableOpacity
       style={styles.notificationButton}
       onPress={() => router.push('/notifications')}
     >
@@ -34,7 +34,7 @@ export default function TabLayout() {
     <Tabs
       key={tabKey}
       screenOptions={{
-        tabBarActiveTintColor: colors.white,
+        tabBarActiveTintColor: '#fff',
         tabBarInactiveTintColor: colors.gray[500],
         headerShown: true,
         headerTitle: "",
@@ -48,31 +48,28 @@ export default function TabLayout() {
         tabBarShowLabel: false,
         tabBarStyle: {
           position: 'absolute',
-          bottom: Platform.OS === 'ios' ? 30 : 20,
+          bottom: 20,
           left: 15,
           right: 15,
-          height: 65,
-          backgroundColor: colors.white,
-          borderRadius: 35,
-          paddingHorizontal: 15,
-          paddingVertical: 8,
-          paddingTop: 12,
+          height: 80,
+          backgroundColor: '#e8a7a8',
+          borderRadius: 40,
+          paddingHorizontal: 24,
+          paddingVertical: 10,
           shadowColor: '#000',
-          shadowOffset: { width: 0, height: -10 },
-          shadowOpacity: 0.25,
-          shadowRadius: 30,
-          elevation: 25,
+          shadowOffset: { width: 0, height: 8 },
+          shadowOpacity: 0.15,
+          shadowRadius: 20,
+          elevation: 20,
           borderTopWidth: 0,
-          borderWidth: 1,
-          borderColor: 'rgba(0,0,0,0.08)',
+          borderWidth: 0,
         },
         tabBarItemStyle: {
-          marginHorizontal: 3,
-          paddingVertical: 6,
-          paddingHorizontal: 8,
-          height: 30,
-          justifyContent: 'center',
-          alignItems: 'center',
+          marginHorizontal: 6,
+          paddingVertical: 8,
+          paddingHorizontal: 10,
+          borderRadius: 20,
+          backgroundColor: 'transparent',
         },
         tabBarIconStyle: {
           marginRight: 0,
@@ -91,16 +88,16 @@ export default function TabLayout() {
               styles.iconContainer,
               focused && styles.activeIconContainer
             ]}>
-              <Ionicons 
-                name="home" 
-                size={24} 
-                color={focused ? colors.white : colors.gray[500]} 
+              <Ionicons
+                name="home"
+                size={24}
+                color={focused ? colors.white : colors.gray[500]}
               />
             </View>
           ),
         }}
       />
-      
+
       <Tabs.Screen
         name="guests"
         options={{
@@ -111,16 +108,16 @@ export default function TabLayout() {
               styles.iconContainer,
               focused && styles.activeIconContainer
             ]}>
-              <Ionicons 
-                name="people" 
-                size={24} 
-                color={focused ? colors.white : colors.gray[500]} 
+              <Ionicons
+                name="people"
+                size={24}
+                color={focused ? colors.white : colors.gray[500]}
               />
             </View>
           ),
         }}
       />
-      
+
       <Tabs.Screen
         name="planning"
         options={{
@@ -131,16 +128,23 @@ export default function TabLayout() {
               styles.iconContainer,
               focused && styles.activeIconContainer
             ]}>
-              <Ionicons 
-                name="calendar" 
-                size={24} 
-                color={focused ? colors.white : colors.gray[500]} 
+              <Ionicons
+                name="calendar"
+                size={24}
+                color={focused ? colors.white : colors.gray[500]}
               />
             </View>
           ),
         }}
       />
-      
+      <Tabs.Screen
+        name="admin-events-create"
+        options={{
+          href: null
+     
+        }}
+      />
+
       <Tabs.Screen
         name="gifts"
         options={{
@@ -151,16 +155,16 @@ export default function TabLayout() {
               styles.iconContainer,
               focused && styles.activeIconContainer
             ]}>
-              <Ionicons 
-                name="gift" 
-                size={24} 
-                color={focused ? colors.white : colors.gray[500]} 
+              <Ionicons
+                name="gift"
+                size={24}
+                color={focused ? colors.white : colors.gray[500]}
               />
             </View>
           ),
         }}
       />
-      
+
       <Tabs.Screen
         name="clients"
         options={{
@@ -171,16 +175,37 @@ export default function TabLayout() {
               styles.iconContainer,
               focused && styles.activeIconContainer
             ]}>
-              <Ionicons 
-                name="business" 
-                size={24} 
-                color={focused ? colors.white : colors.gray[500]} 
+              <Ionicons
+                name="business"
+                size={24}
+                color={focused ? colors.white : colors.gray[500]}
               />
             </View>
           ),
         }}
       />
-      
+
+      {/* טאב חדש: אירועים למנהל */}
+      <Tabs.Screen
+        name="admin-events"
+        options={{
+          href: userType === 'admin' ? undefined : null,
+          title: "אירועים",
+          tabBarIcon: ({ focused }) => (
+            <View style={[
+              styles.iconContainer,
+              focused && styles.activeIconContainer
+            ]}>
+              <Ionicons
+                name="calendar-outline"
+                size={24}
+                color={focused ? colors.white : colors.gray[500]}
+              />
+            </View>
+          ),
+        }}
+      />
+
       <Tabs.Screen
         name="users"
         options={{
@@ -191,16 +216,16 @@ export default function TabLayout() {
               styles.iconContainer,
               focused && styles.activeIconContainer
             ]}>
-              <Ionicons 
-                name="people-circle" 
-                size={24} 
-                color={focused ? colors.white : colors.gray[500]} 
+              <Ionicons
+                name="people-circle"
+                size={24}
+                color={focused ? colors.white : colors.gray[500]}
               />
             </View>
           ),
         }}
       />
-      
+
       <Tabs.Screen
         name="settings"
         options={{
@@ -210,10 +235,10 @@ export default function TabLayout() {
               styles.iconContainer,
               focused && styles.activeIconContainer
             ]}>
-              <Ionicons 
-                name={userType === 'admin' ? "cog" : "person-circle"} 
-                size={24} 
-                color={focused ? colors.white : colors.gray[500]} 
+              <Ionicons
+                name={userType === 'admin' ? "cog" : "person-circle"}
+                size={24}
+                color={focused ? colors.white : colors.gray[500]}
               />
             </View>
           ),
@@ -225,16 +250,19 @@ export default function TabLayout() {
 
 const styles = StyleSheet.create({
   iconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: 'transparent',
   },
   activeIconContainer: {
-    backgroundColor: '#e8a7a8',
-    borderWidth: 2,
-    borderColor: '#d4969a',
+    backgroundColor: '#d4969a',
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
   },
   notificationButton: {
     width: 40,

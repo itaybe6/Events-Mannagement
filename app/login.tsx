@@ -20,80 +20,68 @@ import { useUserStore } from '@/store/userStore';
 import { useEventStore } from '@/store/eventStore';
 import { LottieAnimation } from '@/components/LottieAnimation';
 import { mockEvents, mockGuests, mockTables, mockMessages, mockGifts } from '@/constants/mockData';
+import { supabase } from '@/lib/supabase';
 
 const { width, height } = Dimensions.get('window');
-
-// משתמשי דמו
-const DEMO_USERS = {
-  couple: {
-    username: 'couple',
-    password: '123456',
-    userType: 'couple' as const,
-    name: 'חתן/כלה'
-  },
-  admin: {
-    username: 'admin',
-    password: 'admin123',
-    userType: 'admin' as const,
-    name: 'מנהל מערכת'
-  }
-};
 
 export default function LoginScreen() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
   const router = useRouter();
   const { login, isLoggedIn, userType, userData } = useUserStore();
   const { setCurrentEventWithData } = useEventStore();
 
   const handleLogin = async () => {
     try {
-      // בדיקת התחברות מול משתמשי הדמו
-      const user = Object.values(DEMO_USERS).find(
-        u => u.username === username && u.password === password
-      );
+      setLoading(true);
+      // התחברות ל-Supabase Auth
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: username.trim(),
+        password: password.trim(),
+      });
 
-      if (user) {
-        console.log('🔑 Login successful for user:', user.username);
-        console.log('🔑 User type from DEMO_USERS:', user.userType);
-        
-        // התחברות עם פונקציית login
-        login(user.userType, {
-          id: '1',
-          email: `${user.username}@example.com`,
-          name: user.name,
-          userType: user.userType,
-        });
-        
-        console.log('🔑 After login - checking userStore...');
-        
-        // טעינת אירוע דמו עם כל הנתונים
-        console.log('📅 Loading demo event with all data...');
-        setCurrentEventWithData(
-          mockEvents[0],
-          mockGuests,
-          mockTables,
-          mockMessages,
-          mockGifts
-        );
-        
-        console.log('🎉 Login complete - redirecting to tabs');
-        
-        // Redirect based on user type
-        if (user.userType === 'admin') {
-          console.log('🔧 Admin user - redirecting to clients tab');
-          router.replace('/(tabs)/clients');
-        } else {
-          console.log('💕 Couple user - redirecting to home tab');
-          router.replace('/(tabs)');
-        }
-      } else {
+      if (error || !data.user) {
         Alert.alert(
           'שגיאה בהתחברות',
-          'שם משתמש או סיסמה שגויים. נסה שוב.',
+          'מייל או סיסמה שגויים. נסה שוב.',
           [{ text: 'אישור', style: 'default' }]
         );
+        setLoading(false);
+        return;
+      }
+
+      // משוך את פרטי המשתמש מטבלת users לפי ה-email
+      const { data: userRow, error: userError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('email', username.trim())
+        .single();
+
+      if (userError || !userRow) {
+        Alert.alert(
+          'שגיאה',
+          'לא נמצאו פרטי משתמש במערכת. פנה למנהל.',
+          [{ text: 'אישור', style: 'default' }]
+        );
+        setLoading(false);
+        return;
+      }
+
+      // התחברות עם פונקציית login שלך
+      login(userRow.user_type, {
+        id: userRow.id,
+        email: userRow.email,
+        name: userRow.name,
+        userType: userRow.user_type,
+      });
+
+      // ניתוב לפי סוג משתמש
+      if (userRow.user_type === 'admin') {
+        router.replace('/(tabs)/clients');
+      } else {
+        router.replace('/(tabs)');
       }
     } catch (error) {
       console.error('Login error:', error);
@@ -102,10 +90,12 @@ export default function LoginScreen() {
         'אירעה שגיאה במהלך ההתחברות. נסה שוב.',
         [{ text: 'אישור', style: 'default' }]
       );
+    } finally {
+      setLoading(false);
     }
   };
 
-  const isLoginDisabled = !username.trim() || !password.trim();
+  const isLoginDisabled = !username.trim() || !password.trim() || loading;
 
   return (
     <KeyboardAvoidingView 
@@ -161,17 +151,18 @@ export default function LoginScreen() {
         
         {/* שדות התחברות */}
         <View style={styles.loginForm}>
-          {/* שדה שם משתמש */}
+          {/* שדה מייל */}
           <View style={styles.inputContainer}>
-            <Ionicons name="person" size={20} color={colors.gray[500]} style={styles.inputIcon} />
+            <Ionicons name="mail" size={20} color={colors.gray[500]} style={styles.inputIcon} />
             <TextInput
               style={styles.textInput}
-              placeholder="שם משתמש"
+              placeholder="אימייל"
               placeholderTextColor={colors.gray[500]}
               value={username}
               onChangeText={setUsername}
               autoCapitalize="none"
               autoCorrect={false}
+              keyboardType="email-address"
             />
           </View>
           
@@ -210,7 +201,7 @@ export default function LoginScreen() {
           onPress={handleLogin}
           disabled={isLoginDisabled}
         >
-          <Text style={styles.loginButtonText}>התחבר</Text>
+          <Text style={styles.loginButtonText}>{loading ? 'מתחבר...' : 'התחבר'}</Text>
         </TouchableOpacity>
         
         {/* מידע על משתמשי הדמו */}
