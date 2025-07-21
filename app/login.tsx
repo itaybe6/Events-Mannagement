@@ -79,7 +79,7 @@ export default function LoginScreen() {
 
       // ניתוב לפי סוג משתמש
       if (userRow.user_type === 'admin') {
-        router.replace('/(tabs)/clients');
+        router.replace('/(tabs)/admin-profile');
       } else {
         router.replace('/(tabs)');
       }
@@ -204,12 +204,6 @@ export default function LoginScreen() {
           <Text style={styles.loginButtonText}>{loading ? 'מתחבר...' : 'התחבר'}</Text>
         </TouchableOpacity>
         
-        {/* מידע על משתמשי הדמו */}
-        <View style={styles.demoInfo}>
-          <Text style={styles.demoTitle}>משתמשי דמו:</Text>
-          <Text style={styles.demoText}>חתן/כלה: couple / 123456</Text>
-          <Text style={styles.demoText}>מנהל: admin / admin123</Text>
-        </View>
       </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -351,26 +345,5 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontSize: 18,
     fontWeight: '600',
-  },
-  demoInfo: {
-    marginTop: 24,
-    padding: 16,
-    backgroundColor: colors.gray[100],
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.gray[200],
-  },
-  demoTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  demoText: {
-    fontSize: 12,
-    color: colors.gray[600],
-    textAlign: 'center',
-    marginBottom: 4,
   },
 }); 

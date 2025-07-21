@@ -72,26 +72,26 @@ export default function SettingsScreen() {
       <View style={styles.profileSection}>
         {currentEvent ? (
           <>
-            <Image
-              source={{ uri: currentEvent.image }}
-              style={styles.profileImage}
-            />
-            <Text style={styles.profileName}>{currentEvent.title}</Text>
-            <View style={styles.profileDetails}>
-              <View style={styles.profileDetail}>
-                <Ionicons name="calendar" size={16} color={colors.primary} />
-                <Text style={styles.profileDetailText}>{formatDate(currentEvent.date)}</Text>
-              </View>
-              <View style={styles.profileDetail}>
-                <Ionicons name="location" size={16} color={colors.primary} />
-                <Text style={styles.profileDetailText}>{currentEvent.location}</Text>
-              </View>
-            </View>
-            <Link href="/profile/edit" asChild>
-              <TouchableOpacity style={styles.editProfileButton}>
-                <Text style={styles.editProfileText}>עריכת פרופיל</Text>
-              </TouchableOpacity>
-            </Link>
+        <Image
+          source={{ uri: currentEvent.image }}
+          style={styles.profileImage}
+        />
+        <Text style={styles.profileName}>{currentEvent.title}</Text>
+        <View style={styles.profileDetails}>
+          <View style={styles.profileDetail}>
+            <Ionicons name="calendar" size={16} color={colors.primary} />
+            <Text style={styles.profileDetailText}>{formatDate(currentEvent.date)}</Text>
+          </View>
+          <View style={styles.profileDetail}>
+            <Ionicons name="location" size={16} color={colors.primary} />
+            <Text style={styles.profileDetailText}>{currentEvent.location}</Text>
+          </View>
+        </View>
+        <Link href="/profile/edit" asChild>
+          <TouchableOpacity style={styles.editProfileButton}>
+            <Text style={styles.editProfileText}>עריכת פרופיל</Text>
+          </TouchableOpacity>
+        </Link>
           </>
         ) : (
           <>
@@ -111,8 +111,8 @@ export default function SettingsScreen() {
 
       {currentEvent && (
         <>
-          <Text style={styles.sectionTitle}>ניהול אירוע</Text>
-          <Card style={styles.menuCard}>
+      <Text style={styles.sectionTitle}>ניהול אירוע</Text>
+      <Card style={styles.menuCard}>
         <Link href="/profile/share" asChild>
           <TouchableOpacity style={styles.menuItem}>
             <View style={styles.menuItemContent}>
@@ -190,27 +190,29 @@ export default function SettingsScreen() {
         </>
       )}
 
-      <Text style={styles.sectionTitle}>הגדרות</Text>
-      <Card style={styles.menuCard}>
-        <TouchableOpacity style={styles.menuItem}>
-          <View style={styles.menuItemContent}>
-            <Text style={styles.menuItemText}>הגדרות אפליקציה</Text>
-            <View style={[styles.menuItemIcon, { backgroundColor: `${colors.gray[500]}20` }]}>
-                <Ionicons name="settings" size={20} color={colors.gray[500]} />
+      {/* הצג את התפריט רק אם המשתמש אינו מנהל */}
+      {userType !== 'admin' && (
+        <Card style={styles.menuCard}>
+          <TouchableOpacity style={styles.menuItem}>
+            <View style={styles.menuItemContent}>
+              <Text style={styles.menuItemText}>הגדרות אפליקציה</Text>
+              <View style={[styles.menuItemIcon, { backgroundColor: `${colors.gray[500]}20` }]}>
+                  <Ionicons name="settings" size={20} color={colors.gray[500]} />
+                </View>
               </View>
-            </View>
-            <Ionicons name="chevron-back" size={20} color={colors.gray[400]} />
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.menuItem}>
-          <View style={styles.menuItemContent}>
-            <Text style={styles.menuItemText}>פרטי חשבון</Text>
-            <View style={[styles.menuItemIcon, { backgroundColor: `${colors.gray[500]}20` }]}>
-                <Ionicons name="person" size={20} color={colors.gray[500]} />
+              <Ionicons name="chevron-back" size={20} color={colors.gray[400]} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.menuItem}>
+            <View style={styles.menuItemContent}>
+              <Text style={styles.menuItemText}>פרטי חשבון</Text>
+              <View style={[styles.menuItemIcon, { backgroundColor: `${colors.gray[500]}20` }]}>
+                  <Ionicons name="person" size={20} color={colors.gray[500]} />
+                </View>
               </View>
-            </View>
-            <Ionicons name="chevron-back" size={20} color={colors.gray[400]} />
-        </TouchableOpacity>
-      </Card>
+              <Ionicons name="chevron-back" size={20} color={colors.gray[400]} />
+          </TouchableOpacity>
+        </Card>
+      )}
 
       <View style={styles.footer}>
         <Text style={styles.footerText}>גרסה 1.0.0</Text>

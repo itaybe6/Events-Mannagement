@@ -52,7 +52,7 @@ function RootLayoutNav() {
       if (userType === 'admin') {
         router.replace('/(tabs)/clients');
       } else {
-        router.replace('/(tabs)');
+      router.replace('/(tabs)');
       }
     }
   }, [isLoggedIn, segments]);

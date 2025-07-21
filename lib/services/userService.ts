@@ -26,7 +26,6 @@ export const userService = {
         last_login: undefined, // TODO: Implement last login tracking
       }));
       
-      console.log('📊 Users with metadata:', usersWithMetadata);
       return usersWithMetadata;
     } catch (error) {
       console.error('❌ UserService - getAllUsers error:', error);

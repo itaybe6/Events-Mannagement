@@ -8,6 +8,7 @@ import { GuestItem } from '@/components/GuestItem';
 import { Button } from '@/components/Button';
 import { Ionicons } from '@expo/vector-icons';
 import * as Contacts from 'expo-contacts';
+import { guestService } from '@/lib/services/guestService';
 
 export default function GuestsScreen() {
   const { guests, updateGuestStatus, deleteGuest, addGuest, currentEvent } = useEventStore();
@@ -18,12 +19,42 @@ export default function GuestsScreen() {
     if (!isLoggedIn) {
       router.replace('/login');
     }
-  }, [isLoggedIn, router]);
+    if (currentEvent && currentEvent.id) {
+      loadCategories();
+    }
+  }, [isLoggedIn, router, currentEvent?.id]);
+
+  const loadCategories = async () => {
+    if (!currentEvent || !currentEvent.id) return;
+    try {
+      const cats = await guestService.getGuestCategories(currentEvent.id);
+      setCategories(cats);
+    } catch (e) {
+      setCategories([]);
+    }
+  };
+
+  const handleAddCategory = async () => {
+    if (!newCategoryName.trim() || !currentEvent || !currentEvent.id) return;
+    try {
+      const cat = await guestService.addGuestCategory(currentEvent.id, newCategoryName.trim());
+      setCategories([...categories, cat]);
+      setNewCategoryName('');
+    } catch (e: any) {
+      console.error('Add category error:', e);
+      Alert.alert('שגיאה', e?.message || JSON.stringify(e) || 'לא ניתן להוסיף קטגוריה');
+    }
+  };
+
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [contactsModalVisible, setContactsModalVisible] = useState(false);
   const [deviceContacts, setDeviceContacts] = useState<any[]>([]);
   const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set());
+  const [categoryModalVisible, setCategoryModalVisible] = useState(false);
+  const [categories, setCategories] = useState<any[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<any>(null);
+  const [newCategoryName, setNewCategoryName] = useState('');
 
   const filteredGuests = guests.filter(guest => {
     const matchesSearch = guest.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -75,7 +106,7 @@ export default function GuestsScreen() {
   const addSelectedContacts = () => {
     selectedContacts.forEach(contactId => {
       const contact = deviceContacts.find(c => c.id === contactId);
-      if (contact) {
+      if (contact && selectedCategory) {
         const phoneNumber = contact.phoneNumbers[0]?.number || '';
         const name = contact.name || '';
         addGuest(currentEvent?.id || '', {
@@ -85,10 +116,10 @@ export default function GuestsScreen() {
           tableId: null,
           gift: 0,
           message: '',
+          category_id: selectedCategory.id,
         });
       }
     });
-    
     setSelectedContacts(new Set());
     setContactsModalVisible(false);
   };
@@ -96,6 +127,13 @@ export default function GuestsScreen() {
   return (
     <>
     <View style={styles.container}>
+      {/* בחירת קטגוריה */}
+      <TouchableOpacity style={styles.categorySelector} onPress={() => setCategoryModalVisible(true)}>
+        <Text style={styles.categorySelectorText}>
+          {selectedCategory ? `קטגוריה: ${selectedCategory.name}` : 'בחר קטגוריה לאורחים'}
+        </Text>
+        <Ionicons name="chevron-down" size={18} color={colors.primary} />
+      </TouchableOpacity>
       <View style={styles.header}>
         <View style={styles.searchContainer}>
           <TextInput
@@ -108,7 +146,13 @@ export default function GuestsScreen() {
           <Ionicons name="search" size={20} color={colors.gray[500]} style={styles.searchIcon} />
         </View>
         
-        <TouchableOpacity style={styles.addButton} onPress={importContacts}>
+        <TouchableOpacity style={styles.addButton} onPress={() => {
+          if (!selectedCategory) {
+            Alert.alert('בחר קטגוריה', 'יש לבחור קטגוריה לפני הוספת אורחים');
+            return;
+          }
+          importContacts();
+        }}>
           <Ionicons name="person-add" size={20} color={colors.white} />
         </TouchableOpacity>
       </View>
@@ -148,32 +192,72 @@ export default function GuestsScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.guestList}>
-        {filteredGuests.length > 0 ? (
-          filteredGuests.map(guest => (
-            <GuestItem
-              key={guest.id}
-              guest={guest}
-              onStatusChange={(status) => updateGuestStatus(guest.id, status)}
-              onDelete={() => deleteGuest(guest.id)}
+      {/* Modal בחירת קטגוריה - Apple style */}
+      <Modal
+        visible={categoryModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setCategoryModalVisible(false)}
+      >
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.25)' }}>
+          <View style={styles.appleCategoryModal}>
+            <TouchableOpacity style={styles.appleCloseButton} onPress={() => setCategoryModalVisible(false)}>
+              <Ionicons name="close" size={24} color={colors.text} />
+            </TouchableOpacity>
+            <Text style={styles.appleCategoryTitle}>בחר קטגוריה</Text>
+            <FlatList
+              data={categories}
+              keyExtractor={item => item.id}
+              style={styles.appleCategoryList}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[styles.appleCategoryItem, selectedCategory?.id === item.id && styles.appleCategoryItemActive]}
+                  onPress={() => { setSelectedCategory(item); setCategoryModalVisible(false); }}
+                >
+                  <Text style={[styles.appleCategoryName, selectedCategory?.id === item.id && styles.appleCategoryNameActive]}>{item.name}</Text>
+                  {selectedCategory?.id === item.id && (
+                    <Ionicons name="checkmark" size={18} color={colors.white} />
+                  )}
+                </TouchableOpacity>
+              )}
+              ListEmptyComponent={<Text style={styles.emptyStateText}>אין קטגוריות עדיין</Text>}
             />
-          ))
+            <View style={styles.appleAddCategoryRow}>
+              <TextInput
+                style={styles.appleAddCategoryInput}
+                placeholder="הוסף קטגוריה חדשה"
+                value={newCategoryName}
+                onChangeText={setNewCategoryName}
+              />
+              <TouchableOpacity style={styles.appleAddCategoryButton} onPress={handleAddCategory}>
+                <Ionicons name="add" size={22} color={colors.white} />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Guests by category Apple style */}
+      <ScrollView style={styles.guestList}>
+        {categories.length > 0 ? (
+          categories.map(cat => {
+            const guestsInCat = guests.filter(g => g.category_id === cat.id);
+            if (guestsInCat.length === 0) return null;
+            return (
+              <View key={cat.id} style={styles.categoryCardApple}>
+                <Text style={styles.categoryTitleApple}>{cat.name}</Text>
+                {guestsInCat.map(guest => (
+                  <View key={guest.id} style={styles.guestCardApple}>
+                    <Text style={styles.guestNameApple}>{guest.name}</Text>
+                    <Text style={styles.guestPhoneApple}>{guest.phone}</Text>
+                  </View>
+                ))}
+              </View>
+            );
+          })
         ) : (
           <View style={styles.emptyState}>
-            <Text style={styles.emptyStateText}>
-              {searchQuery || statusFilter 
-                ? 'לא נמצאו אורחים התואמים את החיפוש'
-                : 'אין אורחים עדיין. הוסף אורחים חדשים!'}
-            </Text>
-            {!searchQuery && !statusFilter && (
-              <Link href="/rsvp/invite" asChild>
-                <Button 
-                  title="הוספת אורחים" 
-                  onPress={() => {}} 
-                  style={styles.addGuestsButton}
-                />
-              </Link>
-            )}
+            <Text style={styles.emptyStateText}>אין אורחים עדיין. הוסף אורחים חדשים!</Text>
           </View>
         )}
       </ScrollView>
@@ -419,5 +503,200 @@ const styles = StyleSheet.create({
   },
   addContactsButton: {
     marginTop: 0,
+  },
+  categorySelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.white,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    alignSelf: 'flex-end',
+  },
+  categorySelectorText: {
+    fontSize: 16,
+    color: colors.primary,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  categoryItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.gray[100],
+    justifyContent: 'space-between',
+  },
+  selectedCategoryItem: {
+    backgroundColor: colors.primary + '10',
+  },
+  categoryName: {
+    fontSize: 16,
+    color: colors.text,
+  },
+  addCategoryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  addCategoryInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderRadius: 10,
+    padding: 10,
+    fontSize: 15,
+    backgroundColor: colors.gray[100],
+    marginRight: 8,
+  },
+  addCategoryButton: {
+    backgroundColor: colors.primary,
+    borderRadius: 10,
+    padding: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  // --- Apple style for category modal ---
+  appleCategoryModal: {
+    backgroundColor: colors.white,
+    borderRadius: 28,
+    padding: 24,
+    alignItems: 'center',
+    margin: 24,
+    shadowColor: colors.black,
+    shadowOpacity: 0.10,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 8,
+    width: '90%',
+    maxWidth: 400,
+    alignSelf: 'center',
+  },
+  appleCategoryTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: colors.primary,
+    marginBottom: 18,
+    textAlign: 'center',
+  },
+  appleCategoryList: {
+    width: '100%',
+    marginBottom: 16,
+  },
+  appleCategoryItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.gray[100],
+    borderRadius: 18,
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+    marginBottom: 10,
+    justifyContent: 'space-between',
+    shadowColor: colors.black,
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  appleCategoryItemActive: {
+    backgroundColor: colors.primary,
+  },
+  appleCategoryName: {
+    fontSize: 16,
+    color: colors.text,
+    fontWeight: '600',
+  },
+  appleCategoryNameActive: {
+    color: colors.white,
+  },
+  appleAddCategoryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 12,
+    marginBottom: 8,
+    width: '100%',
+  },
+  appleAddCategoryInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderRadius: 14,
+    padding: 12,
+    fontSize: 15,
+    backgroundColor: colors.gray[100],
+    marginRight: 8,
+  },
+  appleAddCategoryButton: {
+    backgroundColor: colors.primary,
+    borderRadius: 14,
+    padding: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  appleCloseButton: {
+    position: 'absolute',
+    top: 16,
+    left: 16,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.gray[100],
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 2,
+  },
+  // --- Apple style for guests by category ---
+  categoryCardApple: {
+    backgroundColor: colors.white,
+    borderRadius: 28,
+    padding: 18,
+    marginBottom: 22,
+    shadowColor: colors.black,
+    shadowOpacity: 0.10,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 5,
+    width: '100%',
+    alignSelf: 'center',
+  },
+  categoryTitleApple: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.primary,
+    marginBottom: 10,
+    textAlign: 'right',
+  },
+  guestCardApple: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    backgroundColor: colors.gray[100],
+    borderRadius: 18,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginBottom: 10,
+    shadowColor: colors.black,
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+    width: '100%',
+  },
+  guestNameApple: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    flex: 1,
+    textAlign: 'right',
+  },
+  guestPhoneApple: {
+    fontSize: 14,
+    color: colors.textLight,
+    marginRight: 8,
+    textAlign: 'right',
   },
 });

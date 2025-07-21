@@ -36,6 +36,8 @@ export default function UsersScreen() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [isDemoMode, setIsDemoMode] = useState(false);
   const [userFilter, setUserFilter] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   
   // Form state
   const [newUser, setNewUser] = useState({
@@ -45,6 +47,9 @@ export default function UsersScreen() {
     confirmPassword: '',
     user_type: 'couple' as 'couple' | 'admin'
   });
+
+  const [selectedUser, setSelectedUser] = useState<UserWithMetadata | null>(null);
+  const [showUserModal, setShowUserModal] = useState(false);
 
   useEffect(() => {
     if (!isLoggedIn || userType !== 'admin') {
@@ -226,10 +231,10 @@ export default function UsersScreen() {
     }
   };
 
-  const handleDeleteUser = (userId: string, userName: string) => {
+  const handleDeleteUser = (userId: string) => {
     Alert.alert(
       'מחיקת משתמש',
-      `האם אתה בטוח שברצונך למחוק את המשתמש "${userName}"?`,
+      `האם אתה בטוח שברצונך למחוק את המשתמש?`,
       [
         { text: 'ביטול', style: 'cancel' },
         {
@@ -245,7 +250,7 @@ export default function UsersScreen() {
               
               Alert.alert(
                 'הצלחה!', 
-                `המשתמש "${userName}" נמחק בהצלחה מהדאטאבייס`,
+                `המשתמשנוסף נמחק בהצלחה מהדאטאבייס`,
                 [{ text: 'אישור', style: 'default' }]
               );
             } catch (error) {
@@ -280,41 +285,69 @@ export default function UsersScreen() {
   };
 
   // סינון משתמשים
-  const filteredUsers = userFilter === 'all'
-    ? users
-    : users.filter(u => u.userType === userFilter);
+  const filteredUsers = users
+    .filter(user => 
+      user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      user.email.toLowerCase().includes(searchQuery.toLowerCase())
+    )
+    .sort((a, b) => {
+      if (sortOrder === 'asc') {
+        return a.name.localeCompare(b.name);
+      } else {
+        return b.name.localeCompare(a.name);
+      }
+    });
+
+  const resetFilters = () => {
+    setSearchQuery('');
+    setUserFilter('all');
+    setSortOrder('asc');
+  };
+
+  const openEditModal = (user: UserWithMetadata) => {
+    setSelectedUser(user);
+    setNewUser({
+      name: user.name,
+      email: user.email,
+      password: '', // Clear password for edit
+      confirmPassword: '',
+      user_type: user.userType
+    });
+    setShowAddModal(true);
+  };
 
   return (
     <ScrollView style={styles.container}>
+      {/* 1. Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>ניהול משתמשים</Text>
-        <Text style={styles.subtitle}>סה"כ {filteredUsers.length} משתמשים</Text>
-        <View style={styles.databaseInfo}>
-          <Ionicons
-            name={isDemoMode ? "cloud-offline" : "cloud"}
-            size={16}
-            color={isDemoMode ? colors.warning : colors.success}
-          />
-          <Text style={[
-            styles.databaseText,
-            { color: isDemoMode ? colors.warning : colors.success }
-          ]}>
-            {isDemoMode ? "מצב דמו - אין חיבור לדאטאבייס" : "מחובר לדאטאבייס Supabase"}
-          </Text>
-        </View>
+        <Ionicons name="people" size={28} color={colors.primary} style={{ marginLeft: 10 }} />
+        <Text style={styles.headerTitle}>ניהול משתמשים</Text>
       </View>
-
-      {/* שורת סינון */}
-      <View style={styles.filterRow}>
-        {USER_FILTERS.map(f => (
-          <TouchableOpacity
-            key={f.value}
-            style={[styles.filterButton, userFilter === f.value && styles.filterButtonActive]}
-            onPress={() => setUserFilter(f.value)}
-          >
-            <Text style={[styles.filterButtonText, userFilter === f.value && styles.filterButtonTextActive]}>{f.label}</Text>
-          </TouchableOpacity>
-        ))}
+      {/* 2. Filter/Search Panel */}
+      <View style={styles.filterPanel}>
+        <View style={styles.searchBox}>
+          <Ionicons name="search" size={18} color={colors.textLight} style={{ marginLeft: 6 }} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="חפש לפי שם או אימייל"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            textAlign="right"
+            placeholderTextColor={colors.gray[400]}
+          />
+        </View>
+        <View style={styles.filterRow}>
+          <Text style={styles.typeDropdownLabel}>סוג:</Text>
+          {['all', 'admin', 'couple'].map(type => (
+            <TouchableOpacity
+              key={type}
+              style={[styles.typeOption, userFilter === type && styles.typeOptionActive]}
+              onPress={() => setUserFilter(type)}
+            >
+              <Text style={[styles.typeOptionText, userFilter === type && styles.typeOptionTextActive]}>{type === 'all' ? 'הכל' : type === 'admin' ? 'מנהל' : 'זוג'}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
       </View>
 
       <View style={styles.buttonRow}>
@@ -324,35 +357,95 @@ export default function UsersScreen() {
         </TouchableOpacity>
       </View>
 
-      <View style={styles.usersList}>
+      {/* 3. Users List */}
+      <ScrollView contentContainerStyle={styles.usersList} showsVerticalScrollIndicator={false}>
         {loading ? (
           <ActivityIndicator size="large" color={colors.primary} />
         ) : filteredUsers.length === 0 ? (
           <View style={styles.emptyStateCard}>
-            <Ionicons name="people-outline" size={60} color={colors.gray[400]} />
-            <Text style={styles.emptyStateTitle}>אין משתמשים להצגה</Text>
+            <Ionicons name="people-outline" size={48} color={colors.gray[400]} />
+            <Text style={styles.emptyStateText}>לא נמצאו משתמשים</Text>
           </View>
-        ) : (
-          filteredUsers.map(user => (
-            <View key={user.id} style={styles.userCard}>
-              <View style={styles.userHeaderRow}>
-                <Ionicons
-                  name={user.userType === 'admin' ? 'shield-checkmark' : 'heart'}
-                  size={28}
-                  color={user.userType === 'admin' ? colors.primary : colors.orange}
-                  style={styles.userTypeIcon}
-                />
-                <TouchableOpacity style={styles.deleteButton} onPress={() => handleDeleteUser(user.id, user.name)}>
-                  <Ionicons name="trash" size={20} color={colors.error} />
-                </TouchableOpacity>
+        ) : filteredUsers.map(user => {
+          const createdAt = user.created_at ? new Date(user.created_at) : null;
+          const day = createdAt ? createdAt.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' }) : '-';
+          const weekday = createdAt ? createdAt.toLocaleDateString('he-IL', { weekday: 'long' }) : '';
+          return (
+            <TouchableOpacity
+              key={user.id}
+              style={styles.userCardApple}
+              activeOpacity={0.85}
+              onPress={() => { setSelectedUser(user); setShowUserModal(true); }}
+            >
+              <View style={styles.userDateBoxApple}>
+                <Text style={styles.userDateDayApple}>{day}</Text>
+                <Text style={styles.userDateWeekApple}>{weekday}</Text>
               </View>
-              <Text style={styles.userName}>{user.name}</Text>
-              <Text style={styles.userEmail}>{user.email}</Text>
-              <Text style={styles.userTypeBadge}>{user.userType === 'admin' ? 'מנהל' : 'חתן/כלה'}</Text>
+              <View style={styles.userInfoApple}>
+                <Text style={styles.userNameApple}>{user.name}</Text>
+                <View style={styles.userInfoRowApple}>
+                  <Ionicons name="mail" size={16} color={colors.primary} style={{ marginLeft: 4 }} />
+                  <Text style={styles.userEmailApple}>{user.email}</Text>
+                </View>
+                <View style={styles.userInfoRowApple}>
+                  <View style={styles.userTypeTagApple}>
+                    <Ionicons name={user.userType === 'admin' ? 'shield-checkmark' : 'heart'} size={14} color={colors.white} style={{ marginLeft: 2 }} />
+                    <Text style={styles.userTypeTextApple}>{user.userType === 'admin' ? 'מנהל' : 'זוג'}</Text>
+                  </View>
+                </View>
+              </View>
+              <Ionicons name="chevron-back" size={22} color={colors.gray[400]} style={styles.chevronApple} />
+            </TouchableOpacity>
+          );
+        })}
+        {/* User Details Modal */}
+        <Modal visible={showUserModal} transparent animationType="fade" onRequestClose={() => setShowUserModal(false)}>
+          <View style={styles.modalOverlayApple}>
+            <View style={styles.modalApple}>
+              {selectedUser && (
+                <>
+                  <TouchableOpacity style={styles.closeButtonApple} onPress={() => setShowUserModal(false)}>
+                    <Ionicons name="close" size={24} color={colors.text} />
+                  </TouchableOpacity>
+                  <Text style={styles.modalTitleApple}>{selectedUser.name}</Text>
+                  <View style={styles.modalDetailRowApple}>
+                    <Ionicons name="mail" size={18} color={colors.primary} style={{ marginLeft: 6 }} />
+                    <Text style={styles.modalValueApple}>{selectedUser.email}</Text>
+                  </View>
+                  <View style={styles.modalDetailRowApple}>
+                    <Ionicons name={selectedUser.userType === 'admin' ? 'shield-checkmark' : 'heart'} size={18} color={colors.primary} style={{ marginLeft: 6 }} />
+                    <Text style={styles.modalValueApple}>{selectedUser.userType === 'admin' ? 'מנהל' : 'זוג'}</Text>
+                  </View>
+                  <View style={styles.modalDetailRowApple}>
+                    <Ionicons name="calendar" size={18} color={colors.primary} style={{ marginLeft: 6 }} />
+                    <Text style={styles.modalValueApple}>{selectedUser.created_at ? new Date(selectedUser.created_at).toLocaleDateString('he-IL') : '-'}</Text>
+                  </View>
+                  {typeof selectedUser.events_count === 'number' && (
+                    <View style={styles.modalDetailRowApple}>
+                      <Ionicons name="calendar-outline" size={18} color={colors.primary} style={{ marginLeft: 6 }} />
+                      <Text style={styles.modalValueApple}>מס' אירועים: {selectedUser.events_count}</Text>
+                    </View>
+                  )}
+                  {selectedUser.last_login && (
+                    <View style={styles.modalDetailRowApple}>
+                      <Ionicons name="log-in" size={18} color={colors.primary} style={{ marginLeft: 6 }} />
+                      <Text style={styles.modalValueApple}>כניסה אחרונה: {new Date(selectedUser.last_login).toLocaleDateString('he-IL')}</Text>
+                    </View>
+                  )}
+                  <View style={styles.modalActionsApple}>
+                    <TouchableOpacity style={styles.editButtonApple} onPress={() => { setShowUserModal(false); openEditModal(selectedUser); }}>
+                      <Ionicons name="create" size={22} color={colors.white} />
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.deleteButtonApple} onPress={() => { setShowUserModal(false); handleDeleteUser(selectedUser.id); }}>
+                      <Ionicons name="trash" size={22} color={colors.white} />
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
             </View>
-          ))
-        )}
-      </View>
+          </View>
+        </Modal>
+      </ScrollView>
 
       {/* Add User Modal */}
       <Modal
@@ -480,33 +573,113 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   header: {
-    padding: 24,
-    alignItems: 'flex-end', // יישור לימין
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: colors.text,
-    textAlign: 'right', // יישור לימין
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: colors.textLight,
-    textAlign: 'right', // יישור לימין
-    marginBottom: 8,
-  },
-  databaseInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 8,
-    gap: 6,
-    alignSelf: 'flex-end', // יישור לימין
+    padding: 24,
+    backgroundColor: colors.white,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.gray[100],
   },
-  databaseText: {
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginLeft: 10,
+  },
+  filterPanel: {
+    flexDirection: 'column', // Changed to column for better spacing
+    backgroundColor: colors.white,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.gray[100],
+    marginBottom: 12,
+  },
+  searchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.gray[100],
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 10, // Added margin bottom for spacing
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: colors.text,
+    paddingVertical: 0,
+    paddingHorizontal: 8,
+  },
+  typeDropdown: {
+    flexDirection: 'row',
+    backgroundColor: colors.gray[100],
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  typeDropdownLabel: {
     fontSize: 14,
-    fontWeight: '500',
-    textAlign: 'right', // יישור לימין
+    color: colors.textLight,
+    marginRight: 8,
+  },
+  typeOption: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    marginHorizontal: 4,
+  },
+  typeOptionActive: {
+    backgroundColor: colors.primary,
+  },
+  typeOptionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  typeOptionTextActive: {
+    color: colors.white,
+  },
+  sortDropdown: {
+    flexDirection: 'row',
+    backgroundColor: colors.gray[100],
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  sortDropdownLabel: {
+    fontSize: 14,
+    color: colors.textLight,
+    marginRight: 8,
+  },
+  sortOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    marginHorizontal: 4,
+  },
+  sortOptionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+    marginLeft: 6,
+  },
+  resetButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    marginLeft: 8,
+    backgroundColor: colors.gray[100],
+  },
+  resetButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.error,
+    marginLeft: 6,
   },
   buttonRow: {
     flexDirection: 'row',
@@ -592,15 +765,8 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     alignItems: 'flex-end',
   },
-  userHeaderRow: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    width: '100%',
-    marginBottom: 8,
-  },
-  userTypeIcon: {
-    marginLeft: 8,
+  userInfoBox: {
+    marginBottom: 12,
   },
   userName: {
     fontSize: 18,
@@ -614,6 +780,32 @@ const styles = StyleSheet.create({
     color: colors.textLight,
     textAlign: 'right',
     marginBottom: 2,
+  },
+  userType: {
+    fontSize: 13,
+    color: colors.primary,
+    backgroundColor: colors.gray[100],
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 2,
+    alignSelf: 'flex-end',
+    marginTop: 4,
+    textAlign: 'right',
+    fontWeight: '600',
+  },
+  userCreatedAt: {
+    fontSize: 12,
+    color: colors.textLight,
+    textAlign: 'right',
+    marginTop: 4,
+  },
+  userActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: 12,
+  },
+  actionButton: {
+    padding: 8,
   },
   userTypeBadge: {
     fontSize: 13,
@@ -740,5 +932,183 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 32,
     marginTop: 32,
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  modalApple: {
+    width: '90%',
+    backgroundColor: colors.white,
+    borderRadius: 28,
+    padding: 32,
+    alignItems: 'center',
+    shadowColor: colors.black,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 8,
+    position: 'relative',
+  },
+  closeButtonApple: {
+    position: 'absolute',
+    top: 16,
+    left: 16,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.gray[100],
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 2,
+  },
+  modalTitleApple: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 18,
+    textAlign: 'center',
+  },
+  modalDetailRowApple: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    marginBottom: 10,
+    width: '100%',
+    justifyContent: 'flex-end',
+  },
+  modalValueApple: {
+    fontWeight: '600',
+    color: colors.primary,
+    fontSize: 16,
+    marginLeft: 4,
+  },
+  modalActionsApple: {
+    flexDirection: 'row-reverse',
+    justifyContent: 'center',
+    marginTop: 24,
+    gap: 24,
+    width: '100%',
+  },
+  editButtonApple: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginHorizontal: 8,
+    shadowColor: colors.black,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  deleteButtonApple: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.error,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginHorizontal: 8,
+    shadowColor: colors.black,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  // --- Apple Modern Card ---
+  userCardApple: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    backgroundColor: colors.white,
+    borderRadius: 28,
+    paddingVertical: 22,
+    paddingHorizontal: 18,
+    marginBottom: 18,
+    width: '100%',
+    maxWidth: 500,
+    shadowColor: colors.black,
+    shadowOpacity: 0.10,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 5,
+    position: 'relative',
+  },
+  userDateBoxApple: {
+    backgroundColor: colors.gray[100],
+    borderRadius: 18,
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    alignItems: 'center',
+    marginLeft: 16,
+    shadowColor: colors.black,
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+    minWidth: 70,
+  },
+  userDateDayApple: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: colors.text,
+    textAlign: 'center',
+    lineHeight: 26,
+  },
+  userDateWeekApple: {
+    fontSize: 14,
+    color: colors.textLight,
+    textAlign: 'center',
+    marginTop: -2,
+  },
+  userInfoApple: {
+    flex: 1,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+  },
+  userNameApple: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 2,
+    textAlign: 'right',
+  },
+  userInfoRowApple: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
+  userEmailApple: {
+    fontSize: 15,
+    color: colors.text,
+    textAlign: 'right',
+  },
+  userTypeTagApple: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    alignSelf: 'flex-end',
+    marginTop: 4,
+  },
+  userTypeTextApple: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.white,
+    marginLeft: 4,
+  },
+  chevronApple: {
+    marginLeft: 8,
+  },
+  modalOverlayApple: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
   },
 }); 

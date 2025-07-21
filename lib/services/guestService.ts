@@ -166,4 +166,23 @@ export const guestService = {
       throw error;
     }
   },
+
+  async getGuestCategories(eventId: string) {
+    const { data, error } = await supabase
+      .from('guest_categories')
+      .select('*')
+      .eq('event_id', eventId)
+      .order('created_at', { ascending: true });
+    if (error) throw error;
+    return data;
+  },
+  async addGuestCategory(eventId: string, name: string) {
+    const { data, error } = await supabase
+      .from('guest_categories')
+      .insert({ event_id: eventId, name })
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
 }; 

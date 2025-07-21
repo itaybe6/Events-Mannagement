@@ -34,7 +34,7 @@ export default function TabLayout() {
     <Tabs
       key={tabKey}
       screenOptions={{
-        tabBarActiveTintColor: '#fff',
+        tabBarActiveTintColor: colors.white,
         tabBarInactiveTintColor: colors.gray[500],
         headerShown: true,
         headerTitle: "",
@@ -48,28 +48,31 @@ export default function TabLayout() {
         tabBarShowLabel: false,
         tabBarStyle: {
           position: 'absolute',
-          bottom: 20,
+          bottom: Platform.OS === 'ios' ? 30 : 20,
           left: 15,
           right: 15,
-          height: 80,
-          backgroundColor: '#e8a7a8',
-          borderRadius: 40,
-          paddingHorizontal: 24,
-          paddingVertical: 10,
+          height: 65,
+          backgroundColor: colors.white,
+          borderRadius: 35,
+          paddingHorizontal: 15,
+          paddingVertical: 8,
+          paddingTop: 12,
           shadowColor: '#000',
-          shadowOffset: { width: 0, height: 8 },
-          shadowOpacity: 0.15,
-          shadowRadius: 20,
-          elevation: 20,
+          shadowOffset: { width: 0, height: -10 },
+          shadowOpacity: 0.25,
+          shadowRadius: 30,
+          elevation: 25,
           borderTopWidth: 0,
-          borderWidth: 0,
+          borderWidth: 1,
+          borderColor: 'rgba(0,0,0,0.08)',
         },
         tabBarItemStyle: {
-          marginHorizontal: 6,
-          paddingVertical: 8,
-          paddingHorizontal: 10,
-          borderRadius: 20,
-          backgroundColor: 'transparent',
+          marginHorizontal: 3,
+          paddingVertical: 6,
+          paddingHorizontal: 8,
+          height: 30,
+          justifyContent: 'center',
+          alignItems: 'center',
         },
         tabBarIconStyle: {
           marginRight: 0,
@@ -139,6 +142,13 @@ export default function TabLayout() {
       />
       <Tabs.Screen
         name="admin-events-create"
+        options={{
+          href: null
+     
+        }}
+      />
+      <Tabs.Screen
+        name="admin-event-details"
         options={{
           href: null
      
@@ -225,44 +235,71 @@ export default function TabLayout() {
           ),
         }}
       />
+{userType === 'couple' && 
+  <Tabs.Screen
+  name="admin-profile"
+  options={{
+    href: null
 
-      <Tabs.Screen
-        name="settings"
-        options={{
-          title: "הגדרות",
-          tabBarIcon: ({ focused }) => (
-            <View style={[
-              styles.iconContainer,
-              focused && styles.activeIconContainer
-            ]}>
-              <Ionicons
-                name={userType === 'admin' ? "cog" : "person-circle"}
-                size={24}
-                color={focused ? colors.white : colors.gray[500]}
-              />
-            </View>
-          ),
-        }}
-      />
+  }}
+/>
+}
+      {/* Admin profile tab for admin users */}
+      {userType === 'admin' ? (
+        <Tabs.Screen
+          name="admin-profile"
+          options={{
+            title: 'פרופיל',
+            tabBarIcon: ({ focused }) => (
+              <View style={[
+                styles.iconContainer,
+                focused && styles.activeIconContainer
+              ]}>
+                <Ionicons
+                  name="person-circle"
+                  size={24}
+                  color={focused ? colors.white : colors.gray[500]}
+                />
+              </View>
+            ),
+          }}
+        />
+      ) : (
+        <Tabs.Screen
+          name="settings"
+          options={{
+            title: 'הגדרות',
+            tabBarIcon: ({ focused }) => (
+              <View style={[
+                styles.iconContainer,
+                focused && styles.activeIconContainer
+              ]}>
+                <Ionicons
+                  name="cog"
+                  size={24}
+                  color={focused ? colors.white : colors.gray[500]}
+                />
+              </View>
+            ),
+          }}
+        />
+      )}
     </Tabs>
   );
 }
 
 const styles = StyleSheet.create({
   iconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'transparent',
   },
   activeIconContainer: {
-    backgroundColor: '#d4969a',
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
+    backgroundColor: '#e8a7a8',
+    borderWidth: 2,
+    borderColor: '#d4969a',
   },
   notificationButton: {
     width: 40,

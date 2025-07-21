@@ -1,5 +1,5 @@
 export const colors = {
-  primary: '#7861fa', // Purple color as requested
+  primary: '#e8a7a8', // pink for all accent usages
   secondary: '#E5989B', // Soft pink
   orange: '#e8a7a8', // Pink color for login screen
   background: '#FFFFFF',

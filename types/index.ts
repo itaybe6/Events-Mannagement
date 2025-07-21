@@ -6,6 +6,7 @@ export type Guest = {
   tableId: string | null;
   gift: number;
   message: string;
+  category_id?: string; // קטגוריה אופציונלית
 };
 
 export type Table = {

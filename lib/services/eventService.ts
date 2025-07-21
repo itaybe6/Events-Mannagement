@@ -114,6 +114,43 @@ export const eventService = {
     }
   },
 
+  // Create new event for a specific user (admin)
+  createEventForUser: async (userId: string, eventData: Omit<Event, 'id' | 'tasks'>): Promise<Event> => {
+    try {
+      const { data, error } = await supabase
+        .from('events')
+        .insert({
+          user_id: userId,
+          title: eventData.title,
+          date: eventData.date.toISOString(),
+          location: eventData.location,
+          image: eventData.image,
+          story: eventData.story,
+          guests_count: eventData.guests,
+          budget: eventData.budget,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      return {
+        id: data.id,
+        title: data.title,
+        date: new Date(data.date),
+        location: data.location,
+        image: data.image || '',
+        story: data.story || '',
+        guests: data.guests_count || 0,
+        budget: Number(data.budget) || 0,
+        tasks: [],
+      };
+    } catch (error) {
+      console.error('Create event for user error:', error);
+      throw error;
+    }
+  },
+
   // Update event
   updateEvent: async (eventId: string, updates: Partial<Omit<Event, 'id' | 'tasks'>>): Promise<Event> => {
     try {
