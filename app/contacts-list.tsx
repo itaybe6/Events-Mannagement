@@ -4,6 +4,7 @@ import * as Contacts from 'expo-contacts';
 import { guestService } from '@/lib/services/guestService';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { colors } from '@/constants/colors';
+import Ionicons from '@expo/vector-icons/Ionicons';
 
 export default function ContactsListScreen() {
   const [contacts, setContacts] = useState<any[]>([]);
@@ -15,6 +16,8 @@ export default function ContactsListScreen() {
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [addingCategory, setAddingCategory] = useState(false);
+  const [selectedSide, setSelectedSide] = useState<'groom' | 'bride'>('groom');
+  const [categorySideFilter, setCategorySideFilter] = useState<'groom' | 'bride' | 'all'>('all');
   const router = useRouter();
 
   // קבל eventId מהניווט
@@ -116,13 +119,45 @@ export default function ContactsListScreen() {
                 onChangeText={setNewCategoryName}
                 textAlign="right"
               />
+              {/* בחירת צד */}
+              <View style={styles.sideSelector}>
+                <Text style={styles.sideSelectorLabel}>בחר צד:</Text>
+                <View style={styles.sideButtons}>
+                  <TouchableOpacity
+                    style={[styles.sideButton, selectedSide === 'groom' && styles.sideButtonActive]}
+                    onPress={() => setSelectedSide('groom')}
+                  >
+                    <Ionicons 
+                      name="male" 
+                      size={20} 
+                      color={selectedSide === 'groom' ? colors.white : colors.primary} 
+                    />
+                    <Text style={[styles.sideButtonText, selectedSide === 'groom' && styles.sideButtonTextActive]}>
+                      חתן
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.sideButton, selectedSide === 'bride' && styles.sideButtonActive]}
+                    onPress={() => setSelectedSide('bride')}
+                  >
+                    <Ionicons 
+                      name="female" 
+                      size={20} 
+                      color={selectedSide === 'bride' ? colors.white : colors.primary} 
+                    />
+                    <Text style={[styles.sideButtonText, selectedSide === 'bride' && styles.sideButtonTextActive]}>
+                      כלה
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
               <TouchableOpacity
-                style={[styles.addButton, { padding: 10, marginTop: 0 }]}
+                style={[styles.addButton, { padding: 10, marginTop: 8 }]}
                 onPress={async () => {
                   if (!newCategoryName.trim() || !eventId) return;
                   setAddingCategory(true);
                   try {
-                    const newCat = await guestService.addGuestCategory(eventId, newCategoryName.trim());
+                    const newCat = await guestService.addGuestCategory(eventId, newCategoryName.trim(), selectedSide);
                     setCategories(prev => [...prev, newCat]);
                     setSelectedCategory(newCat);
                     setNewCategoryName('');
@@ -137,15 +172,75 @@ export default function ContactsListScreen() {
                 <Text style={styles.addButtonText}>{addingCategory ? 'מוסיף...' : 'הוסף קטגוריה'}</Text>
               </TouchableOpacity>
             </View>
+
+            {/* סינון קטגוריות לפי צד */}
+            <View style={styles.categoryFilterContainer}>
+              <Text style={styles.categoryFilterLabel}>סינון קטגוריות:</Text>
+              <View style={styles.categoryFilterButtons}>
+                <TouchableOpacity
+                  style={[styles.categoryFilterButton, categorySideFilter === 'all' && styles.categoryFilterButtonActive]}
+                  onPress={() => setCategorySideFilter('all')}
+                >
+                  <Ionicons 
+                    name="people" 
+                    size={16} 
+                    color={categorySideFilter === 'all' ? colors.white : colors.primary} 
+                  />
+                  <Text style={[styles.categoryFilterButtonText, categorySideFilter === 'all' && styles.categoryFilterButtonTextActive]}>
+                    הכל
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.categoryFilterButton, categorySideFilter === 'groom' && styles.categoryFilterButtonActive]}
+                  onPress={() => setCategorySideFilter('groom')}
+                >
+                  <Ionicons 
+                    name="male" 
+                    size={16} 
+                    color={categorySideFilter === 'groom' ? colors.white : colors.primary} 
+                  />
+                  <Text style={[styles.categoryFilterButtonText, categorySideFilter === 'groom' && styles.categoryFilterButtonTextActive]}>
+                    חתן
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.categoryFilterButton, categorySideFilter === 'bride' && styles.categoryFilterButtonActive]}
+                  onPress={() => setCategorySideFilter('bride')}
+                >
+                  <Ionicons 
+                    name="female" 
+                    size={16} 
+                    color={categorySideFilter === 'bride' ? colors.white : colors.primary} 
+                  />
+                  <Text style={[styles.categoryFilterButtonText, categorySideFilter === 'bride' && styles.categoryFilterButtonTextActive]}>
+                    כלה
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
             <FlatList
-              data={categories}
+              data={categories.filter(cat => 
+                categorySideFilter === 'all' || cat.side === categorySideFilter
+              )}
               keyExtractor={item => item.id}
               renderItem={({ item }) => (
                 <TouchableOpacity
                   style={[styles.categoryModalItem, selectedCategory?.id === item.id && styles.categoryModalItemActive]}
                   onPress={() => { setSelectedCategory(item); setCategoryModalVisible(false); }}
                 >
-                  <Text style={[styles.categoryModalName, selectedCategory?.id === item.id && styles.categoryModalNameActive]}>{item.name}</Text>
+                  <View style={styles.categoryModalItemContent}>
+                    <Ionicons 
+                      name={item.side === 'groom' ? 'male' : 'female'} 
+                      size={18} 
+                      color={selectedCategory?.id === item.id ? colors.white : colors.primary} 
+                      style={styles.categoryIcon}
+                    />
+                    <Text style={[styles.categoryModalName, selectedCategory?.id === item.id && styles.categoryModalNameActive]}>{item.name}</Text>
+                  </View>
+                  {selectedCategory?.id === item.id && (
+                    <Ionicons name="checkmark" size={18} color={colors.white} />
+                  )}
                 </TouchableOpacity>
               )}
               ListEmptyComponent={<Text style={styles.emptyStateText}>אין קטגוריות עדיין</Text>}
@@ -328,5 +423,84 @@ const styles = StyleSheet.create({
     color: colors.gray[600],
     textAlign: 'center',
     marginBottom: 16,
+  },
+  sideSelector: {
+    width: '100%',
+    marginBottom: 16,
+  },
+  sideSelectorLabel: {
+    fontSize: 16,
+    color: colors.text,
+    marginBottom: 8,
+    textAlign: 'right',
+  },
+  sideButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    backgroundColor: colors.gray[100],
+    borderRadius: 12,
+    padding: 4,
+  },
+  sideButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+  },
+  sideButtonActive: {
+    backgroundColor: colors.primary,
+  },
+  sideButtonText: {
+    marginLeft: 8,
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  sideButtonTextActive: {
+    color: colors.white,
+  },
+  categoryFilterContainer: {
+    width: '100%',
+    marginBottom: 16,
+  },
+  categoryFilterLabel: {
+    fontSize: 16,
+    color: colors.text,
+    marginBottom: 8,
+    textAlign: 'right',
+  },
+  categoryFilterButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    backgroundColor: colors.gray[100],
+    borderRadius: 12,
+    padding: 4,
+  },
+  categoryFilterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+  },
+  categoryFilterButtonActive: {
+    backgroundColor: colors.primary,
+  },
+  categoryFilterButtonText: {
+    marginLeft: 8,
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  categoryFilterButtonTextActive: {
+    color: colors.white,
+  },
+  categoryModalItemContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  categoryIcon: {
+    marginRight: 10,
   },
 }); 

@@ -178,15 +178,42 @@ export const guestService = {
       .eq('event_id', eventId)
       .order('created_at', { ascending: true });
     if (error) throw error;
-    return data;
+    return data.map(category => ({
+      id: category.id,
+      name: category.name,
+      event_id: category.event_id,
+      side: category.side || 'groom', // ברירת מחדל לחתן
+    }));
   },
-  async addGuestCategory(eventId: string, name: string) {
+
+  async addGuestCategory(eventId: string, name: string, side: 'groom' | 'bride' = 'groom') {
     const { data, error } = await supabase
       .from('guest_categories')
-      .insert({ event_id: eventId, name })
+      .insert({ event_id: eventId, name, side })
       .select()
       .single();
     if (error) throw error;
-    return data;
+    return {
+      id: data.id,
+      name: data.name,
+      event_id: data.event_id,
+      side: data.side || 'groom',
+    };
+  },
+
+  async getGuestCategoriesBySide(eventId: string, side: 'groom' | 'bride') {
+    const { data, error } = await supabase
+      .from('guest_categories')
+      .select('*')
+      .eq('event_id', eventId)
+      .eq('side', side)
+      .order('created_at', { ascending: true });
+    if (error) throw error;
+    return data.map(category => ({
+      id: category.id,
+      name: category.name,
+      event_id: category.event_id,
+      side: category.side || 'groom',
+    }));
   },
 }; 
