@@ -1,24 +1,104 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ScrollView, View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
-import { Link, useRouter } from 'expo-router';
+import { Link, useRouter, useFocusEffect } from 'expo-router';
 import { useUserStore } from '@/store/userStore';
 import { colors } from '@/constants/colors';
 import { Card } from '@/components/Card';
 import { CountdownTimer } from '@/components/CountdownTimer';
 import { StatCard } from '@/components/StatCard';
 import { Ionicons } from '@expo/vector-icons';
+import { eventService } from '@/lib/services/eventService';
+import { guestService } from '@/lib/services/guestService';
+import { giftService } from '@/lib/services/giftService';
 
 export default function HomeScreen() {
   const { isLoggedIn } = useUserStore();
   const router = useRouter();
+  const [currentEvent, setCurrentEvent] = useState<any>(null);
+  const [guests, setGuests] = useState<any[]>([]);
+  const [gifts, setGifts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!isLoggedIn) {
       router.replace('/login');
+      return;
     }
+    
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        // טען את האירוע הראשון של המשתמש
+        const events = await eventService.getEvents();
+        if (events.length > 0) {
+          const event = events[0];
+          setCurrentEvent(event);
+          
+          // טען אורחים
+          const guestsData = await guestService.getGuests(event.id);
+          setGuests(guestsData);
+          
+          // טען מתנות (אם יש שירות מתנות)
+          try {
+            const giftsData = await giftService.getGifts(event.id);
+            setGifts(giftsData);
+          } catch (e) {
+            console.log('No gifts service available');
+            setGifts([]);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadData();
   }, [isLoggedIn, router]);
 
+  // טען מחדש נתונים כשהמסך חוזר למוקד
+  useFocusEffect(
+    React.useCallback(() => {
+      if (isLoggedIn && currentEvent) {
+        const reloadData = async () => {
+          try {
+            // טען מחדש אורחים ומתנות
+            const guestsData = await guestService.getGuests(currentEvent.id);
+            setGuests(guestsData);
+            
+            try {
+              const giftsData = await giftService.getGifts(currentEvent.id);
+              setGifts(giftsData);
+            } catch (e) {
+              console.log('No gifts service available');
+            }
+          } catch (error) {
+            console.error('Error reloading data:', error);
+          }
+        };
+        reloadData();
+      }
+    }, [isLoggedIn, currentEvent])
+  );
+
   if (!isLoggedIn) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.title}>אין אירוע פעיל</Text>
+      </View>
+    );
+  }
+
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.title}>טוען...</Text>
+      </View>
+    );
+  }
+
+  if (!currentEvent) {
     return (
       <View style={styles.container}>
         <Text style={styles.title}>אין אירוע פעיל</Text>
@@ -36,53 +116,54 @@ export default function HomeScreen() {
     });
   };
 
-  // These variables are no longer available as useEventStore is removed.
-  // They will be removed from the return statement as well.
-  // const totalGifts = gifts.reduce((sum, gift) => sum + gift.amount, 0);
-  // const confirmedGuests = guests.filter(guest => guest.status === 'מגיע').length;
-  // const pendingGuests = guests.filter(guest => guest.status === 'ממתין').length;
-  // const completedTasks = currentEvent.tasks.filter(task => task.completed).length;
+  // חישוב נתונים אמיתיים
+  const totalGifts = gifts.reduce((sum, gift) => sum + gift.amount, 0);
+  const confirmedGuests = guests.filter(guest => guest.status === 'מגיע').length;
+  const pendingGuests = guests.filter(guest => guest.status === 'ממתין').length;
+  const totalGuests = guests.length;
+  const completedTasks = currentEvent.tasks ? currentEvent.tasks.filter((task: any) => task.completed).length : 0;
+  const totalTasks = currentEvent.tasks ? currentEvent.tasks.length : 0;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
       <View style={styles.header}>
         <View style={styles.eventInfo}>
-          <Text style={styles.title}>{/* currentEvent.title */}</Text>
-          <Text style={styles.date}>{/* formatDate(currentEvent.date) */}</Text>
-          <Text style={styles.location}>{/* currentEvent.location */}</Text>
+          <Text style={styles.title}>{currentEvent.title}</Text>
+          <Text style={styles.date}>{formatDate(currentEvent.date)}</Text>
+          <Text style={styles.location}>{currentEvent.location}</Text>
         </View>
         <Image
-          source={{ uri: /* currentEvent.image */ '' }}
+          source={{ uri: currentEvent.image }}
           style={styles.eventImage}
         />
       </View>
 
       <Card style={styles.countdownCard}>
         <Text style={styles.countdownTitle}>זמן לאירוע</Text>
-        <CountdownTimer targetDate={/* currentEvent.date */ new Date()} />
+        <CountdownTimer targetDate={currentEvent.date} />
       </Card>
 
       <View style={styles.statsContainer}>
         <StatCard
           title="אורחים שאישרו"
-          value={`${0}/${0}`}
+          value={`${confirmedGuests}/${totalGuests}`}
           icon={<Ionicons name="people" size={20} color={colors.primary} />}
         />
         <StatCard
           title="מתנות"
-          value={`₪${0}`}
+          value={`₪${totalGifts}`}
           icon={<Ionicons name="gift" size={20} color={colors.secondary} />}
           color={colors.secondary}
         />
         <StatCard
           title="משימות שהושלמו"
-          value={`${0}/${0}`}
+          value={`${completedTasks}/${totalTasks}`}
           icon={<Ionicons name="calendar" size={20} color={colors.success} />}
           color={colors.success}
         />
         <StatCard
           title="אורחים בהמתנה"
-          value={0}
+          value={pendingGuests}
           icon={<Ionicons name="people" size={20} color={colors.warning} />}
           color={colors.warning}
         />
@@ -90,7 +171,7 @@ export default function HomeScreen() {
 
       <Text style={styles.sectionTitle}>פעולות מהירות</Text>
       <View style={styles.quickActionsContainer}>
-        <Link href="/rsvp/invite" asChild>
+        <Link href="/guests" asChild>
           <TouchableOpacity style={styles.quickAction}>
             <View style={[styles.actionIcon, { backgroundColor: `${colors.primary}20` }]}>
               <Ionicons name="people" size={24} color={colors.primary} />

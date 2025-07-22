@@ -78,7 +78,7 @@ export const userService = {
   },
 
   // Update user profile
-  updateUser: async (userId: string, updates: Partial<Pick<AuthUser, 'name' | 'email'>>): Promise<void> => {
+  updateUser: async (userId: string, updates: Partial<Pick<AuthUser, 'name' | 'email' | 'phone'>>): Promise<void> => {
     try {
       await authService.updateProfile(updates);
     } catch (error) {

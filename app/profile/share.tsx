@@ -27,7 +27,7 @@ export default function ProfileShareScreen() {
 תאריך: ${formatDate(currentEvent.date)}
 מקום: ${currentEvent.location}
 
-לפרטים נוספים ואישור הגעה, לחץ על הקישור: https://easy2give.com/event/${currentEvent.id}`,
+        לפרטים נוספים ואישור הגעה, לחץ על הקישור: https://moon.com/event/${currentEvent.id}`,
       });
     } catch (error) {
       Alert.alert('שגיאה', 'לא ניתן לשתף את האירוע כרגע');
@@ -126,7 +126,7 @@ export default function ProfileShareScreen() {
           <Text style={styles.linkTitle}>קישור לאירוע</Text>
           <View style={styles.linkContainer}>
             <Text style={styles.link} numberOfLines={1}>
-              https://easy2give.com/event/{currentEvent.id}
+              https://moon.com/event/{currentEvent.id}
             </Text>
             <TouchableOpacity style={styles.copyButton} onPress={handleCopyLink}>
               <Ionicons name="copy-outline" size={16} color={colors.white} />

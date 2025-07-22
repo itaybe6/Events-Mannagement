@@ -121,25 +121,7 @@ export default function TabLayout() {
         }}
       />
 
-      <Tabs.Screen
-        name="planning"
-        options={{
-          href: userType === 'couple' ? undefined : null,
-          title: "תכנון",
-          tabBarIcon: ({ focused }) => (
-            <View style={[
-              styles.iconContainer,
-              focused && styles.activeIconContainer
-            ]}>
-              <Ionicons
-                name="calendar"
-                size={24}
-                color={focused ? colors.white : colors.gray[500]}
-              />
-            </View>
-          ),
-        }}
-      />
+
       <Tabs.Screen
         name="admin-events-create"
         options={{

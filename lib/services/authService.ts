@@ -5,6 +5,7 @@ export interface AuthUser {
   id: string;
   email: string;
   name: string;
+  phone?: string;
   userType: UserType;
   created_at?: string;
   updated_at?: string;
@@ -335,7 +336,7 @@ export const authService = {
   },
 
   // Update user profile
-  updateProfile: async (updates: Partial<{ name: string; email: string }>) => {
+  updateProfile: async (updates: Partial<{ name: string; email: string; phone?: string }>) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('No authenticated user');

@@ -1,14 +1,22 @@
-import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Alert } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Alert, Modal, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { Link, useRouter } from 'expo-router';
 import { useUserStore } from '@/store/userStore';
 import { colors } from '@/constants/colors';
 import { Card } from '@/components/Card';
 import { Ionicons } from '@expo/vector-icons';
+import { userService } from '@/lib/services/userService';
 
 export default function SettingsScreen() {
   const { userType, userData, logout, isLoggedIn } = useUserStore();
   const router = useRouter();
+  const [accountModalVisible, setAccountModalVisible] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editForm, setEditForm] = useState({
+    name: '',
+    email: '',
+    phone: ''
+  });
 
   console.log('🔍 Settings Screen - Debug Info:', {
     isLoggedIn,
@@ -54,6 +62,43 @@ export default function SettingsScreen() {
     );
   };
 
+  const handleAccountPress = () => {
+    setEditForm({
+      name: userData?.name || '',
+      email: userData?.email || '',
+      phone: userData?.phone || ''
+    });
+    setAccountModalVisible(true);
+  };
+
+  const handleSaveAccount = async () => {
+    try {
+      if (!userData?.id) return;
+      
+      await userService.updateUser(userData.id, {
+        name: editForm.name,
+        email: editForm.email,
+        phone: editForm.phone
+      });
+      
+      Alert.alert('הצלחה', 'פרטי החשבון עודכנו בהצלחה');
+      setIsEditing(false);
+      setAccountModalVisible(false);
+    } catch (error) {
+      console.error('Error updating account:', error);
+      Alert.alert('שגיאה', 'לא ניתן היה לעדכן את פרטי החשבון');
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditForm({
+      name: userData?.name || '',
+      email: userData?.email || '',
+      phone: userData?.phone || ''
+    });
+    setIsEditing(false);
+  };
+
   // אל תחזיר מוקדם - תן למשתמש לראות את ההגדרות גם בלי אירוע
 
   const formatDate = (date: Date) => {
@@ -65,116 +110,116 @@ export default function SettingsScreen() {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-      <View style={styles.profileSection}>
-        {/* currentEvent and related UI removed */}
-        <View style={styles.noEventIcon}>
-          <Ionicons name="calendar-outline" size={60} color={colors.gray[400]} />
-        </View>
-        <Text style={styles.profileName}>אין אירוע פעיל</Text>
-        <Text style={styles.noEventText}>
-          כרגע לא נוצר אירוע במערכת. פנה למנהל המערכת ליצירת אירוע חדש.
-        </Text>
-        <TouchableOpacity style={styles.editProfileButton}>
-          <Text style={styles.editProfileText}>צור אירוע חדש</Text>
-        </TouchableOpacity>
-      </View>
+    <>
+      <Modal
+        visible={accountModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setAccountModalVisible(false)}
+      >
+        <KeyboardAvoidingView 
+          style={styles.modalContainer}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>פרטי חשבון</Text>
+              <TouchableOpacity 
+                onPress={() => setAccountModalVisible(false)}
+                style={styles.closeButton}
+              >
+                <Ionicons name="close" size={24} color={colors.gray[600]} />
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>שם מלא</Text>
+                <TextInput
+                  style={[styles.formInput, !isEditing && styles.disabledInput]}
+                  value={editForm.name}
+                  onChangeText={(text) => setEditForm({...editForm, name: text})}
+                  editable={isEditing}
+                  placeholder="הכנס את שמך המלא"
+                  textAlign="right"
+                />
+              </View>
+              
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>אימייל</Text>
+                <TextInput
+                  style={[styles.formInput, !isEditing && styles.disabledInput]}
+                  value={editForm.email}
+                  onChangeText={(text) => setEditForm({...editForm, email: text})}
+                  editable={isEditing}
+                  placeholder="הכנס את האימייל שלך"
+                  keyboardType="email-address"
+                  textAlign="right"
+                />
+              </View>
+              
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>טלפון</Text>
+                <TextInput
+                  style={[styles.formInput, !isEditing && styles.disabledInput]}
+                  value={editForm.phone}
+                  onChangeText={(text) => setEditForm({...editForm, phone: text})}
+                  editable={isEditing}
+                  placeholder="הכנס את מספר הטלפון שלך"
+                  keyboardType="phone-pad"
+                  textAlign="right"
+                />
+              </View>
+            </ScrollView>
+            
+            <View style={styles.modalFooter}>
+              {!isEditing ? (
+                <TouchableOpacity 
+                  style={styles.editButton}
+                  onPress={() => setIsEditing(true)}
+                >
+                  <Ionicons name="create" size={20} color={colors.white} />
+                  <Text style={styles.editButtonText}>ערוך פרטים</Text>
+                </TouchableOpacity>
+              ) : (
+                <View style={styles.editActions}>
+                  <TouchableOpacity 
+                    style={styles.cancelButton}
+                    onPress={handleCancelEdit}
+                  >
+                    <Text style={styles.cancelButtonText}>ביטול</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={styles.saveButton}
+                    onPress={handleSaveAccount}
+                  >
+                    <Text style={styles.saveButtonText}>שמור</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
 
-      {/* currentEvent and related UI removed */}
-      <Text style={styles.sectionTitle}>ניהול אירוע</Text>
-      <Card style={styles.menuCard}>
-        <Link href="/profile/share" asChild>
-          <TouchableOpacity style={styles.menuItem}>
-            <View style={styles.menuItemContent}>
-              <Text style={styles.menuItemText}>שיתוף פרופיל האירוע</Text>
-              <View style={[styles.menuItemIcon, { backgroundColor: `${colors.primary}20` }]}>
-                <Ionicons name="share" size={20} color={colors.primary} />
-              </View>
-            </View>
-            <Ionicons name="chevron-back" size={20} color={colors.gray[400]} />
-          </TouchableOpacity>
-        </Link>
-        <Link href="/financing/apply" asChild>
-          <TouchableOpacity style={styles.menuItem}>
-            <View style={styles.menuItemContent}>
-              <Text style={styles.menuItemText}>מימון אירוע</Text>
-              <View style={[styles.menuItemIcon, { backgroundColor: `${colors.success}20` }]}>
-                <Ionicons name="card" size={20} color={colors.success} />
-              </View>
-            </View>
-            <Ionicons name="chevron-back" size={20} color={colors.gray[400]} />
-          </TouchableOpacity>
-        </Link>
-        <Link href="/rsvp/invite" asChild>
-          <TouchableOpacity style={styles.menuItem}>
-            <View style={styles.menuItemContent}>
-              <Text style={styles.menuItemText}>ניהול הזמנות</Text>
-              <View style={[styles.menuItemIcon, { backgroundColor: `${colors.info}20` }]}>
-                <Ionicons name="people" size={20} color={colors.info} />
-              </View>
-            </View>
-            <Ionicons name="chevron-back" size={20} color={colors.gray[400]} />
-          </TouchableOpacity>
-        </Link>
-        <Link href="/gift/payment" asChild>
-          <TouchableOpacity style={styles.menuItem}>
-            <View style={styles.menuItemContent}>
-              <Text style={styles.menuItemText}>הוספת מתנה</Text>
-              <View style={[styles.menuItemIcon, { backgroundColor: `${colors.secondary}20` }]}>
-                <Ionicons name="gift" size={20} color={colors.secondary} />
-              </View>
-            </View>
-            <Ionicons name="chevron-back" size={20} color={colors.gray[400]} />
-          </TouchableOpacity>
-        </Link>
-      </Card>
-
-      <Text style={styles.sectionTitle}>פיצ'רים מתקדמים</Text>
-      <Card style={styles.menuCard}>
-        <Link href="/seating/edit" asChild>
-          <TouchableOpacity style={styles.menuItem}>
-            <View style={styles.menuItemContent}>
-              <Text style={styles.menuItemText}>סידור ישיבה</Text>
-              <View style={[styles.menuItemIcon, { backgroundColor: `${colors.warning}20` }]}>
-                <Ionicons name="people" size={20} color={colors.warning} />
-              </View>
-            </View>
-            <Ionicons name="chevron-back" size={20} color={colors.gray[400]} />
-          </TouchableOpacity>
-        </Link>
-        <Link href="/3d-seating" asChild>
-          <TouchableOpacity style={styles.menuItem}>
-            <View style={styles.menuItemContent}>
-              <Text style={styles.menuItemText}>סידור ישיבה תלת-ממדי</Text>
-              <View style={[styles.menuItemIcon, { backgroundColor: `${colors.info}20` }]}>
-                <Ionicons name="cube" size={20} color={colors.info} />
-              </View>
-            </View>
-            <Ionicons name="chevron-back" size={20} color={colors.gray[400]} />
-            <View style={styles.comingSoonBadge}>
-              <Text style={styles.comingSoonText}>בקרוב</Text>
-            </View>
-          </TouchableOpacity>
-        </Link>
-      </Card>
-
+      <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
       {/* הצג את התפריט רק אם המשתמש אינו מנהל */}
       {userType !== 'admin' && (
         <Card style={styles.menuCard}>
-          <TouchableOpacity style={styles.menuItem}>
+          <TouchableOpacity style={styles.menuItem} onPress={handleAccountPress}>
             <View style={styles.menuItemContent}>
-              <Text style={styles.menuItemText}>הגדרות אפליקציה</Text>
+              <Text style={styles.menuItemText}>פרטי חשבון</Text>
               <View style={[styles.menuItemIcon, { backgroundColor: `${colors.gray[500]}20` }]}>
-                  <Ionicons name="settings" size={20} color={colors.gray[500]} />
+                  <Ionicons name="person" size={20} color={colors.gray[500]} />
                 </View>
               </View>
               <Ionicons name="chevron-back" size={20} color={colors.gray[400]} />
           </TouchableOpacity>
           <TouchableOpacity style={styles.menuItem}>
             <View style={styles.menuItemContent}>
-              <Text style={styles.menuItemText}>פרטי חשבון</Text>
-              <View style={[styles.menuItemIcon, { backgroundColor: `${colors.gray[500]}20` }]}>
-                  <Ionicons name="person" size={20} color={colors.gray[500]} />
+              <Text style={styles.menuItemText}>ניהול שליחת הודעות</Text>
+              <View style={[styles.menuItemIcon, { backgroundColor: `${colors.primary}20` }]}>
+                  <Ionicons name="chatbubbles" size={20} color={colors.primary} />
                 </View>
               </View>
               <Ionicons name="chevron-back" size={20} color={colors.gray[400]} />
@@ -184,7 +229,7 @@ export default function SettingsScreen() {
 
       <View style={styles.footer}>
         <Text style={styles.footerText}>גרסה 1.0.0</Text>
-        <Text style={styles.footerText}>© 2025 Easy2Give</Text>
+        <Text style={styles.footerText}>© 2025 MOON</Text>
         <Text style={styles.footerText}>מחובר כ: {userType === 'couple' ? 'חתן/כלה' : 'מנהל מערכת'}</Text>
       </View>
       
@@ -193,6 +238,7 @@ export default function SettingsScreen() {
         <Text style={styles.logoutText}>התנתק</Text>
       </TouchableOpacity>
     </ScrollView>
+    </>
   );
 }
 
@@ -340,5 +386,112 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     marginLeft: 8,
+  },
+  modalContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  modalContent: {
+    backgroundColor: colors.white,
+    borderRadius: 10,
+    width: '90%',
+    maxWidth: 400,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: colors.text,
+  },
+  closeButton: {
+    padding: 5,
+  },
+  modalBody: {
+    marginBottom: 20,
+  },
+  formGroup: {
+    marginBottom: 15,
+  },
+  formLabel: {
+    fontSize: 14,
+    color: colors.textLight,
+    marginBottom: 5,
+    textAlign: 'right',
+  },
+  formInput: {
+    borderWidth: 1,
+    borderColor: colors.gray[300],
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    fontSize: 16,
+    color: colors.text,
+    backgroundColor: colors.gray[50],
+  },
+  disabledInput: {
+    backgroundColor: colors.gray[100],
+    color: colors.gray[400],
+  },
+  modalFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: 10,
+  },
+  editButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    width: '45%',
+  },
+  editButtonText: {
+    color: colors.white,
+    fontSize: 14,
+    fontWeight: '500',
+    marginLeft: 8,
+  },
+  editActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    width: '100%',
+  },
+  cancelButton: {
+    backgroundColor: colors.gray[200],
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    width: '45%',
+  },
+  cancelButtonText: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  saveButton: {
+    backgroundColor: colors.primary,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    width: '45%',
+  },
+  saveButtonText: {
+    color: colors.white,
+    fontSize: 14,
+    fontWeight: '500',
   },
 });

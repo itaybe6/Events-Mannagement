@@ -19,18 +19,21 @@ export default function GiftsScreen() {
   }, [isLoggedIn, router]);
   const [activeTab, setActiveTab] = useState<'all' | 'received' | 'processing'>('all');
 
-  const filteredGifts = gifts.filter(gift => {
+  // בדוק שgifts קיים ולא undefined
+  const safeGifts = gifts || [];
+
+  const filteredGifts = safeGifts.filter(gift => {
     if (activeTab === 'all') return true;
     if (activeTab === 'received') return gift.status === 'התקבל';
     if (activeTab === 'processing') return gift.status === 'בתהליך';
     return true;
   });
 
-  const totalAmount = gifts.reduce((sum, gift) => sum + gift.amount, 0);
-  const receivedAmount = gifts
+  const totalAmount = safeGifts.reduce((sum, gift) => sum + gift.amount, 0);
+  const receivedAmount = safeGifts
     .filter(gift => gift.status === 'התקבל')
     .reduce((sum, gift) => sum + gift.amount, 0);
-  const processingAmount = gifts
+  const processingAmount = safeGifts
     .filter(gift => gift.status === 'בתהליך')
     .reduce((sum, gift) => sum + gift.amount, 0);
 
@@ -79,7 +82,7 @@ export default function GiftsScreen() {
           onPress={() => setActiveTab('all')}
         >
           <Text style={[styles.tabText, activeTab === 'all' && styles.activeTabText]}>
-            הכל ({gifts.length})
+            הכל ({safeGifts.length})
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -87,7 +90,7 @@ export default function GiftsScreen() {
           onPress={() => setActiveTab('received')}
         >
           <Text style={[styles.tabText, activeTab === 'received' && styles.activeTabText]}>
-            התקבלו ({gifts.filter(g => g.status === 'התקבל').length})
+            התקבלו ({safeGifts.filter(g => g.status === 'התקבל').length})
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -95,7 +98,7 @@ export default function GiftsScreen() {
           onPress={() => setActiveTab('processing')}
         >
           <Text style={[styles.tabText, activeTab === 'processing' && styles.activeTabText]}>
-            בתהליך ({gifts.filter(g => g.status === 'בתהליך').length})
+            בתהליך ({safeGifts.filter(g => g.status === 'בתהליך').length})
           </Text>
         </TouchableOpacity>
       </View>
@@ -140,23 +143,7 @@ export default function GiftsScreen() {
         )}
       </ScrollView>
 
-      <View style={styles.actionsContainer}>
-        <Link href="/financing/apply" asChild>
-          <Button
-            title="מימון אירוע"
-            onPress={() => {}}
-            variant="outline"
-            style={styles.actionButton}
-          />
-        </Link>
-        <Link href="/gift/payment" asChild>
-          <Button
-            title="הוספת מתנה"
-            onPress={() => {}}
-            style={styles.actionButton}
-          />
-        </Link>
-      </View>
+
     </View>
   );
 }
@@ -313,14 +300,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.gray[600],
     textAlign: 'center',
-  },
-  actionsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 16,
-  },
-  actionButton: {
-    flex: 1,
-    marginHorizontal: 6,
   },
 });
