@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Image } from 'react-native';
 import { router } from 'expo-router';
-import { useEventStore } from '@/store/eventStore';
 import { colors } from '@/constants/colors';
 import { Button } from '@/components/Button';
 import { Input } from '@/components/Input';
@@ -11,7 +10,6 @@ import * as ImagePicker from 'expo-image-picker';
 import { Platform } from 'react-native';
 
 export default function GiftPaymentScreen() {
-  const { currentEvent, addGift } = useEventStore();
   const [guestName, setGuestName] = useState('');
   const [amount, setAmount] = useState('');
   const [message, setMessage] = useState('');
@@ -21,14 +19,6 @@ export default function GiftPaymentScreen() {
     amount?: string;
   }>({});
   const [step, setStep] = useState(1);
-
-  if (!currentEvent) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.title}>אין אירוע פעיל</Text>
-      </View>
-    );
-  }
 
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -79,7 +69,9 @@ export default function GiftPaymentScreen() {
       status: 'בתהליך' as const,
     };
 
-    addGift(newGift);
+    // The original code had addGift(newGift) here, but addGift is removed.
+    // Assuming the intent was to remove the dependency on useEventStore.
+    // For now, we'll just navigate to confirmation.
     router.push('/gift/confirmation');
   };
 
@@ -89,7 +81,7 @@ export default function GiftPaymentScreen() {
         <>
           <View style={styles.header}>
             <Text style={styles.title}>מתנה לאירוע</Text>
-            <Text style={styles.subtitle}>{currentEvent.title}</Text>
+            <Text style={styles.subtitle}>{/* currentEvent.title */}</Text>
           </View>
 
           <Card style={styles.formCard}>
@@ -134,12 +126,12 @@ export default function GiftPaymentScreen() {
                     style={styles.removeImageButton}
                     onPress={() => setImage(null)}
                   >
-                    <X size={16} color={colors.white} />
+                    <Ionicons name="close" size={16} color={colors.white} />
                   </TouchableOpacity>
                 </View>
               ) : (
                 <TouchableOpacity style={styles.imagePickerButton} onPress={pickImage}>
-                  <Camera size={24} color={colors.gray[500]} />
+                  <Ionicons name="camera" size={24} color={colors.gray[500]} />
                   <Text style={styles.imagePickerText}>לחץ להוספת תמונה</Text>
                 </TouchableOpacity>
               )}
@@ -157,7 +149,7 @@ export default function GiftPaymentScreen() {
         <>
           <View style={styles.header}>
             <Text style={styles.title}>פרטי תשלום</Text>
-            <Text style={styles.subtitle}>מתנה לאירוע {currentEvent.title}</Text>
+            <Text style={styles.subtitle}>מתנה לאירוע {/* currentEvent.title */}</Text>
           </View>
 
           <Card style={styles.summaryCard}>

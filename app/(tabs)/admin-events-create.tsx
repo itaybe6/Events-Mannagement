@@ -20,7 +20,7 @@ const EVENT_TYPES = [
 export default function AdminEventsCreateScreen() {
   const router = useRouter();
   const [coupleOptions, setCoupleOptions] = useState<{id: string, name: string, email: string}[]>([]);
-  const [addForm, setAddForm] = useState({ user_id: '', title: '', date: '', location: '' });
+  const [addForm, setAddForm] = useState({ user_id: '', title: '', date: '', location: '', city: '' });
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showUserModal, setShowUserModal] = useState(false);
@@ -43,7 +43,7 @@ export default function AdminEventsCreateScreen() {
 
   const handleAddEvent = async () => {
     console.log('handleAddEvent called', addForm);
-    if (!addForm.user_id || !addForm.title || !addForm.date || !addForm.location) {
+    if (!addForm.user_id || !addForm.title || !addForm.date || !addForm.location || !addForm.city) {
       Alert.alert('שגיאה', 'יש למלא את כל השדות');
       return;
     }
@@ -55,6 +55,7 @@ export default function AdminEventsCreateScreen() {
           title: addForm.title,
           date: new Date(addForm.date),
           location: addForm.location,
+          city: addForm.city,
           image: '',
           story: '',
           guests: 0,
@@ -156,6 +157,14 @@ export default function AdminEventsCreateScreen() {
               onChangeText={v => setAddForm(f => ({ ...f, location: v }))}
               textAlign="right"
               placeholder="הזן מיקום"
+            />
+            <Text style={styles.label}>עיר:</Text>
+            <TextInput
+              style={styles.input}
+              value={addForm.city}
+              onChangeText={v => setAddForm(f => ({ ...f, city: v }))}
+              textAlign="right"
+              placeholder="הזן עיר"
             />
             <TouchableOpacity style={styles.saveButton} onPress={handleAddEvent} disabled={loading}>
               {loading ? <ActivityIndicator color={colors.white} /> : <Text style={styles.saveButtonText}>שמור</Text>}

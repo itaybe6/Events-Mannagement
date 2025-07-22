@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Modal, FlatList } from 'react-native';
 import { Link, useRouter } from 'expo-router';
-import { useEventStore } from '@/store/eventStore';
 import { useUserStore } from '@/store/userStore';
 import { colors } from '@/constants/colors';
 import { GuestItem } from '@/components/GuestItem';
@@ -9,25 +8,36 @@ import { Button } from '@/components/Button';
 import { Ionicons } from '@expo/vector-icons';
 import * as Contacts from 'expo-contacts';
 import { guestService } from '@/lib/services/guestService';
+import { eventService } from '@/lib/services/eventService';
 
 export default function GuestsScreen() {
-  const { guests, updateGuestStatus, deleteGuest, addGuest, currentEvent } = useEventStore();
-  const { isLoggedIn } = useUserStore();
+  const { isLoggedIn, userData } = useUserStore();
   const router = useRouter();
 
   useEffect(() => {
     if (!isLoggedIn) {
       router.replace('/login');
+      return;
     }
-    if (currentEvent && currentEvent.id) {
-      loadCategories();
-    }
-  }, [isLoggedIn, router, currentEvent?.id]);
+    // טען את האירוע הראשון של המשתמש (אם קיים) ואז את האורחים
+    const fetchEventIdAndGuests = async () => {
+      if (!userData) return;
+      const events = await eventService.getEvents();
+      if (events.length > 0) {
+        setEventId(events[0].id);
+        const data = await guestService.getGuests(events[0].id);
+        setGuests(data);
+      } else {
+        setGuests([]);
+      }
+    };
+    fetchEventIdAndGuests();
+  }, [isLoggedIn, router, userData]);
 
   const loadCategories = async () => {
-    if (!currentEvent || !currentEvent.id) return;
+    if (!eventId) return;
     try {
-      const cats = await guestService.getGuestCategories(currentEvent.id);
+      const cats = await guestService.getGuestCategories(eventId);
       setCategories(cats);
     } catch (e) {
       setCategories([]);
@@ -35,9 +45,9 @@ export default function GuestsScreen() {
   };
 
   const handleAddCategory = async () => {
-    if (!newCategoryName.trim() || !currentEvent || !currentEvent.id) return;
+    if (!newCategoryName.trim() || !eventId) return;
     try {
-      const cat = await guestService.addGuestCategory(currentEvent.id, newCategoryName.trim());
+      const cat = await guestService.addGuestCategory(eventId, newCategoryName.trim());
       setCategories([...categories, cat]);
       setNewCategoryName('');
     } catch (e: any) {
@@ -55,6 +65,15 @@ export default function GuestsScreen() {
   const [categories, setCategories] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<any>(null);
   const [newCategoryName, setNewCategoryName] = useState('');
+  // הוסף guests ל-state
+  const [guests, setGuests] = useState([]);
+  const [eventId, setEventId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (eventId) {
+      loadCategories();
+    }
+  }, [eventId]);
 
   const filteredGuests = guests.filter(guest => {
     const matchesSearch = guest.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -77,14 +96,18 @@ export default function GuestsScreen() {
         const { data } = await Contacts.getContactsAsync({
           fields: [Contacts.Fields.Name, Contacts.Fields.PhoneNumbers],
         });
-        
+        console.log('Contacts data:', data); // לוג
         // Filter contacts that have phone numbers
         const contactsWithPhones = data.filter(contact => 
-          contact.phoneNumbers && contact.phoneNumbers.length > 0
+          Array.isArray(contact.phoneNumbers) && contact.phoneNumbers.length > 0 && contact.phoneNumbers[0].number
         );
-        
+        if (contactsWithPhones.length === 0) {
+          Alert.alert('לא נמצאו אנשי קשר', 'לא נמצאו אנשי קשר עם מספר טלפון במכשיר שלך.');
+        }
         setDeviceContacts(contactsWithPhones);
-        setContactsModalVisible(true);
+        if (eventId) {
+          router.push({ pathname: '/contacts-list', params: { eventId } });
+        }
       } else {
         Alert.alert('נדרשת הרשאה', 'כדי לייבא אנשי קשר, יש צורך בהרשאה לגישה לאנשי הקשר');
       }
@@ -109,7 +132,7 @@ export default function GuestsScreen() {
       if (contact && selectedCategory) {
         const phoneNumber = contact.phoneNumbers[0]?.number || '';
         const name = contact.name || '';
-        addGuest(currentEvent?.id || '', {
+        addGuest(eventId || '', {
           name,
           phone: phoneNumber,
           status: 'ממתין',
@@ -125,15 +148,7 @@ export default function GuestsScreen() {
   };
 
   return (
-    <>
     <View style={styles.container}>
-      {/* בחירת קטגוריה */}
-      <TouchableOpacity style={styles.categorySelector} onPress={() => setCategoryModalVisible(true)}>
-        <Text style={styles.categorySelectorText}>
-          {selectedCategory ? `קטגוריה: ${selectedCategory.name}` : 'בחר קטגוריה לאורחים'}
-        </Text>
-        <Ionicons name="chevron-down" size={18} color={colors.primary} />
-      </TouchableOpacity>
       <View style={styles.header}>
         <View style={styles.searchContainer}>
           <TextInput
@@ -146,13 +161,7 @@ export default function GuestsScreen() {
           <Ionicons name="search" size={20} color={colors.gray[500]} style={styles.searchIcon} />
         </View>
         
-        <TouchableOpacity style={styles.addButton} onPress={() => {
-          if (!selectedCategory) {
-            Alert.alert('בחר קטגוריה', 'יש לבחור קטגוריה לפני הוספת אורחים');
-            return;
-          }
-          importContacts();
-        }}>
+        <TouchableOpacity style={styles.addButton} onPress={importContacts}>
           <Ionicons name="person-add" size={20} color={colors.white} />
         </TouchableOpacity>
       </View>
@@ -242,45 +251,32 @@ export default function GuestsScreen() {
         {categories.length > 0 ? (
           categories.map(cat => {
             const guestsInCat = guests.filter(g => g.category_id === cat.id);
-            if (guestsInCat.length === 0) return null;
+            console.log('guestsInCat', cat.name, guestsInCat);
             return (
-              <View key={cat.id} style={styles.categoryCardApple}>
-                <Text style={styles.categoryTitleApple}>{cat.name}</Text>
-                {guestsInCat.map(guest => (
-                  <View key={guest.id} style={styles.guestCardApple}>
-                    <Text style={styles.guestNameApple}>{guest.name}</Text>
-                    <Text style={styles.guestPhoneApple}>{guest.phone}</Text>
-                  </View>
-                ))}
+              <View key={cat.id} style={styles.categoryCardModern}>
+                <Text style={styles.categoryTitleModern}>{cat.name}</Text>
+                <View style={styles.guestsListModern}>
+                  {guestsInCat.length > 0 ? (
+                    guestsInCat.map(guest => (
+                      <View key={guest.id} style={styles.guestCardModern}>
+                        <Text style={styles.guestNameModern}>{guest.name}</Text>
+                        <Text style={styles.guestPhoneModern}>{guest.phone}</Text>
+                      </View>
+                    ))
+                  ) : (
+                    <Text style={styles.emptyStateText}>אין אורחים בקטגוריה זו</Text>
+                  )}
+                </View>
               </View>
             );
           })
         ) : (
           <View style={styles.emptyState}>
-            <Text style={styles.emptyStateText}>אין אורחים עדיין. הוסף אורחים חדשים!</Text>
+            <Text style={styles.emptyStateText}>אין קטגוריות עדיין. הוסף קטגוריה חדשה!</Text>
           </View>
         )}
       </ScrollView>
 
-      <View style={styles.actionsContainer}>
-        <Link href="/seating/edit" asChild>
-          <Button
-            title="סידור ישיבה"
-            onPress={() => {}}
-            variant="outline"
-            style={styles.actionButton}
-          />
-        </Link>
-        <Link href="/rsvp/invite" asChild>
-          <Button
-            title="הזמנת אורחים"
-            onPress={() => {}}
-            style={styles.actionButton}
-          />
-        </Link>
-      </View>
-    </View>
-    
     {/* Contacts Modal */}
     <Modal
       visible={contactsModalVisible}
@@ -315,7 +311,7 @@ export default function GuestsScreen() {
                 <View style={styles.contactInfo}>
                   <Text style={styles.contactName}>{item.name || 'ללא שם'}</Text>
                   <Text style={styles.contactPhone}>
-                    {item.phoneNumbers[0]?.number || 'ללא מספר'}
+                    {item.phoneNumbers && item.phoneNumbers[0] && item.phoneNumbers[0].number ? item.phoneNumbers[0].number : 'ללא מספר'}
                   </Text>
                 </View>
                 <View style={styles.checkboxContainer}>
@@ -338,7 +334,7 @@ export default function GuestsScreen() {
         </View>
       </View>
     </Modal>
-    </>
+    </View>
   );
 }
 
@@ -698,5 +694,59 @@ const styles = StyleSheet.create({
     color: colors.textLight,
     marginRight: 8,
     textAlign: 'right',
+  },
+  // עיצוב מודרני לכרטיסי קטגוריה ואורח
+  categoryCardModern: {
+    backgroundColor: colors.white,
+    borderRadius: 24,
+    padding: 20,
+    marginBottom: 24,
+    shadowColor: colors.black,
+    shadowOpacity: 0.10,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 8,
+    width: '100%',
+    alignSelf: 'center',
+  },
+  categoryTitleModern: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: colors.primary,
+    marginBottom: 14,
+    textAlign: 'right',
+    letterSpacing: 0.5,
+  },
+  guestsListModern: {
+    gap: 0,
+  },
+  guestCardModern: {
+    backgroundColor: colors.gray[100],
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginBottom: 10,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    shadowColor: colors.black,
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  guestNameModern: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    textAlign: 'right',
+    flex: 1,
+    marginLeft: 12,
+  },
+  guestPhoneModern: {
+    fontSize: 15,
+    color: colors.textLight,
+    textAlign: 'left',
+    minWidth: 100,
   },
 });

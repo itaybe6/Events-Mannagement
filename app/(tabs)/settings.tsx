@@ -1,14 +1,12 @@
 import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Alert } from 'react-native';
 import { Link, useRouter } from 'expo-router';
-import { useEventStore } from '@/store/eventStore';
 import { useUserStore } from '@/store/userStore';
 import { colors } from '@/constants/colors';
 import { Card } from '@/components/Card';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function SettingsScreen() {
-  const { currentEvent } = useEventStore();
   const { userType, userData, logout, isLoggedIn } = useUserStore();
   const router = useRouter();
 
@@ -16,7 +14,6 @@ export default function SettingsScreen() {
     isLoggedIn,
     userType,
     userData,
-    currentEvent,
   });
 
   useEffect(() => {
@@ -70,47 +67,20 @@ export default function SettingsScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
       <View style={styles.profileSection}>
-        {currentEvent ? (
-          <>
-        <Image
-          source={{ uri: currentEvent.image }}
-          style={styles.profileImage}
-        />
-        <Text style={styles.profileName}>{currentEvent.title}</Text>
-        <View style={styles.profileDetails}>
-          <View style={styles.profileDetail}>
-            <Ionicons name="calendar" size={16} color={colors.primary} />
-            <Text style={styles.profileDetailText}>{formatDate(currentEvent.date)}</Text>
-          </View>
-          <View style={styles.profileDetail}>
-            <Ionicons name="location" size={16} color={colors.primary} />
-            <Text style={styles.profileDetailText}>{currentEvent.location}</Text>
-          </View>
+        {/* currentEvent and related UI removed */}
+        <View style={styles.noEventIcon}>
+          <Ionicons name="calendar-outline" size={60} color={colors.gray[400]} />
         </View>
-        <Link href="/profile/edit" asChild>
-          <TouchableOpacity style={styles.editProfileButton}>
-            <Text style={styles.editProfileText}>עריכת פרופיל</Text>
-          </TouchableOpacity>
-        </Link>
-          </>
-        ) : (
-          <>
-            <View style={styles.noEventIcon}>
-              <Ionicons name="calendar-outline" size={60} color={colors.gray[400]} />
-            </View>
-            <Text style={styles.profileName}>אין אירוע פעיל</Text>
-            <Text style={styles.noEventText}>
-              כרגע לא נוצר אירוע במערכת. פנה למנהל המערכת ליצירת אירוע חדש.
-            </Text>
-            <TouchableOpacity style={styles.editProfileButton}>
-              <Text style={styles.editProfileText}>צור אירוע חדש</Text>
-            </TouchableOpacity>
-          </>
-        )}
+        <Text style={styles.profileName}>אין אירוע פעיל</Text>
+        <Text style={styles.noEventText}>
+          כרגע לא נוצר אירוע במערכת. פנה למנהל המערכת ליצירת אירוע חדש.
+        </Text>
+        <TouchableOpacity style={styles.editProfileButton}>
+          <Text style={styles.editProfileText}>צור אירוע חדש</Text>
+        </TouchableOpacity>
       </View>
 
-      {currentEvent && (
-        <>
+      {/* currentEvent and related UI removed */}
       <Text style={styles.sectionTitle}>ניהול אירוע</Text>
       <Card style={styles.menuCard}>
         <Link href="/profile/share" asChild>
@@ -187,8 +157,6 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </Link>
       </Card>
-        </>
-      )}
 
       {/* הצג את התפריט רק אם המשתמש אינו מנהל */}
       {userType !== 'admin' && (

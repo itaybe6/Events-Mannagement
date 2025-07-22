@@ -21,6 +21,7 @@ export const guestService = {
         tableId: guest.table_id,
         gift: Number(guest.gift_amount) || 0,
         message: guest.message || '',
+        category_id: guest.category_id,
       }));
     } catch (error) {
       console.error('Get guests error:', error);
@@ -41,6 +42,7 @@ export const guestService = {
           table_id: guest.tableId,
           gift_amount: guest.gift,
           message: guest.message,
+          category_id: guest.category_id,
         })
         .select()
         .single();
@@ -55,6 +57,7 @@ export const guestService = {
         tableId: data.table_id,
         gift: Number(data.gift_amount) || 0,
         message: data.message || '',
+        category_id: data.category_id,
       };
     } catch (error) {
       console.error('Add guest error:', error);
@@ -91,6 +94,7 @@ export const guestService = {
         tableId: data.table_id,
         gift: Number(data.gift_amount) || 0,
         message: data.message || '',
+        category_id: data.category_id,
       };
     } catch (error) {
       console.error('Update guest error:', error);

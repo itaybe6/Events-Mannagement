@@ -17,7 +17,6 @@ import { colors } from '@/constants/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useUserStore } from '@/store/userStore';
-import { useEventStore } from '@/store/eventStore';
 import { LottieAnimation } from '@/components/LottieAnimation';
 import { mockEvents, mockGuests, mockTables, mockMessages, mockGifts } from '@/constants/mockData';
 import { supabase } from '@/lib/supabase';
@@ -31,7 +30,6 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const { login, isLoggedIn, userType, userData } = useUserStore();
-  const { setCurrentEventWithData } = useEventStore();
 
   const handleLogin = async () => {
     try {

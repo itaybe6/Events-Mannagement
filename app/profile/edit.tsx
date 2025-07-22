@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
 import { router } from 'expo-router';
-import { useEventStore } from '@/store/eventStore';
 import { colors } from '@/constants/colors';
 import { Button } from '@/components/Button';
 import { Input } from '@/components/Input';
@@ -11,13 +10,11 @@ import * as ImagePicker from 'expo-image-picker';
 import { Platform } from 'react-native';
 
 export default function ProfileEditScreen() {
-  const { currentEvent, updateEvent } = useEventStore();
-  
-  const [title, setTitle] = useState(currentEvent?.title || '');
-  const [location, setLocation] = useState(currentEvent?.location || '');
-  const [story, setStory] = useState(currentEvent?.story || '');
-  const [image, setImage] = useState(currentEvent?.image || '');
-  const [date, setDate] = useState(currentEvent ? new Date(currentEvent.date) : new Date());
+  const [title, setTitle] = useState('');
+  const [location, setLocation] = useState('');
+  const [story, setStory] = useState('');
+  const [image, setImage] = useState('');
+  const [date, setDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   

@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Modal, FlatList } from 'react-native';
 import { router } from 'expo-router';
-import { useEventStore } from '@/store/eventStore';
 import { colors } from '@/constants/colors';
 import { Button } from '@/components/Button';
 import { Input } from '@/components/Input';
@@ -11,7 +10,6 @@ import { Platform } from 'react-native';
 import * as Contacts from 'expo-contacts';
 
 export default function InviteScreen() {
-  const { currentEvent, addGuest, addMessage } = useEventStore();
   const [guests, setGuests] = useState<Array<{ name: string; phone: string }>>([
     { name: '', phone: '' }
   ]);

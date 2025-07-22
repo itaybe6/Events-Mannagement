@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, Share, Alert } from 'react-native';
-import { useEventStore } from '@/store/eventStore';
 import { colors } from '@/constants/colors';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
@@ -9,16 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Platform } from 'react-native';
 
 export default function ProfileShareScreen() {
-  const { currentEvent } = useEventStore();
   const [copied, setCopied] = useState(false);
-
-  if (!currentEvent) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.headerText}>אין אירוע פעיל</Text>
-      </View>
-    );
-  }
 
   const formatDate = (date: Date) => {
     return new Date(date).toLocaleDateString('he-IL', {

@@ -1,7 +1,6 @@
 import React, { useEffect } from 'react';
 import { ScrollView, View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { Link, useRouter } from 'expo-router';
-import { useEventStore } from '@/store/eventStore';
 import { useUserStore } from '@/store/userStore';
 import { colors } from '@/constants/colors';
 import { Card } from '@/components/Card';
@@ -10,7 +9,6 @@ import { StatCard } from '@/components/StatCard';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function HomeScreen() {
-  const { currentEvent, guests, gifts } = useEventStore();
   const { isLoggedIn } = useUserStore();
   const router = useRouter();
 
@@ -20,7 +18,7 @@ export default function HomeScreen() {
     }
   }, [isLoggedIn, router]);
 
-  if (!currentEvent) {
+  if (!isLoggedIn) {
     return (
       <View style={styles.container}>
         <Text style={styles.title}>אין אירוע פעיל</Text>
@@ -38,51 +36,53 @@ export default function HomeScreen() {
     });
   };
 
-  const totalGifts = gifts.reduce((sum, gift) => sum + gift.amount, 0);
-  const confirmedGuests = guests.filter(guest => guest.status === 'מגיע').length;
-  const pendingGuests = guests.filter(guest => guest.status === 'ממתין').length;
-  const completedTasks = currentEvent.tasks.filter(task => task.completed).length;
+  // These variables are no longer available as useEventStore is removed.
+  // They will be removed from the return statement as well.
+  // const totalGifts = gifts.reduce((sum, gift) => sum + gift.amount, 0);
+  // const confirmedGuests = guests.filter(guest => guest.status === 'מגיע').length;
+  // const pendingGuests = guests.filter(guest => guest.status === 'ממתין').length;
+  // const completedTasks = currentEvent.tasks.filter(task => task.completed).length;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
       <View style={styles.header}>
         <View style={styles.eventInfo}>
-          <Text style={styles.title}>{currentEvent.title}</Text>
-          <Text style={styles.date}>{formatDate(currentEvent.date)}</Text>
-          <Text style={styles.location}>{currentEvent.location}</Text>
+          <Text style={styles.title}>{/* currentEvent.title */}</Text>
+          <Text style={styles.date}>{/* formatDate(currentEvent.date) */}</Text>
+          <Text style={styles.location}>{/* currentEvent.location */}</Text>
         </View>
         <Image
-          source={{ uri: currentEvent.image }}
+          source={{ uri: /* currentEvent.image */ '' }}
           style={styles.eventImage}
         />
       </View>
 
       <Card style={styles.countdownCard}>
         <Text style={styles.countdownTitle}>זמן לאירוע</Text>
-        <CountdownTimer targetDate={currentEvent.date} />
+        <CountdownTimer targetDate={/* currentEvent.date */ new Date()} />
       </Card>
 
       <View style={styles.statsContainer}>
         <StatCard
           title="אורחים שאישרו"
-          value={`${confirmedGuests}/${guests.length}`}
+          value={`${0}/${0}`}
           icon={<Ionicons name="people" size={20} color={colors.primary} />}
         />
         <StatCard
           title="מתנות"
-          value={`₪${totalGifts.toLocaleString()}`}
+          value={`₪${0}`}
           icon={<Ionicons name="gift" size={20} color={colors.secondary} />}
           color={colors.secondary}
         />
         <StatCard
           title="משימות שהושלמו"
-          value={`${completedTasks}/${currentEvent.tasks.length}`}
+          value={`${0}/${0}`}
           icon={<Ionicons name="calendar" size={20} color={colors.success} />}
           color={colors.success}
         />
         <StatCard
           title="אורחים בהמתנה"
-          value={pendingGuests}
+          value={0}
           icon={<Ionicons name="people" size={20} color={colors.warning} />}
           color={colors.warning}
         />

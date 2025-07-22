@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, SafeAreaView, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -21,9 +22,17 @@ export default function AdminEventsScreen() {
   const [filterMonth, setFilterMonth] = useState('');
   const [sortOrder, setSortOrder] = useState('asc');
 
+  // רענון ראשוני
   useEffect(() => {
     loadEvents();
   }, []);
+
+  // רענון בכל חזרה לפוקוס
+  useFocusEffect(
+    React.useCallback(() => {
+      loadEvents();
+    }, [])
+  );
 
   const loadEvents = async () => {
     setLoading(true);
@@ -62,91 +71,92 @@ export default function AdminEventsScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.gray[100] }}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Ionicons name="calendar" size={28} color={colors.primary} style={{ marginLeft: 10 }} />
-        <Text style={styles.headerTitle}>אירועים עתידיים</Text>
-      </View>
-      {/* Filter Panel */}
-      <View style={styles.filterPanel}>
-        <TouchableOpacity style={styles.filterButton} onPress={() => setShowDatePicker(true)}>
-          <Ionicons name="calendar-outline" size={18} color={colors.text} />
-          <Text style={styles.filterButtonText}>{filterDate ? filterDate.toLocaleDateString('he-IL') : 'סנן לפי תאריך'}</Text>
-        </TouchableOpacity>
-        <DateTimePickerModal
-          isVisible={showDatePicker}
-          mode="date"
-          onConfirm={date => { setShowDatePicker(false); setFilterDate(date as Date); setFilterMonth(''); }}
-          onCancel={() => setShowDatePicker(false)}
-          minimumDate={new Date()}
-          locale="he-IL"
-        />
-        <View style={styles.monthDropdown}>
-          <Text style={styles.monthDropdownLabel}>חודש:</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: 'row-reverse', gap: 6 }}>
-            {MONTHS.map((m, i) => (
-              <TouchableOpacity
-                key={i}
-                style={[styles.monthOption, filterMonth === String(i) && styles.monthOptionActive]}
-                onPress={() => { setFilterMonth(String(i)); setFilterDate(null); }}
-              >
-                <Text style={[styles.monthOptionText, filterMonth === String(i) && styles.monthOptionTextActive]}>{m}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+      <View style={{ flex: 1, position: 'relative' }}>
+        {/* Header */}
+        <View style={styles.header}>
+          <Ionicons name="calendar" size={28} color={colors.primary} style={{ marginLeft: 10 }} />
+          <Text style={styles.headerTitle}>אירועים עתידיים</Text>
         </View>
-        <View style={styles.sortDropdown}>
-          <Text style={styles.sortDropdownLabel}>מיון:</Text>
-          <TouchableOpacity style={styles.sortOption} onPress={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}>
-            <Ionicons name={sortOrder === 'asc' ? 'arrow-down' : 'arrow-up'} size={16} color={colors.text} />
-            <Text style={styles.sortOptionText}>{sortOrder === 'asc' ? 'מהקרוב לרחוק' : 'מהרחוק לקרוב'}</Text>
+        {/* Filter Panel */}
+        <View style={styles.filterPanel}>
+          <TouchableOpacity style={styles.filterButton} onPress={() => setShowDatePicker(true)}>
+            <Ionicons name="calendar-outline" size={18} color={colors.text} />
+            <Text style={styles.filterButtonText}>{filterDate ? filterDate.toLocaleDateString('he-IL') : 'סנן לפי תאריך'}</Text>
           </TouchableOpacity>
+          <DateTimePickerModal
+            isVisible={showDatePicker}
+            mode="date"
+            onConfirm={date => { setShowDatePicker(false); setFilterDate(date as Date); setFilterMonth(''); }}
+            onCancel={() => setShowDatePicker(false)}
+            minimumDate={new Date()}
+            locale="he-IL"
+          />
+          <View style={styles.monthDropdown}>
+            <Text style={styles.monthDropdownLabel}>חודש:</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: 'row-reverse', gap: 6 }}>
+              {MONTHS.map((m, i) => (
+                <TouchableOpacity
+                  key={i}
+                  style={[styles.monthOption, filterMonth === String(i) && styles.monthOptionActive]}
+                  onPress={() => { setFilterMonth(String(i)); setFilterDate(null); }}
+                >
+                  <Text style={[styles.monthOptionText, filterMonth === String(i) && styles.monthOptionTextActive]}>{m}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+          <View style={styles.sortDropdown}>
+            <Text style={styles.sortDropdownLabel}>מיון:</Text>
+            <TouchableOpacity style={styles.sortOption} onPress={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}>
+              <Ionicons name={sortOrder === 'asc' ? 'arrow-down' : 'arrow-up'} size={16} color={colors.text} />
+              <Text style={styles.sortOptionText}>{sortOrder === 'asc' ? 'מהקרוב לרחוק' : 'מהרחוק לקרוב'}</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-        <TouchableOpacity style={styles.resetButton} onPress={() => { setFilterDate(null); setFilterMonth(''); }}>
-          <Ionicons name="close-circle" size={18} color={colors.error} />
-          <Text style={styles.resetButtonText}>איפוס</Text>
+        {/* Events List */}
+        <ScrollView contentContainerStyle={styles.eventsList} showsVerticalScrollIndicator={false}>
+          {loading ? (
+            <ActivityIndicator size="large" color={colors.primary} />
+          ) : filteredEvents.length === 0 ? (
+            <View style={styles.emptyStateCard}>
+              <Ionicons name="calendar-outline" size={48} color={colors.gray[400]} />
+              <Text style={styles.emptyStateText}>לא נמצאו אירועים</Text>
+            </View>
+          ) : filteredEvents.map(event => {
+            const dateObj = new Date(event.date);
+            const day = dateObj.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' });
+            const weekday = dateObj.toLocaleDateString('he-IL', { weekday: 'long' });
+            return (
+              <TouchableOpacity key={event.id} onPress={() => router.push({ pathname: '/(tabs)/admin-event-details', params: { id: event.id } })} style={styles.eventCard}>
+                <View style={styles.eventDateBox}>
+                  <Text style={styles.eventDateDay}>{day}</Text>
+                  <Text style={styles.eventDateWeek}>{weekday}</Text>
+                </View>
+                <View style={styles.eventInfoBox}>
+                  <Text style={styles.eventTitle}>{event.title}</Text>
+                  <View style={styles.eventInfoRow}>
+                    <Ionicons name="location" size={16} color={colors.text} style={{ marginLeft: 4 }} />
+                    <Text style={styles.eventLocation}>
+                      {event.location}
+                      {event.city ? ` - ${event.city}` : ''}
+                    </Text>
+                  </View>
+                  <Text style={styles.eventDaysLeft}>{getDaysLeft(event.date)}</Text>
+                </View>
+                <Ionicons name="chevron-back" size={22} color={colors.gray[400]} style={{ marginLeft: 8 }} />
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+        {/* כפתור הוספת אירוע חדש */}
+        <TouchableOpacity
+          style={styles.fab}
+          onPress={() => router.push('/(tabs)/admin-events-create')}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="add" size={32} color={colors.white} />
         </TouchableOpacity>
       </View>
-      {/* Events List */}
-      <ScrollView contentContainerStyle={styles.eventsList} showsVerticalScrollIndicator={false}>
-        {loading ? (
-          <ActivityIndicator size="large" color={colors.primary} />
-        ) : filteredEvents.length === 0 ? (
-          <View style={styles.emptyStateCard}>
-            <Ionicons name="calendar-outline" size={48} color={colors.gray[400]} />
-            <Text style={styles.emptyStateText}>לא נמצאו אירועים</Text>
-          </View>
-        ) : filteredEvents.map(event => {
-          const dateObj = new Date(event.date);
-          const day = dateObj.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' });
-          const weekday = dateObj.toLocaleDateString('he-IL', { weekday: 'long' });
-          return (
-            <TouchableOpacity key={event.id} onPress={() => router.push({ pathname: '/(tabs)/admin-event-details', params: { id: event.id } })} style={styles.eventCard}>
-              <View style={styles.eventDateBox}>
-                <Text style={styles.eventDateDay}>{day}</Text>
-                <Text style={styles.eventDateWeek}>{weekday}</Text>
-              </View>
-              <View style={styles.eventInfoBox}>
-                <Text style={styles.eventTitle}>{event.title}</Text>
-                <View style={styles.eventInfoRow}>
-                  <Ionicons name="location" size={16} color={colors.text} style={{ marginLeft: 4 }} />
-                  <Text style={styles.eventLocation}>{event.location}</Text>
-                </View>
-                <Text style={styles.eventDaysLeft}>{getDaysLeft(event.date)}</Text>
-              </View>
-              <Ionicons name="chevron-back" size={22} color={colors.gray[400]} style={{ marginLeft: 8 }} />
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
-      {/* כפתור הוספת אירוע חדש */}
-      <TouchableOpacity
-        style={styles.fab}
-        onPress={() => router.push('/(tabs)/admin-events-create')}
-        activeOpacity={0.85}
-      >
-        <Ionicons name="add" size={32} color={colors.white} />
-      </TouchableOpacity>
     </SafeAreaView>
   );
 }
@@ -365,8 +375,8 @@ const styles = StyleSheet.create({
   },
   fab: {
     position: 'absolute',
-    bottom: 32,
-    right: 32,
+    top: 24,
+    left: 24,
     backgroundColor: colors.primary,
     width: 64,
     height: 64,
@@ -378,6 +388,8 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
     elevation: 8,
-    zIndex: 10,
+    zIndex: 999, // העלאה ל-999
+    borderWidth: 3, // מסגרת אדומה זמנית
+    borderColor: 'red', // מסגרת אדומה זמנית
   },
 }); 

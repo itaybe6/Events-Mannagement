@@ -30,6 +30,7 @@ export type Event = {
   title: string;
   date: Date;
   location: string;
+  city: string;
   image: string;
   story: string;
   guests: number;

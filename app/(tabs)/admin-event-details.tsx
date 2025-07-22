@@ -61,19 +61,23 @@ export default function AdminEventDetailsScreen() {
             <Text style={styles.headerDateDay}>{day}</Text>
             <Text style={styles.headerDateWeek}>{weekday}</Text>
           </View>
-          <Text style={styles.headerTitle}>{event.title}</Text>
+          <Text style={styles.headerTitle}>{String(event.title || '')}</Text>
         </View>
         {/* Main Card */}
         <View style={styles.card}>
           {/* Location */}
           <View style={styles.infoRow}>
             <Ionicons name="location" size={20} color={colors.text} style={styles.infoIcon} />
-            <Text style={styles.infoText}>{event.location}</Text>
+            <Text style={styles.infoText}>{String(event.location || '')}</Text>
+          </View>
+          <View style={styles.infoRow}>
+            <Ionicons name="business" size={20} color={colors.text} style={styles.infoIcon} />
+            <Text style={styles.infoText}>{String(event.city || '')}</Text>
           </View>
           {/* Type */}
           <View style={styles.infoRow}>
             <Ionicons name="people" size={20} color={colors.text} style={styles.infoIcon} />
-            <Text style={styles.infoText}>סוג אירוע: {event.title}</Text>
+            <Text style={styles.infoText}>סוג אירוע: {String(event.title || '')}</Text>
           </View>
           {/* Stats */}
           <View style={styles.statsRow}>

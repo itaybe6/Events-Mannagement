@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useEventStore } from '@/store/eventStore';
 import { useUserStore } from '@/store/userStore';
 import { colors } from '@/constants/colors';
 import { TaskItem } from '@/components/TaskItem';
@@ -9,7 +8,6 @@ import { Button } from '@/components/Button';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function PlanningScreen() {
-  const { currentEvent, updateTask, deleteTask, addTask } = useEventStore();
   const { isLoggedIn } = useUserStore();
   const router = useRouter();
 
@@ -22,7 +20,7 @@ export default function PlanningScreen() {
   const [showAddTask, setShowAddTask] = useState(false);
   const [filter, setFilter] = useState<'all' | 'completed' | 'pending'>('all');
 
-  if (!currentEvent) {
+  if (!isLoggedIn) {
     return (
       <View style={styles.container}>
         <Text style={styles.title}>אין אירוע פעיל</Text>
@@ -30,19 +28,7 @@ export default function PlanningScreen() {
     );
   }
 
-  const filteredTasks = currentEvent.tasks.filter(task => {
-    if (filter === 'all') return true;
-    if (filter === 'completed') return task.completed;
-    if (filter === 'pending') return !task.completed;
-    return true;
-  }).sort((a, b) => {
-    // Sort by completion status first, then by due date
-    if (a.completed !== b.completed) {
-      return a.completed ? 1 : -1;
-    }
-    return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
-  });
-
+  const filteredTasks = []; // No longer using currentEvent.tasks
   const handleAddTask = () => {
     if (newTaskTitle.trim()) {
       const newTask = {
@@ -51,14 +37,16 @@ export default function PlanningScreen() {
         completed: false,
         dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // Default due date: 1 week from now
       };
-      addTask(newTask);
+      // No longer using addTask from useEventStore
+      // addTask(newTask); 
       setNewTaskTitle('');
       setShowAddTask(false);
     }
   };
 
   const toggleTaskCompletion = (taskId: string, completed: boolean) => {
-    updateTask(taskId, { completed: !completed });
+    // No longer using updateTask from useEventStore
+    // updateTask(taskId, { completed: !completed }); 
   };
 
   return (
@@ -110,7 +98,7 @@ export default function PlanningScreen() {
           onPress={() => setFilter('all')}
         >
           <Text style={[styles.filterText, filter === 'all' && styles.activeFilterText]}>
-            הכל ({currentEvent.tasks.length})
+            הכל ({0})
           </Text>
         </TouchableOpacity>
         <TouchableOpacity 
@@ -118,7 +106,7 @@ export default function PlanningScreen() {
           onPress={() => setFilter('pending')}
         >
           <Text style={[styles.filterText, filter === 'pending' && styles.activeFilterText]}>
-            בתהליך ({currentEvent.tasks.filter(t => !t.completed).length})
+            בתהליך ({0})
           </Text>
         </TouchableOpacity>
         <TouchableOpacity 
@@ -126,7 +114,7 @@ export default function PlanningScreen() {
           onPress={() => setFilter('completed')}
         >
           <Text style={[styles.filterText, filter === 'completed' && styles.activeFilterText]}>
-            הושלמו ({currentEvent.tasks.filter(t => t.completed).length})
+            הושלמו ({0})
           </Text>
         </TouchableOpacity>
       </View>
@@ -138,7 +126,7 @@ export default function PlanningScreen() {
               key={task.id}
               task={task}
               onToggle={() => toggleTaskCompletion(task.id, task.completed)}
-              onDelete={() => deleteTask(task.id)}
+              onDelete={() => {}} // No longer using deleteTask from useEventStore
             />
           ))
         ) : (
@@ -165,15 +153,15 @@ export default function PlanningScreen() {
             style={[
               styles.progressFill, 
               { 
-                width: `${currentEvent.tasks.length > 0 
-                  ? (currentEvent.tasks.filter(t => t.completed).length / currentEvent.tasks.length) * 100 
+                width: `${0 > 0 
+                  ? (0 / 0) * 100 
                   : 0}%` 
               }
             ]} 
           />
         </View>
         <Text style={styles.progressText}>
-          {currentEvent.tasks.filter(t => t.completed).length} מתוך {currentEvent.tasks.length} משימות הושלמו
+          {0} מתוך {0} משימות הושלמו
         </Text>
       </View>
     </View>

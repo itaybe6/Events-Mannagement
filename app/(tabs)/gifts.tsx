@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { Link, useRouter } from 'expo-router';
-import { useEventStore } from '@/store/eventStore';
 import { useUserStore } from '@/store/userStore';
 import { colors } from '@/constants/colors';
 import { Card } from '@/components/Card';
@@ -9,7 +8,7 @@ import { Button } from '@/components/Button';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function GiftsScreen() {
-  const { gifts } = useEventStore();
+  const { gifts } = useUserStore();
   const { isLoggedIn } = useUserStore();
   const router = useRouter();
 

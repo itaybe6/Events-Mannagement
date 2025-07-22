@@ -10,7 +10,6 @@ import {
   Platform,
   TextInput as RNTextInput
 } from 'react-native';
-import { useEventStore } from '@/store/eventStore';
 import { colors } from '@/constants/colors';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
@@ -63,7 +62,6 @@ const TableComponent = ({ table, selected, onSelect, guestCount }: any) => {
 };
 
 export default function SeatingEditScreen() {
-  const { guests, tables, assignGuestToTable, removeGuestFromTable, addTable, updateTable, deleteTable } = useEventStore();
   const [activeArea, setActiveArea] = useState<string | null>(null);
   const [editingTable, setEditingTable] = useState<string | null>(null);
   const [newTableName, setNewTableName] = useState('');

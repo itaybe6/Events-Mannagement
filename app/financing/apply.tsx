@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity } from 'react-native';
 import { router } from 'expo-router';
-import { useEventStore } from '@/store/eventStore';
 import { colors } from '@/constants/colors';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
@@ -9,19 +8,10 @@ import { Input } from '@/components/Input';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function FinancingApplyScreen() {
-  const { currentEvent } = useEventStore();
   const [amount, setAmount] = useState('50000');
   const [months, setMonths] = useState('24');
   const [step, setStep] = useState(1);
   const [approved, setApproved] = useState(false);
-
-  if (!currentEvent) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.title}>אין אירוע פעיל</Text>
-      </View>
-    );
-  }
 
   const calculateMonthlyPayment = () => {
     const principal = Number(amount);
@@ -64,29 +54,29 @@ export default function FinancingApplyScreen() {
           <Card style={styles.infoCard}>
             <View style={styles.infoHeader}>
               <View style={styles.infoIconContainer}>
-                <CreditCard size={24} color={colors.primary} />
+                <Ionicons name="credit-card" size={24} color={colors.primary} />
               </View>
               <Text style={styles.infoTitle}>יתרונות המימון שלנו</Text>
             </View>
             
             <View style={styles.benefitItem}>
-              <CheckCircle size={16} color={colors.success} style={styles.benefitIcon} />
+              <Ionicons name="checkmark-circle" size={16} color={colors.success} style={styles.benefitIcon} />
               <Text style={styles.benefitText}>ריבית אטרקטיבית של 3.9% בלבד</Text>
             </View>
             <View style={styles.benefitItem}>
-              <CheckCircle size={16} color={colors.success} style={styles.benefitIcon} />
+              <Ionicons name="checkmark-circle" size={16} color={colors.success} style={styles.benefitIcon} />
               <Text style={styles.benefitText}>אישור מהיר תוך 24 שעות</Text>
             </View>
             <View style={styles.benefitItem}>
-              <CheckCircle size={16} color={colors.success} style={styles.benefitIcon} />
+              <Ionicons name="checkmark-circle" size={16} color={colors.success} style={styles.benefitIcon} />
               <Text style={styles.benefitText}>החזר חודשי נוח</Text>
             </View>
             <View style={styles.benefitItem}>
-              <CheckCircle size={16} color={colors.success} style={styles.benefitIcon} />
+              <Ionicons name="checkmark-circle" size={16} color={colors.success} style={styles.benefitIcon} />
               <Text style={styles.benefitText}>ללא עמלות הקמה או פירעון מוקדם</Text>
             </View>
             <View style={styles.benefitItem}>
-              <CheckCircle size={16} color={colors.success} style={styles.benefitIcon} />
+              <Ionicons name="checkmark-circle" size={16} color={colors.success} style={styles.benefitIcon} />
               <Text style={styles.benefitText}>הלוואה עד 100,000 ₪</Text>
             </View>
           </Card>
@@ -192,7 +182,7 @@ export default function FinancingApplyScreen() {
         <>
           <View style={styles.approvalContainer}>
             <View style={styles.approvalIconContainer}>
-              <CheckCircle size={80} color={colors.success} />
+              <Ionicons name="checkmark-circle" size={80} color={colors.success} />
             </View>
             
             <Text style={styles.approvalTitle}>בקשתך אושרה!</Text>
@@ -206,7 +196,7 @@ export default function FinancingApplyScreen() {
               
               <View style={styles.approvalDetail}>
                 <View style={styles.approvalDetailIcon}>
-                  <DollarSign size={20} color={colors.primary} />
+                  <Ionicons name="dollar" size={20} color={colors.primary} />
                 </View>
                 <View style={styles.approvalDetailContent}>
                   <Text style={styles.approvalDetailLabel}>סכום ההלוואה</Text>
@@ -216,7 +206,7 @@ export default function FinancingApplyScreen() {
               
               <View style={styles.approvalDetail}>
                 <View style={styles.approvalDetailIcon}>
-                  <Calendar size={20} color={colors.primary} />
+                  <Ionicons name="calendar" size={20} color={colors.primary} />
                 </View>
                 <View style={styles.approvalDetailContent}>
                   <Text style={styles.approvalDetailLabel}>תקופת ההלוואה</Text>
@@ -226,7 +216,7 @@ export default function FinancingApplyScreen() {
               
               <View style={styles.approvalDetail}>
                 <View style={styles.approvalDetailIcon}>
-                  <CreditCard size={20} color={colors.primary} />
+                  <Ionicons name="credit-card" size={20} color={colors.primary} />
                 </View>
                 <View style={styles.approvalDetailContent}>
                   <Text style={styles.approvalDetailLabel}>תשלום חודשי</Text>
