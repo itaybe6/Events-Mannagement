@@ -216,4 +216,20 @@ export const guestService = {
       side: category.side || 'groom',
     }));
   },
+
+  async updateGuestCategory(categoryId: string, updates: { name?: string }) {
+    const { data, error } = await supabase
+      .from('guest_categories')
+      .update(updates)
+      .eq('id', categoryId)
+      .select()
+      .single();
+    if (error) throw error;
+    return {
+      id: data.id,
+      name: data.name,
+      event_id: data.event_id,
+      side: data.side || 'groom',
+    };
+  },
 }; 

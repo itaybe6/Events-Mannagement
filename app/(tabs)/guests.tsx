@@ -21,40 +21,41 @@ export default function GuestsScreen() {
       router.replace('/login');
       return;
     }
-    // טען את האירוע הראשון של המשתמש (אם קיים) ואז את האורחים
-    const fetchEventIdAndGuests = async () => {
-      if (!userData) return;
-      const events = await eventService.getEvents();
-      if (events.length > 0) {
-        setEventId(events[0].id);
-        const data = await guestService.getGuests(events[0].id);
-        setGuests(data);
-      } else {
-        setGuests([]);
-      }
+    if (!userData?.event_id) {
+      setEventId(null);
+      setGuests([]);
+      setCategories([]);
+      return;
+    }
+    setEventId(userData.event_id);
+    // טען אורחים וקטגוריות לאירוע של המשתמש
+    const fetchGuestsAndCategories = async () => {
+      const data = await guestService.getGuests(userData.event_id);
+      setGuests(data);
+      await loadCategories(userData.event_id);
     };
-    fetchEventIdAndGuests();
+    fetchGuestsAndCategories();
   }, [isLoggedIn, router, userData]);
 
-  // טען מחדש אורחים כשהמסך חוזר למוקד
+  // טען מחדש אורחים וקטגוריות כשהמסך חוזר למוקד
   useFocusEffect(
     React.useCallback(() => {
-      const reloadGuests = async () => {
-        if (eventId) {
+      if (eventId) {
+        const reloadGuests = async () => {
           const data = await guestService.getGuests(eventId);
           setGuests(data);
-          // טען גם קטגוריות מחדש
-          await loadCategories();
-        }
-      };
-      reloadGuests();
+          await loadCategories(eventId);
+        };
+        reloadGuests();
+      }
     }, [eventId])
   );
 
-  const loadCategories = async () => {
-    if (!eventId) return;
+  const loadCategories = async (eid?: string) => {
+    const id = eid || eventId;
+    if (!id) return;
     try {
-      const cats = await guestService.getGuestCategories(eventId);
+      const cats = await guestService.getGuestCategories(id);
       
       // בדוק אם יש קטגוריות ללא שדה side ועדכן אותן
       const categoriesToUpdate = cats.filter(cat => !cat.side);
@@ -71,7 +72,7 @@ export default function GuestsScreen() {
           }
         }
         // טען מחדש את הקטגוריות
-        const updatedCats = await guestService.getGuestCategories(eventId);
+        const updatedCats = await guestService.getGuestCategories(id);
         setCategories(updatedCats);
       } else {
         setCategories(cats);
@@ -124,6 +125,10 @@ export default function GuestsScreen() {
   const [selectedGuest, setSelectedGuest] = useState<any>(null);
   const [editGuestName, setEditGuestName] = useState('');
   const [editGuestPhone, setEditGuestPhone] = useState('');
+  const [editCategoryModalVisible, setEditCategoryModalVisible] = useState(false);
+  const [editCategoryName, setEditCategoryName] = useState('');
+  const [selectedCategoryGuests, setSelectedCategoryGuests] = useState<any[]>([]);
+  const [selectedGuestsToDelete, setSelectedGuestsToDelete] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (eventId) {
@@ -316,6 +321,55 @@ export default function GuestsScreen() {
     }
   };
 
+  const handleEditCategory = (category: any) => {
+    setSelectedCategory(category);
+    setEditCategoryName(category.name);
+    const guestsInCat = guests.filter(g => g.category_id === category.id);
+    setSelectedCategoryGuests(guestsInCat);
+    setSelectedGuestsToDelete(new Set());
+    setEditCategoryModalVisible(true);
+  };
+
+  const handleSaveCategoryName = async () => {
+    if (!selectedCategory || !editCategoryName.trim()) return;
+    try {
+      await guestService.updateGuestCategory(selectedCategory.id, { name: editCategoryName.trim() });
+      setCategories(prev => prev.map(cat => cat.id === selectedCategory.id ? { ...cat, name: editCategoryName.trim() } : cat));
+      setEditCategoryModalVisible(false);
+    } catch (e) {
+      Alert.alert('שגיאה', 'לא ניתן לעדכן את שם הקטגוריה');
+    }
+  };
+
+  const handleToggleGuestToDelete = (guestId: string) => {
+    setSelectedGuestsToDelete(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(guestId)) newSet.delete(guestId);
+      else newSet.add(guestId);
+      return newSet;
+    });
+  };
+
+  const handleDeleteSelectedGuests = async () => {
+    if (selectedGuestsToDelete.size === 0) return;
+    Alert.alert('מחיקת אורחים', `האם למחוק ${selectedGuestsToDelete.size} אורחים?`, [
+      { text: 'ביטול', style: 'cancel' },
+      {
+        text: 'מחק', style: 'destructive', onPress: async () => {
+          try {
+            for (const guestId of selectedGuestsToDelete) {
+              await guestService.deleteGuest(guestId);
+            }
+            setGuests(prev => prev.filter(g => !selectedGuestsToDelete.has(g.id)));
+            setEditCategoryModalVisible(false);
+          } catch (e) {
+            Alert.alert('שגיאה', 'לא ניתן למחוק אורחים');
+          }
+        }
+      }
+    ]);
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -461,7 +515,12 @@ export default function GuestsScreen() {
             const guestsInCat = filteredGuests.filter(g => g.category_id === cat.id);
             return (
               <View key={cat.id} style={styles.categoryCardModern}>
-                <Text style={styles.categoryTitleModern}>{cat.name}</Text>
+                <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={[styles.categoryTitleModern, { textAlign: 'right', flex: 1 }]}>{cat.name}</Text>
+                  <TouchableOpacity onPress={() => handleEditCategory(cat)} style={styles.editCategoryButton}>
+                    <Ionicons name="create-outline" size={22} color={colors.primary} />
+                  </TouchableOpacity>
+                </View>
                 <View style={styles.guestsListModern}>
                   {guestsInCat.length > 0 ? (
                     guestsInCat.map(guest => (
@@ -611,6 +670,81 @@ export default function GuestsScreen() {
             >
               <Ionicons name="checkmark" size={20} color={colors.white} />
               <Text style={styles.saveButtonText}>שמור</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+
+    {/* מודל עריכת קטגוריה */}
+    <Modal
+      visible={editCategoryModalVisible}
+      transparent={true}
+      animationType="slide"
+      onRequestClose={() => setEditCategoryModalVisible(false)}
+    >
+      <KeyboardAvoidingView style={styles.modalContainer} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <View style={[styles.modalContent, { maxHeight: 500, minHeight: 350, width: '96%', padding: 28 }]}> {/* הגדלה */}
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>{String('עריכת קטגוריה')}</Text>
+            <TouchableOpacity onPress={() => setEditCategoryModalVisible(false)} style={styles.closeButton}>
+              <Ionicons name="close" size={24} color={colors.text} />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>{String('שם הקטגוריה:')}</Text>
+            <TextInput
+              style={styles.editInput}
+              value={editCategoryName}
+              onChangeText={setEditCategoryName}
+              placeholder="הזן שם"
+              textAlign="right"
+            />
+          </View>
+          <Text style={[styles.inputLabel, { marginBottom: 8 }]}>{String('בחר אורחים למחיקה:')}</Text>
+          <ScrollView style={{ maxHeight: 180 }}>
+            {Array.isArray(selectedCategoryGuests) && selectedCategoryGuests.length === 0 ? (
+              <Text style={styles.emptyStateText}>{String('אין אורחים בקטגוריה זו')}</Text>
+            ) : Array.isArray(selectedCategoryGuests) && selectedCategoryGuests.length > 0 ? (
+              <View>
+                {selectedCategoryGuests.map(guest => (
+                  <TouchableOpacity
+                    key={guest.id}
+                    style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}
+                    onPress={() => handleToggleGuestToDelete(guest.id)}
+                  >
+                    <Ionicons
+                      name={selectedGuestsToDelete.has(guest.id) ? 'checkbox' : 'square-outline'}
+                      size={22}
+                      color={selectedGuestsToDelete.has(guest.id) ? colors.primary : colors.gray[400]}
+                      style={{ marginLeft: 8 }}
+                    />
+                    <View style={{ flex: 1, flexDirection: 'row', flexWrap: 'wrap' }}>
+                      <Text style={{ fontSize: 15, color: colors.text }}>{String(guest.name || '')}</Text>
+                      <Text style={{ fontSize: 15, color: colors.text }}>{` (${String(guest.phone || '')})`}</Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            ) : (
+              <Text style={styles.emptyStateText}>{String('אין אורחים בקטגוריה זו')}</Text>
+            )}
+          </ScrollView>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 18 }}>
+            <TouchableOpacity
+              style={[styles.actionButton, styles.deleteButton, { flex: 1, marginRight: 8 }]}
+              onPress={handleDeleteSelectedGuests}
+              disabled={selectedGuestsToDelete.size === 0}
+            >
+              <Ionicons name="trash" size={20} color={colors.white} />
+              <Text style={styles.deleteButtonText}>{String('מחק נבחרים')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.actionButton, styles.saveButton, { flex: 1, marginLeft: 8 }]}
+              onPress={handleSaveCategoryName}
+            >
+              <Ionicons name="checkmark" size={20} color={colors.white} />
+              <Text style={styles.saveButtonText}>{String('שמור שם')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1140,5 +1274,8 @@ const styles = StyleSheet.create({
   },
   statusPending: {
     backgroundColor: colors.warning,
+  },
+  editCategoryButton: {
+    padding: 8,
   },
 });

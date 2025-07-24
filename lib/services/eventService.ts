@@ -139,6 +139,12 @@ export const eventService = {
 
       if (error) throw error;
 
+      // עדכן את המשתמש עם ה-event_id החדש
+      await supabase
+        .from('users')
+        .update({ event_id: data.id })
+        .eq('id', userId);
+
       return {
         id: data.id,
         title: data.title,

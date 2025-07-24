@@ -9,6 +9,8 @@ export default function TabLayout() {
   const router = useRouter();
   const { userType, isLoggedIn, userData } = useUserStore();
 
+  console.log('TabLayout render:', { userType, isLoggedIn, userData });
+
   useEffect(() => {
     console.log('🔍 TabLayout Effect - userType changed:', {
       userType,

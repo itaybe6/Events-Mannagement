@@ -12,7 +12,7 @@ import { guestService } from '@/lib/services/guestService';
 import { giftService } from '@/lib/services/giftService';
 
 export default function HomeScreen() {
-  const { isLoggedIn } = useUserStore();
+  const { isLoggedIn, userData, initializeAuth } = useUserStore();
   const router = useRouter();
   const [currentEvent, setCurrentEvent] = useState<any>(null);
   const [guests, setGuests] = useState<any[]>([]);
@@ -28,58 +28,79 @@ export default function HomeScreen() {
     const loadData = async () => {
       try {
         setLoading(true);
-        // טען את האירוע הראשון של המשתמש
-        const events = await eventService.getEvents();
-        if (events.length > 0) {
-          const event = events[0];
+        let eventId = userData?.event_id;
+        if (!eventId) {
+          // רענן את המשתמש מהשרת
+          await initializeAuth();
+          eventId = useUserStore.getState().userData?.event_id;
+        }
+        if (!eventId) {
+          setCurrentEvent(null);
+          setGuests([]);
+          setGifts([]);
+          setLoading(false);
+          return;
+        }
+        // טען את האירוע לפי event_id של המשתמש
+        const event = await eventService.getEvent(eventId);
+        if (event) {
           setCurrentEvent(event);
-          
           // טען אורחים
           const guestsData = await guestService.getGuests(event.id);
           setGuests(guestsData);
-          
-          // טען מתנות (אם יש שירות מתנות)
+          // טען מתנות
           try {
             const giftsData = await giftService.getGifts(event.id);
             setGifts(giftsData);
           } catch (e) {
-            console.log('No gifts service available');
             setGifts([]);
           }
+        } else {
+          setCurrentEvent(null);
+          setGuests([]);
+          setGifts([]);
         }
       } catch (error) {
+        setCurrentEvent(null);
+        setGuests([]);
+        setGifts([]);
         console.error('Error loading data:', error);
       } finally {
         setLoading(false);
       }
     };
-    
     loadData();
-  }, [isLoggedIn, router]);
+  }, [isLoggedIn, router, userData]);
 
   // טען מחדש נתונים כשהמסך חוזר למוקד
   useFocusEffect(
     React.useCallback(() => {
-      if (isLoggedIn && currentEvent) {
+      if (isLoggedIn && userData?.event_id) {
         const reloadData = async () => {
           try {
-            // טען מחדש אורחים ומתנות
-            const guestsData = await guestService.getGuests(currentEvent.id);
-            setGuests(guestsData);
-            
-            try {
-              const giftsData = await giftService.getGifts(currentEvent.id);
-              setGifts(giftsData);
-            } catch (e) {
-              console.log('No gifts service available');
+            const event = await eventService.getEvent(userData.event_id);
+            setCurrentEvent(event);
+            if (event) {
+              const guestsData = await guestService.getGuests(event.id);
+              setGuests(guestsData);
+              try {
+                const giftsData = await giftService.getGifts(event.id);
+                setGifts(giftsData);
+              } catch (e) {
+                setGifts([]);
+              }
+            } else {
+              setGuests([]);
+              setGifts([]);
             }
           } catch (error) {
-            console.error('Error reloading data:', error);
+            setGuests([]);
+            setGifts([]);
           }
         };
         reloadData();
       }
-    }, [isLoggedIn, currentEvent])
+    }, [isLoggedIn, userData])
   );
 
   if (!isLoggedIn) {

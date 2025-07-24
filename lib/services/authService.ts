@@ -6,6 +6,7 @@ export interface AuthUser {
   email: string;
   name: string;
   phone?: string;
+  event_id?: string;
   userType: UserType;
   created_at?: string;
   updated_at?: string;
@@ -327,6 +328,8 @@ export const authService = {
         id: profile.id,
         email: profile.email,
         name: profile.name,
+        phone: profile.phone,
+        event_id: profile.event_id,
         userType: profile.user_type as UserType,
       };
     } catch (error) {
