@@ -32,8 +32,11 @@ export default function SeatingMapEditor() {
   const [dragActiveId, setDragActiveId] = useState<string | null>(null);
   const [editMode, setEditMode] = useState(false);
   const [dragTableId, setDragTableId] = useState<string | null>(null);
-  const positionsRef = useRef<{ [id: string]: Animated.ValueXY }>({});
-  const panRespondersRef = useRef<{ [id: string]: any }>({});
+  const positions = useRef<{ [id: string]: Animated.ValueXY }>({}).current;
+  const panResponders = useRef<{ [id: string]: any }>({}).current;
+  const [isPositionsReady, setIsPositionsReady] = useState(false);
+  const [selectedTableForDrag, setSelectedTableForDrag] = useState<string | null>(null);
+  const [dragStartPos, setDragStartPos] = useState<{x: number, y: number} | null>(null);
 
   // מחוץ ל-map וברמה העליונה של הפונקציה:
   const shakeAnim = useRef(new Animated.Value(0)).current;
@@ -60,45 +63,67 @@ export default function SeatingMapEditor() {
 
   // יצירת Animated.ValueXY ו-PanResponder לכל שולחן, ומחיקת ישנים
   useEffect(() => {
+    let newPositionsCreated = false;
     tables.forEach(table => {
-      if (!positionsRef.current[table.id]) {
-        positionsRef.current[table.id] = new Animated.ValueXY({ 
+      if (!positions[table.id]) {
+        newPositionsCreated = true;
+        positions[table.id] = new Animated.ValueXY({
           x: typeof table.x === 'number' ? table.x : 40,
           y: typeof table.y === 'number' ? table.y : 60
         });
-      } else {
-        positionsRef.current[table.id].setValue({ x: table.x ?? 40, y: table.y ?? 60 });
-      }
-      if (!panRespondersRef.current[table.id]) {
-        panRespondersRef.current[table.id] = PanResponder.create({
-          onStartShouldSetPanResponder: () => editMode,
-          onPanResponderGrant: () => {
-            positionsRef.current[table.id].setOffset({
-              x: Number(positionsRef.current[table.id].x) || 0,
-              y: Number(positionsRef.current[table.id].y) || 0,
-            });
-            positionsRef.current[table.id].setValue({ x: 0, y: 0 });
-          },
-          onPanResponderMove: Animated.event(
-            [null, { dx: positionsRef.current[table.id].x, dy: positionsRef.current[table.id].y }],
-            { useNativeDriver: false }
-          ),
-          onPanResponderRelease: () => {
-            positionsRef.current[table.id].flattenOffset();
-            const { x, y } = positionsRef.current[table.id];
-            updateTable(table.id, { x: Math.round(x._value), y: Math.round(y._value) });
-          },
-        });
       }
     });
+
     // ניקוי זיכרון
-    Object.keys(positionsRef.current).forEach(id => {
+    Object.keys(positions).forEach(id => {
       if (!tables.find(t => t.id === id)) {
-        delete positionsRef.current[id];
-        delete panRespondersRef.current[id];
+        delete positions[id];
+        delete panResponders[id];
       }
     });
+
+    if (newPositionsCreated) {
+      setIsPositionsReady(true);
+    }
   }, [tables, editMode]);
+
+  const handleTouchStart = (table: any, event: any) => {
+    if (!editMode) return;
+    console.log('Touch started on table:', table.id);
+    setSelectedTableForDrag(table.id);
+    const touch = event.nativeEvent.touches[0];
+    setDragStartPos({ x: touch.pageX, y: touch.pageY });
+  };
+
+  const handleTouchMove = (table: any, event: any) => {
+    if (!editMode || selectedTableForDrag !== table.id || !dragStartPos) return;
+    
+    const touch = event.nativeEvent.touches[0];
+    const deltaX = touch.pageX - dragStartPos.x;
+    const deltaY = touch.pageY - dragStartPos.y;
+    
+    const currentX = (positions[table.id].x as any)._value || 0;
+    const currentY = (positions[table.id].y as any)._value || 0;
+    
+    positions[table.id].setValue({
+      x: currentX + deltaX,
+      y: currentY + deltaY
+    });
+    
+    setDragStartPos({ x: touch.pageX, y: touch.pageY });
+  };
+
+  const handleTouchEnd = (table: any) => {
+    if (!editMode || selectedTableForDrag !== table.id) return;
+    console.log('Touch ended on table:', table.id);
+    
+    const x = (positions[table.id].x as any)._value || 0;
+    const y = (positions[table.id].y as any)._value || 0;
+    
+    updateTable(table.id, { x: Math.round(x), y: Math.round(y) });
+    setSelectedTableForDrag(null);
+    setDragStartPos(null);
+  };
 
   const fetchTables = async () => {
     setLoading(true);
@@ -232,49 +257,7 @@ export default function SeatingMapEditor() {
   // איפוס זום
   const resetZoom = () => setZoom(1);
 
-  // גרירת שולחן - התחלה
-  // const onTablePressIn = (table: any, e: any) => {
-  //   setDragOffset({
-  //     x: table.x ?? 40,
-  //     y: table.y ?? 60,
-  //   });
-  // };
-  // גרירה רק אחרי לחיצה ארוכה
-  // const onTableLongPress = () => setEditMode(true);
-  // const onTableMove = (table: any, e: any) => {
-  //   if (
-  //     dragActiveId === table.id &&
-  //     dragOffset.x !== undefined &&
-  //     dragOffset.y !== undefined
-  //   ) {
-  //     const touch = e.nativeEvent.touches && e.nativeEvent.touches[0];
-  //     if (!touch) return;
-  //     const deltaX = touch.pageX - dragOffset.x;
-  //     const deltaY = touch.pageY - dragOffset.y;
-  //     const newX = dragOffset.x + deltaX;
-  //     const newY = dragOffset.y + deltaY;
-  //     setTables(tables =>
-  //       tables.map(t =>
-  //         t.id === table.id ? { ...t, x: newX, y: newY } : t
-  //       )
-  //     );
-  //   }
-  // };
-  // סיום גרירה
-  // const onTablePressOut = async (table: any, e: any) => {
-  //   if (
-  //     dragActiveId === table.id &&
-  //     dragOffset.x !== undefined &&
-  //     dragOffset.y !== undefined
-  //   ) {
-  //     await updateTable(table.id, {
-  //       x: Math.round(table.x),
-  //       y: Math.round(table.y),
-  //     });
-  //   }
-  // };
-
-  // גרירת טקסט - התחלה
+  
   const onTextPressIn = (t: any, e: any) => {
     setDragOffset({
       x: t.x ?? 200,
@@ -371,33 +354,64 @@ export default function SeatingMapEditor() {
               <View key={i} style={[styles.gridLineV, { left: i * 80 }]} />
             ))}
             {/* Tables */}
-            {tables.map(table => (
+            {isPositionsReady && tables.map(table => (
               <Animated.View
                 key={table.id}
                 style={[
                   styles.table,
                   table.shape === 'rectangle' ? styles.tableRect : styles.tableSquare,
-                  positionsRef.current[table.id]?.getTranslateTransform(),
+                  {
+                    transform: [
+                      ...positions[table.id].getTranslateTransform(),
+                      ...(editMode
+                        ? [
+                            {
+                              rotate: shakeAnim.interpolate({
+                                inputRange: [-1, 1],
+                                outputRange: ['-2deg', '2deg'],
+                              }),
+                            },
+                          ]
+                        : []),
+                    ],
+                  },
                   editMode && {
                     zIndex: 10,
                     borderColor: 'red',
                     borderWidth: 2,
-                    transform: [
-                      ...positionsRef.current[table.id].getTranslateTransform(),
-                      { rotate: shakeAnim.interpolate({ inputRange: [-1, 1], outputRange: ['-2deg', '2deg'] }) },
-                    ],
+                  },
+                  selectedTableForDrag === table.id && {
+                    backgroundColor: '#333',
                   },
                 ]}
-                {...(panRespondersRef.current[table.id]?.panHandlers || {})}
+                onTouchStart={(e) => handleTouchStart(table, e)}
+                onTouchMove={(e) => handleTouchMove(table, e)}
+                onTouchEnd={() => handleTouchEnd(table)}
               >
-                <Pressable
-                  onLongPress={() => setEditMode(true)}
-                  style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
-                  pointerEvents="box-none"
-                >
-                  <Text style={styles.tableName}>{table.number}</Text>
-                  <Text style={styles.tableCap}>{table.capacity}</Text>
-                </Pressable>
+                {editMode ? (
+                  <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={[
+                      styles.tableName,
+                      selectedTableForDrag === table.id && { color: '#fff' }
+                    ]}>{table.number}</Text>
+                    <Text style={[
+                      styles.tableCap,
+                      selectedTableForDrag === table.id && { color: '#ccc' }
+                    ]}>{table.capacity}</Text>
+                  </View>
+                ) : (
+                  <Pressable
+                    onLongPress={() => {
+                      setEditMode(true);
+                      setSelectedTableForDrag(table.id);
+                      setTimeout(() => setSelectedTableForDrag(null), 1000);
+                    }}
+                    style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
+                  >
+                    <Text style={styles.tableName}>{table.number}</Text>
+                    <Text style={styles.tableCap}>{table.capacity}</Text>
+                  </Pressable>
+                )}
                 <TouchableOpacity style={styles.editBtn} onPress={() => openEditModal(table)}>
                   <Ionicons name="pencil" size={18} color="#555" />
                 </TouchableOpacity>
