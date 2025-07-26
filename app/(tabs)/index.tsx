@@ -72,6 +72,13 @@ export default function HomeScreen() {
     loadData();
   }, [isLoggedIn, router, userData]);
 
+  useEffect(() => {
+    if (isLoggedIn && userData?.userType === 'admin' && !userData?.event_id) {
+      router.replace('/(tabs)/admin-events');
+      return;
+    }
+  }, [isLoggedIn, userData, router]);
+
   // טען מחדש נתונים כשהמסך חוזר למוקד
   useFocusEffect(
     React.useCallback(() => {

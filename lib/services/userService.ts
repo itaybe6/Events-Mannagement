@@ -15,8 +15,6 @@ export const userService = {
       console.log('📊 UserService - Loading users from Supabase...');
       const users = await authService.getAllUsers();
       
-      console.log('📊 Raw users from authService:', users);
-      
       // Convert to UserWithMetadata format - now we have real timestamps
       const usersWithMetadata = users.map(user => ({
         ...user,

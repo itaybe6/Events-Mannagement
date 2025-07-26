@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, SafeAreaView, TouchableOpacity, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, SafeAreaView, TouchableOpacity, Platform, Modal } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { colors } from '@/constants/colors';
 import { eventService } from '@/lib/services/eventService';
 import { guestService } from '@/lib/services/guestService';
 import { Ionicons } from '@expo/vector-icons';
 import { Event, Guest } from '@/types';
+import SeatingMapEditor from '../seating/SeatingMapEditor';
+import { supabase } from '@/lib/supabase';
 
 export default function AdminEventDetailsScreen() {
   const { id } = useLocalSearchParams();
@@ -13,6 +15,7 @@ export default function AdminEventDetailsScreen() {
   const [event, setEvent] = useState<Event | null>(null);
   const [guests, setGuests] = useState<Guest[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showSeatingMap, setShowSeatingMap] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -44,6 +47,27 @@ export default function AdminEventDetailsScreen() {
   const day = dateObj.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' });
   const weekday = dateObj.toLocaleDateString('he-IL', { weekday: 'long' });
 
+  // פונקציה חדשה: בדוק/צור מפת הושבה
+  const handleSeatingMap = async () => {
+    if (!event?.id) return;
+    // בדוק אם קיימת מפה
+    const { data, error } = await supabase
+      .from('seating_maps')
+      .select('*')
+      .eq('event_id', event.id)
+      .single();
+    if (!data) {
+      // צור מפה חדשה
+      await supabase.from('seating_maps').insert({
+        event_id: event.id,
+        num_tables: 0,
+        tables: [],
+        annotations: [],
+      });
+    }
+    router.push(`/seating/SeatingMapEditor?eventId=${event.id}`);
+  };
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.gray[100] }}>
       {/* Floating back button */}
@@ -61,49 +85,53 @@ export default function AdminEventDetailsScreen() {
             <Text style={styles.headerDateDay}>{day}</Text>
             <Text style={styles.headerDateWeek}>{weekday}</Text>
           </View>
-          <Text style={styles.headerTitle}>{String(event.title || '')}</Text>
+          <Text style={styles.headerTitle}>{String(event.title ?? '')}</Text>
         </View>
         {/* Main Card */}
         <View style={styles.card}>
           {/* Location */}
           <View style={styles.infoRow}>
             <Ionicons name="location" size={20} color={colors.text} style={styles.infoIcon} />
-            <Text style={styles.infoText}>{String(event.location || '')}</Text>
+            <Text style={styles.infoText}>{String(event.location ?? '')}</Text>
           </View>
           <View style={styles.infoRow}>
             <Ionicons name="business" size={20} color={colors.text} style={styles.infoIcon} />
-            <Text style={styles.infoText}>{String(event.city || '')}</Text>
+            <Text style={styles.infoText}>{String(event.city ?? '')}</Text>
           </View>
           {/* Type */}
           <View style={styles.infoRow}>
             <Ionicons name="people" size={20} color={colors.text} style={styles.infoIcon} />
-            <Text style={styles.infoText}>סוג אירוע: {String(event.title || '')}</Text>
+            <Text style={styles.infoText}>{'סוג אירוע: ' + String(event.title ?? '')}</Text>
           </View>
           {/* Stats */}
           <View style={styles.statsRow}>
+            {/* Green */}
             <View style={styles.statCard}>
-              <View style={[styles.statIconCircle, { backgroundColor: '#4CAF50' }]}> {/* Green */}
+              <View style={[styles.statIconCircle, { backgroundColor: '#4CAF50' }]}> 
                 <Ionicons name="checkmark" size={22} color={'#fff'} />
               </View>
               <Text style={styles.statValue}>{confirmed}</Text>
               <Text style={styles.statLabel}>אישרו הגעה</Text>
             </View>
+            {/* Red */}
             <View style={styles.statCard}>
-              <View style={[styles.statIconCircle, { backgroundColor: '#F44336' }]}> {/* Red */}
+              <View style={[styles.statIconCircle, { backgroundColor: '#F44336' }]}> 
                 <Ionicons name="close" size={22} color={'#fff'} />
               </View>
               <Text style={styles.statValue}>{declined}</Text>
               <Text style={styles.statLabel}>לא אישרו</Text>
             </View>
+            {/* Yellow */}
             <View style={styles.statCard}>
-              <View style={[styles.statIconCircle, { backgroundColor: '#FFC107' }]}> {/* Yellow */}
+              <View style={[styles.statIconCircle, { backgroundColor: '#FFC107' }]}> 
                 <Ionicons name="time" size={22} color={'#fff'} />
               </View>
               <Text style={styles.statValue}>{pending}</Text>
               <Text style={styles.statLabel}>ממתינים</Text>
             </View>
+            {/* Blue */}
             <View style={styles.statCard}>
-              <View style={[styles.statIconCircle, { backgroundColor: '#2196F3' }]}> {/* Blue */}
+              <View style={[styles.statIconCircle, { backgroundColor: '#2196F3' }]}> 
                 <Ionicons name="restaurant" size={22} color={'#fff'} />
               </View>
               <Text style={styles.statValue}>{seated}</Text>
@@ -111,7 +139,7 @@ export default function AdminEventDetailsScreen() {
             </View>
           </View>
           {/* Seating Map Button */}
-          <TouchableOpacity style={styles.seatingMapButton} activeOpacity={0.85}>
+          <TouchableOpacity style={styles.seatingMapButton} activeOpacity={0.85} onPress={handleSeatingMap}>
             <Ionicons name="grid" size={22} color={colors.white} style={{ marginLeft: 8 }} />
             <Text style={styles.seatingMapButtonText}>מפת הושבה</Text>
           </TouchableOpacity>

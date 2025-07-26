@@ -146,8 +146,6 @@ export const authService = {
         throw error;
       }
 
-      console.log('✅ Raw users from Supabase:', users);
-
       const mappedUsers = users.map(user => ({
         id: user.id,
         email: user.email,

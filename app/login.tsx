@@ -77,7 +77,7 @@ export default function LoginScreen() {
 
       // ניתוב לפי סוג משתמש
       if (userRow.user_type === 'admin') {
-        router.replace('/(tabs)/admin-profile');
+        router.replace('/(tabs)/admin-events');
       } else {
         router.replace('/(tabs)');
       }

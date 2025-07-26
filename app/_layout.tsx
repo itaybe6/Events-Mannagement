@@ -50,9 +50,9 @@ function RootLayoutNav() {
     if (isLoggedIn && segments[0] === 'login') {
       const { userType } = useUserStore.getState();
       if (userType === 'admin') {
-        router.replace('/(tabs)/clients');
+        router.replace('/(tabs)/admin-events');
       } else {
-      router.replace('/(tabs)');
+        router.replace('/(tabs)');
       }
     }
   }, [isLoggedIn, segments]);
@@ -71,10 +71,7 @@ function RootLayoutNav() {
       <Stack.Screen name="gift/confirmation" options={{ title: "אישור תשלום", headerBackVisible: false }} />
       <Stack.Screen name="rsvp/invite" options={{ title: "הזמנת אורחים" }} />
       <Stack.Screen name="seating/edit" options={{ title: "סידור ישיבה" }} />
-      <Stack.Screen name="financing/apply" options={{ title: "בקשת מימון" }} />
-      <Stack.Screen name="profile/edit" options={{ title: "עריכת פרופיל" }} />
-      <Stack.Screen name="profile/share" options={{ title: "שיתוף פרופיל" }} />
-      <Stack.Screen name="3d-seating" options={{ title: "סידור ישיבה תלת-ממדי" }} />
+      
     </Stack>
   );
 }
