@@ -57,6 +57,7 @@ export const GuestItem: React.FC<GuestItemProps> = ({
         {guest.tableId && (
           <Text style={styles.table}>שולחן: {guest.tableId}</Text>
         )}
+        <Text style={styles.numberOfPeople}>מספר אנשים: {guest.numberOfPeople}</Text>
       </View>
 
       {(onStatusChange || onEdit || onDelete) && (
@@ -151,6 +152,12 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   table: {
+    fontSize: 12,
+    color: colors.gray[600],
+    marginTop: 4,
+    textAlign: 'right',
+  },
+  numberOfPeople: {
     fontSize: 12,
     color: colors.gray[600],
     marginTop: 4,

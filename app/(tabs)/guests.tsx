@@ -127,6 +127,8 @@ export default function GuestsScreen() {
   const [selectedGuest, setSelectedGuest] = useState<any>(null);
   const [editGuestName, setEditGuestName] = useState('');
   const [editGuestPhone, setEditGuestPhone] = useState('');
+  const [editGuestStatus, setEditGuestStatus] = useState<'ממתין' | 'מגיע' | 'לא מגיע'>('ממתין');
+  const [editGuestPeopleCount, setEditGuestPeopleCount] = useState('1');
   const [editCategoryModalVisible, setEditCategoryModalVisible] = useState(false);
   const [editCategoryName, setEditCategoryName] = useState('');
   const [selectedCategoryGuests, setSelectedCategoryGuests] = useState<any[]>([]);
@@ -157,17 +159,17 @@ export default function GuestsScreen() {
 
   // ספירת אורחים לפי צד
   const sideCounts = {
-    groom: getGuestsBySide('groom').length,
-    bride: getGuestsBySide('bride').length,
+    groom: getGuestsBySide('groom').reduce((sum, guest) => sum + (guest.numberOfPeople || 1), 0),
+    bride: getGuestsBySide('bride').reduce((sum, guest) => sum + (guest.numberOfPeople || 1), 0),
   };
 
  
 
   const guestCounts = {
-    total: guests.length,
-    coming: guests.filter(g => g.status === 'מגיע').length,
-    notComing: guests.filter(g => g.status === 'לא מגיע').length,
-    pending: guests.filter(g => g.status === 'ממתין').length,
+    total: guests.reduce((sum, guest) => sum + (guest.numberOfPeople || 1), 0),
+    coming: guests.filter(g => g.status === 'מגיע').reduce((sum, guest) => sum + (guest.numberOfPeople || 1), 0),
+    notComing: guests.filter(g => g.status === 'לא מגיע').reduce((sum, guest) => sum + (guest.numberOfPeople || 1), 0),
+    pending: guests.filter(g => g.status === 'ממתין').reduce((sum, guest) => sum + (guest.numberOfPeople || 1), 0),
   };
 
   const importContacts = async () => {
@@ -220,6 +222,7 @@ export default function GuestsScreen() {
           gift: 0,
           message: '',
           category_id: selectedCategory.id,
+          numberOfPeople: 1,
         });
       }
     });
@@ -232,6 +235,8 @@ export default function GuestsScreen() {
     setSelectedGuest(guest);
     setEditGuestName(guest.name);
     setEditGuestPhone(guest.phone);
+    setEditGuestStatus(guest.status || 'ממתין');
+    setEditGuestPeopleCount(String(guest.numberOfPeople || 1));
     setEditModalVisible(true);
   };
 
@@ -239,15 +244,25 @@ export default function GuestsScreen() {
     if (!selectedGuest || !editGuestName.trim()) return;
     
     try {
+      const peopleCount = parseInt(editGuestPeopleCount) || 1;
+      
       await guestService.updateGuest(selectedGuest.id, {
         name: editGuestName.trim(),
         phone: editGuestPhone.trim(),
+        status: editGuestStatus,
+        numberOfPeople: peopleCount,
       });
       
       // עדכן את הרשימה המקומית
       setGuests(prev => prev.map(g => 
         g.id === selectedGuest.id 
-          ? { ...g, name: editGuestName.trim(), phone: editGuestPhone.trim() }
+          ? { 
+              ...g, 
+              name: editGuestName.trim(), 
+              phone: editGuestPhone.trim(),
+              status: editGuestStatus,
+              numberOfPeople: peopleCount
+            }
           : g
       ));
       
@@ -255,6 +270,8 @@ export default function GuestsScreen() {
       setSelectedGuest(null);
       setEditGuestName('');
       setEditGuestPhone('');
+      setEditGuestStatus('ממתין');
+      setEditGuestPeopleCount('1');
     } catch (e) {
       Alert.alert('שגיאה', 'לא ניתן לעדכן את האורח');
     }
@@ -282,6 +299,8 @@ export default function GuestsScreen() {
               setSelectedGuest(null);
               setEditGuestName('');
               setEditGuestPhone('');
+              setEditGuestStatus('ממתין');
+              setEditGuestPeopleCount('1');
             } catch (e) {
               Alert.alert('שגיאה', 'לא ניתן למחוק את האורח');
             }
@@ -509,7 +528,11 @@ export default function GuestsScreen() {
       </Modal>
 
       {/* Guests by category Apple style */}
-      <ScrollView style={styles.guestList}>
+      <ScrollView 
+        style={styles.guestList}
+        contentContainerStyle={{ paddingBottom: 80 }}
+        showsVerticalScrollIndicator={false}
+      >
         {categories.length > 0 ? (
           categories
             .filter(cat => !sideFilter || cat.side === sideFilter) // סינון קטגוריות לפי צד
@@ -519,27 +542,45 @@ export default function GuestsScreen() {
               <View key={cat.id} style={styles.categoryCardModern}>
                 <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Text style={[styles.categoryTitleModern, { textAlign: 'right', flex: 1 }]}>{cat.name}</Text>
-                  <TouchableOpacity onPress={() => handleEditCategory(cat)} style={styles.editCategoryButton}>
-                    <Ionicons name="create-outline" size={22} color={colors.primary} />
-                  </TouchableOpacity>
+                  <View style={styles.categoryHeaderActions}>
+                    <View style={styles.categoryPeopleCount}>
+                      <Ionicons name="person" size={16} color={colors.black} />
+                      <Text style={styles.categoryPeopleCountText}>
+                        {guestsInCat.reduce((total, guest) => total + (guest.numberOfPeople || 1), 0)}
+                      </Text>
+                    </View>
+                    <TouchableOpacity onPress={() => handleEditCategory(cat)} style={styles.editCategoryButton}>
+                      <Ionicons name="create-outline" size={22} color={colors.primary} />
+                    </TouchableOpacity>
+                  </View>
                 </View>
                 <View style={styles.guestsListModern}>
                   {guestsInCat.length > 0 ? (
-                    <View style={styles.guestsGrid}>
-                      {guestsInCat.map(guest => (
-                        <TouchableOpacity 
-                          key={guest.id} 
-                          style={styles.guestCardModern}
-                          onLongPress={() => handleLongPressGuest(guest)}
-                        >
-                          <View style={styles.guestInfoContainer}>
-                            <Text style={styles.guestNameModern} numberOfLines={1} ellipsizeMode="tail">{guest.name}</Text>
-                            <Text style={styles.guestPhoneModern} numberOfLines={1} ellipsizeMode="tail">{guest.phone}</Text>
-                          </View>
-                          {getStatusIcon(guest.status)}
-                        </TouchableOpacity>
-                      ))}
-                    </View>
+                    <ScrollView 
+                      style={styles.categoryGuestsScroll} 
+                      showsVerticalScrollIndicator={false}
+                      nestedScrollEnabled={true}
+                    >
+                      <View style={styles.guestsGrid}>
+                        {guestsInCat.map(guest => (
+                          <TouchableOpacity 
+                            key={guest.id} 
+                            style={styles.guestCardModern}
+                            onLongPress={() => handleLongPressGuest(guest)}
+                          >
+                            <View style={styles.peopleCountBadge}>
+                              <Ionicons name="person" size={12} color={colors.black} />
+                              <Text style={styles.peopleCountText}>{guest.numberOfPeople || 1}</Text>
+                            </View>
+                            <View style={styles.guestInfoContainer}>
+                              <Text style={styles.guestNameModern} numberOfLines={1} ellipsizeMode="tail">{guest.name}</Text>
+                              <Text style={styles.guestPhoneModern} numberOfLines={1} ellipsizeMode="tail">{guest.phone}</Text>
+                            </View>
+                            {getStatusIcon(guest.status)}
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </ScrollView>
                   ) : (
                     <Text style={styles.emptyStateText}>אין אורחים בקטגוריה זו</Text>
                   )}
@@ -627,7 +668,14 @@ export default function GuestsScreen() {
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>עריכת אורח</Text>
             <TouchableOpacity 
-              onPress={() => setEditModalVisible(false)}
+              onPress={() => {
+                setEditModalVisible(false);
+                setSelectedGuest(null);
+                setEditGuestName('');
+                setEditGuestPhone('');
+                setEditGuestStatus('ממתין');
+                setEditGuestPeopleCount('1');
+              }}
               style={styles.closeButton}
             >
               <Ionicons name="close" size={24} color={colors.text} />
@@ -655,6 +703,45 @@ export default function GuestsScreen() {
                 placeholder="הזן מספר טלפון"
                 textAlign="right"
                 keyboardType="phone-pad"
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>סטטוס:</Text>
+              <View style={styles.statusSelector}>
+                <TouchableOpacity
+                  style={[styles.statusOption, editGuestStatus === 'ממתין' && styles.statusOptionActive]}
+                  onPress={() => setEditGuestStatus('ממתין')}
+                >
+                  <Ionicons name="time" size={16} color={editGuestStatus === 'ממתין' ? colors.white : colors.warning} />
+                  <Text style={[styles.statusOptionText, editGuestStatus === 'ממתין' && styles.statusOptionTextActive]}>ממתין</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.statusOption, editGuestStatus === 'מגיע' && styles.statusOptionActive]}
+                  onPress={() => setEditGuestStatus('מגיע')}
+                >
+                  <Ionicons name="checkmark" size={16} color={editGuestStatus === 'מגיע' ? colors.white : colors.success} />
+                  <Text style={[styles.statusOptionText, editGuestStatus === 'מגיע' && styles.statusOptionTextActive]}>מגיע</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.statusOption, editGuestStatus === 'לא מגיע' && styles.statusOptionActive]}
+                  onPress={() => setEditGuestStatus('לא מגיע')}
+                >
+                  <Ionicons name="close" size={16} color={editGuestStatus === 'לא מגיע' ? colors.white : colors.error} />
+                  <Text style={[styles.statusOptionText, editGuestStatus === 'לא מגיע' && styles.statusOptionTextActive]}>לא מגיע</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>מספר אנשים:</Text>
+              <TextInput
+                style={styles.editInput}
+                value={editGuestPeopleCount}
+                onChangeText={setEditGuestPeopleCount}
+                placeholder="הזן מספר אנשים"
+                textAlign="right"
+                keyboardType="numeric"
               />
             </View>
           </ScrollView>
@@ -1197,7 +1284,8 @@ const styles = StyleSheet.create({
   },
   guestInfoContainer: {
     flex: 1,
-    marginRight: 10,
+    marginRight: 4,
+    marginLeft: 30,
   },
   guestNameModern: {
     fontSize: 15,
@@ -1210,6 +1298,24 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.textLight,
     textAlign: 'right',
+  },
+  peopleCountBadge: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.gray[200],
+    borderRadius: 12,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    zIndex: 1,
+  },
+  peopleCountText: {
+    fontSize: 11,
+    color: colors.black,
+    fontWeight: 'bold',
+    marginLeft: 2,
   },
   // פילטר לפי צד
   sideFilterContainer: {
@@ -1294,5 +1400,54 @@ const styles = StyleSheet.create({
   },
   editCategoryButton: {
     padding: 8,
+  },
+  statusSelector: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  statusOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: colors.gray[200],
+    flex: 1,
+    marginHorizontal: 4,
+    justifyContent: 'center',
+  },
+  statusOptionActive: {
+    backgroundColor: colors.primary,
+  },
+  statusOptionText: {
+    fontSize: 14,
+    color: colors.text,
+    marginLeft: 4,
+  },
+  statusOptionTextActive: {
+    color: colors.white,
+  },
+  categoryHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  categoryPeopleCount: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.gray[200],
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginRight: 8,
+  },
+  categoryPeopleCountText: {
+    fontSize: 14,
+    color: colors.black,
+    fontWeight: 'bold',
+    marginLeft: 4,
+  },
+  categoryGuestsScroll: {
+    maxHeight: 200,
   },
 });

@@ -252,7 +252,12 @@ export default function BrideGroomSeating() {
       .eq('event_id', userData.event_id);
     
     if (!error) {
-      setGuests(data || []);
+      // Map the data to include numberOfPeople from number_of_people column
+      const mappedGuests = (data || []).map(guest => ({
+        ...guest,
+        numberOfPeople: guest.number_of_people || 1
+      }));
+      setGuests(mappedGuests);
     } else {
       console.error("Error fetching guests for stats:", error);
     }
@@ -315,9 +320,15 @@ export default function BrideGroomSeating() {
     );
   }
 
-  const confirmedGuests = guests.filter(g => g.status === 'מגיע');
-  const seatedGuests = confirmedGuests.filter(g => g.table_id);
-  const unseatedGuests = confirmedGuests.filter(g => !g.table_id);
+  const confirmedGuestsList = guests.filter(g => g.status === 'מגיע');
+  const seatedGuestsList = confirmedGuestsList.filter(g => g.table_id);
+  const unseatedGuestsList = confirmedGuestsList.filter(g => !g.table_id);
+
+  const sumPeople = (guestList: any[]) => guestList.reduce((sum, guest) => sum + (guest.numberOfPeople || 1), 0);
+
+  const confirmedGuestsCount = sumPeople(confirmedGuestsList);
+  const seatedGuestsCount = sumPeople(seatedGuestsList);
+  const unseatedGuestsCount = sumPeople(unseatedGuestsList);
 
   const filteredSections = modalData
     .map(section => {
@@ -340,14 +351,14 @@ export default function BrideGroomSeating() {
     <View style={styles.container}>
       {/* Stats */}
       <View style={styles.statsContainer}>
-        <TouchableOpacity style={styles.statBox} onPress={() => openModalWithGuests('אישרו הגעה', confirmedGuests)}>
+        <TouchableOpacity style={styles.statBox} onPress={() => openModalWithGuests('אישרו הגעה', confirmedGuestsList)}>
           <Ionicons name="checkmark-circle-outline" size={28} color="#0A84FF" />
-          <Text style={styles.statValue}>{confirmedGuests.length}</Text>
+          <Text style={styles.statValue}>{confirmedGuestsCount}</Text>
           <Text style={styles.statLabel}>אישרו הגעה</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.statBox} onPress={() => openModalWithGuests('הושבו', seatedGuests)}>
+        <TouchableOpacity style={styles.statBox} onPress={() => openModalWithGuests('הושבו', seatedGuestsList)}>
           <Ionicons name="body" size={28} color="#0A84FF" />
-          <Text style={styles.statValue}>{seatedGuests.length}</Text>
+          <Text style={styles.statValue}>{seatedGuestsCount}</Text>
           <Text style={styles.statLabel}>הושבו</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.statBox} onPress={() => router.push('/(tabs)/TablesList')}>
@@ -355,9 +366,9 @@ export default function BrideGroomSeating() {
           <Text style={styles.statValue}>{tables.length}</Text>
           <Text style={styles.statLabel}>שולחנות</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.statBox} onPress={() => openModalWithGuests('טרם הושבו', unseatedGuests)}>
+        <TouchableOpacity style={styles.statBox} onPress={() => openModalWithGuests('טרם הושבו', unseatedGuestsList)}>
           <Ionicons name="walk" size={28} color="#0A84FF" />
-          <Text style={styles.statValue}>{unseatedGuests.length}</Text>
+          <Text style={styles.statValue}>{unseatedGuestsCount}</Text>
           <Text style={styles.statLabel}>טרם הושבו</Text>
         </TouchableOpacity>
       </View>
@@ -419,9 +430,15 @@ export default function BrideGroomSeating() {
                   <View style={styles.guestItem}>
                     <View style={styles.guestMainInfo}>
                       <Text style={styles.guestName}>{item.name}</Text>
-                      {tableNumber && (
-                        <Text style={styles.tableNumber}>שולחן {tableNumber}</Text>
-                      )}
+                      <View style={{flexDirection: 'row', alignItems: 'center'}}>
+                        {tableNumber && (
+                          <Text style={styles.tableNumber}>שולחן {tableNumber}</Text>
+                        )}
+                        <View style={styles.peopleCountBadge}>
+                            <Ionicons name="person" size={12} color="black" />
+                            <Text style={styles.peopleCountText}>{item.numberOfPeople || 1}</Text>
+                        </View>
+                      </View>
                     </View>
                   </View>
                 );
@@ -494,11 +511,19 @@ export default function BrideGroomSeating() {
               <FlatList
                 data={seatedGuestsForTable}
                 keyExtractor={(item) => item.id.toString()}
+                numColumns={2}
+                columnWrapperStyle={{ justifyContent: 'space-between' }}
                 renderItem={({ item }) => (
                   <View style={styles.seatedGuestItem}>
-                    <Text style={styles.guestName}>{item.name}</Text>
-                    <TouchableOpacity onPress={() => handleRemoveGuestFromTable(item.id)}>
-                      <Ionicons name="trash-outline" size={24} color="#ff3b30" />
+                    <View style={{flexDirection: 'row', alignItems: 'center', flex: 1}}>
+                        <Text style={[styles.guestName, {fontSize: 14, flex: 1}]} numberOfLines={1}>{item.name}</Text>
+                        <View style={[styles.peopleCountBadge, {marginLeft: 4}]}>
+                            <Ionicons name="person" size={10} color="black" />
+                            <Text style={[styles.peopleCountText, {fontSize: 10}]}>{item.numberOfPeople || 1}</Text>
+                        </View>
+                    </View>
+                    <TouchableOpacity onPress={() => handleRemoveGuestFromTable(item.id)} style={{marginLeft: 4}}>
+                      <Ionicons name="trash-outline" size={20} color="#ff3b30" />
                     </TouchableOpacity>
                   </View>
                 )}
@@ -540,22 +565,31 @@ export default function BrideGroomSeating() {
                 </View>
 
                 <FlatList
-                  data={unseatedGuests.filter(g => {
+                  data={unseatedGuestsList.filter(g => {
                     const categoryMatch = categoryFilterTable === 'הכל' || (g.guest_categories?.name || 'ללא קטגוריה') === categoryFilterTable;
                     const searchMatch = g.name.toLowerCase().includes(searchQueryTable.toLowerCase());
                     return categoryMatch && searchMatch;
                   })}
                   keyExtractor={(item) => item.id.toString()}
+                  numColumns={2}
+                  columnWrapperStyle={{ justifyContent: 'space-between' }}
                   renderItem={({ item }) => (
                     <TouchableOpacity
                       style={styles.selectableGuestItem}
                       onPress={() => handleToggleGuestSelection(item.id)}
                     >
-                      <Text style={styles.guestName}>{item.name}</Text>
+                      <View style={{flexDirection: 'row', alignItems: 'center', flex: 1}}>
+                        <Text style={[styles.guestName, {fontSize: 14, flex: 1}]} numberOfLines={1}>{item.name}</Text>
+                        <View style={[styles.peopleCountBadge, {marginLeft: 4}]}>
+                            <Ionicons name="person" size={10} color="black" />
+                            <Text style={[styles.peopleCountText, {fontSize: 10}]}>{item.numberOfPeople || 1}</Text>
+                        </View>
+                      </View>
                       <Ionicons
                         name={selectedGuestsToAdd.has(item.id) ? "checkbox" : "square-outline"}
-                        size={24}
+                        size={20}
                         color={selectedGuestsToAdd.has(item.id) ? "#007aff" : "#ccc"}
+                        style={{marginLeft: 4}}
                       />
                     </TouchableOpacity>
                   )}
@@ -617,7 +651,10 @@ export default function BrideGroomSeating() {
                 });
               }
               
-              const isTableFull = (table.seated_guests || 0) >= table.capacity;
+              // Calculate total people seated at this table
+              const guestsAtTable = guests.filter(g => g.table_id === table.id);
+              const totalPeopleSeated = guestsAtTable.reduce((sum, guest) => sum + (guest.numberOfPeople || 1), 0);
+              const isTableFull = totalPeopleSeated >= table.capacity;
               
               return (
                 <Animated.View
@@ -647,7 +684,7 @@ export default function BrideGroomSeating() {
                       isTableFull && styles.tableFullCapText,
                       pressedTable === table.id && { color: isTableFull ? '#4a7c59' : '#999' }
                     ]}>
-                      {table.seated_guests || 0} / {table.capacity}
+                      {totalPeopleSeated} / {table.capacity}
                     </Text>
                   </Pressable>
                 </Animated.View>
@@ -921,6 +958,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f2f2f7',
     borderRadius: 12,
     marginBottom: 8,
+    marginHorizontal: 4,
     borderWidth: 1,
     borderColor: '#e5e5ea',
     shadowColor: '#000',
@@ -928,6 +966,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,
+    width: '47%',
   },
   seatedGuestItem: {
     flexDirection: 'row',
@@ -938,6 +977,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff2f2',
     borderRadius: 12,
     marginBottom: 8,
+    marginHorizontal: 4,
     borderWidth: 1,
     borderColor: '#ffcccc',
     shadowColor: '#000',
@@ -945,6 +985,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,
+    width: '47%',
   },
   divider: {
     height: 1,
@@ -1034,5 +1075,20 @@ const styles = StyleSheet.create({
     padding: 8,
     borderWidth: 1,
     borderColor: '#007aff',
+  },
+  peopleCountBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#e0e0e0',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginLeft: 10,
+  },
+  peopleCountText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: 'black',
+    marginLeft: 4,
   },
 }); 

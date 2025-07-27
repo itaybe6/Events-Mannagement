@@ -22,6 +22,7 @@ export const guestService = {
         gift: Number(guest.gift_amount) || 0,
         message: guest.message || '',
         category_id: guest.category_id,
+        numberOfPeople: guest.number_of_people || 1,
       }));
     } catch (error) {
       console.error('Get guests error:', error);
@@ -43,6 +44,7 @@ export const guestService = {
           gift_amount: guest.gift,
           message: guest.message,
           category_id: guest.category_id,
+          number_of_people: guest.numberOfPeople,
         })
         .select()
         .single();
@@ -58,6 +60,7 @@ export const guestService = {
         gift: Number(data.gift_amount) || 0,
         message: data.message || '',
         category_id: data.category_id,
+        numberOfPeople: data.number_of_people || 1,
       };
     } catch (error) {
       console.error('Add guest error:', error);
@@ -76,6 +79,7 @@ export const guestService = {
       if (updates.tableId !== undefined) updateData.table_id = updates.tableId;
       if (updates.gift !== undefined) updateData.gift_amount = updates.gift;
       if (updates.message !== undefined) updateData.message = updates.message;
+      if (updates.numberOfPeople !== undefined) updateData.number_of_people = updates.numberOfPeople;
 
       const { data, error } = await supabase
         .from('guests')
@@ -95,6 +99,7 @@ export const guestService = {
         gift: Number(data.gift_amount) || 0,
         message: data.message || '',
         category_id: data.category_id,
+        numberOfPeople: data.number_of_people || 1,
       };
     } catch (error) {
       console.error('Update guest error:', error);

@@ -87,9 +87,26 @@ CREATE TABLE gifts (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Notification settings table
+CREATE TABLE notification_settings (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    event_id UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    notification_type VARCHAR(50) NOT NULL,
+    days_from_wedding INTEGER NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    message_content TEXT NOT NULL,
+    enabled BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(event_id, notification_type)
+);
+
 -- Add foreign key constraint for table_id in guests
 ALTER TABLE guests ADD CONSTRAINT fk_guests_table_id 
     FOREIGN KEY (table_id) REFERENCES tables(id) ON DELETE SET NULL;
+
+-- Add column for number of people
+ALTER TABLE guests ADD COLUMN number_of_people INTEGER DEFAULT 1;
 
 -- Create indexes for better performance
 CREATE INDEX idx_events_user_id ON events(user_id);

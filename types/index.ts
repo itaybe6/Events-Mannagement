@@ -7,6 +7,7 @@ export type Guest = {
   gift: number;
   message: string;
   category_id: string; // קטגוריה חובה
+  numberOfPeople: number;
 };
 
 export type GuestCategory = {

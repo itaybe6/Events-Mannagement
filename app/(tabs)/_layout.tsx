@@ -253,14 +253,14 @@ export default function TabLayout() {
         name="brideGroomProfile"
         options={{
           href: userType === 'couple' ? '/brideGroomProfile' : null,
-          title: "פרופיל",
+          title: "הגדרות",
           tabBarIcon: ({ focused }) => (
             <View style={[
               styles.iconContainer,
               focused && styles.activeIconContainer
             ]}>
               <Ionicons
-                name="person"
+                name="settings"
                 size={24}
                 color={focused ? colors.white : colors.gray[500]}
               />
