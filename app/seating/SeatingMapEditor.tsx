@@ -7,8 +7,8 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 const { width, height } = Dimensions.get('window');
 
 const TABLE_SHAPES = {
-  square: { label: 'שולחן רגיל', defaultCapacity: 8 },
-  rectangle: { label: 'שולחן אביר', defaultCapacity: 12 },
+  square: { label: 'שולחן רגיל', defaultCapacity: 12 },
+  rectangle: { label: 'שולחן אביר', defaultCapacity: 20 },
 };
 
 export default function SeatingMapEditor() {
@@ -175,6 +175,7 @@ export default function SeatingMapEditor() {
         shape,
         x: 40 + tables.length * 80,
         y: 60 + tables.length * 60,
+        seated_guests: 0,
       })
       .select()
       .single();
@@ -403,7 +404,7 @@ export default function SeatingMapEditor() {
                     <Text style={[
                       styles.tableCap,
                       selectedTableForDrag === table.id && { color: '#ccc' }
-                    ]}>{table.capacity}</Text>
+                    ]}>{table.seated_guests}</Text>
                   </View>
                 ) : (
                   <Pressable
@@ -424,7 +425,7 @@ export default function SeatingMapEditor() {
                     <Text style={[
                       styles.tableCap,
                       pressedTable === table.id && { color: '#999' }
-                    ]}>{table.capacity}</Text>
+                    ]}>{table.seated_guests }</Text>
                   </Pressable>
                 )}
               </Animated.View>
@@ -452,6 +453,7 @@ export default function SeatingMapEditor() {
         <View style={styles.modalBg}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>עריכת שולחן</Text>
+            <Text style={styles.modalLabel}>מספר שולחן</Text>
             <TextInput
               style={styles.input}
               value={String(selectedTable?.number || '')}
@@ -459,12 +461,20 @@ export default function SeatingMapEditor() {
               placeholder="מספר שולחן"
               keyboardType="numeric"
             />
+            <Text style={styles.modalLabel}>מספר מקומות</Text>
             <TextInput
               style={styles.input}
               value={String(selectedTable?.capacity || '')}
               onChangeText={capacity => setSelectedTable({ ...selectedTable, capacity: Number(capacity) })}
               placeholder="מספר מקומות"
               keyboardType="numeric"
+            />
+            <Text style={styles.modalLabel}>אנשים שהושבו</Text>
+            <TextInput
+              style={styles.input}
+              value={String(selectedTable?.seated_guests ?? '0')}
+              editable={false}
+              placeholder="אנשים שהושבו"
             />
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 16 }}>
               <TouchableOpacity style={styles.modalBtn} onPress={saveEdit}>
@@ -568,4 +578,10 @@ const styles = StyleSheet.create({
   modalBtn: { backgroundColor: '#e8a7a8', borderRadius: 8, padding: 10, marginHorizontal: 4, minWidth: 60, alignItems: 'center' },
   modalBtnText: { color: '#fff', fontWeight: 'bold' },
   editBtn: { position: 'absolute', top: 2, right: 2, zIndex: 10, backgroundColor: '#fff', borderRadius: 12, padding: 2, elevation: 2 },
+  modalLabel: {
+    fontSize: 14,
+    color: '#555',
+    marginBottom: 4,
+    textAlign: 'right',
+  },
 }); 

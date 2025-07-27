@@ -4,10 +4,12 @@ import { colors } from "@/constants/colors";
 import { Ionicons } from "@expo/vector-icons";
 import { Platform, StyleSheet, View, TouchableOpacity } from "react-native";
 import { useUserStore } from "@/store/userStore";
+import { useLayoutStore } from '@/store/layoutStore';
 
 export default function TabLayout() {
   const router = useRouter();
   const { userType, isLoggedIn, userData } = useUserStore();
+  const { isTabBarVisible } = useLayoutStore();
 
   console.log('TabLayout render:', { userType, isLoggedIn, userData });
 
@@ -67,6 +69,7 @@ export default function TabLayout() {
           borderTopWidth: 0,
           borderWidth: 1,
           borderColor: 'rgba(0,0,0,0.08)',
+          display: isTabBarVisible ? 'flex' : 'none',
         },
         tabBarItemStyle: {
           marginHorizontal: 3,
@@ -123,6 +126,25 @@ export default function TabLayout() {
         }}
       />
 
+      <Tabs.Screen
+        name="BrideGroomSeating"
+        options={{
+          href: userType === 'couple' ? '/(tabs)/BrideGroomSeating' : null,
+          title: "הושבה",
+          tabBarIcon: ({ focused }) => (
+            <View style={[
+              styles.iconContainer,
+              focused && styles.activeIconContainer
+            ]}>
+              <Ionicons
+                name="grid"
+                size={24}
+                color={focused ? colors.white : colors.gray[500]}
+              />
+            </View>
+          ),
+        }}
+      />
 
       <Tabs.Screen
         name="admin-events-create"
@@ -212,6 +234,26 @@ export default function TabLayout() {
             ]}>
               <Ionicons
                 name="people-circle"
+                size={24}
+                color={focused ? colors.white : colors.gray[500]}
+              />
+            </View>
+          ),
+        }}
+      />
+      
+      <Tabs.Screen
+        name="brideGroomProfile"
+        options={{
+          href: userType === 'couple' ? '/brideGroomProfile' : null,
+          title: "פרופיל",
+          tabBarIcon: ({ focused }) => (
+            <View style={[
+              styles.iconContainer,
+              focused && styles.activeIconContainer
+            ]}>
+              <Ionicons
+                name="person"
                 size={24}
                 color={focused ? colors.white : colors.gray[500]}
               />
