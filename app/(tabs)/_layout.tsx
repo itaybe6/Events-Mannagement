@@ -147,6 +147,13 @@ export default function TabLayout() {
       />
 
       <Tabs.Screen
+        name="TablesList"
+        options={{
+          href: null
+        }}
+      />
+
+      <Tabs.Screen
         name="admin-events-create"
         options={{
           href: null

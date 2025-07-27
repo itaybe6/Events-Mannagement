@@ -18,6 +18,8 @@ export default function ContactsListScreen() {
   const [addingCategory, setAddingCategory] = useState(false);
   const [selectedSide, setSelectedSide] = useState<'groom' | 'bride'>('groom');
   const [categorySideFilter, setCategorySideFilter] = useState<'groom' | 'bride' | 'all'>('all');
+  const [modalView, setModalView] = useState<'select' | 'create'>('select');
+  const [existingGuests, setExistingGuests] = useState<any[]>([]);
   const router = useRouter();
 
   // קבל eventId מהניווט
@@ -27,10 +29,14 @@ export default function ContactsListScreen() {
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
-      // טען קטגוריות
+      // טען קטגוריות ואורחים קיימים
       if (eventId) {
         const cats = await guestService.getGuestCategories(eventId);
         setCategories(cats);
+        
+        // טען את כל האורחים הקיימים לבדיקת כפילויות
+        const guests = await guestService.getGuests(eventId);
+        setExistingGuests(guests);
       }
       // טען אנשי קשר
       const { status } = await Contacts.requestPermissionsAsync();
@@ -50,6 +56,100 @@ export default function ContactsListScreen() {
     fetchData();
   }, [eventId]);
 
+  const normalizePhoneNumber = (phone: string) => {
+    // הסרת כל הרווחים, מקפים וסימנים מיוחדים ושמירה על מספרים בלבד
+    return phone.replace(/\D/g, '');
+  };
+
+  const checkForDuplicates = (contactsToAdd: any[]) => {
+    const duplicates: any[] = [];
+    const newGuests: any[] = [];
+    
+    contactsToAdd.forEach(contact => {
+      const contactPhone = normalizePhoneNumber(contact.phoneNumbers[0]?.number || '');
+      const isDuplicate = existingGuests.some(guest => 
+        normalizePhoneNumber(guest.phone) === contactPhone
+      );
+      
+      if (isDuplicate) {
+        duplicates.push(contact);
+      } else {
+        newGuests.push(contact);
+      }
+    });
+    
+    return { duplicates, newGuests };
+  };
+
+  const handleAddGuests = async () => {
+    if (!eventId || !selectedCategory) {
+      Alert.alert('שגיאה', 'יש לבחור קטגוריה לפני הוספת אורחים');
+      return;
+    }
+    
+    const contactsToAdd = Array.from(selectedContacts).map(id => 
+      contacts.find(c => c.id === id)
+    ).filter(Boolean);
+    
+    const { duplicates, newGuests } = checkForDuplicates(contactsToAdd);
+    
+    if (duplicates.length > 0) {
+      const duplicateNames = duplicates.map(d => d.name || 'ללא שם').join(', ');
+      
+      if (newGuests.length === 0) {
+        // כל האורחים כפולים
+        Alert.alert(
+          'אורחים כפולים',
+          `כל האורחים שנבחרו כבר קיימים באירוע:\n${duplicateNames}`,
+          [{ text: 'אוקיי', style: 'default' }]
+        );
+        return;
+      } else {
+        // חלק כפולים וחלק חדשים
+        Alert.alert(
+          'האם להמשיך?',
+          `האורחים הבאים כבר קיימים ולא יתווספו:\n${duplicateNames}\n\nהאם להוסיף את שאר האורחים (${newGuests.length})?`,
+          [
+            { text: 'ביטול', style: 'cancel' },
+            { 
+              text: 'הוסף את החדשים', 
+              style: 'default',
+              onPress: () => addGuestsToDatabase(newGuests)
+            }
+          ]
+        );
+        return;
+      }
+    }
+    
+    // אין כפילויות - הוסף את כל האורחים
+    addGuestsToDatabase(newGuests);
+  };
+
+  const addGuestsToDatabase = async (guestsToAdd: any[]) => {
+    let added = 0;
+    for (const contact of guestsToAdd) {
+      const phoneNumber = contact.phoneNumbers[0]?.number || '';
+      const name = contact.name || '';
+      try {
+        await guestService.addGuest(eventId!, {
+          name,
+          phone: phoneNumber,
+          status: 'ממתין',
+          tableId: null,
+          gift: 0,
+          message: '',
+          category_id: selectedCategory.id,
+        });
+        added++;
+      } catch (e) {
+        console.error('Error adding guest:', e);
+      }
+    }
+    Alert.alert('הוספה הושלמה', `נוספו ${added} אורחים חדשים לקטגוריה!`);
+    router.back();
+  };
+
   const toggleContact = (id: string) => {
     const newSelected = new Set(selectedContacts);
     if (newSelected.has(id)) {
@@ -58,35 +158,6 @@ export default function ContactsListScreen() {
       newSelected.add(id);
     }
     setSelectedContacts(newSelected);
-  };
-
-  const handleAddGuests = async () => {
-    if (!eventId || !selectedCategory) {
-      Alert.alert('שגיאה', 'יש לבחור קטגוריה לפני הוספת אורחים');
-      return;
-    }
-    let added = 0;
-    for (const id of selectedContacts) {
-      const contact = contacts.find(c => c.id === id);
-      if (contact) {
-        const phoneNumber = contact.phoneNumbers[0]?.number || '';
-        const name = contact.name || '';
-        try {
-          await guestService.addGuest(eventId, {
-            name,
-            phone: phoneNumber,
-            status: 'ממתין',
-            tableId: null,
-            gift: 0,
-            message: '',
-            category_id: selectedCategory.id,
-          });
-          added++;
-        } catch (e) {}
-      }
-    }
-    Alert.alert('הוספה הושלמה', `נוספו ${added} אורחים לקטגוריה!`);
-    router.back();
   };
 
   // סינון אנשי קשר לפי חיפוש
@@ -109,142 +180,161 @@ export default function ContactsListScreen() {
       >
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.25)' }}>
           <View style={styles.categoryModal}>
-            <Text style={styles.categoryModalTitle}>בחר קטגוריה</Text>
-            {/* הוספת קטגוריה חדשה */}
-            <View style={{ width: '100%', marginBottom: 16 }}>
-              <TextInput
-                style={[styles.searchInput, { marginBottom: 8 }]}
-                placeholder="הוסף קטגוריה חדשה..."
-                value={newCategoryName}
-                onChangeText={setNewCategoryName}
-                textAlign="right"
-              />
-              {/* בחירת צד */}
-              <View style={styles.sideSelector}>
-                <Text style={styles.sideSelectorLabel}>בחר צד:</Text>
-                <View style={styles.sideButtons}>
-                  <TouchableOpacity
-                    style={[styles.sideButton, selectedSide === 'groom' && styles.sideButtonActive]}
-                    onPress={() => setSelectedSide('groom')}
-                  >
-                    <Ionicons 
-                      name="male" 
-                      size={20} 
-                      color={selectedSide === 'groom' ? colors.white : colors.primary} 
-                    />
-                    <Text style={[styles.sideButtonText, selectedSide === 'groom' && styles.sideButtonTextActive]}>
-                      חתן
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.sideButton, selectedSide === 'bride' && styles.sideButtonActive]}
-                    onPress={() => setSelectedSide('bride')}
-                  >
-                    <Ionicons 
-                      name="female" 
-                      size={20} 
-                      color={selectedSide === 'bride' ? colors.white : colors.primary} 
-                    />
-                    <Text style={[styles.sideButtonText, selectedSide === 'bride' && styles.sideButtonTextActive]}>
-                      כלה
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
+            <View style={styles.modalHeader}>
               <TouchableOpacity
-                style={[styles.addButton, { padding: 10, marginTop: 8 }]}
-                onPress={async () => {
-                  if (!newCategoryName.trim() || !eventId) return;
-                  setAddingCategory(true);
-                  try {
-                    const newCat = await guestService.addGuestCategory(eventId, newCategoryName.trim(), selectedSide);
-                    setCategories(prev => [...prev, newCat]);
-                    setSelectedCategory(newCat);
-                    setNewCategoryName('');
-                    setCategoryModalVisible(false);
-                  } catch (e) {
-                    Alert.alert('שגיאה', 'לא ניתן להוסיף קטגוריה');
-                  }
-                  setAddingCategory(false);
-                }}
-                disabled={addingCategory || !newCategoryName.trim()}
+                style={[styles.modalTab, modalView === 'select' && styles.modalTabActive]}
+                onPress={() => setModalView('select')}
               >
-                <Text style={styles.addButtonText}>{addingCategory ? 'מוסיף...' : 'הוסף קטגוריה'}</Text>
+                <Text style={[styles.modalTabText, modalView === 'select' && styles.modalTabTextActive]}>קטגוריה קיימת</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalTab, modalView === 'create' && styles.modalTabActive]}
+                onPress={() => setModalView('create')}
+              >
+                <Text style={[styles.modalTabText, modalView === 'create' && styles.modalTabTextActive]}>קטגוריה חדשה</Text>
               </TouchableOpacity>
             </View>
 
-            {/* סינון קטגוריות לפי צד */}
-            <View style={styles.categoryFilterContainer}>
-              <Text style={styles.categoryFilterLabel}>סינון קטגוריות:</Text>
-              <View style={styles.categoryFilterButtons}>
+            {modalView === 'create' && (
+              <View style={styles.createCategoryContainer}>
+                <Text style={styles.categoryModalTitle}>הוספת קטגוריה חדשה</Text>
+                <TextInput
+                  style={[styles.searchInput, { marginBottom: 8 }]}
+                  placeholder="שם הקטגוריה..."
+                  value={newCategoryName}
+                  onChangeText={setNewCategoryName}
+                  textAlign="right"
+                />
+                <View style={styles.sideSelector}>
+                  <Text style={styles.sideSelectorLabel}>שייך לצד:</Text>
+                  <View style={styles.sideButtons}>
+                    <TouchableOpacity
+                      style={[styles.sideButton, selectedSide === 'groom' && styles.sideButtonActive]}
+                      onPress={() => setSelectedSide('groom')}
+                    >
+                      <Ionicons 
+                        name="male" 
+                        size={20} 
+                        color={selectedSide === 'groom' ? colors.white : colors.primary} 
+                      />
+                      <Text style={[styles.sideButtonText, selectedSide === 'groom' && styles.sideButtonTextActive]}>
+                        חתן
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.sideButton, selectedSide === 'bride' && styles.sideButtonActive]}
+                      onPress={() => setSelectedSide('bride')}
+                    >
+                      <Ionicons 
+                        name="female" 
+                        size={20} 
+                        color={selectedSide === 'bride' ? colors.white : colors.primary} 
+                      />
+                      <Text style={[styles.sideButtonText, selectedSide === 'bride' && styles.sideButtonTextActive]}>
+                        כלה
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
                 <TouchableOpacity
-                  style={[styles.categoryFilterButton, categorySideFilter === 'all' && styles.categoryFilterButtonActive]}
-                  onPress={() => setCategorySideFilter('all')}
+                  style={[styles.addButton, { padding: 10, marginTop: 8 }]}
+                  onPress={async () => {
+                    if (!newCategoryName.trim() || !eventId) return;
+                    setAddingCategory(true);
+                    try {
+                      const newCat = await guestService.addGuestCategory(eventId, newCategoryName.trim(), selectedSide);
+                      setCategories(prev => [...prev, newCat]);
+                      setSelectedCategory(newCat);
+                      setNewCategoryName('');
+                      setCategoryModalVisible(false);
+                    } catch (e) {
+                      Alert.alert('שגיאה', 'לא ניתן להוסיף קטגוריה');
+                    }
+                    setAddingCategory(false);
+                  }}
+                  disabled={addingCategory || !newCategoryName.trim()}
                 >
-                  <Ionicons 
-                    name="people" 
-                    size={16} 
-                    color={categorySideFilter === 'all' ? colors.white : colors.primary} 
-                  />
-                  <Text style={[styles.categoryFilterButtonText, categorySideFilter === 'all' && styles.categoryFilterButtonTextActive]}>
-                    הכל
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.categoryFilterButton, categorySideFilter === 'groom' && styles.categoryFilterButtonActive]}
-                  onPress={() => setCategorySideFilter('groom')}
-                >
-                  <Ionicons 
-                    name="male" 
-                    size={16} 
-                    color={categorySideFilter === 'groom' ? colors.white : colors.primary} 
-                  />
-                  <Text style={[styles.categoryFilterButtonText, categorySideFilter === 'groom' && styles.categoryFilterButtonTextActive]}>
-                    חתן
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.categoryFilterButton, categorySideFilter === 'bride' && styles.categoryFilterButtonActive]}
-                  onPress={() => setCategorySideFilter('bride')}
-                >
-                  <Ionicons 
-                    name="female" 
-                    size={16} 
-                    color={categorySideFilter === 'bride' ? colors.white : colors.primary} 
-                  />
-                  <Text style={[styles.categoryFilterButtonText, categorySideFilter === 'bride' && styles.categoryFilterButtonTextActive]}>
-                    כלה
-                  </Text>
+                  <Text style={styles.addButtonText}>{addingCategory ? 'מוסיף...' : 'הוסף קטגוריה'}</Text>
                 </TouchableOpacity>
               </View>
-            </View>
+            )}
 
-            <FlatList
-              data={categories.filter(cat => 
-                categorySideFilter === 'all' || cat.side === categorySideFilter
-              )}
-              keyExtractor={item => item.id}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={[styles.categoryModalItem, selectedCategory?.id === item.id && styles.categoryModalItemActive]}
-                  onPress={() => { setSelectedCategory(item); setCategoryModalVisible(false); }}
-                >
-                  <View style={styles.categoryModalItemContent}>
-                    <Ionicons 
-                      name={item.side === 'groom' ? 'male' : 'female'} 
-                      size={18} 
-                      color={selectedCategory?.id === item.id ? colors.white : colors.primary} 
-                      style={styles.categoryIcon}
-                    />
-                    <Text style={[styles.categoryModalName, selectedCategory?.id === item.id && styles.categoryModalNameActive]}>{item.name}</Text>
+            {modalView === 'select' && (
+              <View style={styles.selectCategoryContainer}>
+                <Text style={styles.categoryModalTitle}>בחירת קטגוריה</Text>
+                <View style={styles.categoryFilterContainer}>
+                  <Text style={styles.categoryFilterLabel}>סינון לפי צד:</Text>
+                  <View style={styles.categoryFilterButtons}>
+                    <TouchableOpacity
+                      style={[styles.categoryFilterButton, categorySideFilter === 'all' && styles.categoryFilterButtonActive]}
+                      onPress={() => setCategorySideFilter('all')}
+                    >
+                      <Ionicons 
+                        name="people" 
+                        size={16} 
+                        color={categorySideFilter === 'all' ? colors.white : colors.primary} 
+                      />
+                      <Text style={[styles.categoryFilterButtonText, categorySideFilter === 'all' && styles.categoryFilterButtonTextActive]}>
+                        הכל
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.categoryFilterButton, categorySideFilter === 'groom' && styles.categoryFilterButtonActive]}
+                      onPress={() => setCategorySideFilter('groom')}
+                    >
+                      <Ionicons 
+                        name="male" 
+                        size={16} 
+                        color={categorySideFilter === 'groom' ? colors.white : colors.primary} 
+                      />
+                      <Text style={[styles.categoryFilterButtonText, categorySideFilter === 'groom' && styles.categoryFilterButtonTextActive]}>
+                        חתן
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.categoryFilterButton, categorySideFilter === 'bride' && styles.categoryFilterButtonActive]}
+                      onPress={() => setCategorySideFilter('bride')}
+                    >
+                      <Ionicons 
+                        name="female" 
+                        size={16} 
+                        color={categorySideFilter === 'bride' ? colors.white : colors.primary} 
+                      />
+                      <Text style={[styles.categoryFilterButtonText, categorySideFilter === 'bride' && styles.categoryFilterButtonTextActive]}>
+                        כלה
+                      </Text>
+                    </TouchableOpacity>
                   </View>
-                  {selectedCategory?.id === item.id && (
-                    <Ionicons name="checkmark" size={18} color={colors.white} />
+                </View>
+
+                <FlatList
+                  data={categories.filter(cat => 
+                    categorySideFilter === 'all' || cat.side === categorySideFilter
                   )}
-                </TouchableOpacity>
-              )}
-              ListEmptyComponent={<Text style={styles.emptyStateText}>אין קטגוריות עדיין</Text>}
-            />
+                  keyExtractor={item => item.id}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={[styles.categoryModalItem, selectedCategory?.id === item.id && styles.categoryModalItemActive]}
+                      onPress={() => { setSelectedCategory(item); setCategoryModalVisible(false); }}
+                    >
+                      <View style={styles.categoryModalItemContent}>
+                        <Ionicons 
+                          name={item.side === 'groom' ? 'male' : 'female'} 
+                          size={18} 
+                          color={selectedCategory?.id === item.id ? colors.white : colors.primary} 
+                          style={styles.categoryIcon}
+                        />
+                        <Text style={[styles.categoryModalName, selectedCategory?.id === item.id && styles.categoryModalNameActive]}>{item.name}</Text>
+                      </View>
+                      {selectedCategory?.id === item.id && (
+                        <Ionicons name="checkmark" size={18} color={colors.white} />
+                      )}
+                    </TouchableOpacity>
+                  )}
+                  ListEmptyComponent={<Text style={styles.emptyStateText}>אין קטגוריות עדיין</Text>}
+                />
+              </View>
+            )}
           </View>
         </View>
       </Modal>
@@ -332,6 +422,42 @@ const styles = StyleSheet.create({
     width: '90%',
     maxWidth: 400,
     alignSelf: 'center',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    width: '100%',
+    backgroundColor: colors.gray[100],
+    borderRadius: 12,
+    padding: 4,
+    marginBottom: 20,
+  },
+  modalTab: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  modalTabActive: {
+    backgroundColor: colors.white,
+    shadowColor: colors.black,
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+  },
+  modalTabText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  modalTabTextActive: {
+    color: colors.primary,
+  },
+  createCategoryContainer: {
+    width: '100%',
+  },
+  selectCategoryContainer: {
+    width: '100%',
   },
   categoryModalTitle: {
     fontSize: 20,

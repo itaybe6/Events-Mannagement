@@ -30,9 +30,11 @@ export default function GuestsScreen() {
     setEventId(userData.event_id);
     // טען אורחים וקטגוריות לאירוע של המשתמש
     const fetchGuestsAndCategories = async () => {
-      const data = await guestService.getGuests(userData.event_id);
-      setGuests(data);
-      await loadCategories(userData.event_id);
+      if (userData.event_id) {
+        const data = await guestService.getGuests(userData.event_id);
+        setGuests(data);
+        await loadCategories(userData.event_id);
+      }
     };
     fetchGuestsAndCategories();
   }, [isLoggedIn, router, userData]);
@@ -323,9 +325,9 @@ export default function GuestsScreen() {
 
   const handleEditCategory = (category: any) => {
     setSelectedCategory(category);
-    setEditCategoryName(category.name);
+    setEditCategoryName(category.name || '');
     const guestsInCat = guests.filter(g => g.category_id === category.id);
-    setSelectedCategoryGuests(guestsInCat);
+    setSelectedCategoryGuests(guestsInCat || []);
     setSelectedGuestsToDelete(new Set());
     setEditCategoryModalVisible(true);
   };
@@ -523,19 +525,21 @@ export default function GuestsScreen() {
                 </View>
                 <View style={styles.guestsListModern}>
                   {guestsInCat.length > 0 ? (
-                    guestsInCat.map(guest => (
-                      <TouchableOpacity 
-                        key={guest.id} 
-                        style={styles.guestCardModern}
-                        onLongPress={() => handleLongPressGuest(guest)}
-                      >
-                        <View style={styles.guestInfoContainer}>
-                          <Text style={styles.guestNameModern}>{guest.name}</Text>
-                          <Text style={styles.guestPhoneModern}>{guest.phone}</Text>
-                        </View>
-                        {getStatusIcon(guest.status)}
-                      </TouchableOpacity>
-                    ))
+                    <View style={styles.guestsGrid}>
+                      {guestsInCat.map(guest => (
+                        <TouchableOpacity 
+                          key={guest.id} 
+                          style={styles.guestCardModern}
+                          onLongPress={() => handleLongPressGuest(guest)}
+                        >
+                          <View style={styles.guestInfoContainer}>
+                            <Text style={styles.guestNameModern} numberOfLines={1} ellipsizeMode="tail">{guest.name}</Text>
+                            <Text style={styles.guestPhoneModern} numberOfLines={1} ellipsizeMode="tail">{guest.phone}</Text>
+                          </View>
+                          {getStatusIcon(guest.status)}
+                        </TouchableOpacity>
+                      ))}
+                    </View>
                   ) : (
                     <Text style={styles.emptyStateText}>אין אורחים בקטגוריה זו</Text>
                   )}
@@ -686,65 +690,69 @@ export default function GuestsScreen() {
       <KeyboardAvoidingView style={styles.modalContainer} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <View style={[styles.modalContent, { maxHeight: 500, minHeight: 350, width: '96%', padding: 28 }]}> {/* הגדלה */}
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>{String('עריכת קטגוריה')}</Text>
+            <Text style={styles.modalTitle}>עריכת קטגוריה</Text>
             <TouchableOpacity onPress={() => setEditCategoryModalVisible(false)} style={styles.closeButton}>
               <Ionicons name="close" size={24} color={colors.text} />
             </TouchableOpacity>
           </View>
           <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>{String('שם הקטגוריה:')}</Text>
+            <Text style={styles.inputLabel}>שם הקטגוריה:</Text>
             <TextInput
               style={styles.editInput}
-              value={editCategoryName}
+              value={editCategoryName || ''}
               onChangeText={setEditCategoryName}
               placeholder="הזן שם"
               textAlign="right"
             />
           </View>
-          <Text style={[styles.inputLabel, { marginBottom: 8 }]}>{String('בחר אורחים למחיקה:')}</Text>
+          <Text style={[styles.inputLabel, { marginBottom: 8 }]}>בחר אורחים למחיקה:</Text>
           <ScrollView style={{ maxHeight: 180 }}>
-            {Array.isArray(selectedCategoryGuests) && selectedCategoryGuests.length === 0 ? (
-              <Text style={styles.emptyStateText}>{String('אין אורחים בקטגוריה זו')}</Text>
-            ) : Array.isArray(selectedCategoryGuests) && selectedCategoryGuests.length > 0 ? (
+            {selectedCategoryGuests && Array.isArray(selectedCategoryGuests) && selectedCategoryGuests.length > 0 ? (
               <View>
-                {selectedCategoryGuests.map(guest => (
-                  <TouchableOpacity
-                    key={guest.id}
-                    style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}
-                    onPress={() => handleToggleGuestToDelete(guest.id)}
-                  >
-                    <Ionicons
-                      name={selectedGuestsToDelete.has(guest.id) ? 'checkbox' : 'square-outline'}
-                      size={22}
-                      color={selectedGuestsToDelete.has(guest.id) ? colors.primary : colors.gray[400]}
-                      style={{ marginLeft: 8 }}
-                    />
-                    <View style={{ flex: 1, flexDirection: 'row', flexWrap: 'wrap' }}>
-                      <Text style={{ fontSize: 15, color: colors.text }}>{String(guest.name || '')}</Text>
-                      <Text style={{ fontSize: 15, color: colors.text }}>{` (${String(guest.phone || '')})`}</Text>
-                    </View>
-                  </TouchableOpacity>
-                ))}
+                {selectedCategoryGuests.map(guest => {
+                  if (!guest || !guest.id) return null;
+                  return (
+                    <TouchableOpacity
+                      key={guest.id}
+                      style={{ flexDirection: 'row-reverse', alignItems: 'center', marginBottom: 10, paddingVertical: 5 }}
+                      onPress={() => handleToggleGuestToDelete(guest.id)}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 17, color: colors.text, textAlign: 'right' }}>
+                          {guest.name || 'שם לא זמין'}
+                        </Text>
+                      </View>
+                      <Ionicons
+                        name={selectedGuestsToDelete.has(guest.id) ? 'checkbox' : 'square-outline'}
+                        size={24}
+                        color={selectedGuestsToDelete.has(guest.id) ? colors.primary : colors.gray[400]}
+                        style={{ marginLeft: 12 }}
+                      />
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             ) : (
-              <Text style={styles.emptyStateText}>{String('אין אורחים בקטגוריה זו')}</Text>
+              <View style={{ paddingVertical: 20 }}>
+                <Text style={styles.emptyStateText}>אין אורחים בקטגוריה זו</Text>
+              </View>
             )}
           </ScrollView>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 18 }}>
             <TouchableOpacity
-              style={[styles.actionButton, styles.deleteButton, { flex: 1, marginRight: 8 }]}
+              style={[styles.actionButton, styles.deleteButton, { flex: 1, marginLeft: 8 }]}
               onPress={handleDeleteSelectedGuests}
               disabled={selectedGuestsToDelete.size === 0}
             >
+              <Text style={styles.deleteButtonText}>מחק נבחרים</Text>
               <Ionicons name="trash" size={20} color={colors.white} />
-              <Text style={styles.deleteButtonText}>{String('מחק נבחרים')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.actionButton, styles.saveButton, { flex: 1, marginLeft: 8 }]}
+              style={[styles.actionButton, styles.saveButton, { flex: 1, marginRight: 8 }]}
               onPress={handleSaveCategoryName}
             >
+              <Text style={styles.saveButtonText}>שמור שם</Text>
               <Ionicons name="checkmark" size={20} color={colors.white} />
-              <Text style={styles.saveButtonText}>{String('שמור שם')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1163,11 +1171,20 @@ const styles = StyleSheet.create({
   guestsListModern: {
     gap: 0,
   },
+  guestsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
   guestCardModern: {
+    width: '47%',
+    minWidth: 160,
     backgroundColor: colors.gray[100],
     borderRadius: 16,
-    paddingVertical: 16,
-    paddingHorizontal: 20,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     marginBottom: 10,
     flexDirection: 'row',
     alignItems: 'center',
@@ -1180,17 +1197,17 @@ const styles = StyleSheet.create({
   },
   guestInfoContainer: {
     flex: 1,
-    marginRight: 12,
+    marginRight: 10,
   },
   guestNameModern: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
     color: colors.text,
     textAlign: 'right',
-    marginBottom: 4,
+    marginBottom: 3,
   },
   guestPhoneModern: {
-    fontSize: 14,
+    fontSize: 13,
     color: colors.textLight,
     textAlign: 'right',
   },

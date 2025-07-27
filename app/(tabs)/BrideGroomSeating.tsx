@@ -1,13 +1,16 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated, Pressable, ActivityIndicator, Modal, SectionList, TextInput, FlatList } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { useUserStore } from '@/store/userStore';
 import { Ionicons } from '@expo/vector-icons';
 import { useLayoutStore } from '@/store/layoutStore';
+import { Table } from '@/types';
+import { useRouter, useFocusEffect } from 'expo-router';
 
 export default function BrideGroomSeating() {
   const { userData } = useUserStore();
-  const [tables, setTables] = useState<any[]>([]);
+  const router = useRouter();
+  const [tables, setTables] = useState<Table[]>([]);
   const [guests, setGuests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
@@ -30,10 +33,11 @@ export default function BrideGroomSeating() {
   const [categoriesForTable, setCategoriesForTable] = useState<string[]>([]);
 
   const [tableModalVisible, setTableModalVisible] = useState(false);
-  const [selectedTableForModal, setSelectedTableForModal] = useState<any>(null);
+  const [selectedTableForModal, setSelectedTableForModal] = useState<Table | null>(null);
   const [seatedGuestsForTable, setSeatedGuestsForTable] = useState<any[]>([]);
   const [selectedGuestsToAdd, setSelectedGuestsToAdd] = useState<Set<string>>(new Set());
   const [tableModalView, setTableModalView] = useState<'seated' | 'add'>('seated');
+  const [tableName, setTableName] = useState('');
 
   const handleToggleGuestSelection = (guestId: string) => {
     const newSelection = new Set(selectedGuestsToAdd);
@@ -49,7 +53,9 @@ export default function BrideGroomSeating() {
     if (selectedGuestsToAdd.size === 0) return;
 
     const guestIds = Array.from(selectedGuestsToAdd);
-    const tableId = selectedTableForModal.id;
+    const tableId = selectedTableForModal?.id;
+
+    if (!tableId) return; // Ensure tableId is available
 
     // 1. עדכון האורחים
     const { error: guestUpdateError } = await supabase
@@ -74,18 +80,49 @@ export default function BrideGroomSeating() {
       return;
     }
 
-    // רענון הנתונים
+    // Refresh data
     await fetchGuests();
     await fetchTables();
     
-    setTableModalVisible(false);
+    // Close modal and clear selection
+    await closeModalAndShowTabBar();
     setSelectedGuestsToAdd(new Set());
+  };
+
+  const handleSaveTableName = async () => {
+    if (!selectedTableForModal) {
+      return;
+    }
+    
+    const currentName = selectedTableForModal.name || '';
+    if (tableName.trim() === currentName.trim()) {
+      return; // No change, do nothing
+    }
+    
+    const { error } = await supabase
+      .from('tables')
+      .update({ name: tableName.trim() || null })
+      .eq('id', selectedTableForModal.id);
+  
+    if (error) {
+      console.error('Error updating table name:', error);
+    } else {
+      // Update local state to reflect the change immediately
+      setTables(currentTables => 
+        currentTables.map(t => 
+          t.id === selectedTableForModal.id ? { ...t, name: tableName.trim() || null } : t
+        )
+      );
+      // Update the selected table for modal as well
+      setSelectedTableForModal(prev => prev ? { ...prev, name: tableName.trim() || null } : null);
+    }
   };
 
   const { setTabBarVisible } = useLayoutStore();
 
-  const handleTablePress = (table: any) => {
+  const handleTablePress = (table: Table) => {
     setSelectedTableForModal(table);
+    setTableName(table.name || '');
     const guestsForTable = guests.filter(g => g.table_id === table.id);
     setSeatedGuestsForTable(guestsForTable);
     
@@ -101,7 +138,8 @@ export default function BrideGroomSeating() {
     setTabBarVisible(false);
   };
 
-  const closeModalAndShowTabBar = () => {
+  const closeModalAndShowTabBar = async () => {
+    await handleSaveTableName();
     setTableModalVisible(false);
     setTabBarVisible(true);
   };
@@ -123,7 +161,7 @@ export default function BrideGroomSeating() {
     const { error: tableUpdateError } = await supabase
       .from('tables')
       .update({ seated_guests: currentSeated - 1 })
-      .eq('id', selectedTableForModal.id);
+      .eq('id', selectedTableForModal?.id);
       
     if (tableUpdateError) {
       console.error("Error updating table count:", tableUpdateError);
@@ -149,6 +187,20 @@ export default function BrideGroomSeating() {
       ]).finally(() => setLoading(false));
     }
   }, [userData?.event_id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      // Fetch data every time the screen comes into focus
+      if (userData?.event_id) {
+        setLoading(true);
+        Promise.all([
+          fetchTables(),
+          fetchTextAreas(),
+          fetchGuests(),
+        ]).finally(() => setLoading(false));
+      }
+    }, [userData?.event_id])
+  );
 
   // יצירת Animated.ValueXY לכל שולחן
   useEffect(() => {
@@ -298,11 +350,11 @@ export default function BrideGroomSeating() {
           <Text style={styles.statValue}>{seatedGuests.length}</Text>
           <Text style={styles.statLabel}>הושבו</Text>
         </TouchableOpacity>
-        <View style={styles.statBox}>
+        <TouchableOpacity style={styles.statBox} onPress={() => router.push('/(tabs)/TablesList')}>
           <Ionicons name="grid" size={28} color="#0A84FF" />
           <Text style={styles.statValue}>{tables.length}</Text>
           <Text style={styles.statLabel}>שולחנות</Text>
-        </View>
+        </TouchableOpacity>
         <TouchableOpacity style={styles.statBox} onPress={() => openModalWithGuests('טרם הושבו', unseatedGuests)}>
           <Ionicons name="walk" size={28} color="#0A84FF" />
           <Text style={styles.statValue}>{unseatedGuests.length}</Text>
@@ -394,8 +446,31 @@ export default function BrideGroomSeating() {
               <Ionicons name="close-circle" size={30} color="#e9ecef" />
             </TouchableOpacity>
 
-            <Text style={styles.modalTitle}>שולחן {selectedTableForModal?.number}</Text>
+            <Text style={styles.modalTitle}>
+              שולחן {selectedTableForModal?.number}
+              {selectedTableForModal?.name && ` - ${selectedTableForModal.name}`}
+            </Text>
             
+            <View style={styles.tableNameContainer}>
+              <TextInput
+                style={styles.tableNameInput}
+                value={tableName}
+                onChangeText={setTableName}
+                placeholder="הוסף שם לשולחן (אופציונלי)"
+                placeholderTextColor="#adb5bd"
+                onBlur={handleSaveTableName} // Save when input loses focus
+                onSubmitEditing={handleSaveTableName} // Save when pressing Enter/Done
+                returnKeyType="done"
+                blurOnSubmit={true}
+              />
+              <TouchableOpacity 
+                style={styles.saveNameButton} 
+                onPress={handleSaveTableName}
+              >
+                <Ionicons name="checkmark" size={20} color="#007aff" />
+              </TouchableOpacity>
+            </View>
+
             <View style={styles.toggleContainer}>
               <TouchableOpacity
                 style={[styles.toggleButton, tableModalView === 'seated' && styles.toggleButtonActive]}
@@ -458,8 +533,8 @@ export default function BrideGroomSeating() {
                                       styles.categoryButtonText,
                                       categoryFilterTable === category && styles.categoryButtonTextActive
                                   ]}>{category}</Text>
-                              </TouchableOpacity>
-                          ))}
+          </TouchableOpacity>
+        ))}
                       </View>
                   </ScrollView>
                 </View>
@@ -542,12 +617,15 @@ export default function BrideGroomSeating() {
                 });
               }
               
+              const isTableFull = (table.seated_guests || 0) >= table.capacity;
+              
               return (
                 <Animated.View
                   key={table.id}
                   style={[
                     styles.table,
                     table.shape === 'rectangle' ? styles.tableRect : styles.tableSquare,
+                    isTableFull && styles.tableFullStyle,
                     {
                       transform: positions[table.id] ? positions[table.id].getTranslateTransform() : [{ translateX: table.x || 40 }, { translateY: table.y || 60 }],
                     },
@@ -561,12 +639,16 @@ export default function BrideGroomSeating() {
                   >
                     <Text style={[
                       styles.tableName,
-                      pressedTable === table.id && { color: '#666' }
+                      isTableFull && styles.tableFullText,
+                      pressedTable === table.id && { color: isTableFull ? '#2d5a3d' : '#666' }
                     ]}>{table.number}</Text>
                     <Text style={[
                       styles.tableCap,
-                      pressedTable === table.id && { color: '#999' }
-                    ]}>{table.seated_guests || 0}</Text>
+                      isTableFull && styles.tableFullCapText,
+                      pressedTable === table.id && { color: isTableFull ? '#4a7c59' : '#999' }
+                    ]}>
+                      {table.seated_guests || 0} / {table.capacity}
+                    </Text>
                   </Pressable>
                 </Animated.View>
               );
@@ -641,7 +723,30 @@ const styles = StyleSheet.create({
   tableSquare: { width: 70, height: 70 },
   tableRect: { width: 60, height: 110 },
   tableName: { fontWeight: 'bold', fontSize: 16, color: '#333' },
+  tableCustomName: {
+    fontSize: 12,
+    color: '#555',
+    marginTop: 2,
+  },
   tableCap: { fontSize: 14, color: '#888' },
+  tableFullStyle: {
+    backgroundColor: '#34c759',
+    borderColor: '#30d158',
+    shadowColor: '#34c759',
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
+  },
+  tableFullText: {
+    color: '#ffffff',
+    fontWeight: '700',
+  },
+  tableFullCapText: {
+    color: '#e8f5e8',
+    fontWeight: '600',
+  },
+
   textArea: { 
     position: 'absolute', 
     backgroundColor: '#f5f5f5', 
@@ -904,5 +1009,30 @@ const styles = StyleSheet.create({
     top: 15,
     right: 15,
     zIndex: 1,
+  },
+  tableNameContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  tableNameInput: {
+    backgroundColor: '#f8f9fa',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    fontSize: 16,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+    borderWidth: 1,
+    borderColor: '#dee2e6',
+    flex: 1,
+    marginRight: 10,
+  },
+  saveNameButton: {
+    backgroundColor: '#f0f8ff',
+    borderRadius: 8,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: '#007aff',
   },
 }); 
