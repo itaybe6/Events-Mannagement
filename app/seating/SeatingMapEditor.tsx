@@ -37,6 +37,9 @@ export default function SeatingMapEditor() {
   const [isPositionsReady, setIsPositionsReady] = useState(false);
   const [selectedTableForDrag, setSelectedTableForDrag] = useState<string | null>(null);
   const [dragStartPos, setDragStartPos] = useState<{x: number, y: number} | null>(null);
+  const [choiceModalVisible, setChoiceModalVisible] = useState(false);
+  const [tableForChoice, setTableForChoice] = useState<any>(null);
+  const [pressedTable, setPressedTable] = useState<string | null>(null);
 
   // מחוץ ל-map וברמה העליונה של הפונקציה:
   const shakeAnim = useRef(new Animated.Value(0)).current;
@@ -91,32 +94,33 @@ export default function SeatingMapEditor() {
     if (!editMode) return;
     console.log('Touch started on table:', table.id);
     setSelectedTableForDrag(table.id);
-    const touch = event.nativeEvent.touches[0];
+    const touch = event.nativeEvent;
     setDragStartPos({ x: touch.pageX, y: touch.pageY });
+    
+    // שמירת המיקום הנוכחי
+    const currentX = (positions[table.id].x as any)._value || 0;
+    const currentY = (positions[table.id].y as any)._value || 0;
+    positions[table.id].setOffset({ x: currentX, y: currentY });
+    positions[table.id].setValue({ x: 0, y: 0 });
   };
 
   const handleTouchMove = (table: any, event: any) => {
     if (!editMode || selectedTableForDrag !== table.id || !dragStartPos) return;
     
-    const touch = event.nativeEvent.touches[0];
-    const deltaX = touch.pageX - dragStartPos.x;
-    const deltaY = touch.pageY - dragStartPos.y;
+    const touch = event.nativeEvent;
+    const deltaX = (touch.pageX - dragStartPos.x) / zoom;
+    const deltaY = (touch.pageY - dragStartPos.y) / zoom;
     
-    const currentX = (positions[table.id].x as any)._value || 0;
-    const currentY = (positions[table.id].y as any)._value || 0;
-    
-    positions[table.id].setValue({
-      x: currentX + deltaX,
-      y: currentY + deltaY
-    });
-    
-    setDragStartPos({ x: touch.pageX, y: touch.pageY });
+    // עדכון המיקום באופן יחסי
+    positions[table.id].setValue({ x: deltaX, y: deltaY });
   };
 
   const handleTouchEnd = (table: any) => {
     if (!editMode || selectedTableForDrag !== table.id) return;
     console.log('Touch ended on table:', table.id);
     
+    // איחוד המיקום הסופי
+    positions[table.id].flattenOffset();
     const x = (positions[table.id].x as any)._value || 0;
     const y = (positions[table.id].y as any)._value || 0;
     
@@ -338,19 +342,21 @@ export default function SeatingMapEditor() {
         maximumZoomScale={2}
         minimumZoomScale={0.5}
         horizontal
+        scrollEnabled={!selectedTableForDrag}
       >
         <ScrollView
           style={{ flex: 1 }}
           contentContainerStyle={{ flexGrow: 1 }}
           maximumZoomScale={2}
           minimumZoomScale={0.5}
+          scrollEnabled={!selectedTableForDrag}
         >
           <View style={[styles.canvas, { transform: [{ scale: zoom }], paddingTop: 60 }]}> 
             {/* Grid */}
-            {[...Array(20)].map((_, i) => (
+            {[...Array(40)].map((_, i) => (
               <View key={i} style={[styles.gridLine, { top: i * 50 }]} />
             ))}
-            {[...Array(10)].map((_, i) => (
+            {[...Array(30)].map((_, i) => (
               <View key={i} style={[styles.gridLineV, { left: i * 80 }]} />
             ))}
             {/* Tables */}
@@ -401,20 +407,26 @@ export default function SeatingMapEditor() {
                   </View>
                 ) : (
                   <Pressable
+                    onPressIn={() => setPressedTable(table.id)}
+                    onPressOut={() => setPressedTable(null)}
                     onLongPress={() => {
-                      setEditMode(true);
-                      setSelectedTableForDrag(table.id);
-                      setTimeout(() => setSelectedTableForDrag(null), 1000);
+                      setPressedTable(null);
+                      setTableForChoice(table);
+                      setChoiceModalVisible(true);
                     }}
+                    delayLongPress={400}
                     style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
                   >
-                    <Text style={styles.tableName}>{table.number}</Text>
-                    <Text style={styles.tableCap}>{table.capacity}</Text>
+                    <Text style={[
+                      styles.tableName,
+                      pressedTable === table.id && { color: '#666' }
+                    ]}>{table.number}</Text>
+                    <Text style={[
+                      styles.tableCap,
+                      pressedTable === table.id && { color: '#999' }
+                    ]}>{table.capacity}</Text>
                   </Pressable>
                 )}
-                <TouchableOpacity style={styles.editBtn} onPress={() => openEditModal(table)}>
-                  <Ionicons name="pencil" size={18} color="#555" />
-                </TouchableOpacity>
               </Animated.View>
             ))}
             {/* Text Areas */}
@@ -493,6 +505,40 @@ export default function SeatingMapEditor() {
           </View>
         </View>
       </Modal>
+
+      {/* Modal Choice */}
+      <Modal visible={choiceModalVisible} transparent animationType="slide">
+        <View style={styles.modalBg}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>מה תרצה לעשות?</Text>
+            <TouchableOpacity 
+              style={[styles.modalBtn, { marginVertical: 8, width: '100%' }]} 
+              onPress={() => {
+                setEditMode(true);
+                setChoiceModalVisible(false);
+              }}
+            >
+              <Text style={styles.modalBtnText}>עריכת השולחנות (גרירה)</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.modalBtn, { marginVertical: 8, width: '100%' }]} 
+              onPress={() => {
+                setSelectedTable(tableForChoice);
+                setChoiceModalVisible(false);
+                setModalVisible(true);
+              }}
+            >
+              <Text style={styles.modalBtnText}>עריכת פרטי השולחן</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.modalBtn, { marginVertical: 8, width: '100%' }]} 
+              onPress={() => setChoiceModalVisible(false)}
+            >
+              <Text style={styles.modalBtnText}>ביטול</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -505,7 +551,7 @@ const styles = StyleSheet.create({
   toolbarBtn: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 8, padding: 8, backgroundColor: '#fff', borderRadius: 8, elevation: 2 },
   toolbarBtnText: { marginLeft: 6, fontSize: 16, color: '#333' },
   canvasScroll: { flex: 1 },
-  canvas: { flex: 1, minHeight: 1000, minWidth: 800, backgroundColor: '#fff', borderRadius: 12, margin: 16, borderWidth: 1, borderColor: '#eee', overflow: 'hidden', paddingTop: 60 },
+  canvas: { flex: 1, minHeight: 2000, minWidth: 2400, backgroundColor: '#fff', borderRadius: 12, margin: 16, borderWidth: 1, borderColor: '#eee', overflow: 'hidden', paddingTop: 60 },
   gridLine: { position: 'absolute', left: 0, right: 0, height: 1, backgroundColor: '#eee' },
   gridLineV: { position: 'absolute', top: 0, bottom: 0, width: 1, backgroundColor: '#eee' },
   table: { position: 'absolute', alignItems: 'center', justifyContent: 'center', elevation: 4, backgroundColor: '#fafafa', borderRadius: 8, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, borderWidth: 1, borderColor: '#ddd' },
