@@ -133,6 +133,13 @@ export const useUserStore = create<UserState>()(
           }
         } catch (error) {
           console.error('Initialize auth error:', error);
+          
+          // Handle refresh token errors specifically using helper
+          if (authService.isTokenExpiredError(error)) {
+            console.log('Token expired during auth initialization, resetting auth state');
+          }
+          
+          // Always reset auth state on any error during initialization
           set({
             isLoggedIn: false,
             userType: null,

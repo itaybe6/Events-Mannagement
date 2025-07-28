@@ -13,6 +13,27 @@ export interface AuthUser {
 }
 
 export const authService = {
+  // Helper function to check if error is a token expiry error
+  isTokenExpiredError: (error: any): boolean => {
+    if (!error) return false;
+    
+    const errorMessage = typeof error === 'string' ? error : error.message || '';
+    return errorMessage.includes('Invalid Refresh Token') || 
+           errorMessage.includes('Refresh Token Not Found') ||
+           errorMessage.includes('refresh_token_not_found') ||
+           error.status === 401;
+  },
+
+  // Helper function to handle token expiry by clearing session
+  handleTokenExpiry: async (): Promise<void> => {
+    console.log('Handling token expiry, clearing session...');
+    try {
+      await supabase.auth.signOut();
+    } catch (signOutError) {
+      console.error('Error signing out after token expiry:', signOutError);
+    }
+  },
+
   // Test connection and permissions
   testConnection: async (): Promise<{ success: boolean; message: string }> => {
     try {
@@ -266,7 +287,20 @@ export const authService = {
         password,
       });
 
-      if (authError) throw authError;
+      if (authError) {
+        console.error('Sign in auth error:', authError);
+        
+        // Handle specific auth errors
+        if (authError.message?.includes('Invalid login credentials')) {
+          throw new Error('מייל או סיסמה שגויים');
+        } else if (authError.message?.includes('Email not confirmed')) {
+          throw new Error('יש לאמת את כתובת המייל לפני ההתחברות');
+        } else if (authError.message?.includes('Too many requests')) {
+          throw new Error('יותר מדי ניסיונות התחברות. נסה שוב מאוחר יותר');
+        }
+        
+        throw authError;
+      }
 
       if (authData.user) {
         // Get user profile
@@ -276,7 +310,10 @@ export const authService = {
           .eq('id', authData.user.id)
           .single();
 
-        if (profileError) throw profileError;
+        if (profileError) {
+          console.error('Profile fetch error:', profileError);
+          throw new Error('שגיאה בטעינת פרטי המשתמש');
+        }
 
         return {
           user: {
@@ -310,17 +347,34 @@ export const authService = {
   // Get current user
   getCurrentUser: async (): Promise<AuthUser | null> => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      
+      // Handle specific auth errors
+      if (authError) {
+        console.error('Auth error:', authError);
+        
+        // Check for refresh token errors using helper
+        if (authService.isTokenExpiredError(authError)) {
+          console.log('Refresh token expired or invalid, signing out...');
+          await authService.handleTokenExpiry();
+          return null;
+        }
+        
+        throw authError;
+      }
       
       if (!user) return null;
 
-      const { data: profile, error } = await supabase
+      const { data: profile, error: profileError } = await supabase
         .from('users')
         .select('*')
         .eq('id', user.id)
         .single();
 
-      if (error) throw error;
+      if (profileError) {
+        console.error('Profile fetch error:', profileError);
+        throw profileError;
+      }
 
       return {
         id: profile.id,
@@ -332,6 +386,13 @@ export const authService = {
       };
     } catch (error) {
       console.error('Get current user error:', error);
+      
+      // Handle token expiry errors using helper
+      if (authService.isTokenExpiredError(error)) {
+        console.log('Refresh token error detected, clearing session...');
+        await authService.handleTokenExpiry();
+      }
+      
       return null;
     }
   },
