@@ -143,6 +143,16 @@ export default function AdminEventDetailsScreen() {
             <Ionicons name="grid" size={22} color={colors.white} style={{ marginLeft: 8 }} />
             <Text style={styles.seatingMapButtonText}>מפת הושבה</Text>
           </TouchableOpacity>
+
+          {/* Templates Button */}
+          <TouchableOpacity 
+            style={styles.templatesButton} 
+            activeOpacity={0.85} 
+            onPress={() => router.push(`/seating/templates?eventId=${event.id}`)}
+          >
+            <Ionicons name="library" size={22} color={colors.primary} style={{ marginLeft: 8 }} />
+            <Text style={styles.templatesButtonText}>סקיצות מוכנות</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -314,6 +324,28 @@ const styles = StyleSheet.create({
   },
   seatingMapButtonText: {
     color: colors.white,
+    fontSize: 18,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  templatesButton: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.gray[100],
+    borderRadius: 24,
+    paddingVertical: 16,
+    paddingHorizontal: 32,
+    marginTop: 12,
+    width: '100%',
+    shadowColor: colors.black,
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  templatesButtonText: {
+    color: colors.primary,
     fontSize: 18,
     fontWeight: 'bold',
     textAlign: 'center',

@@ -134,6 +134,8 @@ function RootLayoutNav() {
       <Stack.Screen name="gift/payment" options={{ title: "תשלום מתנה" }} />
       <Stack.Screen name="gift/confirmation" options={{ title: "אישור תשלום", headerBackVisible: false }} />
       <Stack.Screen name="rsvp/invite" options={{ title: "הזמנת אורחים" }} />
+      <Stack.Screen name="seating/templates" options={{ headerShown: false }} />
+      <Stack.Screen name="seating/SeatingMapEditor" options={{ headerShown: false }} />
        
     </Stack>
   );
