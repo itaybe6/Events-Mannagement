@@ -58,7 +58,12 @@ export default function TablesList() {
       .eq('status', 'מגיע');
     
     if (!error) {
-      setGuests(data || []);
+      // Map the data to include numberOfPeople from number_of_people column
+      const mappedGuests = (data || []).map(guest => ({
+        ...guest,
+        numberOfPeople: guest.number_of_people || 1
+      }));
+      setGuests(mappedGuests);
     }
   };
 
@@ -86,6 +91,10 @@ export default function TablesList() {
     const guestIds = Array.from(selectedGuestsToAdd);
     const tableId = selectedTable.id;
 
+    // חישוב סכום האנשים שמתווספים
+    const guestsToAdd = guests.filter(g => guestIds.includes(g.id));
+    const totalPeopleToAdd = guestsToAdd.reduce((sum, guest) => sum + (guest.numberOfPeople || 1), 0);
+
     // Update guests
     const { error: guestUpdateError } = await supabase
       .from('guests')
@@ -97,11 +106,14 @@ export default function TablesList() {
       return;
     }
     
-    // Update table seated_guests count
-    const currentSeated = getGuestsForTable(tableId).length;
+    // עדכון מספר המוזמנים בשולחן - חישוב מחדש של כל האנשים בשולחן
+    const currentGuestsAtTable = guests.filter(g => g.table_id === tableId);
+    const currentTotalPeople = currentGuestsAtTable.reduce((sum, guest) => sum + (guest.numberOfPeople || 1), 0);
+    const newTotalPeople = currentTotalPeople + totalPeopleToAdd;
+    
     const { error: tableUpdateError } = await supabase
       .from('tables')
-      .update({ seated_guests: currentSeated + guestIds.length })
+      .update({ seated_guests: newTotalPeople })
       .eq('id', tableId);
       
     if (tableUpdateError) {
@@ -163,6 +175,10 @@ export default function TablesList() {
 
     const guestIds = Array.from(selectedGuestsToDelete);
     
+    // חישוב סכום האנשים שמוסרים
+    const guestsToRemove = guests.filter(g => guestIds.includes(g.id));
+    const totalPeopleToRemove = guestsToRemove.reduce((sum, guest) => sum + (guest.numberOfPeople || 1), 0);
+    
     // 1. Update guests' table_id to null
     const { error: guestUpdateError } = await supabase
       .from('guests')
@@ -174,14 +190,13 @@ export default function TablesList() {
       return;
     }
 
-    // 2. Decrement seated_guests count on the table
-    const table = tables.find(t => t.id === editingTableId);
-    if (!table) return;
-
-    const currentSeated = table.seated_guests || 0;
+    // 2. עדכון מספר האנשים בשולחן - חישוב מחדש בלי האורחים שהוסרו
+    const remainingGuestsAtTable = guests.filter(g => g.table_id === editingTableId && !guestIds.includes(g.id));
+    const newTotalPeople = remainingGuestsAtTable.reduce((sum, guest) => sum + (guest.numberOfPeople || 1), 0);
+    
     const { error: tableUpdateError } = await supabase
       .from('tables')
-      .update({ seated_guests: currentSeated - guestIds.length })
+      .update({ seated_guests: newTotalPeople })
       .eq('id', editingTableId);
       
     if (tableUpdateError) {
@@ -221,7 +236,11 @@ export default function TablesList() {
     return categoryMatch && searchMatch;
   });
 
-  const fullTables = tables.filter(t => t.seated_guests === t.capacity).length;
+  const fullTables = tables.filter(t => {
+    const tableGuests = getGuestsForTable(t.id);
+    const totalPeopleSeated = tableGuests.reduce((sum, guest) => sum + (guest.numberOfPeople || 1), 0);
+    return totalPeopleSeated >= t.capacity;
+  }).length;
   const totalTables = tables.length;
 
   return (
@@ -243,32 +262,34 @@ export default function TablesList() {
         </View>
       </View>
 
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollViewContent}>
         {tables.map((table) => {
           const tableGuests = getGuestsForTable(table.id);
+          const totalPeopleSeated = tableGuests.reduce((sum, guest) => sum + (guest.numberOfPeople || 1), 0);
           const isEditing = editingTableId === table.id;
+          const isTableFull = totalPeopleSeated >= table.capacity;
           
           return (
-            <View key={table.id} style={styles.tableCard}>
+            <View key={table.id} style={[styles.tableCard, isTableFull && styles.tableCardFull]}>
               <View style={styles.tableHeader}>
+                <View style={[styles.capacityInfo, isTableFull && styles.capacityInfoFull]}>
+                  <Ionicons 
+                    name="people" 
+                    size={16} 
+                    color={isTableFull ? "#ffffff" : "#8e8e93"} 
+                    style={{ marginRight: 4 }}
+                  />
+                  <Text style={[styles.capacityText, isTableFull && styles.capacityTextFull]}>
+                    {totalPeopleSeated} / {table.capacity}
+                  </Text>
+                </View>
                 <View style={styles.tableInfo}>
-                  <Text style={styles.tableNumber}>
+                  <Text style={[styles.tableNumber, isTableFull && styles.tableNumberFull]}>
                     שולחן {table.number}
                     {table.name && ` - ${table.name}`}
                   </Text>
                 </View>
                 <View style={styles.tableActions}>
-                  <View style={styles.capacityInfo}>
-                    <Text style={styles.capacityText}>
-                      {table.seated_guests || 0} / {table.capacity}
-                    </Text>
-                    <Ionicons 
-                      name="people" 
-                      size={16} 
-                      color="#8e8e93" 
-                      style={{ marginLeft: 4 }}
-                    />
-                  </View>
                   <TouchableOpacity 
                     style={styles.addButton} 
                     onPress={() => openAddGuestsModal(table)}
@@ -284,10 +305,10 @@ export default function TablesList() {
                 </View>
               </View>
 
-              <View style={styles.guestsContainer}>
+              <View style={[styles.guestsContainer, isTableFull && styles.guestsContainerFull]}>
                 {tableGuests.length > 0 ? (
                   <>
-                    <Text style={styles.guestsTitle}>אורחים יושבים:</Text>
+                    <Text style={[styles.guestsTitle, isTableFull && styles.guestsTitleFull]}>אורחים יושבים:</Text>
                     <ScrollView style={styles.guestsListScrollView} nestedScrollEnabled>
                       <View style={styles.guestsList}>
                         {tableGuests.map((guest, index) => {
@@ -303,7 +324,11 @@ export default function TablesList() {
                               onPress={isEditing ? () => handleToggleGuestDeletionSelection(guest.id) : undefined}
                               disabled={!isEditing}
                             >
-                              <View style={{flex: 1}}>
+                              <View style={{flex: 1, position: 'relative'}}>
+                                <View style={styles.peopleCountBadgeTopLeft}>
+                                  <Ionicons name="person" size={10} color="black" />
+                                  <Text style={styles.peopleCountTextSmall}>{guest.numberOfPeople || 1}</Text>
+                                </View>
                                 <Text style={styles.guestName}>{guest.name}</Text>
                                 {guest.guest_categories?.name && !isEditing && (
                                   <Text style={styles.guestCategory}>
@@ -392,12 +417,18 @@ export default function TablesList() {
             <FlatList
               data={filteredUnseatedGuests}
               keyExtractor={(item) => item.id.toString()}
+              numColumns={2}
+              columnWrapperStyle={{ justifyContent: 'space-between' }}
               renderItem={({ item }) => (
                 <TouchableOpacity
                   style={styles.selectableGuestItem}
                   onPress={() => handleToggleGuestSelection(item.id)}
                 >
-                  <View style={styles.guestInfo}>
+                  <View style={[styles.guestInfo, {position: 'relative'}]}>
+                    <View style={styles.peopleCountBadgeTopLeft}>
+                      <Ionicons name="person" size={10} color="black" />
+                      <Text style={styles.peopleCountTextSmall}>{item.numberOfPeople || 1}</Text>
+                    </View>
                     <Text style={styles.guestName}>{item.name}</Text>
                     {item.guest_categories?.name && (
                       <Text style={styles.guestCategory}>
@@ -499,6 +530,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 16,
   },
+  scrollViewContent: {
+    paddingBottom: 100,
+  },
   tableCard: {
     backgroundColor: '#fff',
     borderRadius: 16,
@@ -509,6 +543,16 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
     overflow: 'hidden',
+  },
+  tableCardFull: {
+    backgroundColor: '#d4edda',
+    borderWidth: 2,
+    borderColor: '#28a745',
+    shadowColor: '#28a745',
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 6,
   },
   tableHeader: {
     flexDirection: 'row',
@@ -533,6 +577,10 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     writingDirection: 'rtl',
   },
+  tableNumberFull: {
+    color: '#155724',
+    fontWeight: '800',
+  },
   capacityInfo: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -546,8 +594,21 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1c1c1e',
   },
+  capacityInfoFull: {
+    backgroundColor: '#28a745',
+    borderColor: '#28a745',
+  },
+  capacityTextFull: {
+    color: '#ffffff',
+    fontWeight: '700',
+  },
   guestsContainer: {
     padding: 20,
+  },
+  guestsContainerFull: {
+    backgroundColor: '#f8f9fa',
+    borderTopWidth: 1,
+    borderTopColor: '#28a745',
   },
   guestsTitle: {
     fontSize: 16,
@@ -557,8 +618,12 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     writingDirection: 'rtl',
   },
+  guestsTitleFull: {
+    color: '#155724',
+    fontWeight: '700',
+  },
   guestsListScrollView: {
-    maxHeight: 150,
+    maxHeight: 250,
   },
   guestsList: {
     flexDirection: 'row',
@@ -721,6 +786,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     borderWidth: 1,
     borderColor: '#e5e5ea',
+    width: '47%',
   },
   guestInfo: {
     flex: 1,
@@ -745,5 +811,40 @@ const styles = StyleSheet.create({
   },
   disabledButton: {
     backgroundColor: '#a9a9a9',
+  },
+  peopleCountBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#e0e0e0',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginTop: 4,
+  },
+  peopleCountText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: 'black',
+    marginLeft: 4,
+  },
+  peopleCountBadgeTopLeft: {
+    position: 'absolute',
+    top: -8,
+    left: -8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#e0e0e0',
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    zIndex: 1,
+    borderWidth: 1,
+    borderColor: '#fff',
+  },
+  peopleCountTextSmall: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: 'black',
+    marginLeft: 2,
   },
 }); 

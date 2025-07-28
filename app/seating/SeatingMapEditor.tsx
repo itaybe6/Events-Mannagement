@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, TextInput, Dimensions, Alert, Animated, PanResponder, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 
 const { width, height } = Dimensions.get('window');
 
@@ -18,7 +18,6 @@ export default function SeatingMapEditor() {
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedTable, setSelectedTable] = useState<any>(null);
-  const [zoom, setZoom] = useState(1);
   const [textAreas, setTextAreas] = useState<any[]>([]);
   const [textModal, setTextModal] = useState(false);
   const [selectedText, setSelectedText] = useState<any>(null);
@@ -64,6 +63,38 @@ export default function SeatingMapEditor() {
     fetchTextAreas();
   }, [eventId]);
 
+  // איפוס מיקום וזום כשחוזרים לעמוד
+  useEffect(() => {
+    if (scrollViewRef.current) {
+      // איפוס מיקום לתחילת המפה
+      scrollViewRef.current.scrollTo({ x: 0, y: 0, animated: false });
+      // איפוס זום למצב התחלתי
+      setTimeout(() => {
+        if (scrollViewRef.current) {
+          scrollViewRef.current.setNativeProps({
+            zoomScale: 0.5, // זום התחלתי
+            contentOffset: { x: 0, y: 0 }
+          });
+        }
+      }, 100);
+    }
+  }, []);
+
+  // איפוס כל פעם שחוזרים לעמוד
+  useFocusEffect(
+    React.useCallback(() => {
+      setTimeout(() => {
+        if (scrollViewRef.current) {
+          scrollViewRef.current.scrollTo({ x: 0, y: 0, animated: false });
+          scrollViewRef.current.setNativeProps({
+            zoomScale: 0.4,
+            contentOffset: { x: 0, y: 0 }
+          });
+        }
+      }, 200);
+    }, [])
+  );
+
   // יצירת Animated.ValueXY ו-PanResponder לכל שולחן, ומחיקת ישנים
   useEffect(() => {
     let newPositionsCreated = false;
@@ -92,41 +123,30 @@ export default function SeatingMapEditor() {
 
   const handleTouchStart = (table: any, event: any) => {
     if (!editMode) return;
-    console.log('Touch started on table:', table.id);
-    setSelectedTableForDrag(table.id);
-    const touch = event.nativeEvent;
-    setDragStartPos({ x: touch.pageX, y: touch.pageY });
+    const { pageX, pageY } = event.nativeEvent;
     
     // שמירת המיקום הנוכחי
     const currentX = (positions[table.id].x as any)._value || 0;
     const currentY = (positions[table.id].y as any)._value || 0;
     positions[table.id].setOffset({ x: currentX, y: currentY });
-    positions[table.id].setValue({ x: 0, y: 0 });
+    positions[table.id].setValue({ x: pageX, y: pageY });
   };
 
   const handleTouchMove = (table: any, event: any) => {
-    if (!editMode || selectedTableForDrag !== table.id || !dragStartPos) return;
+    if (!editMode || selectedTableForDrag !== table.id) return;
     
-    const touch = event.nativeEvent;
-    const deltaX = (touch.pageX - dragStartPos.x) / zoom;
-    const deltaY = (touch.pageY - dragStartPos.y) / zoom;
-    
-    // עדכון המיקום באופן יחסי
-    positions[table.id].setValue({ x: deltaX, y: deltaY });
+    const { pageX, pageY } = event.nativeEvent;
+    positions[table.id].setValue({ x: pageX, y: pageY });
   };
 
   const handleTouchEnd = (table: any) => {
     if (!editMode || selectedTableForDrag !== table.id) return;
-    console.log('Touch ended on table:', table.id);
     
     // איחוד המיקום הסופי
     positions[table.id].flattenOffset();
-    const x = (positions[table.id].x as any)._value || 0;
-    const y = (positions[table.id].y as any)._value || 0;
     
-    updateTable(table.id, { x: Math.round(x), y: Math.round(y) });
+    updateTable(table.id, { x: (positions[table.id].x as any)._value, y: (positions[table.id].y as any)._value });
     setSelectedTableForDrag(null);
-    setDragStartPos(null);
   };
 
   const fetchTables = async () => {
@@ -136,7 +156,18 @@ export default function SeatingMapEditor() {
       .select('*')
       .eq('event_id', eventId)
       .order('number');
-    if (!error) setTables(data || []);
+    if (!error) {
+      const positionedTables = data.map(t => {
+        if (!positions[t.id]) {
+          positions[t.id] = new Animated.ValueXY({ x: t.x || 40, y: t.y || 60 });
+        } else {
+          positions[t.id].setValue({ x: t.x || 40, y: t.y || 60 });
+        }
+        return t;
+      });
+      setTables(positionedTables);
+      setIsPositionsReady(true);
+    }
     setLoading(false);
   };
 
@@ -166,23 +197,30 @@ export default function SeatingMapEditor() {
   const addTable = async (shape: 'square' | 'rectangle') => {
     const maxNumber = tables.length > 0 ? Math.max(...tables.map(t => t.number || 0)) : 0;
     const newNumber = maxNumber + 1;
+    const newTable = {
+      event_id: eventId,
+      number: newNumber,
+      capacity: TABLE_SHAPES[shape].defaultCapacity,
+      shape,
+      x: 40 + (tables.length % Math.floor((width * 3 - 80) / 80)) * 80,
+      y: 60 + Math.floor(tables.length / Math.floor((width * 3 - 80) / 80)) * 80,
+      seated_guests: 0,
+    };
+
     const { data, error } = await supabase
       .from('tables')
-      .insert({
-        event_id: eventId,
-        number: newNumber,
-        capacity: TABLE_SHAPES[shape].defaultCapacity,
-        shape,
-        x: 40 + tables.length * 80,
-        y: 60 + tables.length * 60,
-        seated_guests: 0,
-      })
+      .insert(newTable)
       .select()
       .single();
+
     if (error) {
       console.error('שגיאה בהוספת שולחן:', error);
+    } else if (data) {
+      if (!positions[data.id]) {
+        positions[data.id] = new Animated.ValueXY({ x: newTable.x, y: newTable.y });
+      }
+      setTables([...tables, data]);
     }
-    if (!error && data) setTables([...tables, data]);
   };
 
   // עדכון שולחן
@@ -204,7 +242,11 @@ export default function SeatingMapEditor() {
       .from('tables')
       .delete()
       .eq('id', id);
-    if (!error) setTables(tables.filter(t => t.id !== id));
+    if (!error) {
+      delete positions[id];
+      delete panResponders[id];
+      setTables(tables.filter(t => t.id !== id));
+    }
   };
 
   // הוספת תיבת טקסט
@@ -213,7 +255,7 @@ export default function SeatingMapEditor() {
       id: Date.now().toString(),
       text: 'טקסט חופשי',
       x: 200,
-      y: 200 + textAreas.length * 40,
+      y: 200 + (textAreas.length % Math.floor((height * 2 - 300) / 40)) * 40,
     };
     const newArr = [...textAreas, newText];
     setTextAreas(newArr);
@@ -260,7 +302,21 @@ export default function SeatingMapEditor() {
   };
 
   // איפוס זום
-  const resetZoom = () => setZoom(1);
+  const resetZoom = () => {
+    if (scrollViewRef.current) {
+      // איפוס מיקום
+      scrollViewRef.current.scrollTo({ x: 0, y: 0, animated: true });
+      // איפוס זום
+      setTimeout(() => {
+        if (scrollViewRef.current) {
+          scrollViewRef.current.setNativeProps({
+            zoomScale: 0.5,
+            contentOffset: { x: 0, y: 0 }
+          });
+        }
+      }, 300);
+    }
+  };
 
   
   const onTextPressIn = (t: any, e: any) => {
@@ -339,114 +395,101 @@ export default function SeatingMapEditor() {
       <ScrollView
         ref={scrollViewRef}
         style={styles.canvasScroll}
-        contentContainerStyle={{ flexGrow: 1 }}
-        maximumZoomScale={2}
-        minimumZoomScale={0.5}
-        horizontal
+        contentContainerStyle={{ 
+          width: width * 3,
+          height: height * 2,
+        }}
+        maximumZoomScale={3}
+        minimumZoomScale={0.375}
         scrollEnabled={!selectedTableForDrag}
+        showsHorizontalScrollIndicator={false}
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+        bouncesZoom={false}
       >
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={{ flexGrow: 1 }}
-          maximumZoomScale={2}
-          minimumZoomScale={0.5}
-          scrollEnabled={!selectedTableForDrag}
-        >
-          <View style={[styles.canvas, { transform: [{ scale: zoom }], paddingTop: 60 }]}> 
-            {/* Grid */}
-            {[...Array(40)].map((_, i) => (
-              <View key={i} style={[styles.gridLine, { top: i * 50 }]} />
-            ))}
-            {[...Array(30)].map((_, i) => (
-              <View key={i} style={[styles.gridLineV, { left: i * 80 }]} />
-            ))}
-            {/* Tables */}
-            {isPositionsReady && tables.map(table => (
-              <Animated.View
-                key={table.id}
-                style={[
-                  styles.table,
-                  table.shape === 'rectangle' ? styles.tableRect : styles.tableSquare,
-                  {
-                    transform: [
-                      ...positions[table.id].getTranslateTransform(),
-                      ...(editMode
-                        ? [
-                            {
-                              rotate: shakeAnim.interpolate({
-                                inputRange: [-1, 1],
-                                outputRange: ['-2deg', '2deg'],
-                              }),
-                            },
-                          ]
-                        : []),
-                    ],
-                  },
-                  editMode && {
-                    zIndex: 10,
-                    borderColor: 'red',
-                    borderWidth: 2,
-                  },
-                  selectedTableForDrag === table.id && {
-                    backgroundColor: '#333',
-                  },
-                ]}
-                onTouchStart={(e) => handleTouchStart(table, e)}
-                onTouchMove={(e) => handleTouchMove(table, e)}
-                onTouchEnd={() => handleTouchEnd(table)}
-              >
-                {editMode ? (
-                  <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                    <Text style={[
-                      styles.tableName,
-                      selectedTableForDrag === table.id && { color: '#fff' }
-                    ]}>{table.number}</Text>
-                    <Text style={[
-                      styles.tableCap,
-                      selectedTableForDrag === table.id && { color: '#ccc' }
-                    ]}>{table.seated_guests}</Text>
-                  </View>
-                ) : (
-                  <Pressable
-                    onPressIn={() => setPressedTable(table.id)}
-                    onPressOut={() => setPressedTable(null)}
-                    onLongPress={() => {
-                      setPressedTable(null);
-                      setTableForChoice(table);
-                      setChoiceModalVisible(true);
-                    }}
-                    delayLongPress={400}
-                    style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
-                  >
-                    <Text style={[
-                      styles.tableName,
-                      pressedTable === table.id && { color: '#666' }
-                    ]}>{table.number}</Text>
-                    <Text style={[
-                      styles.tableCap,
-                      pressedTable === table.id && { color: '#999' }
-                    ]}>{table.seated_guests }</Text>
-                  </Pressable>
-                )}
-              </Animated.View>
-            ))}
-            {/* Text Areas */}
-            {textAreas.map((t, idx) => (
-              <View
-                key={t.id}
-                style={[styles.textArea, { top: t.y ?? 200 + idx * 40, left: t.x ?? 200 }]}
-                onStartShouldSetResponder={() => true}
-                onResponderGrant={e => onTextPressIn(t, e)}
-                onResponderMove={e => onTextMove(t, e)}
-                onResponderRelease={e => onTextPressOut(t, e)}
-              >
-                <TouchableOpacity style={{ alignItems: 'center' }} onLongPress={() => openTextModal(t)}>
-                  <Text style={styles.textAreaText}>{t.text}</Text>
-                </TouchableOpacity>
-              </View>
-            ))}
-          </View>
-        </ScrollView>
+        <View style={styles.canvas}>
+          {/* Grid */}
+          {[...Array(Math.ceil((height * 2) / 50))].map((_, i) => (
+            <View key={i} style={[styles.gridLine, { top: i * 50 }]} />
+          ))}
+          {[...Array(Math.ceil((width * 3) / 80))].map((_, i) => (
+            <View key={i} style={[styles.gridLineV, { left: i * 80 }]} />
+          ))}
+          {/* Tables */}
+          {isPositionsReady && tables.map(table => (
+            <Animated.View
+              key={table.id}
+              style={[
+                styles.table,
+                table.shape === 'rectangle' ? styles.tableRect : styles.tableSquare,
+                {
+                  transform: positions[table.id] ? positions[table.id].getTranslateTransform() : [],
+                },
+                editMode && {
+                  zIndex: 10,
+                  borderColor: 'red',
+                  borderWidth: 2,
+                },
+                selectedTableForDrag === table.id && {
+                  backgroundColor: '#333',
+                },
+              ]}
+              onStartShouldSetResponder={() => true}
+              onResponderGrant={e => handleTouchStart(table, e)}
+              onResponderMove={e => handleTouchMove(table, e)}
+              onResponderRelease={() => handleTouchEnd(table)}
+            >
+              {editMode ? (
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={[
+                    styles.tableName,
+                    selectedTableForDrag === table.id && { color: '#fff' }
+                  ]}>{table.number}</Text>
+                  <Text style={[
+                    styles.tableCap,
+                    selectedTableForDrag === table.id && { color: '#ccc' }
+                  ]}>{table.seated_guests}/{table.capacity}</Text>
+                </View>
+              ) : (
+                <Pressable
+                  onPressIn={() => setPressedTable(table.id)}
+                  onPressOut={() => setPressedTable(null)}
+                  onLongPress={() => {
+                    setPressedTable(null);
+                    setTableForChoice(table);
+                    setChoiceModalVisible(true);
+                  }}
+                  delayLongPress={400}
+                  style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <Text style={[
+                    styles.tableName,
+                    pressedTable === table.id && { color: '#666' }
+                  ]}>{table.number}</Text>
+                  <Text style={[
+                    styles.tableCap,
+                    pressedTable === table.id && { color: '#999' }
+                  ]}>{table.seated_guests}/{table.capacity}</Text>
+                </Pressable>
+              )}
+            </Animated.View>
+          ))}
+          {/* Text Areas */}
+          {textAreas.map((t, idx) => (
+            <View
+              key={t.id}
+              style={[styles.textArea, { top: t.y ?? 200 + (idx % Math.floor((height * 2 - 300) / 40)) * 40, left: t.x ?? 200 }]}
+              onStartShouldSetResponder={() => true}
+              onResponderGrant={e => onTextPressIn(t, e)}
+              onResponderMove={e => onTextMove(t, e)}
+              onResponderRelease={e => onTextPressOut(t, e)}
+            >
+              <TouchableOpacity style={{ alignItems: 'center' }} onLongPress={() => openTextModal(t)}>
+                <Text style={styles.textAreaText}>{t.text}</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
+        </View>
       </ScrollView>
       {/* Modal Edit Table */}
       <Modal visible={modalVisible} transparent animationType="slide">
@@ -469,12 +512,12 @@ export default function SeatingMapEditor() {
               placeholder="מספר מקומות"
               keyboardType="numeric"
             />
-            <Text style={styles.modalLabel}>אנשים שהושבו</Text>
+            <Text style={styles.modalLabel}>אנשים שהושבו / קיבולת</Text>
             <TextInput
               style={styles.input}
-              value={String(selectedTable?.seated_guests ?? '0')}
+              value={`${selectedTable?.seated_guests ?? '0'}/${selectedTable?.capacity ?? '0'}`}
               editable={false}
-              placeholder="אנשים שהושבו"
+              placeholder="אנשים שהושבו / קיבולת"
             />
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 16 }}>
               <TouchableOpacity style={styles.modalBtn} onPress={saveEdit}>
@@ -560,8 +603,13 @@ const styles = StyleSheet.create({
   toolbarContent: { flexDirection: 'row', alignItems: 'center', padding: 12 },
   toolbarBtn: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 8, padding: 8, backgroundColor: '#fff', borderRadius: 8, elevation: 2 },
   toolbarBtnText: { marginLeft: 6, fontSize: 16, color: '#333' },
-  canvasScroll: { flex: 1 },
-  canvas: { flex: 1, minHeight: 2000, minWidth: 2400, backgroundColor: '#fff', borderRadius: 12, margin: 16, borderWidth: 1, borderColor: '#eee', overflow: 'hidden', paddingTop: 60 },
+  canvasScroll: { flex: 1, backgroundColor: '#fff' },
+  canvas: { 
+    width: width * 3,
+    height: height * 2,
+    backgroundColor: '#fff', 
+    overflow: 'hidden',
+  },
   gridLine: { position: 'absolute', left: 0, right: 0, height: 1, backgroundColor: '#eee' },
   gridLineV: { position: 'absolute', top: 0, bottom: 0, width: 1, backgroundColor: '#eee' },
   table: { position: 'absolute', alignItems: 'center', justifyContent: 'center', elevation: 4, backgroundColor: '#fafafa', borderRadius: 8, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, borderWidth: 1, borderColor: '#ddd' },
