@@ -1,11 +1,13 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated, Pressable, ActivityIndicator, Modal, SectionList, TextInput, FlatList } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated, Pressable, ActivityIndicator, Modal, SectionList, TextInput, FlatList, Dimensions } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { useUserStore } from '@/store/userStore';
 import { Ionicons } from '@expo/vector-icons';
 import { useLayoutStore } from '@/store/layoutStore';
 import { Table } from '@/types';
 import { useRouter, useFocusEffect } from 'expo-router';
+
+const { width, height } = Dimensions.get('window');
 
 export default function BrideGroomSeating() {
   const { userData } = useUserStore();
@@ -57,6 +59,10 @@ export default function BrideGroomSeating() {
 
     if (!tableId) return; // Ensure tableId is available
 
+    // חישוב סכום האנשים שמתווספים
+    const guestsToAdd = guests.filter(g => guestIds.includes(g.id));
+    const totalPeopleToAdd = guestsToAdd.reduce((sum, guest) => sum + (guest.numberOfPeople || 1), 0);
+
     // 1. עדכון האורחים
     const { error: guestUpdateError } = await supabase
       .from('guests')
@@ -68,11 +74,14 @@ export default function BrideGroomSeating() {
       return;
     }
     
-    // 2. עדכון מספר המוזמנים בשולחן
-    const currentSeated = seatedGuestsForTable.length;
+    // 2. עדכון מספר המוזמנים בשולחן - חישוב מחדש של כל האנשים בשולחן
+    const currentGuestsAtTable = guests.filter(g => g.table_id === tableId);
+    const currentTotalPeople = currentGuestsAtTable.reduce((sum, guest) => sum + (guest.numberOfPeople || 1), 0);
+    const newTotalPeople = currentTotalPeople + totalPeopleToAdd;
+    
     const { error: tableUpdateError } = await supabase
       .from('tables')
-      .update({ seated_guests: currentSeated + guestIds.length })
+      .update({ seated_guests: newTotalPeople })
       .eq('id', tableId);
       
     if (tableUpdateError) {
@@ -145,6 +154,10 @@ export default function BrideGroomSeating() {
   };
 
   const handleRemoveGuestFromTable = async (guestId: string) => {
+    // מציאת האורח שמוסר
+    const guestToRemove = guests.find(g => g.id === guestId);
+    if (!guestToRemove) return;
+
     // 1. Update guest's table_id to null
     const { error: guestUpdateError } = await supabase
       .from('guests')
@@ -156,11 +169,13 @@ export default function BrideGroomSeating() {
       return;
     }
     
-    // 2. Decrement seated_guests count on the table
-    const currentSeated = seatedGuestsForTable.length;
+    // 2. עדכון מספר האנשים בשולחן - חישוב מחדש בלי האורח שהוסר
+    const remainingGuestsAtTable = guests.filter(g => g.table_id === selectedTableForModal?.id && g.id !== guestId);
+    const newTotalPeople = remainingGuestsAtTable.reduce((sum, guest) => sum + (guest.numberOfPeople || 1), 0);
+    
     const { error: tableUpdateError } = await supabase
       .from('tables')
-      .update({ seated_guests: currentSeated - 1 })
+      .update({ seated_guests: newTotalPeople })
       .eq('id', selectedTableForModal?.id);
       
     if (tableUpdateError) {
@@ -199,6 +214,17 @@ export default function BrideGroomSeating() {
           fetchGuests(),
         ]).finally(() => setLoading(false));
       }
+      
+      // איפוס מיקום וזום כשחוזרים לעמוד
+      setTimeout(() => {
+        if (scrollViewRef.current) {
+          scrollViewRef.current.scrollTo({ x: 0, y: 0, animated: false });
+          scrollViewRef.current.setNativeProps({
+            zoomScale: 0.5,
+            contentOffset: { x: 0, y: 0 }
+          });
+        }
+      }, 200);
     }, [userData?.event_id])
   );
 
@@ -306,7 +332,21 @@ export default function BrideGroomSeating() {
     setModalVisible(true);
   };
 
-  const resetZoom = () => setZoom(1);
+  const resetZoom = () => {
+    if (scrollViewRef.current) {
+      // איפוס מיקום
+      scrollViewRef.current.scrollTo({ x: 0, y: 0, animated: true });
+      // איפוס זום
+      setTimeout(() => {
+        if (scrollViewRef.current) {
+          scrollViewRef.current.setNativeProps({
+            zoomScale: 0.5,
+            contentOffset: { x: 0, y: 0 }
+          });
+        }
+      }, 300);
+    }
+  };
 
   if (loading) {
     return <View style={styles.centered}><ActivityIndicator size="large" /></View>;
@@ -618,27 +658,24 @@ export default function BrideGroomSeating() {
       <ScrollView
         ref={scrollViewRef}
         style={styles.canvasScroll}
-        contentContainerStyle={{ minWidth: 2400, minHeight: 2000 }}
-        maximumZoomScale={2}
+        contentContainerStyle={{ 
+          width: width * 3,
+          height: height * 2,
+        }}
+        maximumZoomScale={3}
         minimumZoomScale={0.5}
+        bounces={false}
+        bouncesZoom={false}
         horizontal
         showsHorizontalScrollIndicator={false}
         showsVerticalScrollIndicator={false}
       >
-        <ScrollView
-          style={{ flex: 1, width: '100%' }}
-          contentContainerStyle={{ minWidth: 2400, minHeight: 2000 }}
-          maximumZoomScale={2}
-          minimumZoomScale={0.5}
-          showsHorizontalScrollIndicator={false}
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={[styles.canvas, { transform: [{ scale: zoom }] }]}> 
+        <View style={styles.canvas}> 
             {/* Grid */}
-            {[...Array(40)].map((_, i) => (
+            {[...Array(Math.ceil((height * 2) / 50))].map((_, i) => (
               <View key={i} style={[styles.gridLine, { top: i * 50 }]} />
             ))}
-            {[...Array(30)].map((_, i) => (
+            {[...Array(Math.ceil((width * 3) / 80))].map((_, i) => (
               <View key={i} style={[styles.gridLineV, { left: i * 80 }]} />
             ))}
             
@@ -700,8 +737,7 @@ export default function BrideGroomSeating() {
                 <Text style={styles.textAreaText}>{t.text}</Text>
               </View>
             ))}
-          </View>
-        </ScrollView>
+        </View>
       </ScrollView>
     </View>
   );
@@ -736,8 +772,8 @@ const styles = StyleSheet.create({
   },
   canvasScroll: { flex: 1 },
   canvas: { 
-    width: 2400, 
-    height: 2000, 
+    width: width * 3,
+    height: height * 2,
     backgroundColor: '#fff', 
     overflow: 'hidden', 
   },

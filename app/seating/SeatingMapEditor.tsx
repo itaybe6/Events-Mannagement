@@ -448,7 +448,7 @@ export default function SeatingMapEditor() {
                   <Text style={[
                     styles.tableCap,
                     selectedTableForDrag === table.id && { color: '#ccc' }
-                  ]}>{table.seated_guests}</Text>
+                  ]}>{table.seated_guests}/{table.capacity}</Text>
                 </View>
               ) : (
                 <Pressable
@@ -469,7 +469,7 @@ export default function SeatingMapEditor() {
                   <Text style={[
                     styles.tableCap,
                     pressedTable === table.id && { color: '#999' }
-                  ]}>{table.seated_guests }</Text>
+                  ]}>{table.seated_guests}/{table.capacity}</Text>
                 </Pressable>
               )}
             </Animated.View>
@@ -512,12 +512,12 @@ export default function SeatingMapEditor() {
               placeholder="מספר מקומות"
               keyboardType="numeric"
             />
-            <Text style={styles.modalLabel}>אנשים שהושבו</Text>
+            <Text style={styles.modalLabel}>אנשים שהושבו / קיבולת</Text>
             <TextInput
               style={styles.input}
-              value={String(selectedTable?.seated_guests ?? '0')}
+              value={`${selectedTable?.seated_guests ?? '0'}/${selectedTable?.capacity ?? '0'}`}
               editable={false}
-              placeholder="אנשים שהושבו"
+              placeholder="אנשים שהושבו / קיבולת"
             />
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 16 }}>
               <TouchableOpacity style={styles.modalBtn} onPress={saveEdit}>
