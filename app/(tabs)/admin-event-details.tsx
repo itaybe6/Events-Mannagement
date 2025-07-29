@@ -144,6 +144,16 @@ export default function AdminEventDetailsScreen() {
             <Text style={styles.seatingMapButtonText}>מפת הושבה</Text>
           </TouchableOpacity>
 
+          {/* View Map Button */}
+          <TouchableOpacity 
+            style={styles.viewMapButton} 
+            activeOpacity={0.85} 
+            onPress={() => router.push(`/seating/view-map?eventId=${event.id}`)}
+          >
+            <Ionicons name="eye" size={22} color={colors.white} style={{ marginLeft: 8 }} />
+            <Text style={styles.viewMapButtonText}>צפה במפת הושבה</Text>
+          </TouchableOpacity>
+
           {/* Templates Button */}
           <TouchableOpacity 
             style={styles.templatesButton} 
@@ -346,6 +356,28 @@ const styles = StyleSheet.create({
   },
   templatesButtonText: {
     color: colors.primary,
+    fontSize: 18,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  viewMapButton: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.secondary,
+    borderRadius: 24,
+    paddingVertical: 16,
+    paddingHorizontal: 32,
+    marginTop: 12,
+    width: '100%',
+    shadowColor: colors.secondary,
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+  viewMapButtonText: {
+    color: colors.white,
     fontSize: 18,
     fontWeight: 'bold',
     textAlign: 'center',
