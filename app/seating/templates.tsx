@@ -29,6 +29,7 @@ interface BuiltTable {
   isReserve: boolean;
   rotation: number;
   seats: number;
+  seated_guests: number; // חדש
 }
 
 export default function SeatingTemplatesScreen() {
@@ -89,6 +90,7 @@ export default function SeatingTemplatesScreen() {
               isReserve: table.shape === 'reserve',
               rotation: 0,
               seats: table.capacity,
+              seated_guests: typeof table.seated_guests === 'number' ? table.seated_guests : 0, // ודא שדה קיים
             }));
             
             // Create a mock seating map
@@ -128,6 +130,13 @@ export default function SeatingTemplatesScreen() {
 
     xPositions.forEach((xPos, columnIndex) => {
       const tablesInColumn = existingTables.filter(t => t.x === xPos).sort((a, b) => a.y - b.y);
+      
+      // ודא שלכל טבלה יש seated_guests
+      tablesInColumn.forEach(table => {
+        if (typeof table.seated_guests !== 'number') {
+          table.seated_guests = 0;
+        }
+      });
       
       // Determine aisle type based on spacing to next column
       let aisle: 'normal' | 'wide' = 'normal';
@@ -191,6 +200,7 @@ export default function SeatingTemplatesScreen() {
           isReserve: reserveTables.has(tableId),
           rotation: 0,
           seats: knightTables.has(tableId) ? 20 : reserveTables.has(tableId) ? 8 : 12,
+          seated_guests: 0, // הוספת שדה התחלתי
         });
         tableId++;
         
@@ -395,6 +405,9 @@ export default function SeatingTemplatesScreen() {
         capacity: table.seats, // Save seats as capacity
         shape: shape, // Save shape: square/rectangle/reserve
         name: `שולחן ${table.id}`,
+        x: table.x, // שמירת ערך X
+        y: table.y, // שמירת ערך Y
+        seated_guests: table.seated_guests ?? 0, // שמירת שדה חדש
       };
     });
 
@@ -440,6 +453,9 @@ export default function SeatingTemplatesScreen() {
         capacity: table.seats, // Save seats as capacity
         shape: shape, // Save shape: square/rectangle/reserve
         name: `שולחן ${table.id}`,
+        x: table.x, // שמירת ערך X
+        y: table.y, // שמירת ערך Y
+        seated_guests: table.seated_guests ?? 0, // שמירת שדה חדש
       };
     });
 

@@ -63,6 +63,7 @@ export const eventService = {
         story: data.story || '',
         guests: data.guests_count || 0,
         budget: Number(data.budget) || 0,
+        user_id: data.user_id, // הוסף את user_id
         tasks: data.tasks.map((task: any) => ({
           id: task.id,
           title: task.title,

@@ -6,7 +6,6 @@ import { eventService } from '@/lib/services/eventService';
 import { guestService } from '@/lib/services/guestService';
 import { Ionicons } from '@expo/vector-icons';
 import { Event, Guest } from '@/types';
-import SeatingMapEditor from '../seating/SeatingMapEditor';
 import { supabase } from '@/lib/supabase';
 
 export default function AdminEventDetailsScreen() {
@@ -14,6 +13,7 @@ export default function AdminEventDetailsScreen() {
   const router = useRouter();
   const [event, setEvent] = useState<Event | null>(null);
   const [guests, setGuests] = useState<Guest[]>([]);
+  const [userName, setUserName] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [showSeatingMap, setShowSeatingMap] = useState(false);
 
@@ -24,6 +24,20 @@ export default function AdminEventDetailsScreen() {
       setEvent(eventData);
       const guestsData = await guestService.getGuests(id as string);
       setGuests(guestsData);
+      
+      // שליפת שם המשתמש
+      if (eventData?.user_id) {
+        const { data: userData, error } = await supabase
+          .from('users')
+          .select('name')
+          .eq('id', eventData.user_id)
+          .single();
+        
+        if (!error && userData) {
+          setUserName(userData.name || '');
+        }
+      }
+      
       setLoading(false);
     };
     load();
@@ -65,7 +79,7 @@ export default function AdminEventDetailsScreen() {
         annotations: [],
       });
     }
-    router.push(`/seating/SeatingMapEditor?eventId=${event.id}`);
+    router.push(`/(tabs)/BrideGroomSeating?eventId=${event.id}`);
   };
 
   return (
@@ -85,7 +99,12 @@ export default function AdminEventDetailsScreen() {
             <Text style={styles.headerDateDay}>{day}</Text>
             <Text style={styles.headerDateWeek}>{weekday}</Text>
           </View>
-          <Text style={styles.headerTitle}>{String(event.title ?? '')}</Text>
+          <View style={styles.headerTitleContainer}>
+            <Text style={styles.headerTitle}>{String(event.title ?? '')}</Text>
+            {userName && (
+              <Text style={styles.headerUserName}>של {userName}</Text>
+            )}
+          </View>
         </View>
         {/* Main Card */}
         <View style={styles.card}>
@@ -144,16 +163,6 @@ export default function AdminEventDetailsScreen() {
             <Text style={styles.seatingMapButtonText}>מפת הושבה</Text>
           </TouchableOpacity>
 
-          {/* View Map Button */}
-          <TouchableOpacity 
-            style={styles.viewMapButton} 
-            activeOpacity={0.85} 
-            onPress={() => router.push(`/seating/view-map?eventId=${event.id}`)}
-          >
-            <Ionicons name="eye" size={22} color={colors.white} style={{ marginLeft: 8 }} />
-            <Text style={styles.viewMapButtonText}>צפה במפת הושבה</Text>
-          </TouchableOpacity>
-
           {/* Templates Button */}
           <TouchableOpacity 
             style={styles.templatesButton} 
@@ -161,7 +170,7 @@ export default function AdminEventDetailsScreen() {
             onPress={() => router.push(`/seating/templates?eventId=${event.id}`)}
           >
             <Ionicons name="library" size={22} color={colors.primary} style={{ marginLeft: 8 }} />
-            <Text style={styles.templatesButtonText}>סקיצות מוכנות</Text>
+            <Text style={styles.templatesButtonText}>עריכת סקיצה</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -233,8 +242,18 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: colors.text,
     textAlign: 'right',
-    flex: 1,
     marginRight: 8,
+  },
+  headerTitleContainer: {
+    flex: 1,
+    alignItems: 'flex-end',
+  },
+  headerUserName: {
+    fontSize: 18,
+    color: colors.textLight,
+    textAlign: 'right',
+    marginTop: 4,
+    fontStyle: 'italic',
   },
   card: {
     width: '100%',
@@ -356,28 +375,6 @@ const styles = StyleSheet.create({
   },
   templatesButtonText: {
     color: colors.primary,
-    fontSize: 18,
-    fontWeight: 'bold',
-    textAlign: 'center',
-  },
-  viewMapButton: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.secondary,
-    borderRadius: 24,
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-    marginTop: 12,
-    width: '100%',
-    shadowColor: colors.secondary,
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
-  },
-  viewMapButtonText: {
-    color: colors.white,
     fontSize: 18,
     fontWeight: 'bold',
     textAlign: 'center',

@@ -1,17 +1,25 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated, Pressable, ActivityIndicator, Modal, SectionList, TextInput, FlatList, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated, Pressable, ActivityIndicator, Modal, SectionList, TextInput, FlatList, Dimensions, Alert } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { useUserStore } from '@/store/userStore';
 import { Ionicons } from '@expo/vector-icons';
 import { useLayoutStore } from '@/store/layoutStore';
 import { Table } from '@/types';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 
 const { width, height } = Dimensions.get('window');
 
 export default function BrideGroomSeating() {
   const { userData } = useUserStore();
+  const { eventId: queryEventId } = useLocalSearchParams();
   const router = useRouter();
+  
+  // קביעת eventId: אם יש query param (אדמין) - השתמש בו, אחרת השתמש ב-userData
+  const eventId = queryEventId || userData?.event_id;
+  
+  // בדיקה אם המשתמש הוא אדמין (יש queryEventId)
+  const isAdmin = !!queryEventId;
+  
   const [tables, setTables] = useState<Table[]>([]);
   const [guests, setGuests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -192,8 +200,64 @@ export default function BrideGroomSeating() {
     setSeatedGuestsForTable(updatedGuestsForTable);
   };
 
+  const handleDeleteTable = async () => {
+    if (!selectedTableForModal) return;
+    
+    // הצג אישור מחיקה
+    Alert.alert(
+      'מחיקת שולחן',
+      `האם אתה בטוח שברצונך למחוק את שולחן ${selectedTableForModal.number}? כל האורחים שיושבים בו יוסרו מהשולחן.`,
+      [
+        { text: 'ביטול', style: 'cancel' },
+        { 
+          text: 'מחק', 
+          style: 'destructive', 
+          onPress: async () => {
+            try {
+              // 1. הסר את כל האורחים מהשולחן
+              const { error: guestUpdateError } = await supabase
+                .from('guests')
+                .update({ table_id: null })
+                .eq('table_id', selectedTableForModal.id);
+              
+              if (guestUpdateError) {
+                console.error("Error removing guests from table:", guestUpdateError);
+                Alert.alert('שגיאה', 'אירעה שגיאה בהסרת האורחים מהשולחן');
+                return;
+              }
+              
+              // 2. מחק את השולחן
+              const { error: tableDeleteError } = await supabase
+                .from('tables')
+                .delete()
+                .eq('id', selectedTableForModal.id);
+                
+              if (tableDeleteError) {
+                console.error("Error deleting table:", tableDeleteError);
+                Alert.alert('שגיאה', 'אירעה שגיאה במחיקת השולחן');
+                return;
+              }
+              
+              // 3. רענן את הנתונים
+              await fetchGuests();
+              await fetchTables();
+              
+              // 4. סגור את החלון
+              await closeModalAndShowTabBar();
+              
+              Alert.alert('הצלחה', 'השולחן נמחק בהצלחה');
+            } catch (error) {
+              console.error("Error in handleDeleteTable:", error);
+              Alert.alert('שגיאה', 'אירעה שגיאה במחיקת השולחן');
+            }
+          }
+        }
+      ]
+    );
+  };
+
   useEffect(() => {
-    if (userData?.event_id) {
+    if (eventId) {
       setLoading(true);
       Promise.all([
         fetchTables(),
@@ -201,12 +265,12 @@ export default function BrideGroomSeating() {
         fetchGuests(),
       ]).finally(() => setLoading(false));
     }
-  }, [userData?.event_id]);
+  }, [eventId]);
 
   useFocusEffect(
     useCallback(() => {
       // Fetch data every time the screen comes into focus
-      if (userData?.event_id) {
+      if (eventId) {
         setLoading(true);
         Promise.all([
           fetchTables(),
@@ -225,7 +289,7 @@ export default function BrideGroomSeating() {
           });
         }
       }, 200);
-    }, [userData?.event_id])
+    }, [eventId])
   );
 
   // יצירת Animated.ValueXY לכל שולחן
@@ -254,19 +318,19 @@ export default function BrideGroomSeating() {
   }, [tables]);
 
   const fetchTables = async () => {
-    if (!userData?.event_id) return;
+    if (!eventId) return;
     
     const { data, error } = await supabase
       .from('tables')
       .select('*')
-      .eq('event_id', userData.event_id)
+      .eq('event_id', eventId)
       .order('number');
     
     if (!error) setTables(data || []);
   };
 
   const fetchGuests = async () => {
-    if (!userData?.event_id) return;
+    if (!eventId) return;
     
     const { data, error } = await supabase
       .from('guests')
@@ -275,7 +339,7 @@ export default function BrideGroomSeating() {
         guest_categories(name),
         tables(number)
       `)
-      .eq('event_id', userData.event_id);
+      .eq('event_id', eventId);
     
     if (!error) {
       // Map the data to include numberOfPeople from number_of_people column
@@ -291,12 +355,12 @@ export default function BrideGroomSeating() {
 
   // משיכת הערות (annotations) מה-DB
   const fetchTextAreas = async () => {
-    if (!userData?.event_id) return;
+    if (!eventId) return;
     
     const { data, error } = await supabase
       .from('seating_maps')
       .select('annotations')
-      .eq('event_id', userData.event_id)
+      .eq('event_id', eventId)
       .single();
     if (!error && data && Array.isArray(data.annotations)) {
       setTextAreas(data.annotations);
@@ -352,7 +416,7 @@ export default function BrideGroomSeating() {
     return <View style={styles.centered}><ActivityIndicator size="large" /></View>;
   }
   
-  if (!userData?.event_id) {
+  if (!eventId) {
     return (
       <View style={styles.centered}>
         <Text style={{ fontSize: 24, fontWeight: 'bold', textAlign: 'center' }}>אין אירוע זמין</Text>
@@ -387,26 +451,48 @@ export default function BrideGroomSeating() {
     })
     .filter(Boolean) as any[];
 
+  // חישוב גבולות המפה לפי השולחנות
+  const minX = tables.length > 0 ? Math.min(...tables.map(t => t.x ?? 0)) : 0;
+  const maxX = tables.length > 0 ? Math.max(...tables.map(t => t.x ?? 0)) : width;
+  const padding = 100;
+  const canvasWidth = maxX - minX + padding * 2;
+
   return (
     <View style={styles.container}>
       {/* Stats */}
       <View style={styles.statsContainer}>
-        <TouchableOpacity style={styles.statBox} onPress={() => openModalWithGuests('אישרו הגעה', confirmedGuestsList)}>
+        <TouchableOpacity 
+          style={[styles.statBox, isAdmin && styles.disabledStatBox]} 
+          onPress={isAdmin ? undefined : () => openModalWithGuests('אישרו הגעה', confirmedGuestsList)}
+          disabled={isAdmin}
+        >
           <Ionicons name="checkmark-circle-outline" size={28} color="#0A84FF" />
           <Text style={styles.statValue}>{confirmedGuestsCount}</Text>
           <Text style={styles.statLabel}>אישרו הגעה</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.statBox} onPress={() => openModalWithGuests('הושבו', seatedGuestsList)}>
+        <TouchableOpacity 
+          style={[styles.statBox, isAdmin && styles.disabledStatBox]} 
+          onPress={isAdmin ? undefined : () => openModalWithGuests('הושבו', seatedGuestsList)}
+          disabled={isAdmin}
+        >
           <Ionicons name="body" size={28} color="#0A84FF" />
           <Text style={styles.statValue}>{seatedGuestsCount}</Text>
           <Text style={styles.statLabel}>הושבו</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.statBox} onPress={() => router.push('/(tabs)/TablesList')}>
+        <TouchableOpacity 
+          style={[styles.statBox, isAdmin && styles.disabledStatBox]} 
+          onPress={isAdmin ? undefined : () => router.push('/(tabs)/TablesList')}
+          disabled={isAdmin}
+        >
           <Ionicons name="grid" size={28} color="#0A84FF" />
           <Text style={styles.statValue}>{tables.length}</Text>
           <Text style={styles.statLabel}>שולחנות</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.statBox} onPress={() => openModalWithGuests('טרם הושבו', unseatedGuestsList)}>
+        <TouchableOpacity 
+          style={[styles.statBox, isAdmin && styles.disabledStatBox]} 
+          onPress={isAdmin ? undefined : () => openModalWithGuests('טרם הושבו', unseatedGuestsList)}
+          disabled={isAdmin}
+        >
           <Ionicons name="walk" size={28} color="#0A84FF" />
           <Text style={styles.statValue}>{unseatedGuestsCount}</Text>
           <Text style={styles.statLabel}>טרם הושבו</Text>
@@ -520,12 +606,20 @@ export default function BrideGroomSeating() {
                 returnKeyType="done"
                 blurOnSubmit={true}
               />
-              <TouchableOpacity 
-                style={styles.saveNameButton} 
-                onPress={handleSaveTableName}
-              >
-                <Ionicons name="checkmark" size={20} color="#007aff" />
-              </TouchableOpacity>
+              <View style={styles.tableButtonsContainer}>
+                <TouchableOpacity 
+                  style={styles.saveNameButton} 
+                  onPress={handleSaveTableName}
+                >
+                  <Ionicons name="checkmark" size={20} color="#007aff" />
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={styles.deleteTableButton} 
+                  onPress={handleDeleteTable}
+                >
+                  <Ionicons name="trash" size={20} color="#ff3b30" />
+                </TouchableOpacity>
+              </View>
             </View>
 
             <View style={styles.toggleContainer}>
@@ -659,7 +753,7 @@ export default function BrideGroomSeating() {
         ref={scrollViewRef}
         style={styles.canvasScroll}
         contentContainerStyle={{ 
-          width: width * 3,
+          width: canvasWidth,
           height: height * 2,
         }}
         maximumZoomScale={3}
@@ -670,29 +764,30 @@ export default function BrideGroomSeating() {
         showsHorizontalScrollIndicator={false}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.canvas}> 
+        <View style={[styles.canvas, { width: canvasWidth, height: height * 2 }]}> 
             {/* Grid */}
             {[...Array(Math.ceil((height * 2) / 50))].map((_, i) => (
               <View key={i} style={[styles.gridLine, { top: i * 50 }]} />
             ))}
-            {[...Array(Math.ceil((width * 3) / 80))].map((_, i) => (
+            {[...Array(Math.ceil(canvasWidth / 80))].map((_, i) => (
               <View key={i} style={[styles.gridLineV, { left: i * 80 }]} />
             ))}
             
             {/* Tables */}
             {tables.map(table => {
+              // מיקום מתוקן לפי minX ו-padding
+              const adjustedX = (table.x ?? 0) - minX + padding;
               if (!positions[table.id]) {
                 positions[table.id] = new Animated.ValueXY({
-                  x: typeof table.x === 'number' ? table.x : 40,
+                  x: adjustedX,
                   y: typeof table.y === 'number' ? table.y : 60
                 });
               }
-              
               // Calculate total people seated at this table
               const guestsAtTable = guests.filter(g => g.table_id === table.id);
               const totalPeopleSeated = guestsAtTable.reduce((sum, guest) => sum + (guest.numberOfPeople || 1), 0);
               const isTableFull = totalPeopleSeated >= table.capacity;
-              
+              const isReserveTable = table.shape === 'reserve';
               return (
                 <Animated.View
                   key={table.id}
@@ -700,8 +795,9 @@ export default function BrideGroomSeating() {
                     styles.table,
                     table.shape === 'rectangle' ? styles.tableRect : styles.tableSquare,
                     isTableFull && styles.tableFullStyle,
+                    isReserveTable && styles.reserveTableStyle,
                     {
-                      transform: positions[table.id] ? positions[table.id].getTranslateTransform() : [{ translateX: table.x || 40 }, { translateY: table.y || 60 }],
+                      transform: positions[table.id] ? positions[table.id].getTranslateTransform() : [{ translateX: adjustedX }, { translateY: table.y ?? 60 }],
                     },
                   ]}
                 >
@@ -714,11 +810,13 @@ export default function BrideGroomSeating() {
                     <Text style={[
                       styles.tableName,
                       isTableFull && styles.tableFullText,
+                      isReserveTable && styles.reserveTableText,
                       pressedTable === table.id && { color: isTableFull ? '#2d5a3d' : '#666' }
                     ]}>{table.number}</Text>
                     <Text style={[
                       styles.tableCap,
                       isTableFull && styles.tableFullCapText,
+                      isReserveTable && styles.reserveTableCapText,
                       pressedTable === table.id && { color: isTableFull ? '#4a7c59' : '#999' }
                     ]}>
                       {totalPeopleSeated} / {table.capacity}
@@ -1088,8 +1186,7 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   tableNameContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'column',
     marginBottom: 20,
   },
   tableNameInput: {
@@ -1102,8 +1199,7 @@ const styles = StyleSheet.create({
     writingDirection: 'rtl',
     borderWidth: 1,
     borderColor: '#dee2e6',
-    flex: 1,
-    marginRight: 10,
+    width: '100%',
   },
   saveNameButton: {
     backgroundColor: '#f0f8ff',
@@ -1111,6 +1207,19 @@ const styles = StyleSheet.create({
     padding: 8,
     borderWidth: 1,
     borderColor: '#007aff',
+  },
+  deleteTableButton: {
+    backgroundColor: '#ffebee',
+    borderRadius: 8,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: '#ff3b30',
+  },
+  tableButtonsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+    marginTop: 10,
   },
   peopleCountBadge: {
     flexDirection: 'row',
@@ -1126,5 +1235,20 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: 'black',
     marginLeft: 4,
+  },
+  disabledStatBox: {
+    opacity: 0.5,
+  },
+  reserveTableStyle: {
+    backgroundColor: 'rgba(0, 0, 0, 0.7)', // שחור שקוף
+    borderColor: '#333',
+  },
+  reserveTableText: {
+    color: '#ffffff',
+    fontWeight: '700',
+  },
+  reserveTableCapText: {
+    color: '#cccccc',
+    fontWeight: '600',
   },
 }); 

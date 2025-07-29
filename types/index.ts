@@ -19,11 +19,15 @@ export type GuestCategory = {
 
 export type Table = {
   id: string;
-  name: string;
+  name: string | null;
   capacity: number;
   area: string;
   guests: string[];
-  shape?: 'square' | 'rectangle';
+  shape?: 'square' | 'rectangle' | 'reserve';
+  number?: number; // מספר שולחן
+  x?: number; // מיקום X
+  y?: number; // מיקום Y
+  seated_guests?: number; // מספר יושבים
 };
 
 export type Task = {
@@ -44,6 +48,7 @@ export type Event = {
   guests: number;
   budget: number;
   tasks: Task[];
+  user_id?: string; // מזהה המשתמש שהאירוע שלו
 };
 
 export type Message = {

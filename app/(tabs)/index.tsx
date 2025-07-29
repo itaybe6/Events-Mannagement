@@ -208,7 +208,7 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </Link>
 
-        <Link href="/seating/edit" asChild>
+        <Link href="/(tabs)/BrideGroomSeating" asChild>
           <TouchableOpacity style={styles.quickAction}>
             <View style={[styles.actionIcon, { backgroundColor: `${colors.info}20` }]}>
               <Ionicons name="calendar" size={24} color={colors.info} />

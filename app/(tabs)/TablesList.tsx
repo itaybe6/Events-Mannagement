@@ -171,7 +171,7 @@ export default function TablesList() {
   };
 
   const handleRemoveGuestsFromTable = async () => {
-    if (selectedGuestsToDelete.size === 0 || !editingTableId) return;
+    if (selectedGuestsToDelete.size === 0 || !editingTableId) return
 
     const guestIds = Array.from(selectedGuestsToDelete);
     
