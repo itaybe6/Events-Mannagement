@@ -6,20 +6,22 @@ import { Platform, StyleSheet, View, TouchableOpacity } from "react-native";
 import { useUserStore } from "@/store/userStore";
 import { useLayoutStore } from '@/store/layoutStore';
 
+// NOTE: This layout will be kept for backward-compatibility but hidden once role groups exist
 export default function TabLayout() {
   const router = useRouter();
   const { userType, isLoggedIn, userData } = useUserStore();
-  const { isTabBarVisible } = useLayoutStore();
+  const { isTabBarVisible, setTabBarVisible } = useLayoutStore();
 
-  console.log('TabLayout render:', { userType, isLoggedIn, userData });
+  // Clean console: avoid verbose renders logging
 
   useEffect(() => {
-    console.log('🔍 TabLayout Effect - userType changed:', {
-      userType,
-      isLoggedIn,
-      userData
-    });
+    // React to userType or auth changes if needed without logging
   }, [userType, isLoggedIn, userData]);
+
+  // Ensure tab bar is visible when entering tabs layout
+  useEffect(() => {
+    setTabBarVisible(true);
+  }, [setTabBarVisible, userType]);
 
   const headerRight = () => (
     <TouchableOpacity
@@ -32,7 +34,6 @@ export default function TabLayout() {
 
   // Force re-render when userType changes
   const tabKey = `tabs-${userType || 'default'}`;
-  console.log('🔄 TabLayout rendering with key:', tabKey);
 
   return (
     <Tabs
@@ -85,7 +86,7 @@ export default function TabLayout() {
         },
       }}
     >
-      {/* All existing screens with conditional visibility */}
+      {/* Legacy mixed tabs (will be superseded by role-based groups) */}
       <Tabs.Screen
         name="index"
         options={{
@@ -129,7 +130,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="BrideGroomSeating"
         options={{
-          href: userType === 'couple' ? '/(tabs)/BrideGroomSeating' : null,
+          href: userType === 'couple' ? undefined : null,
           title: "הושבה",
           tabBarIcon: ({ focused }) => (
             <View style={[
@@ -168,51 +169,15 @@ export default function TabLayout() {
         }}
       />
 
-      <Tabs.Screen
-        name="gifts"
-        options={{
-          href: userType === 'couple' ? undefined : null,
-          title: "מתנות",
-          tabBarIcon: ({ focused }) => (
-            <View style={[
-              styles.iconContainer,
-              focused && styles.activeIconContainer
-            ]}>
-              <Ionicons
-                name="gift"
-                size={24}
-                color={focused ? colors.white : colors.gray[500]}
-              />
-            </View>
-          ),
-        }}
-      />
+      
 
-      <Tabs.Screen
-        name="clients"
-        options={{
-          href: userType === 'admin' ? undefined : null,
-          title: "לקוחות",
-          tabBarIcon: ({ focused }) => (
-            <View style={[
-              styles.iconContainer,
-              focused && styles.activeIconContainer
-            ]}>
-              <Ionicons
-                name="business"
-                size={24}
-                color={focused ? colors.white : colors.gray[500]}
-              />
-            </View>
-          ),
-        }}
-      />
+      {/* removed clients (no route file) */}
 
       {/* טאב חדש: אירועים למנהל */}
       <Tabs.Screen
         name="admin-events"
         options={{
-          href: userType === 'admin' ? undefined : null,
+          href: userType === 'admin' || userType === 'employee' ? undefined : null,
           title: "אירועים",
           tabBarIcon: ({ focused }) => (
             <View style={[
@@ -248,11 +213,13 @@ export default function TabLayout() {
           ),
         }}
       />
-      
+
+      {/* removed employee-events (merged into admin-events) */}
+
       <Tabs.Screen
         name="brideGroomProfile"
         options={{
-          href: userType === 'couple' ? '/brideGroomProfile' : null,
+          href: userType === 'couple' ? undefined : null,
           title: "הגדרות",
           tabBarIcon: ({ focused }) => (
             <View style={[
@@ -268,55 +235,25 @@ export default function TabLayout() {
           ),
         }}
       />
-{userType === 'couple' && 
-  <Tabs.Screen
-  name="admin-profile"
-  options={{
-    href: null
-
-  }}
-/>
-}
-      {/* Admin profile tab for admin users */}
-      {userType === 'admin' ? (
-        <Tabs.Screen
-          name="admin-profile"
-          options={{
-            title: 'פרופיל',
-            tabBarIcon: ({ focused }) => (
-              <View style={[
-                styles.iconContainer,
-                focused && styles.activeIconContainer
-              ]}>
-                <Ionicons
-                  name="person-circle"
-                  size={24}
-                  color={focused ? colors.white : colors.gray[500]}
-                />
-              </View>
-            ),
-          }}
-        />
-      ) : (
-        <Tabs.Screen
-          name="settings"
-          options={{
-            title: 'הגדרות',
-            tabBarIcon: ({ focused }) => (
-              <View style={[
-                styles.iconContainer,
-                focused && styles.activeIconContainer
-              ]}>
-                <Ionicons
-                  name="cog"
-                  size={24}
-                  color={focused ? colors.white : colors.gray[500]}
-                />
-              </View>
-            ),
-          }}
-        />
-      )}
+      <Tabs.Screen
+        name="admin-profile"
+        options={{
+          href: userType === 'admin' ? undefined : null,
+          title: 'פרופיל',
+          tabBarIcon: ({ focused }) => (
+            <View style={[
+              styles.iconContainer,
+              focused && styles.activeIconContainer
+            ]}>
+              <Ionicons
+                name="person-circle"
+                size={24}
+                color={focused ? colors.white : colors.gray[500]}
+              />
+            </View>
+          ),
+        }}
+      />
     </Tabs>
   );
 }

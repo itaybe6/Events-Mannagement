@@ -1,17 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Alert, KeyboardAvoidingView, Platform, Keyboard } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
+import DateTimePickerModal from 'react-native-modal-datetime-picker';
 
 interface NotificationSetting {
   id?: string;
   notification_type: string;
   title: string;
-  days_from_wedding: number;
   enabled: boolean;
   message_content?: string;
+  notification_date?: string; // ISO string from DB
+  days_from_wedding?: number; // fallback for legacy param
 }
 
 export default function MessageEditor() {
@@ -19,6 +21,8 @@ export default function MessageEditor() {
   const { eventId, notifications: notificationsParam } = useLocalSearchParams();
   const [notifications, setNotifications] = useState<NotificationSetting[]>([]);
   const [loading, setLoading] = useState(false);
+  const [isDatePickerVisible, setDatePickerVisibility] = useState(false);
+  const [editingType, setEditingType] = useState<string | null>(null);
 
   useEffect(() => {
     if (notificationsParam && typeof notificationsParam === 'string') {
@@ -52,13 +56,16 @@ export default function MessageEditor() {
     setLoading(true);
 
     try {
-      // Update each notification's message content
+      // Update each notification's message content and date
       const updatePromises = notifications
         .filter(notification => notification.id) // Only update existing records
         .map(notification => 
           supabase
             .from('notification_settings')
-            .update({ message_content: notification.message_content })
+            .update({ 
+              message_content: notification.message_content,
+              notification_date: notification.notification_date
+            })
             .eq('id', notification.id)
         );
 
@@ -84,16 +91,46 @@ export default function MessageEditor() {
     }
   };
 
-  const formatDate = (daysFromWedding: number) => {
-    const today = new Date();
-    const targetDate = new Date(today);
-    targetDate.setDate(targetDate.getDate() + daysFromWedding);
-    
-    return targetDate.toLocaleDateString('he-IL', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
-    });
+  const formatDate = (notification: NotificationSetting) => {
+    if (notification.notification_date) {
+      return new Date(notification.notification_date).toLocaleDateString('he-IL', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+      });
+    }
+    if (typeof notification.days_from_wedding === 'number') {
+      const today = new Date();
+      const targetDate = new Date(today);
+      targetDate.setDate(targetDate.getDate() + notification.days_from_wedding);
+      return targetDate.toLocaleDateString('he-IL', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+      });
+    }
+    return '';
+  };
+
+  const openDatePicker = (notification_type: string) => {
+    Keyboard.dismiss();
+    setEditingType(notification_type);
+    setTimeout(() => setDatePickerVisibility(true), 60);
+  };
+
+  const handleConfirmDate = (selectedDate: Date) => {
+    if (!editingType) {
+      setDatePickerVisibility(false);
+      return;
+    }
+    setNotifications(prev => 
+      prev.map(n => 
+        n.notification_type === editingType
+          ? { ...n, notification_date: selectedDate.toISOString() }
+          : n
+      )
+    );
+    setDatePickerVisibility(false);
   };
 
   return (
@@ -122,9 +159,12 @@ export default function MessageEditor() {
           <View key={notification.notification_type} style={styles.messageCard}>
             <View style={styles.messageHeader}>
               <Text style={styles.messageTitle}>{notification.title}</Text>
-              <Text style={styles.messageDate}>
-                {formatDate(notification.days_from_wedding)}
-              </Text>
+              <TouchableOpacity style={styles.dateRow} onPress={() => openDatePicker(notification.notification_type)}>
+                <Ionicons name="calendar" size={16} color={colors.primary} />
+                <Text style={styles.messageDate}>
+                  {formatDate(notification)}
+                </Text>
+              </TouchableOpacity>
             </View>
             
             <View style={styles.inputContainer}>
@@ -147,6 +187,13 @@ export default function MessageEditor() {
           </View>
         ))}
       </ScrollView>
+      <DateTimePickerModal
+        isVisible={isDatePickerVisible}
+        mode="date"
+        onConfirm={handleConfirmDate}
+        onCancel={() => setDatePickerVisibility(false)}
+        minimumDate={new Date()}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -230,6 +277,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6B7280',
     textAlign: 'right',
+  },
+  dateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   inputContainer: {
     marginTop: 8,

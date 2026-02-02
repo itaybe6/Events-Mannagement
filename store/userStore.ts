@@ -3,7 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authService, AuthUser } from '@/lib/services/authService';
 
-export type UserType = 'couple' | 'admin';
+export type UserType = 'couple' | 'admin' | 'employee'; // Added employee type
 
 interface UserState {
   isLoggedIn: boolean;

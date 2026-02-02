@@ -20,12 +20,13 @@ import { Button } from '@/components/Button';
 import { Ionicons } from '@expo/vector-icons';
 import { userService, UserWithMetadata } from '@/lib/services/userService';
 import { authService } from '@/lib/services/authService';
-import { basicPingTest } from '@/lib/basicPingTest';
+// import { basicPingTest } from '@/lib/basicPingTest'; // הוסר זמנית
 
 const USER_FILTERS = [
   { label: 'הכל', value: 'all' },
   { label: 'מנהלים', value: 'admin' },
   { label: 'חתן/כלה', value: 'couple' },
+  { label: 'עובד', value: 'employee' }, // Added employee type
 ];
 
 export default function UsersScreen() {
@@ -45,7 +46,7 @@ export default function UsersScreen() {
     email: '',
     password: '',
     confirmPassword: '',
-    user_type: 'couple' as 'couple' | 'admin'
+    user_type: 'couple' as 'couple' | 'admin' | 'employee' // Added employee type
   });
 
   const [selectedUser, setSelectedUser] = useState<UserWithMetadata | null>(null);
@@ -286,10 +287,16 @@ export default function UsersScreen() {
 
   // סינון משתמשים
   const filteredUsers = users
-    .filter(user => 
-      user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      user.email.toLowerCase().includes(searchQuery.toLowerCase())
-    )
+    .filter(user => {
+      // סינון לפי חיפוש
+      const matchesSearch = user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                           user.email.toLowerCase().includes(searchQuery.toLowerCase());
+      
+      // סינון לפי סוג משתמש
+      const matchesFilter = userFilter === 'all' || user.userType === userFilter;
+      
+      return matchesSearch && matchesFilter;
+    })
     .sort((a, b) => {
       if (sortOrder === 'asc') {
         return a.name.localeCompare(b.name);
@@ -338,13 +345,15 @@ export default function UsersScreen() {
         </View>
         <View style={styles.filterRow}>
           <Text style={styles.typeDropdownLabel}>סוג:</Text>
-          {['all', 'admin', 'couple'].map(type => (
+          {['all', 'admin', 'couple', 'employee'].map(type => (
             <TouchableOpacity
               key={type}
               style={[styles.typeOption, userFilter === type && styles.typeOptionActive]}
               onPress={() => setUserFilter(type)}
             >
-              <Text style={[styles.typeOptionText, userFilter === type && styles.typeOptionTextActive]}>{type === 'all' ? 'הכל' : type === 'admin' ? 'מנהל' : 'זוג'}</Text>
+              <Text style={[styles.typeOptionText, userFilter === type && styles.typeOptionTextActive]}>
+                {type === 'all' ? 'הכל' : type === 'admin' ? 'מנהל' : type === 'couple' ? 'זוג' : 'עובד'}
+              </Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -389,8 +398,15 @@ export default function UsersScreen() {
                 </View>
                 <View style={styles.userInfoRowApple}>
                   <View style={styles.userTypeTagApple}>
-                    <Ionicons name={user.userType === 'admin' ? 'shield-checkmark' : 'heart'} size={14} color={colors.white} style={{ marginLeft: 2 }} />
-                    <Text style={styles.userTypeTextApple}>{user.userType === 'admin' ? 'מנהל' : 'זוג'}</Text>
+                    <Ionicons 
+                      name={user.userType === 'admin' ? 'shield-checkmark' : user.userType === 'employee' ? 'briefcase' : 'heart'} 
+                      size={14} 
+                      color={colors.white} 
+                      style={{ marginLeft: 2 }} 
+                    />
+                    <Text style={styles.userTypeTextApple}>
+                      {user.userType === 'admin' ? 'מנהל' : user.userType === 'employee' ? 'עובד' : 'זוג'}
+                    </Text>
                   </View>
                 </View>
               </View>
@@ -413,8 +429,15 @@ export default function UsersScreen() {
                     <Text style={styles.modalValueApple}>{selectedUser.email}</Text>
                   </View>
                   <View style={styles.modalDetailRowApple}>
-                    <Ionicons name={selectedUser.userType === 'admin' ? 'shield-checkmark' : 'heart'} size={18} color={colors.primary} style={{ marginLeft: 6 }} />
-                    <Text style={styles.modalValueApple}>{selectedUser.userType === 'admin' ? 'מנהל' : 'זוג'}</Text>
+                    <Ionicons 
+                      name={selectedUser.userType === 'admin' ? 'shield-checkmark' : selectedUser.userType === 'employee' ? 'briefcase' : 'heart'} 
+                      size={18} 
+                      color={colors.primary} 
+                      style={{ marginLeft: 6 }} 
+                    />
+                    <Text style={styles.modalValueApple}>
+                      {selectedUser.userType === 'admin' ? 'מנהל' : selectedUser.userType === 'employee' ? 'עובד' : 'זוג'}
+                    </Text>
                   </View>
                   <View style={styles.modalDetailRowApple}>
                     <Ionicons name="calendar" size={18} color={colors.primary} style={{ marginLeft: 6 }} />
@@ -543,6 +566,22 @@ export default function UsersScreen() {
                     newUser.user_type === 'admin' && styles.userTypeOptionTextActive
                   ]}>
                     מנהל מערכת
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.userTypeOption,
+                    newUser.user_type === 'employee' && styles.userTypeOptionActive
+                  ]}
+                  onPress={() => setNewUser(prev => ({ ...prev, user_type: 'employee' }))}
+                >
+                  <Ionicons name="briefcase" size={20} color={newUser.user_type === 'employee' ? colors.white : colors.secondary} />
+                  <Text style={[
+                    styles.userTypeOptionText,
+                    newUser.user_type === 'employee' && styles.userTypeOptionTextActive
+                  ]}>
+                    עובד
                   </Text>
                 </TouchableOpacity>
               </View>

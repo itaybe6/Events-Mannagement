@@ -62,7 +62,7 @@ export default function AdminEventsCreateScreen() {
           budget: 0,
         }
       );
-      router.replace('/(tabs)/admin-events');
+      router.replace('/(admin)/admin-events');
     } catch (error) {
       Alert.alert('שגיאה', 'לא ניתן להוסיף את האירוע');
     } finally {
@@ -169,7 +169,7 @@ export default function AdminEventsCreateScreen() {
             <TouchableOpacity style={styles.saveButton} onPress={handleAddEvent} disabled={loading}>
               {loading ? <ActivityIndicator color={colors.white} /> : <Text style={styles.saveButtonText}>שמור</Text>}
             </TouchableOpacity>
-            <TouchableOpacity style={styles.cancelButton} onPress={() => router.replace('/(tabs)/admin-events')}>
+            <TouchableOpacity style={styles.cancelButton} onPress={() => router.replace('/(admin)/admin-events')}>
               <Text style={styles.cancelButtonText}>ביטול</Text>
             </TouchableOpacity>
           </View>

@@ -79,7 +79,7 @@ export default function AdminEventDetailsScreen() {
         annotations: [],
       });
     }
-    router.push(`/(tabs)/BrideGroomSeating?eventId=${event.id}`);
+    router.push(`/(couple)/BrideGroomSeating?eventId=${event.id}`);
   };
 
   return (
@@ -87,7 +87,7 @@ export default function AdminEventDetailsScreen() {
       {/* Floating back button */}
       <TouchableOpacity
         style={styles.fabBack}
-        onPress={() => router.replace('/(tabs)/admin-events')}
+        onPress={() => router.replace('/(admin)/admin-events')}
         activeOpacity={0.8}
       >
         <Ionicons name="chevron-back" size={28} color={colors.text} />

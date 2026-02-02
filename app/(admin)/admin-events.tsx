@@ -127,7 +127,7 @@ export default function AdminEventsScreen() {
             const day = dateObj.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' });
             const weekday = dateObj.toLocaleDateString('he-IL', { weekday: 'long' });
             return (
-              <TouchableOpacity key={event.id} onPress={() => router.push({ pathname: '/(tabs)/admin-event-details', params: { id: event.id } })} style={styles.eventCard}>
+              <TouchableOpacity key={event.id} onPress={() => router.push({ pathname: '/(admin)/admin-event-details', params: { id: event.id } })} style={styles.eventCard}>
                 <View style={styles.eventDateBox}>
                   <Text style={styles.eventDateDay}>{day}</Text>
                   <Text style={styles.eventDateWeek}>{weekday}</Text>
@@ -151,7 +151,7 @@ export default function AdminEventsScreen() {
         {/* כפתור הוספת אירוע חדש */}
         <TouchableOpacity
           style={styles.fab}
-          onPress={() => router.push('/(tabs)/admin-events-create')}
+          onPress={() => router.push('/(admin)/admin-events-create')}
           activeOpacity={0.85}
         >
           <Ionicons name="add" size={32} color={colors.white} />

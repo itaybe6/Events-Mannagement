@@ -75,11 +75,11 @@ export default function LoginScreen() {
         userType: userRow.user_type,
       });
 
-      // ניתוב לפי סוג משתמש
-      if (userRow.user_type === 'admin') {
-        router.replace('/(tabs)/admin-events');
+      // ניתוב לקבוצת טאבים לפי סוג משתמש
+      if (userRow.user_type === 'admin' || userRow.user_type === 'employee') {
+        router.replace('/(admin)/admin-events');
       } else {
-        router.replace('/(tabs)');
+        router.replace('/(couple)');
       }
     } catch (error) {
       console.error('Login error:', error);

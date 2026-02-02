@@ -246,7 +246,7 @@ export default function TablesList() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.push('/(tabs)/BrideGroomSeating')}>
+        <TouchableOpacity style={styles.backButton} onPress={() => router.push('/(couple)/BrideGroomSeating')}>
           <Ionicons name="chevron-back" size={24} color="#007aff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>שולחנות</Text>

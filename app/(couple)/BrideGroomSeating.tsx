@@ -481,7 +481,7 @@ export default function BrideGroomSeating() {
         </TouchableOpacity>
         <TouchableOpacity 
           style={[styles.statBox, isAdmin && styles.disabledStatBox]} 
-          onPress={isAdmin ? undefined : () => router.push('/(tabs)/TablesList')}
+          onPress={isAdmin ? undefined : () => router.push('/(couple)/TablesList')}
           disabled={isAdmin}
         >
           <Ionicons name="grid" size={28} color="#0A84FF" />

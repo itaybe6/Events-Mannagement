@@ -19,9 +19,22 @@ export default function RootLayout() {
     ...FontAwesome.font,
   });
 
+  // Silence console logs in production and during runtime to keep console clean
+  useEffect(() => {
+    const noop = () => {};
+    // Replace noisy console methods
+    console.log = noop;
+    console.info = noop;
+    console.debug = noop;
+    // Keep errors and warnings if needed, or silence them as well:
+    console.warn = noop;
+    // Leave console.error for critical issues? Comment next line to keep errors
+    console.error = noop;
+  }, []);
+
   useEffect(() => {
     if (error) {
-      console.error(error);
+      // Keep throwing to surface font loading errors without logging
       throw error;
     }
   }, [error]);
@@ -101,13 +114,13 @@ function RootLayoutNav() {
     // Don't navigate until we've finished initializing
     if (initializing || loading) return;
 
-    // אם המשתמש מחובר והוא בעמוד ההתחברות - העבר לטאבים
+    // אם המשתמש מחובר והוא בעמוד ההתחברות - העבר לקבוצת הטאבים לפי תפקיד
     if (isLoggedIn && segments[0] === 'login') {
       const { userType } = useUserStore.getState();
-      if (userType === 'admin') {
-        router.replace('/(tabs)/admin-events');
+      if (userType === 'admin' || userType === 'employee') {
+        router.replace('/(admin)/admin-events');
       } else {
-        router.replace('/(tabs)');
+        router.replace('/(couple)');
       }
     }
     // אם המשתמש לא מחובר ולא בעמוד ההתחברות - העבר להתחברות
@@ -129,13 +142,15 @@ function RootLayoutNav() {
       initialRouteName="login"
     >
       <Stack.Screen name="login" options={{ headerShown: false }} />
+      {/* Legacy mixed tabs kept for backward compatibility */}
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      {/* New role-based groups */}
+      <Stack.Screen name="(admin)" options={{ headerShown: false }} />
+      <Stack.Screen name="(couple)" options={{ headerShown: false }} />
       <Stack.Screen name="modal" options={{ presentation: "modal" }} />
-      <Stack.Screen name="gift/payment" options={{ title: "תשלום מתנה" }} />
-      <Stack.Screen name="gift/confirmation" options={{ title: "אישור תשלום", headerBackVisible: false }} />
+      
       <Stack.Screen name="rsvp/invite" options={{ title: "הזמנת אורחים" }} />
       <Stack.Screen name="seating/templates" options={{ headerShown: false }} />
-      <Stack.Screen name="seating/SeatingMapEditor" options={{ headerShown: false }} />
        
     </Stack>
   );

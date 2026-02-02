@@ -98,4 +98,17 @@ export type SeatingMap = {
   annotations: Array<{ text: string; x: number; y: number }>;
   created_at: string;
   updated_at: string;
+};
+
+// ========== NOTIFICATION SETTINGS ==========
+export type NotificationSetting = {
+  id: string;
+  event_id: string;
+  notification_type: string;
+  title: string;
+  notification_date: string; // השתמש בעמודה החדשה
+  enabled: boolean;
+  message_content?: string;
+  created_at: string;
+  updated_at: string;
 }; 

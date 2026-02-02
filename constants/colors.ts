@@ -15,6 +15,7 @@ export const colors = {
   black: '#000000',
   surface: '#FFFFFF',
   gray: {
+    50: '#F9FAFB',
     100: '#F8F9FA',
     200: '#E9ECEF',
     300: '#DEE2E6',
