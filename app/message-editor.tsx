@@ -174,7 +174,7 @@ export default function MessageEditor() {
                 value={notification.message_content || ''}
                 onChangeText={(text) => updateMessageContent(notification.notification_type, text)}
                 placeholder="הזן את תוכן ההודעה..."
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor={colors.gray[500]}
                 multiline
                 numberOfLines={4}
                 textAlign="right"
@@ -201,7 +201,7 @@ export default function MessageEditor() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: colors.gray[50],
   },
   header: {
     flexDirection: 'row',
@@ -210,8 +210,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 20,
     paddingBottom: 20,
-    backgroundColor: '#FFFFFF',
-    shadowColor: '#000000',
+    backgroundColor: colors.white,
+    shadowColor: colors.richBlack,
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 3,
@@ -221,14 +221,14 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: colors.gray[100],
     justifyContent: 'center',
     alignItems: 'center',
   },
   title: {
     fontSize: 20,
     fontWeight: '600',
-    color: '#1F2937',
+    color: colors.text,
   },
   saveButton: {
     backgroundColor: colors.primary,
@@ -237,10 +237,10 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   saveButtonDisabled: {
-    backgroundColor: '#9CA3AF',
+    backgroundColor: colors.gray[400],
   },
   saveButtonText: {
-    color: '#FFFFFF',
+    color: colors.white,
     fontSize: 16,
     fontWeight: '600',
   },
@@ -252,11 +252,11 @@ const styles = StyleSheet.create({
     paddingBottom: 100,
   },
   messageCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.white,
     borderRadius: 16,
     padding: 20,
     marginBottom: 16,
-    shadowColor: '#000000',
+    shadowColor: colors.richBlack,
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 6,
@@ -269,13 +269,13 @@ const styles = StyleSheet.create({
   messageTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#1F2937',
+    color: colors.text,
     marginBottom: 4,
     textAlign: 'right',
   },
   messageDate: {
     fontSize: 14,
-    color: '#6B7280',
+    color: colors.textLight,
     textAlign: 'right',
   },
   dateRow: {
@@ -289,24 +289,24 @@ const styles = StyleSheet.create({
   inputLabel: {
     fontSize: 16,
     fontWeight: '500',
-    color: '#374151',
+    color: colors.text,
     marginBottom: 8,
     textAlign: 'right',
   },
   messageInput: {
     borderWidth: 1,
-    borderColor: '#D1D5DB',
+    borderColor: colors.gray[300],
     borderRadius: 12,
     padding: 16,
     fontSize: 16,
-    color: '#1F2937',
-    backgroundColor: '#F9FAFB',
+    color: colors.text,
+    backgroundColor: colors.gray[50],
     minHeight: 100,
     writingDirection: 'rtl',
   },
   characterCount: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: colors.gray[500],
     textAlign: 'left',
     marginTop: 8,
   },

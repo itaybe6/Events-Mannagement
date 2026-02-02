@@ -126,32 +126,32 @@ export default function AdminEventDetailsScreen() {
           <View style={styles.statsRow}>
             {/* Green */}
             <View style={styles.statCard}>
-              <View style={[styles.statIconCircle, { backgroundColor: '#4CAF50' }]}> 
-                <Ionicons name="checkmark" size={22} color={'#fff'} />
+              <View style={[styles.statIconCircle, { backgroundColor: colors.success }]}> 
+                <Ionicons name="checkmark" size={22} color={colors.white} />
               </View>
               <Text style={styles.statValue}>{confirmed}</Text>
               <Text style={styles.statLabel}>אישרו הגעה</Text>
             </View>
             {/* Red */}
             <View style={styles.statCard}>
-              <View style={[styles.statIconCircle, { backgroundColor: '#F44336' }]}> 
-                <Ionicons name="close" size={22} color={'#fff'} />
+              <View style={[styles.statIconCircle, { backgroundColor: colors.error }]}> 
+                <Ionicons name="close" size={22} color={colors.white} />
               </View>
               <Text style={styles.statValue}>{declined}</Text>
               <Text style={styles.statLabel}>לא אישרו</Text>
             </View>
             {/* Yellow */}
             <View style={styles.statCard}>
-              <View style={[styles.statIconCircle, { backgroundColor: '#FFC107' }]}> 
-                <Ionicons name="time" size={22} color={'#fff'} />
+              <View style={[styles.statIconCircle, { backgroundColor: colors.warning }]}> 
+                <Ionicons name="time" size={22} color={colors.white} />
               </View>
               <Text style={styles.statValue}>{pending}</Text>
               <Text style={styles.statLabel}>ממתינים</Text>
             </View>
             {/* Blue */}
             <View style={styles.statCard}>
-              <View style={[styles.statIconCircle, { backgroundColor: '#2196F3' }]}> 
-                <Ionicons name="restaurant" size={22} color={'#fff'} />
+              <View style={[styles.statIconCircle, { backgroundColor: colors.info }]}> 
+                <Ionicons name="restaurant" size={22} color={colors.white} />
               </View>
               <Text style={styles.statValue}>{seated}</Text>
               <Text style={styles.statLabel}>הושבו בשולחנות</Text>

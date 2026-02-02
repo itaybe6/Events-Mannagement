@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Table } from '@/types';
 import { useRouter } from 'expo-router';
 import { useLayoutStore } from '@/store/layoutStore';
+import { colors } from '@/constants/colors';
 
 export default function TablesList() {
   const { userData } = useUserStore();
@@ -216,7 +217,7 @@ export default function TablesList() {
   if (loading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#007aff" />
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
@@ -247,16 +248,16 @@ export default function TablesList() {
     <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.push('/(couple)/BrideGroomSeating')}>
-          <Ionicons name="chevron-back" size={24} color="#007aff" />
+          <Ionicons name="chevron-back" size={24} color={colors.primary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>שולחנות</Text>
         <View style={styles.headerStats}>
           <View style={styles.statItem}>
-            <Ionicons name="checkmark-circle" size={20} color="#34c759" />
+            <Ionicons name="checkmark-circle" size={20} color={colors.success} />
             <Text style={styles.statText}>{fullTables} מלאים</Text>
           </View>
           <View style={styles.statItem}>
-            <Ionicons name="sync-circle" size={20} color="#ff9500" />
+            <Ionicons name="sync-circle" size={20} color={colors.secondary} />
             <Text style={styles.statText}>{totalTables} בהושבה</Text>
           </View>
         </View>
@@ -276,7 +277,7 @@ export default function TablesList() {
                   <Ionicons 
                     name="people" 
                     size={16} 
-                    color={isTableFull ? "#ffffff" : "#8e8e93"} 
+                    color={isTableFull ? colors.white : colors.gray[500]} 
                     style={{ marginRight: 4 }}
                   />
                   <Text style={[styles.capacityText, isTableFull && styles.capacityTextFull]}>
@@ -294,13 +295,13 @@ export default function TablesList() {
                     style={styles.addButton} 
                     onPress={() => openAddGuestsModal(table)}
                   >
-                    <Ionicons name="add" size={20} color="#007aff" />
+                    <Ionicons name="add" size={20} color={colors.primary} />
                   </TouchableOpacity>
                   <TouchableOpacity 
                     style={styles.editButton} 
                     onPress={() => handleEditPress(table.id)}
                   >
-                    <Ionicons name={isEditing ? "close" : "pencil"} size={20} color="#007aff" />
+                    <Ionicons name={isEditing ? "close" : "pencil"} size={20} color={colors.primary} />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -326,7 +327,7 @@ export default function TablesList() {
                             >
                               <View style={{flex: 1, position: 'relative'}}>
                                 <View style={styles.peopleCountBadgeTopLeft}>
-                                  <Ionicons name="person" size={10} color="black" />
+                                  <Ionicons name="person" size={10} color={colors.richBlack} />
                                   <Text style={styles.peopleCountTextSmall}>{guest.numberOfPeople || 1}</Text>
                                 </View>
                                 <Text style={styles.guestName}>{guest.name}</Text>
@@ -340,7 +341,7 @@ export default function TablesList() {
                                 <Ionicons 
                                   name={isSelected ? "checkmark-circle" : "ellipse-outline"} 
                                   size={24} 
-                                  color={isSelected ? "#007aff" : "#c7c7cc"} 
+                                  color={isSelected ? colors.primary : colors.gray[300]} 
                                 />
                               )}
                             </TouchableOpacity>
@@ -350,14 +351,14 @@ export default function TablesList() {
                     </ScrollView>
                     {isEditing && selectedGuestsToDelete.size > 0 && (
                       <TouchableOpacity style={styles.deleteButton} onPress={handleRemoveGuestsFromTable}>
-                        <Ionicons name="trash-outline" size={20} color="white" />
+                        <Ionicons name="trash-outline" size={20} color={colors.white} />
                         <Text style={styles.deleteButtonText}>מחק {selectedGuestsToDelete.size} אורחים</Text>
                       </TouchableOpacity>
                     )}
                   </>
                 ) : (
                   <View style={styles.emptyTable}>
-                    <Ionicons name="people-outline" size={24} color="#c7c7cc" />
+                    <Ionicons name="people-outline" size={24} color={colors.gray[300]} />
                     <Text style={styles.emptyTableText}>אין אורחים יושבים בשולחן זה</Text>
                   </View>
                 )}
@@ -377,7 +378,7 @@ export default function TablesList() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <TouchableOpacity style={styles.closeModalButton} onPress={closeModal}>
-              <Ionicons name="close-circle" size={30} color="#e9ecef" />
+              <Ionicons name="close-circle" size={30} color={colors.gray[200]} />
             </TouchableOpacity>
 
             <Text style={styles.modalTitle}>
@@ -391,7 +392,7 @@ export default function TablesList() {
                 placeholder="חיפוש לפי שם..."
                 value={searchQuery}
                 onChangeText={setSearchQuery}
-                placeholderTextColor="#8e8e93"
+                placeholderTextColor={colors.gray[500]}
               />
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScrollView}>
                 <View style={styles.categoryContainer}>
@@ -426,7 +427,7 @@ export default function TablesList() {
                 >
                   <View style={[styles.guestInfo, {position: 'relative'}]}>
                     <View style={styles.peopleCountBadgeTopLeft}>
-                      <Ionicons name="person" size={10} color="black" />
+                      <Ionicons name="person" size={10} color={colors.richBlack} />
                       <Text style={styles.peopleCountTextSmall}>{item.numberOfPeople || 1}</Text>
                     </View>
                     <Text style={styles.guestName}>{item.name}</Text>
@@ -439,7 +440,7 @@ export default function TablesList() {
                   <Ionicons
                     name={selectedGuestsToAdd.has(item.id) ? "checkbox" : "square-outline"}
                     size={24}
-                    color={selectedGuestsToAdd.has(item.id) ? "#007aff" : "#ccc"}
+                    color={selectedGuestsToAdd.has(item.id) ? colors.primary : colors.gray[300]}
                   />
                 </TouchableOpacity>
               )}
@@ -470,7 +471,7 @@ export default function TablesList() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: colors.gray[50],
   },
   centered: {
     flex: 1,
@@ -479,18 +480,18 @@ const styles = StyleSheet.create({
   },
   errorText: {
     fontSize: 18,
-    color: '#8e8e93',
+    color: colors.textLight,
     textAlign: 'center',
   },
   header: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.white,
     paddingTop: 20,
     paddingHorizontal: 20,
     paddingBottom: 20,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    shadowColor: '#000',
+    shadowColor: colors.richBlack,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
@@ -499,12 +500,12 @@ const styles = StyleSheet.create({
   backButton: {
     padding: 8,
     borderRadius: 20,
-    backgroundColor: '#f0f8ff',
+    backgroundColor: colors.gray[50],
   },
   headerTitle: {
     fontSize: 24,
     fontWeight: '700',
-    color: '#1c1c1e',
+    color: colors.text,
     textAlign: 'center',
   },
   headerStats: {
@@ -514,7 +515,7 @@ const styles = StyleSheet.create({
   statItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f2f2f7',
+    backgroundColor: colors.gray[100],
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 12,
@@ -523,7 +524,7 @@ const styles = StyleSheet.create({
     marginLeft: 6,
     fontSize: 14,
     fontWeight: '600',
-    color: '#1c1c1e',
+    color: colors.text,
   },
   scrollView: {
     flex: 1,
@@ -534,10 +535,10 @@ const styles = StyleSheet.create({
     paddingBottom: 100,
   },
   tableCard: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.white,
     borderRadius: 16,
     marginBottom: 16,
-    shadowColor: '#000',
+    shadowColor: colors.richBlack,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
@@ -545,10 +546,10 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   tableCardFull: {
-    backgroundColor: '#d4edda',
+    backgroundColor: 'rgba(76, 175, 80, 0.12)',
     borderWidth: 2,
-    borderColor: '#28a745',
-    shadowColor: '#28a745',
+    borderColor: colors.success,
+    shadowColor: colors.success,
     shadowOpacity: 0.2,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 3 },
@@ -560,7 +561,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#f2f2f7',
+    borderBottomColor: colors.gray[200],
   },
   tableInfo: {
     flex: 1,
@@ -573,18 +574,18 @@ const styles = StyleSheet.create({
   tableNumber: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#1c1c1e',
+    color: colors.text,
     textAlign: 'right',
     writingDirection: 'rtl',
   },
   tableNumberFull: {
-    color: '#155724',
+    color: colors.success,
     fontWeight: '800',
   },
   capacityInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f2f2f7',
+    backgroundColor: colors.gray[100],
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
@@ -592,34 +593,34 @@ const styles = StyleSheet.create({
   capacityText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#1c1c1e',
+    color: colors.text,
   },
   capacityInfoFull: {
-    backgroundColor: '#28a745',
-    borderColor: '#28a745',
+    backgroundColor: colors.success,
+    borderColor: colors.success,
   },
   capacityTextFull: {
-    color: '#ffffff',
+    color: colors.white,
     fontWeight: '700',
   },
   guestsContainer: {
     padding: 20,
   },
   guestsContainerFull: {
-    backgroundColor: '#f8f9fa',
+    backgroundColor: colors.gray[50],
     borderTopWidth: 1,
-    borderTopColor: '#28a745',
+    borderTopColor: colors.success,
   },
   guestsTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#1c1c1e',
+    color: colors.text,
     marginBottom: 12,
     textAlign: 'right',
     writingDirection: 'rtl',
   },
   guestsTitleFull: {
-    color: '#155724',
+    color: colors.success,
     fontWeight: '700',
   },
   guestsListScrollView: {
@@ -631,31 +632,31 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   guestItem: {
-    backgroundColor: '#f8f9fa',
+    backgroundColor: colors.gray[50],
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderRadius: 12,
     borderRightWidth: 3,
-    borderRightColor: '#007aff',
+    borderRightColor: colors.primary,
     width: '48%',
   },
   guestItemEditing: {
-    borderRightColor: '#adb5bd',
+    borderRightColor: colors.gray[400],
   },
   guestItemSelected: {
-    borderRightColor: '#007aff',
-    backgroundColor: '#e7f5ff',
+    borderRightColor: colors.primary,
+    backgroundColor: 'rgba(0, 53, 102, 0.08)',
   },
   guestName: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#1c1c1e',
+    color: colors.text,
     textAlign: 'right',
     writingDirection: 'rtl',
   },
   guestCategory: {
     fontSize: 14,
-    color: '#8e8e93',
+    color: colors.textLight,
     marginTop: 2,
     textAlign: 'right',
     writingDirection: 'rtl',
@@ -666,41 +667,41 @@ const styles = StyleSheet.create({
   },
   emptyTableText: {
     fontSize: 14,
-    color: '#8e8e93',
+    color: colors.textLight,
     marginTop: 8,
     textAlign: 'center',
   },
   addButton: {
-    backgroundColor: '#e7f5ff',
+    backgroundColor: 'rgba(0, 53, 102, 0.08)',
     borderRadius: 20,
     width: 36,
     height: 36,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#007aff',
+    borderColor: colors.primary,
   },
   editButton: {
-    backgroundColor: '#e7f5ff',
+    backgroundColor: 'rgba(0, 53, 102, 0.08)',
     borderRadius: 20,
     width: 36,
     height: 36,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#007aff',
+    borderColor: colors.primary,
   },
   deleteButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#ff3b30',
+    backgroundColor: colors.error,
     padding: 14,
     borderRadius: 12,
     marginTop: 16,
   },
   deleteButtonText: {
-    color: 'white',
+    color: colors.white,
     fontSize: 16,
     fontWeight: '600',
     marginLeft: 8,
@@ -711,7 +712,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: 'white',
+    backgroundColor: colors.white,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     padding: 20,
@@ -729,7 +730,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginBottom: 20,
     textAlign: 'center',
-    color: '#1c1c1e',
+    color: colors.text,
     writingDirection: 'rtl',
   },
   filterContainer: {
@@ -738,7 +739,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   searchInput: {
-    backgroundColor: '#f2f2f7',
+    backgroundColor: colors.gray[100],
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderRadius: 12,
@@ -760,20 +761,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: '#f2f2f7',
+    backgroundColor: colors.gray[100],
     marginLeft: 8,
   },
   categoryButtonActive: {
-    backgroundColor: '#007aff',
+    backgroundColor: colors.primary,
   },
   categoryButtonText: {
     fontSize: 14,
     fontWeight: '500',
-    color: '#007aff',
+    color: colors.primary,
     textAlign: 'center',
   },
   categoryButtonTextActive: {
-    color: '#fff',
+    color: colors.white,
   },
   selectableGuestItem: {
     flexDirection: 'row',
@@ -781,11 +782,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 12,
     paddingHorizontal: 16,
-    backgroundColor: '#f2f2f7',
+    backgroundColor: colors.gray[100],
     borderRadius: 12,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: '#e5e5ea',
+    borderColor: colors.gray[200],
     width: '47%',
   },
   guestInfo: {
@@ -795,27 +796,27 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 40,
     fontSize: 16,
-    color: '#8e8e93',
+    color: colors.textLight,
   },
   finalAddButton: {
-    backgroundColor: '#007aff',
+    backgroundColor: colors.primary,
     padding: 16,
     borderRadius: 12,
     alignItems: 'center',
     marginTop: 20,
   },
   finalAddButtonText: {
-    color: 'white',
+    color: colors.white,
     fontSize: 17,
     fontWeight: '600',
   },
   disabledButton: {
-    backgroundColor: '#a9a9a9',
+    backgroundColor: colors.gray[400],
   },
   peopleCountBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#e0e0e0',
+    backgroundColor: colors.gray[300],
     borderRadius: 12,
     paddingHorizontal: 8,
     paddingVertical: 4,
@@ -824,7 +825,7 @@ const styles = StyleSheet.create({
   peopleCountText: {
     fontSize: 12,
     fontWeight: '600',
-    color: 'black',
+    color: colors.richBlack,
     marginLeft: 4,
   },
   peopleCountBadgeTopLeft: {
@@ -833,18 +834,18 @@ const styles = StyleSheet.create({
     left: -8,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#e0e0e0',
+    backgroundColor: colors.gray[300],
     borderRadius: 10,
     paddingHorizontal: 6,
     paddingVertical: 2,
     zIndex: 1,
     borderWidth: 1,
-    borderColor: '#fff',
+    borderColor: colors.white,
   },
   peopleCountTextSmall: {
     fontSize: 10,
     fontWeight: '600',
-    color: 'black',
+    color: colors.richBlack,
     marginLeft: 2,
   },
 }); 

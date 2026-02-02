@@ -311,9 +311,9 @@ export default function BrideGroomSettings() {
                   notification.notification_type, 
                   notification.enabled
                 )}
-                trackColor={{ false: '#E5E7EB', true: '#3B82F680' }}
-                thumbColor={notification.enabled ? '#3B82F6' : '#F3F4F6'}
-                ios_backgroundColor="#E5E7EB"
+                trackColor={{ false: colors.gray[200], true: 'rgba(0, 53, 102, 0.35)' }}
+                thumbColor={notification.enabled ? colors.primary : colors.gray[100]}
+                ios_backgroundColor={colors.gray[200]}
                 style={styles.switchStyle}
               />
               <TouchableOpacity style={styles.notificationContent} onPress={() => openEditModal(notification)}>
@@ -363,10 +363,10 @@ export default function BrideGroomSettings() {
           </Text>
           
           {/* Regular Notifications */}
-          {renderNotificationGroup('הודעות רגילות', regularNotifications, 'mail', '#6366f1')}
+          {renderNotificationGroup('הודעות רגילות', regularNotifications, 'mail', colors.primary)}
           
           {/* WhatsApp Notifications */}
-          {renderNotificationGroup('הודעות וואטסאפ', whatsappNotifications, 'logo-whatsapp', '#25d366')}
+          {renderNotificationGroup('הודעות וואטסאפ', whatsappNotifications, 'logo-whatsapp', colors.secondary)}
         </View>
 
         {/* Logout Button */}
@@ -388,7 +388,7 @@ export default function BrideGroomSettings() {
           </TouchableWithoutFeedback>
           <View style={styles.modalContent}>
             <TouchableOpacity style={styles.closeButton} onPress={() => { Keyboard.dismiss(); setEditModalVisible(false); }}>
-              <Ionicons name="close" size={20} color="#374151" />
+              <Ionicons name="close" size={20} color={colors.text} />
             </TouchableOpacity>
             <Text style={styles.modalTitle}>עריכת הודעה</Text>
             <Text style={styles.modalSubtitle}>{editingNotification?.title}</Text>
@@ -400,7 +400,7 @@ export default function BrideGroomSettings() {
                 value={editedMessage}
                 onChangeText={setEditedMessage}
                 placeholder="כתוב כאן את תוכן ההודעה..."
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor={colors.gray[500]}
                 multiline
                 numberOfLines={4}
                 textAlign="right"
@@ -450,7 +450,7 @@ export default function BrideGroomSettings() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: colors.gray[50],
   },
   centered: {
     justifyContent: 'center',
@@ -458,7 +458,7 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: 16,
-    color: '#6B7280',
+    color: colors.textLight,
   },
   scrollView: {
     flex: 1,
@@ -468,13 +468,13 @@ const styles = StyleSheet.create({
     paddingBottom: 120,
   },
   profileCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.white,
     marginHorizontal: 20,
     borderRadius: 20,
     paddingVertical: 32,
     paddingHorizontal: 24,
     alignItems: 'center',
-    shadowColor: '#000000',
+    shadowColor: colors.richBlack,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.04,
     shadowRadius: 8,
@@ -488,13 +488,13 @@ const styles = StyleSheet.create({
   profileName: {
     fontSize: 24,
     fontWeight: '600',
-    color: '#1F2937',
+    color: colors.text,
     marginBottom: 4,
     textAlign: 'center',
   },
   profileEmail: {
     fontSize: 16,
-    color: '#6B7280',
+    color: colors.textLight,
     textAlign: 'center',
   },
   editProfileIconButton: {
@@ -504,10 +504,10 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: colors.gray[100],
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000000',
+    shadowColor: colors.richBlack,
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
@@ -543,22 +543,22 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 20,
     fontWeight: '600',
-    color: '#1F2937',
+    color: colors.text,
     marginBottom: 8,
     textAlign: 'right',
   },
   sectionSubtitle: {
     fontSize: 14,
-    color: '#6B7280',
+    color: colors.textLight,
     textAlign: 'right',
     marginBottom: 20,
     lineHeight: 20,
   },
   notificationsList: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.white,
     borderRadius: 16,
     overflow: 'hidden',
-    shadowColor: '#000000',
+    shadowColor: colors.richBlack,
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.03,
     shadowRadius: 6,
@@ -578,13 +578,13 @@ const styles = StyleSheet.create({
   notificationTitle: {
     fontSize: 17,
     fontWeight: '400',
-    color: '#1F2937',
+    color: colors.text,
     textAlign: 'right',
     marginBottom: 2,
   },
   notificationDate: {
     fontSize: 14,
-    color: '#6B7280',
+    color: colors.textLight,
     textAlign: 'right',
   },
   switchStyle: {
@@ -592,23 +592,23 @@ const styles = StyleSheet.create({
   },
   separator: {
     height: 0.5,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: colors.gray[200],
     marginLeft: 60,
   },
   logoutButton: {
-    backgroundColor: '#EF4444',
+    backgroundColor: colors.error,
     marginHorizontal: 20,
     paddingVertical: 16,
     borderRadius: 12,
     alignItems: 'center',
-    shadowColor: '#EF4444',
+    shadowColor: colors.error,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 2,
   },
   logoutButtonText: {
-    color: '#FFFFFF',
+    color: colors.white,
     fontSize: 17,
     fontWeight: '600',
   },
@@ -623,7 +623,7 @@ const styles = StyleSheet.create({
   groupTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#1F2937',
+    color: colors.text,
     marginLeft: 12,
   },
   dateContainer: {
@@ -644,12 +644,12 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
   },
   modalContent: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.white,
     borderRadius: 20,
     padding: 30,
     width: '80%',
     alignItems: 'center',
-    shadowColor: '#000',
+    shadowColor: colors.richBlack,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 4,
@@ -664,24 +664,24 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#F3F4F6',
+    backgroundColor: colors.gray[100],
   },
   modalTitle: {
     fontSize: 24,
     fontWeight: '700',
-    color: '#1F2937',
+    color: colors.text,
     marginBottom: 10,
     textAlign: 'center',
   },
   messageInput: {
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: colors.gray[200],
     borderRadius: 12,
     paddingHorizontal: 15,
     paddingVertical: 12,
     fontSize: 16,
-    color: '#1F2937',
-    backgroundColor: '#F9FAFB',
+    color: colors.text,
+    backgroundColor: colors.gray[50],
     minHeight: 100,
     writingDirection: 'rtl',
   },
@@ -690,7 +690,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: colors.gray[200],
     borderRadius: 12,
     paddingHorizontal: 15,
     paddingVertical: 12,
@@ -698,11 +698,11 @@ const styles = StyleSheet.create({
   dateDisplay: {
     marginLeft: 8,
     fontSize: 16,
-    color: '#1F2937',
+    color: colors.text,
   },
   modalSubtitle: {
     fontSize: 18,
-    color: '#6B7280',
+    color: colors.textLight,
     marginBottom: 20,
     textAlign: 'center',
   },
@@ -712,18 +712,18 @@ const styles = StyleSheet.create({
   },
   inputLabel: {
     fontSize: 16,
-    color: '#6B7280',
+    color: colors.textLight,
     marginBottom: 8,
     textAlign: 'right',
   },
   dateInput: {
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: colors.gray[200],
     borderRadius: 12,
     paddingHorizontal: 15,
     paddingVertical: 12,
     fontSize: 18,
-    color: '#1F2937',
+    color: colors.text,
     textAlign: 'right',
   },
   modalButtons: {
@@ -733,15 +733,15 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   cancelButton: {
-    backgroundColor: '#E5E7EB',
+    backgroundColor: colors.gray[200],
     paddingVertical: 12,
     paddingHorizontal: 25,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: colors.gray[200],
   },
   cancelButtonText: {
-    color: '#1F2937',
+    color: colors.text,
     fontSize: 16,
     fontWeight: '600',
   },
@@ -752,7 +752,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   saveButtonText: {
-    color: '#FFFFFF',
+    color: colors.white,
     fontSize: 16,
     fontWeight: '600',
   },

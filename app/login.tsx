@@ -101,7 +101,7 @@ export default function LoginScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
     >
-      <StatusBar barStyle="light-content" backgroundColor={colors.orange} />
+      <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
       
       <ScrollView 
         style={styles.scrollView}
@@ -118,16 +118,16 @@ export default function LoginScreen() {
         
         {/* כוכבים */}
         <View style={[styles.star, styles.star1]}>
-          <Ionicons name="star" size={12} color="white" />
+          <Ionicons name="star" size={12} color={colors.white} />
         </View>
         <View style={[styles.star, styles.star2]}>
-          <Ionicons name="star" size={8} color="white" />
+          <Ionicons name="star" size={8} color={colors.white} />
         </View>
         <View style={[styles.star, styles.star3]}>
-          <Ionicons name="star" size={10} color="white" />
+          <Ionicons name="star" size={10} color={colors.white} />
         </View>
         <View style={[styles.star, styles.star4]}>
-          <Ionicons name="star" size={6} color="white" />
+          <Ionicons name="star" size={6} color={colors.white} />
         </View>
         
                         {/* אנימציית חתן וכלה */}
@@ -211,7 +211,7 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.orange,
+    backgroundColor: colors.primary,
   },
   scrollView: {
     flex: 1,
@@ -221,7 +221,7 @@ const styles = StyleSheet.create({
   },
   orangeBackground: {
     flex: 1,
-    backgroundColor: colors.orange,
+    backgroundColor: colors.primary,
     position: 'relative',
     overflow: 'hidden',
   },
@@ -283,7 +283,7 @@ const styles = StyleSheet.create({
   },
   whiteContent: {
     flex: 1,
-    backgroundColor: 'white',
+    backgroundColor: colors.white,
     paddingHorizontal: 24,
     paddingTop: 32,
     paddingBottom: 40,
@@ -331,7 +331,7 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   loginButton: {
-    backgroundColor: '#e8a7a8',
+    backgroundColor: colors.secondary,
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: 'center',

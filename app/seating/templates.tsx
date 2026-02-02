@@ -1075,7 +1075,7 @@ const styles = StyleSheet.create({
     color: colors.textLight,
   },
   hallVisualization: {
-    backgroundColor: '#F8F9FA',
+    backgroundColor: colors.gray[50],
     borderRadius: 16,
     marginTop: 16,
     overflow: 'hidden',

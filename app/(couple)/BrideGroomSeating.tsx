@@ -466,7 +466,7 @@ export default function BrideGroomSeating() {
           onPress={isAdmin ? undefined : () => openModalWithGuests('אישרו הגעה', confirmedGuestsList)}
           disabled={isAdmin}
         >
-          <Ionicons name="checkmark-circle-outline" size={28} color="#0A84FF" />
+          <Ionicons name="checkmark-circle-outline" size={28} color={colors.primary} />
           <Text style={styles.statValue}>{confirmedGuestsCount}</Text>
           <Text style={styles.statLabel}>אישרו הגעה</Text>
         </TouchableOpacity>
@@ -475,7 +475,7 @@ export default function BrideGroomSeating() {
           onPress={isAdmin ? undefined : () => openModalWithGuests('הושבו', seatedGuestsList)}
           disabled={isAdmin}
         >
-          <Ionicons name="body" size={28} color="#0A84FF" />
+          <Ionicons name="body" size={28} color={colors.primary} />
           <Text style={styles.statValue}>{seatedGuestsCount}</Text>
           <Text style={styles.statLabel}>הושבו</Text>
         </TouchableOpacity>
@@ -484,7 +484,7 @@ export default function BrideGroomSeating() {
           onPress={isAdmin ? undefined : () => router.push('/(couple)/TablesList')}
           disabled={isAdmin}
         >
-          <Ionicons name="grid" size={28} color="#0A84FF" />
+          <Ionicons name="grid" size={28} color={colors.primary} />
           <Text style={styles.statValue}>{tables.length}</Text>
           <Text style={styles.statLabel}>שולחנות</Text>
         </TouchableOpacity>
@@ -493,7 +493,7 @@ export default function BrideGroomSeating() {
           onPress={isAdmin ? undefined : () => openModalWithGuests('טרם הושבו', unseatedGuestsList)}
           disabled={isAdmin}
         >
-          <Ionicons name="walk" size={28} color="#0A84FF" />
+          <Ionicons name="walk" size={28} color={colors.primary} />
           <Text style={styles.statValue}>{unseatedGuestsCount}</Text>
           <Text style={styles.statLabel}>טרם הושבו</Text>
         </TouchableOpacity>
@@ -509,7 +509,7 @@ export default function BrideGroomSeating() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <TouchableOpacity style={styles.closeModalButton} onPress={() => setModalVisible(false)}>
-              <Ionicons name="close-circle" size={30} color="#e9ecef" />
+              <Ionicons name="close-circle" size={30} color={colors.gray[200]} />
             </TouchableOpacity>
 
             <Text style={styles.modalTitle}>{modalTitle}</Text>
@@ -520,7 +520,7 @@ export default function BrideGroomSeating() {
                   placeholder="חיפוש לפי שם..."
                   value={searchQuery}
                   onChangeText={setSearchQuery}
-                  placeholderTextColor="#8e8e93"
+                  placeholderTextColor={colors.gray[500]}
               />
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScrollView}>
                   <View style={styles.categoryContainer}>
@@ -561,7 +561,7 @@ export default function BrideGroomSeating() {
                           <Text style={styles.tableNumber}>שולחן {tableNumber}</Text>
                         )}
                         <View style={styles.peopleCountBadge}>
-                            <Ionicons name="person" size={12} color="black" />
+                            <Ionicons name="person" size={12} color={colors.richBlack} />
                             <Text style={styles.peopleCountText}>{item.numberOfPeople || 1}</Text>
                         </View>
                       </View>
@@ -586,7 +586,7 @@ export default function BrideGroomSeating() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <TouchableOpacity style={styles.closeModalButton} onPress={closeModalAndShowTabBar}>
-              <Ionicons name="close-circle" size={30} color="#e9ecef" />
+              <Ionicons name="close-circle" size={30} color={colors.gray[200]} />
             </TouchableOpacity>
 
             <Text style={styles.modalTitle}>
@@ -600,7 +600,7 @@ export default function BrideGroomSeating() {
                 value={tableName}
                 onChangeText={setTableName}
                 placeholder="הוסף שם לשולחן (אופציונלי)"
-                placeholderTextColor="#adb5bd"
+                placeholderTextColor={colors.gray[500]}
                 onBlur={handleSaveTableName} // Save when input loses focus
                 onSubmitEditing={handleSaveTableName} // Save when pressing Enter/Done
                 returnKeyType="done"
@@ -611,13 +611,13 @@ export default function BrideGroomSeating() {
                   style={styles.saveNameButton} 
                   onPress={handleSaveTableName}
                 >
-                  <Ionicons name="checkmark" size={20} color="#007aff" />
+                  <Ionicons name="checkmark" size={20} color={colors.primary} />
                 </TouchableOpacity>
                 <TouchableOpacity 
                   style={styles.deleteTableButton} 
                   onPress={handleDeleteTable}
                 >
-                  <Ionicons name="trash" size={20} color="#ff3b30" />
+                  <Ionicons name="trash" size={20} color={colors.error} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -652,12 +652,12 @@ export default function BrideGroomSeating() {
                     <View style={{flexDirection: 'row', alignItems: 'center', flex: 1}}>
                         <Text style={[styles.guestName, {fontSize: 14, flex: 1}]} numberOfLines={1}>{item.name}</Text>
                         <View style={[styles.peopleCountBadge, {marginLeft: 4}]}>
-                            <Ionicons name="person" size={10} color="black" />
+                            <Ionicons name="person" size={10} color={colors.richBlack} />
                             <Text style={[styles.peopleCountText, {fontSize: 10}]}>{item.numberOfPeople || 1}</Text>
                         </View>
                     </View>
                     <TouchableOpacity onPress={() => handleRemoveGuestFromTable(item.id)} style={{marginLeft: 4}}>
-                      <Ionicons name="trash-outline" size={20} color="#ff3b30" />
+                      <Ionicons name="trash-outline" size={20} color={colors.error} />
                     </TouchableOpacity>
                   </View>
                 )}
@@ -675,7 +675,7 @@ export default function BrideGroomSeating() {
                     placeholder="חיפוש לפי שם..."
                     value={searchQueryTable}
                     onChangeText={setSearchQueryTable}
-                    placeholderTextColor="#8e8e93"
+                    placeholderTextColor={colors.gray[500]}
                   />
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScrollView}>
                       <View style={styles.categoryContainer}>
@@ -715,14 +715,14 @@ export default function BrideGroomSeating() {
                       <View style={{flexDirection: 'row', alignItems: 'center', flex: 1}}>
                         <Text style={[styles.guestName, {fontSize: 14, flex: 1}]} numberOfLines={1}>{item.name}</Text>
                         <View style={[styles.peopleCountBadge, {marginLeft: 4}]}>
-                            <Ionicons name="person" size={10} color="black" />
+                            <Ionicons name="person" size={10} color={colors.richBlack} />
                             <Text style={[styles.peopleCountText, {fontSize: 10}]}>{item.numberOfPeople || 1}</Text>
                         </View>
                       </View>
                       <Ionicons
                         name={selectedGuestsToAdd.has(item.id) ? "checkbox" : "square-outline"}
                         size={20}
-                        color={selectedGuestsToAdd.has(item.id) ? "#007aff" : "#ccc"}
+                        color={selectedGuestsToAdd.has(item.id) ? colors.primary : colors.gray[300]}
                         style={{marginLeft: 4}}
                       />
                     </TouchableOpacity>
@@ -811,13 +811,13 @@ export default function BrideGroomSeating() {
                       styles.tableName,
                       isTableFull && styles.tableFullText,
                       isReserveTable && styles.reserveTableText,
-                      pressedTable === table.id && { color: isTableFull ? '#2d5a3d' : '#666' }
+                      pressedTable === table.id && { color: isTableFull ? colors.white : colors.textLight }
                     ]}>{table.number}</Text>
                     <Text style={[
                       styles.tableCap,
                       isTableFull && styles.tableFullCapText,
                       isReserveTable && styles.reserveTableCapText,
-                      pressedTable === table.id && { color: isTableFull ? '#4a7c59' : '#999' }
+                      pressedTable === table.id && { color: isTableFull ? colors.white : colors.gray[500] }
                     ]}>
                       {totalPeopleSeated} / {table.capacity}
                     </Text>
@@ -842,16 +842,16 @@ export default function BrideGroomSeating() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
+  container: { flex: 1, backgroundColor: colors.background },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   statsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-around',
     paddingVertical: 16,
     paddingTop: 20,
-    backgroundColor: '#fff',
+    backgroundColor: colors.white,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: colors.gray[200],
   },
   statBox: {
     alignItems: 'center',
@@ -859,86 +859,86 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 22,
     fontWeight: '600',
-    color: '#1c1c1e',
+    color: colors.text,
     marginTop: 4,
   },
   statLabel: {
     fontSize: 13,
     fontWeight: '400',
-    color: '#8e8e93',
+    color: colors.textLight,
     marginTop: 2,
   },
   canvasScroll: { flex: 1 },
   canvas: { 
     width: width * 3,
     height: height * 2,
-    backgroundColor: '#fff', 
+    backgroundColor: colors.white, 
     overflow: 'hidden', 
   },
-  gridLine: { position: 'absolute', left: 0, right: 0, height: 1, backgroundColor: '#eee' },
-  gridLineV: { position: 'absolute', top: 0, bottom: 0, width: 1, backgroundColor: '#eee' },
+  gridLine: { position: 'absolute', left: 0, right: 0, height: 1, backgroundColor: colors.gray[200] },
+  gridLineV: { position: 'absolute', top: 0, bottom: 0, width: 1, backgroundColor: colors.gray[200] },
   table: { 
     position: 'absolute', 
     alignItems: 'center', 
     justifyContent: 'center', 
     elevation: 4, 
-    backgroundColor: '#fafafa', 
+    backgroundColor: colors.gray[50], 
     borderRadius: 8, 
-    shadowColor: '#000', 
+    shadowColor: colors.richBlack, 
     shadowOpacity: 0.08, 
     shadowRadius: 4, 
     shadowOffset: { width: 0, height: 2 }, 
     borderWidth: 1, 
-    borderColor: '#ddd' 
+    borderColor: colors.gray[300] 
   },
   tableSquare: { width: 70, height: 70 },
   tableRect: { width: 60, height: 110 },
-  tableName: { fontWeight: 'bold', fontSize: 16, color: '#333' },
+  tableName: { fontWeight: 'bold', fontSize: 16, color: colors.text },
   tableCustomName: {
     fontSize: 12,
-    color: '#555',
+    color: colors.textLight,
     marginTop: 2,
   },
-  tableCap: { fontSize: 14, color: '#888' },
+  tableCap: { fontSize: 14, color: colors.textLight },
   tableFullStyle: {
-    backgroundColor: '#34c759',
-    borderColor: '#30d158',
-    shadowColor: '#34c759',
+    backgroundColor: colors.success,
+    borderColor: colors.success,
+    shadowColor: colors.success,
     shadowOpacity: 0.3,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
     elevation: 8,
   },
   tableFullText: {
-    color: '#ffffff',
+    color: colors.white,
     fontWeight: '700',
   },
   tableFullCapText: {
-    color: '#e8f5e8',
+    color: colors.white,
     fontWeight: '600',
   },
 
   textArea: { 
     position: 'absolute', 
-    backgroundColor: '#f5f5f5', 
+    backgroundColor: colors.gray[100], 
     borderRadius: 8, 
     padding: 8, 
     borderWidth: 1, 
-    borderColor: '#bbb', 
+    borderColor: colors.gray[400], 
     minWidth: 60, 
     minHeight: 30, 
     alignItems: 'center', 
     justifyContent: 'center', 
     elevation: 2 
   },
-  textAreaText: { fontSize: 16, color: '#444' },
+  textAreaText: { fontSize: 16, color: colors.text },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: 'white',
+    backgroundColor: colors.white,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     padding: 20,
@@ -950,7 +950,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginBottom: 20,
     textAlign: 'center',
-    color: '#1c1c1e',
+    color: colors.text,
     writingDirection: 'rtl',
   },
   filterContainer: {
@@ -959,7 +959,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   searchInput: {
-    backgroundColor: '#f2f2f7',
+    backgroundColor: colors.gray[100],
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderRadius: 12,
@@ -981,40 +981,40 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: '#f2f2f7',
+    backgroundColor: colors.gray[100],
     marginLeft: 8,
   },
   categoryButtonActive: {
-    backgroundColor: '#007aff',
+    backgroundColor: colors.primary,
   },
   categoryButtonText: {
     fontSize: 14,
     fontWeight: '500',
-    color: '#007aff',
+    color: colors.primary,
     textAlign: 'center',
   },
   categoryButtonTextActive: {
-    color: '#fff',
+    color: colors.white,
   },
   sectionHeader: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#000000',
+    color: colors.text,
     marginTop: 24,
     marginBottom: 12,
     paddingHorizontal: 20,
     paddingVertical: 12,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: colors.gray[100],
     borderRadius: 12,
     textAlign: 'right',
     borderRightWidth: 4,
-    borderRightColor: '#007aff',
+    borderRightColor: colors.primary,
     writingDirection: 'rtl',
   },
   sectionHeaderSmall: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#000000',
+    color: colors.text,
     marginTop: 16,
     marginBottom: 12,
     textAlign: 'right',
@@ -1025,11 +1025,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     marginHorizontal: 8,
     marginVertical: 4,
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.white,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#e5e5ea',
-    shadowColor: '#000',
+    borderColor: colors.gray[200],
+    shadowColor: colors.richBlack,
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
@@ -1047,14 +1047,14 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     textAlign: 'right',
-    color: '#000000',
+    color: colors.text,
     flex: 1,
     writingDirection: 'rtl',
   },
   tableNumber: {
     fontSize: 14,
     fontWeight: '700',
-    backgroundColor: '#007aff',
+    backgroundColor: colors.primary,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
@@ -1066,14 +1066,14 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 20,
     right: 20,
-    backgroundColor: '#007aff',
+    backgroundColor: colors.primary,
     borderRadius: 30,
     width: 60,
     height: 60,
     justifyContent: 'center',
     alignItems: 'center',
     elevation: 5,
-    shadowColor: '#000',
+    shadowColor: colors.richBlack,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 4,
@@ -1089,13 +1089,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 12,
     paddingHorizontal: 16,
-    backgroundColor: '#f2f2f7',
+    backgroundColor: colors.gray[100],
     borderRadius: 12,
     marginBottom: 8,
     marginHorizontal: 4,
     borderWidth: 1,
-    borderColor: '#e5e5ea',
-    shadowColor: '#000',
+    borderColor: colors.gray[200],
+    shadowColor: colors.richBlack,
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
@@ -1108,13 +1108,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 12,
     paddingHorizontal: 16,
-    backgroundColor: '#fff2f2',
+    backgroundColor: 'rgba(244, 67, 54, 0.06)',
     borderRadius: 12,
     marginBottom: 8,
     marginHorizontal: 4,
     borderWidth: 1,
-    borderColor: '#ffcccc',
-    shadowColor: '#000',
+    borderColor: 'rgba(244, 67, 54, 0.2)',
+    shadowColor: colors.richBlack,
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
@@ -1123,11 +1123,11 @@ const styles = StyleSheet.create({
   },
   divider: {
     height: 1,
-    backgroundColor: '#e5e5ea',
+    backgroundColor: colors.gray[200],
     marginVertical: 16,
   },
   finalAddButton: {
-    backgroundColor: '#007aff',
+    backgroundColor: colors.primary,
     padding: 16,
     borderRadius: 12,
     alignItems: 'center',
@@ -1136,7 +1136,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   finalAddButtonText: {
-    color: 'white',
+    color: colors.white,
     fontSize: 17,
     fontWeight: '600',
   },
@@ -1144,14 +1144,14 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 20,
     fontSize: 16,
-    color: '#8e8e93',
+    color: colors.textLight,
   },
   disabledButton: {
-    backgroundColor: '#a9a9a9',
+    backgroundColor: colors.gray[400],
   },
   toggleContainer: {
     flexDirection: 'row-reverse',
-    backgroundColor: '#e9ecef',
+    backgroundColor: colors.gray[200],
     borderRadius: 12,
     padding: 4,
     marginBottom: 20,
@@ -1164,8 +1164,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   toggleButtonActive: {
-    backgroundColor: '#ffffff',
-    shadowColor: '#000',
+    backgroundColor: colors.white,
+    shadowColor: colors.richBlack,
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
@@ -1174,10 +1174,10 @@ const styles = StyleSheet.create({
   toggleButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#495057',
+    color: colors.text,
   },
   toggleButtonTextActive: {
-    color: '#007aff',
+    color: colors.primary,
   },
   closeModalButton: {
     position: 'absolute',
@@ -1190,7 +1190,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   tableNameInput: {
-    backgroundColor: '#f8f9fa',
+    backgroundColor: colors.gray[50],
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderRadius: 12,
@@ -1198,22 +1198,22 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     writingDirection: 'rtl',
     borderWidth: 1,
-    borderColor: '#dee2e6',
+    borderColor: colors.gray[300],
     width: '100%',
   },
   saveNameButton: {
-    backgroundColor: '#f0f8ff',
+    backgroundColor: colors.gray[50],
     borderRadius: 8,
     padding: 8,
     borderWidth: 1,
-    borderColor: '#007aff',
+    borderColor: colors.primary,
   },
   deleteTableButton: {
-    backgroundColor: '#ffebee',
+    backgroundColor: 'rgba(244, 67, 54, 0.08)',
     borderRadius: 8,
     padding: 8,
     borderWidth: 1,
-    borderColor: '#ff3b30',
+    borderColor: colors.error,
   },
   tableButtonsContainer: {
     flexDirection: 'row',
@@ -1224,7 +1224,7 @@ const styles = StyleSheet.create({
   peopleCountBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#e0e0e0',
+    backgroundColor: colors.gray[300],
     borderRadius: 12,
     paddingHorizontal: 8,
     paddingVertical: 4,
@@ -1233,7 +1233,7 @@ const styles = StyleSheet.create({
   peopleCountText: {
     fontSize: 12,
     fontWeight: '600',
-    color: 'black',
+    color: colors.richBlack,
     marginLeft: 4,
   },
   disabledStatBox: {
@@ -1241,14 +1241,14 @@ const styles = StyleSheet.create({
   },
   reserveTableStyle: {
     backgroundColor: 'rgba(0, 0, 0, 0.7)', // שחור שקוף
-    borderColor: '#333',
+    borderColor: colors.gray[800],
   },
   reserveTableText: {
-    color: '#ffffff',
+    color: colors.white,
     fontWeight: '700',
   },
   reserveTableCapText: {
-    color: '#cccccc',
+    color: colors.gray[300],
     fontWeight: '600',
   },
 }); 

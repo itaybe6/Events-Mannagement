@@ -181,7 +181,7 @@ export default function ProfileEditor() {
               value={formData.name}
               onChangeText={(text) => setFormData(prev => ({ ...prev, name: text }))}
               placeholder="הזן שם מלא"
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor={colors.gray[500]}
               textAlign="right"
             />
           </View>
@@ -193,7 +193,7 @@ export default function ProfileEditor() {
               value={formData.email}
               onChangeText={(text) => setFormData(prev => ({ ...prev, email: text }))}
               placeholder="הזן כתובת אימייל"
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor={colors.gray[500]}
               keyboardType="email-address"
               autoCapitalize="none"
               textAlign="right"
@@ -213,7 +213,7 @@ export default function ProfileEditor() {
               value={formData.currentPassword}
               onChangeText={(text) => setFormData(prev => ({ ...prev, currentPassword: text }))}
               placeholder="הזן סיסמא נוכחית"
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor={colors.gray[500]}
               secureTextEntry
               textAlign="right"
             />
@@ -226,7 +226,7 @@ export default function ProfileEditor() {
               value={formData.newPassword}
               onChangeText={(text) => setFormData(prev => ({ ...prev, newPassword: text }))}
               placeholder="הזן סיסמא חדשה (לפחות 6 תווים)"
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor={colors.gray[500]}
               secureTextEntry
               textAlign="right"
             />
@@ -239,7 +239,7 @@ export default function ProfileEditor() {
               value={formData.confirmPassword}
               onChangeText={(text) => setFormData(prev => ({ ...prev, confirmPassword: text }))}
               placeholder="הזן שוב את הסיסמא החדשה"
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor={colors.gray[500]}
               secureTextEntry
               textAlign="right"
             />
@@ -255,7 +255,7 @@ export default function ProfileEditor() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: colors.gray[50],
   },
   header: {
     flexDirection: 'row',
@@ -264,8 +264,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 60,
     paddingBottom: 20,
-    backgroundColor: '#FFFFFF',
-    shadowColor: '#000000',
+    backgroundColor: colors.white,
+    shadowColor: colors.richBlack,
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 3,
@@ -275,14 +275,14 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: colors.gray[100],
     justifyContent: 'center',
     alignItems: 'center',
   },
   title: {
     fontSize: 20,
     fontWeight: '600',
-    color: '#1F2937',
+    color: colors.text,
   },
   saveButton: {
     backgroundColor: colors.primary,
@@ -291,10 +291,10 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   saveButtonDisabled: {
-    backgroundColor: '#9CA3AF',
+    backgroundColor: colors.gray[400],
   },
   saveButtonText: {
-    color: '#FFFFFF',
+    color: colors.white,
     fontSize: 16,
     fontWeight: '600',
   },
@@ -306,11 +306,11 @@ const styles = StyleSheet.create({
     paddingBottom: 100,
   },
   section: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.white,
     borderRadius: 16,
     padding: 20,
     marginBottom: 20,
-    shadowColor: '#000000',
+    shadowColor: colors.richBlack,
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 6,
@@ -319,13 +319,13 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#1F2937',
+    color: colors.text,
     marginBottom: 8,
     textAlign: 'right',
   },
   sectionSubtitle: {
     fontSize: 14,
-    color: '#6B7280',
+    color: colors.textLight,
     marginBottom: 20,
     textAlign: 'right',
   },
@@ -335,19 +335,19 @@ const styles = StyleSheet.create({
   inputLabel: {
     fontSize: 16,
     fontWeight: '500',
-    color: '#374151',
+    color: colors.text,
     marginBottom: 8,
     textAlign: 'right',
   },
   input: {
     borderWidth: 1,
-    borderColor: '#D1D5DB',
+    borderColor: colors.gray[300],
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 12,
     fontSize: 16,
-    color: '#1F2937',
-    backgroundColor: '#F9FAFB',
+    color: colors.text,
+    backgroundColor: colors.gray[50],
     writingDirection: 'rtl',
   },
 }); 

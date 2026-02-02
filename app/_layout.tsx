@@ -19,17 +19,17 @@ export default function RootLayout() {
     ...FontAwesome.font,
   });
 
-  // Silence console logs in production and during runtime to keep console clean
+  // Silence console logs only in production to keep console clean.
+  // In development (especially web), we want errors/warnings to stay visible.
   useEffect(() => {
+    if (process.env.NODE_ENV !== 'production') return;
+
     const noop = () => {};
-    // Replace noisy console methods
+    // Replace noisy console methods (keep console.error for critical issues)
     console.log = noop;
     console.info = noop;
     console.debug = noop;
-    // Keep errors and warnings if needed, or silence them as well:
     console.warn = noop;
-    // Leave console.error for critical issues? Comment next line to keep errors
-    console.error = noop;
   }, []);
 
   useEffect(() => {
