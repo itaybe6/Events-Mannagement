@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLayoutStore } from '@/store/layoutStore';
 import { Table } from '@/types';
 import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { colors } from '@/constants/colors';
 
 const { width, height } = Dimensions.get('window');
 
