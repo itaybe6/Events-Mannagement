@@ -3,9 +3,14 @@ import { useFonts } from "expo-font";
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect, useState } from "react";
-import { I18nManager } from 'react-native';
+import { I18nManager, Platform } from 'react-native';
 import { useUserStore } from '@/store/userStore';
 import { supabase } from '@/lib/supabase';
+
+if (Platform.OS === 'web') {
+  // Load Tailwind styles on web only to avoid platform resolution cycles.
+  require('../global.css');
+}
 
 // Force RTL layout for Hebrew
 I18nManager.allowRTL(true);

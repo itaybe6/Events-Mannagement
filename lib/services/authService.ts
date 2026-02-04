@@ -347,23 +347,23 @@ export const authService = {
   // Get current user
   getCurrentUser: async (): Promise<AuthUser | null> => {
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
-      
-      // Handle specific auth errors
-      if (authError) {
-        console.error('Auth error:', authError);
-        
-        // Check for refresh token errors using helper
-        if (authService.isTokenExpiredError(authError)) {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+      // No session is a normal state (not an error).
+      if (sessionError) {
+        console.error('Auth session error:', sessionError);
+
+        if (authService.isTokenExpiredError(sessionError)) {
           console.log('Refresh token expired or invalid, signing out...');
           await authService.handleTokenExpiry();
           return null;
         }
-        
-        throw authError;
+
+        throw sessionError;
       }
-      
-      if (!user) return null;
+
+      if (!session?.user) return null;
+      const user = session.user;
 
       const { data: profile, error: profileError } = await supabase
         .from('users')
