@@ -8,12 +8,14 @@ import {
   SafeAreaView,
   Alert,
   Platform,
-  TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { colors } from '@/constants/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
+import { BlurView } from 'expo-blur';
+import Svg, { Defs, Pattern, Rect, Circle } from 'react-native-svg';
 
 interface TableColumn {
   id: number;
@@ -37,6 +39,20 @@ export default function SeatingTemplatesScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [existingMap, setExistingMap] = useState<any>(null);
+  const [selectedTableId, setSelectedTableId] = useState<number | null>(null);
+
+  // Local UI palette inspired by the provided HTML mock
+  const ui = {
+    primary: '#2b8cee',
+    bg: '#f6f7f8',
+    card: '#ffffff',
+    canvas: '#f2f2f7',
+    text: '#111418',
+    muted: '#6b7280',
+    borderSoft: 'rgba(17, 24, 39, 0.08)',
+    borderGlass: 'rgba(255, 255, 255, 0.55)',
+    glassFill: 'rgba(255,255,255,0.72)',
+  } as const;
   
   // Column builder state
   const [columns, setColumns] = useState<TableColumn[]>([]);
@@ -256,6 +272,7 @@ export default function SeatingTemplatesScreen() {
   };
 
   const toggleTableType = (tableId: number) => {
+    setSelectedTableId(tableId);
     const isKnight = knightTables.has(tableId);
     const isReserve = reserveTables.has(tableId);
     
@@ -507,39 +524,91 @@ export default function SeatingTemplatesScreen() {
 
     return (
       <View style={styles.hallVisualization}>
-        <View style={styles.stageArea}>
-          <Text style={styles.stageText}>במה</Text>
+        {/* Dot-grid background */}
+        <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+          <Svg width="100%" height="100%">
+            <Defs>
+              <Pattern id="dotGrid" x="0" y="0" width="24" height="24" patternUnits="userSpaceOnUse">
+                <Circle cx="1.5" cy="1.5" r="1.5" fill="#cbd5e1" opacity={0.75} />
+              </Pattern>
+            </Defs>
+            <Rect x="0" y="0" width="100%" height="100%" fill="url(#dotGrid)" opacity={0.55} />
+          </Svg>
         </View>
-        
-        <ScrollView 
-          horizontal 
+
+        {/* Zoom indicator (static preview) */}
+        <View style={styles.zoomPill}>
+          <Ionicons name="search" size={16} color={'rgba(17,24,39,0.35)'} />
+          <Text style={styles.zoomPillText}>100%</Text>
+        </View>
+
+        {/* Stage */}
+        <View style={styles.stagePill}>
+          <View style={styles.stageIcon}>
+            <Ionicons name="sparkles" size={14} color={'rgba(43,140,238,0.95)'} />
+          </View>
+          <Text style={styles.stagePillText}>במה</Text>
+        </View>
+
+        <ScrollView
+          horizontal
           style={styles.tablesAreaContainer}
           contentContainerStyle={[styles.tablesAreaContent, { width: totalWidth }]}
-          showsHorizontalScrollIndicator={true}
+          showsHorizontalScrollIndicator={false}
           decelerationRate="normal"
           bounces={false}
         >
           <View style={[styles.tablesArea, { width: totalWidth, height: 450 }]}>
-            {/* Render tables */}
+            {/* Render tables (same map logic, updated visuals) */}
             {tables.map((table) => {
-              // Position tables with proper padding on left side
               const adjustedX = ((table.x - minX + paddingPerSide) / 1200) * 300;
+              const isSelected = selectedTableId === table.id;
+
+              // A tiny "seat dots" row just for visual hint (kept light)
+              const dotsCount = Math.max(0, Math.min(4, Math.round((table.seats ?? 0) / 3)));
+              const dots = Array.from({ length: dotsCount });
+
               return (
                 <TouchableOpacity
                   key={table.id}
                   onPress={() => toggleTableType(table.id)}
+                  activeOpacity={0.9}
                   style={[
-                    table.isReserve ? styles.reserveTable : 
-                    table.isKnight ? styles.knightTable : styles.regularTable,
+                    styles.tableCard,
+                    table.isReserve && styles.tableCardReserve,
+                    table.isKnight && styles.tableCardKnight,
+                    isSelected && styles.tableCardSelected,
                     {
                       left: adjustedX,
                       top: (table.y / 800) * 450,
-                    }
+                    },
                   ]}
                 >
-                  <Text style={styles.tableNumber}>
-                    {table.id}
+                  {isSelected ? <View style={styles.selectedDot} /> : null}
+
+                  <Text
+                    style={[
+                      styles.tableLabel,
+                      isSelected && styles.tableLabelSelected,
+                      table.isReserve && styles.tableLabelOnDark,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    שולחן {table.id}
                   </Text>
+
+                  <View style={[styles.seatDotsRow, !isSelected && styles.seatDotsRowMuted]}>
+                    {dots.map((_, idx) => (
+                      <View
+                        key={idx}
+                        style={[
+                          styles.seatDot,
+                          isSelected ? styles.seatDotSelected : null,
+                          table.isReserve ? styles.seatDotOnDark : null,
+                        ]}
+                      />
+                    ))}
+                  </View>
                 </TouchableOpacity>
               );
             })}
@@ -550,146 +619,254 @@ export default function SeatingTemplatesScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      {/* Header */}
+    <SafeAreaView style={[styles.container, { backgroundColor: ui.bg }]}>
+      {/* Header (glass) */}
       <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => router.back()}
-        >
-          <Ionicons name="chevron-back" size={24} color={colors.text} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>בונה מפת הושבה</Text>
+        <BlurView intensity={26} tint="light" style={styles.headerBlur}>
+          <View style={[styles.headerInner, { borderBottomColor: ui.borderGlass }]}>
+            <TouchableOpacity
+              style={[styles.headerIconBtn, { borderColor: ui.borderSoft }]}
+              onPress={() => router.back()}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="חזרה"
+            >
+              {/* RTL back arrow points right */}
+              <Ionicons name="chevron-forward" size={24} color={ui.primary} />
+            </TouchableOpacity>
+
+            <View style={styles.headerTitleWrap}>
+              <Text style={[styles.headerTitle, { color: ui.text }]}>בונה מפת הושבה</Text>
+              {existingMap ? (
+                <Text style={[styles.headerSubtitle, { color: ui.muted }]}>עריכה של תבנית קיימת</Text>
+              ) : (
+                <Text style={[styles.headerSubtitle, { color: ui.muted }]}>יצירת תבנית חדשה</Text>
+              )}
+            </View>
+
+            <TouchableOpacity
+              style={[
+                styles.headerSaveBtn,
+                {
+                  backgroundColor: ui.primary,
+                  opacity: loading ? 0.7 : 1,
+                },
+              ]}
+              onPress={handleCreateMap}
+              disabled={loading}
+              activeOpacity={0.9}
+              accessibilityRole="button"
+              accessibilityLabel="שמור"
+            >
+              {loading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.headerSaveText}>שמור</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </BlurView>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Current Columns - moved to top */}
-        {columns.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>עמודות נוכחיות</Text>
-              <TouchableOpacity onPress={clearAll} style={styles.clearButton}>
-                <Text style={styles.clearButtonText}>מחק הכל</Text>
+      <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer} showsVerticalScrollIndicator={false}>
+        {/* Add Column (modern controls) */}
+        <View style={[styles.card, { backgroundColor: ui.card, borderColor: ui.borderSoft }]}>
+          <View style={styles.cardHeaderRow}>
+            <Text style={[styles.cardTitle, { color: ui.text }]}>הוספה מהירה</Text>
+            <View style={[styles.pillChip, { backgroundColor: 'rgba(43, 140, 238, 0.10)' }]}>
+              <Text style={[styles.pillChipText, { color: ui.primary }]}>
+                {columns.length ? `${getTotalTables()} שולחנות` : 'אין שולחנות'}
+              </Text>
+            </View>
+          </View>
+
+          {/* Floating toolbar look (inside card) */}
+          <View style={[styles.toolbarPill, { borderColor: 'rgba(255,255,255,0.6)' }]}>
+            <TouchableOpacity
+              style={styles.toolbarIconBtn}
+              activeOpacity={0.85}
+              onPress={() => {
+                // small helper: jump to columns list by just doing nothing special for now
+                // (kept simple: no scroll refs to avoid behavior changes)
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="פריסה"
+            >
+              <Ionicons name="grid-outline" size={20} color={'rgba(17,24,39,0.62)'} />
+            </TouchableOpacity>
+
+            <View style={styles.toolbarDivider} />
+
+            <View style={styles.counterPill}>
+              <TouchableOpacity
+                style={styles.counterPillBtn}
+                activeOpacity={0.85}
+                onPress={() => setNewColumnTablesCount(Math.max(1, newColumnTablesCount - 1))}
+                accessibilityRole="button"
+                accessibilityLabel="הפחת שולחנות"
+              >
+                <Ionicons name="add" size={18} color={'rgba(17,24,39,0.45)'} style={{ transform: [{ rotate: '180deg' }] }} />
+              </TouchableOpacity>
+
+              <Text style={[styles.counterPillValue, { color: ui.text }]}>{newColumnTablesCount}</Text>
+
+              <TouchableOpacity
+                style={styles.counterPillBtn}
+                activeOpacity={0.85}
+                onPress={() => setNewColumnTablesCount(Math.min(10, newColumnTablesCount + 1))}
+                accessibilityRole="button"
+                accessibilityLabel="הוסף שולחנות"
+              >
+                <Ionicons name="add" size={18} color={'rgba(17,24,39,0.45)'} />
               </TouchableOpacity>
             </View>
-            
-            {columns.map((column, index) => (
-              <View key={column.id} style={styles.columnItem}>
-                <View style={styles.columnInfo}>
-                  <Text style={styles.columnTitle}>עמודה {index + 1}</Text>
-                  <Text style={styles.columnDetails}>
-                    {column.tablesCount} שולחנות רגילים • 
-                    מרווח {column.aisle === 'wide' ? 'רחב' : 'רגיל'}
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  onPress={() => removeColumn(column.id)}
-                  style={styles.removeButton}
-                >
-                  <Ionicons name="trash" size={20} color={colors.error} />
-                </TouchableOpacity>
-              </View>
-            ))}
 
-            {/* Summary */}
-            <View style={styles.summary}>
-              <Text style={styles.summaryText}>
-                סה"כ: {getTotalTables()} שולחנות • {getTotalSeats()} מקומות
+            <View style={styles.toolbarDivider} />
+
+            <TouchableOpacity
+              style={[styles.toolbarFab, { backgroundColor: ui.primary }]}
+              activeOpacity={0.9}
+              onPress={addColumn}
+              accessibilityRole="button"
+              accessibilityLabel="הוסף עמודה"
+            >
+              <Ionicons name="add" size={22} color="#fff" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Spacing segmented control */}
+          <View style={styles.spacer12} />
+          <Text style={[styles.fieldLabel, { color: ui.muted }]}>מרווח לעמודה הבאה</Text>
+          <View style={styles.segmentWrap}>
+            <TouchableOpacity
+              style={[
+                styles.segmentBtn,
+                newColumnAisle === 'normal' && styles.segmentBtnActive,
+              ]}
+              onPress={() => setNewColumnAisle('normal')}
+              activeOpacity={0.9}
+            >
+              <Text style={[styles.segmentText, newColumnAisle === 'normal' && styles.segmentTextActive]}>
+                רגיל
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.segmentBtn,
+                newColumnAisle === 'wide' && styles.segmentBtnActive,
+              ]}
+              onPress={() => setNewColumnAisle('wide')}
+              activeOpacity={0.9}
+            >
+              <Text style={[styles.segmentText, newColumnAisle === 'wide' && styles.segmentTextActive]}>
+                רחב
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Current Columns */}
+        {columns.length > 0 && (
+          <View style={[styles.card, { backgroundColor: ui.card, borderColor: ui.borderSoft }]}>
+            <View style={styles.cardHeaderRow}>
+              <Text style={[styles.cardTitle, { color: ui.text }]}>עמודות</Text>
+              <TouchableOpacity onPress={clearAll} style={styles.linkDanger} activeOpacity={0.8}>
+                <Text style={styles.linkDangerText}>מחק הכל</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.listWrap}>
+              {columns.map((column, index) => (
+                <View key={column.id} style={[styles.listItem, { borderColor: 'rgba(17,24,39,0.06)' }]}>
+                  <View style={[styles.listIcon, { backgroundColor: 'rgba(43,140,238,0.10)' }]}>
+                    <Ionicons name="restaurant-outline" size={18} color={ui.primary} />
+                  </View>
+
+                  <View style={styles.listBody}>
+                    <Text style={[styles.listTitle, { color: ui.text }]}>עמודה {index + 1}</Text>
+                    <Text style={[styles.listSubtitle, { color: ui.muted }]}>
+                      {column.tablesCount} שולחנות • מרווח {column.aisle === 'wide' ? 'רחב' : 'רגיל'}
+                    </Text>
+                  </View>
+
+                  <TouchableOpacity
+                    onPress={() => removeColumn(column.id)}
+                    style={styles.trashCircle}
+                    activeOpacity={0.85}
+                    accessibilityRole="button"
+                    accessibilityLabel={`מחק עמודה ${index + 1}`}
+                  >
+                    <Ionicons name="trash-outline" size={18} color={'rgba(239,68,68,0.95)'} />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+
+            <View style={styles.summaryRow}>
+              <Text style={[styles.summaryTextModern, { color: ui.muted }]}>סה״כ</Text>
+              <Text style={[styles.summaryTextModernStrong, { color: ui.text }]}>
+                {getTotalTables()} שולחנות • {getTotalSeats()} מקומות
               </Text>
             </View>
           </View>
         )}
 
-        {/* Column Builder */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>הוסף עמודת שולחנות</Text>
-          
-          {/* Tables Count */}
-          <View style={styles.inputRow}>
-            <Text style={styles.inputLabel}>מספר שולחנות בעמודה:</Text>
-            <View style={styles.counterContainer}>
-              <TouchableOpacity 
-                style={styles.counterButton}
-                onPress={() => setNewColumnTablesCount(Math.max(1, newColumnTablesCount - 1))}
-              >
-                <Ionicons name="remove" size={20} color={colors.primary} />
-              </TouchableOpacity>
-              <Text style={styles.counterValue}>{newColumnTablesCount}</Text>
-              <TouchableOpacity 
-                style={styles.counterButton}
-                onPress={() => setNewColumnTablesCount(Math.min(10, newColumnTablesCount + 1))}
-              >
-                <Ionicons name="add" size={20} color={colors.primary} />
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* Aisle Spacing */}
-          <View style={styles.inputRow}>
-            <Text style={styles.inputLabel}>מרווח לעמודה הבאה:</Text>
-            <View style={styles.toggleContainer}>
-              <TouchableOpacity
-                style={[
-                  styles.toggleButton,
-                  newColumnAisle === 'normal' && styles.toggleButtonActive
-                ]}
-                onPress={() => setNewColumnAisle('normal')}
-              >
-                <Text style={[
-                  styles.toggleText,
-                  newColumnAisle === 'normal' && styles.toggleTextActive
-                ]}>רגיל</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.toggleButton,
-                  newColumnAisle === 'wide' && styles.toggleButtonActive
-                ]}
-                onPress={() => setNewColumnAisle('wide')}
-              >
-                <Text style={[
-                  styles.toggleText,
-                  newColumnAisle === 'wide' && styles.toggleTextActive
-                ]}>רחב</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* Add Column Button */}
-          <TouchableOpacity
-            style={styles.addColumnButton}
-            onPress={addColumn}
-          >
-            <Ionicons name="add-circle" size={24} color={colors.white} style={{ marginLeft: 8 }} />
-            <Text style={styles.addColumnButtonText}>הוסף עמודה</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Horizontal Gaps Section */}
+        {/* Horizontal Gaps */}
         {columns.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>מרווחים אופקיים בין שורות</Text>
-            <Text style={styles.gapDescription}>
+          <View style={[styles.card, { backgroundColor: ui.card, borderColor: ui.borderSoft }]}>
+            <View style={styles.cardHeaderRow}>
+              <Text style={[styles.cardTitle, { color: ui.text }]}>מרווחים בין שורות</Text>
+              <TouchableOpacity
+                style={[styles.smallPrimaryBtn, { backgroundColor: ui.primary }]}
+                activeOpacity={0.9}
+                onPress={() => {
+                  const maxRows = Math.max(...columns.map(col => col.tablesCount));
+                  Alert.alert(
+                    'הוסף מרווח',
+                    'בחר איפה להוסיף מרווח:',
+                    [
+                      {
+                        text: 'לפני שורה 1',
+                        onPress: () => {
+                          showColumnSelectionDialog('before-0', 'before', 0);
+                        }
+                      },
+                      ...Array.from({length: maxRows - 1}, (_, i) => ({
+                        text: `אחרי שורה ${i + 1}`,
+                        onPress: () => {
+                          showColumnSelectionDialog(`after-${i}`, 'after', i);
+                        }
+                      })),
+                      { text: 'ביטול', style: 'cancel' as const }
+                    ]
+                  );
+                }}
+              >
+                <Ionicons name="add" size={18} color="#fff" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={[styles.helpText, { color: ui.muted }]}>
               הוסף מרווחים בין שורות שולחנות (למשל, מעבר לשירותים)
             </Text>
-            
-            {/* Current Gaps */}
-            {Array.from(horizontalGaps.entries()).length > 0 && (
-              <View style={styles.gapRowsContainer}>
+
+            {Array.from(horizontalGaps.entries()).length > 0 ? (
+              <View style={styles.gapsList}>
                 {Array.from(horizontalGaps.entries()).map(([gapKey, gapInfo]) => (
-                  <View key={gapKey}>
-                    <View style={styles.gapRowItem}>
-                      <View style={styles.gapInfo}>
-                        <Text style={styles.gapRowText}>
-                          מרווח {gapInfo.position === 'before' ? 'לפני' : 'אחרי'} שורה {gapInfo.rowIndex + 1}: {gapInfo.size}px
+                  <View key={gapKey} style={styles.gapBlock}>
+                    <View style={[styles.gapRowModern, { borderColor: 'rgba(17,24,39,0.06)' }]}>
+                      <View style={styles.gapMain}>
+                        <Text style={[styles.gapTitleModern, { color: ui.text }]}>
+                          {gapInfo.position === 'before' ? 'לפני' : 'אחרי'} שורה {gapInfo.rowIndex + 1}
                         </Text>
-                        <Text style={styles.gapColumnsText}>
-                          עמודות: {Array.from(gapInfo.columns).map(c => c + 1).join(', ')}
+                        <Text style={[styles.gapSubModern, { color: ui.muted }]}>
+                          {gapInfo.size}px • עמודות: {Array.from(gapInfo.columns).map(c => c + 1).join(', ')}
                         </Text>
                       </View>
-                      <View style={styles.gapControls}>
+
+                      <View style={styles.gapActionsModern}>
                         <TouchableOpacity
-                          style={styles.gapSizeButton}
+                          style={styles.iconChip}
                           onPress={() => {
                             const newGaps = new Map(horizontalGaps);
                             const currentGap = newGaps.get(gapKey);
@@ -701,12 +878,17 @@ export default function SeatingTemplatesScreen() {
                               setHorizontalGaps(newGaps);
                             }
                           }}
+                          activeOpacity={0.85}
                         >
-                          <Ionicons name="remove" size={16} color={colors.primary} />
+                          <Ionicons name="remove" size={16} color={'rgba(17,24,39,0.65)'} />
                         </TouchableOpacity>
-                        <Text style={styles.gapSizeValue}>{gapInfo.size}</Text>
+
+                        <View style={styles.sizeChip}>
+                          <Text style={[styles.sizeChipText, { color: ui.text }]}>{gapInfo.size}</Text>
+                        </View>
+
                         <TouchableOpacity
-                          style={styles.gapSizeButton}
+                          style={styles.iconChip}
                           onPress={() => {
                             const newGaps = new Map(horizontalGaps);
                             const currentGap = newGaps.get(gapKey);
@@ -718,44 +900,45 @@ export default function SeatingTemplatesScreen() {
                               setHorizontalGaps(newGaps);
                             }
                           }}
+                          activeOpacity={0.85}
                         >
-                          <Ionicons name="add" size={16} color={colors.primary} />
+                          <Ionicons name="add" size={16} color={'rgba(17,24,39,0.65)'} />
                         </TouchableOpacity>
+
                         <TouchableOpacity
                           style={[
-                            styles.gapSizeButton,
-                            editingGap === gapKey && styles.gapSizeButtonActive
+                            styles.iconChip,
+                            editingGap === gapKey && { backgroundColor: ui.primary }
                           ]}
-                          onPress={() => {
-                            setEditingGap(editingGap === gapKey ? null : gapKey);
-                          }}
+                          onPress={() => setEditingGap(editingGap === gapKey ? null : gapKey)}
+                          activeOpacity={0.88}
                         >
-                          <Ionicons 
-                            name={editingGap === gapKey ? "checkmark" : "create"} 
-                            size={16} 
-                            color={editingGap === gapKey ? colors.white : colors.primary} 
+                          <Ionicons
+                            name={editingGap === gapKey ? 'checkmark' : 'create-outline'}
+                            size={16}
+                            color={editingGap === gapKey ? '#fff' : 'rgba(17,24,39,0.65)'}
                           />
                         </TouchableOpacity>
+
                         <TouchableOpacity
-                          style={styles.removeGapButton}
+                          style={styles.iconChip}
                           onPress={() => {
                             const newGaps = new Map(horizontalGaps);
                             newGaps.delete(gapKey);
                             setHorizontalGaps(newGaps);
                             setEditingGap(null);
                           }}
+                          activeOpacity={0.85}
                         >
-                          <Ionicons name="trash" size={16} color={colors.error} />
+                          <Ionicons name="trash-outline" size={16} color={'rgba(239,68,68,0.95)'} />
                         </TouchableOpacity>
                       </View>
                     </View>
-                    
-                    {/* Column selection when editing */}
+
+                    {/* Column selection when editing (kept same logic, improved styling) */}
                     {editingGap === gapKey && (
-                      <View style={styles.columnSelectionContainer}>
-                        <Text style={styles.columnSelectionTitle}>
-                          בחר עמודות למרווח:
-                        </Text>
+                      <View style={[styles.columnSelectionContainer, { borderColor: ui.borderSoft, backgroundColor: '#fafafa' }]}>
+                        <Text style={[styles.columnSelectionTitle, { color: ui.text }]}>בחר עמודות למרווח</Text>
                         <View style={styles.columnCheckboxes}>
                           {columns.map((_, columnIndex) => {
                             const isSelected = gapInfo.columns.has(columnIndex);
@@ -764,53 +947,47 @@ export default function SeatingTemplatesScreen() {
                                 key={columnIndex}
                                 style={[
                                   styles.columnCheckbox,
-                                  isSelected && styles.columnCheckboxSelected
+                                  { borderColor: 'rgba(17,24,39,0.12)', backgroundColor: '#fff' },
+                                  isSelected && { backgroundColor: ui.primary, borderColor: ui.primary }
                                 ]}
                                 onPress={() => {
                                   const newGaps = new Map(horizontalGaps);
                                   const currentGap = newGaps.get(gapKey)!;
                                   const newColumns = new Set(currentGap.columns);
-                                  
-                                  if (isSelected) {
-                                    newColumns.delete(columnIndex);
-                                  } else {
-                                    newColumns.add(columnIndex);
-                                  }
-                                  
+                                  if (isSelected) newColumns.delete(columnIndex);
+                                  else newColumns.add(columnIndex);
                                   if (newColumns.size > 0) {
-                                    newGaps.set(gapKey, {
-                                      ...currentGap,
-                                      columns: newColumns
-                                    });
+                                    newGaps.set(gapKey, { ...currentGap, columns: newColumns });
                                     setHorizontalGaps(newGaps);
                                   }
                                 }}
+                                activeOpacity={0.9}
                               >
-                                <Text style={[
-                                  styles.columnCheckboxText,
-                                  isSelected && styles.columnCheckboxTextSelected
-                                ]}>
-                                  {isSelected && '✓ '}עמודה {columnIndex + 1}
+                                <Text
+                                  style={[
+                                    styles.columnCheckboxText,
+                                    { color: isSelected ? '#fff' : ui.text }
+                                  ]}
+                                >
+                                  {isSelected ? '✓ ' : ''}עמודה {columnIndex + 1}
                                 </Text>
                               </TouchableOpacity>
                             );
                           })}
                         </View>
                         <TouchableOpacity
-                          style={styles.selectAllButton}
+                          style={[styles.selectAllButton, { backgroundColor: ui.primary }]}
                           onPress={() => {
                             const newGaps = new Map(horizontalGaps);
                             const currentGap = newGaps.get(gapKey)!;
                             const allSelected = columns.length === gapInfo.columns.size;
-                            
                             newGaps.set(gapKey, {
                               ...currentGap,
-                              columns: allSelected ? 
-                                new Set([0]) : // Keep at least one column
-                                new Set(columns.map((_, idx) => idx))
+                              columns: allSelected ? new Set([0]) : new Set(columns.map((_, idx) => idx))
                             });
                             setHorizontalGaps(newGaps);
                           }}
+                          activeOpacity={0.9}
                         >
                           <Text style={styles.selectAllButtonText}>
                             {columns.length === gapInfo.columns.size ? 'בטל הכל' : 'בחר הכל'}
@@ -821,64 +998,33 @@ export default function SeatingTemplatesScreen() {
                   </View>
                 ))}
               </View>
+            ) : (
+              <View style={styles.emptyRow}>
+                <Ionicons name="walk-outline" size={22} color={'rgba(17,24,39,0.35)'} />
+                <Text style={[styles.emptyRowText, { color: ui.muted }]}>אין מרווחים עדיין</Text>
+              </View>
             )}
-
-            {/* Add Gap */}
-            <TouchableOpacity
-              style={styles.addGapButton}
-              onPress={() => {
-                const maxRows = Math.max(...columns.map(col => col.tablesCount));
-                Alert.alert(
-                  'הוסף מרווח',
-                  'בחר איפה להוסיף מרווח:',
-                  [
-                    // Before first row option only
-                    {
-                      text: 'לפני שורה 1',
-                      onPress: () => {
-                        showColumnSelectionDialog('before-0', 'before', 0);
-                      }
-                    },
-                    // After options  
-                    ...Array.from({length: maxRows - 1}, (_, i) => ({
-                      text: `אחרי שורה ${i + 1}`,
-                      onPress: () => {
-                        showColumnSelectionDialog(`after-${i}`, 'after', i);
-                      }
-                    })),
-                    { text: 'ביטול', style: 'cancel' as const }
-                  ]
-                );
-              }}
-            >
-              <Ionicons name="add-circle" size={20} color={colors.white} style={{ marginLeft: 8 }} />
-              <Text style={styles.addGapText}>הוסף מרווח</Text>
-            </TouchableOpacity>
           </View>
         )}
 
-        {/* Preview */}
+        {/* Preview (do not change the sketch/map) */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>תצוגה מקדימה</Text>
           {renderPreview()}
         </View>
 
-        {/* Create/Update Button */}
+        {/* Secondary create/update button (kept for accessibility; header is primary) */}
         {columns.length > 0 && (
-          <View style={styles.section}>
+          <View style={[styles.card, { backgroundColor: ui.card, borderColor: ui.borderSoft }]}>
             <TouchableOpacity
-              style={[styles.createButton, loading && styles.createButtonDisabled]}
+              style={[styles.primaryCta, { backgroundColor: ui.primary }, loading && { opacity: 0.7 }]}
               onPress={handleCreateMap}
               disabled={loading}
+              activeOpacity={0.92}
             >
-              <Ionicons 
-                name={existingMap ? "refresh-circle" : "checkmark-circle"} 
-                size={24} 
-                color={colors.white} 
-                style={{ marginLeft: 8 }} 
-              />
-              <Text style={styles.createButtonText}>
-                {loading ? 'שומר מפה...' : existingMap ? 'עדכן מפת הושבה' : 'צור מפת הושבה'}
+              <Ionicons name={existingMap ? 'refresh' : 'checkmark'} size={20} color="#fff" style={{ marginLeft: 10 }} />
+              <Text style={styles.primaryCtaText}>
+                {loading ? 'שומר...' : existingMap ? 'עדכן מפת הושבה' : 'צור מפת הושבה'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -891,36 +1037,382 @@ export default function SeatingTemplatesScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.gray[100],
   },
   header: {
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.5)',
+  },
+  headerBlur: {
+    width: '100%',
+  },
+  headerInner: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'ios' ? 10 : 20,
-    paddingBottom: 15,
-    backgroundColor: colors.white,
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    paddingTop: Platform.OS === 'ios' ? 10 : 16,
+    paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: colors.gray[200],
   },
-  backButton: {
-    padding: 8,
+  headerIconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    borderWidth: 1,
+  },
+  headerTitleWrap: {
+    flex: 1,
+    alignItems: 'center',
+    paddingHorizontal: 10,
   },
   headerTitle: {
-    flex: 1,
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: colors.text,
+    fontSize: 18,
+    fontWeight: '900',
     textAlign: 'center',
-    marginRight: 40,
+    letterSpacing: -0.2,
+  },
+  headerSubtitle: {
+    marginTop: 2,
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  headerSaveBtn: {
+    height: 40,
+    minWidth: 72,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#2b8cee',
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 5,
+  },
+  headerSaveText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '800',
   },
   content: {
     flex: 1,
   },
+  contentContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 28,
+    gap: 14,
+  },
+
+  // New modern cards (do not reuse for preview section)
+  card: {
+    borderRadius: 24,
+    padding: 16,
+    borderWidth: 1,
+    shadowColor: colors.black,
+    shadowOpacity: 0.06,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 4,
+  },
+  cardHeaderRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    textAlign: 'right',
+    letterSpacing: -0.2,
+  },
+  pillChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  pillChipText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+
+  toolbarPill: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.82)',
+    borderWidth: 1,
+    shadowColor: colors.black,
+    shadowOpacity: 0.06,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 14 },
+    elevation: 5,
+  },
+  toolbarIconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  toolbarDivider: {
+    width: 1,
+    height: 26,
+    backgroundColor: 'rgba(17,24,39,0.10)',
+    marginHorizontal: 8,
+  },
+  counterPill: {
+    flex: 1,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  counterPillBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(17,24,39,0.06)',
+  },
+  counterPillValue: {
+    width: 34,
+    textAlign: 'center',
+    fontSize: 20,
+    fontWeight: '900',
+  },
+  toolbarFab: {
+    width: 44,
+    height: 44,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#2b8cee',
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 6,
+  },
+  spacer12: { height: 12 },
+  fieldLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    textAlign: 'right',
+    marginBottom: 10,
+  },
+  segmentWrap: {
+    flexDirection: 'row-reverse',
+    padding: 6,
+    borderRadius: 18,
+    backgroundColor: '#f0f2f4',
+    gap: 6,
+  },
+  segmentBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  segmentBtnActive: {
+    backgroundColor: '#fff',
+    shadowColor: colors.black,
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 2,
+  },
+  segmentText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: 'rgba(17,24,39,0.55)',
+  },
+  segmentTextActive: {
+    color: '#111418',
+    fontWeight: '900',
+  },
+
+  linkDanger: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    backgroundColor: 'rgba(239,68,68,0.10)',
+  },
+  linkDangerText: {
+    color: 'rgba(239,68,68,0.95)',
+    fontSize: 12,
+    fontWeight: '900',
+  },
+
+  listWrap: { gap: 10 },
+  listItem: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 12,
+    padding: 12,
+    borderRadius: 18,
+    borderWidth: 1,
+    backgroundColor: 'rgba(249,250,251,0.70)',
+  },
+  listIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  listBody: { flex: 1 },
+  listTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    textAlign: 'right',
+  },
+  listSubtitle: {
+    marginTop: 2,
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'right',
+  },
+  trashCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(239,68,68,0.08)',
+  },
+  summaryRow: {
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(17,24,39,0.06)',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  summaryTextModern: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  summaryTextModernStrong: {
+    fontSize: 13,
+    fontWeight: '900',
+  },
+
+  smallPrimaryBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#2b8cee',
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
+  },
+  helpText: {
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'right',
+    marginBottom: 10,
+  },
+  gapsList: { gap: 10 },
+  gapBlock: {},
+  gapRowModern: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    borderRadius: 18,
+    borderWidth: 1,
+    backgroundColor: 'rgba(249,250,251,0.70)',
+  },
+  gapMain: { flex: 1, paddingLeft: 10 },
+  gapTitleModern: {
+    fontSize: 14,
+    fontWeight: '900',
+    textAlign: 'right',
+  },
+  gapSubModern: {
+    marginTop: 2,
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'right',
+  },
+  gapActionsModern: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+  },
+  iconChip: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    backgroundColor: 'rgba(17,24,39,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sizeChip: {
+    minWidth: 42,
+    height: 34,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sizeChipText: {
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  emptyRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 8,
+    paddingVertical: 8,
+  },
+  emptyRowText: {
+    fontSize: 13,
+    fontWeight: '700',
+    textAlign: 'right',
+  },
+
+  primaryCta: {
+    height: 56,
+    borderRadius: 999,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#2b8cee',
+    shadowOpacity: 0.20,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 14 },
+    elevation: 6,
+  },
+  primaryCtaText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+
+  // Legacy section (used by the preview area; keep its look stable)
   section: {
     backgroundColor: colors.white,
-    marginHorizontal: 20,
-    marginTop: 20,
+    marginHorizontal: 4,
     borderRadius: 16,
     padding: 20,
     shadowColor: colors.black,
@@ -929,141 +1421,12 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 3,
   },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 15,
-  },
   sectionTitle: {
     fontSize: 20,
     fontWeight: 'bold',
     color: colors.text,
     textAlign: 'right',
     marginBottom: 8,
-  },
-  inputRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 15,
-  },
-  inputLabel: {
-    fontSize: 16,
-    color: colors.text,
-    fontWeight: '500',
-    flex: 1,
-    textAlign: 'right'
-  },
-  counterContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.gray[100],
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  counterButton: {
-    padding: 5,
-  },
-  counterValue: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginHorizontal: 10,
-  },
-  toggleContainer: {
-    flexDirection: 'row',
-    backgroundColor: colors.gray[100],
-    borderRadius: 12,
-    padding: 5,
-  },
-  toggleButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 15,
-    borderRadius: 10,
-  },
-  toggleButtonActive: {
-    backgroundColor: colors.primary,
-  },
-  toggleText: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: colors.text,
-  },
-  toggleTextActive: {
-    color: colors.white,
-  },
-  addColumnButton: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primary,
-    borderRadius: 16,
-    paddingVertical: 18,
-    marginTop: 15,
-    shadowColor: colors.primary,
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
-  },
-  addColumnButtonText: {
-    color: colors.white,
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  columnItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: colors.gray[100],
-    borderRadius: 12,
-    padding: 15,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: colors.gray[200],
-  },
-  columnInfo: {
-    flex: 1,
-  },
-  columnTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: colors.text,
-    textAlign: 'right',
-    marginBottom: 2,
-  },
-  columnDetails: {
-    fontSize: 14,
-    color: colors.textLight,
-    textAlign: 'right',
-  },
-  removeButton: {
-    padding: 8,
-  },
-  clearButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 15,
-    backgroundColor: colors.error,
-    borderRadius: 12,
-  },
-  clearButtonText: {
-    color: colors.white,
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  summary: {
-    marginTop: 20,
-    paddingTop: 15,
-    borderTopWidth: 1,
-    borderColor: colors.gray[200],
-  },
-  summaryText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: colors.text,
-    textAlign: 'right',
   },
   emptyPreview: {
     alignItems: 'center',
@@ -1075,23 +1438,18 @@ const styles = StyleSheet.create({
     color: colors.textLight,
   },
   hallVisualization: {
-    backgroundColor: colors.gray[50],
-    borderRadius: 16,
+    backgroundColor: '#f2f2f7',
+    borderRadius: 24,
     marginTop: 16,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: colors.gray[200],
+    borderColor: 'rgba(17, 24, 39, 0.10)',
     minHeight: 500,
-  },
-  stageArea: {
-    backgroundColor: colors.primary,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  stageText: {
-    color: colors.white,
-    fontSize: 16,
-    fontWeight: 'bold',
+    shadowColor: colors.black,
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 5,
   },
   tablesAreaContainer: {
     flex: 1,
@@ -1103,166 +1461,164 @@ const styles = StyleSheet.create({
   tablesArea: {
     position: 'relative',
     minHeight: 420,
-    padding: 10,
+    padding: 24,
   },
-  regularTable: {
+
+  // Map preview chrome (inspired by mock)
+  zoomPill: {
     position: 'absolute',
-    width: 20,
-    height: 20,
-    backgroundColor: colors.primary,
-    borderRadius: 4,
-    justifyContent: 'center',
+    left: 14,
+    top: 14,
+    zIndex: 10,
+    flexDirection: 'row-reverse',
     alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    height: 32,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.86)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.55)',
     shadowColor: colors.black,
-    shadowOpacity: 0.15,
-    shadowRadius: 3,
-    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
     elevation: 3,
   },
-  knightTable: {
+  zoomPillText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: 'rgba(17,24,39,0.62)',
+  },
+  stagePill: {
     position: 'absolute',
+    top: 14,
+    right: 14,
+    zIndex: 10,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 10,
+    height: 32,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.86)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.55)',
+    shadowColor: colors.black,
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
+  },
+  stageIcon: {
     width: 22,
-    height: 34,
-    backgroundColor: colors.orange,
-    borderRadius: 4,
-    justifyContent: 'center',
+    height: 22,
+    borderRadius: 10,
+    backgroundColor: 'rgba(43,140,238,0.12)',
     alignItems: 'center',
-    shadowColor: colors.black,
-    shadowOpacity: 0.15,
-    shadowRadius: 3,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 3,
+    justifyContent: 'center',
   },
-  reserveTable: {
+  stagePillText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#111418',
+  },
+
+  // Table cards (keeps the same absolute positioning logic)
+  tableCard: {
     position: 'absolute',
-    width: 20,
-    height: 20,
-    backgroundColor: colors.black,
-    borderRadius: 4,
-    justifyContent: 'center',
+    width: 56,
+    height: 42, // aspect ~4/3
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.12)',
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
     shadowColor: colors.black,
-    shadowOpacity: 0.15,
-    shadowRadius: 3,
-    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.10,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
+  },
+  tableCardKnight: {
+    backgroundColor: 'rgba(204,160,0,0.08)',
+    borderColor: 'rgba(204,160,0,0.35)',
+  },
+  tableCardReserve: {
+    backgroundColor: 'rgba(17,24,39,0.92)',
+    borderColor: 'rgba(17,24,39,0.35)',
+  },
+  tableCardSelected: {
+    borderWidth: 2,
+    borderColor: 'rgba(43,140,238,0.95)',
+    backgroundColor: 'rgba(43,140,238,0.08)',
+    transform: [{ scale: 1.06 }],
+    shadowOpacity: 0.16,
+    shadowRadius: 14,
+  },
+  selectedDot: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    width: 10,
+    height: 10,
+    borderRadius: 999,
+    backgroundColor: 'rgba(43,140,238,0.95)',
+    borderWidth: 2,
+    borderColor: '#fff',
+    shadowColor: colors.black,
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
     elevation: 3,
   },
-  tableNumber: {
-    fontSize: 9,
-    fontWeight: 'bold',
-    color: colors.white,
+  tableLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: 'rgba(17,24,39,0.45)',
+    textAlign: 'center',
+  },
+  tableLabelSelected: {
+    color: 'rgba(43,140,238,0.95)',
+  },
+  tableLabelOnDark: {
+    color: 'rgba(255,255,255,0.80)',
+  },
+  seatDotsRow: {
+    marginTop: 4,
+    flexDirection: 'row',
+    gap: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  seatDotsRowMuted: {
+    opacity: 0.35,
+  },
+  seatDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(17,24,39,0.70)',
+  },
+  seatDotSelected: {
+    backgroundColor: 'rgba(43,140,238,0.55)',
+  },
+  seatDotOnDark: {
+    backgroundColor: 'rgba(255,255,255,0.50)',
   },
   centerAisle: {},
   aisleLabel: {},
-  createButton: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primary,
-    borderRadius: 16,
-    paddingVertical: 18,
-    shadowColor: colors.primary,
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
-  },
-  createButtonDisabled: {
-    backgroundColor: colors.gray[400],
-    shadowOpacity: 0,
-  },
-  createButtonText: {
-    color: colors.white,
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  gapDescription: {
-    fontSize: 14,
-    color: colors.textLight,
-    textAlign: 'right',
-    marginBottom: 15,
-  },
-  gapRowsContainer: {
-    marginTop: 10,
-    marginBottom: 15,
-  },
-  gapRowItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: colors.gray[100],
-    borderRadius: 12,
-    padding: 15,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: colors.gray[200],
-  },
-  gapInfo: {
-    flex: 1,
-    marginLeft: 15,
-  },
-  gapRowText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: colors.text,
-    textAlign: 'right',
-    marginBottom: 2,
-  },
-  gapColumnsText: {
-    fontSize: 12,
-    color: colors.textLight,
-    textAlign: 'right',
-  },
-  gapControls: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  gapSizeButton: {
-    padding: 8,
-    backgroundColor: colors.gray[200],
-    borderRadius: 8,
-    marginHorizontal: 5,
-  },
-  gapSizeValue: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginHorizontal: 10,
-  },
-  removeGapButton: {
-    padding: 8,
-    marginLeft: 10,
-  },
-  addGapButton: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.secondary,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    marginTop: 10,
-  },
-  addGapText: {
-    color: colors.white,
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  gapSizeButtonActive: {
-    backgroundColor: colors.primary,
-  },
   columnSelectionContainer: {
-    backgroundColor: colors.gray[100],
     borderRadius: 12,
     padding: 15,
     marginTop: 10,
     borderWidth: 1,
-    borderColor: colors.gray[200],
   },
   columnSelectionTitle: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: colors.text,
     textAlign: 'right',
     marginBottom: 12,
   },
@@ -1273,30 +1629,19 @@ const styles = StyleSheet.create({
     marginBottom: 15,
   },
   columnCheckbox: {
-    backgroundColor: colors.white,
     borderWidth: 2,
-    borderColor: colors.gray[300],
     borderRadius: 8,
     paddingVertical: 8,
     paddingHorizontal: 12,
     margin: 4,
     minWidth: 80,
   },
-  columnCheckboxSelected: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
   columnCheckboxText: {
     fontSize: 14,
     fontWeight: '500',
-    color: colors.text,
     textAlign: 'center',
   },
-  columnCheckboxTextSelected: {
-    color: colors.white,
-  },
   selectAllButton: {
-    backgroundColor: colors.secondary,
     borderRadius: 8,
     paddingVertical: 10,
     paddingHorizontal: 15,
@@ -1308,49 +1653,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     textAlign: 'center',
   },
-  existingMapInfo: {
-    backgroundColor: colors.gray[100],
-    borderRadius: 12,
-    padding: 15,
-    borderWidth: 1,
-    borderColor: colors.gray[200],
-  },
-  existingMapText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: colors.text,
-    textAlign: 'right',
-    marginBottom: 5,
-  },
-  existingMapDate: {
-    fontSize: 14,
-    color: colors.textLight,
-    textAlign: 'right',
-    marginBottom: 15,
-  },
-  existingMapActions: {
-    alignItems: 'center',
-  },
-  editMapButton: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.secondary,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    marginBottom: 10,
-  },
-  editMapButtonText: {
-    color: colors.white,
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginRight: 8,
-  },
-  orText: {
-    fontSize: 14,
-    color: colors.textLight,
-    textAlign: 'center',
-    fontStyle: 'italic',
-  },
+
+  // kept placeholders referenced by renderPreview
 }); 

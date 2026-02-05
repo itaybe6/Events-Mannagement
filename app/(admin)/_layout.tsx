@@ -146,11 +146,17 @@ export default function AdminTabsLayout() {
         name="admin-event-details"
         options={{
           href: null,
+          // Let the hero image extend behind the top header (logo + notifications)
+          headerTransparent: true,
+          headerShadowVisible: false,
+          headerStyle: {
+            backgroundColor: 'transparent',
+          },
         }}
       />
       {/* Hidden admin wrappers for seating screens (keep admin tab bar) */}
-      <Tabs.Screen name="BrideGroomSeating" options={{ href: null }} />
-      <Tabs.Screen name="seating-templates" options={{ href: null }} />
+      <Tabs.Screen name="BrideGroomSeating" options={{ href: null, headerShown: false }} />
+      <Tabs.Screen name="seating-templates" options={{ href: null, headerShown: false }} />
     </Tabs>
   );
 }

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, SafeAreaView, TouchableOpacity, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, SafeAreaView, TouchableOpacity, Platform, useWindowDimensions } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { colors } from '@/constants/colors';
 import { eventService } from '@/lib/services/eventService';
@@ -13,6 +13,12 @@ import Svg, { Circle } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 
+const HERO_IMAGES = {
+  baby: require('../../assets/images/baby.jpg'),
+  barMitzvah: require('../../assets/images/Bar Mitzvah.jpg'),
+  wedding: require('../../assets/images/wedding.jpg'),
+} as const;
+
 export default function AdminEventDetailsScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
@@ -22,6 +28,9 @@ export default function AdminEventDetailsScreen() {
   const [userAvatarUrl, setUserAvatarUrl] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
+  // Tabs header height (see `app/(admin)/_layout.tsx` headerStyle.height)
+  const headerHeight = 76;
 
   useEffect(() => {
     const load = async () => {
@@ -103,6 +112,35 @@ export default function AdminEventDetailsScreen() {
     glassBorder: 'rgba(255,255,255,0.55)',
     glassFill: 'rgba(255,255,255,0.65)',
   } as const;
+
+  const getHeroImageSource = () => {
+    const title = String(event?.title ?? '').toLowerCase();
+    const hasBarMitzvah =
+      title.includes('בר מצו') || title.includes('בר-מצו') || title.includes('bar mitz');
+    const hasBaby =
+      title.includes('ברית') ||
+      title.includes('בריתה') ||
+      title.includes('תינוק') ||
+      title.includes('תינוקת') ||
+      title.includes('baby') ||
+      title.includes('בייבי');
+
+    if (hasBarMitzvah) return HERO_IMAGES.barMitzvah;
+    if (hasBaby) return HERO_IMAGES.baby;
+
+    const img = String(event?.image ?? '').trim();
+    if (/^https?:\/\//i.test(img)) return { uri: img };
+
+    return HERO_IMAGES.wedding;
+  };
+
+  const getEventTypeLabel = () => {
+    const raw = String(event?.title ?? '').trim();
+    if (!raw) return 'אירוע';
+    // Common pattern in the design: "סוג אירוע – ..." → keep only the type
+    const parts = raw.split(/(?:\s*[–—-]\s*)/g).map(p => p.trim()).filter(Boolean);
+    return parts[0] || raw;
+  };
 
   const getInitials = (name: string) => {
     const trimmed = (name || '').trim();
@@ -248,6 +286,10 @@ export default function AdminEventDetailsScreen() {
     );
   };
 
+  const heroHeight = Math.max(420, Math.min(620, windowHeight * 0.62));
+  // Keep the end of the scroll content above the tab bar
+  const tabBarReserve = Platform.OS === 'web' ? 30 : (Platform.OS === 'ios' ? 30 : 20) + 65 + 24;
+
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: ui.bg }]}>
       {/* Background blobs */}
@@ -266,167 +308,183 @@ export default function AdminEventDetailsScreen() {
         />
       </View>
 
-      {/* Top navigation */}
-      <View style={styles.nav}>
-        <TouchableOpacity
-          style={styles.navBtn}
-          onPress={() => router.replace('/(admin)/admin-events')}
-          activeOpacity={0.85}
-          accessibilityRole="button"
-          accessibilityLabel="חזרה"
-        >
-          {/* RTL back arrow points right */}
-          <Ionicons name="chevron-forward" size={22} color={ui.text} />
-        </TouchableOpacity>
-
-        <View style={styles.navRightSpacer} />
-      </View>
-
       <ScrollView
+        style={styles.scroll}
         contentContainerStyle={[
           styles.content,
           Platform.OS !== 'web'
             ? {
-                // Leave room for floating pill + bottom menu/tab bar
-                paddingBottom: 260 + insets.bottom,
+                paddingBottom: tabBarReserve + insets.bottom,
               }
             : null,
         ]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Hero */}
-        <View style={styles.hero}>
-          <View style={styles.heroWindowOuter}>
-            <BlurView intensity={24} tint="light" style={styles.heroWindowBlur}>
-              <View style={[styles.heroWindowInner, { backgroundColor: 'rgba(255,255,255,0.78)' }]}>
-                <View style={styles.heroTopRow}>
-                  <View style={styles.heroAvatarRing}>
-                    {userAvatarUrl ? (
-                      <Image
-                        source={{ uri: userAvatarUrl }}
-                        style={styles.heroAvatar}
-                        contentFit="cover"
-                        transition={150}
-                      />
-                    ) : (
-                      <View style={styles.heroAvatarFallback}>
-                        {getInitials(userName) ? (
-                          <Text style={styles.heroAvatarInitials}>{getInitials(userName)}</Text>
-                        ) : (
-                          <Ionicons name="person" size={18} color={'rgba(13,17,28,0.65)'} />
-                        )}
-                      </View>
-                    )}
+        {/* Hero (background + nav + card) - scrolls with the page */}
+        <View
+          style={[
+            styles.heroStack,
+            {
+              height: heroHeight + insets.top,
+              marginTop: -insets.top,
+              paddingTop: insets.top + headerHeight + 10,
+            },
+          ]}
+        >
+          <View pointerEvents="none" style={styles.heroBackdrop}>
+            <Image source={getHeroImageSource()} style={styles.heroBackdropImg} contentFit="cover" transition={150} />
+            <LinearGradient
+              colors={['rgba(246,246,248,0.10)', 'rgba(246,246,248,0.78)', ui.bg]}
+              locations={[0, 0.68, 1]}
+              start={{ x: 0.5, y: 0 }}
+              end={{ x: 0.5, y: 1 }}
+              style={styles.heroBackdropFade}
+            />
+            <View style={styles.heroBackdropTint} />
+          </View>
+
+          <View style={[styles.nav, { top: insets.top + 10 }]} pointerEvents="box-none">
+            <TouchableOpacity
+              style={styles.navBtn}
+              onPress={() => router.replace('/(admin)/admin-events')}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="חזרה"
+            >
+              <Ionicons name="chevron-forward" size={22} color={ui.text} />
+            </TouchableOpacity>
+            <View style={styles.navRightSpacer} />
+          </View>
+
+          <View style={styles.hero}>
+            <View style={styles.heroWindowOuter}>
+              <BlurView intensity={24} tint="light" style={styles.heroWindowBlur}>
+                <View style={[styles.heroWindowInner, { backgroundColor: 'rgba(255,255,255,0.78)' }]}>
+                  <View style={styles.heroTopRow}>
+                    <View style={styles.heroAvatarRing}>
+                      {userAvatarUrl ? (
+                        <Image source={{ uri: userAvatarUrl }} style={styles.heroAvatar} contentFit="cover" transition={150} />
+                      ) : (
+                        <View style={styles.heroAvatarFallback}>
+                          {getInitials(userName) ? (
+                            <Text style={styles.heroAvatarInitials}>{getInitials(userName)}</Text>
+                          ) : (
+                            <Ionicons name="person" size={18} color={'rgba(13,17,28,0.65)'} />
+                          )}
+                        </View>
+                      )}
+                    </View>
+                  </View>
+
+                  <View style={styles.heroTitleWrap}>
+                    <Text style={[styles.heroTitleType, { color: ui.text }]}>{getEventTypeLabel()}</Text>
+                    {userName ? <Text style={[styles.heroTitleOwner, { color: ui.primary }]}>{`של ${userName}`}</Text> : null}
+                  </View>
+
+                  <View style={styles.heroMetaRow}>
+                    <Ionicons name="calendar-outline" size={18} color={ui.muted} />
+                    <Text style={[styles.heroMetaText, { color: ui.muted }]}>
+                      {`${weekday}, ${day} | ${String(event.location ?? '')}`}
+                    </Text>
+                  </View>
+                </View>
+              </BlurView>
+            </View>
+          </View>
+        </View>
+
+        {/* White bottom sheet with rounded corners (like the reference) */}
+        <View style={[styles.sheet, { marginBottom: Platform.OS === 'web' ? 30 : 0 }]}>
+          {/* Guest status (rings) */}
+          <GlassPanel style={styles.panel}>
+            <View style={styles.panelHeaderRow}>
+              <Text style={[styles.panelTitle, { color: ui.text }]}>סטטוס אורחים</Text>
+              <View style={[styles.totalChip, { backgroundColor: 'rgba(15,69,230,0.05)' }]}>
+                <Text style={[styles.totalChipText, { color: ui.primary }]}>{`${totalGuests} סה״כ`}</Text>
+              </View>
+            </View>
+
+            <View style={styles.ringsRow}>
+              <ProgressRing
+                size={84}
+                strokeWidth={9}
+                progress={totalGuests ? confirmed / totalGuests : 0}
+                color={'#34C759'}
+                value={confirmed}
+                label="אישרו"
+                valueFontSize={20}
+              />
+              <ProgressRing
+                size={68}
+                strokeWidth={9}
+                progress={totalGuests ? pending / totalGuests : 0}
+                color={ui.primary}
+                value={pending}
+                label="אולי"
+                valueFontSize={18}
+              />
+              <ProgressRing
+                size={68}
+                strokeWidth={9}
+                progress={totalGuests ? declined / totalGuests : 0}
+                color={'#FF3B30'}
+                value={declined}
+                label="לא"
+                valueFontSize={18}
+              />
+            </View>
+          </GlassPanel>
+
+          {/* Stat tiles (match screenshot style) */}
+          <View style={styles.tilesRow}>
+            {/* Dark tile: seating progress */}
+            <View style={styles.tileDarkOuter}>
+              <LinearGradient
+                colors={['#0B1020', '#111B3A']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.tileDark}
+              >
+                <View style={styles.tileDarkTopRow}>
+                  <View style={styles.tileBadge}>
+                    <Ionicons name="checkmark-circle" size={16} color="#E5E7EB" />
                   </View>
                 </View>
 
-                <Text style={[styles.heroTitle, { color: ui.text }]}>
-                  {String(event.title ?? '')}
-                  {userName ? ' –\n' : ''}
-                  {userName ? <Text style={{ color: ui.primary }}>{`של ${userName}`}</Text> : null}
+                <Text style={styles.tilePercent}>{`${seatedPercent}%`}</Text>
+                <Text style={styles.tileDarkLabel}>הושבו</Text>
+
+                <View style={styles.tileProgressTrack}>
+                  <View style={[styles.tileProgressFill, { width: `${Math.max(0, Math.min(100, seatedPercent))}%` }]} />
+                </View>
+              </LinearGradient>
+            </View>
+
+            {/* Light tile: confirmed guests */}
+            <GlassPanel style={styles.tileLight}>
+              <View pointerEvents="none" style={styles.tileLightDecorWrap}>
+                <View style={styles.tileLightDecorCircle} />
+                <View style={styles.tileLightDecorCircle2} />
+              </View>
+
+              <View style={styles.tileLightTopRow}>
+                <View style={styles.tileLightIconCircle}>
+                  <Ionicons name="people" size={18} color={ui.primary} />
+                </View>
+                <Text style={styles.tileLightPercentHint}>
+                  {totalGuests ? `${Math.max(0, Math.min(100, Math.round((confirmed / totalGuests) * 100)))}%+` : '0%'}
                 </Text>
-
-                <View style={styles.heroMetaRow}>
-                  <Ionicons name="calendar-outline" size={18} color={ui.muted} />
-                  <Text style={[styles.heroMetaText, { color: ui.muted }]}>
-                    {`${weekday}, ${day} | ${String(event.location ?? '')}`}
-                  </Text>
-                </View>
               </View>
-            </BlurView>
+
+              <Text style={[styles.tileLightValue, { color: ui.text }]}>{confirmed}</Text>
+              <Text style={styles.tileLightLabel}>אורחים אישרו</Text>
+            </GlassPanel>
           </View>
+
+          {/* Actions are part of the sheet (not floating) */}
+          <Actions variant="inline" />
         </View>
-
-        {/* Guest status (rings) */}
-        <GlassPanel style={styles.panel}>
-          <View style={styles.panelHeaderRow}>
-            <Text style={[styles.panelTitle, { color: ui.text }]}>סטטוס אורחים</Text>
-            <View style={[styles.totalChip, { backgroundColor: 'rgba(15,69,230,0.05)' }]}>
-              <Text style={[styles.totalChipText, { color: ui.primary }]}>{`${totalGuests} סה״כ`}</Text>
-            </View>
-          </View>
-
-          <View style={styles.ringsRow}>
-            <ProgressRing
-              size={84}
-              strokeWidth={9}
-              progress={totalGuests ? confirmed / totalGuests : 0}
-              color={'#34C759'}
-              value={confirmed}
-              label="אישרו"
-              valueFontSize={20}
-            />
-            <ProgressRing
-              size={68}
-              strokeWidth={9}
-              progress={totalGuests ? pending / totalGuests : 0}
-              color={ui.primary}
-              value={pending}
-              label="אולי"
-              valueFontSize={18}
-            />
-            <ProgressRing
-              size={68}
-              strokeWidth={9}
-              progress={totalGuests ? declined / totalGuests : 0}
-              color={'#FF3B30'}
-              value={declined}
-              label="לא"
-              valueFontSize={18}
-            />
-          </View>
-        </GlassPanel>
-
-        {/* Stat tiles (match screenshot style) */}
-        <View style={styles.tilesRow}>
-          {/* Dark tile: seating progress */}
-          <View style={styles.tileDarkOuter}>
-            <LinearGradient
-              colors={['#0B1020', '#111B3A']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.tileDark}
-            >
-              <View style={styles.tileDarkTopRow}>
-                <View style={styles.tileBadge}>
-                  <Ionicons name="checkmark-circle" size={16} color="#E5E7EB" />
-                </View>
-              </View>
-
-              <Text style={styles.tilePercent}>{`${seatedPercent}%`}</Text>
-              <Text style={styles.tileDarkLabel}>הושבו</Text>
-
-              <View style={styles.tileProgressTrack}>
-                <View style={[styles.tileProgressFill, { width: `${Math.max(0, Math.min(100, seatedPercent))}%` }]} />
-              </View>
-            </LinearGradient>
-          </View>
-
-          {/* Light tile: confirmed guests */}
-          <GlassPanel style={styles.tileLight}>
-            <View pointerEvents="none" style={styles.tileLightDecorWrap}>
-              <View style={styles.tileLightDecorCircle} />
-              <View style={styles.tileLightDecorCircle2} />
-            </View>
-
-            <View style={styles.tileLightTopRow}>
-              <View style={styles.tileLightIconCircle}>
-                <Ionicons name="people" size={18} color={ui.primary} />
-              </View>
-              <Text style={styles.tileLightPercentHint}>{totalGuests ? `${Math.max(0, Math.min(100, Math.round((confirmed / totalGuests) * 100)))}%+` : '0%'}</Text>
-            </View>
-
-            <Text style={[styles.tileLightValue, { color: ui.text }]}>{confirmed}</Text>
-            <Text style={styles.tileLightLabel}>אורחים אישרו</Text>
-          </GlassPanel>
-        </View>
-
-        {/* On web: actions should scroll (not stuck to viewport) */}
-        {Platform.OS === 'web' ? <Actions variant="inline" /> : null}
       </ScrollView>
-
-      {/* On native: keep floating actions */}
-      {Platform.OS !== 'web' ? <Actions variant="floating" /> : null}
     </SafeAreaView>
   );
 }
@@ -436,6 +494,26 @@ const styles = StyleSheet.create({
 
   bgLayer: {
     ...StyleSheet.absoluteFillObject,
+    zIndex: -3,
+  },
+
+  heroBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    overflow: 'hidden',
+  },
+  heroBackdropImg: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  heroBackdropFade: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 240,
+  },
+  heroBackdropTint: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15,69,230,0.06)',
   },
   blob: {
     position: 'absolute',
@@ -452,7 +530,14 @@ const styles = StyleSheet.create({
     right: -280,
   },
 
+  heroStack: {
+    position: 'relative',
+    justifyContent: 'flex-start',
+  },
   nav: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
     paddingHorizontal: 24,
     paddingTop: Platform.OS === 'ios' ? 10 : 18,
     paddingBottom: 8,
@@ -460,6 +545,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     zIndex: 5,
+  },
+  scroll: {
+    zIndex: 3,
   },
   navBtn: {
     width: 40,
@@ -481,22 +569,46 @@ const styles = StyleSheet.create({
 
   content: {
     paddingHorizontal: 24,
-    paddingTop: 8,
-    paddingBottom: 160, // make room for floating actions
+    paddingTop: 0,
+    paddingBottom: 80,
     gap: 16,
   },
 
   hero: {
-    paddingTop: 6,
+    marginTop: 0,
+    paddingTop: 10,
     paddingBottom: 4,
     alignItems: 'center',
   },
-  heroTitle: {
+
+  // Bottom "sheet" (white background with rounded top corners)
+  sheet: {
+    marginTop: 18, // push down so it doesn't overlap/cut the hero card
+    marginHorizontal: -24, // extend to screen edges (counteracts content padding)
+    paddingHorizontal: 24,
+    paddingTop: 22,
+    paddingBottom: 24,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderTopLeftRadius: 34,
+    borderTopRightRadius: 34,
+  },
+  heroTitleWrap: {
+    alignItems: 'center',
+  },
+  heroTitleType: {
     fontSize: 36,
     fontWeight: '900',
     lineHeight: 40,
     textAlign: 'center',
     letterSpacing: -0.6,
+  },
+  heroTitleOwner: {
+    marginTop: 6,
+    fontSize: 24,
+    fontWeight: '900',
+    lineHeight: 28,
+    textAlign: 'center',
+    letterSpacing: -0.4,
   },
   heroMetaRow: {
     flexDirection: 'row-reverse',
