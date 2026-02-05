@@ -34,6 +34,10 @@ interface BuiltTable {
   seated_guests: number; // חדש
 }
 
+const PREVIEW_MAP_HEIGHT = 560;
+const PREVIEW_MAP_Y_RANGE = 800;
+const PREVIEW_TABLE_CARD_WIDTH = 44;
+
 export default function SeatingTemplatesScreen() {
   const { eventId } = useLocalSearchParams();
   const router = useRouter();
@@ -187,8 +191,8 @@ export default function SeatingTemplatesScreen() {
     const tables: BuiltTable[] = [];
     let tableId = 1;
 
-    // Fixed vertical spacing between tables in the same column
-    const VERTICAL_TABLE_SPACING = 90;
+  // Fixed vertical spacing between tables in the same column
+    const VERTICAL_TABLE_SPACING = 120;
 
     // Start from the right side and work left for each column
     let currentX = 1050; // Start from right side of the screen
@@ -497,7 +501,11 @@ export default function SeatingTemplatesScreen() {
         },
         {
           text: 'עבור למפה',
-          onPress: () => router.push(`/seating/view-map?eventId=${eventId}`)
+          onPress: () =>
+            router.push({
+              pathname: '/BrideGroomSeating',
+              params: { eventId: String(eventId) },
+            })
         }
       ]
     );
@@ -515,12 +523,24 @@ export default function SeatingTemplatesScreen() {
       );
     }
 
-    // Calculate total width needed for all tables with proper padding
-    const minX = Math.min(...tables.map(t => t.x));
-    const maxX = Math.max(...tables.map(t => t.x));
-    const paddingPerSide = 80; // מספיק מקום משני הצדדים
-    const tablesSpread = maxX - minX;
-    const totalWidth = Math.max(400, ((tablesSpread + paddingPerSide * 2) * 300) / 1200);
+    // Preview layout: compute columns and give them explicit spacing,
+    // so tables won't stick together horizontally on iPhone.
+    const xPositions = [...new Set(tables.map(t => t.x))].sort((a, b) => b - a); // right -> left
+    const columnIndexByX = new Map<number, number>(xPositions.map((x, idx) => [x, idx]));
+
+    const BASE_COLUMN_GAP = 28; // gap between table cards (normal)
+    const WIDE_COLUMN_GAP_EXTRA = 34; // extra gap when aisle === 'wide'
+    const H_PADDING = 24;
+
+    const xByColumnIndex: number[] = [];
+    let nextLeft = H_PADDING;
+    for (let i = 0; i < xPositions.length; i++) {
+      xByColumnIndex[i] = nextLeft;
+      const aisle = columns[i]?.aisle ?? 'normal';
+      const gap = BASE_COLUMN_GAP + (aisle === 'wide' ? WIDE_COLUMN_GAP_EXTRA : 0);
+      nextLeft += PREVIEW_TABLE_CARD_WIDTH + gap;
+    }
+    const totalWidth = Math.max(400, nextLeft + H_PADDING);
 
     return (
       <View style={styles.hallVisualization}>
@@ -558,10 +578,11 @@ export default function SeatingTemplatesScreen() {
           decelerationRate="normal"
           bounces={false}
         >
-          <View style={[styles.tablesArea, { width: totalWidth, height: 450 }]}>
+          <View style={[styles.tablesArea, { width: totalWidth, height: PREVIEW_MAP_HEIGHT }]}>
             {/* Render tables (same map logic, updated visuals) */}
             {tables.map((table) => {
-              const adjustedX = ((table.x - minX + paddingPerSide) / 1200) * 300;
+              const colIdx = columnIndexByX.get(table.x) ?? 0;
+              const adjustedX = xByColumnIndex[colIdx] ?? H_PADDING;
               const isSelected = selectedTableId === table.id;
 
               // A tiny "seat dots" row just for visual hint (kept light)
@@ -580,7 +601,7 @@ export default function SeatingTemplatesScreen() {
                     isSelected && styles.tableCardSelected,
                     {
                       left: adjustedX,
-                      top: (table.y / 800) * 450,
+                      top: (table.y / PREVIEW_MAP_Y_RANGE) * PREVIEW_MAP_HEIGHT,
                     },
                   ]}
                 >
@@ -1444,7 +1465,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(17, 24, 39, 0.10)',
-    minHeight: 500,
+    minHeight: PREVIEW_MAP_HEIGHT + 50,
     shadowColor: colors.black,
     shadowOpacity: 0.08,
     shadowRadius: 18,
@@ -1453,14 +1474,14 @@ const styles = StyleSheet.create({
   },
   tablesAreaContainer: {
     flex: 1,
-    minHeight: 450,
+    minHeight: PREVIEW_MAP_HEIGHT,
   },
   tablesAreaContent: {
     flexGrow: 1,
   },
   tablesArea: {
     position: 'relative',
-    minHeight: 420,
+    minHeight: PREVIEW_MAP_HEIGHT - 40,
     padding: 24,
   },
 
@@ -1527,8 +1548,8 @@ const styles = StyleSheet.create({
   // Table cards (keeps the same absolute positioning logic)
   tableCard: {
     position: 'absolute',
-    width: 56,
-    height: 42, // aspect ~4/3
+    width: 44,
+    height: 44, // default: square
     borderRadius: 12,
     backgroundColor: 'rgba(255,255,255,0.92)',
     borderWidth: 1,
@@ -1545,6 +1566,9 @@ const styles = StyleSheet.create({
   tableCardKnight: {
     backgroundColor: 'rgba(204,160,0,0.08)',
     borderColor: 'rgba(204,160,0,0.35)',
+    // Knight table: vertical rectangle
+    width: 38,
+    height: 58,
   },
   tableCardReserve: {
     backgroundColor: 'rgba(17,24,39,0.92)',
@@ -1575,7 +1599,7 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   tableLabel: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '800',
     color: 'rgba(17,24,39,0.45)',
     textAlign: 'center',
@@ -1587,7 +1611,7 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.80)',
   },
   seatDotsRow: {
-    marginTop: 4,
+    marginTop: 3,
     flexDirection: 'row',
     gap: 3,
     alignItems: 'center',
@@ -1597,8 +1621,8 @@ const styles = StyleSheet.create({
     opacity: 0.35,
   },
   seatDot: {
-    width: 4,
-    height: 4,
+    width: 3.5,
+    height: 3.5,
     borderRadius: 999,
     backgroundColor: 'rgba(17,24,39,0.70)',
   },

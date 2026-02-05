@@ -112,10 +112,19 @@ export const useUserStore = create<UserState>()(
       },
       
       initializeAuth: async () => {
+        // Never allow auth initialization to hang indefinitely (black screen / infinite "מתחבר...")
+        const AUTH_INIT_TIMEOUT_MS = 12_000;
+
+        set({ loading: true });
+
         try {
-          set({ loading: true });
-          const user = await authService.getCurrentUser();
-          
+          const user = await Promise.race([
+            authService.getCurrentUser(),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error('Auth initialization timeout')), AUTH_INIT_TIMEOUT_MS)
+            ),
+          ]);
+
           if (user) {
             set({
               isLoggedIn: true,
@@ -123,22 +132,23 @@ export const useUserStore = create<UserState>()(
               userData: user,
               loading: false,
             });
-          } else {
-            set({
-              isLoggedIn: false,
-              userType: null,
-              userData: null,
-              loading: false,
-            });
+            return;
           }
+
+          set({
+            isLoggedIn: false,
+            userType: null,
+            userData: null,
+            loading: false,
+          });
         } catch (error) {
           console.error('Initialize auth error:', error);
-          
+
           // Handle refresh token errors specifically using helper
           if (authService.isTokenExpiredError(error)) {
             console.log('Token expired during auth initialization, resetting auth state');
           }
-          
+
           // Always reset auth state on any error during initialization
           set({
             isLoggedIn: false,

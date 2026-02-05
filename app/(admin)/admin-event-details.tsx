@@ -291,7 +291,8 @@ export default function AdminEventDetailsScreen() {
   const tabBarReserve = Platform.OS === 'web' ? 30 : (Platform.OS === 'ios' ? 30 : 20) + 65 + 24;
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: ui.bg }]}>
+    <View style={[styles.safeRoot, { backgroundColor: ui.bg }]}>
+      <SafeAreaView style={styles.safe}>
       {/* Background blobs */}
       <View pointerEvents="none" style={styles.bgLayer}>
         <LinearGradient
@@ -485,12 +486,14 @@ export default function AdminEventDetailsScreen() {
           <Actions variant="inline" />
         </View>
       </ScrollView>
-    </SafeAreaView>
+      </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1 },
+  safeRoot: { flex: 1 },
+  safe: { flex: 1, backgroundColor: 'transparent' },
 
   bgLayer: {
     ...StyleSheet.absoluteFillObject,
@@ -533,6 +536,7 @@ const styles = StyleSheet.create({
   heroStack: {
     position: 'relative',
     justifyContent: 'flex-start',
+    marginHorizontal: -24, // extend hero image to screen edges
   },
   nav: {
     position: 'absolute',
@@ -541,7 +545,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: Platform.OS === 'ios' ? 10 : 18,
     paddingBottom: 8,
-    flexDirection: 'row-reverse',
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     zIndex: 5,

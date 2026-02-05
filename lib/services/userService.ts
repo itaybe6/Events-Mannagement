@@ -12,7 +12,6 @@ export const userService = {
   // Get all users (admin only)
   getAllUsers: async (): Promise<UserWithMetadata[]> => {
     try {
-      console.log('📊 UserService - Loading users from Supabase...');
       const users = await authService.getAllUsers();
       
       // Convert to UserWithMetadata format - now we have real timestamps

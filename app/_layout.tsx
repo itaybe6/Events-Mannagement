@@ -3,7 +3,7 @@ import { useFonts } from "expo-font";
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect, useState } from "react";
-import { I18nManager, Platform, Text, TextInput } from 'react-native';
+import { ActivityIndicator, I18nManager, Platform, Text, TextInput, View } from 'react-native';
 import { useUserStore } from '@/store/userStore';
 import { supabase } from '@/lib/supabase';
 
@@ -65,7 +65,13 @@ export default function RootLayout() {
   }, [loaded]);
 
   if (!loaded) {
-    return null;
+    // Keep a visible loading UI (avoid "black screen" during font load)
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff' }}>
+        <ActivityIndicator size="large" />
+        <Text style={{ marginTop: 12, fontSize: 16 }}>טוען...</Text>
+      </View>
+    );
   }
 
   return <RootLayoutNav />;
@@ -97,7 +103,6 @@ function RootLayoutNav() {
 
     // Set up auth state listener for token changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('Auth state changed:', event, session?.user?.id);
       
       if (event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED') {
         if (event === 'SIGNED_OUT') {
@@ -150,7 +155,12 @@ function RootLayoutNav() {
 
   // Show loading screen while initializing
   if (initializing || loading) {
-    return null; // You could return a loading component here
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff' }}>
+        <ActivityIndicator size="large" />
+        <Text style={{ marginTop: 12, fontSize: 16 }}>מתחבר...</Text>
+      </View>
+    );
   }
 
   return (

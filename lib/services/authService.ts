@@ -27,7 +27,6 @@ export const authService = {
 
   // Helper function to handle token expiry by clearing session
   handleTokenExpiry: async (): Promise<void> => {
-    console.log('Handling token expiry, clearing session...');
     try {
       await supabase.auth.signOut();
     } catch (signOutError) {
@@ -38,17 +37,7 @@ export const authService = {
   // Test connection and permissions
   testConnection: async (): Promise<{ success: boolean; message: string }> => {
     try {
-      console.log('🧪 Testing Supabase connection...');
-      console.log('🔗 URL:', supabase.supabaseUrl);
-      console.log('🔑 Has anon key:', !!supabase.supabaseKey);
-      console.log('🔧 Client config:', {
-        url: supabase.supabaseUrl,
-        hasKey: !!supabase.supabaseKey
-      });
-      
       // First try an even simpler test - just ping the API
-      console.log('🏓 Testing basic API connectivity...');
-      
       try {
         const response = await fetch(`${supabase.supabaseUrl}/rest/v1/`, {
           method: 'GET',
@@ -58,19 +47,13 @@ export const authService = {
             'Content-Type': 'application/json'
           }
         });
-        
-        console.log('📊 Fetch response status:', response.status);
-        console.log('📊 Fetch response ok:', response.ok);
-        
+
         if (!response.ok) {
           return {
             success: false,
             message: `API not reachable: ${response.status} ${response.statusText}`
           };
         }
-        
-        console.log('✅ Basic API connectivity works');
-        
       } catch (fetchError) {
         console.error('❌ Fetch error:', fetchError);
         return {
@@ -80,16 +63,10 @@ export const authService = {
       }
       
       // Now try the Supabase query
-      console.log('🔍 Testing Supabase query...');
-      const { data, error, status, statusText } = await supabase
+      const { error } = await supabase
         .from('users')
         .select('count', { count: 'exact', head: true });
-      
-      console.log('📊 Supabase response status:', status);
-      console.log('📊 Supabase response statusText:', statusText);
-      console.log('📊 Supabase response data:', data);
-      console.log('📊 Supabase response error:', error);
-      
+
       if (error) {
         console.error('❌ Supabase query failed:', error);
         return {
@@ -97,8 +74,6 @@ export const authService = {
           message: `Supabase query failed: ${error.message}\n\nCode: ${error.code || 'No code'}\n\nDetails: ${error.details || 'No details'}\n\nHint: ${error.hint || 'No hint'}`
         };
       }
-      
-      console.log('✅ Supabase connection test successful');
       return {
         success: true,
         message: 'Connection and database access successful'
@@ -156,8 +131,6 @@ export const authService = {
   // Get all users (admin only)
   getAllUsers: async (): Promise<AuthUser[]> => {
     try {
-      console.log('🔍 AuthService - Querying users table with admin client...');
-      
       const { data: users, error } = await supabaseAdmin
         .from('users')
         .select('*')
@@ -179,7 +152,6 @@ export const authService = {
         updated_at: user.updated_at,
       }));
 
-      console.log('✅ Mapped users:', mappedUsers);
       return mappedUsers;
     } catch (error) {
       console.error('❌ Get all users error:', error);
@@ -196,8 +168,6 @@ export const authService = {
     phone?: string
   ): Promise<AuthUser> => {
     try {
-      console.log('👤 AuthService - Creating new user:', { email, name, userType, phone });
-      
       // First create auth user using Supabase Auth Admin API
       const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
         email,
@@ -215,8 +185,6 @@ export const authService = {
         throw authError;
       }
 
-      console.log('✅ Auth user created:', authData.user?.id);
-
       if (authData.user) {
         // Then create profile in our users table
         const { data: profileData, error: profileError } = await supabaseAdmin
@@ -231,14 +199,12 @@ export const authService = {
           .select()
           .single();
 
-                  if (profileError) {
+        if (profileError) {
             console.error('❌ Profile creation error:', profileError);
             // If profile creation fails, clean up auth user
             await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
             throw profileError;
           }
-
-        console.log('✅ User profile created:', profileData);
 
         return {
           id: authData.user.id,
@@ -261,8 +227,6 @@ export const authService = {
   // Delete user (admin only)
   deleteUser: async (userId: string): Promise<void> => {
     try {
-      console.log('🗑️ AuthService - Deleting user:', userId);
-      
       // First delete from our users table
       const { error: profileError } = await supabaseAdmin
         .from('users')
@@ -274,8 +238,6 @@ export const authService = {
         throw profileError;
       }
 
-      console.log('✅ User profile deleted');
-
       // Then delete auth user
       const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(userId);
       
@@ -283,8 +245,6 @@ export const authService = {
         console.error('❌ Auth deletion error:', authError);
         throw authError;
       }
-
-      console.log('✅ Auth user deleted');
     } catch (error) {
       console.error('❌ Delete user error:', error);
       throw error;
@@ -369,7 +329,6 @@ export const authService = {
         console.error('Auth session error:', sessionError);
 
         if (authService.isTokenExpiredError(sessionError)) {
-          console.log('Refresh token expired or invalid, signing out...');
           await authService.handleTokenExpiry();
           return null;
         }
@@ -407,7 +366,6 @@ export const authService = {
       
       // Handle token expiry errors using helper
       if (authService.isTokenExpiredError(error)) {
-        console.log('Refresh token error detected, clearing session...');
         await authService.handleTokenExpiry();
       }
       
@@ -443,10 +401,8 @@ export const authService = {
   // Check if users table exists and create demo user if needed
   setupDatabase: async (): Promise<{ success: boolean; message: string }> => {
     try {
-      console.log('🔧 Setting up database...');
-      
       // First check if table exists by trying to count rows
-      const { data: countData, error: countError } = await supabase
+      const { error: countError } = await supabase
         .from('users')
         .select('*', { count: 'exact', head: true });
       
@@ -464,8 +420,6 @@ export const authService = {
         };
       }
       
-      console.log('✅ Users table exists');
-      
       // Check if admin user exists
       const { data: adminUsers, error: adminError } = await supabase
         .from('users')
@@ -482,14 +436,11 @@ export const authService = {
       }
       
       if (!adminUsers || adminUsers.length === 0) {
-        console.log('⚠️ No admin user found, you may need to create one manually');
         return {
           success: true,
           message: 'הדאטאבייס מוכן, אך לא נמצא משתמש מנהל. צור משתמש מנהל דרך Supabase Dashboard'
         };
       }
-      
-      console.log('✅ Admin user exists');
       return {
         success: true,
         message: 'הדאטאבייס מוכן ופועל'

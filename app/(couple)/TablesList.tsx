@@ -48,23 +48,39 @@ export default function TablesList() {
 
   const fetchGuests = async () => {
     if (!userData?.event_id) return;
-    
-    const { data, error } = await supabase
-      .from('guests')
-      .select(`
-        *,
-        guest_categories(name)
-      `)
-      .eq('event_id', userData.event_id)
-      .eq('status', 'מגיע');
-    
-    if (!error) {
-      // Map the data to include numberOfPeople from number_of_people column
-      const mappedGuests = (data || []).map(guest => ({
+
+    try {
+      // Avoid PostgREST relationship joins (PGRST200) by fetching separately and joining client-side.
+      const [
+        { data: guestsData, error: guestsError },
+        { data: categoriesData, error: categoriesError },
+      ] = await Promise.all([
+        supabase
+          .from('guests')
+          .select('*')
+          .eq('event_id', userData.event_id)
+          .eq('status', 'מגיע'),
+        supabase.from('guest_categories').select('id,name').eq('event_id', userData.event_id),
+      ]);
+
+      if (guestsError) throw guestsError;
+      if (categoriesError) throw categoriesError;
+
+      const categoryNameById = new Map<string, string>(
+        (categoriesData || []).map((c: any) => [c.id, c.name])
+      );
+
+      const mappedGuests = (guestsData || []).map((guest: any) => ({
         ...guest,
-        numberOfPeople: guest.number_of_people || 1
+        guest_categories: guest.category_id
+          ? { name: categoryNameById.get(guest.category_id) }
+          : null,
+        numberOfPeople: guest.number_of_people || 1,
       }));
+
       setGuests(mappedGuests);
+    } catch (error) {
+      console.error('Error fetching guests:', error);
     }
   };
 

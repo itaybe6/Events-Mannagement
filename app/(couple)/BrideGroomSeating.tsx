@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated, Pressable, ActivityIndicator, Modal, SectionList, TextInput, FlatList, Dimensions, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated, Pressable, ActivityIndicator, Modal, SectionList, TextInput, FlatList, Dimensions, Alert, PanResponder } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { useUserStore } from '@/store/userStore';
 import { Ionicons } from '@expo/vector-icons';
@@ -33,6 +33,32 @@ export default function BrideGroomSeating() {
   const [pressedTable, setPressedTable] = useState<string | null>(null);
   const positions = useRef<{ [id: string]: Animated.ValueXY }>({}).current;
   const scrollViewRef = useRef<ScrollView>(null);
+  const [dragMode, setDragMode] = useState(false);
+  const dragModeRef = useRef(false);
+  const [selectedTableForDrag, setSelectedTableForDrag] = useState<string | null>(null);
+  const selectedTableForDragRef = useRef<string | null>(null);
+  const draggingTableIdRef = useRef<string | null>(null);
+  const panRespondersRef = useRef<Record<string, any>>({});
+  const wobbleAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    selectedTableForDragRef.current = selectedTableForDrag;
+  }, [selectedTableForDrag]);
+  useEffect(() => {
+    dragModeRef.current = dragMode;
+    if (dragMode) {
+      wobbleAnim.setValue(0);
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(wobbleAnim, { toValue: 1, duration: 120, useNativeDriver: true }),
+          Animated.timing(wobbleAnim, { toValue: -1, duration: 120, useNativeDriver: true }),
+        ])
+      ).start();
+    } else {
+      wobbleAnim.stopAnimation();
+      wobbleAnim.setValue(0);
+      setSelectedTableForDrag(null);
+    }
+  }, [dragMode, wobbleAnim]);
   
   // State for filtering and searching
   const [searchQuery, setSearchQuery] = useState('');
@@ -318,6 +344,71 @@ export default function BrideGroomSeating() {
     }
   }, [tables]);
 
+  const persistDraggedTablePosition = useCallback(
+    async (tableId: string) => {
+      if (!positions[tableId]) return;
+      try {
+        const { x: adjustedX, y } = (positions[tableId] as any).__getValue?.() ?? { x: 0, y: 0 };
+        const rawX = adjustedX - padding + minX;
+        const rawY = y;
+
+        const { error } = await supabase
+          .from('tables')
+          .update({ x: rawX, y: rawY })
+          .eq('id', tableId);
+
+        if (!error) {
+          setTables((prev) =>
+            prev.map((t) => (t.id === tableId ? ({ ...t, x: rawX, y: rawY } as any) : t))
+          );
+        } else {
+          console.error('Error saving table position:', error);
+        }
+      } catch (e) {
+        console.error('Error persisting dragged position:', e);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [minX]
+  );
+
+  const getPanResponderForTable = useCallback(
+    (tableId: string) => {
+      if (panRespondersRef.current[tableId]) return panRespondersRef.current[tableId];
+
+      const responder = PanResponder.create({
+        onStartShouldSetPanResponder: () => dragModeRef.current,
+        onMoveShouldSetPanResponder: (_evt, gestureState) =>
+          dragModeRef.current &&
+          (Math.abs(gestureState.dx) > 2 || Math.abs(gestureState.dy) > 2),
+        onPanResponderGrant: () => {
+          draggingTableIdRef.current = tableId;
+          setSelectedTableForDrag(tableId);
+          const current = (positions[tableId] as any).__getValue?.() ?? { x: 0, y: 0 };
+          positions[tableId].setOffset({ x: current.x, y: current.y });
+          positions[tableId].setValue({ x: 0, y: 0 });
+        },
+        onPanResponderMove: Animated.event([null, { dx: positions[tableId].x, dy: positions[tableId].y }], {
+          useNativeDriver: false,
+        }),
+        onPanResponderRelease: async () => {
+          positions[tableId].flattenOffset();
+          draggingTableIdRef.current = null;
+          await persistDraggedTablePosition(tableId);
+        },
+        onPanResponderTerminate: async () => {
+          positions[tableId].flattenOffset();
+          draggingTableIdRef.current = null;
+          await persistDraggedTablePosition(tableId);
+        },
+      });
+
+      panRespondersRef.current[tableId] = responder;
+      return responder;
+    },
+    [persistDraggedTablePosition, positions]
+  );
+
   const fetchTables = async () => {
     if (!eventId) return;
     
@@ -332,25 +423,42 @@ export default function BrideGroomSeating() {
 
   const fetchGuests = async () => {
     if (!eventId) return;
-    
-    const { data, error } = await supabase
-      .from('guests')
-      .select(`
-        *,
-        guest_categories(name),
-        tables(number)
-      `)
-      .eq('event_id', eventId);
-    
-    if (!error) {
-      // Map the data to include numberOfPeople from number_of_people column
-      const mappedGuests = (data || []).map(guest => ({
+
+    try {
+      // Avoid PostgREST relationship joins (PGRST200) by fetching separately and joining client-side.
+      const [
+        { data: guestsData, error: guestsError },
+        { data: categoriesData, error: categoriesError },
+        { data: tablesData, error: tablesError },
+      ] = await Promise.all([
+        supabase.from('guests').select('*').eq('event_id', eventId),
+        supabase.from('guest_categories').select('id,name').eq('event_id', eventId),
+        supabase.from('tables').select('id,number').eq('event_id', eventId),
+      ]);
+
+      if (guestsError) throw guestsError;
+      if (categoriesError) throw categoriesError;
+      if (tablesError) throw tablesError;
+
+      const categoryNameById = new Map<string, string>(
+        (categoriesData || []).map((c: any) => [c.id, c.name])
+      );
+      const tableNumberById = new Map<string, number>(
+        (tablesData || []).map((t: any) => [t.id, t.number])
+      );
+
+      const mappedGuests = (guestsData || []).map((guest: any) => ({
         ...guest,
-        numberOfPeople: guest.number_of_people || 1
+        guest_categories: guest.category_id
+          ? { name: categoryNameById.get(guest.category_id) }
+          : null,
+        tables: guest.table_id ? { number: tableNumberById.get(guest.table_id) } : null,
+        numberOfPeople: guest.number_of_people || 1,
       }));
+
       setGuests(mappedGuests);
-    } else {
-      console.error("Error fetching guests for stats:", error);
+    } catch (error) {
+      console.error('Error fetching guests for stats:', error);
     }
   };
 
@@ -460,6 +568,15 @@ export default function BrideGroomSeating() {
 
   return (
     <View style={styles.container}>
+      {dragMode && (
+        <TouchableOpacity
+          style={styles.dragModePill}
+          onPress={() => setDragMode(false)}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.dragModeText}>סיים גרירה</Text>
+        </TouchableOpacity>
+      )}
       {/* Stats */}
       <View style={styles.statsContainer}>
         <TouchableOpacity 
@@ -762,6 +879,7 @@ export default function BrideGroomSeating() {
         bounces={false}
         bouncesZoom={false}
         horizontal
+        scrollEnabled={!dragMode}
         showsHorizontalScrollIndicator={false}
         showsVerticalScrollIndicator={false}
       >
@@ -797,15 +915,42 @@ export default function BrideGroomSeating() {
                     table.shape === 'rectangle' ? styles.tableRect : styles.tableSquare,
                     isTableFull && styles.tableFullStyle,
                     isReserveTable && styles.reserveTableStyle,
+                    selectedTableForDrag === table.id && styles.tableSelected,
                     {
-                      transform: positions[table.id] ? positions[table.id].getTranslateTransform() : [{ translateX: adjustedX }, { translateY: table.y ?? 60 }],
+                      transform: [
+                        ...(positions[table.id]
+                          ? positions[table.id].getTranslateTransform()
+                          : [{ translateX: adjustedX }, { translateY: table.y ?? 60 }]),
+                        {
+                          rotate: dragMode
+                            ? wobbleAnim.interpolate({
+                                inputRange: [-1, 1],
+                                outputRange: ['-2deg', '2deg'],
+                              })
+                            : '0deg',
+                        },
+                      ],
                     },
                   ]}
+                  {...getPanResponderForTable(table.id).panHandlers}
                 >
                   <Pressable
                     onPressIn={() => setPressedTable(table.id)}
                     onPressOut={() => setPressedTable(null)}
-                    onPress={() => handleTablePress(table)}
+                    onLongPress={() => {
+                      // Long press enters drag mode (like iOS home screen)
+                      dragModeRef.current = true;
+                      setDragMode(true);
+                      setSelectedTableForDrag(table.id);
+                    }}
+                    delayLongPress={320}
+                    onPress={() => {
+                      // Tap opens modal only when not in drag mode
+                      if (draggingTableIdRef.current === table.id) return;
+                      if (!dragMode) {
+                        handleTablePress(table);
+                      }
+                    }}
                     style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
                   >
                     <Text style={[
@@ -869,6 +1014,23 @@ const styles = StyleSheet.create({
     color: colors.textLight,
     marginTop: 2,
   },
+  dragModePill: {
+    position: 'absolute',
+    top: 8,
+    left: 16,
+    zIndex: 20,
+    paddingHorizontal: 12,
+    height: 32,
+    borderRadius: 999,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dragModeText: {
+    color: colors.white,
+    fontSize: 12,
+    fontWeight: '700',
+  },
   canvasScroll: { flex: 1 },
   canvas: { 
     width: width * 3,
@@ -893,7 +1055,12 @@ const styles = StyleSheet.create({
     borderColor: colors.gray[300] 
   },
   tableSquare: { width: 70, height: 70 },
-  tableRect: { width: 60, height: 110 },
+  // Knight table: vertical rectangle ("מלבן לאורך")
+  tableRect: { width: 58, height: 118 },
+  tableSelected: {
+    borderColor: colors.primary,
+    borderWidth: 2,
+  },
   tableName: { fontWeight: 'bold', fontSize: 16, color: colors.text },
   tableCustomName: {
     fontSize: 12,
