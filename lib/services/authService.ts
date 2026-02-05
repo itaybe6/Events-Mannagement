@@ -14,6 +14,44 @@ export interface AuthUser {
 }
 
 export const authService = {
+  // Resolve a primary event id for an event owner (fallback if users.event_id is missing)
+  getPrimaryEventId: async (userId: string): Promise<string | null> => {
+    try {
+      const nowIso = new Date().toISOString();
+      const { data: upcoming, error: upcomingError } = await supabase
+        .from('events')
+        .select('id')
+        .eq('user_id', userId)
+        .gte('date', nowIso)
+        .order('date', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (upcomingError) {
+        console.error('Get upcoming event error:', upcomingError);
+      }
+
+      if (upcoming?.id) return upcoming.id;
+
+      const { data: latest, error: latestError } = await supabase
+        .from('events')
+        .select('id')
+        .eq('user_id', userId)
+        .order('date', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (latestError) {
+        console.error('Get latest event error:', latestError);
+      }
+
+      return latest?.id ?? null;
+    } catch (error) {
+      console.error('Get primary event id error:', error);
+      return null;
+    }
+  },
+
   // Helper function to check if error is a token expiry error
   isTokenExpiredError: (error: any): boolean => {
     if (!error) return false;
@@ -352,13 +390,18 @@ export const authService = {
 
       if (!profile) return null;
 
+      let resolvedEventId = profile.event_id;
+      if (!resolvedEventId && profile.user_type === 'event_owner') {
+        resolvedEventId = await authService.getPrimaryEventId(profile.id);
+      }
+
       return {
         id: profile.id,
         email: profile.email,
         name: profile.name,
         phone: profile.phone,
         avatar_url: profile.avatar_url || undefined,
-        event_id: profile.event_id,
+        event_id: resolvedEventId ?? undefined,
         userType: profile.user_type as UserType,
       };
     } catch (error) {

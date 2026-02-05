@@ -3,15 +3,29 @@ import { Tabs, useRouter } from "expo-router";
 import { colors } from "@/constants/colors";
 import { Ionicons } from "@expo/vector-icons";
 import { Image, Platform, StyleSheet, View, TouchableOpacity } from "react-native";
+import { BlurView } from "expo-blur";
 import { useLayoutStore } from '@/store/layoutStore';
+import { useUserStore } from '@/store/userStore';
 
 export default function CoupleTabsLayout() {
   const router = useRouter();
   const { isTabBarVisible, setTabBarVisible } = useLayoutStore();
+  const { userType, isLoggedIn, loading } = useUserStore();
 
   useEffect(() => {
     setTabBarVisible(true);
   }, [setTabBarVisible]);
+
+  useEffect(() => {
+    if (loading) return;
+    if (!isLoggedIn) {
+      router.replace('/login');
+      return;
+    }
+    if (userType === 'admin' || userType === 'employee') {
+      router.replace('/(admin)/admin-events');
+    }
+  }, [isLoggedIn, userType, loading, router]);
 
   const headerRight = () => (
     <TouchableOpacity
@@ -36,15 +50,23 @@ export default function CoupleTabsLayout() {
         tabBarActiveTintColor: colors.white,
         tabBarInactiveTintColor: colors.gray[500],
         headerShown: true,
+        headerTransparent: true,
         headerTitle: headerTitle,
         headerTitleAlign: "center",
         headerTitleContainerStyle: {
           width: "100%",
           alignItems: "center",
         },
+        headerBackground: () => (
+          <BlurView
+            intensity={24}
+            tint="light"
+            style={StyleSheet.absoluteFill}
+          />
+        ),
         headerStyle: {
-          backgroundColor: colors.gray[100],
-          height: 76,
+          backgroundColor: 'transparent',
+          height: 90,
           elevation: 0,
           shadowOpacity: 0,
           borderBottomWidth: 0,
@@ -159,19 +181,21 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: colors.white,
+    backgroundColor: 'rgba(255,255,255,0.35)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.55)',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 15,
     shadowColor: colors.richBlack,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    elevation: 6,
   },
   logoHeader: {
-    width: 260,
-    height: 60,
+    width: 320,
+    height: 80,
   },
 });
 

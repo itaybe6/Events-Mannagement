@@ -20,6 +20,7 @@ import { useUserStore } from '@/store/userStore';
 import { LottieAnimation } from '@/components/LottieAnimation';
 import { mockEvents, mockGuests, mockTables, mockMessages, mockGifts } from '@/constants/mockData';
 import { supabase } from '@/lib/supabase';
+import { authService } from '@/lib/services/authService';
 
 const { width, height } = Dimensions.get('window');
 
@@ -104,6 +105,13 @@ export default function LoginScreen() {
           );
           setLoading(false);
           return;
+        }
+      }
+
+      if (!userRow.event_id && userRow.user_type === 'event_owner') {
+        const resolvedEventId = await authService.getPrimaryEventId(userRow.id);
+        if (resolvedEventId) {
+          userRow.event_id = resolvedEventId;
         }
       }
 

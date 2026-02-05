@@ -63,11 +63,35 @@ CREATE TABLE IF NOT EXISTS guests (
     phone VARCHAR(20),
     status VARCHAR(50) DEFAULT 'ממתין' CHECK (status IN ('מגיע', 'לא מגיע', 'ממתין')),
     table_id UUID,
+    category_id UUID,
     gift_amount DECIMAL(10,2) DEFAULT 0,
     message TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Guest categories table
+CREATE TABLE IF NOT EXISTS guest_categories (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    event_id UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    side VARCHAR(20) NOT NULL DEFAULT 'groom' CHECK (side IN ('groom', 'bride')),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Add side column if missing (safe re-run)
+ALTER TABLE guest_categories ADD COLUMN IF NOT EXISTS side VARCHAR(20) DEFAULT 'groom';
+UPDATE guest_categories SET side = 'groom' WHERE side IN ('חתן');
+UPDATE guest_categories SET side = 'bride' WHERE side IN ('כלה');
+UPDATE guest_categories SET side = 'groom' WHERE side IS NULL;
+ALTER TABLE guest_categories ALTER COLUMN side SET NOT NULL;
+ALTER TABLE guest_categories DROP CONSTRAINT IF EXISTS guest_categories_side_check;
+ALTER TABLE guest_categories
+  ADD CONSTRAINT guest_categories_side_check
+  CHECK (side IN ('groom', 'bride'));
+ALTER TABLE guest_categories ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();
+ALTER TABLE guest_categories ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();
 
 -- Tables table
 CREATE TABLE IF NOT EXISTS tables (
@@ -110,7 +134,8 @@ CREATE TABLE IF NOT EXISTS notification_settings (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     event_id UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
     notification_type VARCHAR(50) NOT NULL,
-    days_from_wedding INTEGER NOT NULL,
+    days_from_wedding INTEGER,
+    notification_date TIMESTAMP WITH TIME ZONE,
     title VARCHAR(255) NOT NULL,
     message_content TEXT NOT NULL,
     enabled BOOLEAN DEFAULT true,
@@ -132,11 +157,26 @@ END $$;
 -- Add column for number of people
 ALTER TABLE guests ADD COLUMN IF NOT EXISTS number_of_people INTEGER DEFAULT 1;
 
+-- Add column for category
+ALTER TABLE guests ADD COLUMN IF NOT EXISTS category_id UUID;
+
+-- Add foreign key constraint for category_id in guests
+DO $$
+BEGIN
+  ALTER TABLE guests
+    ADD CONSTRAINT fk_guests_category_id
+    FOREIGN KEY (category_id) REFERENCES guest_categories(id) ON DELETE SET NULL;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_events_user_id ON events(user_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_event_id ON tasks(event_id);
 CREATE INDEX IF NOT EXISTS idx_guests_event_id ON guests(event_id);
+CREATE INDEX IF NOT EXISTS idx_guest_categories_event_id ON guest_categories(event_id);
 CREATE INDEX IF NOT EXISTS idx_guests_table_id ON guests(table_id);
+CREATE INDEX IF NOT EXISTS idx_guests_category_id ON guests(category_id);
 CREATE INDEX IF NOT EXISTS idx_tables_event_id ON tables(event_id);
 CREATE INDEX IF NOT EXISTS idx_messages_event_id ON messages(event_id);
 CREATE INDEX IF NOT EXISTS idx_gifts_event_id ON gifts(event_id);
@@ -146,6 +186,7 @@ ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE guests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE guest_categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tables ENABLE ROW LEVEL SECURITY;
 ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE gifts ENABLE ROW LEVEL SECURITY;
@@ -245,6 +286,20 @@ CREATE POLICY "Users can update guests of own events" ON guests FOR UPDATE
 CREATE POLICY "Users can delete guests of own events" ON guests FOR DELETE 
     USING (EXISTS (SELECT 1 FROM events WHERE events.id = guests.event_id AND events.user_id = auth.uid()));
 
+-- Guest categories policies
+DROP POLICY IF EXISTS "Users can view guest categories of own events" ON guest_categories;
+DROP POLICY IF EXISTS "Users can insert guest categories for own events" ON guest_categories;
+DROP POLICY IF EXISTS "Users can update guest categories of own events" ON guest_categories;
+DROP POLICY IF EXISTS "Users can delete guest categories of own events" ON guest_categories;
+CREATE POLICY "Users can view guest categories of own events" ON guest_categories FOR SELECT
+    USING (EXISTS (SELECT 1 FROM events WHERE events.id = guest_categories.event_id AND events.user_id = auth.uid()));
+CREATE POLICY "Users can insert guest categories for own events" ON guest_categories FOR INSERT
+    WITH CHECK (EXISTS (SELECT 1 FROM events WHERE events.id = guest_categories.event_id AND events.user_id = auth.uid()));
+CREATE POLICY "Users can update guest categories of own events" ON guest_categories FOR UPDATE
+    USING (EXISTS (SELECT 1 FROM events WHERE events.id = guest_categories.event_id AND events.user_id = auth.uid()));
+CREATE POLICY "Users can delete guest categories of own events" ON guest_categories FOR DELETE
+    USING (EXISTS (SELECT 1 FROM events WHERE events.id = guest_categories.event_id AND events.user_id = auth.uid()));
+
 -- Tables policies
 DROP POLICY IF EXISTS "Users can view tables of own events" ON tables;
 DROP POLICY IF EXISTS "Users can insert tables for own events" ON tables;
@@ -324,6 +379,14 @@ END $$;
 DO $$
 BEGIN
   CREATE TRIGGER update_guests_updated_at BEFORE UPDATE ON guests
+      FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$
+BEGIN
+  CREATE TRIGGER update_guest_categories_updated_at BEFORE UPDATE ON guest_categories
       FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 EXCEPTION
   WHEN duplicate_object THEN NULL;
