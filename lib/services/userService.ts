@@ -33,13 +33,14 @@ export const userService = {
 
   // Create new user (admin only)
   createUser: async (
-    email: string, 
-    password: string, 
-    name: string, 
-    userType: UserType
+    email: string,
+    password: string,
+    name: string,
+    userType: UserType,
+    phone?: string
   ): Promise<UserWithMetadata> => {
     try {
-      const user = await authService.createUser(email, password, name, userType);
+      const user = await authService.createUser(email, password, name, userType, phone);
       
       return {
         ...user,
@@ -64,11 +65,11 @@ export const userService = {
     }
   },
 
-  // Get clients (users with type 'couple')
+  // Get event owners (users with type 'event_owner')
   getClients: async (): Promise<UserWithMetadata[]> => {
     try {
       const allUsers = await userService.getAllUsers();
-      return allUsers.filter(user => user.userType === 'couple');
+      return allUsers.filter(user => user.userType === 'event_owner');
     } catch (error) {
       console.error('UserService - getClients error:', error);
       throw error;

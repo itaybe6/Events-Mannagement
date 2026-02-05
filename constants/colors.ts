@@ -5,11 +5,11 @@ export const colors = {
     gold: '#CCA000',
     yaleBlue: '#003566',
     oxfordBlue: '#001D3D',
-    richBlack: '#000814',
+    richBlack: '#06173e',
   },
 
   // Semantic colors used across the app
-  primary: '#003566', // Yale Blue
+  primary: '#06173e', // Brand main color
   secondary: '#CCA000', // Satin Sheen Gold
   accent: '#F0CB46', // Yellow
   orange: '#CCA000', // backwards compatibility (e.g. login)
@@ -28,7 +28,7 @@ export const colors = {
   black: '#000000',
 
   // Convenience aliases (direct use in screens/components)
-  richBlack: '#000814',
+  richBlack: '#06173e',
   oxfordBlue: '#001D3D',
   yaleBlue: '#003566',
   gold: '#CCA000',

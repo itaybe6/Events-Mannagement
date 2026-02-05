@@ -2,7 +2,7 @@ import 'dotenv/config';
 
 export default {
   expo: {
-    name: "אירועי דמו ניהול אירועים במערכת מקיפה",
+    name: "Moon",
     slug: "euroe-nitgmal-eiroom-mekapim",
     version: "1.0.0",
     orientation: "portrait",

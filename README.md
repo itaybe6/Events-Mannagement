@@ -12,6 +12,12 @@
 ### 2. הגדרת טבלת המשתמשים
 בעורך ה-SQL ב-Supabase, הרץ את הקוד מהקובץ `supabase/schema.sql`
 
+### 2.1 העלאת תמונות משתמשים (אוואטרים)
+הקובץ `supabase/schema.sql` מנסה ליצור Bucket ציבורי בשם `avatars` עבור תמונות משתמשים. אם זה לא נוצר אוטומטית, צור ידנית ב-Supabase Dashboard:
+- **Storage → Buckets → New bucket**
+- **Name**: `avatars`
+- **Public bucket**: Enabled
+
 ### 3. הגדרת משתני סביבה
 צור קובץ `.env` בשורש הפרויקט עם הנתונים הבאים:
 
@@ -62,5 +68,5 @@ npx expo start
 
 ```
 Admin: admin / admin123
-זוג: couple / couple123
+בעל אירוע: couple / couple123
 ```

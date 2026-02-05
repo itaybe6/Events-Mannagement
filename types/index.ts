@@ -49,6 +49,7 @@ export type Event = {
   budget: number;
   tasks: Task[];
   user_id?: string; // מזהה המשתמש שהאירוע שלו
+  userName?: string; // שם המשתמש שהאירוע שלו (לתצוגת אדמין)
 };
 
 export type Message = {

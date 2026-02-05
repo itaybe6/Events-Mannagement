@@ -6,7 +6,10 @@ export type User = {
   id: string;
   email: string;
   name: string;
-  user_type: 'couple' | 'admin';
+  user_type: 'event_owner' | 'admin' | 'employee';
+  phone?: string;
+  avatar_url?: string;
+  event_id?: string;
   created_at: string;
   updated_at: string;
 };
@@ -18,6 +21,7 @@ export type Event = {
   title: string;
   date: string;
   location: string;
+  city?: string;
   image?: string;
   story?: string;
   guests_count: number;

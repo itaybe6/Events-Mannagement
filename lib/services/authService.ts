@@ -6,6 +6,7 @@ export interface AuthUser {
   email: string;
   name: string;
   phone?: string;
+  avatar_url?: string;
   event_id?: string;
   userType: UserType;
   created_at?: string;
@@ -171,6 +172,8 @@ export const authService = {
         id: user.id,
         email: user.email,
         name: user.name,
+        phone: user.phone || undefined,
+        avatar_url: user.avatar_url || undefined,
         userType: user.user_type as UserType,
         created_at: user.created_at,
         updated_at: user.updated_at,
@@ -185,9 +188,15 @@ export const authService = {
   },
 
   // Create user (admin only)
-  createUser: async (email: string, password: string, name: string, userType: UserType): Promise<AuthUser> => {
+  createUser: async (
+    email: string,
+    password: string,
+    name: string,
+    userType: UserType,
+    phone?: string
+  ): Promise<AuthUser> => {
     try {
-      console.log('👤 AuthService - Creating new user:', { email, name, userType });
+      console.log('👤 AuthService - Creating new user:', { email, name, userType, phone });
       
       // First create auth user using Supabase Auth Admin API
       const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
@@ -197,6 +206,7 @@ export const authService = {
         user_metadata: {
           name,
           user_type: userType,
+          phone,
         }
       });
 
@@ -215,6 +225,7 @@ export const authService = {
             id: authData.user.id,
             email,
             name,
+            phone: phone || null,
             user_type: userType,
           })
           .select()
@@ -233,6 +244,7 @@ export const authService = {
           id: authData.user.id,
           email,
           name,
+          phone,
           userType,
           created_at: profileData.created_at,
           updated_at: profileData.updated_at,
@@ -320,6 +332,9 @@ export const authService = {
             id: profile.id,
             email: profile.email,
             name: profile.name,
+            phone: profile.phone || undefined,
+            avatar_url: profile.avatar_url || undefined,
+            event_id: profile.event_id,
             userType: profile.user_type as UserType,
           } as AuthUser,
           session: authData.session,
@@ -369,18 +384,21 @@ export const authService = {
         .from('users')
         .select('*')
         .eq('id', user.id)
-        .single();
+        .maybeSingle();
 
       if (profileError) {
         console.error('Profile fetch error:', profileError);
         throw profileError;
       }
 
+      if (!profile) return null;
+
       return {
         id: profile.id,
         email: profile.email,
         name: profile.name,
         phone: profile.phone,
+        avatar_url: profile.avatar_url || undefined,
         event_id: profile.event_id,
         userType: profile.user_type as UserType,
       };

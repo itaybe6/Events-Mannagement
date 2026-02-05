@@ -2,7 +2,7 @@ import React, { useEffect } from "react";
 import { Tabs, useRouter } from "expo-router";
 import { colors } from "@/constants/colors";
 import { Ionicons } from "@expo/vector-icons";
-import { Platform, StyleSheet, View, TouchableOpacity } from "react-native";
+import { Image, Platform, StyleSheet, View, TouchableOpacity } from "react-native";
 import { useUserStore } from "@/store/userStore";
 import { useLayoutStore } from '@/store/layoutStore';
 
@@ -32,6 +32,14 @@ export default function TabLayout() {
     </TouchableOpacity>
   );
 
+  const headerTitle = () => (
+    <Image
+      source={require('../../assets/images/logo-moon.png')}
+      style={styles.logoHeader}
+      resizeMode="contain"
+    />
+  );
+
   // Force re-render when userType changes
   const tabKey = `tabs-${userType || 'default'}`;
 
@@ -42,9 +50,15 @@ export default function TabLayout() {
         tabBarActiveTintColor: colors.white,
         tabBarInactiveTintColor: colors.gray[500],
         headerShown: true,
-        headerTitle: "",
+        headerTitle: headerTitle,
+        headerTitleAlign: "center",
+        headerTitleContainerStyle: {
+          width: "100%",
+          alignItems: "center",
+        },
         headerStyle: {
           backgroundColor: colors.gray[100],
+          height: 76,
           elevation: 0,
           shadowOpacity: 0,
           borderBottomWidth: 0,
@@ -90,7 +104,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          href: userType === 'couple' ? undefined : null,
+          href: userType === 'event_owner' ? undefined : null,
           title: "בית",
           tabBarIcon: ({ focused }) => (
             <View style={[
@@ -110,7 +124,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="guests"
         options={{
-          href: userType === 'couple' ? undefined : null,
+          href: userType === 'event_owner' ? undefined : null,
           title: "אורחים",
           tabBarIcon: ({ focused }) => (
             <View style={[
@@ -130,7 +144,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="BrideGroomSeating"
         options={{
-          href: userType === 'couple' ? undefined : null,
+          href: userType === 'event_owner' ? undefined : null,
           title: "הושבה",
           tabBarIcon: ({ focused }) => (
             <View style={[
@@ -150,21 +164,21 @@ export default function TabLayout() {
       <Tabs.Screen
         name="TablesList"
         options={{
-          href: null
+          tabBarButton: () => null,
         }}
       />
 
       <Tabs.Screen
         name="admin-events-create"
         options={{
-          href: null
+          tabBarButton: () => null,
      
         }}
       />
       <Tabs.Screen
         name="admin-event-details"
         options={{
-          href: null
+          tabBarButton: () => null,
      
         }}
       />
@@ -219,7 +233,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="brideGroomProfile"
         options={{
-          href: userType === 'couple' ? undefined : null,
+          href: userType === 'event_owner' ? undefined : null,
           title: "הגדרות",
           tabBarIcon: ({ focused }) => (
             <View style={[
@@ -284,5 +298,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+  },
+  logoHeader: {
+    width: 260,
+    height: 60,
   },
 });

@@ -36,21 +36,64 @@ export default function LoginWebScreen() {
         return;
       }
 
-      const { data: userRow, error: userError } = await supabase
+      const authedUser = data.user;
+      const authedUserId = authedUser.id;
+
+      let { data: userRow, error: userError } = await supabase
         .from('users')
         .select('*')
-        .eq('email', username.trim())
-        .single();
+        .eq('id', authedUserId)
+        .maybeSingle();
 
       if (userError || !userRow) {
-        Alert.alert('שגיאה', 'לא נמצאו פרטי משתמש במערכת. פנה למנהל.');
-        return;
+        const meta = (authedUser.user_metadata ?? {}) as Record<string, any>;
+        const metaUserType = meta.user_type;
+        const normalizedMetaUserType = metaUserType === 'couple' ? 'event_owner' : metaUserType;
+        const inferredUserType =
+          normalizedMetaUserType === 'admin' ||
+          normalizedMetaUserType === 'employee' ||
+          normalizedMetaUserType === 'event_owner'
+            ? normalizedMetaUserType
+            : 'event_owner';
+
+        const inferredName =
+          typeof meta.name === 'string' && meta.name.trim()
+            ? meta.name.trim()
+            : authedUser.email?.split('@')[0] || 'User';
+
+        const { error: upsertError } = await supabase.from('users').upsert({
+          id: authedUserId,
+          email: authedUser.email,
+          name: inferredName,
+          user_type: inferredUserType,
+        }, { onConflict: 'id' });
+
+        if (!upsertError) {
+          const retry = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', authedUserId)
+            .maybeSingle();
+          userRow = retry.data as any;
+          userError = retry.error as any;
+        }
+
+        if (userError || !userRow) {
+          console.error('User profile fetch/create error:', { userError, upsertError });
+          Alert.alert(
+            'שגיאה',
+            'לא נמצא פרופיל משתמש בדאטאבייס (users). ודא שהרצת את ה-SQL ב-supabase/schema.sql וש-RLS מוגדר נכון.'
+          );
+          return;
+        }
       }
 
       login(userRow.user_type, {
         id: userRow.id,
         email: userRow.email,
         name: userRow.name,
+        phone: userRow.phone || undefined,
+        event_id: userRow.event_id,
         userType: userRow.user_type,
       });
 
@@ -80,11 +123,18 @@ export default function LoginWebScreen() {
           <View style={styles.heroOverlay} />
           <View style={styles.heroText}>
             <Text style={styles.heroTitle}>מערכת ניהול אירועים</Text>
-            <Text style={styles.heroSubtitle}>כניסה מאובטחת לזוג / מנהל</Text>
+            <Text style={styles.heroSubtitle}>כניסה מאובטחת לבעל אירוע / מנהל</Text>
           </View>
         </View>
 
         <View style={styles.card}>
+          <View style={styles.logoContainer}>
+            <Image
+              source={require('../assets/images/logo-moon.png')}
+              style={styles.logo}
+              resizeMode="contain"
+            />
+          </View>
           <Text style={styles.title}>התחברות</Text>
           <Text style={styles.subtitle}>הזן מייל וסיסמה כדי להמשיך</Text>
 
@@ -204,6 +254,14 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 10 },
+  },
+  logoContainer: {
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  logo: {
+    width: 420,
+    height: 130,
   },
   title: {
     fontSize: 22,

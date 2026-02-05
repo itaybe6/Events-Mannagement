@@ -37,7 +37,7 @@ export default function BrideGroomSettings() {
   const [isDatePickerVisible, setDatePickerVisibility] = useState(false);
 
   const getDefaultMessageContent = (userName?: string) => {
-    const displayName = userName && userName.trim().length > 0 ? userName.trim() : 'הזוג';
+    const displayName = userName && userName.trim().length > 0 ? userName.trim() : 'בעל/ת האירוע';
     return `הנכם מוזמנים לטקס החינה של ${displayName}\nפרטי האירוע ואישור הגעתכם בקישור\nנשמח לראותכם בין אורחינו.`;
   };
 

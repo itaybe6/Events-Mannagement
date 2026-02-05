@@ -50,21 +50,61 @@ export default function LoginScreen() {
         return;
       }
 
-      // משוך את פרטי המשתמש מטבלת users לפי ה-email
-      const { data: userRow, error: userError } = await supabase
+      const authedUser = data.user;
+      const authedUserId = authedUser.id;
+
+      // משוך את פרטי המשתמש מטבלת users לפי ה-id (מתאים ל-RLS)
+      let { data: userRow, error: userError } = await supabase
         .from('users')
         .select('*')
-        .eq('email', username.trim())
-        .single();
+        .eq('id', authedUserId)
+        .maybeSingle();
 
+      // אם אין פרופיל, ננסה ליצור אחד מה-metadata (אם קיים)
       if (userError || !userRow) {
-        Alert.alert(
-          'שגיאה',
-          'לא נמצאו פרטי משתמש במערכת. פנה למנהל.',
-          [{ text: 'אישור', style: 'default' }]
-        );
-        setLoading(false);
-        return;
+        const meta = (authedUser.user_metadata ?? {}) as Record<string, any>;
+        const metaUserType = meta.user_type;
+        const normalizedMetaUserType = metaUserType === 'couple' ? 'event_owner' : metaUserType;
+        const inferredUserType =
+          normalizedMetaUserType === 'admin' ||
+          normalizedMetaUserType === 'employee' ||
+          normalizedMetaUserType === 'event_owner'
+            ? normalizedMetaUserType
+            : 'event_owner';
+
+        const inferredName =
+          typeof meta.name === 'string' && meta.name.trim()
+            ? meta.name.trim()
+            : authedUser.email?.split('@')[0] || 'User';
+
+        // Attempt to create the profile row (requires RLS insert policy).
+        const { error: upsertError } = await supabase.from('users').upsert({
+          id: authedUserId,
+          email: authedUser.email,
+          name: inferredName,
+          user_type: inferredUserType,
+        }, { onConflict: 'id' });
+
+        if (!upsertError) {
+          const retry = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', authedUserId)
+            .maybeSingle();
+          userRow = retry.data as any;
+          userError = retry.error as any;
+        }
+
+        if (userError || !userRow) {
+          console.error('User profile fetch/create error:', { userError, upsertError });
+          Alert.alert(
+            'שגיאה',
+            'לא נמצא פרופיל משתמש בדאטאבייס (users). ודא שהרצת את ה-SQL ב-supabase/schema.sql וש-RLS מוגדר נכון.',
+            [{ text: 'אישור', style: 'default' }]
+          );
+          setLoading(false);
+          return;
+        }
       }
 
       // התחברות עם פונקציית login שלך
@@ -72,6 +112,8 @@ export default function LoginScreen() {
         id: userRow.id,
         email: userRow.email,
         name: userRow.name,
+        phone: userRow.phone || undefined,
+        event_id: userRow.event_id,
         userType: userRow.user_type,
       });
 
@@ -144,6 +186,13 @@ export default function LoginScreen() {
       
       {/* תוכן לבן */}
       <View style={styles.whiteContent}>
+        <View style={styles.logoContainer}>
+          <Image
+            source={require('../assets/images/logo-moon.png')}
+            style={styles.logo}
+            resizeMode="contain"
+          />
+        </View>
         <Text style={styles.title}>התחבר למערכת ניהול האירוע</Text>
         <Text style={styles.subtitle}>הזן את פרטי ההתחברות שלך</Text>
         
@@ -290,6 +339,14 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 30,
     borderTopRightRadius: 30,
     minHeight: height * 0.5,
+  },
+  logoContainer: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  logo: {
+    width: 330,
+    height: 100,
   },
   title: {
     fontSize: 28,

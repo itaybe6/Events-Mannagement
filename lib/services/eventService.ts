@@ -9,7 +9,8 @@ export const eventService = {
         .from('events')
         .select(`
           *,
-          tasks (*)
+          tasks (*),
+          users (name)
         `)
         .order('date', { ascending: true });
 
@@ -25,6 +26,8 @@ export const eventService = {
         story: event.story || '',
         guests: event.guests_count || 0,
         budget: Number(event.budget) || 0,
+        user_id: event.user_id,
+        userName: (event as any)?.users?.name ?? undefined,
         tasks: event.tasks.map((task: any) => ({
           id: task.id,
           title: task.title,
@@ -45,7 +48,8 @@ export const eventService = {
         .from('events')
         .select(`
           *,
-          tasks (*)
+          tasks (*),
+          users (name)
         `)
         .eq('id', eventId)
         .single();
@@ -64,6 +68,7 @@ export const eventService = {
         guests: data.guests_count || 0,
         budget: Number(data.budget) || 0,
         user_id: data.user_id, // הוסף את user_id
+        userName: (data as any)?.users?.name ?? undefined,
         tasks: data.tasks.map((task: any) => ({
           id: task.id,
           title: task.title,
@@ -172,6 +177,7 @@ export const eventService = {
       if (updates.title) updateData.title = updates.title;
       if (updates.date) updateData.date = updates.date.toISOString();
       if (updates.location) updateData.location = updates.location;
+      if (updates.city !== undefined) updateData.city = updates.city;
       if (updates.image) updateData.image = updates.image;
       if (updates.story) updateData.story = updates.story;
       if (updates.guests !== undefined) updateData.guests_count = updates.guests;

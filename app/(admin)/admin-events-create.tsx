@@ -1,13 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Platform, ActivityIndicator, KeyboardAvoidingView, SafeAreaView, Alert, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { colors } from '@/constants/colors';
 import { userService } from '@/lib/services/userService';
 import { eventService } from '@/lib/services/eventService';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
-// אם לא מותקן: הרץ npm install @react-native-picker/picker
-import { Picker } from '@react-native-picker/picker';
+import { LinearGradient } from 'expo-linear-gradient';
 
 const EVENT_TYPES = [
   { label: 'חתונה', value: 'חתונה' },
@@ -16,18 +15,40 @@ const EVENT_TYPES = [
   { label: 'ברית', value: 'ברית' },
   { label: 'אירוע חברה', value: 'אירוע חברה' },
 ];
+const EVENT_TYPE_META: Record<string, { icon: keyof typeof Ionicons.glyphMap; hint: string }> = {
+  חתונה: { icon: 'heart', hint: 'יום מיוחד לזוג' },
+  'בר מצווה': { icon: 'ribbon', hint: 'אירוע משפחתי' },
+  'בת מצווה': { icon: 'sparkles', hint: 'חגיגה מרגשת' },
+  ברית: { icon: 'star', hint: 'מסורת וחיבור' },
+  'אירוע חברה': { icon: 'briefcase', hint: 'עסקים ונטוורקינג' },
+};
 
 export default function AdminEventsCreateScreen() {
   const router = useRouter();
+  const { userId } = useLocalSearchParams<{ userId?: string }>();
   const [coupleOptions, setCoupleOptions] = useState<{id: string, name: string, email: string}[]>([]);
   const [addForm, setAddForm] = useState({ user_id: '', title: '', date: '', location: '', city: '' });
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showUserModal, setShowUserModal] = useState(false);
+  const [userSearch, setUserSearch] = useState('');
+  const filteredCouples = coupleOptions.filter(opt => {
+    const query = userSearch.trim().toLowerCase();
+    if (!query) {
+      return true;
+    }
+    return opt.name.toLowerCase().includes(query) || opt.email.toLowerCase().includes(query);
+  });
 
   useEffect(() => {
     loadAvailableCouples();
   }, []);
+
+  useEffect(() => {
+    if (typeof userId === 'string' && userId) {
+      setAddForm(f => (f.user_id ? f : { ...f, user_id: userId }));
+    }
+  }, [userId]);
 
   const loadAvailableCouples = async () => {
     const allCouples = await userService.getClients();
@@ -71,253 +92,544 @@ export default function AdminEventsCreateScreen() {
   };
 
   const formatDate = (dateString: string) => new Date(dateString).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit' });
+  const isFormValid = Boolean(addForm.user_id && addForm.title && addForm.date && addForm.location && addForm.city);
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.gray[100] }}>
+    <SafeAreaView style={styles.screen}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 120 : 0}
       >
-        <ScrollView contentContainerStyle={styles.contentContainer} keyboardShouldPersistTaps="handled">
-          <View style={styles.formCard}>
-            <Text style={styles.title}>הוסף אירוע חדש</Text>
-            <Text style={styles.label}>בחר משתמש:</Text>
-            <View style={styles.selectRow}>
+        <View style={styles.container}>
+          <ScrollView
+            contentContainerStyle={styles.contentContainer}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+          >
+            <View style={styles.header}>
               <TouchableOpacity
-                style={styles.dropdownButton}
-                onPress={() => setShowUserModal(true)}
+                style={styles.backButton}
+                onPress={() => router.replace('/(admin)/admin-events')}
                 activeOpacity={0.7}
               >
-                <Text style={styles.dropdownButtonText}>
-                  {addForm.user_id ? (coupleOptions.find(opt => opt.id === addForm.user_id)?.name || 'בחר משתמש') : 'בחר משתמש'}
-                </Text>
-                <Ionicons name="chevron-down" size={18} color={colors.primary} style={{ marginRight: 6 }} />
+                <Ionicons name="arrow-back" size={20} color={colors.primary} />
               </TouchableOpacity>
-              <Modal
-                visible={showUserModal}
-                transparent
-                animationType="fade"
-                onRequestClose={() => setShowUserModal(false)}
+            </View>
+
+            <View style={styles.heroCard}>
+              <View style={styles.heroSurface} />
+              <View style={styles.heroBlobPrimary} />
+              <View style={styles.heroBlobSecondary} />
+              <View style={styles.heroContent}>
+                <View style={styles.heroBadge}>
+                  <Text style={styles.heroBadgeText}>אירוע חדש</Text>
+                </View>
+                <Text style={styles.heroTitle}>בואו נתכנן את{'\n'}החוויה הבאה</Text>
+                <Text style={styles.heroSubtitle}>סוג האירוע, משתמש ותאריך במקום אחד.</Text>
+              </View>
+            </View>
+
+            <View style={styles.section}>
+              <View style={styles.sectionHeaderRow}>
+                <Text style={styles.sectionTitle}>משתמש</Text>
+                <Text style={styles.sectionHint}>בחר זוג/לקוח</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.selectorCard}
+                onPress={() => setShowUserModal(true)}
+                activeOpacity={0.8}
               >
-                <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowUserModal(false)}>
-                  <View style={styles.modalContent}>
-                    <ScrollView style={{ maxHeight: 300 }}>
-                      {coupleOptions.length === 0 ? (
-                        <Text style={styles.value}>אין משתמשים זמינים</Text>
-                      ) : (
-                        coupleOptions.map(opt => (
-                          <TouchableOpacity
-                            key={opt.id}
-                            style={styles.modalItem}
-                            onPress={() => {
-                              setAddForm(f => ({ ...f, user_id: opt.id }));
-                              setShowUserModal(false);
-                            }}
-                          >
-                            <Text style={styles.modalItemText}>{opt.name}</Text>
-                          </TouchableOpacity>
-                        ))
-                      )}
-                    </ScrollView>
+                <View style={styles.selectorRow}>
+                  <View style={styles.selectorIconWrap}>
+                    <Ionicons name="person" size={18} color={colors.primary} />
                   </View>
-                </TouchableOpacity>
-              </Modal>
+                  <View style={styles.selectorTextWrap}>
+                    <Text style={styles.selectorTitle}>
+                      {addForm.user_id ? (coupleOptions.find(opt => opt.id === addForm.user_id)?.name || 'בחר משתמש') : 'בחר משתמש'}
+                    </Text>
+                    <Text style={styles.selectorSubtitle}>
+                      {addForm.user_id ? (coupleOptions.find(opt => opt.id === addForm.user_id)?.email || '') : 'הקצאת משתמש לאירוע'}
+                    </Text>
+                  </View>
+                </View>
+                <Ionicons name="chevron-down" size={18} color={colors.gray[500]} />
+              </TouchableOpacity>
             </View>
-            <Text style={styles.label}>סוג האירוע:</Text>
-            <View style={styles.selectRow}>
-              {EVENT_TYPES.map(opt => (
+
+            <View style={styles.section}>
+              <View style={styles.sectionHeaderRow}>
+                <Text style={styles.sectionTitle}>סוג האירוע</Text>
+                <Text style={styles.sectionHint}>בחר תבנית</Text>
+              </View>
+              <View style={styles.grid}>
+                {EVENT_TYPES.map(opt => {
+                  const isActive = addForm.title === opt.value;
+                  const meta = EVENT_TYPE_META[opt.value];
+                  return (
+                    <TouchableOpacity
+                      key={opt.value}
+                      style={[styles.eventCard, isActive && styles.eventCardActive]}
+                      onPress={() => setAddForm(f => ({ ...f, title: opt.value }))}
+                      activeOpacity={0.85}
+                    >
+                      <View style={[styles.eventIconWrap, isActive && styles.eventIconWrapActive]}>
+                        <Ionicons name={meta?.icon || 'sparkles'} size={18} color={isActive ? colors.white : colors.textLight} />
+                      </View>
+                      <Text style={[styles.eventTitle, isActive && styles.eventTitleActive]}>{opt.label}</Text>
+                      <Text style={[styles.eventHint, isActive && styles.eventHintActive]}>{meta?.hint || 'אירוע מיוחד'}</Text>
+                      {isActive ? <View style={styles.eventActiveDot} /> : null}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+
+            <View style={styles.section}>
+              <View style={styles.sectionHeaderRow}>
+                <Text style={styles.sectionTitle}>פרטי האירוע</Text>
+                <Text style={styles.sectionHint}>תאריך ומיקום</Text>
+              </View>
+
+              <TouchableOpacity style={styles.infoCard} onPress={() => setShowDatePicker(true)} activeOpacity={0.8}>
+                <View style={styles.infoRow}>
+                  <View style={styles.selectorIconWrap}>
+                    <Ionicons name="calendar" size={18} color={colors.primary} />
+                  </View>
+                  <View style={styles.infoTextWrap}>
+                    <Text style={styles.infoLabel}>מתי?</Text>
+                    <Text style={styles.infoValue}>{addForm.date ? formatDate(addForm.date) : 'בחר תאריך לאירוע'}</Text>
+                  </View>
+                </View>
+                <Ionicons name="pencil" size={16} color={colors.gray[500]} />
+              </TouchableOpacity>
+
+              <DateTimePickerModal
+                isVisible={showDatePicker}
+                mode="date"
+                onConfirm={date => handleDateChange(date)}
+                onCancel={() => setShowDatePicker(false)}
+                minimumDate={new Date()}
+                locale="he-IL"
+                date={addForm.date ? new Date(addForm.date) : new Date()}
+              />
+
+              <View style={styles.infoCard}>
+                <View style={styles.infoRow}>
+                  <View style={styles.selectorIconWrap}>
+                    <Ionicons name="location" size={18} color={colors.primary} />
+                  </View>
+                  <View style={styles.infoTextWrap}>
+                    <Text style={styles.infoLabel}>איפה?</Text>
+                    <TextInput
+                      style={styles.infoInput}
+                      value={addForm.location}
+                      onChangeText={v => setAddForm(f => ({ ...f, location: v }))}
+                      textAlign="right"
+                      placeholder="הזן מיקום"
+                      placeholderTextColor={colors.gray[400]}
+                    />
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.infoCard}>
+                <View style={styles.infoRow}>
+                  <View style={styles.selectorIconWrap}>
+                    <Ionicons name="business" size={18} color={colors.primary} />
+                  </View>
+                  <View style={styles.infoTextWrap}>
+                    <Text style={styles.infoLabel}>עיר</Text>
+                    <TextInput
+                      style={styles.infoInput}
+                      value={addForm.city}
+                      onChangeText={v => setAddForm(f => ({ ...f, city: v }))}
+                      textAlign="right"
+                      placeholder="הזן עיר"
+                      placeholderTextColor={colors.gray[400]}
+                    />
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.inlineActions}>
                 <TouchableOpacity
-                  key={opt.value}
-                  style={[styles.userOption, addForm.title === opt.value && styles.userOptionActive]}
-                  onPress={() => setAddForm(f => ({ ...f, title: opt.value }))}
+                  onPress={handleAddEvent}
+                  disabled={loading || !isFormValid}
+                  activeOpacity={0.9}
                 >
-                  <Text style={[styles.userOptionText, addForm.title === opt.value && styles.userOptionTextActive]}>{opt.label}</Text>
+                  <LinearGradient
+                    colors={
+                      loading || !isFormValid
+                        ? [colors.gray[300], colors.gray[200]]
+                        : [colors.primary, colors.yaleBlue]
+                    }
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.createBtn}
+                  >
+                    {loading ? (
+                      <ActivityIndicator color={colors.white} />
+                    ) : (
+                      <View style={styles.createBtnRow}>
+                        <Ionicons name="sparkles" size={18} color={colors.white} />
+                        <Text style={styles.createBtnText}>צור אירוע</Text>
+                        <Ionicons name="arrow-back" size={18} color={colors.white} />
+                      </View>
+                    )}
+                  </LinearGradient>
                 </TouchableOpacity>
-              ))}
+
+                <Text style={styles.selectedUserHint}>
+                  {addForm.user_id
+                    ? `משתמש שנבחר: ${coupleOptions.find(opt => opt.id === addForm.user_id)?.name || '—'}`
+                    : 'לא נבחר משתמש עדיין'}
+                </Text>
+              </View>
             </View>
-            <Text style={styles.label}>תאריך:</Text>
-            <TouchableOpacity style={styles.datePickerButton} onPress={() => setShowDatePicker(true)}>
-              <Ionicons name="calendar" size={20} color={colors.primary} />
-              <Text style={styles.datePickerButtonText}>{addForm.date ? formatDate(addForm.date) : 'בחר תאריך'}</Text>
-            </TouchableOpacity>
-            <DateTimePickerModal
-              isVisible={showDatePicker}
-              mode="date"
-              onConfirm={date => handleDateChange(date)}
-              onCancel={() => setShowDatePicker(false)}
-              minimumDate={new Date()}
-              locale="he-IL"
-              date={addForm.date ? new Date(addForm.date) : new Date()}
-            />
-            <Text style={styles.label}>מיקום:</Text>
-            <TextInput
-              style={styles.input}
-              value={addForm.location}
-              onChangeText={v => setAddForm(f => ({ ...f, location: v }))}
-              textAlign="right"
-              placeholder="הזן מיקום"
-            />
-            <Text style={styles.label}>עיר:</Text>
-            <TextInput
-              style={styles.input}
-              value={addForm.city}
-              onChangeText={v => setAddForm(f => ({ ...f, city: v }))}
-              textAlign="right"
-              placeholder="הזן עיר"
-            />
-            <TouchableOpacity style={styles.saveButton} onPress={handleAddEvent} disabled={loading}>
-              {loading ? <ActivityIndicator color={colors.white} /> : <Text style={styles.saveButtonText}>שמור</Text>}
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.cancelButton} onPress={() => router.replace('/(admin)/admin-events')}>
-              <Text style={styles.cancelButtonText}>ביטול</Text>
-            </TouchableOpacity>
-          </View>
-        </ScrollView>
+          </ScrollView>
+        </View>
+
+        <Modal
+          visible={showUserModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowUserModal(false)}
+        >
+          <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowUserModal(false)}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>בחר משתמש</Text>
+              <View style={styles.searchRow}>
+                <Ionicons name="search" size={16} color={colors.gray[400]} />
+                <TextInput
+                  style={styles.searchInput}
+                  value={userSearch}
+                  onChangeText={setUserSearch}
+                  placeholder="חפש משתמש לפי שם או אימייל"
+                  placeholderTextColor={colors.gray[400]}
+                  textAlign="right"
+                />
+              </View>
+              <ScrollView style={{ maxHeight: 300 }}>
+                {filteredCouples.length === 0 ? (
+                  <Text style={styles.value}>אין משתמשים זמינים</Text>
+                ) : (
+                  filteredCouples.map(opt => (
+                    <TouchableOpacity
+                      key={opt.id}
+                      style={styles.modalItem}
+                      onPress={() => {
+                        setAddForm(f => ({ ...f, user_id: opt.id }));
+                        setShowUserModal(false);
+                        setUserSearch('');
+                      }}
+                    >
+                      <View style={styles.modalItemRow}>
+                        <View>
+                          <Text style={styles.modalItemText}>{opt.name}</Text>
+                          <Text style={styles.modalItemSub}>{opt.email}</Text>
+                        </View>
+                        <Ionicons name="chevron-back" size={18} color={colors.gray[400]} />
+                      </View>
+                    </TouchableOpacity>
+                  ))
+                )}
+              </ScrollView>
+            </View>
+          </TouchableOpacity>
+        </Modal>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  contentContainer: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
+  screen: {
+    flex: 1,
+    backgroundColor: colors.gray[50],
   },
-  formCard: {
-    width: '100%',
-    maxWidth: 500,
+  container: {
+    flex: 1,
+  },
+  contentContainer: {
+    padding: 20,
+    paddingBottom: 40,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    paddingTop: Platform.OS === 'ios' ? 10 : 6,
+    marginBottom: 10,
+  },
+  backButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: colors.white,
-    borderRadius: 24,
-    padding: 28,
-    alignItems: 'flex-end',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginLeft: 15,
     shadowColor: colors.black,
     shadowOpacity: 0.08,
-    shadowRadius: 12,
+    shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
+    elevation: 2,
   },
-  title: {
-    fontSize: 26,
-    fontWeight: 'bold',
+  heroCard: {
+    height: 200,
+    borderRadius: 24,
+    overflow: 'hidden',
+    marginTop: 4,
+    marginBottom: 24,
+    backgroundColor: colors.white,
+    shadowColor: colors.black,
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3,
+  },
+  heroSurface: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: colors.white,
+  },
+  heroBlobPrimary: {
+    position: 'absolute',
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: colors.accent,
+    opacity: 0.18,
+    top: -90,
+    right: -40,
+  },
+  heroBlobSecondary: {
+    position: 'absolute',
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: colors.primary,
+    opacity: 0.12,
+    bottom: -60,
+    left: -20,
+  },
+  heroContent: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    padding: 20,
+  },
+  heroBadge: {
+    alignSelf: 'flex-end',
+    backgroundColor: 'rgba(6, 23, 62, 0.08)',
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginBottom: 10,
+  },
+  heroBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
     color: colors.primary,
-    marginBottom: 18,
+  },
+  heroTitle: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: colors.text,
     textAlign: 'right',
   },
-  label: {
+  heroSubtitle: {
+    marginTop: 8,
+    fontSize: 14,
+    color: colors.textLight,
+    textAlign: 'right',
+  },
+  section: {
+    marginBottom: 24,
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  sectionHint: {
+    fontSize: 12,
+    color: colors.gray[500],
+  },
+  selectorCard: {
+    backgroundColor: colors.white,
+    borderRadius: 18,
+    padding: 16,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+  },
+  selectorRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    flex: 1,
+  },
+  selectorIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(6, 23, 62, 0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 12,
+  },
+  selectorTextWrap: {
+    flex: 1,
+  },
+  selectorTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+    textAlign: 'right',
+  },
+  selectorSubtitle: {
+    fontSize: 12,
+    color: colors.gray[500],
+    marginTop: 4,
+    textAlign: 'right',
+  },
+  grid: {
+    flexDirection: 'row-reverse',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  eventCard: {
+    width: '48%',
+    backgroundColor: colors.white,
+    borderRadius: 18,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+  },
+  eventCardActive: {
+    borderColor: colors.primary,
+    shadowColor: colors.primary,
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 2,
+  },
+  eventIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.gray[100],
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+  },
+  eventIconWrapActive: {
+    backgroundColor: colors.primary,
+  },
+  eventTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.text,
+    textAlign: 'right',
+  },
+  eventTitleActive: {
+    color: colors.primary,
+  },
+  eventHint: {
+    fontSize: 12,
+    color: colors.gray[500],
+    marginTop: 4,
+    textAlign: 'right',
+  },
+  eventHintActive: {
+    color: colors.textLight,
+  },
+  eventActiveDot: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.primary,
+  },
+  infoCard: {
+    backgroundColor: colors.white,
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+  },
+  infoRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  infoTextWrap: {
+    flex: 1,
+  },
+  infoLabel: {
+    fontSize: 12,
+    color: colors.gray[500],
+    textAlign: 'right',
+  },
+  infoValue: {
+    marginTop: 6,
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
+    textAlign: 'right',
+  },
+  infoInput: {
+    marginTop: 6,
     fontSize: 16,
     color: colors.text,
-    marginTop: 12,
-    marginBottom: 6,
+    textAlign: 'right',
+  },
+  inlineActions: {
+    marginTop: 6,
+  },
+  createBtn: {
+    borderRadius: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    shadowColor: colors.primary,
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 3,
+  },
+  createBtnRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  createBtnText: {
+    color: colors.white,
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  selectedUserHint: {
+    marginTop: 10,
+    fontSize: 12,
+    color: colors.gray[500],
     textAlign: 'right',
   },
   value: {
     fontSize: 16,
     color: colors.textLight,
     textAlign: 'right',
-  },
-  selectRow: {
-    flexDirection: 'row-reverse',
-    marginBottom: 8,
-    flexWrap: 'wrap',
-  },
-  userOption: {
-    backgroundColor: colors.gray[100],
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 15,
-    marginHorizontal: 5,
-    borderWidth: 1,
-    borderColor: colors.gray[300],
-    marginBottom: 6,
-  },
-  userOptionActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  userOptionText: {
-    fontSize: 16,
-    color: colors.text,
-    textAlign: 'right',
-  },
-  userOptionTextActive: {
-    color: colors.white,
-  },
-  datePickerButton: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    backgroundColor: colors.gray[100],
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 15,
-    marginBottom: 15,
-    borderWidth: 1,
-    borderColor: colors.gray[300],
-  },
-  datePickerButtonText: {
-    fontSize: 16,
-    color: colors.text,
-    marginLeft: 8,
-    textAlign: 'right',
-  },
-  input: {
-    fontSize: 18,
-    color: colors.text,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.gray[300],
-    marginBottom: 18,
-    paddingVertical: 8,
-    textAlign: 'right',
-    width: '100%',
-  },
-  saveButton: {
-    backgroundColor: colors.primary,
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 30,
-    alignItems: 'center',
-    marginTop: 10,
-    width: '100%',
-  },
-  saveButtonText: {
-    color: colors.white,
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  cancelButton: {
-    backgroundColor: colors.gray[200],
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 30,
-    alignItems: 'center',
-    marginTop: 10,
-    width: '100%',
-  },
-  cancelButtonText: {
-    color: colors.text,
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  dropdownButton: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    backgroundColor: colors.gray[100],
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 15,
-    borderWidth: 1,
-    borderColor: colors.gray[300],
-    minWidth: 200, // was 120
-    width: '100%', // fill available space
-    marginBottom: 8,
-  },
-  dropdownButtonText: {
-    fontSize: 16,
-    color: colors.text,
-    textAlign: 'right',
-    flex: 1,
   },
   modalOverlay: {
     flex: 1,
@@ -328,7 +640,7 @@ const styles = StyleSheet.create({
   modalContent: {
     backgroundColor: colors.white,
     borderRadius: 16,
-    padding: 12,
+    padding: 16,
     minWidth: 220,
     maxWidth: 320,
     alignItems: 'flex-end',
@@ -338,6 +650,30 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 6,
   },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 12,
+    alignSelf: 'flex-end',
+  },
+  searchRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    backgroundColor: colors.gray[100],
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+    marginBottom: 12,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    color: colors.text,
+    textAlign: 'right',
+  },
   modalItem: {
     paddingVertical: 12,
     paddingHorizontal: 8,
@@ -345,9 +681,21 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.gray[200],
     alignItems: 'flex-end',
   },
+  modalItemRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+  },
   modalItemText: {
     fontSize: 16,
     color: colors.text,
+    textAlign: 'right',
+  },
+  modalItemSub: {
+    marginTop: 4,
+    fontSize: 12,
+    color: colors.gray[500],
     textAlign: 'right',
   },
 }); 

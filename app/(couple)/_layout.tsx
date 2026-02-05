@@ -2,7 +2,7 @@ import React, { useEffect } from "react";
 import { Tabs, useRouter } from "expo-router";
 import { colors } from "@/constants/colors";
 import { Ionicons } from "@expo/vector-icons";
-import { Platform, StyleSheet, View, TouchableOpacity } from "react-native";
+import { Image, Platform, StyleSheet, View, TouchableOpacity } from "react-native";
 import { useLayoutStore } from '@/store/layoutStore';
 
 export default function CoupleTabsLayout() {
@@ -22,15 +22,29 @@ export default function CoupleTabsLayout() {
     </TouchableOpacity>
   );
 
+  const headerTitle = () => (
+    <Image
+      source={require('../../assets/images/logo-moon.png')}
+      style={styles.logoHeader}
+      resizeMode="contain"
+    />
+  );
+
   return (
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: colors.white,
         tabBarInactiveTintColor: colors.gray[500],
         headerShown: true,
-        headerTitle: "",
+        headerTitle: headerTitle,
+        headerTitleAlign: "center",
+        headerTitleContainerStyle: {
+          width: "100%",
+          alignItems: "center",
+        },
         headerStyle: {
           backgroundColor: colors.gray[100],
+          height: 76,
           elevation: 0,
           shadowOpacity: 0,
           borderBottomWidth: 0,
@@ -118,7 +132,12 @@ export default function CoupleTabsLayout() {
       />
 
       {/* Hidden couple internal routes */}
-      <Tabs.Screen name="TablesList" options={{ href: null }} />
+      <Tabs.Screen
+        name="TablesList"
+        options={{
+          href: null,
+        }}
+      />
     </Tabs>
   );
 }
@@ -149,6 +168,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+  },
+  logoHeader: {
+    width: 260,
+    height: 60,
   },
 });
 

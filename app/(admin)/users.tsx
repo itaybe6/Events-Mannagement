@@ -1,65 +1,124 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  ScrollView, 
-  TouchableOpacity, 
-  TextInput, 
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
   Alert,
+  Image,
   Modal,
-  KeyboardAvoidingView,
   Platform,
-  ActivityIndicator
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useUserStore } from '@/store/userStore';
-import { colors } from '@/constants/colors';
-import { Card } from '@/components/Card';
-import { Button } from '@/components/Button';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { userService, UserWithMetadata } from '@/lib/services/userService';
+import * as ImagePicker from 'expo-image-picker';
+import { colors } from '@/constants/colors';
+import { useUserStore } from '@/store/userStore';
+import { useDemoUsersStore } from '@/store/demoUsersStore';
 import { authService } from '@/lib/services/authService';
-// import { basicPingTest } from '@/lib/basicPingTest'; // הוסר זמנית
+import { userService, UserWithMetadata } from '@/lib/services/userService';
+import { avatarService } from '@/lib/services/avatarService';
 
-const USER_FILTERS = [
+type UserFilter = 'all' | 'admin' | 'event_owner' | 'employee';
+
+const USER_FILTERS: Array<{ label: string; value: UserFilter }> = [
   { label: 'הכל', value: 'all' },
   { label: 'מנהלים', value: 'admin' },
-  { label: 'חתן/כלה', value: 'couple' },
-  { label: 'עובד', value: 'employee' }, // Added employee type
+  { label: 'בעלי אירוע', value: 'event_owner' },
+  { label: 'עובדים', value: 'employee' },
 ];
 
+function getUserTypeLabel(type: UserWithMetadata['userType']) {
+  switch (type) {
+    case 'admin':
+      return 'מנהל';
+    case 'employee':
+      return 'עובד';
+    case 'event_owner':
+    default:
+      return 'בעל אירוע';
+  }
+}
+
+function getUserTypeSubtitle(type: UserWithMetadata['userType']) {
+  switch (type) {
+    case 'admin':
+      return 'מנהל מערכת';
+    case 'employee':
+      return 'עובד';
+    case 'event_owner':
+    default:
+      return 'בעלי אירוע';
+  }
+}
+
+function getPresenceDotColor(type: UserWithMetadata['userType']) {
+  if (type === 'admin') return '#22c55e'; // green
+  if (type === 'event_owner') return '#fbbf24'; // amber
+  return colors.gray[300];
+}
+
+function getTagStyle(type: UserWithMetadata['userType']) {
+  if (type === 'admin') {
+    return { bg: 'rgba(6, 23, 62, 0.10)', fg: colors.primary };
+  }
+  if (type === 'event_owner') {
+    return { bg: 'rgba(204, 160, 0, 0.14)', fg: colors.secondary };
+  }
+  return { bg: 'rgba(52, 58, 64, 0.08)', fg: colors.gray[700] };
+}
+
+function getInitials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  const first = parts[0]?.[0] ?? '';
+  const second = parts.length > 1 ? parts[parts.length - 1]?.[0] ?? '' : '';
+  return (first + second).toUpperCase() || 'U';
+}
+
+function hashStringToHue(str: string) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash << 5) - hash + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash) % 360;
+}
+
 export default function UsersScreen() {
-  const { isLoggedIn, userType } = useUserStore();
   const router = useRouter();
+  const { isLoggedIn, userType } = useUserStore();
+  const demoUsers = useDemoUsersStore((s) => s.users);
+
   const [users, setUsers] = useState<UserWithMetadata[]>([]);
   const [loading, setLoading] = useState(false);
-  const [showAddModal, setShowAddModal] = useState(false);
   const [isDemoMode, setIsDemoMode] = useState(false);
-  const [userFilter, setUserFilter] = useState('all');
+
+  const [userFilter, setUserFilter] = useState<UserFilter>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
-  
-  // Form state
-  const [newUser, setNewUser] = useState({
-    name: '',
-    email: '',
-    password: '',
-    confirmPassword: '',
-    user_type: 'couple' as 'couple' | 'admin' | 'employee' // Added employee type
-  });
 
   const [selectedUser, setSelectedUser] = useState<UserWithMetadata | null>(null);
   const [showUserModal, setShowUserModal] = useState(false);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarLoadErrors, setAvatarLoadErrors] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (!isLoggedIn || userType !== 'admin') {
       router.replace('/login');
       return;
     }
-    testConnection();
-    loadUsers();
-  }, [isLoggedIn, userType]);
+    void testConnection();
+  }, [isLoggedIn, userType, router]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!isLoggedIn || userType !== 'admin') return;
+      void loadUsers();
+    }, [isLoggedIn, userType, demoUsers])
+  );
 
   const testConnection = async () => {
     try {
@@ -70,28 +129,8 @@ export default function UsersScreen() {
       } else {
         setIsDemoMode(false);
       }
-    } catch (error) {
+    } catch {
       setIsDemoMode(true);
-    }
-  };
-
-  const checkDatabaseSetup = async () => {
-    try {
-      const setupResult = await authService.setupDatabase();
-      // הצג רק אם יש בעיה
-      if (!setupResult.success) {
-        Alert.alert(
-          'בעיה בהגדרת הדאטאבייס ⚠️',
-          setupResult.message,
-          [{ text: 'אישור', style: 'default' }]
-        );
-      }
-    } catch (error) {
-      Alert.alert(
-        'שגיאה בבדיקת הדאטאבייס',
-        `שגיאה: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        [{ text: 'אישור', style: 'default' }]
-      );
     }
   };
 
@@ -100,1054 +139,978 @@ export default function UsersScreen() {
       setLoading(true);
       const usersData = await userService.getAllUsers();
       setUsers(usersData);
+      setIsDemoMode(false);
     } catch (error) {
-      
-      // Check if it's a network error
-      const isNetworkError = error instanceof Error && 
-        (error.message.includes('Network') || error.message.includes('fetch'));
-      
+      const isNetworkError =
+        error instanceof Error && (error.message.includes('Network') || error.message.includes('fetch'));
+
       if (isNetworkError) {
         setIsDemoMode(true);
-        
+        setUsers(demoUsers);
         Alert.alert(
           '🌐 מצב דמו',
           'לא ניתן להתחבר לדאטאבייס. האפליקציה פועלת במצב דמו עם נתונים לדוגמה.\n\nתוכל לנסות שוב מאוחר יותר כשהחיבור יחזור.',
           [{ text: 'הבנתי', style: 'default' }]
         );
       } else {
-        setUsers([]); // Clear users list on other errors
-        
-        // Show detailed error message
+        setUsers([]);
         let errorMessage = 'לא ניתן לטעון את רשימת המשתמשים מהדאטאבייס';
-        if (error instanceof Error) {
-          errorMessage += `\n\nפרטי השגיאה: ${error.message}`;
-        }
-        
-        Alert.alert(
-          'שגיאה בחיבור לדאטאבייס', 
-          errorMessage,
-          [
-            { text: 'אישור', style: 'default' },
-            { 
-              text: 'נסה שוב', 
-              style: 'default',
-              onPress: () => {
-                setIsDemoMode(false);
-                loadUsers();
-              }
-            }
-          ]
-        );
+        if (error instanceof Error) errorMessage += `\n\nפרטי השגיאה: ${error.message}`;
+
+        Alert.alert('שגיאה בחיבור לדאטאבייס', errorMessage, [
+          { text: 'אישור', style: 'default' },
+          {
+            text: 'נסה שוב',
+            style: 'default',
+            onPress: () => {
+              setIsDemoMode(false);
+              void loadUsers();
+            },
+          },
+        ]);
       }
     } finally {
       setLoading(false);
     }
   };
 
-  const handleAddUser = async () => {
+  const handleDeleteUser = (u: UserWithMetadata) => {
+    Alert.alert('מחיקת משתמש', `האם אתה בטוח שברצונך למחוק את "${u.name}"?`, [
+      { text: 'ביטול', style: 'cancel' },
+      {
+        text: 'מחק',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            if (!isDemoMode) {
+              await userService.deleteUser(u.id);
+            }
+            setUsers((prev) => prev.filter((x) => x.id !== u.id));
+          } catch (error) {
+            let errorMessage = 'לא ניתן למחוק את המשתמש מהדאטאבייס';
+            if (error instanceof Error) errorMessage += `\n\nפרטי השגיאה: ${error.message}`;
+            Alert.alert('שגיאה במחיקה', errorMessage, [{ text: 'אישור', style: 'default' }]);
+          }
+        },
+      },
+    ]);
+  };
+
+  const filteredUsers = useMemo(() => {
+    return users
+      .filter((u) => {
+        const q = searchQuery.trim().toLowerCase();
+        const matchesSearch = !q || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
+        const matchesFilter = userFilter === 'all' || u.userType === userFilter;
+        return matchesSearch && matchesFilter;
+      });
+  }, [users, searchQuery, userFilter]);
+
+  const handlePickAvatarForSelectedUser = useCallback(async () => {
+    if (!selectedUser) return;
     try {
-      // Validation
-      if (!newUser.name.trim() || !newUser.email.trim() || !newUser.password.trim()) {
-        Alert.alert('שגיאה', 'יש למלא את כל השדות הנדרשים');
-        return;
+      if (Platform.OS !== 'web') {
+        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!permission.granted) {
+          Alert.alert('הרשאה נדרשת', 'כדי לבחור תמונה יש לאשר גישה לגלריה');
+          return;
+        }
       }
 
-      if (newUser.password !== newUser.confirmPassword) {
-        Alert.alert('שגיאה', 'הסיסמאות אינן תואמות');
-        return;
-      }
-
-      if (newUser.password.length < 6) {
-        Alert.alert('שגיאה', 'הסיסמה חייבת להכיל לפחות 6 תווים');
-        return;
-      }
-
-      setLoading(true);
-      
-      if (isDemoMode) {
-        
-        // Create demo user
-        const demoUserData: UserWithMetadata = {
-          id: `demo-${Date.now()}`,
-          name: `${newUser.name} (דמו)`,
-          email: newUser.email,
-          userType: newUser.user_type,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          events_count: 0,
-          last_login: undefined
-        };
-
-        // Add to local state
-        setUsers(prevUsers => [...prevUsers, demoUserData]);
-        
-        // Reset form and close modal
-        setShowAddModal(false);
-        setNewUser({
-          name: '',
-          email: '',
-          password: '',
-          confirmPassword: '',
-          user_type: 'couple'
-        });
-
-        Alert.alert(
-          '🎭 נוסף במצב דמו!', 
-          `המשתמש "${newUser.name}" נוסף לרשימה המקומית.\n\n⚠️ זה לא נשמר בדאטאבייס האמיתי.`,
-          [{ text: 'הבנתי', style: 'default' }]
-        );
-        return;
-      }
-
-      const newUserData = await userService.createUser(
-        newUser.email,
-        newUser.password,
-        newUser.name,
-        newUser.user_type
-      );
-
-      // Add to local state
-      setUsers(prevUsers => [...prevUsers, newUserData]);
-      setIsDemoMode(false); // Reset demo mode on successful connection
-      
-      // Reset form and close modal
-      setShowAddModal(false);
-      setNewUser({
-        name: '',
-        email: '',
-        password: '',
-        confirmPassword: '',
-        user_type: 'couple'
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.85,
+        base64: true,
       });
 
-      Alert.alert(
-        'הצלחה!', 
-        `המשתמש "${newUser.name}" נוסף בהצלחה לדאטאבייס`,
-        [{ text: 'מעולה', style: 'default' }]
-      );
-    } catch (error) {
-      Alert.alert('שגיאה', 'לא ניתן להוסיף את המשתמש');
-    } finally {
-      setLoading(false);
-    }
-  };
+      if (result.canceled || !result.assets?.[0]) return;
+      const asset = result.assets[0];
 
-  const handleDeleteUser = (userId: string) => {
-    Alert.alert(
-      'מחיקת משתמש',
-      `האם אתה בטוח שברצונך למחוק את המשתמש?`,
-      [
-        { text: 'ביטול', style: 'cancel' },
-        {
-          text: 'מחק',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              
-              await userService.deleteUser(userId);
-              
-              // Remove from local state
-              setUsers(prevUsers => prevUsers.filter(user => user.id !== userId));
-              
-              Alert.alert(
-                'הצלחה!', 
-                `המשתמשנוסף נמחק בהצלחה מהדאטאבייס`,
-                [{ text: 'אישור', style: 'default' }]
-              );
-            } catch (error) {
-              
-              let errorMessage = 'לא ניתן למחוק את המשתמש מהדאטאבייס';
-              if (error instanceof Error) {
-                errorMessage += `\n\nפרטי השגיאה: ${error.message}`;
-              }
-              
-              Alert.alert(
-                'שגיאה במחיקה', 
-                errorMessage,
-                [{ text: 'אישור', style: 'default' }]
-              );
-            }
-          }
-        }
-      ]
-    );
-  };
+      setAvatarUploading(true);
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('he-IL');
-  };
-
-  const getUserTypeText = (userType: string) => {
-    return userType === 'admin' ? 'מנהל מערכת' : 'חתן/כלה';
-  };
-
-  const getUserTypeIcon = (userType: string) => {
-    return userType === 'admin' ? 'shield-checkmark' : 'heart';
-  };
-
-  // סינון משתמשים
-  const filteredUsers = users
-    .filter(user => {
-      // סינון לפי חיפוש
-      const matchesSearch = user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           user.email.toLowerCase().includes(searchQuery.toLowerCase());
-      
-      // סינון לפי סוג משתמש
-      const matchesFilter = userFilter === 'all' || user.userType === userFilter;
-      
-      return matchesSearch && matchesFilter;
-    })
-    .sort((a, b) => {
-      if (sortOrder === 'asc') {
-        return a.name.localeCompare(b.name);
-      } else {
-        return b.name.localeCompare(a.name);
+      // Demo mode: keep locally (won't persist to DB)
+      if (isDemoMode) {
+        setUsers((prev) => prev.map((u) => (u.id === selectedUser.id ? { ...u, avatar_url: asset.uri } : u)));
+        setSelectedUser((prev) => (prev ? { ...prev, avatar_url: asset.uri } : prev));
+        setAvatarLoadErrors((prev) => ({ ...prev, [selectedUser.id]: false }));
+        Alert.alert('הועלה בהצלחה', 'התמונה עודכנה מקומית (מצב דמו).', [{ text: 'אישור' }]);
+        return;
       }
-    });
 
-  const resetFilters = () => {
-    setSearchQuery('');
-    setUserFilter('all');
-    setSortOrder('asc');
-  };
+      const publicUrl = await avatarService.uploadUserAvatar(selectedUser.id, {
+        uri: asset.uri,
+        fileName: asset.fileName,
+        mimeType: asset.mimeType,
+        file: (asset as any)?.file,
+        base64: asset.base64,
+      });
 
-  const openEditModal = (user: UserWithMetadata) => {
-    setSelectedUser(user);
-    setNewUser({
-      name: user.name,
-      email: user.email,
-      password: '', // Clear password for edit
-      confirmPassword: '',
-      user_type: user.userType
-    });
-    setShowAddModal(true);
-  };
+      setUsers((prev) => prev.map((u) => (u.id === selectedUser.id ? { ...u, avatar_url: publicUrl } : u)));
+      setSelectedUser((prev) => (prev ? { ...prev, avatar_url: publicUrl } : prev));
+      setAvatarLoadErrors((prev) => ({ ...prev, [selectedUser.id]: false }));
+
+      Alert.alert('הועלה בהצלחה', 'תמונת הפרופיל עודכנה.', [{ text: 'אישור' }]);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'שגיאה לא ידועה';
+      Alert.alert('שגיאה', `לא ניתן להעלות תמונה.\n\n${message}`);
+    } finally {
+      setAvatarUploading(false);
+    }
+  }, [selectedUser, isDemoMode]);
 
   return (
-    <ScrollView style={styles.container}>
-      {/* 1. Header */}
-      <View style={styles.header}>
-        <Ionicons name="people" size={28} color={colors.primary} style={{ marginLeft: 10 }} />
-        <Text style={styles.headerTitle}>ניהול משתמשים</Text>
+    <View style={styles.screen}>
+      {/* Background decoration */}
+      <View pointerEvents="none" style={styles.bgWrap}>
+        <View style={styles.bgBlobTopRight} />
+        <View style={styles.bgBlobBottomLeft} />
       </View>
-      {/* 2. Filter/Search Panel */}
-      <View style={styles.filterPanel}>
-        <View style={styles.searchBox}>
-          <Ionicons name="search" size={18} color={colors.textLight} style={{ marginLeft: 6 }} />
+
+      {/* Header (styled like the reference) */}
+      <View style={styles.header}>
+        {/* Search */}
+        <View style={styles.searchWrap}>
+          <Ionicons name="search" size={18} color={colors.gray[500]} style={styles.searchIcon} />
           <TextInput
             style={styles.searchInput}
-            placeholder="חפש לפי שם או אימייל"
+            placeholder="חיפוש עובד או תפקיד..."
+            placeholderTextColor={colors.gray[500]}
             value={searchQuery}
             onChangeText={setSearchQuery}
             textAlign="right"
-            placeholderTextColor={colors.gray[400]}
+            autoCapitalize="none"
           />
-        </View>
-        <View style={styles.filterRow}>
-          <Text style={styles.typeDropdownLabel}>סוג:</Text>
-          {['all', 'admin', 'couple', 'employee'].map(type => (
-            <TouchableOpacity
-              key={type}
-              style={[styles.typeOption, userFilter === type && styles.typeOptionActive]}
-              onPress={() => setUserFilter(type)}
-            >
-              <Text style={[styles.typeOptionText, userFilter === type && styles.typeOptionTextActive]}>
-                {type === 'all' ? 'הכל' : type === 'admin' ? 'מנהל' : type === 'couple' ? 'זוג' : 'עובד'}
-              </Text>
-            </TouchableOpacity>
-          ))}
         </View>
       </View>
 
-      <View style={styles.buttonRow}>
-        <TouchableOpacity style={styles.addButton} onPress={() => setShowAddModal(true)}>
-          <Ionicons name="person-add" size={20} color={colors.white} />
-          <Text style={styles.addButtonText}>הוסף משתמש חדש</Text>
+      {/* Filters */}
+      <View style={styles.filtersWrap}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filtersRow}
+        >
+          {USER_FILTERS.map((f) => {
+            const active = userFilter === f.value;
+            return (
+              <TouchableOpacity
+                key={f.value}
+                style={[styles.filterChip, active && styles.filterChipActive]}
+                onPress={() => setUserFilter(f.value)}
+                activeOpacity={0.92}
+              >
+                <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>{f.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
+
+      {/* List */}
+      <View style={styles.listWrap}>
+        {loading ? (
+          <View style={styles.loadingWrap}>
+            <ActivityIndicator size="large" color={colors.primary} />
+          </View>
+        ) : filteredUsers.length === 0 ? (
+          <View style={styles.emptyCard}>
+            <Ionicons name="people-outline" size={44} color={colors.gray[500]} />
+            <Text style={styles.emptyTitle}>לא נמצאו משתמשים</Text>
+            <Text style={styles.emptyText}>נסה לשנות חיפוש או פילטר.</Text>
+          </View>
+        ) : (
+          <ScrollView contentContainerStyle={styles.cardsList} showsVerticalScrollIndicator={false}>
+            {filteredUsers.map((u) => {
+              const tag = getTagStyle(u.userType);
+              const hasAvatar = !!u.avatar_url && !avatarLoadErrors[u.id];
+
+              return (
+                <TouchableOpacity
+                  key={u.id}
+                  activeOpacity={0.96}
+                  style={styles.userCard}
+                  onPress={() => {
+                    setSelectedUser(u);
+                    setShowUserModal(true);
+                  }}
+                >
+                  <View style={styles.avatarWrap}>
+                    {hasAvatar ? (
+                      <Image
+                        source={{ uri: u.avatar_url as string }}
+                        style={styles.avatarImg}
+                        onError={() => setAvatarLoadErrors((prev) => ({ ...prev, [u.id]: true }))}
+                      />
+                    ) : (
+                      <View style={styles.avatarFallback}>
+                        <Text style={styles.avatarFallbackText}>{getInitials(u.name)}</Text>
+                      </View>
+                    )}
+                    <View
+                      style={[
+                        styles.presenceDot,
+                        { backgroundColor: getPresenceDotColor(u.userType) },
+                      ]}
+                    />
+                  </View>
+
+                  <View style={styles.userInfo}>
+                    <View style={styles.userTitleRow}>
+                      <Text style={styles.userName} numberOfLines={1}>
+                        {u.name}
+                      </Text>
+                      <View style={[styles.roleTag, { backgroundColor: tag.bg }]}>
+                        <Text style={[styles.roleTagText, { color: tag.fg }]}>{getUserTypeLabel(u.userType)}</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.userSubtitle} numberOfLines={1}>
+                      {u.name} • {getUserTypeSubtitle(u.userType)}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+
+            <View style={{ height: 140 }} />
+          </ScrollView>
+        )}
+      </View>
+
+      {/* Floating Action Button */}
+      <View style={styles.fabWrap}>
+        <TouchableOpacity
+          style={styles.fab}
+          onPress={() => router.push('/(admin)/add-user')}
+          activeOpacity={0.92}
+        >
+          <Ionicons name="add" size={32} color={colors.white} />
         </TouchableOpacity>
       </View>
 
-      {/* 3. Users List */}
-      <ScrollView contentContainerStyle={styles.usersList} showsVerticalScrollIndicator={false}>
-        {loading ? (
-          <ActivityIndicator size="large" color={colors.primary} />
-        ) : filteredUsers.length === 0 ? (
-          <View style={styles.emptyStateCard}>
-            <Ionicons name="people-outline" size={48} color={colors.gray[400]} />
-            <Text style={styles.emptyStateText}>לא נמצאו משתמשים</Text>
-          </View>
-        ) : filteredUsers.map(user => {
-          const createdAt = user.created_at ? new Date(user.created_at) : null;
-          const day = createdAt ? createdAt.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' }) : '-';
-          const weekday = createdAt ? createdAt.toLocaleDateString('he-IL', { weekday: 'long' }) : '';
-          return (
-            <TouchableOpacity
-              key={user.id}
-              style={styles.userCardApple}
-              activeOpacity={0.85}
-              onPress={() => { setSelectedUser(user); setShowUserModal(true); }}
-            >
-              <View style={styles.userDateBoxApple}>
-                <Text style={styles.userDateDayApple}>{day}</Text>
-                <Text style={styles.userDateWeekApple}>{weekday}</Text>
-              </View>
-              <View style={styles.userInfoApple}>
-                <Text style={styles.userNameApple}>{user.name}</Text>
-                <View style={styles.userInfoRowApple}>
-                  <Ionicons name="mail" size={16} color={colors.primary} style={{ marginLeft: 4 }} />
-                  <Text style={styles.userEmailApple}>{user.email}</Text>
-                </View>
-                <View style={styles.userInfoRowApple}>
-                  <View style={styles.userTypeTagApple}>
-                    <Ionicons 
-                      name={user.userType === 'admin' ? 'shield-checkmark' : user.userType === 'employee' ? 'briefcase' : 'heart'} 
-                      size={14} 
-                      color={colors.white} 
-                      style={{ marginLeft: 2 }} 
-                    />
-                    <Text style={styles.userTypeTextApple}>
-                      {user.userType === 'admin' ? 'מנהל' : user.userType === 'employee' ? 'עובד' : 'זוג'}
-                    </Text>
+      {/* Details modal */}
+      <Modal visible={showUserModal} transparent animationType="fade" onRequestClose={() => setShowUserModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalAccent} />
+            <View style={styles.modalHandleRow}>
+              <View style={styles.modalHandle} />
+            </View>
+
+            <TouchableOpacity style={styles.modalClose} onPress={() => setShowUserModal(false)}>
+              <Ionicons name="close" size={20} color={colors.text} />
+            </TouchableOpacity>
+
+            {selectedUser && (
+              <>
+                <View style={styles.modalHeader}>
+                  <View style={styles.modalAvatarShell}>
+                    <View style={styles.modalAvatarWrap}>
+                      {selectedUser.avatar_url && !avatarLoadErrors[selectedUser.id] ? (
+                        <Image
+                          source={{ uri: selectedUser.avatar_url }}
+                          style={styles.modalAvatarImg}
+                          onError={() => setAvatarLoadErrors((prev) => ({ ...prev, [selectedUser.id]: true }))}
+                        />
+                      ) : (
+                        <View style={styles.modalAvatarFallback}>
+                          <Text style={styles.modalAvatarFallbackText}>{getInitials(selectedUser.name)}</Text>
+                        </View>
+                      )}
+                    </View>
+                    <View style={styles.modalStatusDot}>
+                      <View
+                        style={[
+                          styles.modalStatusDotInner,
+                          { backgroundColor: getPresenceDotColor(selectedUser.userType) },
+                        ]}
+                      />
+                    </View>
+                  </View>
+
+                  <View style={styles.modalHeaderText}>
+                    <Text style={styles.modalTitle}>{selectedUser.name}</Text>
+                    <View style={styles.modalBadgeRow}>
+                      <View style={styles.modalBadge}>
+                        <View
+                          style={[
+                            styles.modalBadgeDot,
+                            { backgroundColor: getPresenceDotColor(selectedUser.userType) },
+                          ]}
+                        />
+                        <Text style={styles.modalBadgeText}>{getUserTypeLabel(selectedUser.userType)}</Text>
+                      </View>
+                      <Text style={styles.modalSubtitle}>{getUserTypeSubtitle(selectedUser.userType)}</Text>
+                    </View>
                   </View>
                 </View>
-              </View>
-              <Ionicons name="chevron-back" size={22} color={colors.gray[400]} style={styles.chevronApple} />
-            </TouchableOpacity>
-          );
-        })}
-        {/* User Details Modal */}
-        <Modal visible={showUserModal} transparent animationType="fade" onRequestClose={() => setShowUserModal(false)}>
-          <View style={styles.modalOverlayApple}>
-            <View style={styles.modalApple}>
-              {selectedUser && (
-                <>
-                  <TouchableOpacity style={styles.closeButtonApple} onPress={() => setShowUserModal(false)}>
-                    <Ionicons name="close" size={24} color={colors.text} />
+
+                <View style={styles.modalInfoGrid}>
+                  <View style={styles.modalInfoTile}>
+                    <View style={[styles.modalInfoIcon, styles.modalInfoIconRole]}>
+                      <Ionicons name="briefcase" size={18} color={colors.primary} />
+                    </View>
+                    <View style={styles.modalInfoTextWrap}>
+                      <Text style={styles.modalInfoLabel}>תפקיד</Text>
+                      <Text style={styles.modalInfoValue}>{getUserTypeLabel(selectedUser.userType)}</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.modalInfoTile}>
+                    <View style={[styles.modalInfoIcon, styles.modalInfoIconEmail]}>
+                      <Ionicons name="mail" size={18} color="#F97316" />
+                    </View>
+                    <View style={styles.modalInfoTextWrap}>
+                      <Text style={styles.modalInfoLabel}>אימייל</Text>
+                      <Text style={[styles.modalInfoValue, styles.modalInfoValueLtr]} numberOfLines={1}>
+                        {selectedUser.email}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {!!selectedUser.phone && (
+                    <View style={styles.modalInfoTile}>
+                      <View style={[styles.modalInfoIcon, styles.modalInfoIconPhone]}>
+                        <Ionicons name="call" size={18} color="#16A34A" />
+                      </View>
+                      <View style={styles.modalInfoTextWrap}>
+                        <Text style={styles.modalInfoLabel}>טלפון</Text>
+                        <Text style={[styles.modalInfoValue, styles.modalInfoValueLtr]}>{selectedUser.phone}</Text>
+                      </View>
+                    </View>
+                  )}
+
+                  <View style={styles.modalInfoTile}>
+                    <View style={[styles.modalInfoIcon, styles.modalInfoIconDate]}>
+                      <Ionicons name="calendar" size={18} color={colors.gray[700]} />
+                    </View>
+                    <View style={styles.modalInfoTextWrap}>
+                      <Text style={styles.modalInfoLabel}>נוצר</Text>
+                      <Text style={styles.modalInfoValue}>
+                        {selectedUser.created_at ? new Date(selectedUser.created_at).toLocaleDateString('he-IL') : '-'}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+
+                <View style={styles.modalActionsBar}>
+                  <TouchableOpacity
+                    style={[styles.modalActionSecondary, avatarUploading && styles.modalPrimaryDisabled]}
+                    onPress={handlePickAvatarForSelectedUser}
+                    disabled={avatarUploading}
+                  >
+                    {avatarUploading ? (
+                      <ActivityIndicator size="small" color={colors.primary} />
+                    ) : (
+                      <Ionicons name="image" size={18} color={colors.primary} />
+                    )}
+                    <Text style={styles.modalActionSecondaryText}>
+                      {avatarUploading ? 'מעלה...' : 'החלף תמונה'}
+                    </Text>
                   </TouchableOpacity>
-                  <Text style={styles.modalTitleApple}>{selectedUser.name}</Text>
-                  <View style={styles.modalDetailRowApple}>
-                    <Ionicons name="mail" size={18} color={colors.primary} style={{ marginLeft: 6 }} />
-                    <Text style={styles.modalValueApple}>{selectedUser.email}</Text>
-                  </View>
-                  <View style={styles.modalDetailRowApple}>
-                    <Ionicons 
-                      name={selectedUser.userType === 'admin' ? 'shield-checkmark' : selectedUser.userType === 'employee' ? 'briefcase' : 'heart'} 
-                      size={18} 
-                      color={colors.primary} 
-                      style={{ marginLeft: 6 }} 
-                    />
-                    <Text style={styles.modalValueApple}>
-                      {selectedUser.userType === 'admin' ? 'מנהל' : selectedUser.userType === 'employee' ? 'עובד' : 'זוג'}
+
+                  <TouchableOpacity
+                    style={styles.modalActionDanger}
+                    onPress={() => {
+                      setShowUserModal(false);
+                      handleDeleteUser(selectedUser);
+                    }}
+                  >
+                    <Ionicons name="trash" size={18} color={colors.white} />
+                    <Text style={styles.modalActionDangerText}>מחק</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {isDemoMode && (
+                  <View style={styles.demoNoteRow}>
+                    <Ionicons name="information-circle" size={16} color={colors.gray[500]} />
+                    <Text style={styles.demoNote}>
+                      מצב דמו: חלק מהפעולות אינן נשמרות בדאטאבייס.
                     </Text>
                   </View>
-                  <View style={styles.modalDetailRowApple}>
-                    <Ionicons name="calendar" size={18} color={colors.primary} style={{ marginLeft: 6 }} />
-                    <Text style={styles.modalValueApple}>{selectedUser.created_at ? new Date(selectedUser.created_at).toLocaleDateString('he-IL') : '-'}</Text>
-                  </View>
-                  {typeof selectedUser.events_count === 'number' && (
-                    <View style={styles.modalDetailRowApple}>
-                      <Ionicons name="calendar-outline" size={18} color={colors.primary} style={{ marginLeft: 6 }} />
-                      <Text style={styles.modalValueApple}>מס' אירועים: {selectedUser.events_count}</Text>
-                    </View>
-                  )}
-                  {selectedUser.last_login && (
-                    <View style={styles.modalDetailRowApple}>
-                      <Ionicons name="log-in" size={18} color={colors.primary} style={{ marginLeft: 6 }} />
-                      <Text style={styles.modalValueApple}>כניסה אחרונה: {new Date(selectedUser.last_login).toLocaleDateString('he-IL')}</Text>
-                    </View>
-                  )}
-                  <View style={styles.modalActionsApple}>
-                    <TouchableOpacity style={styles.editButtonApple} onPress={() => { setShowUserModal(false); openEditModal(selectedUser); }}>
-                      <Ionicons name="create" size={22} color={colors.white} />
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.deleteButtonApple} onPress={() => { setShowUserModal(false); handleDeleteUser(selectedUser.id); }}>
-                      <Ionicons name="trash" size={22} color={colors.white} />
-                    </TouchableOpacity>
-                  </View>
-                </>
-              )}
-            </View>
+                )}
+              </>
+            )}
           </View>
-        </Modal>
-      </ScrollView>
-
-      {/* Add User Modal */}
-      <Modal
-        visible={showAddModal}
-        animationType="slide"
-        presentationStyle="pageSheet"
-      >
-        <KeyboardAvoidingView 
-          style={styles.modalContainer}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
-          <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setShowAddModal(false)}>
-              <Text style={styles.cancelButton}>ביטול</Text>
-            </TouchableOpacity>
-            <Text style={styles.modalTitle}>הוספת משתמש חדש</Text>
-            <View style={{ width: 50 }} />
-          </View>
-
-          <ScrollView style={styles.modalContent}>
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>שם מלא *</Text>
-              <TextInput
-                style={styles.input}
-                value={newUser.name}
-                onChangeText={(text) => setNewUser(prev => ({ ...prev, name: text }))}
-                placeholder="הכנס שם מלא"
-                autoCapitalize="words"
-              />
-            </View>
-
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>כתובת אימייל *</Text>
-              <TextInput
-                style={styles.input}
-                value={newUser.email}
-                onChangeText={(text) => setNewUser(prev => ({ ...prev, email: text }))}
-                placeholder="הכנס כתובת אימייל"
-                keyboardType="email-address"
-                autoCapitalize="none"
-              />
-            </View>
-
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>סיסמה *</Text>
-              <TextInput
-                style={styles.input}
-                value={newUser.password}
-                onChangeText={(text) => setNewUser(prev => ({ ...prev, password: text }))}
-                placeholder="הכנס סיסמה (לפחות 6 תווים)"
-                secureTextEntry
-              />
-            </View>
-
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>אישור סיסמה *</Text>
-              <TextInput
-                style={styles.input}
-                value={newUser.confirmPassword}
-                onChangeText={(text) => setNewUser(prev => ({ ...prev, confirmPassword: text }))}
-                placeholder="הכנס סיסמה שוב"
-                secureTextEntry
-              />
-            </View>
-
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>סוג משתמש</Text>
-              <View style={styles.userTypeSelector}>
-                <TouchableOpacity
-                  style={[
-                    styles.userTypeOption,
-                    newUser.user_type === 'couple' && styles.userTypeOptionActive
-                  ]}
-                  onPress={() => setNewUser(prev => ({ ...prev, user_type: 'couple' }))}
-                >
-                  <Ionicons name="heart" size={20} color={newUser.user_type === 'couple' ? colors.white : colors.primary} />
-                  <Text style={[
-                    styles.userTypeOptionText,
-                    newUser.user_type === 'couple' && styles.userTypeOptionTextActive
-                  ]}>
-                    חתן/כלה
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[
-                    styles.userTypeOption,
-                    newUser.user_type === 'admin' && styles.userTypeOptionActive
-                  ]}
-                  onPress={() => setNewUser(prev => ({ ...prev, user_type: 'admin' }))}
-                >
-                  <Ionicons name="shield-checkmark" size={20} color={newUser.user_type === 'admin' ? colors.white : colors.warning} />
-                  <Text style={[
-                    styles.userTypeOptionText,
-                    newUser.user_type === 'admin' && styles.userTypeOptionTextActive
-                  ]}>
-                    מנהל מערכת
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[
-                    styles.userTypeOption,
-                    newUser.user_type === 'employee' && styles.userTypeOptionActive
-                  ]}
-                  onPress={() => setNewUser(prev => ({ ...prev, user_type: 'employee' }))}
-                >
-                  <Ionicons name="briefcase" size={20} color={newUser.user_type === 'employee' ? colors.white : colors.secondary} />
-                  <Text style={[
-                    styles.userTypeOptionText,
-                    newUser.user_type === 'employee' && styles.userTypeOptionTextActive
-                  ]}>
-                    עובד
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            <Button
-              title={loading ? "מוסיף..." : "הוסף משתמש"}
-              onPress={handleAddUser}
-              disabled={loading}
-              style={styles.submitButton}
-            />
-          </ScrollView>
-        </KeyboardAvoidingView>
+        </View>
       </Modal>
-    </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  screen: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: '#F5F7F8',
   },
-  scrollView: {
-    flex: 1,
+  bgWrap: {
+    ...StyleSheet.absoluteFillObject,
+    overflow: 'hidden',
   },
-  contentContainer: {
-    padding: 16,
+  bgBlobTopRight: {
+    position: 'absolute',
+    top: -80,
+    right: -90,
+    width: 420,
+    height: 420,
+    borderRadius: 999,
+    backgroundColor: 'rgba(0, 53, 102, 0.10)',
+    transform: [{ scaleX: 1.05 }],
+  },
+  bgBlobBottomLeft: {
+    position: 'absolute',
+    bottom: -100,
+    left: -110,
+    width: 360,
+    height: 360,
+    borderRadius: 999,
+    backgroundColor: 'rgba(204, 160, 0, 0.12)',
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 24,
-    backgroundColor: colors.white,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.gray[100],
+    paddingTop: Platform.OS === 'ios' ? 12 : 10,
+    paddingHorizontal: 18,
+    paddingBottom: 12,
+    backgroundColor: 'rgba(245, 247, 248, 0.96)',
   },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginLeft: 10,
-  },
-  filterPanel: {
-    flexDirection: 'column', // Changed to column for better spacing
-    backgroundColor: colors.white,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.gray[100],
-    marginBottom: 12,
-  },
-  searchBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.gray[100],
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginBottom: 10, // Added margin bottom for spacing
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 16,
-    color: colors.text,
-    paddingVertical: 0,
-    paddingHorizontal: 8,
-  },
-  typeDropdown: {
-    flexDirection: 'row',
-    backgroundColor: colors.gray[100],
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  typeDropdownLabel: {
-    fontSize: 14,
-    color: colors.textLight,
-    marginRight: 8,
-  },
-  typeOption: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 16,
-    marginHorizontal: 4,
-  },
-  typeOptionActive: {
-    backgroundColor: colors.primary,
-  },
-  typeOptionText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  typeOptionTextActive: {
-    color: colors.white,
-  },
-  sortDropdown: {
-    flexDirection: 'row',
-    backgroundColor: colors.gray[100],
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  sortDropdownLabel: {
-    fontSize: 14,
-    color: colors.textLight,
-    marginRight: 8,
-  },
-  sortOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 16,
-    marginHorizontal: 4,
-  },
-  sortOptionText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.text,
-    marginLeft: 6,
-  },
-  resetButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 16,
-    marginLeft: 8,
-    backgroundColor: colors.gray[100],
-  },
-  resetButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.error,
-    marginLeft: 6,
-  },
-  buttonRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 20,
-    justifyContent: 'flex-end', // יישור לימין
-  },
-  addButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primary,
-    borderRadius: 12,
-    paddingVertical: 16,
-    flex: 1,
-  },
-  addButtonText: {
-    color: colors.white,
-    fontSize: 16,
-    fontWeight: '600',
-    marginLeft: 8,
-    textAlign: 'right', // יישור לימין
-  },
-  testButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-    borderWidth: 2,
-    borderColor: colors.primary,
-  },
-  testButtonText: {
-    color: colors.primary,
-    fontSize: 14,
-    fontWeight: '600',
-    marginLeft: 6,
-  },
-  filterRow: {
+  headerNavRow: {
     flexDirection: 'row-reverse',
-    justifyContent: 'flex-start', // יישור לימין
-    gap: 8,
-    marginHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 12,
   },
-  filterButton: {
-    paddingVertical: 6,
-    paddingHorizontal: 16,
+  headerIconButton: {
+    width: 40,
+    height: 40,
     borderRadius: 20,
-    backgroundColor: colors.gray[200],
-    marginRight: 6, // יישור לימין
-  },
-  filterButtonActive: {
-    backgroundColor: colors.primary,
-  },
-  filterButtonText: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: '500',
-    textAlign: 'right',
-  },
-  filterButtonTextActive: {
-    color: colors.white,
-  },
-  usersList: {
-    gap: 12,
-    alignItems: 'flex-end', // יישור לימין
-    paddingHorizontal: 16,
-  },
-  userCard: {
-    width: '100%',
     backgroundColor: colors.white,
-    borderRadius: 16,
-    padding: 18,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: colors.gray[200],
+    justifyContent: 'center',
+    alignItems: 'center',
     shadowColor: colors.black,
     shadowOpacity: 0.06,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 },
-    alignItems: 'flex-end',
+    elevation: 2,
   },
-  userInfoBox: {
-    marginBottom: 12,
-  },
-  userName: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: colors.text,
-    textAlign: 'right',
-    marginBottom: 2,
-  },
-  userEmail: {
-    fontSize: 14,
-    color: colors.textLight,
-    textAlign: 'right',
-    marginBottom: 2,
-  },
-  userType: {
-    fontSize: 13,
-    color: colors.primary,
-    backgroundColor: colors.gray[100],
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 2,
-    alignSelf: 'flex-end',
-    marginTop: 4,
-    textAlign: 'right',
-    fontWeight: '600',
-  },
-  userCreatedAt: {
-    fontSize: 12,
-    color: colors.textLight,
-    textAlign: 'right',
-    marginTop: 4,
-  },
-  userActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginTop: 12,
-  },
-  actionButton: {
-    padding: 8,
-  },
-  userTypeBadge: {
-    fontSize: 13,
-    color: colors.primary,
-    backgroundColor: colors.gray[100],
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 2,
-    alignSelf: 'flex-end',
-    marginTop: 4,
-    textAlign: 'right',
-    fontWeight: '600',
-  },
-  deleteButton: {
-    padding: 4,
-    marginRight: 8,
-  },
-  userFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  dateText: {
-    fontSize: 12,
-    color: colors.textLight,
-  },
-  emptyState: {
-    alignItems: 'center',
-    padding: 40,
-  },
-  emptyStateTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.text,
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  emptyStateText: {
-    fontSize: 14,
-    color: colors.textLight,
-    textAlign: 'center',
-  },
-  modalContainer: {
-    flex: 1,
-    backgroundColor: colors.white,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.gray[200],
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  cancelButton: {
-    fontSize: 16,
-    color: colors.primary,
-  },
-  modalContent: {
-    flex: 1,
-    padding: 16,
-  },
-  formGroup: {
-    marginBottom: 20,
-  },
-  label: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 8,
-  },
-  input: {
+  searchWrap: {
+    height: 56,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.85)',
     borderWidth: 1,
-    borderColor: colors.gray[300],
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 16,
+    borderColor: 'rgba(0,0,0,0.06)',
+    shadowColor: colors.black,
+    shadowOpacity: 0.05,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 2,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    paddingRight: 14,
+    paddingLeft: 12,
+  },
+  searchIcon: {
+    marginLeft: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 17,
+    color: colors.text,
+    paddingVertical: 10,
+  },
+  filtersWrap: {
+    paddingVertical: 8,
+  },
+  filtersRow: {
+    paddingHorizontal: 18,
+    gap: 10,
+  },
+  filterChip: {
+    height: 40,
+    paddingHorizontal: 18,
+    borderRadius: 999,
     backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  filterChipActive: {
+    backgroundColor: colors.primary,
+    borderColor: 'rgba(6, 23, 62, 0.20)',
+    shadowColor: colors.primary,
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
+  },
+  filterChipText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.gray[700],
     textAlign: 'right',
   },
-  userTypeSelector: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  userTypeOption: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: colors.gray[300],
-    backgroundColor: colors.white,
-    gap: 8,
-  },
-  userTypeOptionActive: {
-    borderColor: colors.primary,
-    backgroundColor: colors.primary,
-  },
-  userTypeOptionText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  userTypeOptionTextActive: {
+  filterChipTextActive: {
     color: colors.white,
   },
-  submitButton: {
-    marginTop: 20,
-    marginBottom: 40,
+  listWrap: {
+    flex: 1,
+    paddingHorizontal: 18,
   },
-  emptyStateCard: {
-    width: '100%',
+  sectionHeader: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 10,
+    paddingBottom: 8,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: colors.gray[800],
+    textAlign: 'right',
+  },
+  sortButton: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.8)',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
+  },
+  sortButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  sortLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.gray[700],
+  },
+  loadingWrap: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 20,
+  },
+  cardsList: {
+    paddingTop: 4,
+    gap: 12,
+  },
+  userCard: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 24,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
+    shadowColor: colors.black,
+    shadowOpacity: 0.05,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 2,
+  },
+  avatarWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    overflow: 'hidden',
+    marginLeft: 12,
+    position: 'relative',
     backgroundColor: colors.gray[100],
-    borderRadius: 16,
+  },
+  avatarImg: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  avatarFallback: {
+    flex: 1,
+    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 32,
-    marginTop: 32,
+  },
+  avatarFallbackText: {
+    color: colors.white,
+    fontSize: 18,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  presenceDot: {
+    position: 'absolute',
+    bottom: 2,
+    left: 2,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 2,
+    borderColor: colors.white,
+  },
+  userInfo: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'flex-end',
+  },
+  userTitleRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    alignSelf: 'stretch',
+    marginBottom: 4,
+  },
+  userName: {
+    flex: 1,
+    fontSize: 18,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'right',
+    marginLeft: 10,
+  },
+  roleTag: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
+  roleTagText: {
+    fontSize: 11,
+    fontWeight: '900',
+    textAlign: 'right',
+  },
+  userSubtitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.gray[600],
+    textAlign: 'right',
+  },
+  moreButton: {
+    width: 36,
+    height: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 6,
+  },
+  emptyCard: {
+    marginTop: 18,
+    borderRadius: 24,
+    paddingVertical: 28,
+    paddingHorizontal: 18,
+    backgroundColor: 'rgba(255,255,255,0.75)',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
+    alignItems: 'center',
+  },
+  emptyTitle: {
+    marginTop: 12,
+    fontSize: 16,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'center',
+  },
+  emptyText: {
+    marginTop: 6,
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.gray[600],
+    textAlign: 'center',
+  },
+  fabWrap: {
+    position: 'absolute',
+    left: 18,
+    bottom: 108,
+  },
+  fab: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: colors.primary,
+    shadowOpacity: 0.22,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
   },
   modalOverlay: {
     flex: 1,
+    backgroundColor: 'rgba(11, 18, 32, 0.45)',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    padding: 20,
   },
-  modalApple: {
-    width: '90%',
-    backgroundColor: colors.white,
+  modalCard: {
+    width: '100%',
+    maxWidth: 440,
     borderRadius: 28,
-    padding: 32,
-    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    paddingHorizontal: 18,
+    paddingBottom: 18,
+    paddingTop: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.6)',
     shadowColor: colors.black,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 8,
-    position: 'relative',
+    shadowOpacity: 0.18,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 10,
+    overflow: 'hidden',
   },
-  closeButtonApple: {
+  modalAccent: {
     position: 'absolute',
-    top: 16,
-    left: 16,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.gray[100],
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 60,
+    backgroundColor: 'rgba(240, 243, 255, 0.8)',
+  },
+  modalHandleRow: {
+    alignItems: 'center',
+    paddingTop: 6,
+    paddingBottom: 2,
+  },
+  modalHandle: {
+    width: 44,
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: 'rgba(120, 130, 155, 0.3)',
+  },
+  modalClose: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(255,255,255,0.9)',
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 2,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
   },
-  modalTitleApple: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginBottom: 18,
-    textAlign: 'center',
-  },
-  modalDetailRowApple: {
+  modalHeader: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
-    marginBottom: 10,
-    width: '100%',
-    justifyContent: 'flex-end',
+    paddingTop: 10,
+    paddingBottom: 14,
+    gap: 14,
   },
-  modalValueApple: {
-    fontWeight: '600',
-    color: colors.primary,
-    fontSize: 16,
-    marginLeft: 4,
-  },
-  modalActionsApple: {
-    flexDirection: 'row-reverse',
-    justifyContent: 'center',
-    marginTop: 24,
-    gap: 24,
-    width: '100%',
-  },
-  editButtonApple: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginHorizontal: 8,
-    shadowColor: colors.black,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  deleteButtonApple: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.error,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginHorizontal: 8,
-    shadowColor: colors.black,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  // --- Apple Modern Card ---
-  userCardApple: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    backgroundColor: colors.white,
-    borderRadius: 28,
-    paddingVertical: 22,
-    paddingHorizontal: 18,
-    marginBottom: 18,
-    width: '100%',
-    maxWidth: 500,
-    shadowColor: colors.black,
-    shadowOpacity: 0.10,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 5,
-    position: 'relative',
-  },
-  userDateBoxApple: {
-    backgroundColor: colors.gray[100],
-    borderRadius: 18,
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    alignItems: 'center',
-    marginLeft: 16,
+  modalAvatarShell: {
+    width: 86,
+    height: 86,
+    borderRadius: 43,
+    padding: 3,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.7)',
     shadowColor: colors.black,
     shadowOpacity: 0.08,
-    shadowRadius: 8,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
+  },
+  modalAvatarWrap: {
+    flex: 1,
+    borderRadius: 40,
+    overflow: 'hidden',
+    backgroundColor: colors.gray[100],
+  },
+  modalAvatarImg: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  modalAvatarFallback: {
+    flex: 1,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalAvatarFallbackText: {
+    color: colors.white,
+    fontSize: 20,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  modalStatusDot: {
+    position: 'absolute',
+    bottom: 4,
+    left: 4,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: colors.white,
+    shadowColor: colors.black,
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
-    minWidth: 70,
   },
-  userDateDayApple: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: colors.text,
-    textAlign: 'center',
-    lineHeight: 26,
+  modalStatusDotInner: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
   },
-  userDateWeekApple: {
-    fontSize: 14,
-    color: colors.textLight,
-    textAlign: 'center',
-    marginTop: -2,
-  },
-  userInfoApple: {
+  modalHeaderText: {
     flex: 1,
     alignItems: 'flex-end',
-    justifyContent: 'center',
   },
-  userNameApple: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginBottom: 2,
-    textAlign: 'right',
-  },
-  userInfoRowApple: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    marginBottom: 2,
-  },
-  userEmailApple: {
-    fontSize: 15,
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: '900',
     color: colors.text,
     textAlign: 'right',
   },
-  userTypeTagApple: {
+  modalBadgeRow: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
-    backgroundColor: colors.primary,
-    borderRadius: 12,
+    marginTop: 6,
+    gap: 8,
+  },
+  modalBadge: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
     paddingHorizontal: 10,
     paddingVertical: 4,
-    alignSelf: 'flex-end',
-    marginTop: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.7)',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
   },
-  userTypeTextApple: {
+  modalBadgeDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  modalBadgeText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.text,
+    textAlign: 'right',
+  },
+  modalSubtitle: {
     fontSize: 13,
-    fontWeight: '600',
-    color: colors.white,
-    marginLeft: 4,
+    fontWeight: '700',
+    color: colors.gray[600],
+    textAlign: 'right',
   },
-  chevronApple: {
-    marginLeft: 8,
+  modalInfoGrid: {
+    gap: 12,
+    paddingBottom: 10,
   },
-  modalOverlayApple: {
-    flex: 1,
-    justifyContent: 'center',
+  modalInfoTile: {
+    flexDirection: 'row-reverse',
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.7)',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
   },
-}); 
+  modalInfoIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalInfoIconRole: {
+    backgroundColor: 'rgba(6, 23, 62, 0.12)',
+  },
+  modalInfoIconEmail: {
+    backgroundColor: 'rgba(249, 115, 22, 0.12)',
+  },
+  modalInfoIconPhone: {
+    backgroundColor: 'rgba(22, 163, 74, 0.12)',
+  },
+  modalInfoIconDate: {
+    backgroundColor: 'rgba(71, 85, 105, 0.12)',
+  },
+  modalInfoTextWrap: {
+    flex: 1,
+    alignItems: 'flex-end',
+  },
+  modalInfoLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.gray[600],
+    textAlign: 'right',
+  },
+  modalInfoValue: {
+    marginTop: 4,
+    fontSize: 15,
+    fontWeight: '800',
+    color: colors.text,
+    textAlign: 'right',
+  },
+  modalInfoValueLtr: {
+    writingDirection: 'ltr',
+    textAlign: 'right',
+  },
+  modalActionsBar: {
+    flexDirection: 'row-reverse',
+    gap: 12,
+    paddingTop: 6,
+  },
+  modalActionSecondary: {
+    flex: 1,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 16,
+    backgroundColor: 'rgba(6, 23, 62, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(6, 23, 62, 0.2)',
+  },
+  modalActionSecondaryText: {
+    color: colors.primary,
+    fontWeight: '900',
+    fontSize: 14,
+    textAlign: 'right',
+  },
+  modalActionDanger: {
+    flex: 1,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 16,
+    backgroundColor: colors.error,
+  },
+  modalActionDangerText: {
+    color: colors.white,
+    fontWeight: '900',
+    fontSize: 14,
+    textAlign: 'right',
+  },
+  modalPrimaryDisabled: {
+    opacity: 0.7,
+  },
+  demoNoteRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 10,
+  },
+  demoNote: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.gray[600],
+    textAlign: 'right',
+  },
+});

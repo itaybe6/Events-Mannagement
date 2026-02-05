@@ -2,7 +2,7 @@ import React, { useEffect } from "react";
 import { Tabs, useRouter } from "expo-router";
 import { colors } from "@/constants/colors";
 import { Ionicons } from "@expo/vector-icons";
-import { Platform, StyleSheet, View, TouchableOpacity } from "react-native";
+import { Image, Platform, StyleSheet, View, TouchableOpacity } from "react-native";
 import { useLayoutStore } from '@/store/layoutStore';
 import { useUserStore } from '@/store/userStore';
 
@@ -24,15 +24,29 @@ export default function AdminTabsLayout() {
     </TouchableOpacity>
   );
 
+  const headerTitle = () => (
+    <Image
+      source={require('../../assets/images/logo-moon.png')}
+      style={styles.logoHeader}
+      resizeMode="contain"
+    />
+  );
+
   return (
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: colors.white,
         tabBarInactiveTintColor: colors.gray[500],
         headerShown: true,
-        headerTitle: "",
+        headerTitle: headerTitle,
+        headerTitleAlign: "center",
+        headerTitleContainerStyle: {
+          width: "100%",
+          alignItems: "center",
+        },
         headerStyle: {
           backgroundColor: colors.gray[100],
+          height: 76,
           elevation: 0,
           shadowOpacity: 0,
           borderBottomWidth: 0,
@@ -121,8 +135,22 @@ export default function AdminTabsLayout() {
       />
 
       {/* Hidden routes in admin group */}
-      <Tabs.Screen name="admin-events-create" options={{ href: null }} />
-      <Tabs.Screen name="admin-event-details" options={{ href: null }} />
+      <Tabs.Screen name="add-user" options={{ href: null }} />
+      <Tabs.Screen
+        name="admin-events-create"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="admin-event-details"
+        options={{
+          href: null,
+        }}
+      />
+      {/* Hidden admin wrappers for seating screens (keep admin tab bar) */}
+      <Tabs.Screen name="BrideGroomSeating" options={{ href: null }} />
+      <Tabs.Screen name="seating-templates" options={{ href: null }} />
     </Tabs>
   );
 }
@@ -153,6 +181,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+  },
+  logoHeader: {
+    width: 260,
+    height: 60,
   },
 });
 

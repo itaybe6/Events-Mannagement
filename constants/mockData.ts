@@ -7,7 +7,7 @@ export const mockEvents: Event[] = [
     date: new Date(2025, 7, 15, 19, 0),
     location: 'אולמי הגן הקסום, תל אביב',
     image: 'https://images.unsplash.com/photo-1519741497674-611481863552?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80',
-    story: 'הכרנו לפני 5 שנים במסיבה של חברים משותפים. אחרי שיחה ארוכה וכמה כוסות יין, ידענו שמצאנו משהו מיוחד. לאחר 3 שנים של זוגיות, דני הציע נישואין בטיול ברומא, ליד מזרקת טרווי.',
+    story: 'הכרנו לפני 5 שנים במסיבה של חברים משותפים. אחרי שיחה ארוכה וכמה כוסות יין, ידענו שמצאנו משהו מיוחד. לאחר 3 שנים של מערכת יחסים, דני הציע נישואין בטיול ברומא, ליד מזרקת טרווי.',
     guests: 250,
     budget: 120000,
     tasks: [
@@ -22,7 +22,7 @@ export const mockEvents: Event[] = [
 
 export const mockGuests: Guest[] = [
   { id: '1', name: 'משה כהן', phone: '0501234567', status: 'מגיע', tableId: '1', gift: 500, message: 'מזל טוב! מאחל לכם חיים מאושרים יחד.' },
-  { id: '2', name: 'רחל לוי', phone: '0507654321', status: 'מגיע', tableId: '1', gift: 400, message: 'מזל טוב לזוג המקסים! אוהבת אתכם.' },
+  { id: '2', name: 'רחל לוי', phone: '0507654321', status: 'מגיע', tableId: '1', gift: 400, message: 'מזל טוב לבעלי האירוע המקסימים! אוהבת אתכם.' },
   { id: '3', name: 'דוד ישראלי', phone: '0521234567', status: 'לא מגיע', tableId: null, gift: 0, message: '' },
   { id: '4', name: 'שרה גולדברג', phone: '0541234567', status: 'ממתין', tableId: null, gift: 0, message: '' },
   { id: '5', name: 'יעקב אברהם', phone: '0551234567', status: 'מגיע', tableId: '2', gift: 600, message: 'מזל טוב! שמח להיות חלק מהשמחה שלכם.' },
@@ -66,7 +66,7 @@ export const mockMessages: Message[] = [
 
 export const mockGifts: Gift[] = [
   { id: '1', guestName: 'משה כהן', amount: 500, message: 'מזל טוב! מאחל לכם חיים מאושרים יחד.', date: new Date(2025, 6, 10), status: 'התקבל' },
-  { id: '2', guestName: 'רחל לוי', amount: 400, message: 'מזל טוב לזוג המקסים! אוהבת אתכם.', date: new Date(2025, 6, 11), status: 'התקבל' },
+  { id: '2', guestName: 'רחל לוי', amount: 400, message: 'מזל טוב לבעלי האירוע המקסימים! אוהבת אתכם.', date: new Date(2025, 6, 11), status: 'התקבל' },
   { id: '3', guestName: 'יעקב אברהם', amount: 600, message: 'מזל טוב! שמח להיות חלק מהשמחה שלכם.', date: new Date(2025, 6, 12), status: 'התקבל' },
   { id: '4', guestName: 'חנה פרץ', amount: 450, message: 'מזל טוב ענקי! אוהבת אתכם המון.', date: new Date(2025, 6, 13), status: 'בתהליך' },
   { id: '5', guestName: 'מיכל אדלר', amount: 350, message: 'מזל טוב! מאחלת לכם אושר ועושר.', date: new Date(2025, 6, 14), status: 'בתהליך' },

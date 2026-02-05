@@ -2,22 +2,37 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Users table for authentication and profile
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     email VARCHAR(255) UNIQUE NOT NULL,
     name VARCHAR(255) NOT NULL,
-    user_type VARCHAR(50) NOT NULL CHECK (user_type IN ('couple', 'admin', 'employee')),
+    phone VARCHAR(20),
+    avatar_url VARCHAR(500),
+    user_type VARCHAR(50) NOT NULL CHECK (user_type IN ('event_owner', 'admin', 'employee')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Add phone column if missing (safe re-run)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(20);
+
+-- Add avatar_url column if missing (safe re-run)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url VARCHAR(500);
+
+-- Ensure user_type check constraint uses new values (safe re-run)
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_user_type_check;
+ALTER TABLE users
+  ADD CONSTRAINT users_user_type_check
+  CHECK (user_type IN ('event_owner', 'admin', 'employee'));
+
 -- Events table
-CREATE TABLE events (
+CREATE TABLE IF NOT EXISTS events (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     title VARCHAR(255) NOT NULL,
     date TIMESTAMP WITH TIME ZONE NOT NULL,
     location VARCHAR(255) NOT NULL,
+    city VARCHAR(255),
     image VARCHAR(500),
     story TEXT,
     guests_count INTEGER DEFAULT 0,
@@ -26,8 +41,11 @@ CREATE TABLE events (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Add city column if missing (safe re-run)
+ALTER TABLE events ADD COLUMN IF NOT EXISTS city VARCHAR(255);
+
 -- Tasks table
-CREATE TABLE tasks (
+CREATE TABLE IF NOT EXISTS tasks (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     event_id UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
     title VARCHAR(255) NOT NULL,
@@ -38,7 +56,7 @@ CREATE TABLE tasks (
 );
 
 -- Guests table
-CREATE TABLE guests (
+CREATE TABLE IF NOT EXISTS guests (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     event_id UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
@@ -52,7 +70,7 @@ CREATE TABLE guests (
 );
 
 -- Tables table
-CREATE TABLE tables (
+CREATE TABLE IF NOT EXISTS tables (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     event_id UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
@@ -64,7 +82,7 @@ CREATE TABLE tables (
 );
 
 -- Messages table
-CREATE TABLE messages (
+CREATE TABLE IF NOT EXISTS messages (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     event_id UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
     type VARCHAR(50) NOT NULL CHECK (type IN ('SMS', 'וואטסאפ')),
@@ -76,7 +94,7 @@ CREATE TABLE messages (
 );
 
 -- Gifts table
-CREATE TABLE gifts (
+CREATE TABLE IF NOT EXISTS gifts (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     event_id UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
     guest_name VARCHAR(255) NOT NULL,
@@ -88,7 +106,7 @@ CREATE TABLE gifts (
 );
 
 -- Notification settings table
-CREATE TABLE notification_settings (
+CREATE TABLE IF NOT EXISTS notification_settings (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     event_id UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
     notification_type VARCHAR(50) NOT NULL,
@@ -102,20 +120,26 @@ CREATE TABLE notification_settings (
 );
 
 -- Add foreign key constraint for table_id in guests
-ALTER TABLE guests ADD CONSTRAINT fk_guests_table_id 
+DO $$
+BEGIN
+  ALTER TABLE guests
+    ADD CONSTRAINT fk_guests_table_id
     FOREIGN KEY (table_id) REFERENCES tables(id) ON DELETE SET NULL;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
 
 -- Add column for number of people
-ALTER TABLE guests ADD COLUMN number_of_people INTEGER DEFAULT 1;
+ALTER TABLE guests ADD COLUMN IF NOT EXISTS number_of_people INTEGER DEFAULT 1;
 
 -- Create indexes for better performance
-CREATE INDEX idx_events_user_id ON events(user_id);
-CREATE INDEX idx_tasks_event_id ON tasks(event_id);
-CREATE INDEX idx_guests_event_id ON guests(event_id);
-CREATE INDEX idx_guests_table_id ON guests(table_id);
-CREATE INDEX idx_tables_event_id ON tables(event_id);
-CREATE INDEX idx_messages_event_id ON messages(event_id);
-CREATE INDEX idx_gifts_event_id ON gifts(event_id);
+CREATE INDEX IF NOT EXISTS idx_events_user_id ON events(user_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_event_id ON tasks(event_id);
+CREATE INDEX IF NOT EXISTS idx_guests_event_id ON guests(event_id);
+CREATE INDEX IF NOT EXISTS idx_guests_table_id ON guests(table_id);
+CREATE INDEX IF NOT EXISTS idx_tables_event_id ON tables(event_id);
+CREATE INDEX IF NOT EXISTS idx_messages_event_id ON messages(event_id);
+CREATE INDEX IF NOT EXISTS idx_gifts_event_id ON gifts(event_id);
 
 -- Enable Row Level Security (RLS)
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
@@ -128,23 +152,76 @@ ALTER TABLE gifts ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies
 
--- Admin can see all users
-CREATE POLICY "Admins can view all users" ON users FOR ALL 
-    USING ((SELECT user_type FROM users WHERE id = auth.uid()) = 'admin');
+-- IMPORTANT:
+-- Avoid querying the same table inside its own RLS policy (can cause infinite recursion -> 500).
+-- We'll use a SECURITY DEFINER helper to check admin status safely.
 
--- Users can only see their own data (non-admin)
-CREATE POLICY "Users can view own profile" ON users FOR SELECT 
-    USING (auth.uid() = id AND (SELECT user_type FROM users WHERE id = auth.uid()) != 'admin');
-CREATE POLICY "Users can update own profile" ON users FOR UPDATE 
-    USING (auth.uid() = id AND (SELECT user_type FROM users WHERE id = auth.uid()) != 'admin');
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS boolean
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.users
+    WHERE id = auth.uid()
+      AND user_type = 'admin'
+  );
+$$;
+
+REVOKE ALL ON FUNCTION public.is_admin() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.is_admin() TO authenticated;
+
+-- Drop old policies if they exist (safe re-run)
+DROP POLICY IF EXISTS "Admins can view all users" ON users;
+DROP POLICY IF EXISTS "Users can view own profile" ON users;
+DROP POLICY IF EXISTS "Users can update own profile" ON users;
+
+-- Admins can manage all users
+DROP POLICY IF EXISTS "Admins can manage all users" ON users;
+CREATE POLICY "Admins can manage all users" ON users
+  FOR ALL
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
+
+-- Users can manage their own profile
+DROP POLICY IF EXISTS "Users can view own profile" ON users;
+CREATE POLICY "Users can view own profile" ON users
+  FOR SELECT
+  USING (auth.uid() = id);
+
+DROP POLICY IF EXISTS "Users can insert own profile" ON users;
+CREATE POLICY "Users can insert own profile" ON users
+  FOR INSERT
+  WITH CHECK (auth.uid() = id);
+
+DROP POLICY IF EXISTS "Users can update own profile" ON users;
+CREATE POLICY "Users can update own profile" ON users
+  FOR UPDATE
+  USING (auth.uid() = id)
+  WITH CHECK (auth.uid() = id);
 
 -- Events policies
+DROP POLICY IF EXISTS "Users can view own events" ON events;
+DROP POLICY IF EXISTS "Users can insert own events" ON events;
+DROP POLICY IF EXISTS "Users can update own events" ON events;
+DROP POLICY IF EXISTS "Users can delete own events" ON events;
+DROP POLICY IF EXISTS "Admins can manage events" ON events;
 CREATE POLICY "Users can view own events" ON events FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "Users can insert own events" ON events FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Users can update own events" ON events FOR UPDATE USING (auth.uid() = user_id);
 CREATE POLICY "Users can delete own events" ON events FOR DELETE USING (auth.uid() = user_id);
+CREATE POLICY "Admins can manage events" ON events
+  FOR ALL
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
 
 -- Tasks policies
+DROP POLICY IF EXISTS "Users can view tasks of own events" ON tasks;
+DROP POLICY IF EXISTS "Users can insert tasks for own events" ON tasks;
+DROP POLICY IF EXISTS "Users can update tasks of own events" ON tasks;
+DROP POLICY IF EXISTS "Users can delete tasks of own events" ON tasks;
 CREATE POLICY "Users can view tasks of own events" ON tasks FOR SELECT 
     USING (EXISTS (SELECT 1 FROM events WHERE events.id = tasks.event_id AND events.user_id = auth.uid()));
 CREATE POLICY "Users can insert tasks for own events" ON tasks FOR INSERT 
@@ -155,6 +232,10 @@ CREATE POLICY "Users can delete tasks of own events" ON tasks FOR DELETE
     USING (EXISTS (SELECT 1 FROM events WHERE events.id = tasks.event_id AND events.user_id = auth.uid()));
 
 -- Guests policies
+DROP POLICY IF EXISTS "Users can view guests of own events" ON guests;
+DROP POLICY IF EXISTS "Users can insert guests for own events" ON guests;
+DROP POLICY IF EXISTS "Users can update guests of own events" ON guests;
+DROP POLICY IF EXISTS "Users can delete guests of own events" ON guests;
 CREATE POLICY "Users can view guests of own events" ON guests FOR SELECT 
     USING (EXISTS (SELECT 1 FROM events WHERE events.id = guests.event_id AND events.user_id = auth.uid()));
 CREATE POLICY "Users can insert guests for own events" ON guests FOR INSERT 
@@ -165,6 +246,10 @@ CREATE POLICY "Users can delete guests of own events" ON guests FOR DELETE
     USING (EXISTS (SELECT 1 FROM events WHERE events.id = guests.event_id AND events.user_id = auth.uid()));
 
 -- Tables policies
+DROP POLICY IF EXISTS "Users can view tables of own events" ON tables;
+DROP POLICY IF EXISTS "Users can insert tables for own events" ON tables;
+DROP POLICY IF EXISTS "Users can update tables of own events" ON tables;
+DROP POLICY IF EXISTS "Users can delete tables of own events" ON tables;
 CREATE POLICY "Users can view tables of own events" ON tables FOR SELECT 
     USING (EXISTS (SELECT 1 FROM events WHERE events.id = tables.event_id AND events.user_id = auth.uid()));
 CREATE POLICY "Users can insert tables for own events" ON tables FOR INSERT 
@@ -175,6 +260,10 @@ CREATE POLICY "Users can delete tables of own events" ON tables FOR DELETE
     USING (EXISTS (SELECT 1 FROM events WHERE events.id = tables.event_id AND events.user_id = auth.uid()));
 
 -- Messages policies
+DROP POLICY IF EXISTS "Users can view messages of own events" ON messages;
+DROP POLICY IF EXISTS "Users can insert messages for own events" ON messages;
+DROP POLICY IF EXISTS "Users can update messages of own events" ON messages;
+DROP POLICY IF EXISTS "Users can delete messages of own events" ON messages;
 CREATE POLICY "Users can view messages of own events" ON messages FOR SELECT 
     USING (EXISTS (SELECT 1 FROM events WHERE events.id = messages.event_id AND events.user_id = auth.uid()));
 CREATE POLICY "Users can insert messages for own events" ON messages FOR INSERT 
@@ -185,6 +274,10 @@ CREATE POLICY "Users can delete messages of own events" ON messages FOR DELETE
     USING (EXISTS (SELECT 1 FROM events WHERE events.id = messages.event_id AND events.user_id = auth.uid()));
 
 -- Gifts policies
+DROP POLICY IF EXISTS "Users can view gifts of own events" ON gifts;
+DROP POLICY IF EXISTS "Users can insert gifts for own events" ON gifts;
+DROP POLICY IF EXISTS "Users can update gifts of own events" ON gifts;
+DROP POLICY IF EXISTS "Users can delete gifts of own events" ON gifts;
 CREATE POLICY "Users can view gifts of own events" ON gifts FOR SELECT 
     USING (EXISTS (SELECT 1 FROM events WHERE events.id = gifts.event_id AND events.user_id = auth.uid()));
 CREATE POLICY "Users can insert gifts for own events" ON gifts FOR INSERT 
@@ -204,13 +297,68 @@ END;
 $$ language 'plpgsql';
 
 -- Create triggers for updated_at
-CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users 
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_events_updated_at BEFORE UPDATE ON events 
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_tasks_updated_at BEFORE UPDATE ON tasks 
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_guests_updated_at BEFORE UPDATE ON guests 
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_tables_updated_at BEFORE UPDATE ON tables 
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column(); 
+DO $$
+BEGIN
+  CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users
+      FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$
+BEGIN
+  CREATE TRIGGER update_events_updated_at BEFORE UPDATE ON events
+      FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$
+BEGIN
+  CREATE TRIGGER update_tasks_updated_at BEFORE UPDATE ON tasks
+      FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$
+BEGIN
+  CREATE TRIGGER update_guests_updated_at BEFORE UPDATE ON guests
+      FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$
+BEGIN
+  CREATE TRIGGER update_tables_updated_at BEFORE UPDATE ON tables
+      FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
+-- ========= STORAGE =========
+-- Public bucket for user avatars (safe re-run)
+DO $$
+BEGIN
+  INSERT INTO storage.buckets (id, name, public)
+  VALUES ('avatars', 'avatars', true)
+  ON CONFLICT (id) DO UPDATE SET public = true;
+EXCEPTION
+  WHEN undefined_table THEN
+    -- storage schema may not be available in some environments
+    NULL;
+END $$;
+
+-- Public read access policy for avatars bucket (safe re-run)
+DO $$
+BEGIN
+  CREATE POLICY "Public read avatars"
+    ON storage.objects
+    FOR SELECT
+    TO public
+    USING (bucket_id = 'avatars');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+  WHEN undefined_table THEN NULL;
+END $$;
