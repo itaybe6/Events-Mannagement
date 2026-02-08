@@ -13,7 +13,7 @@ import {
   Pressable,
   Modal,
 } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, usePathname, useRouter } from 'expo-router';
 import { colors } from '@/constants/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { Feather } from '@expo/vector-icons';
@@ -25,6 +25,7 @@ import Animated, {
   makeMutable,
   runOnJS,
   useAnimatedStyle,
+  type SharedValue,
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
@@ -54,8 +55,9 @@ const PREVIEW_MAP_Y_RANGE = 800;
 const PREVIEW_TABLE_CARD_WIDTH = 44;
 
 export default function SeatingTemplatesScreen() {
-  const { eventId } = useLocalSearchParams();
+  const { eventId, keep } = useLocalSearchParams();
   const router = useRouter();
+  const pathname = usePathname();
   const [loading, setLoading] = useState(false);
   const [existingMap, setExistingMap] = useState<any>(null);
   const [selectedTableId, setSelectedTableId] = useState<number | null>(null);
@@ -101,6 +103,20 @@ export default function SeatingTemplatesScreen() {
   
   // Track which gap is being edited  
   const [editingGap, setEditingGap] = useState<string | null>(null);
+
+  // When opened on web, show the dedicated web page (unless explicitly kept here for editing).
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    if (!eventId) return;
+    if (keep === '1') return;
+    // Avoid loops when we're already on the web route.
+    if (pathname?.endsWith('/seating/templatesWeb')) return;
+
+    router.replace({
+      pathname: '/seating/templatesWeb',
+      params: { eventId: String(eventId) },
+    });
+  }, [eventId, keep, pathname, router]);
 
   // Load existing seating map if available
   useEffect(() => {
@@ -1413,7 +1429,7 @@ function SeatingFreeformMap({
 
   // Keep per-table mutable positions (not React state, for smooth drag).
   const posByIdRef = useRef(
-    new Map<number, { x: Animated.SharedValue<number>; y: Animated.SharedValue<number> }>()
+    new Map<number, { x: SharedValue<number>; y: SharedValue<number> }>()
   );
 
   // Alignment guides (world-space). Visible only while dragging near alignment.
@@ -2203,82 +2219,157 @@ function SeatingFreeformMap({
           const midPoint = (n - 1) / 2; // fractional midpoint for even counts
           const reflectedIndex = index - midPoint; // 4 => [-1.5,-0.5,0.5,1.5]
           const iconSize = FAB_SIZE * 0.40;
+          const webTranslateX =
+            Math.sin(reflectedIndex * offsetAngle) * (fabOpen ? radius : FAB_OFFSET);
+          const webTranslateY =
+            -Math.cos(reflectedIndex * offsetAngle) * (fabOpen ? radius : FAB_OFFSET);
           return (
-            <MotiPressable
-              key={menuItem.key}
-              onPress={() => onFabPress(menuItem)}
-              animate={{
-                translateX:
-                  Math.sin(reflectedIndex * offsetAngle) * (fabOpen ? radius : FAB_OFFSET),
-                translateY:
-                  -Math.cos(reflectedIndex * offsetAngle) * (fabOpen ? radius : FAB_OFFSET),
-                opacity: fabOpen ? 1 : 0,
-                scale: fabOpen ? 1 : 0.6,
-              }}
-              style={{
-                position: 'absolute',
-                left: -FAB_SIZE / 2,
-                top: -FAB_SIZE / 2,
-                width: FAB_SIZE,
-                height: FAB_SIZE,
-                borderRadius: FAB_SIZE / 2,
-                backgroundColor: menuItem.color,
-                alignItems: 'center',
-                justifyContent: 'center',
-                shadowColor: '#000',
-                shadowOpacity: 0.16,
-                shadowRadius: 12,
-                shadowOffset: { width: 0, height: 8 },
-                elevation: 8,
-              }}
-              transition={{
-                delay: index * 60,
-                type: 'timing',
-                duration: 320,
-              }}
-            >
-              <View style={{ alignItems: 'center', justifyContent: 'center' }}>
-                {renderFabItemIcon(menuItem, iconSize)}
-                <Text
-                  style={{
-                    marginTop: 4,
-                    color: 'rgba(255,255,255,0.92)',
-                    fontWeight: '700',
-                    fontSize: 10,
-                    letterSpacing: -0.2,
-                  }}
-                  numberOfLines={1}
-                >
-                  {fabItemLabel(menuItem)}
-                </Text>
-              </View>
-            </MotiPressable>
+            Platform.OS === 'web' ? (
+              <Pressable
+                key={menuItem.key}
+                onPress={() => onFabPress(menuItem)}
+                style={{
+                  position: 'absolute',
+                  left: -FAB_SIZE / 2,
+                  top: -FAB_SIZE / 2,
+                  width: FAB_SIZE,
+                  height: FAB_SIZE,
+                  borderRadius: FAB_SIZE / 2,
+                  backgroundColor: menuItem.color,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  shadowColor: '#000',
+                  shadowOpacity: 0.16,
+                  shadowRadius: 12,
+                  shadowOffset: { width: 0, height: 8 },
+                  elevation: 8,
+                  opacity: fabOpen ? 1 : 0,
+                  transform: [
+                    { translateX: webTranslateX },
+                    { translateY: webTranslateY },
+                    { scale: fabOpen ? 1 : 0.6 },
+                  ],
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={fabItemLabel(menuItem)}
+              >
+                <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+                  {renderFabItemIcon(menuItem, iconSize)}
+                  <Text
+                    style={{
+                      marginTop: 4,
+                      color: 'rgba(255,255,255,0.92)',
+                      fontWeight: '700',
+                      fontSize: 10,
+                      letterSpacing: -0.2,
+                    }}
+                    numberOfLines={1}
+                  >
+                    {fabItemLabel(menuItem)}
+                  </Text>
+                </View>
+              </Pressable>
+            ) : (
+              <MotiPressable
+                key={menuItem.key}
+                onPress={() => onFabPress(menuItem)}
+                animate={{
+                  translateX:
+                    Math.sin(reflectedIndex * offsetAngle) * (fabOpen ? radius : FAB_OFFSET),
+                  translateY:
+                    -Math.cos(reflectedIndex * offsetAngle) * (fabOpen ? radius : FAB_OFFSET),
+                  opacity: fabOpen ? 1 : 0,
+                  scale: fabOpen ? 1 : 0.6,
+                }}
+                style={{
+                  position: 'absolute',
+                  left: -FAB_SIZE / 2,
+                  top: -FAB_SIZE / 2,
+                  width: FAB_SIZE,
+                  height: FAB_SIZE,
+                  borderRadius: FAB_SIZE / 2,
+                  backgroundColor: menuItem.color,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  shadowColor: '#000',
+                  shadowOpacity: 0.16,
+                  shadowRadius: 12,
+                  shadowOffset: { width: 0, height: 8 },
+                  elevation: 8,
+                }}
+                transition={{
+                  delay: index * 60,
+                  type: 'timing',
+                  duration: 320,
+                }}
+              >
+                <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+                  {renderFabItemIcon(menuItem, iconSize)}
+                  <Text
+                    style={{
+                      marginTop: 4,
+                      color: 'rgba(255,255,255,0.92)',
+                      fontWeight: '700',
+                      fontSize: 10,
+                      letterSpacing: -0.2,
+                    }}
+                    numberOfLines={1}
+                  >
+                    {fabItemLabel(menuItem)}
+                  </Text>
+                </View>
+              </MotiPressable>
+            )
           );
         })}
       </View>
 
-      <MotiPressable
-        onPress={() => setFabOpen(v => !v)}
-        style={{
-          width: FAB_SIZE,
-          height: FAB_SIZE,
-          borderRadius: FAB_SIZE / 2,
-          backgroundColor: '#1D1520',
-          alignItems: 'center',
-          justifyContent: 'center',
-          shadowColor: '#000',
-          shadowOpacity: 0.2,
-          shadowRadius: 16,
-          shadowOffset: { width: 0, height: 10 },
-          elevation: 10,
-        }}
-        animate={{
-          rotate: fabOpen ? '0deg' : '-45deg',
-        }}
-        transition={{ type: 'timing', duration: 260 }}
-      >
-        <Feather name="x" size={FAB_SIZE * 0.42} color="#fff" />
-      </MotiPressable>
+      {Platform.OS === 'web' ? (
+        <Pressable
+          onPress={() => setFabOpen(v => !v)}
+          style={{
+            width: FAB_SIZE,
+            height: FAB_SIZE,
+            borderRadius: FAB_SIZE / 2,
+            backgroundColor: '#1D1520',
+            alignItems: 'center',
+            justifyContent: 'center',
+            shadowColor: '#000',
+            shadowOpacity: 0.2,
+            shadowRadius: 16,
+            shadowOffset: { width: 0, height: 10 },
+            elevation: 10,
+            transform: [{ rotate: fabOpen ? '0deg' : '-45deg' }],
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="פעולות"
+        >
+          <Feather name="x" size={FAB_SIZE * 0.42} color="#fff" />
+        </Pressable>
+      ) : (
+        <MotiPressable
+          onPress={() => setFabOpen(v => !v)}
+          style={{
+            width: FAB_SIZE,
+            height: FAB_SIZE,
+            borderRadius: FAB_SIZE / 2,
+            backgroundColor: '#1D1520',
+            alignItems: 'center',
+            justifyContent: 'center',
+            shadowColor: '#000',
+            shadowOpacity: 0.2,
+            shadowRadius: 16,
+            shadowOffset: { width: 0, height: 10 },
+            elevation: 10,
+          }}
+          animate={{
+            rotate: fabOpen ? '0deg' : '-45deg',
+          }}
+          transition={{ type: 'timing', duration: 260 }}
+        >
+          <Feather name="x" size={FAB_SIZE * 0.42} color="#fff" />
+        </MotiPressable>
+      )}
       </View>
     </View>
   );
@@ -2601,10 +2692,10 @@ type DraggableTableNodeProps = {
   ui: UiPalette;
   originX: number;
   originY: number;
-  posX: Animated.SharedValue<number>;
-  posY: Animated.SharedValue<number>;
-  cameraScale: Animated.SharedValue<number>;
-  isDragging: Animated.SharedValue<boolean>;
+  posX: SharedValue<number>;
+  posY: SharedValue<number>;
+  cameraScale: SharedValue<number>;
+  isDragging: SharedValue<boolean>;
   multiSelect: boolean;
   onTap: (id: number) => void;
   onDragBegin: (id: number) => void;

@@ -32,7 +32,7 @@ export default function BrideGroomSettings() {
   const { userData, logout } = useUserStore();
   const router = useRouter();
   const [weddingDate, setWeddingDate] = useState<Date | null>(null);
-  const [eventMeta, setEventMeta] = useState<{ id: string; title: string; date: Date; groomName?: string; brideName?: string } | null>(null);
+  const [eventMeta, setEventMeta] = useState<{ id: string; title: string; date: Date; groomName?: string; brideName?: string; rsvpLink?: string } | null>(null);
   const [notifications, setNotifications] = useState<NotificationSetting[]>([]);
   const [loading, setLoading] = useState(true);
   const [editModalVisible, setEditModalVisible] = useState(false);
@@ -81,9 +81,9 @@ export default function BrideGroomSettings() {
                 : `לאירוע של ${ownerName}`;
 
     const dateText = eventMeta?.date ? eventMeta.date.toLocaleDateString('he-IL') : '';
-    const explicitLink = String((eventMeta as any)?.rsvp_link ?? (eventMeta as any)?.rsvpLink ?? '').trim();
+    const explicitLink = String(eventMeta?.rsvpLink ?? '').trim();
     const base = 'https://i.e2grsvp.com/e/';
-    const code = String((eventMeta as any)?.rsvp_code ?? (eventMeta as any)?.rsvpCode ?? (eventMeta as any)?.id ?? userData?.event_id ?? '').trim();
+    const code = String((eventMeta as any)?.id ?? userData?.event_id ?? '').trim();
     const link = explicitLink || `${base}${code}`;
 
     return `שלום, הוזמנתם ${label} בתאריך ${dateText}.\nלפרטים ואישור הגעה היכנסו לקישור הבא:\n${link}`;
@@ -124,7 +124,7 @@ export default function BrideGroomSettings() {
     
     const { data, error } = await supabase
       .from('events')
-      .select('id, title, date, groom_name, bride_name')
+        .select('id, title, date, groom_name, bride_name, rsvp_link')
       .eq('id', userData.event_id)
       .single();
     
@@ -136,6 +136,7 @@ export default function BrideGroomSettings() {
         date: new Date(data.date),
         groomName: (data as any).groom_name ?? undefined,
         brideName: (data as any).bride_name ?? undefined,
+          rsvpLink: (data as any).rsvp_link ?? undefined,
       });
     }
   };

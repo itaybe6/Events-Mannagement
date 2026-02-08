@@ -160,11 +160,10 @@ export default function AdminEventNotificationsScreen() {
 
     const dateText = (eventData as any)?.date ? new Date((eventData as any).date).toLocaleDateString('he-IL') : '';
 
-    // Best-effort RSVP link: use explicit fields if exist, otherwise fall back to event id.
-    const explicitLink = String((eventData as any)?.rsvp_link ?? (eventData as any)?.rsvpLink ?? '').trim();
+    // RSVP link: pull from events.rsvp_link when available.
+    const explicitLink = String((eventData as any)?.rsvpLink ?? (eventData as any)?.rsvp_link ?? '').trim();
     const base = 'https://i.e2grsvp.com/e/';
-    const code = String((eventData as any)?.rsvp_code ?? (eventData as any)?.rsvpCode ?? (eventData as any)?.id ?? '').trim();
-    const link = explicitLink || `${base}${code}`;
+    const link = explicitLink || `${base}${String((eventData as any)?.id ?? '').trim()}`;
 
     // Match screenshot structure (link in its own line).
     return `שלום, הוזמנתם ${label} בתאריך ${dateText}.\nלפרטים ואישור הגעה היכנסו לקישור הבא:\n${link}`;

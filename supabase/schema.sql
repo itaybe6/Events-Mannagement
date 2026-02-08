@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS events (
     city VARCHAR(255),
     groom_name TEXT,
     bride_name TEXT,
+    rsvp_link TEXT,
     image VARCHAR(500),
     story TEXT,
     guests_count INTEGER DEFAULT 0,
@@ -49,6 +50,9 @@ ALTER TABLE events ADD COLUMN IF NOT EXISTS city VARCHAR(255);
 -- Add groom/bride name columns if missing (safe re-run)
 ALTER TABLE events ADD COLUMN IF NOT EXISTS groom_name TEXT;
 ALTER TABLE events ADD COLUMN IF NOT EXISTS bride_name TEXT;
+
+-- Add RSVP link column if missing (safe re-run)
+ALTER TABLE events ADD COLUMN IF NOT EXISTS rsvp_link TEXT;
 
 -- Tasks table
 CREATE TABLE IF NOT EXISTS tasks (

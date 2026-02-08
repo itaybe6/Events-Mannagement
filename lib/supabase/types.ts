@@ -24,6 +24,7 @@ export type Event = {
   city?: string;
   groom_name?: string;
   bride_name?: string;
+  rsvp_link?: string;
   image?: string;
   story?: string;
   guests_count: number;
