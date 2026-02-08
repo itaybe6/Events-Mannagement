@@ -56,7 +56,7 @@ export default function AdminTabsLayout() {
           alignItems: "center",
         },
         headerStyle: {
-          backgroundColor: colors.gray[100],
+          backgroundColor: '#FFFFFF',
           height: 90,
           elevation: 0,
           shadowOpacity: 0,

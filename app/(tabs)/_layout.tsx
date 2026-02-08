@@ -3,7 +3,7 @@ import { Tabs, useRouter } from "expo-router";
 import { colors } from "@/constants/colors";
 import { Ionicons } from "@expo/vector-icons";
 import { Image, Platform, StyleSheet, View, TouchableOpacity } from "react-native";
-import { BlurView } from "expo-blur";
+
 import { useUserStore } from "@/store/userStore";
 import { useLayoutStore } from '@/store/layoutStore';
 
@@ -51,22 +51,14 @@ export default function TabLayout() {
         tabBarActiveTintColor: colors.white,
         tabBarInactiveTintColor: colors.gray[500],
         headerShown: true,
-        headerTransparent: true,
         headerTitle: headerTitle,
         headerTitleAlign: "center",
         headerTitleContainerStyle: {
           width: "100%",
           alignItems: "center",
         },
-        headerBackground: () => (
-          <BlurView
-            intensity={24}
-            tint="light"
-            style={StyleSheet.absoluteFill}
-          />
-        ),
         headerStyle: {
-          backgroundColor: 'transparent',
+          backgroundColor: '#FFFFFF',
           height: 90,
           elevation: 0,
           shadowOpacity: 0,
