@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, I18nManager, Platform, Pressable, SectionList, StyleSheet, Text, View, useColorScheme } from 'react-native';
-import { router } from 'expo-router';
+import { router, Stack } from 'expo-router';
 import { colors } from '@/constants/colors';
 import { Card } from '@/components/Card';
 import { Ionicons } from '@expo/vector-icons';
@@ -163,6 +163,7 @@ export default function NotificationsScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: ui.bg }]}>
+      <Stack.Screen options={{ headerShown: false }} />
       <HeaderSurface>
         <View style={[styles.header, { paddingTop: Math.max(insets.top, 10) + 6 }]}>
           <Pressable

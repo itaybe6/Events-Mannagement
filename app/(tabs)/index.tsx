@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ScrollView, View, Text, StyleSheet, Platform, Pressable, Image } from 'react-native';
-import { Link, useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useUserStore } from '@/store/userStore';
 import { colors } from '@/constants/colors';
 import { CountdownTimer } from '@/components/CountdownTimer';
@@ -190,13 +190,16 @@ export default function HomeScreen() {
     subtitle,
     iconName,
     variant = 'square',
+    onPress,
   }: {
     title: string;
     subtitle: string;
     iconName: keyof typeof Ionicons.glyphMap;
     variant?: 'square' | 'wide';
+    onPress?: () => void;
   }) => (
     <Pressable
+      onPress={onPress}
       accessibilityRole="button"
       style={({ hovered, pressed }) => [
         styles.actionTile,
@@ -295,21 +298,31 @@ export default function HomeScreen() {
 
         <View style={styles.actionsGrid}>
           <View style={styles.actionTileWrapper}>
-            <Link href="/(couple)/guests" asChild>
-              <ActionTile title={'רשימת\nמוזמנים'} subtitle="נהל אישורי הגעה" iconName="list" />
-            </Link>
+            <ActionTile
+              title={'רשימת\nמוזמנים'}
+              subtitle="נהל אישורי הגעה"
+              iconName="list"
+              onPress={() => router.push('/(couple)/guests')}
+            />
           </View>
 
           <View style={styles.actionTileWrapper}>
-            <Link href="/(couple)/BrideGroomSeating" asChild>
-              <ActionTile title={'סידור\nהושבה'} subtitle="גרור ושחרר אורחים" iconName="grid" />
-            </Link>
+            <ActionTile
+              title={'סידור\nהושבה'}
+              subtitle="גרור ושחרר אורחים"
+              iconName="grid"
+              onPress={() => router.push('/(couple)/BrideGroomSeating')}
+            />
           </View>
 
           <View style={styles.actionTileWrapperWide}>
-            <Link href="/(couple)/timeline" asChild>
-              <ActionTile variant="wide" title="לוח זמנים" subtitle="בקרוב" iconName="time-outline" />
-            </Link>
+            <ActionTile
+              variant="wide"
+              title={'הגדרות\nהודעות'}
+              subtitle="נהל הודעות אוטומטיות"
+              iconName="notifications-outline"
+              onPress={() => router.push('/(couple)/brideGroomProfile?focus=notifications')}
+            />
           </View>
         </View>
       </ScrollView>

@@ -1,31 +1,19 @@
-import React, { useMemo, useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Modal, FlatList, KeyboardAvoidingView, Platform } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Modal, FlatList, KeyboardAvoidingView } from 'react-native';
 import { Link, useRouter, useFocusEffect } from 'expo-router';
 import { useUserStore } from '@/store/userStore';
 import { colors } from '@/constants/colors';
 import { GuestItem } from '@/components/GuestItem';
 import { Button } from '@/components/Button';
 import { Ionicons } from '@expo/vector-icons';
-import * as Contacts from 'expo-contacts';
 import { guestService } from '@/lib/services/guestService';
 import { eventService } from '@/lib/services/eventService';
 import { supabase } from '@/lib/supabase';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function GuestsScreen() {
   const { isLoggedIn, userData } = useUserStore();
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const [eventId, setEventId] = useState<string | null>(null);
-
-  // Header is transparent (overlays content). Push the whole page below it.
-  const topPadding = useMemo(() => {
-    const headerHeight = 76; // matches `(couple)/_layout.tsx`
-    const extra = 12;
-    if (Platform.OS === 'ios') return insets.top + headerHeight + extra;
-    if (Platform.OS === 'web') return 96;
-    return 16;
-  }, [insets.top]);
 
   useEffect(() => {
     if (!isLoggedIn) {
@@ -193,27 +181,12 @@ export default function GuestsScreen() {
 
   const importContacts = async () => {
     try {
-      const { status } = await Contacts.requestPermissionsAsync();
-      if (status === 'granted') {
-        const { data } = await Contacts.getContactsAsync({
-          fields: [Contacts.Fields.Name, Contacts.Fields.PhoneNumbers],
-        });
-        // Filter contacts that have phone numbers
-        const contactsWithPhones = data.filter(contact => 
-          Array.isArray(contact.phoneNumbers) && contact.phoneNumbers.length > 0 && contact.phoneNumbers[0].number
-        );
-        if (contactsWithPhones.length === 0) {
-          Alert.alert('לא נמצאו אנשי קשר', 'לא נמצאו אנשי קשר עם מספר טלפון במכשיר שלך.');
-        }
-        setDeviceContacts(contactsWithPhones);
-        if (eventId) {
-          router.push({ pathname: '/contacts-list', params: { eventId } });
-        }
-      } else {
-        Alert.alert('נדרשת הרשאה', 'כדי לייבא אנשי קשר, יש צורך בהרשאה לגישה לאנשי הקשר');
-      }
+      if (!eventId) return;
+      // Navigate immediately and auto-open the category selector there.
+      // Contacts permissions + loading are handled in `/contacts-list`.
+      router.push({ pathname: '/contacts-list', params: { eventId, autoOpenCategory: '1' } });
     } catch (error) {
-      Alert.alert('שגיאה', 'לא ניתן לגשת לאנשי הקשר');
+      Alert.alert('שגיאה', 'לא ניתן לפתוח את רשימת אנשי הקשר');
     }
   };
 
@@ -399,16 +372,8 @@ export default function GuestsScreen() {
   };
 
   return (
-    <View style={[styles.container, { paddingTop: topPadding }]}>
+    <View style={styles.container}>
       <View style={styles.pageHeader}>
-        <View style={styles.headerRow}>
-          <Text style={styles.pageTitle}>אורחים</Text>
-          <TouchableOpacity style={styles.addTextButton} onPress={importContacts}>
-            <Ionicons name="add" size={20} color={colors.primary} />
-            <Text style={styles.addTextButtonLabel}>הוספת אורח</Text>
-          </TouchableOpacity>
-        </View>
-
         <View style={styles.searchRow}>
           <View style={styles.searchContainer}>
             <Ionicons name="search" size={18} color={colors.gray[500]} style={styles.searchIcon} />
@@ -428,6 +393,15 @@ export default function GuestsScreen() {
             accessibilityLabel="סינון"
           >
             <Ionicons name="options-outline" size={20} color={colors.text} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.addIconButton}
+            onPress={importContacts}
+            accessibilityRole="button"
+            accessibilityLabel="הוספת אורח"
+          >
+            <Ionicons name="add" size={22} color={colors.text} />
           </TouchableOpacity>
         </View>
       </View>
@@ -931,6 +905,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.gray[100],
+    paddingTop: 12,
     paddingHorizontal: 16,
     paddingBottom: 16,
   },
@@ -989,6 +964,21 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   filterIconButton: {
+    width: 44,
+    height: 48,
+    borderRadius: 18,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: colors.black,
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+  addIconButton: {
     width: 44,
     height: 48,
     borderRadius: 18,

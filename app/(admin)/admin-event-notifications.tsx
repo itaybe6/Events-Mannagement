@@ -5,6 +5,7 @@ import {
   I18nManager,
   Keyboard,
   Modal,
+  Pressable,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -12,6 +13,7 @@ import {
   TextInput,
   TouchableOpacity,
   TouchableWithoutFeedback,
+  useColorScheme,
   View,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -57,6 +59,8 @@ export default function AdminEventNotificationsScreen() {
   const router = useRouter();
   const { eventId } = useLocalSearchParams();
   const insets = useSafeAreaInsets();
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
 
   const [event, setEvent] = useState<Event | null>(null);
   const [ownerName, setOwnerName] = useState<string>('');
@@ -73,20 +77,47 @@ export default function AdminEventNotificationsScreen() {
   const [editedDateText, setEditedDateText] = useState(''); // e.g. "30"
   const [timingMode, setTimingMode] = useState<'before' | 'after'>('before');
 
-  const ui = useMemo(
-    () => ({
-      bg: '#F9FAFB',
-      card: '#FFFFFF',
-      text: '#111827',
-      muted: '#6B7280',
-      primary: '#3b82f6',
-      whatsapp: '#25D366',
-      border: 'rgba(17,24,39,0.08)',
-      divider: 'rgba(17,24,39,0.06)',
-      headerFill: 'rgba(249,250,251,0.92)',
-    }),
-    []
-  );
+  const ui = useMemo(() => {
+    return isDark
+      ? {
+          bg: '#111827',
+          card: '#1F2937',
+          text: '#F9FAFB',
+          muted: '#9CA3AF',
+          faint: 'rgba(249,250,251,0.55)',
+          primary: '#3b82f6',
+          whatsapp: '#25D366',
+          border: '#374151',
+          divider: 'rgba(249,250,251,0.10)',
+          headerFill: 'rgba(17,24,39,0.95)',
+          blueIconBg: 'rgba(59,130,246,0.20)',
+          blueIconBorder: 'rgba(59,130,246,0.35)',
+          greenIconBg: 'rgba(37,211,102,0.18)',
+          greenIconBorder: 'rgba(37,211,102,0.35)',
+          blueHoverBorder: 'rgba(59,130,246,0.55)',
+          greenHoverBorder: 'rgba(37,211,102,0.55)',
+          whatsappCardBorder: 'rgba(37,211,102,0.28)',
+        }
+      : {
+          bg: '#F9FAFB',
+          card: '#FFFFFF',
+          text: '#111827',
+          muted: '#6B7280',
+          faint: 'rgba(17,24,39,0.45)',
+          primary: '#3b82f6',
+          whatsapp: '#25D366',
+          border: '#E5E7EB',
+          divider: 'rgba(17,24,39,0.08)',
+          headerFill: 'rgba(249,250,251,0.95)',
+          blueIconBg: 'rgba(59,130,246,0.10)',
+          blueIconBorder: 'rgba(59,130,246,0.18)',
+          greenIconBg: 'rgba(37,211,102,0.10)',
+          greenIconBorder: 'rgba(37,211,102,0.18)',
+          blueHoverBorder: 'rgba(59,130,246,0.35)',
+          greenHoverBorder: 'rgba(37,211,102,0.35)',
+          whatsappCardBorder: 'rgba(37,211,102,0.18)',
+        };
+  }, [isDark]);
 
   const getDefaultMessageContent = (name?: string) => {
     const displayName = name && name.trim().length > 0 ? name.trim() : 'בעל/ת האירוע';
@@ -490,19 +521,25 @@ export default function AdminEventNotificationsScreen() {
     const enabled = Boolean(row.enabled);
 
     const statusColor = enabled ? '#16A34A' : 'rgba(17,24,39,0.40)';
+    const statusColorDark = enabled ? 'rgba(74,222,128,0.95)' : 'rgba(249,250,251,0.45)';
 
     return (
-      <TouchableOpacity
+      <Pressable
         key={row.notification_type}
-        style={[
-          styles.cardRow,
-          { backgroundColor: ui.card, borderColor: ui.border },
-          variant === 'whatsapp' ? styles.cardRowWhatsapp : null,
-        ]}
-        activeOpacity={0.92}
         onPress={() => openEdit(row)}
         accessibilityRole="button"
         accessibilityLabel={`עריכת ${row.title}`}
+        style={({ hovered, pressed }) => [
+          styles.cardRow,
+          {
+            backgroundColor: ui.card,
+            borderColor:
+              hovered || pressed
+                ? (variant === 'whatsapp' ? ui.greenHoverBorder : ui.blueHoverBorder)
+                : (variant === 'whatsapp' ? ui.whatsappCardBorder : ui.border),
+          },
+          pressed ? styles.cardRowPressed : null,
+        ]}
       >
         {variant === 'whatsapp' ? <View style={[styles.whatsappAccent, { backgroundColor: ui.whatsapp }]} /> : null}
 
@@ -518,7 +555,7 @@ export default function AdminEventNotificationsScreen() {
                 toggleNotification(row);
               }}
               onPressIn={stop}
-              activeOpacity={0.9}
+              activeOpacity={0.85}
               disabled={isSaving}
               style={styles.metaStatusBtn}
               accessibilityRole="button"
@@ -527,7 +564,9 @@ export default function AdminEventNotificationsScreen() {
               {isSaving ? (
                 <ActivityIndicator size="small" color={statusColor} />
               ) : (
-                <Text style={[styles.metaStatusText, { color: statusColor }]}>{enabled ? 'פעיל' : 'כבוי'}</Text>
+                <Text style={[styles.metaStatusText, { color: isDark ? statusColorDark : statusColor }]}>
+                  {enabled ? 'פעיל' : 'כבוי'}
+                </Text>
               )}
             </TouchableOpacity>
             <Text style={styles.metaBullet}>•</Text>
@@ -538,9 +577,9 @@ export default function AdminEventNotificationsScreen() {
         </View>
 
         <View style={styles.cardChevronRight}>
-          <Ionicons name="chevron-back" size={20} color={'rgba(17,24,39,0.35)'} />
+          <Ionicons name="chevron-back" size={20} color={ui.faint} />
         </View>
-      </TouchableOpacity>
+      </Pressable>
     );
   };
 
@@ -593,14 +632,14 @@ export default function AdminEventNotificationsScreen() {
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: ui.bg }]}>
       <View style={[styles.headerWrap, { paddingTop: Math.max(10, insets.top + 8) }]}>
-        <BlurView intensity={24} tint="light" style={[styles.headerBlur, { backgroundColor: ui.headerFill }]} />
-        <View style={[styles.header, { borderBottomColor: 'rgba(17,24,39,0.06)' }]}>
-          <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} activeOpacity={0.85}>
+        <BlurView intensity={24} tint={isDark ? 'dark' : 'light'} style={[styles.headerBlur, { backgroundColor: ui.headerFill }]} />
+        <View style={[styles.header, { borderBottomColor: ui.divider }]}>
+          <TouchableOpacity style={[styles.backBtn, { backgroundColor: ui.card, borderColor: ui.border }]} onPress={() => router.back()} activeOpacity={0.85}>
             <Ionicons name="chevron-forward" size={22} color={ui.text} />
           </TouchableOpacity>
           <View style={styles.headerTitles}>
             <Text style={[styles.headerTitle, { color: ui.text }]}>הודעות אוטומטיות</Text>
-            <Text style={[styles.headerSubtitle, { color: 'rgba(17,24,39,0.55)' }]} numberOfLines={1}>
+            <Text style={[styles.headerSubtitle, { color: ui.muted }]} numberOfLines={1}>
               {`של ${getEventOwnerLabel(event, ownerName)}`}
             </Text>
           </View>
@@ -612,7 +651,7 @@ export default function AdminEventNotificationsScreen() {
         {/* Regular */}
         <View style={styles.sectionHeader}>
           <Text style={[styles.sectionTitle, { color: ui.text }]}>הודעות רגילות</Text>
-          <View style={[styles.sectionIconCircle, { backgroundColor: 'rgba(59,130,246,0.10)', borderColor: 'rgba(59,130,246,0.18)' }]}>
+          <View style={[styles.sectionIconCircle, { backgroundColor: ui.blueIconBg, borderColor: ui.blueIconBorder }]}>
             <Ionicons name="mail-outline" size={16} color={ui.primary} />
           </View>
         </View>
@@ -623,7 +662,7 @@ export default function AdminEventNotificationsScreen() {
         {/* WhatsApp */}
         <View style={[styles.sectionHeader, { marginTop: 18 }]}>
           <Text style={[styles.sectionTitle, { color: ui.text }]}>הודעות וואטסאפ</Text>
-          <View style={[styles.sectionIconCircle, { backgroundColor: 'rgba(37,211,102,0.10)', borderColor: 'rgba(37,211,102,0.18)' }]}>
+          <View style={[styles.sectionIconCircle, { backgroundColor: ui.greenIconBg, borderColor: ui.greenIconBorder }]}>
             <Ionicons name="chatbubble-ellipses-outline" size={16} color={ui.whatsapp} />
           </View>
         </View>
@@ -634,6 +673,7 @@ export default function AdminEventNotificationsScreen() {
 
       <Modal animationType="fade" transparent visible={editVisible} onRequestClose={() => setEditVisible(false)}>
         <View style={styles.modalOverlay}>
+          <View style={styles.modalBackdrop} />
           <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
             <View style={styles.modalOverlayTouchable} />
           </TouchableWithoutFeedback>
@@ -885,7 +925,7 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
   },
   header: {
-    paddingHorizontal: 18,
+    paddingHorizontal: 24,
     paddingBottom: 12,
     flexDirection: 'row-reverse',
     alignItems: 'center',
@@ -896,11 +936,14 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.90)',
     borderWidth: 1,
-    borderColor: 'rgba(17,24,39,0.08)',
     justifyContent: 'center',
     alignItems: 'center',
+    shadowColor: colors.black,
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 2,
   },
   headerTitles: { flex: 1, alignItems: 'center' },
   headerTitle: { fontSize: 20, fontWeight: '900', textAlign: 'center' },
@@ -909,10 +952,10 @@ const styles = StyleSheet.create({
 
   content: {
     paddingHorizontal: 16,
-    paddingTop: 16,
+    paddingTop: 24,
     paddingBottom: 140,
-    gap: 8,
-    maxWidth: 520,
+    gap: 28,
+    maxWidth: 512,
     alignSelf: 'center',
     width: '100%',
   },
@@ -922,9 +965,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-start',
     gap: 10,
-    paddingHorizontal: 4,
-    marginTop: 10,
-    marginBottom: 10,
+    paddingHorizontal: 8,
+    marginTop: 0,
+    marginBottom: 12,
   },
   sectionTitle: { fontSize: 18, fontWeight: '900', textAlign: 'right' },
   sectionIconCircle: {
@@ -935,7 +978,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
   },
-  cardsStack: { gap: 12 },
+  cardsStack: { gap: 16 },
 
   cardRow: {
     position: 'relative',
@@ -944,13 +987,16 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     borderRadius: 16,
     borderWidth: 1,
-    paddingVertical: 18,
-    paddingHorizontal: 18,
+    paddingVertical: 20,
+    paddingHorizontal: 20,
     shadowColor: colors.black,
-    shadowOpacity: 0.06,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.05,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
     elevation: 3,
+  },
+  cardRowPressed: {
+    transform: [{ scale: 0.985 }],
   },
   cardRowWhatsapp: {
     borderColor: 'rgba(37,211,102,0.18)',
@@ -974,7 +1020,7 @@ const styles = StyleSheet.create({
   },
   metaStatusBtn: { paddingVertical: 2 },
   metaStatusText: { fontSize: 14, fontWeight: '900' },
-  metaBullet: { marginHorizontal: 10, color: 'rgba(17,24,39,0.22)', fontSize: 14, fontWeight: '900' },
+  metaBullet: { marginHorizontal: 10, color: 'rgba(107,114,128,0.70)', fontSize: 14, fontWeight: '900' },
   metaOffsetText: { fontSize: 14, fontWeight: '700' },
   cardChevronRight: {
     paddingRight: 4,
@@ -985,30 +1031,34 @@ const styles = StyleSheet.create({
 
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+  },
+  modalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(107,114,128,0.50)', // bg-gray-500/50
   },
   modalOverlayTouchable: { ...StyleSheet.absoluteFillObject },
   modalCard: {
     width: '100%',
-    maxWidth: 520,
-    borderRadius: 28,
-    backgroundColor: 'rgba(255,255,255,0.98)',
+    maxWidth: 480, // close to max-w-md on web
+    borderRadius: 32, // rounded-3xl
+    backgroundColor: '#FFFFFF',
     padding: 0,
     borderWidth: 1,
     shadowColor: colors.black,
-    shadowOpacity: 0.16,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.12,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 14 },
     elevation: 6,
     overflow: 'hidden',
   },
   modalHeader: {
-    paddingHorizontal: 18,
-    paddingTop: 18,
-    paddingBottom: 12,
+    paddingHorizontal: 24, // px-6
+    paddingTop: 24, // pt-6
+    paddingBottom: 16, // pb-4
     flexDirection: 'row-reverse',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
@@ -1017,15 +1067,15 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 999,
-    backgroundColor: 'rgba(17,24,39,0.06)',
+    backgroundColor: '#F3F4F6', // bg-background-light
     justifyContent: 'center',
     alignItems: 'center',
   },
   modalHeaderTitles: { flex: 1, alignItems: 'center', paddingHorizontal: 10 },
   modalTitle: { fontSize: 20, fontWeight: '900', color: '#111827', textAlign: 'center' },
-  modalSubtitle: { marginTop: 6, fontSize: 14, fontWeight: '700', color: 'rgba(17,24,39,0.55)', textAlign: 'center' },
-  modalDivider: { height: 1, backgroundColor: 'rgba(17,24,39,0.08)', marginHorizontal: 18 },
-  modalBody: { paddingHorizontal: 18, paddingTop: 16, paddingBottom: 18, gap: 16 },
+  modalSubtitle: { marginTop: 4, fontSize: 13, fontWeight: '700', color: '#6B7280', textAlign: 'center' },
+  modalDivider: { height: 1, backgroundColor: '#E5E7EB', marginHorizontal: 24, width: '90%', alignSelf: 'center', marginBottom: 18 },
+  modalBody: { paddingHorizontal: 24, paddingTop: 0, paddingBottom: 22, gap: 18 },
   block: { gap: 10 },
   blockLabel: { fontSize: 13, fontWeight: '900', color: '#111827', textAlign: 'right' },
 
@@ -1084,62 +1134,62 @@ const styles = StyleSheet.create({
 
   segmentWrap: {
     flexDirection: 'row-reverse',
-    gap: 8,
-    padding: 6,
-    borderRadius: 14,
-    backgroundColor: 'rgba(17,24,39,0.04)',
+    gap: 6,
+    padding: 4,
+    borderRadius: 16, // rounded-xl
+    backgroundColor: '#F3F4F6', // bg-background-light
   },
   segmentBtn: {
     flex: 1,
-    height: 40,
-    borderRadius: 12,
+    height: 42,
+    borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
   },
   segmentBtnActive: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#FFFFFF', // bg-surface-light
     shadowColor: colors.black,
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.07,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
     elevation: 2,
   },
-  segmentText: { fontSize: 13, fontWeight: '800', color: 'rgba(17,24,39,0.55)' },
+  segmentText: { fontSize: 13, fontWeight: '800', color: '#6B7280' },
   segmentTextActive: { color: '#1d4ed8' },
 
   daysRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12 },
   daysInputWrap: {
     flex: 1,
-    height: 52,
-    borderRadius: 14,
+    height: 54,
+    borderRadius: 16,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: 'rgba(17,24,39,0.10)',
+    borderColor: '#E5E7EB',
     justifyContent: 'center',
   },
   daysIcon: { position: 'absolute', right: 12 },
-  daysSuffix: { position: 'absolute', left: 12, fontSize: 12, fontWeight: '700', color: 'rgba(17,24,39,0.55)' },
+  daysSuffix: { position: 'absolute', left: 12, fontSize: 12, fontWeight: '700', color: '#6B7280' },
   daysInput: {
     paddingHorizontal: 40,
     fontSize: 18,
     fontWeight: '900',
     color: '#111827',
-    height: 52,
+    height: 54,
   },
   computedPill: {
     paddingHorizontal: 12,
     paddingVertical: 10,
-    borderRadius: 14,
+    borderRadius: 16,
     backgroundColor: 'rgba(29,78,216,0.08)',
     borderWidth: 1,
-    borderColor: 'rgba(29,78,216,0.14)',
+    borderColor: 'rgba(29,78,216,0.16)',
     alignItems: 'flex-end',
     minWidth: 128,
   },
   computedLabel: { fontSize: 11, fontWeight: '800', color: 'rgba(29,78,216,0.75)' },
   computedValue: { marginTop: 4, fontSize: 13, fontWeight: '900', color: 'rgba(29,78,216,0.95)' },
 
-  bodyDivider: { height: 1, backgroundColor: 'rgba(17,24,39,0.08)' },
+  bodyDivider: { height: 1, backgroundColor: '#E5E7EB' },
 
   messageHeaderRow: {
     flexDirection: 'row-reverse',
@@ -1151,22 +1201,22 @@ const styles = StyleSheet.create({
   toolBtn: {
     width: 34,
     height: 34,
-    borderRadius: 10,
-    backgroundColor: 'rgba(17,24,39,0.06)',
+    borderRadius: 12,
+    backgroundColor: '#F3F4F6',
     justifyContent: 'center',
     alignItems: 'center',
   },
   textareaWrap: { position: 'relative' },
   textarea: {
     borderWidth: 0,
-    backgroundColor: 'rgba(17,24,39,0.04)',
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
+    backgroundColor: '#F3F4F6', // bg-background-light
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
     fontSize: 14,
     fontWeight: '700',
     color: '#111827',
-    minHeight: 140,
+    minHeight: 150,
     lineHeight: 20,
   },
   charCountPill: {
@@ -1176,42 +1226,42 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
-    backgroundColor: 'rgba(255,255,255,0.85)',
+    backgroundColor: 'rgba(255,255,255,0.80)',
     borderWidth: 1,
-    borderColor: 'rgba(17,24,39,0.08)',
+    borderColor: '#E5E7EB',
   },
-  charCountText: { fontSize: 11, fontWeight: '800', color: 'rgba(17,24,39,0.55)' },
+  charCountText: { fontSize: 11, fontWeight: '800', color: '#6B7280' },
 
   modalFooter: {
-    padding: 16,
+    padding: 18,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(17,24,39,0.08)',
+    borderTopColor: '#E5E7EB',
     flexDirection: 'row-reverse',
     gap: 10,
-    backgroundColor: 'rgba(255,255,255,0.98)',
+    backgroundColor: '#FFFFFF',
   },
   footerBtnSecondary: {
     flex: 1,
-    height: 52,
-    borderRadius: 14,
-    backgroundColor: 'rgba(17,24,39,0.06)',
+    height: 54,
+    borderRadius: 16,
+    backgroundColor: '#F3F4F6',
     justifyContent: 'center',
     alignItems: 'center',
   },
   footerBtnSecondaryText: { fontSize: 15, fontWeight: '900', color: '#111827' },
   footerBtnPrimary: {
     flex: 2,
-    height: 52,
-    borderRadius: 14,
+    height: 54,
+    borderRadius: 16,
     backgroundColor: '#1d4ed8',
     justifyContent: 'center',
     alignItems: 'center',
     flexDirection: 'row-reverse',
     gap: 8,
     shadowColor: '#1d4ed8',
-    shadowOpacity: 0.22,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.24,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 12 },
     elevation: 4,
   },
   footerBtnPrimaryText: { fontSize: 15, fontWeight: '900', color: '#fff' },

@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, TextInput } from 'react-native';
 import * as Contacts from 'expo-contacts';
 import { guestService } from '@/lib/services/guestService';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { colors } from '@/constants/colors';
 import { GuestCategorySelectionSheet } from '@/components/GuestCategorySelectionSheet';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function ContactsListScreen() {
   const [contacts, setContacts] = useState<any[]>([]);
@@ -20,6 +21,9 @@ export default function ContactsListScreen() {
   // קבל eventId מהניווט
   const params = useLocalSearchParams();
   const eventId = params.eventId as string | undefined;
+  const autoOpenCategory =
+    params.autoOpenCategory === '1' || params.autoOpenCategory === 'true' || params.autoOpenCategory === true;
+  const didAutoOpenRef = useRef(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -50,6 +54,18 @@ export default function ContactsListScreen() {
     };
     fetchData();
   }, [eventId]);
+
+  // If navigated from "+" on Guests screen, open category selector immediately.
+  useEffect(() => {
+    if (!autoOpenCategory) return;
+    if (didAutoOpenRef.current) return;
+    if (loading) return;
+    if (categoryModalVisible) return;
+    if (selectedCategory) return;
+    // Open even if categories is empty, so user can create one.
+    didAutoOpenRef.current = true;
+    setCategoryModalVisible(true);
+  }, [autoOpenCategory, categoryModalVisible, loading, selectedCategory]);
 
   const normalizePhoneNumber = (phone: string) => {
     // הסרת כל הרווחים, מקפים וסימנים מיוחדים ושמירה על מספרים בלבד
@@ -160,13 +176,23 @@ export default function ContactsListScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>בחר אנשי קשר להוספה</Text>
-      {/* בחירת קטגוריה */}
-      <TouchableOpacity style={styles.categorySelector} onPress={() => setCategoryModalVisible(true)}>
-        <Text style={styles.categorySelectorText}>
-          {selectedCategory ? `קטגוריה: ${selectedCategory.name}` : 'בחר קטגוריה'}
-        </Text>
-      </TouchableOpacity>
+      <View style={styles.topRow}>
+        <View style={styles.categoryPill}>
+          <Ionicons name="pricetag-outline" size={16} color={colors.primary} style={{ marginLeft: 8 }} />
+          <Text style={styles.categoryPillText} numberOfLines={1}>
+            {selectedCategory ? selectedCategory.name : 'לא נבחרה קטגוריה'}
+          </Text>
+        </View>
+        <TouchableOpacity
+          style={styles.switchCategoryButton}
+          onPress={() => setCategoryModalVisible(true)}
+          accessibilityRole="button"
+          accessibilityLabel="החלף קטגוריה"
+        >
+          <Ionicons name="swap-horizontal" size={18} color={colors.primary} style={{ marginLeft: 8 }} />
+          <Text style={styles.switchCategoryText}>{selectedCategory ? 'החלף קטגוריה' : 'בחר קטגוריה'}</Text>
+        </TouchableOpacity>
+      </View>
       <GuestCategorySelectionSheet
         visible={categoryModalVisible}
         categories={categories}
@@ -227,29 +253,46 @@ const styles = StyleSheet.create({
     backgroundColor: colors.gray[100],
     padding: 16,
   },
-  title: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 16,
-    textAlign: 'center',
+  topRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginBottom: 12,
   },
-  categorySelector: {
-    flexDirection: 'row',
+  categoryPill: {
+    flex: 1,
+    flexDirection: 'row-reverse',
     alignItems: 'center',
     backgroundColor: colors.white,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    marginBottom: 12,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    height: 44,
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+  },
+  categoryPillText: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.text,
+    textAlign: 'right',
+  },
+  switchCategoryButton: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    backgroundColor: colors.white,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    height: 44,
     borderWidth: 1,
     borderColor: colors.primary,
-    alignSelf: 'flex-end',
   },
-  categorySelectorText: {
-    fontSize: 16,
+  switchCategoryText: {
+    fontSize: 14,
+    fontWeight: '800',
     color: colors.primary,
-    fontWeight: '600',
-    marginLeft: 8,
+    textAlign: 'right',
   },
   contactItem: {
     padding: 14,

@@ -331,7 +331,13 @@ export function GuestCategorySelectionSheet({
 
                       return (
                         <Pressable
-                          onPress={() => setPendingSelectedId(item.id)}
+                          onPress={() => {
+                            // UX: selecting an existing category should be instant.
+                            // (Previously required an extra "בחירה" confirm press.)
+                            setPendingSelectedId(item.id);
+                            onSelect(item);
+                            requestClose();
+                          }}
                           style={[
                             styles.card,
                             { width: cardSize, height: cardSize },

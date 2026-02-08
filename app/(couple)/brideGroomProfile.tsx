@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Switch, Alert, Modal, TextInput, Keyboard, TouchableWithoutFeedback } from 'react-native';
 import { useUserStore } from '@/store/userStore';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
@@ -31,6 +31,10 @@ const DEFAULT_NOTIFICATION_TEMPLATES: Omit<NotificationSetting, 'id' | 'enabled'
 export default function BrideGroomSettings() {
   const { userData, logout } = useUserStore();
   const router = useRouter();
+  const { focus } = useLocalSearchParams<{ focus?: string }>();
+  const scrollRef = useRef<ScrollView>(null);
+  const [notificationsY, setNotificationsY] = useState<number | null>(null);
+  const [didAutoScroll, setDidAutoScroll] = useState(false);
   const [weddingDate, setWeddingDate] = useState<Date | null>(null);
   const [eventMeta, setEventMeta] = useState<{ id: string; title: string; date: Date; groomName?: string; brideName?: string; rsvpLink?: string } | null>(null);
   const [notifications, setNotifications] = useState<NotificationSetting[]>([]);
@@ -94,6 +98,20 @@ export default function BrideGroomSettings() {
       initializeData();
     }
   }, [userData?.event_id]);
+
+  useEffect(() => {
+    // When arriving via deep-link to the notifications section.
+    if (focus !== 'notifications') {
+      if (didAutoScroll) setDidAutoScroll(false);
+      return;
+    }
+    if (notificationsY == null) return;
+    if (didAutoScroll) return;
+
+    // Small offset so the section title is visible below any headers.
+    scrollRef.current?.scrollTo({ y: Math.max(0, notificationsY - 16), animated: true });
+    setDidAutoScroll(true);
+  }, [focus, notificationsY, didAutoScroll]);
 
   // Refresh data when screen comes into focus (e.g., returning from message editor)
   useFocusEffect(
@@ -495,6 +513,7 @@ export default function BrideGroomSettings() {
   return (
     <View style={styles.container}>
       <ScrollView 
+        ref={scrollRef}
         style={styles.scrollView} 
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
@@ -515,7 +534,12 @@ export default function BrideGroomSettings() {
         {/* Removed separate message editor button; editing per reminder row */}
 
         {/* Notifications Section */}
-        <View style={styles.notificationsSection}>
+        <View
+          style={styles.notificationsSection}
+          onLayout={(e) => {
+            setNotificationsY(e.nativeEvent.layout.y);
+          }}
+        >
           <Text style={styles.sectionTitle}>הודעות אוטומטיות</Text>
           <Text style={styles.sectionSubtitle}>
             נציין כי לפעמים תהיה חריגה של יום/יומיים בביצוע השיחות
