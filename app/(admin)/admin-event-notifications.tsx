@@ -112,9 +112,23 @@ export default function AdminEventNotificationsScreen() {
     return raw || 'בעל/ת האירוע';
   };
 
+  const shouldReplaceLegacyFirstReminder = (msg: string) => {
+    const t = String(msg || '').trim();
+    if (!t) return true;
+    // Replace only known/legacy defaults so we don't overwrite user-custom content.
+    return (
+      t.includes('רצינו להזכיר') ||
+      t.includes('האירוע הקרוב שלנו') ||
+      t.includes('הנכם מוזמנים') ||
+      t.includes('מוזמנים לאירוע')
+    );
+  };
+
   const getDefaultFirstReminderMessage = (eventData: Event | null, owner?: string) => {
     const title = String((eventData as any)?.title ?? '').toLowerCase();
-    const ownerName = getEventOwnerLabel(eventData, owner);
+    const ownerName = (owner || '').trim() || 'בעל/ת האירוע';
+    const groom = String((eventData as any)?.groomName ?? '').trim();
+    const bride = String((eventData as any)?.brideName ?? '').trim();
 
     const kind: 'wedding' | 'brit' | 'barMitzvah' | 'batMitzvah' | 'henna' | 'event' =
       isWeddingEvent(eventData) || title.includes('wedding')
@@ -129,9 +143,11 @@ export default function AdminEventNotificationsScreen() {
                 ? 'henna'
                 : 'event';
 
+    const weddingLabel = groom && bride ? `לחתונה של ${groom} ול${bride}` : `לחתונה של ${ownerName}`;
+
     const label =
       kind === 'wedding'
-        ? `לחתונה של ${ownerName}`
+        ? weddingLabel
         : kind === 'brit'
           ? `לברית של ${ownerName}`
           : kind === 'barMitzvah'
@@ -146,12 +162,12 @@ export default function AdminEventNotificationsScreen() {
 
     // Best-effort RSVP link: use explicit fields if exist, otherwise fall back to event id.
     const explicitLink = String((eventData as any)?.rsvp_link ?? (eventData as any)?.rsvpLink ?? '').trim();
-    const base = 'https://l.e2grsvp.com/e/';
+    const base = 'https://i.e2grsvp.com/e/';
     const code = String((eventData as any)?.rsvp_code ?? (eventData as any)?.rsvpCode ?? (eventData as any)?.id ?? '').trim();
     const link = explicitLink || `${base}${code}`;
 
     // Match screenshot structure (link in its own line).
-    return `שלום, הוזמנתם ${label} בתאריך ${dateText}.\nלפרטים ואישור הגעה הכנסו לקישור הבא:\n${link}`;
+    return `שלום, הוזמנתם ${label} בתאריך ${dateText}.\nלפרטים ואישור הגעה היכנסו לקישור הבא:\n${link}`;
   };
 
   const formatDate = (d: Date) => {
@@ -206,17 +222,37 @@ export default function AdminEventNotificationsScreen() {
     }
 
     const existingMap = new Map<string, any>(((rows as any[]) || []).map(r => [r.notification_type, r]));
+    const legacyFixes: Array<{ id: string; message_content: string }> = [];
 
     const merged: NotificationSettingRow[] = NOTIFICATION_TEMPLATES.map(tpl => {
       const existing = existingMap.get(tpl.notification_type);
       if (existing) {
+        const existingMsg = String(existing.message_content ?? '');
+        if (tpl.notification_type === 'reminder_1' && existing.id && shouldReplaceLegacyFirstReminder(existingMsg)) {
+          const nextMsg = getDefaultFirstReminderMessage(eventData as any, owner);
+          legacyFixes.push({ id: existing.id, message_content: nextMsg });
+          return {
+            id: existing.id,
+            event_id: existing.event_id,
+            notification_type: existing.notification_type,
+            title: existing.title ?? tpl.title,
+            enabled: Boolean(existing.enabled),
+            message_content: nextMsg,
+            days_from_wedding:
+              typeof existing.days_from_wedding === 'number'
+                ? existing.days_from_wedding
+                : tpl.days_from_wedding,
+            channel: (existing.channel as any) || tpl.channel,
+          };
+        }
+
         return {
           id: existing.id,
           event_id: existing.event_id,
           notification_type: existing.notification_type,
           title: existing.title ?? tpl.title,
           enabled: Boolean(existing.enabled),
-          message_content: String(existing.message_content ?? ''),
+          message_content: existingMsg,
           days_from_wedding:
             typeof existing.days_from_wedding === 'number'
               ? existing.days_from_wedding
@@ -241,6 +277,21 @@ export default function AdminEventNotificationsScreen() {
     });
 
     setNotificationSettings(merged);
+
+    // Best-effort: persist the fixed default for legacy reminder_1 rows.
+    if (legacyFixes.length) {
+      legacyFixes.forEach((fix) => {
+        supabase
+          .from('notification_settings')
+          .update({ message_content: fix.message_content })
+          .eq('id', fix.id)
+          .then(({ error: updateError }) => {
+            if (updateError) {
+              console.warn('Failed to auto-update legacy reminder_1 message (admin):', updateError);
+            }
+          });
+      });
+    }
   };
 
   useEffect(() => {

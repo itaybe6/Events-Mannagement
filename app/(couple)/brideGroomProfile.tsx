@@ -65,7 +65,7 @@ export default function BrideGroomSettings() {
 
     const groom = String(eventMeta?.groomName ?? '').trim();
     const bride = String(eventMeta?.brideName ?? '').trim();
-    const couple = groom && bride ? `${groom} ו${bride}` : ownerName;
+    const couple = groom && bride ? `${groom} ול${bride}` : ownerName;
 
     const label =
       kind === 'wedding'
@@ -81,11 +81,12 @@ export default function BrideGroomSettings() {
                 : `לאירוע של ${ownerName}`;
 
     const dateText = eventMeta?.date ? eventMeta.date.toLocaleDateString('he-IL') : '';
-    const base = 'https://l.e2grsvp.com/e/';
-    const code = String((eventMeta as any)?.id ?? userData?.event_id ?? '').trim();
-    const link = `${base}${code}`;
+    const explicitLink = String((eventMeta as any)?.rsvp_link ?? (eventMeta as any)?.rsvpLink ?? '').trim();
+    const base = 'https://i.e2grsvp.com/e/';
+    const code = String((eventMeta as any)?.rsvp_code ?? (eventMeta as any)?.rsvpCode ?? (eventMeta as any)?.id ?? userData?.event_id ?? '').trim();
+    const link = explicitLink || `${base}${code}`;
 
-    return `שלום, הוזמנתם ${label} בתאריך ${dateText}.\nלפרטים ואישור הגעה הכנסו לקישור הבא:\n${link}`;
+    return `שלום, הוזמנתם ${label} בתאריך ${dateText}.\nלפרטים ואישור הגעה היכנסו לקישור הבא:\n${link}`;
   };
 
   useEffect(() => {
@@ -157,11 +158,40 @@ export default function BrideGroomSettings() {
       (((existingSettings as any[]) || [])).map(setting => [setting.notification_type, setting])
     );
 
+    const shouldReplaceLegacyFirstReminder = (msg: string) => {
+      const t = String(msg || '').trim();
+      if (!t) return true;
+      return (
+        t.includes('רצינו להזכיר') ||
+        t.includes('האירוע הקרוב שלנו') ||
+        t.includes('הנכם מוזמנים') ||
+        t.includes('מוזמנים לאירוע')
+      );
+    };
+
+    const legacyFixes: Array<{ id: string; message_content: string }> = [];
+
     // Merge templates with existing settings
     const mergedNotifications = DEFAULT_NOTIFICATION_TEMPLATES.map(template => {
       const existingSetting = existingSettingsMap.get(template.notification_type);
       if (existingSetting) {
         // Use existing setting from database
+        if (template.notification_type === 'reminder_1' && existingSetting.id) {
+          const currentMsg = String(existingSetting.message_content ?? '');
+          if (shouldReplaceLegacyFirstReminder(currentMsg)) {
+            const nextMsg = getDefaultFirstReminderMessage();
+            legacyFixes.push({ id: existingSetting.id, message_content: nextMsg });
+            return {
+              ...existingSetting,
+              message_content: nextMsg,
+              days_from_wedding:
+                typeof existingSetting.days_from_wedding === 'number'
+                  ? existingSetting.days_from_wedding
+                  : (template.days_from_wedding ?? 0),
+              channel: (existingSetting.channel as any) || (template.channel as any) || 'SMS',
+            };
+          }
+        }
         return {
           ...existingSetting,
           days_from_wedding:
@@ -185,6 +215,21 @@ export default function BrideGroomSettings() {
     });
 
     setNotifications(mergedNotifications);
+
+    // Best-effort: persist the fixed default for legacy reminder_1 rows.
+    if (legacyFixes.length) {
+      legacyFixes.forEach((fix) => {
+        supabase
+          .from('notification_settings')
+          .update({ message_content: fix.message_content })
+          .eq('id', fix.id)
+          .then(({ error: updateError }) => {
+            if (updateError) {
+              console.warn('Failed to auto-update legacy reminder_1 message (couple):', updateError);
+            }
+          });
+      });
+    }
   };
 
   const computeSendDate = (days: number) => {
