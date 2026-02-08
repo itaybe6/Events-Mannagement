@@ -243,6 +243,8 @@ export default function AdminEventsScreen() {
               const eventType = inferEventType(event.title) || 'חתונה';
               const badge = EVENT_BADGE_META[eventType];
               const cover = EVENT_IMAGE_BY_TYPE[eventType];
+              const coverUrl = String((event as any)?.image ?? '').trim();
+              const coverSource: any = /^https?:\/\//i.test(coverUrl) ? { uri: coverUrl } : cover;
 
               return (
                 <View key={event.id} style={styles.eventBlock}>
@@ -286,7 +288,7 @@ export default function AdminEventsScreen() {
                     style={styles.coverCard}
                     activeOpacity={0.92}
                   >
-                    <Image source={cover} style={styles.coverImg} resizeMode="cover" />
+                    <Image source={coverSource} style={styles.coverImg} resizeMode="cover" />
                     <LinearGradient
                       colors={['rgba(0,0,0,0.0)', 'rgba(0,0,0,0.38)']}
                       style={styles.coverGradient}
