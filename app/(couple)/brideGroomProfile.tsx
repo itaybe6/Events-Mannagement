@@ -1,10 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Switch, Alert, Modal, TextInput, Keyboard, TouchableWithoutFeedback } from 'react-native';
+import { KeyboardAvoidingView, Platform, View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Modal, TextInput, Keyboard, TouchableWithoutFeedback } from 'react-native';
 import { useUserStore } from '@/store/userStore';
 import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
+import { BlurView } from 'expo-blur';
+import { Image } from 'expo-image';
 
 interface NotificationSetting {
   id?: string;
@@ -42,7 +44,20 @@ export default function BrideGroomSettings() {
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editingNotification, setEditingNotification] = useState<NotificationSetting | null>(null);
   const [editedMessage, setEditedMessage] = useState('');
-  const [editedDaysFromEvent, setEditedDaysFromEvent] = useState<string>('0');
+  const [timingMode, setTimingMode] = useState<'before' | 'after'>('before');
+  const [editedAbsDays, setEditedAbsDays] = useState<string>('0');
+
+  const notificationUI = {
+    primary: '#3b82f6',
+    whatsapp: '#25D366',
+    bg: '#F9FAFB',
+    card: '#FFFFFF',
+    border: '#E5E7EB',
+    text: '#111827',
+    muted: '#6B7280',
+    faint: 'rgba(17,24,39,0.45)',
+    green: '#16A34A',
+  };
 
   const getDefaultMessageContent = (userName?: string) => {
     const displayName = userName && userName.trim().length > 0 ? userName.trim() : 'בעל/ת האירוע';
@@ -364,10 +379,16 @@ export default function BrideGroomSettings() {
     router.replace('/login');
   };
 
+  const groomName = String(eventMeta?.groomName ?? '').trim();
+  const brideName = String(eventMeta?.brideName ?? '').trim();
+  const weddingNames = groomName && brideName ? `${groomName} ו${brideName}` : '';
+
   const openEditModal = (notification: NotificationSetting) => {
+    const rawDays = notification.days_from_wedding ?? 0;
     setEditingNotification(notification);
     setEditedMessage(notification.message_content || '');
-    setEditedDaysFromEvent(String(notification.days_from_wedding ?? 0));
+    setTimingMode(rawDays < 0 ? 'before' : 'after');
+    setEditedAbsDays(String(Math.abs(rawDays)));
     setEditModalVisible(true);
   };
 
@@ -375,8 +396,10 @@ export default function BrideGroomSettings() {
     if (!editingNotification || !userData?.event_id) return;
 
     try {
-      const nextDays = Number.parseInt((editedDaysFromEvent || '').trim(), 10);
-      const daysToSave = Number.isFinite(nextDays) ? nextDays : (editingNotification.days_from_wedding ?? 0);
+      const abs = Number.parseInt((editedAbsDays || '').trim(), 10);
+      const signed =
+        Number.isFinite(abs) ? (abs === 0 ? 0 : timingMode === 'before' ? -Math.abs(abs) : Math.abs(abs)) : NaN;
+      const daysToSave = Number.isFinite(signed) ? signed : (editingNotification.days_from_wedding ?? 0);
 
       if (editingNotification.id) {
         const updatePayload: any = { message_content: editedMessage, days_from_wedding: daysToSave, channel: editingNotification.channel };
@@ -468,44 +491,83 @@ export default function BrideGroomSettings() {
   const regularNotifications = notifications.filter(n => (n.channel || 'SMS') !== 'WHATSAPP');
   const whatsappNotifications = notifications.filter(n => (n.channel || 'SMS') === 'WHATSAPP');
 
-  const renderNotificationGroup = (title: string, notificationsList: NotificationSetting[], iconName: string, iconColor: string) => (
+  const renderNotificationGroup = (title: string, notificationsList: NotificationSetting[], variant: 'regular' | 'whatsapp') => (
     <View style={styles.notificationGroup}>
       <View style={styles.groupHeader}>
-        <Ionicons name={iconName as any} size={24} color={iconColor} />
         <Text style={styles.groupTitle}>{title}</Text>
       </View>
       
-      <View style={styles.notificationsList}>
-        {notificationsList.map((notification, index) => (
-          <View key={notification.notification_type}>
-            <View style={styles.notificationItem}>
-              <Switch
-                value={notification.enabled}
-                onValueChange={() => toggleNotification(
-                  notification.id, 
-                  notification.notification_type, 
-                  notification.enabled
-                )}
-                trackColor={{ false: colors.gray[200], true: 'rgba(0, 53, 102, 0.35)' }}
-                thumbColor={notification.enabled ? colors.primary : colors.gray[100]}
-                ios_backgroundColor={colors.gray[200]}
-                style={styles.switchStyle}
-              />
-              <TouchableOpacity style={styles.notificationContent} onPress={() => openEditModal(notification)}>
-                <Text style={styles.notificationTitle}>{notification.title}</Text>
-                <View style={styles.dateContainer}>
-                  <Ionicons name="calendar" size={16} color={colors.primary} style={{ marginRight: 8 }} />
-                  <Text style={styles.notificationDate}>
-                    {`${formatSendLabel(notification.days_from_wedding ?? 0)}${
-                      weddingDate ? ` · ${formatDate(computeSendDate(notification.days_from_wedding ?? 0))}` : ''
-                    }`}
+      <View style={styles.cardsStack}>
+        {notificationsList.map((notification) => {
+          const enabled = Boolean(notification.enabled);
+          const days = notification.days_from_wedding ?? 0;
+          const computed = weddingDate ? formatDate(computeSendDate(days)) : '';
+
+          return (
+            <TouchableOpacity
+              key={notification.notification_type}
+              activeOpacity={0.92}
+              style={[
+                styles.notificationCard,
+                { backgroundColor: notificationUI.card, borderColor: notificationUI.border },
+                variant === 'whatsapp' ? styles.notificationCardWhatsapp : null,
+              ]}
+              onPress={() => openEditModal(notification)}
+              accessibilityRole="button"
+              accessibilityLabel={`עריכת ${notification.title}`}
+            >
+              {variant === 'whatsapp' ? (
+                <View style={[styles.whatsappAccent, { backgroundColor: notificationUI.whatsapp }]} />
+              ) : null}
+
+              <View style={styles.cardMain}>
+                <Text style={[styles.cardTitle, { color: notificationUI.text }]} numberOfLines={2}>
+                  {notification.title}
+                </Text>
+
+                <View style={styles.cardMetaRow}>
+                  <TouchableOpacity
+                    activeOpacity={0.9}
+                    style={styles.statusBtn}
+                    onPress={(e) => {
+                      (e as any)?.stopPropagation?.();
+                      toggleNotification(notification.id, notification.notification_type, enabled);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel={enabled ? 'כיבוי הודעה' : 'הפעלת הודעה'}
+                  >
+                    <Text
+                      style={[
+                        styles.statusText,
+                        { color: enabled ? notificationUI.green : notificationUI.faint },
+                      ]}
+                    >
+                      {enabled ? 'פעיל' : 'כבוי'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <Text style={[styles.metaBullet, { color: 'rgba(107,114,128,0.70)' }]}>•</Text>
+                  <Text style={[styles.metaText, { color: notificationUI.muted }]} numberOfLines={1}>
+                    {formatSendLabel(days)}
                   </Text>
+
+                  {computed ? (
+                    <>
+                      <Text style={[styles.metaBullet, { color: 'rgba(107,114,128,0.70)' }]}>•</Text>
+                      <Text style={[styles.metaText, { color: notificationUI.muted }]} numberOfLines={1}>
+                        {computed}
+                      </Text>
+                    </>
+                  ) : null}
                 </View>
-              </TouchableOpacity>
-            </View>
-            {index < notificationsList.length - 1 && <View style={styles.separator} />}
-          </View>
-        ))}
+              </View>
+
+              <View style={styles.cardChevron}>
+                <Ionicons name="chevron-back" size={20} color={notificationUI.faint} />
+              </View>
+            </TouchableOpacity>
+          );
+        })}
       </View>
     </View>
   );
@@ -525,9 +587,19 @@ export default function BrideGroomSettings() {
           </TouchableOpacity>
           
           <View style={styles.profileIconContainer}>
-            <Ionicons name="person-circle" size={80} color={colors.primary} />
+            {userData?.avatar_url ? (
+              <Image
+                source={{ uri: userData.avatar_url }}
+                style={styles.profileAvatar}
+                contentFit="cover"
+                transition={120}
+              />
+            ) : (
+              <Ionicons name="person-circle" size={80} color={colors.primary} />
+            )}
           </View>
-          <Text style={styles.profileName}>{userData?.name}</Text>
+          <Text style={styles.profileName}>{weddingNames || userData?.name}</Text>
+          {weddingNames ? <Text style={styles.profileSubName}>{userData?.name}</Text> : null}
           <Text style={styles.profileEmail}>{userData?.email}</Text>
         </View>
 
@@ -540,16 +612,11 @@ export default function BrideGroomSettings() {
             setNotificationsY(e.nativeEvent.layout.y);
           }}
         >
-          <Text style={styles.sectionTitle}>הודעות אוטומטיות</Text>
-          <Text style={styles.sectionSubtitle}>
-            נציין כי לפעמים תהיה חריגה של יום/יומיים בביצוע השיחות
-          </Text>
-          
           {/* Regular Notifications */}
-          {renderNotificationGroup('הודעות רגילות', regularNotifications, 'mail', colors.primary)}
+          {renderNotificationGroup('הודעות רגילות', regularNotifications, 'regular')}
           
           {/* WhatsApp Notifications */}
-          {renderNotificationGroup('הודעות וואטסאפ', whatsappNotifications, 'logo-whatsapp', colors.secondary)}
+          {renderNotificationGroup('הודעות וואטסאפ', whatsappNotifications, 'whatsapp')}
         </View>
 
         {/* Logout Button */}
@@ -560,71 +627,194 @@ export default function BrideGroomSettings() {
 
       {/* Unified Edit Modal */}
       <Modal
-        animationType="slide"
+        animationType="fade"
         transparent={true}
         visible={editModalVisible}
         onRequestClose={() => setEditModalVisible(false)}
       >
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 24 : 0}
+        >
+          {Platform.OS === 'web' ? (
+            <View
+              style={[
+                StyleSheet.absoluteFillObject,
+                { backdropFilter: 'blur(10px)', backgroundColor: 'rgba(107,114,128,0.50)' },
+              ]}
+            />
+          ) : (
+            <BlurView intensity={18} tint="default" style={StyleSheet.absoluteFillObject} />
+          )}
+
           <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
             <View style={styles.modalOverlayTouchable} />
           </TouchableWithoutFeedback>
-          <View style={styles.modalContent}>
-            <TouchableOpacity style={styles.closeButton} onPress={() => { Keyboard.dismiss(); setEditModalVisible(false); }}>
-              <Ionicons name="close" size={20} color={colors.text} />
-            </TouchableOpacity>
-            <Text style={styles.modalTitle}>עריכת הודעה</Text>
-            <Text style={styles.modalSubtitle}>{editingNotification?.title}</Text>
 
-            <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>ימים מהאירוע (מינוס = לפני)</Text>
-              <TextInput
-                style={styles.daysInput}
-                value={editedDaysFromEvent}
-                onChangeText={setEditedDaysFromEvent}
-                placeholder="-14"
-                placeholderTextColor={colors.gray[500]}
-                keyboardType="numeric"
-                textAlign="left"
-              />
-              {weddingDate ? (
-                <Text style={styles.daysHint}>
-                  {`תאריך מחושב: ${formatDate(computeSendDate(Number.parseInt(editedDaysFromEvent || '0', 10) || 0))}`}
-                </Text>
-              ) : null}
+          <ScrollView
+            style={styles.modalScroll}
+            contentContainerStyle={styles.modalScrollContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={styles.modalCard}>
+              {/* Header */}
+              <View style={styles.modalHeader}>
+                <TouchableOpacity
+                  style={styles.modalCloseBtn}
+                  onPress={() => {
+                    Keyboard.dismiss();
+                    setEditModalVisible(false);
+                  }}
+                  activeOpacity={0.9}
+                  accessibilityRole="button"
+                  accessibilityLabel="סגירה"
+                >
+                  <Ionicons name="close" size={18} color={'rgba(107,114,128,0.95)'} />
+                </TouchableOpacity>
+
+                <View style={styles.modalHeaderTitles}>
+                  <Text style={styles.modalTitle}>עריכת הודעה</Text>
+                  <Text style={styles.modalSubtitle} numberOfLines={2}>
+                    {editingNotification?.title ?? ''}
+                  </Text>
+                </View>
+                <View style={{ width: 40 }} />
+              </View>
+
+              <View style={styles.modalDivider} />
+
+              {/* Body */}
+              <View style={styles.modalBody}>
+                <View style={styles.block}>
+                  <Text style={styles.blockLabel}>תיזמון ההודעה</Text>
+                  <View style={styles.segmentWrap}>
+                    <TouchableOpacity
+                      style={[styles.segmentBtn, timingMode === 'before' ? styles.segmentBtnActive : null]}
+                      onPress={() => setTimingMode('before')}
+                      activeOpacity={0.92}
+                      accessibilityRole="button"
+                      accessibilityLabel="לפני האירוע"
+                    >
+                      <Text style={[styles.segmentText, timingMode === 'before' ? styles.segmentTextActive : null]}>
+                        לפני האירוע
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.segmentBtn, timingMode === 'after' ? styles.segmentBtnActive : null]}
+                      onPress={() => setTimingMode('after')}
+                      activeOpacity={0.92}
+                      accessibilityRole="button"
+                      accessibilityLabel="אחרי האירוע"
+                    >
+                      <Text style={[styles.segmentText, timingMode === 'after' ? styles.segmentTextActive : null]}>
+                        אחרי האירוע
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.timingRow}>
+                    <View style={styles.daysInputWrap}>
+                      <Ionicons name="calendar-outline" size={18} color={'rgba(107,114,128,0.95)'} style={styles.daysIcon} />
+                      <TextInput
+                        value={editedAbsDays}
+                        onChangeText={setEditedAbsDays}
+                        placeholder="0"
+                        placeholderTextColor={'rgba(107,114,128,0.65)'}
+                        style={styles.daysInput}
+                        keyboardType="numeric"
+                        textAlign="center"
+                      />
+                      <Text style={styles.daysSuffix}>ימים</Text>
+                    </View>
+
+                    <View style={styles.computedPill}>
+                      <Text style={styles.computedLabel}>תאריך מחושב</Text>
+                      <Text style={styles.computedValue}>
+                        {(() => {
+                          const abs = Number.parseInt((editedAbsDays || '').trim(), 10);
+                          const signed =
+                            Number.isFinite(abs) ? (abs === 0 ? 0 : timingMode === 'before' ? -Math.abs(abs) : Math.abs(abs)) : 0;
+                          return weddingDate ? formatDate(computeSendDate(signed)) : '';
+                        })()}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+
+                <View style={styles.bodyDivider} />
+
+                <View style={styles.block}>
+                  <View style={styles.messageHeaderRow}>
+                    <View style={styles.messageTools}>
+                      <TouchableOpacity
+                        style={styles.toolBtn}
+                        activeOpacity={0.92}
+                        onPress={() => setEditedMessage(prev => `${prev}${prev ? ' ' : ''}{{name}}`)}
+                        accessibilityRole="button"
+                        accessibilityLabel="הוסף שם"
+                      >
+                        <Ionicons name="person-add-outline" size={16} color={'rgba(107,114,128,0.95)'} />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.toolBtn}
+                        activeOpacity={0.92}
+                        onPress={() => setEditedMessage(prev => `${prev}${prev ? ' ' : ''}{{event_date}}`)}
+                        accessibilityRole="button"
+                        accessibilityLabel="הוסף תאריך"
+                      >
+                        <Ionicons name="calendar-outline" size={16} color={'rgba(107,114,128,0.95)'} />
+                      </TouchableOpacity>
+                    </View>
+                    <Text style={styles.blockLabel}>תוכן ההודעה</Text>
+                  </View>
+
+                  <View style={styles.textareaWrap}>
+                    <TextInput
+                      style={styles.textarea}
+                      value={editedMessage}
+                      onChangeText={setEditedMessage}
+                      placeholder="הקלד את הודעתך כאן..."
+                      placeholderTextColor={'rgba(107,114,128,0.75)'}
+                      multiline
+                      numberOfLines={5}
+                      textAlign="right"
+                      textAlignVertical="top"
+                    />
+                    <View style={styles.charCountPill}>
+                      <Text style={styles.charCountText}>{`${editedMessage.length}/160 תווים`}</Text>
+                    </View>
+                  </View>
+                </View>
+              </View>
+
+              {/* Footer */}
+              <View style={styles.modalFooter}>
+                <TouchableOpacity
+                  style={styles.footerBtnSecondary}
+                  onPress={() => setEditModalVisible(false)}
+                  activeOpacity={0.92}
+                  accessibilityRole="button"
+                  accessibilityLabel="ביטול"
+                >
+                  <Text style={styles.footerBtnSecondaryText}>ביטול</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.footerBtnPrimary}
+                  onPress={handleSaveEdit}
+                  activeOpacity={0.92}
+                  accessibilityRole="button"
+                  accessibilityLabel="שמור שינויים"
+                >
+                  <Ionicons name="save-outline" size={16} color="#fff" />
+                  <Text style={styles.footerBtnPrimaryText}>שמור שינויים</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-            
-            <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>תוכן ההודעה</Text>
-              <TextInput
-                style={styles.messageInput}
-                value={editedMessage}
-                onChangeText={setEditedMessage}
-                placeholder="כתוב כאן את תוכן ההודעה..."
-                placeholderTextColor={colors.gray[500]}
-                multiline
-                numberOfLines={4}
-                textAlign="right"
-                textAlignVertical="top"
-              />
-            </View>
-            
-            <View style={styles.modalButtons}>
-              <TouchableOpacity 
-                style={styles.cancelButton} 
-                onPress={() => setEditModalVisible(false)}
-              >
-                <Text style={styles.cancelButtonText}>ביטול</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={styles.saveButton} 
-                onPress={handleSaveEdit}
-              >
-                <Text style={styles.saveButtonText}>שמור</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -668,12 +858,28 @@ const styles = StyleSheet.create({
   profileIconContainer: {
     marginBottom: 16,
   },
+  profileAvatar: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    borderWidth: 2,
+    borderColor: 'rgba(0,0,0,0.08)',
+    backgroundColor: colors.gray[100],
+  },
   profileName: {
     fontSize: 24,
     fontWeight: '600',
     color: colors.text,
     marginBottom: 4,
     textAlign: 'center',
+  },
+  profileSubName: {
+    marginTop: -2,
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.textLight,
+    textAlign: 'center',
+    marginBottom: 6,
   },
   profileEmail: {
     fontSize: 16,
@@ -725,58 +931,25 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 20,
-    fontWeight: '600',
+    fontWeight: '800',
     color: colors.text,
-    marginBottom: 8,
+    marginBottom: 10,
     textAlign: 'right',
   },
-  sectionSubtitle: {
-    fontSize: 14,
-    color: colors.textLight,
-    textAlign: 'right',
-    marginBottom: 20,
-    lineHeight: 20,
-  },
-  notificationsList: {
-    backgroundColor: colors.white,
-    borderRadius: 16,
-    overflow: 'hidden',
-    shadowColor: colors.richBlack,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.03,
-    shadowRadius: 6,
-    elevation: 1,
-  },
-  notificationItem: {
-    flexDirection: 'row',
+  noteWrap: {
+    flexDirection: 'row-reverse',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    justifyContent: 'flex-start',
+    paddingHorizontal: 6,
+    marginBottom: 18,
   },
-  notificationContent: {
+  noteText: {
     flex: 1,
-    alignItems: 'flex-end',
-    marginLeft: 16,
-  },
-  notificationTitle: {
-    fontSize: 17,
-    fontWeight: '400',
-    color: colors.text,
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#6B7280',
     textAlign: 'right',
-    marginBottom: 2,
-  },
-  notificationDate: {
-    fontSize: 14,
-    color: colors.textLight,
-    textAlign: 'right',
-  },
-  switchStyle: {
-    transform: [{ scaleX: 0.9 }, { scaleY: 0.9 }],
-  },
-  separator: {
-    height: 0.5,
-    backgroundColor: colors.gray[200],
-    marginLeft: 60,
+    lineHeight: 18,
   },
   logoutButton: {
     backgroundColor: colors.error,
@@ -799,75 +972,306 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   groupHeader: {
-    flexDirection: 'row',
+    flexDirection: 'row-reverse',
     alignItems: 'center',
     marginBottom: 12,
+    paddingHorizontal: 8,
+    gap: 10,
   },
   groupTitle: {
     fontSize: 18,
-    fontWeight: '600',
-    color: colors.text,
-    marginLeft: 12,
+    fontWeight: '800',
+    color: '#111827',
+    textAlign: 'right',
   },
-  dateContainer: {
-    flexDirection: 'row',
+  cardsStack: {
+    gap: 16,
+  },
+  notificationCard: {
+    position: 'relative',
+    flexDirection: 'row-reverse',
     alignItems: 'center',
-    marginTop: 4,
+    justifyContent: 'space-between',
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingVertical: 20,
+    paddingHorizontal: 20,
+    shadowColor: colors.black,
+    shadowOpacity: 0.05,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3,
+    overflow: 'hidden',
   },
-  editDateButton: {
-    marginRight: 8,
+  notificationCardWhatsapp: {
+    borderColor: 'rgba(37,211,102,0.18)',
+  },
+  whatsappAccent: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: 4,
+    height: '100%',
+    borderTopRightRadius: 16,
+    borderBottomRightRadius: 16,
+  },
+  cardMain: {
+    flex: 1,
+    alignItems: 'flex-end',
+  },
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    textAlign: 'right',
+  },
+  cardMetaRow: {
+    marginTop: 8,
+    alignSelf: 'flex-end',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+  },
+  statusBtn: {
+    paddingVertical: 2,
+  },
+  statusText: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  metaBullet: {
+    marginHorizontal: 10,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  metaText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  cardChevron: {
+    paddingRight: 4,
+    paddingLeft: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   modalOverlay: {
     flex: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+  },
+  modalScroll: {
+    flex: 1,
+    width: '100%',
+  },
+  modalScrollContent: {
+    flexGrow: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    paddingVertical: 12,
   },
   modalOverlayTouchable: {
     ...StyleSheet.absoluteFillObject,
   },
-  modalContent: {
-    backgroundColor: colors.white,
-    borderRadius: 20,
-    padding: 30,
-    width: '80%',
-    alignItems: 'center',
-    shadowColor: colors.richBlack,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
+
+  modalCard: {
+    width: '100%',
+    maxWidth: 480,
+    borderRadius: 32,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    shadowColor: colors.black,
+    shadowOpacity: 0.08,
+    shadowRadius: 40,
+    shadowOffset: { width: 0, height: 18 },
+    elevation: 8,
+    overflow: 'hidden',
   },
-  closeButton: {
-    position: 'absolute',
-    top: 10,
-    left: 10,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
+  modalHeader: {
+    paddingHorizontal: 24,
+    paddingTop: 24,
+    paddingBottom: 16,
+    flexDirection: 'row-reverse',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
+  modalCloseBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 999,
+    backgroundColor: '#F3F4F6',
     justifyContent: 'center',
-    backgroundColor: colors.gray[100],
+    alignItems: 'center',
+  },
+  modalHeaderTitles: {
+    flex: 1,
+    alignItems: 'center',
+    paddingHorizontal: 10,
   },
   modalTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: 10,
+    fontSize: 20,
+    fontWeight: '900',
+    color: '#111827',
     textAlign: 'center',
   },
-  messageInput: {
+  modalSubtitle: {
+    marginTop: 4,
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#6B7280',
+    textAlign: 'center',
+  },
+  modalDivider: {
+    height: 1,
+    backgroundColor: '#E5E7EB',
+    marginHorizontal: 24,
+    width: '90%',
+    alignSelf: 'center',
+    marginBottom: 18,
+  },
+  modalBody: {
+    paddingHorizontal: 24,
+    paddingTop: 0,
+    paddingBottom: 22,
+    gap: 18,
+  },
+  block: { gap: 10 },
+  blockLabel: { fontSize: 13, fontWeight: '900', color: '#111827', textAlign: 'right' },
+  segmentWrap: {
+    flexDirection: 'row-reverse',
+    gap: 6,
+    padding: 4,
+    borderRadius: 16,
+    backgroundColor: '#F3F4F6',
+  },
+  segmentBtn: {
+    flex: 1,
+    height: 42,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  segmentBtnActive: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: colors.black,
+    shadowOpacity: 0.07,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 2,
+  },
+  segmentText: { fontSize: 13, fontWeight: '800', color: '#6B7280' },
+  segmentTextActive: { color: '#1d4ed8' },
+
+  timingRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12 },
+  daysInputWrap: {
+    flex: 1,
+    height: 54,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: colors.gray[200],
+    borderColor: '#E5E7EB',
+    justifyContent: 'center',
+  },
+  daysIcon: { position: 'absolute', right: 12 },
+  daysSuffix: { position: 'absolute', left: 12, fontSize: 12, fontWeight: '700', color: '#6B7280' },
+  daysInput: {
+    paddingHorizontal: 40,
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#111827',
+    height: 54,
+  },
+  computedPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 16,
+    backgroundColor: 'rgba(29,78,216,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(29,78,216,0.16)',
+    alignItems: 'flex-end',
+    minWidth: 128,
+  },
+  computedLabel: { fontSize: 11, fontWeight: '800', color: 'rgba(29,78,216,0.75)' },
+  computedValue: { marginTop: 4, fontSize: 13, fontWeight: '900', color: 'rgba(29,78,216,0.95)' },
+
+  bodyDivider: { height: 1, backgroundColor: '#E5E7EB' },
+
+  messageHeaderRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  messageTools: { flexDirection: 'row-reverse', gap: 8 },
+  toolBtn: {
+    width: 34,
+    height: 34,
     borderRadius: 12,
-    paddingHorizontal: 15,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: colors.text,
-    backgroundColor: colors.gray[50],
-    minHeight: 100,
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  textareaWrap: { position: 'relative' },
+  textarea: {
+    borderWidth: 0,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#111827',
+    minHeight: 150,
+    lineHeight: 20,
     writingDirection: 'rtl',
   },
+  charCountPill: {
+    position: 'absolute',
+    left: 10,
+    bottom: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    opacity: 0.75,
+  },
+  charCountText: { fontSize: 11, fontWeight: '800', color: '#6B7280' },
+
+  modalFooter: {
+    padding: 18,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+    flexDirection: 'row-reverse',
+    gap: 10,
+    backgroundColor: '#FFFFFF',
+  },
+  footerBtnSecondary: {
+    flex: 1,
+    height: 54,
+    borderRadius: 16,
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  footerBtnSecondaryText: { fontSize: 15, fontWeight: '900', color: '#111827' },
+  footerBtnPrimary: {
+    flex: 2,
+    height: 54,
+    borderRadius: 16,
+    backgroundColor: '#1d4ed8',
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexDirection: 'row-reverse',
+    gap: 8,
+    shadowColor: '#1d4ed8',
+    shadowOpacity: 0.24,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 4,
+  },
+  footerBtnPrimaryText: { fontSize: 15, fontWeight: '900', color: '#fff' },
   dateRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -883,76 +1287,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.text,
   },
-  modalSubtitle: {
-    fontSize: 18,
-    color: colors.textLight,
-    marginBottom: 20,
-    textAlign: 'center',
-  },
-  inputContainer: {
-    width: '100%',
-    marginBottom: 20,
-  },
-  inputLabel: {
-    fontSize: 16,
-    color: colors.textLight,
-    marginBottom: 8,
-    textAlign: 'right',
-  },
-  daysInput: {
-    borderWidth: 1,
-    borderColor: colors.gray[200],
-    borderRadius: 12,
-    paddingHorizontal: 15,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: colors.text,
-    backgroundColor: colors.gray[50],
-  },
-  daysHint: {
-    marginTop: 8,
-    fontSize: 12,
-    color: colors.textLight,
-    textAlign: 'right',
-  },
-  dateInput: {
-    borderWidth: 1,
-    borderColor: colors.gray[200],
-    borderRadius: 12,
-    paddingHorizontal: 15,
-    paddingVertical: 12,
-    fontSize: 18,
-    color: colors.text,
-    textAlign: 'right',
-  },
-  modalButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    width: '100%',
-    marginTop: 20,
-  },
-  cancelButton: {
-    backgroundColor: colors.gray[200],
-    paddingVertical: 12,
-    paddingHorizontal: 25,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.gray[200],
-  },
-  cancelButtonText: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  saveButton: {
-    backgroundColor: colors.primary,
-    paddingVertical: 12,
-    paddingHorizontal: 25,
-    borderRadius: 12,
-  },
-  saveButtonText: {
-    color: colors.white,
-    fontSize: 16,
-    fontWeight: '600',
-  },
+  // (legacy modal styles removed in favor of the new modern editor modal)
 }); 

@@ -1,11 +1,22 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, TextInput } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TouchableOpacity,
+  Alert,
+  TextInput,
+  Pressable,
+  Platform,
+} from 'react-native';
 import * as Contacts from 'expo-contacts';
 import { guestService } from '@/lib/services/guestService';
-import { useRouter, useLocalSearchParams } from 'expo-router';
-import { colors } from '@/constants/colors';
+import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { GuestCategorySelectionSheet } from '@/components/GuestCategorySelectionSheet';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function ContactsListScreen() {
   const [contacts, setContacts] = useState<any[]>([]);
@@ -17,6 +28,7 @@ export default function ContactsListScreen() {
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
   const [existingGuests, setExistingGuests] = useState<any[]>([]);
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   // קבל eventId מהניווט
   const params = useLocalSearchParams();
@@ -24,6 +36,20 @@ export default function ContactsListScreen() {
   const autoOpenCategory =
     params.autoOpenCategory === '1' || params.autoOpenCategory === 'true' || params.autoOpenCategory === true;
   const didAutoOpenRef = useRef(false);
+
+  // Local palette (matches the provided HTML design)
+  const ui = useMemo(
+    () => ({
+      primary: '#6366f1', // Indigo-500
+      bg: '#F3F4F6', // Gray-100
+      surface: '#FFFFFF',
+      text: '#1F2937',
+      muted: '#6B7280',
+      border: '#E5E7EB',
+      inputBg: '#F9FAFB',
+    }),
+    []
+  );
 
   useEffect(() => {
     const fetchData = async () => {
@@ -70,6 +96,34 @@ export default function ContactsListScreen() {
   const normalizePhoneNumber = (phone: string) => {
     // הסרת כל הרווחים, מקפים וסימנים מיוחדים ושמירה על מספרים בלבד
     return phone.replace(/\D/g, '');
+  };
+
+  const getInitials = (name?: string) => {
+    const n = (name || '').trim();
+    if (!n) return 'א';
+    const parts = n.split(/\s+/).filter(Boolean);
+    const first = parts[0]?.[0] ?? n[0];
+    const second = parts.length > 1 ? parts[1]?.[0] : n[1];
+    return `${first ?? ''}${second ?? ''}`.slice(0, 2);
+  };
+
+  const gradients = useMemo(
+    () => [
+      ['#E0E7FF', '#F3E8FF'], // indigo -> purple (like sample)
+      ['#FCE7F3', '#FFE4E6'], // pink -> rose
+      ['#DBEAFE', '#CFFAFE'], // blue -> cyan
+      ['#FEF3C7', '#FFEDD5'], // amber -> orange
+      ['#DCFCE7', '#D1FAE5'], // green -> emerald
+      ['#CCFBF1', '#CFFAFE'], // teal -> cyan
+    ],
+    []
+  );
+
+  const avatarGradientFor = (name?: string) => {
+    const key = (name || '').trim();
+    let hash = 0;
+    for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+    return gradients[hash % gradients.length];
   };
 
   const checkForDuplicates = (contactsToAdd: any[]) => {
@@ -172,27 +226,21 @@ export default function ContactsListScreen() {
   };
 
   // סינון אנשי קשר לפי חיפוש
-  const filteredContacts = contacts.filter(c => c.name && c.name.includes(search));
+  const filteredContacts = contacts.filter(c => {
+    const name = String(c?.name || '');
+    const phone = String(c?.phoneNumbers?.[0]?.number || '');
+    const q = search.trim();
+    if (!q) return !!name;
+    return name.toLowerCase().includes(q.toLowerCase()) || phone.includes(q);
+  });
+
+  const canAdd = !!selectedCategory && selectedContacts.size > 0;
+  const bottomSafe = Math.max(16, insets.bottom + 12);
 
   return (
     <View style={styles.container}>
-      <View style={styles.topRow}>
-        <View style={styles.categoryPill}>
-          <Ionicons name="pricetag-outline" size={16} color={colors.primary} style={{ marginLeft: 8 }} />
-          <Text style={styles.categoryPillText} numberOfLines={1}>
-            {selectedCategory ? selectedCategory.name : 'לא נבחרה קטגוריה'}
-          </Text>
-        </View>
-        <TouchableOpacity
-          style={styles.switchCategoryButton}
-          onPress={() => setCategoryModalVisible(true)}
-          accessibilityRole="button"
-          accessibilityLabel="החלף קטגוריה"
-        >
-          <Ionicons name="swap-horizontal" size={18} color={colors.primary} style={{ marginLeft: 8 }} />
-          <Text style={styles.switchCategoryText}>{selectedCategory ? 'החלף קטגוריה' : 'בחר קטגוריה'}</Text>
-        </TouchableOpacity>
-      </View>
+      <Stack.Screen options={{ headerShown: false }} />
+
       <GuestCategorySelectionSheet
         visible={categoryModalVisible}
         categories={categories}
@@ -207,42 +255,194 @@ export default function ContactsListScreen() {
           return created;
         }}
       />
-      <TextInput
-        style={styles.searchInput}
-        placeholder="חפש איש קשר..."
-        value={search}
-        onChangeText={setSearch}
-        textAlign="right"
-        placeholderTextColor={colors.gray[500]}
-        editable={!!selectedCategory}
-      />
-      {loading ? (
-        <Text>טוען אנשי קשר...</Text>
-      ) : filteredContacts.length === 0 ? (
-        <Text>לא נמצאו אנשי קשר עם מספר טלפון</Text>
-      ) : (
-        <FlatList
-          data={filteredContacts}
-          keyExtractor={item => item.id}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={[styles.contactItem, selectedContacts.has(item.id) && styles.selectedContact, !selectedCategory && { opacity: 0.5 }]}
-              onPress={() => selectedCategory && toggleContact(item.id)}
-              disabled={!selectedCategory}
+
+      <FlatList
+        data={filteredContacts}
+        keyExtractor={item => item.id}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 10, paddingBottom: 140 }}
+        stickyHeaderIndices={[0]}
+        ListHeaderComponent={
+          <View
+            style={[
+              styles.header,
+              {
+                paddingTop: Math.max(12, insets.top) + 12,
+                backgroundColor: 'rgba(255,255,255,0.95)',
+                borderBottomColor: ui.border,
+              },
+            ]}
+          >
+            <View style={styles.navRow}>
+              <TouchableOpacity
+                style={styles.backBtn}
+                onPress={() => router.back()}
+                accessibilityRole="button"
+                accessibilityLabel="חזרה"
+              >
+                <Ionicons name="chevron-forward" size={24} color={ui.primary} />
+                <Text style={[styles.backText, { color: ui.primary }]}>חזרה</Text>
+              </TouchableOpacity>
+
+              <Text style={[styles.navTitle, { color: ui.text }]}>רשימת אנשי קשר</Text>
+              <View style={{ width: 48 }} />
+            </View>
+
+            <View style={{ gap: 12, paddingBottom: 12 }}>
+              <View style={styles.topRow}>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.categoryCard,
+                    {
+                      borderColor: ui.primary + '26',
+                      backgroundColor: ui.primary + '12',
+                      opacity: pressed ? 0.92 : 1,
+                    },
+                  ]}
+                  onPress={() => setCategoryModalVisible(true)}
+                >
+                  <View style={{ flexDirection: 'row-reverse', alignItems: 'center' }}>
+                    <Ionicons name="pricetag" size={18} color={ui.primary} style={{ marginLeft: 10 }} />
+                    <Text
+                      style={[styles.categoryCardText, { color: ui.text }]}
+                      numberOfLines={1}
+                    >
+                      {selectedCategory ? selectedCategory.name : 'בחר קטגוריה'}
+                    </Text>
+                  </View>
+                  <Ionicons name="pencil" size={14} color={ui.primary + 'AA'} />
+                </Pressable>
+
+                <TouchableOpacity
+                  style={[styles.switchCategoryButton, { borderColor: ui.border }]}
+                  onPress={() => setCategoryModalVisible(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel="החלף קטגוריה"
+                >
+                  <Ionicons name="swap-horizontal" size={18} color={ui.text} style={{ marginLeft: 8 }} />
+                  <Text style={[styles.switchCategoryText, { color: ui.text }]}>
+                    {selectedCategory ? 'החלף קטגוריה' : 'בחר קטגוריה'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.searchWrap}>
+                <Ionicons
+                  name="search"
+                  size={18}
+                  color={ui.muted}
+                  style={styles.searchIcon}
+                />
+                <TextInput
+                  style={[
+                    styles.searchInput,
+                    {
+                      backgroundColor: ui.inputBg,
+                      borderColor: ui.border,
+                      color: ui.text,
+                    },
+                  ]}
+                  placeholder="חפש איש קשר..."
+                  value={search}
+                  onChangeText={setSearch}
+                  placeholderTextColor={ui.muted}
+                  editable={!!selectedCategory}
+                />
+              </View>
+            </View>
+          </View>
+        }
+        ListEmptyComponent={
+          loading ? (
+            <View style={{ paddingHorizontal: 20, paddingVertical: 18 }}>
+              <Text style={{ color: ui.muted, fontWeight: '700', textAlign: 'center' }}>טוען אנשי קשר...</Text>
+            </View>
+          ) : (
+            <View style={{ paddingHorizontal: 20, paddingVertical: 18 }}>
+              <Text style={{ color: ui.muted, fontWeight: '700', textAlign: 'center' }}>
+                לא נמצאו אנשי קשר עם מספר טלפון
+              </Text>
+            </View>
+          )
+        }
+        renderItem={({ item }) => {
+          const selected = selectedContacts.has(item.id);
+          const disabled = !selectedCategory;
+          const initials = getInitials(item?.name);
+          const gradient = avatarGradientFor(item?.name);
+          const phone = String(item?.phoneNumbers?.[0]?.number || 'ללא מספר');
+          return (
+            <Pressable
+              onPress={() => (selectedCategory ? toggleContact(item.id) : undefined)}
+              disabled={disabled}
+              style={({ pressed }) => [
+                styles.contactCard,
+                {
+                  backgroundColor: ui.surface,
+                  borderColor: pressed ? ui.primary + '26' : 'transparent',
+                  opacity: disabled ? 0.55 : 1,
+                },
+              ]}
             >
-              <Text style={styles.contactName}>{item.name || 'ללא שם'}</Text>
-              <Text style={styles.contactPhone}>{item.phoneNumbers[0]?.number || 'ללא מספר'}</Text>
-            </TouchableOpacity>
-          )}
-        />
-      )}
-      <TouchableOpacity
-        style={[styles.addButton, (selectedContacts.size === 0 || !selectedCategory) && { backgroundColor: colors.gray[300] }]}
-        onPress={handleAddGuests}
-        disabled={selectedContacts.size === 0 || !selectedCategory}
-      >
-        <Text style={styles.addButtonText}>הוסף {selectedContacts.size} אורחים</Text>
-      </TouchableOpacity>
+              <View style={styles.contactLeft}>
+                <LinearGradient colors={gradient} style={styles.avatarCircle}>
+                  <Text style={[styles.avatarText, { color: ui.primary }]}>{initials}</Text>
+                </LinearGradient>
+
+                <View style={{ flexShrink: 1 }}>
+                  <Text style={[styles.contactName, { color: ui.text }]} numberOfLines={1}>
+                    {item?.name || 'ללא שם'}
+                  </Text>
+                  <Text style={[styles.contactPhone, { color: ui.muted }]} dir="ltr">
+                    {phone}
+                  </Text>
+                </View>
+              </View>
+
+              <View
+                style={[
+                  styles.selectCircle,
+                  {
+                    borderColor: selected ? ui.primary : ui.border,
+                  },
+                ]}
+              >
+                {selected && <View style={[styles.selectDot, { backgroundColor: ui.primary }]} />}
+              </View>
+            </Pressable>
+          );
+        }}
+      />
+
+      {/* Bottom fixed action */}
+      <View pointerEvents="box-none" style={styles.bottomFixed}>
+        <LinearGradient
+          colors={[
+            'rgba(243,244,246,0)',
+            'rgba(243,244,246,0.95)',
+            'rgba(243,244,246,1)',
+          ]}
+          style={[styles.bottomGradient, { paddingBottom: bottomSafe }]}
+        >
+          <Pressable
+            onPress={handleAddGuests}
+            disabled={!canAdd}
+            style={({ pressed }) => [
+              styles.addBtn,
+              {
+                backgroundColor: ui.surface,
+                borderColor: ui.border,
+                opacity: canAdd ? (pressed ? 0.92 : 1) : 0.75,
+              },
+            ]}
+          >
+            <Ionicons name="people-outline" size={20} color={canAdd ? ui.primary : ui.muted} style={{ marginLeft: 10 }} />
+            <Text style={[styles.addBtnText, { color: canAdd ? ui.primary : ui.muted }]}>
+              הוסף {selectedContacts.size} אורחים
+            </Text>
+          </Pressable>
+        </LinearGradient>
+      </View>
     </View>
   );
 }
@@ -250,105 +450,203 @@ export default function ContactsListScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.gray[100],
-    padding: 16,
+    backgroundColor: '#F3F4F6',
+  },
+
+  header: {
+    borderBottomWidth: 1,
+    paddingHorizontal: 20,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3,
+    ...Platform.select({
+      web: {
+        // RN-web supports sticky in many setups; harmless elsewhere.
+        position: 'sticky' as any,
+        top: 0,
+        zIndex: 30,
+        backdropFilter: 'blur(10px)' as any,
+      },
+    }),
+  },
+  navRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  backBtn: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+  },
+  backText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  navTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    textAlign: 'center',
+    flex: 1,
+    paddingRight: 20,
   },
   topRow: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-    marginBottom: 12,
+    gap: 12,
   },
-  categoryPill: {
+  categoryCard: {
     flex: 1,
+    height: 52,
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    borderWidth: 1,
     flexDirection: 'row-reverse',
     alignItems: 'center',
-    backgroundColor: colors.white,
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    height: 44,
-    borderWidth: 1,
-    borderColor: colors.gray[200],
+    justifyContent: 'space-between',
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 2,
   },
-  categoryPillText: {
-    flex: 1,
-    fontSize: 15,
+  categoryCardText: {
+    fontSize: 14,
     fontWeight: '700',
-    color: colors.text,
     textAlign: 'right',
+    maxWidth: 220,
   },
   switchCategoryButton: {
+    height: 52,
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    backgroundColor: '#fff',
     flexDirection: 'row-reverse',
     alignItems: 'center',
-    backgroundColor: colors.white,
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    height: 44,
-    borderWidth: 1,
-    borderColor: colors.primary,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 2,
   },
   switchCategoryText: {
     fontSize: 14,
-    fontWeight: '800',
-    color: colors.primary,
+    fontWeight: '700',
     textAlign: 'right',
   },
-  contactItem: {
-    padding: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.gray[200],
-    backgroundColor: colors.white,
-    borderRadius: 10,
-    marginBottom: 8,
+  searchWrap: {
+    position: 'relative',
+    justifyContent: 'center',
   },
-  selectedContact: {
-    backgroundColor: colors.primary + '20',
+  searchIcon: {
+    position: 'absolute',
+    right: 14,
+    zIndex: 2,
+  },
+  searchInput: {
+    borderRadius: 14,
+    borderWidth: 1,
+    height: 48,
+    paddingRight: 42,
+    paddingLeft: 14,
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'right',
+  },
+  contactCard: {
+    borderRadius: 18,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 2,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  contactLeft: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+    minWidth: 0,
+  },
+  avatarCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  avatarText: {
+    fontSize: 18,
+    fontWeight: '900',
   },
   contactName: {
     fontSize: 16,
-    fontWeight: 'bold',
-    color: colors.text,
+    fontWeight: '800',
     textAlign: 'right',
   },
   contactPhone: {
-    fontSize: 14,
-    color: colors.text,
+    fontSize: 13,
+    fontWeight: '600',
     textAlign: 'right',
+    marginTop: 2,
   },
-  addButton: {
-    backgroundColor: colors.primary,
-    padding: 16,
-    borderRadius: 12,
+  selectCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 999,
+    borderWidth: 2,
     alignItems: 'center',
-    marginTop: 16,
+    justifyContent: 'center',
+    marginLeft: 10,
   },
-  addButtonText: {
-    color: colors.white,
-    fontSize: 18,
-    fontWeight: 'bold',
+  selectDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 999,
   },
-  searchInput: {
-    backgroundColor: colors.white,
-    borderRadius: 10,
-    padding: 12,
-    fontSize: 16,
-    marginBottom: 12,
+  bottomFixed: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  bottomGradient: {
+    paddingHorizontal: 20,
+    paddingTop: 18,
+  },
+  addBtn: {
+    height: 60,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: colors.gray[300],
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.10,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 6,
+  },
+  addBtnText: {
+    fontSize: 16,
+    fontWeight: '900',
     textAlign: 'right',
-  },
-  categoryLabel: {
-    fontSize: 16,
-    color: colors.primary,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 10,
-  },
-  emptyStateText: {
-    fontSize: 16,
-    color: colors.gray[600],
-    textAlign: 'center',
-    marginBottom: 16,
   },
 }); 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Modal, FlatList, KeyboardAvoidingView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Modal, FlatList, KeyboardAvoidingView, Platform } from 'react-native';
 import { Link, useRouter, useFocusEffect } from 'expo-router';
 import { useUserStore } from '@/store/userStore';
 import { colors } from '@/constants/colors';

@@ -519,6 +519,10 @@ export default function AdminEventNotificationsScreen() {
   const renderCardRow = (row: NotificationSettingRow, variant: 'regular' | 'whatsapp') => {
     const isSaving = Boolean(savingMap[row.notification_type]);
     const enabled = Boolean(row.enabled);
+    const computedSendDate =
+      event?.date && typeof row.days_from_wedding === 'number'
+        ? formatDate(computeSendDate((event as any).date, row.days_from_wedding))
+        : '';
 
     const statusColor = enabled ? '#16A34A' : 'rgba(17,24,39,0.40)';
     const statusColorDark = enabled ? 'rgba(74,222,128,0.95)' : 'rgba(249,250,251,0.45)';
@@ -573,6 +577,14 @@ export default function AdminEventNotificationsScreen() {
             <Text style={[styles.metaOffsetText, { color: ui.muted }]} numberOfLines={1}>
               {formatOffsetLabel(row.days_from_wedding)}
             </Text>
+            {computedSendDate ? (
+              <>
+                <Text style={styles.metaBullet}>•</Text>
+                <Text style={[styles.metaOffsetText, { color: ui.muted }]} numberOfLines={1}>
+                  {computedSendDate}
+                </Text>
+              </>
+            ) : null}
           </View>
         </View>
 
@@ -648,12 +660,21 @@ export default function AdminEventNotificationsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <View style={styles.noteWrap}>
+          <View style={[styles.noteIcon, { backgroundColor: ui.blueIconBg, borderColor: ui.blueIconBorder }]}>
+            <Ionicons name="information-circle-outline" size={16} color={ui.primary} />
+          </View>
+          <Text style={[styles.noteText, { color: ui.muted }]}>
+            נציין כי לפעמים תהיה חריגה של יום/יומיים בביצוע השיחות
+          </Text>
+        </View>
+
         {/* Regular */}
         <View style={styles.sectionHeader}>
-          <Text style={[styles.sectionTitle, { color: ui.text }]}>הודעות רגילות</Text>
           <View style={[styles.sectionIconCircle, { backgroundColor: ui.blueIconBg, borderColor: ui.blueIconBorder }]}>
-            <Ionicons name="mail-outline" size={16} color={ui.primary} />
+            <Ionicons name="mail-outline" size={17} color={ui.primary} />
           </View>
+          <Text style={[styles.sectionTitle, { color: ui.text }]}>הודעות רגילות</Text>
         </View>
         <View style={styles.cardsStack}>
           {regular.map(r => renderCardRow(r, 'regular'))}
@@ -661,10 +682,10 @@ export default function AdminEventNotificationsScreen() {
 
         {/* WhatsApp */}
         <View style={[styles.sectionHeader, { marginTop: 18 }]}>
-          <Text style={[styles.sectionTitle, { color: ui.text }]}>הודעות וואטסאפ</Text>
           <View style={[styles.sectionIconCircle, { backgroundColor: ui.greenIconBg, borderColor: ui.greenIconBorder }]}>
-            <Ionicons name="chatbubble-ellipses-outline" size={16} color={ui.whatsapp} />
+            <Ionicons name="chatbubble-ellipses-outline" size={17} color={ui.whatsapp} />
           </View>
+          <Text style={[styles.sectionTitle, { color: ui.text }]}>הודעות וואטסאפ</Text>
         </View>
         <View style={styles.cardsStack}>
           {whatsapp.map(r => renderCardRow(r, 'whatsapp'))}
@@ -971,14 +992,39 @@ const styles = StyleSheet.create({
   },
   sectionTitle: { fontSize: 18, fontWeight: '900', textAlign: 'right' },
   sectionIconCircle: {
-    width: 34,
-    height: 34,
+    width: 32,
+    height: 32,
     borderRadius: 999,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
   },
   cardsStack: { gap: 16 },
+
+  noteWrap: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    gap: 10,
+    paddingHorizontal: 6,
+    marginTop: -4,
+    marginBottom: -8,
+  },
+  noteIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 999,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  noteText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '800',
+    textAlign: 'right',
+    lineHeight: 18,
+  },
 
   cardRow: {
     position: 'relative',

@@ -10,7 +10,7 @@ import { useUserStore } from '@/store/userStore';
 export default function CoupleTabsLayout() {
   const router = useRouter();
   const { isTabBarVisible, setTabBarVisible } = useLayoutStore();
-  const { userType, isLoggedIn, loading } = useUserStore();
+  const { userType, isLoggedIn, loading, userData } = useUserStore();
 
   useEffect(() => {
     setTabBarVisible(true);
@@ -136,10 +136,21 @@ export default function CoupleTabsLayout() {
       <Tabs.Screen
         name="brideGroomProfile"
         options={{
-          title: "הגדרות",
+          title: "פרופיל",
           tabBarIcon: ({ focused }) => (
             <View style={[styles.iconContainer, focused && styles.activeIconContainer] }>
-              <Ionicons name="settings" size={24} color={focused ? colors.white : colors.gray[500]} />
+              {userData?.avatar_url ? (
+                <Image
+                  source={{ uri: userData.avatar_url }}
+                  style={[
+                    styles.tabAvatar,
+                    { borderColor: focused ? colors.white : 'rgba(0,0,0,0.14)' },
+                  ]}
+                  resizeMode="cover"
+                />
+              ) : (
+                <Ionicons name="person-circle" size={24} color={focused ? colors.white : colors.gray[500]} />
+              )}
             </View>
           ),
         }}
@@ -188,6 +199,13 @@ const styles = StyleSheet.create({
   logoHeader: {
     width: 320,
     height: 80,
+  },
+  tabAvatar: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 2,
+    backgroundColor: colors.gray[100],
   },
 });
 
