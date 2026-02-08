@@ -1,12 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Modal, TextInput, Keyboard, TouchableWithoutFeedback } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Platform, ActivityIndicator } from 'react-native';
 import { useUserStore } from '@/store/userStore';
 import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/colors';
-import { supabase } from '@/lib/supabase';
-import { BlurView } from 'expo-blur';
+import { supabase, supabaseAdmin } from '@/lib/supabase';
 import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
 
 interface NotificationSetting {
   id?: string;
@@ -38,14 +38,19 @@ export default function BrideGroomSettings() {
   const [notificationsY, setNotificationsY] = useState<number | null>(null);
   const [didAutoScroll, setDidAutoScroll] = useState(false);
   const [weddingDate, setWeddingDate] = useState<Date | null>(null);
-  const [eventMeta, setEventMeta] = useState<{ id: string; title: string; date: Date; groomName?: string; brideName?: string; rsvpLink?: string } | null>(null);
+  const [eventMeta, setEventMeta] = useState<{
+    id: string;
+    title: string;
+    date: Date;
+    groomName?: string;
+    brideName?: string;
+    rsvpLink?: string;
+    image?: string;
+  } | null>(null);
   const [notifications, setNotifications] = useState<NotificationSetting[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editModalVisible, setEditModalVisible] = useState(false);
-  const [editingNotification, setEditingNotification] = useState<NotificationSetting | null>(null);
-  const [editedMessage, setEditedMessage] = useState('');
-  const [timingMode, setTimingMode] = useState<'before' | 'after'>('before');
-  const [editedAbsDays, setEditedAbsDays] = useState<string>('0');
+  const [coverUploading, setCoverUploading] = useState(false);
+
 
   const notificationUI = {
     primary: '#3b82f6',
@@ -132,6 +137,8 @@ export default function BrideGroomSettings() {
   useFocusEffect(
     React.useCallback(() => {
       if (userData?.event_id && !loading) {
+        // Refresh event meta too (image/date/names) so cover updates immediately after editing elsewhere.
+        fetchWeddingDate();
         fetchOrCreateNotificationSettings();
       }
     }, [userData?.event_id, loading])
@@ -157,7 +164,7 @@ export default function BrideGroomSettings() {
     
     const { data, error } = await supabase
       .from('events')
-        .select('id, title, date, groom_name, bride_name, rsvp_link')
+        .select('id, title, date, groom_name, bride_name, rsvp_link, image')
       .eq('id', userData.event_id)
       .single();
     
@@ -169,7 +176,8 @@ export default function BrideGroomSettings() {
         date: new Date(data.date),
         groomName: (data as any).groom_name ?? undefined,
         brideName: (data as any).bride_name ?? undefined,
-          rsvpLink: (data as any).rsvp_link ?? undefined,
+        rsvpLink: (data as any).rsvp_link ?? undefined,
+        image: (data as any).image ?? undefined,
       });
     }
   };
@@ -374,6 +382,144 @@ export default function BrideGroomSettings() {
 
   // Removed navigation to separate message editor; editing happens in modal now
 
+  const guessImageExt = (asset: any): string => {
+    const fileName = String(asset?.fileName ?? '');
+    const uri = String(asset?.uri ?? '');
+    const mimeType = String(asset?.mimeType ?? '');
+
+    const fromMime = mimeType.split('/')[1]?.toLowerCase();
+    if (fromMime && ['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif'].includes(fromMime)) {
+      return fromMime === 'jpeg' ? 'jpg' : fromMime;
+    }
+
+    const candidate = (fileName || uri).split('?')[0];
+    const dot = candidate.lastIndexOf('.');
+    if (dot !== -1 && dot < candidate.length - 1) {
+      const ext = candidate.slice(dot + 1).toLowerCase();
+      if (['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif'].includes(ext)) {
+        return ext === 'jpeg' ? 'jpg' : ext;
+      }
+    }
+
+    return 'jpg';
+  };
+
+  const base64ToUint8Array = (base64: string) => {
+    const cleaned = String(base64 || '').replace(/[^A-Za-z0-9+/=]/g, '');
+    const padding = cleaned.endsWith('==') ? 2 : cleaned.endsWith('=') ? 1 : 0;
+    const byteLength = (cleaned.length * 3) / 4 - padding;
+    const bytes = new Uint8Array(byteLength);
+
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+    let byteIndex = 0;
+
+    for (let i = 0; i < cleaned.length; i += 4) {
+      const c1 = chars.indexOf(cleaned[i]);
+      const c2 = chars.indexOf(cleaned[i + 1]);
+      const c3 = chars.indexOf(cleaned[i + 2]);
+      const c4 = chars.indexOf(cleaned[i + 3]);
+
+      const triple = (c1 << 18) | (c2 << 12) | ((c3 & 63) << 6) | (c4 & 63);
+      if (byteIndex < byteLength) bytes[byteIndex++] = (triple >> 16) & 0xff;
+      if (byteIndex < byteLength) bytes[byteIndex++] = (triple >> 8) & 0xff;
+      if (byteIndex < byteLength) bytes[byteIndex++] = triple & 0xff;
+    }
+
+    return bytes;
+  };
+
+  const guessContentType = (ext: string, fallback?: string | null) => {
+    if (fallback) return fallback;
+    switch (ext) {
+      case 'png':
+        return 'image/png';
+      case 'webp':
+        return 'image/webp';
+      case 'gif':
+        return 'image/gif';
+      case 'heic':
+      case 'heif':
+        return 'image/heic';
+      case 'jpg':
+      default:
+        return 'image/jpeg';
+    }
+  };
+
+  const pickAndUploadEventCover = async () => {
+    const eventId = String(eventMeta?.id ?? userData?.event_id ?? '').trim();
+    if (!eventId) {
+      Alert.alert('שגיאה', 'לא נמצא מזהה אירוע לעדכון תמונה');
+      return;
+    }
+
+    try {
+      if (Platform.OS !== 'web') {
+        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!permission.granted) {
+          Alert.alert('הרשאה נדרשת', 'כדי לבחור תמונה יש לאשר גישה לגלריה');
+          return;
+        }
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [16, 9],
+        quality: 0.85,
+        base64: true,
+      });
+
+      if (result.canceled || !result.assets?.[0]) return;
+      const asset = result.assets[0] as any;
+
+      const ext = guessImageExt(asset);
+      const filePath = `events/${eventId}/${Date.now()}.${ext}`;
+      const contentType = guessContentType(ext, asset?.mimeType);
+
+      setCoverUploading(true);
+
+      let uploadBody: Blob | Uint8Array | null = null;
+      if (asset?.base64) {
+        uploadBody = base64ToUint8Array(asset.base64);
+      } else {
+        const res = await fetch(asset.uri);
+        uploadBody = await res.blob();
+      }
+      if (!uploadBody) throw new Error('חסרים נתוני תמונה להעלאה');
+
+      const { error: uploadError } = await supabaseAdmin.storage
+        .from('event-images')
+        .upload(filePath, uploadBody as any, { upsert: true, contentType });
+      if (uploadError) throw uploadError;
+
+      const { data: publicData } = supabase.storage.from('event-images').getPublicUrl(filePath);
+      const publicUrl = publicData.publicUrl;
+
+      let finalUrl = publicUrl;
+      try {
+        const probe = await fetch(publicUrl, { method: 'GET' });
+        if (!probe.ok) throw new Error('Public URL not accessible');
+      } catch {
+        const { data: signedData } = await supabaseAdmin.storage
+          .from('event-images')
+          .createSignedUrl(filePath, 60 * 60 * 24 * 30);
+        if (signedData?.signedUrl) finalUrl = signedData.signedUrl;
+      }
+
+      const { error: updateError } = await supabase.from('events').update({ image: finalUrl }).eq('id', eventId);
+      if (updateError) throw updateError;
+
+      setEventMeta((prev) => (prev ? { ...prev, image: finalUrl } : prev));
+      Alert.alert('נשמר', 'תמונת האירוע עודכנה');
+    } catch (e: any) {
+      const message = e?.message ? String(e.message) : 'שגיאה לא ידועה';
+      Alert.alert('שגיאה', `לא ניתן להעלות תמונת אירוע.\n\n${message}`);
+    } finally {
+      setCoverUploading(false);
+    }
+  };
+
   const handleLogout = async () => {
     await logout();
     router.replace('/login');
@@ -383,100 +529,37 @@ export default function BrideGroomSettings() {
   const brideName = String(eventMeta?.brideName ?? '').trim();
   const weddingNames = groomName && brideName ? `${groomName} ו${brideName}` : '';
 
-  const openEditModal = (notification: NotificationSetting) => {
-    const rawDays = notification.days_from_wedding ?? 0;
-    setEditingNotification(notification);
-    setEditedMessage(notification.message_content || '');
-    setTimingMode(rawDays < 0 ? 'before' : 'after');
-    setEditedAbsDays(String(Math.abs(rawDays)));
-    setEditModalVisible(true);
+  const getEventCoverSource = () => {
+    const title = String(eventMeta?.title ?? '').toLowerCase();
+
+    const hasBarMitzvah =
+      title.includes('בר מצו') || title.includes('בר-מצו') || title.includes('bar mitz');
+    const hasBaby =
+      title.includes('ברית') ||
+      title.includes('בריתה') ||
+      title.includes('תינוק') ||
+      title.includes('תינוקת') ||
+      title.includes('baby') ||
+      title.includes('בייבי');
+
+    const img = String(eventMeta?.image ?? '').trim();
+    if (/^https?:\/\//i.test(img)) return { uri: img };
+
+    if (hasBarMitzvah) return require('../../assets/images/Bar Mitzvah.jpg');
+    if (hasBaby) return require('../../assets/images/baby.jpg');
+
+    const hasCoupleNames = Boolean(eventMeta?.groomName || eventMeta?.brideName);
+    const isWedding = hasCoupleNames || title.includes('חתונה') || title.includes('wedding');
+    if (isWedding) return require('../../assets/images/bride and groom.jpg');
+
+    return require('../../assets/images/wedding.jpg');
   };
 
-  const handleSaveEdit = async () => {
-    if (!editingNotification || !userData?.event_id) return;
-
-    try {
-      const abs = Number.parseInt((editedAbsDays || '').trim(), 10);
-      const signed =
-        Number.isFinite(abs) ? (abs === 0 ? 0 : timingMode === 'before' ? -Math.abs(abs) : Math.abs(abs)) : NaN;
-      const daysToSave = Number.isFinite(signed) ? signed : (editingNotification.days_from_wedding ?? 0);
-
-      if (editingNotification.id) {
-        const updatePayload: any = { message_content: editedMessage, days_from_wedding: daysToSave, channel: editingNotification.channel };
-        let { error } = await supabase
-          .from('notification_settings')
-          .update(updatePayload)
-          .eq('id', editingNotification.id);
-        if (error && isMissingColumn(error, 'channel')) {
-          delete updatePayload.channel;
-          const retry = await supabase
-            .from('notification_settings')
-            .update(updatePayload)
-            .eq('id', editingNotification.id);
-          error = retry.error as any;
-        }
-
-        if (error) {
-          console.error('Error updating notification:', error);
-          Alert.alert('שגיאה', 'לא ניתן לעדכן את ההודעה');
-          return;
-        }
-
-        setNotifications(prev =>
-          prev.map(n =>
-            n.notification_type === editingNotification.notification_type
-              ? {
-                  ...n,
-                  message_content: editedMessage,
-                  days_from_wedding: daysToSave,
-                }
-              : n
-          )
-        );
-      } else {
-        const insertPayload: any = {
-          event_id: userData.event_id,
-          notification_type: editingNotification.notification_type,
-          title: editingNotification.title,
-          message_content: editedMessage,
-          enabled: editingNotification.enabled ?? false,
-          days_from_wedding: daysToSave,
-          channel: editingNotification.channel || 'SMS',
-        };
-        let { data, error } = await supabase
-          .from('notification_settings')
-          .insert(insertPayload)
-          .select()
-          .single();
-        if (error && isMissingColumn(error, 'channel')) {
-          delete insertPayload.channel;
-          const retry = await supabase
-            .from('notification_settings')
-            .insert(insertPayload)
-            .select()
-            .single();
-          data = retry.data as any;
-          error = retry.error as any;
-        }
-
-        if (error) {
-          console.error('Error creating notification:', error);
-          Alert.alert('שגיאה', 'לא ניתן ליצור את ההודעה');
-          return;
-        }
-
-        setNotifications(prev =>
-          prev.map(n =>
-            n.notification_type === editingNotification.notification_type ? data as any : n
-          )
-        );
-      }
-
-      setEditModalVisible(false);
-    } catch (e) {
-      console.error('Error saving edit:', e);
-      Alert.alert('שגיאה', 'לא ניתן לשמור את ההודעה');
-    }
+  const openEditScreen = (notification: NotificationSetting) => {
+    router.push({
+      pathname: '/(couple)/notification-editor',
+      params: { notificationType: notification.notification_type },
+    });
   };
 
   if (loading) {
@@ -512,7 +595,7 @@ export default function BrideGroomSettings() {
                 { backgroundColor: notificationUI.card, borderColor: notificationUI.border },
                 variant === 'whatsapp' ? styles.notificationCardWhatsapp : null,
               ]}
-              onPress={() => openEditModal(notification)}
+              onPress={() => openEditScreen(notification)}
               accessibilityRole="button"
               accessibilityLabel={`עריכת ${notification.title}`}
             >
@@ -585,6 +668,30 @@ export default function BrideGroomSettings() {
           <TouchableOpacity style={styles.editProfileIconButton} onPress={() => router.push('/profile-editor')}>
             <Ionicons name="create-outline" size={20} color={colors.primary} />
           </TouchableOpacity>
+
+          <View style={styles.eventCoverWrap}>
+            <Image
+              source={getEventCoverSource()}
+              style={styles.eventCoverImg}
+              contentFit="cover"
+              transition={150}
+            />
+            <TouchableOpacity
+              style={[styles.coverEditBtn, coverUploading && styles.coverEditBtnDisabled]}
+              onPress={pickAndUploadEventCover}
+              disabled={coverUploading}
+              accessibilityRole="button"
+              accessibilityLabel="עריכת תמונת אירוע"
+            >
+              {coverUploading ? (
+                <ActivityIndicator size="small" color={colors.white} />
+              ) : (
+                <Ionicons name="camera" size={18} color={colors.white} />
+              )}
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.profileContent}>
           
           <View style={styles.profileIconContainer}>
             {userData?.avatar_url ? (
@@ -601,6 +708,7 @@ export default function BrideGroomSettings() {
           <Text style={styles.profileName}>{weddingNames || userData?.name}</Text>
           {weddingNames ? <Text style={styles.profileSubName}>{userData?.name}</Text> : null}
           <Text style={styles.profileEmail}>{userData?.email}</Text>
+          </View>
         </View>
 
         {/* Removed separate message editor button; editing per reminder row */}
@@ -624,198 +732,6 @@ export default function BrideGroomSettings() {
           <Text style={styles.logoutButtonText}>התנתק</Text>
         </TouchableOpacity>
       </ScrollView>
-
-      {/* Unified Edit Modal */}
-      <Modal
-        animationType="fade"
-        transparent={true}
-        visible={editModalVisible}
-        onRequestClose={() => setEditModalVisible(false)}
-      >
-        <KeyboardAvoidingView
-          style={styles.modalOverlay}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 24 : 0}
-        >
-          {Platform.OS === 'web' ? (
-            <View
-              style={[
-                StyleSheet.absoluteFillObject,
-                { backdropFilter: 'blur(10px)', backgroundColor: 'rgba(107,114,128,0.50)' },
-              ]}
-            />
-          ) : (
-            <BlurView intensity={18} tint="default" style={StyleSheet.absoluteFillObject} />
-          )}
-
-          <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-            <View style={styles.modalOverlayTouchable} />
-          </TouchableWithoutFeedback>
-
-          <ScrollView
-            style={styles.modalScroll}
-            contentContainerStyle={styles.modalScrollContent}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-          >
-            <View style={styles.modalCard}>
-              {/* Header */}
-              <View style={styles.modalHeader}>
-                <TouchableOpacity
-                  style={styles.modalCloseBtn}
-                  onPress={() => {
-                    Keyboard.dismiss();
-                    setEditModalVisible(false);
-                  }}
-                  activeOpacity={0.9}
-                  accessibilityRole="button"
-                  accessibilityLabel="סגירה"
-                >
-                  <Ionicons name="close" size={18} color={'rgba(107,114,128,0.95)'} />
-                </TouchableOpacity>
-
-                <View style={styles.modalHeaderTitles}>
-                  <Text style={styles.modalTitle}>עריכת הודעה</Text>
-                  <Text style={styles.modalSubtitle} numberOfLines={2}>
-                    {editingNotification?.title ?? ''}
-                  </Text>
-                </View>
-                <View style={{ width: 40 }} />
-              </View>
-
-              <View style={styles.modalDivider} />
-
-              {/* Body */}
-              <View style={styles.modalBody}>
-                <View style={styles.block}>
-                  <Text style={styles.blockLabel}>תיזמון ההודעה</Text>
-                  <View style={styles.segmentWrap}>
-                    <TouchableOpacity
-                      style={[styles.segmentBtn, timingMode === 'before' ? styles.segmentBtnActive : null]}
-                      onPress={() => setTimingMode('before')}
-                      activeOpacity={0.92}
-                      accessibilityRole="button"
-                      accessibilityLabel="לפני האירוע"
-                    >
-                      <Text style={[styles.segmentText, timingMode === 'before' ? styles.segmentTextActive : null]}>
-                        לפני האירוע
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.segmentBtn, timingMode === 'after' ? styles.segmentBtnActive : null]}
-                      onPress={() => setTimingMode('after')}
-                      activeOpacity={0.92}
-                      accessibilityRole="button"
-                      accessibilityLabel="אחרי האירוע"
-                    >
-                      <Text style={[styles.segmentText, timingMode === 'after' ? styles.segmentTextActive : null]}>
-                        אחרי האירוע
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  <View style={styles.timingRow}>
-                    <View style={styles.daysInputWrap}>
-                      <Ionicons name="calendar-outline" size={18} color={'rgba(107,114,128,0.95)'} style={styles.daysIcon} />
-                      <TextInput
-                        value={editedAbsDays}
-                        onChangeText={setEditedAbsDays}
-                        placeholder="0"
-                        placeholderTextColor={'rgba(107,114,128,0.65)'}
-                        style={styles.daysInput}
-                        keyboardType="numeric"
-                        textAlign="center"
-                      />
-                      <Text style={styles.daysSuffix}>ימים</Text>
-                    </View>
-
-                    <View style={styles.computedPill}>
-                      <Text style={styles.computedLabel}>תאריך מחושב</Text>
-                      <Text style={styles.computedValue}>
-                        {(() => {
-                          const abs = Number.parseInt((editedAbsDays || '').trim(), 10);
-                          const signed =
-                            Number.isFinite(abs) ? (abs === 0 ? 0 : timingMode === 'before' ? -Math.abs(abs) : Math.abs(abs)) : 0;
-                          return weddingDate ? formatDate(computeSendDate(signed)) : '';
-                        })()}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-
-                <View style={styles.bodyDivider} />
-
-                <View style={styles.block}>
-                  <View style={styles.messageHeaderRow}>
-                    <View style={styles.messageTools}>
-                      <TouchableOpacity
-                        style={styles.toolBtn}
-                        activeOpacity={0.92}
-                        onPress={() => setEditedMessage(prev => `${prev}${prev ? ' ' : ''}{{name}}`)}
-                        accessibilityRole="button"
-                        accessibilityLabel="הוסף שם"
-                      >
-                        <Ionicons name="person-add-outline" size={16} color={'rgba(107,114,128,0.95)'} />
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={styles.toolBtn}
-                        activeOpacity={0.92}
-                        onPress={() => setEditedMessage(prev => `${prev}${prev ? ' ' : ''}{{event_date}}`)}
-                        accessibilityRole="button"
-                        accessibilityLabel="הוסף תאריך"
-                      >
-                        <Ionicons name="calendar-outline" size={16} color={'rgba(107,114,128,0.95)'} />
-                      </TouchableOpacity>
-                    </View>
-                    <Text style={styles.blockLabel}>תוכן ההודעה</Text>
-                  </View>
-
-                  <View style={styles.textareaWrap}>
-                    <TextInput
-                      style={styles.textarea}
-                      value={editedMessage}
-                      onChangeText={setEditedMessage}
-                      placeholder="הקלד את הודעתך כאן..."
-                      placeholderTextColor={'rgba(107,114,128,0.75)'}
-                      multiline
-                      numberOfLines={5}
-                      textAlign="right"
-                      textAlignVertical="top"
-                    />
-                    <View style={styles.charCountPill}>
-                      <Text style={styles.charCountText}>{`${editedMessage.length}/160 תווים`}</Text>
-                    </View>
-                  </View>
-                </View>
-              </View>
-
-              {/* Footer */}
-              <View style={styles.modalFooter}>
-                <TouchableOpacity
-                  style={styles.footerBtnSecondary}
-                  onPress={() => setEditModalVisible(false)}
-                  activeOpacity={0.92}
-                  accessibilityRole="button"
-                  accessibilityLabel="ביטול"
-                >
-                  <Text style={styles.footerBtnSecondaryText}>ביטול</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.footerBtnPrimary}
-                  onPress={handleSaveEdit}
-                  activeOpacity={0.92}
-                  accessibilityRole="button"
-                  accessibilityLabel="שמור שינויים"
-                >
-                  <Ionicons name="save-outline" size={16} color="#fff" />
-                  <Text style={styles.footerBtnPrimaryText}>שמור שינויים</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </ScrollView>
-        </KeyboardAvoidingView>
-      </Modal>
     </View>
   );
 }
@@ -844,8 +760,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     marginHorizontal: 20,
     borderRadius: 20,
-    paddingVertical: 32,
-    paddingHorizontal: 24,
     alignItems: 'center',
     shadowColor: colors.richBlack,
     shadowOffset: { width: 0, height: 2 },
@@ -854,8 +768,42 @@ const styles = StyleSheet.create({
     elevation: 2,
     marginBottom: 32,
     position: 'relative',
+    overflow: 'hidden',
+  },
+  eventCoverWrap: {
+    width: '100%',
+    height: 140,
+    backgroundColor: colors.gray[100],
+    position: 'relative',
+  },
+  eventCoverImg: {
+    width: '100%',
+    height: '100%',
+  },
+  coverEditBtn: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(17,24,39,0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.55)',
+  },
+  coverEditBtnDisabled: {
+    opacity: 0.75,
+  },
+  profileContent: {
+    width: '100%',
+    alignItems: 'center',
+    paddingVertical: 24,
+    paddingHorizontal: 24,
   },
   profileIconContainer: {
+    marginTop: -44,
     marginBottom: 16,
   },
   profileAvatar: {

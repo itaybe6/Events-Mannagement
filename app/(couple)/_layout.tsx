@@ -3,9 +3,31 @@ import { Tabs, useRouter } from "expo-router";
 import { colors } from "@/constants/colors";
 import { Ionicons } from "@expo/vector-icons";
 import { Image, Platform, StyleSheet, View, TouchableOpacity } from "react-native";
+import { Image as ExpoImage } from 'expo-image';
 
 import { useLayoutStore } from '@/store/layoutStore';
 import { useUserStore } from '@/store/userStore';
+
+function ProfileTabIcon({ focused }: { focused: boolean }) {
+  const avatarUrl = useUserStore(s => s.userData?.avatar_url);
+
+  return (
+    <View style={[styles.iconContainer, focused && styles.activeIconContainer]}>
+      {avatarUrl ? (
+        <ExpoImage
+          key={avatarUrl}
+          source={{ uri: avatarUrl }}
+          style={[styles.tabAvatar, { borderColor: focused ? colors.white : 'rgba(0,0,0,0.14)' }]}
+          contentFit="cover"
+          cachePolicy="none"
+          transition={0}
+        />
+      ) : (
+        <Ionicons name="person-circle" size={24} color={focused ? colors.white : colors.gray[500]} />
+      )}
+    </View>
+  );
+}
 
 export default function CoupleTabsLayout() {
   const router = useRouter();
@@ -137,22 +159,7 @@ export default function CoupleTabsLayout() {
         name="brideGroomProfile"
         options={{
           title: "פרופיל",
-          tabBarIcon: ({ focused }) => (
-            <View style={[styles.iconContainer, focused && styles.activeIconContainer] }>
-              {userData?.avatar_url ? (
-                <Image
-                  source={{ uri: userData.avatar_url }}
-                  style={[
-                    styles.tabAvatar,
-                    { borderColor: focused ? colors.white : 'rgba(0,0,0,0.14)' },
-                  ]}
-                  resizeMode="cover"
-                />
-              ) : (
-                <Ionicons name="person-circle" size={24} color={focused ? colors.white : colors.gray[500]} />
-              )}
-            </View>
-          ),
+          tabBarIcon: ({ focused }) => <ProfileTabIcon focused={focused} />,
         }}
       />
 
@@ -161,6 +168,20 @@ export default function CoupleTabsLayout() {
         name="TablesList"
         options={{
           href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="notification-editor"
+        options={{
+          href: null,
+          headerShown: false,
+        }}
+      />
+      <Tabs.Screen
+        name="edit-category"
+        options={{
+          href: null,
+          headerShown: false,
         }}
       />
     </Tabs>

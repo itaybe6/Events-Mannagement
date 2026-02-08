@@ -1,15 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Alert, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/colors';
-import { supabase } from '@/lib/supabase';
+import { supabase, supabaseAdmin } from '@/lib/supabase';
 import { useUserStore } from '@/store/userStore';
+import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
+import { avatarService } from '@/lib/services/avatarService';
 
 export default function ProfileEditor() {
   const router = useRouter();
   const { userData, updateUserData } = useUserStore();
   const [loading, setLoading] = useState(false);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [coverUploading, setCoverUploading] = useState(false);
+  const [eventCoverUrl, setEventCoverUrl] = useState<string>('');
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -27,6 +33,212 @@ export default function ProfileEditor() {
       }));
     }
   }, [userData]);
+
+  useEffect(() => {
+    const loadCover = async () => {
+      const eventId = String(userData?.event_id ?? '').trim();
+      if (!eventId) {
+        setEventCoverUrl('');
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('events')
+        .select('image')
+        .eq('id', eventId)
+        .maybeSingle();
+
+      if (!error && data) {
+        setEventCoverUrl(String((data as any).image ?? ''));
+      }
+    };
+
+    loadCover();
+  }, [userData?.event_id]);
+
+  const guessImageExt = (asset: any): string => {
+    const fileName = String(asset?.fileName ?? '');
+    const uri = String(asset?.uri ?? '');
+    const mimeType = String(asset?.mimeType ?? '');
+
+    const fromMime = mimeType.split('/')[1]?.toLowerCase();
+    if (fromMime && ['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif'].includes(fromMime)) {
+      return fromMime === 'jpeg' ? 'jpg' : fromMime;
+    }
+
+    const candidate = (fileName || uri).split('?')[0];
+    const dot = candidate.lastIndexOf('.');
+    if (dot !== -1 && dot < candidate.length - 1) {
+      const ext = candidate.slice(dot + 1).toLowerCase();
+      if (['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif'].includes(ext)) {
+        return ext === 'jpeg' ? 'jpg' : ext;
+      }
+    }
+
+    return 'jpg';
+  };
+
+  const base64ToUint8Array = (base64: string) => {
+    const cleaned = String(base64 || '').replace(/[^A-Za-z0-9+/=]/g, '');
+    const padding = cleaned.endsWith('==') ? 2 : cleaned.endsWith('=') ? 1 : 0;
+    const byteLength = (cleaned.length * 3) / 4 - padding;
+    const bytes = new Uint8Array(byteLength);
+
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+    let byteIndex = 0;
+
+    for (let i = 0; i < cleaned.length; i += 4) {
+      const c1 = chars.indexOf(cleaned[i]);
+      const c2 = chars.indexOf(cleaned[i + 1]);
+      const c3 = chars.indexOf(cleaned[i + 2]);
+      const c4 = chars.indexOf(cleaned[i + 3]);
+
+      const triple = (c1 << 18) | (c2 << 12) | ((c3 & 63) << 6) | (c4 & 63);
+      if (byteIndex < byteLength) bytes[byteIndex++] = (triple >> 16) & 0xff;
+      if (byteIndex < byteLength) bytes[byteIndex++] = (triple >> 8) & 0xff;
+      if (byteIndex < byteLength) bytes[byteIndex++] = triple & 0xff;
+    }
+
+    return bytes;
+  };
+
+  const guessContentType = (ext: string, fallback?: string | null) => {
+    if (fallback) return fallback;
+    switch (ext) {
+      case 'png':
+        return 'image/png';
+      case 'webp':
+        return 'image/webp';
+      case 'gif':
+        return 'image/gif';
+      case 'heic':
+      case 'heif':
+        return 'image/heic';
+      case 'jpg':
+      default:
+        return 'image/jpeg';
+    }
+  };
+
+  const pickAndUploadAvatar = async () => {
+    if (!userData?.id) return;
+
+    try {
+      if (Platform.OS !== 'web') {
+        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!permission.granted) {
+          Alert.alert('הרשאה נדרשת', 'כדי לבחור תמונה יש לאשר גישה לגלריה');
+          return;
+        }
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.85,
+        base64: true,
+      });
+
+      if (result.canceled || !result.assets?.[0]) return;
+      const asset = result.assets[0] as any;
+
+      setAvatarUploading(true);
+      const url = await avatarService.uploadUserAvatar(userData.id, {
+        uri: asset.uri,
+        fileName: asset.fileName,
+        mimeType: asset.mimeType,
+        file: asset.file,
+        base64: asset.base64,
+      });
+
+      // Update local store immediately without triggering extra profile-table updates.
+      useUserStore.setState((state) => ({
+        userData: state.userData ? { ...state.userData, avatar_url: url } : state.userData,
+      }));
+
+      Alert.alert('נשמר', 'תמונת הפרופיל עודכנה');
+    } catch (e: any) {
+      const message = e?.message ? String(e.message) : 'שגיאה לא ידועה';
+      Alert.alert('שגיאה', `לא ניתן לעדכן תמונת פרופיל.\n\n${message}`);
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
+
+  const pickAndUploadEventCover = async () => {
+    const eventId = String(userData?.event_id ?? '').trim();
+    if (!eventId) {
+      Alert.alert('שגיאה', 'לא נמצא אירוע למשתמש הזה (event_id חסר)');
+      return;
+    }
+
+    try {
+      if (Platform.OS !== 'web') {
+        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!permission.granted) {
+          Alert.alert('הרשאה נדרשת', 'כדי לבחור תמונה יש לאשר גישה לגלריה');
+          return;
+        }
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [16, 9],
+        quality: 0.85,
+        base64: true,
+      });
+
+      if (result.canceled || !result.assets?.[0]) return;
+      const asset = result.assets[0] as any;
+
+      const ext = guessImageExt(asset);
+      const filePath = `events/${eventId}/${Date.now()}.${ext}`;
+      const contentType = guessContentType(ext, asset?.mimeType);
+
+      setCoverUploading(true);
+
+      let uploadBody: Blob | Uint8Array | null = null;
+      if (asset?.base64) {
+        uploadBody = base64ToUint8Array(asset.base64);
+      } else {
+        const res = await fetch(asset.uri);
+        uploadBody = await res.blob();
+      }
+      if (!uploadBody) throw new Error('חסרים נתוני תמונה להעלאה');
+
+      const { error: uploadError } = await supabaseAdmin.storage
+        .from('event-images')
+        .upload(filePath, uploadBody as any, { upsert: true, contentType });
+      if (uploadError) throw uploadError;
+
+      const { data: publicData } = supabase.storage.from('event-images').getPublicUrl(filePath);
+      const publicUrl = publicData.publicUrl;
+
+      let finalUrl = publicUrl;
+      try {
+        const probe = await fetch(publicUrl, { method: 'GET' });
+        if (!probe.ok) throw new Error('Public URL not accessible');
+      } catch {
+        const { data: signedData } = await supabaseAdmin.storage
+          .from('event-images')
+          .createSignedUrl(filePath, 60 * 60 * 24 * 30);
+        if (signedData?.signedUrl) finalUrl = signedData.signedUrl;
+      }
+
+      const { error: updateError } = await supabase.from('events').update({ image: finalUrl }).eq('id', eventId);
+      if (updateError) throw updateError;
+
+      setEventCoverUrl(finalUrl);
+      Alert.alert('נשמר', 'תמונת האירוע עודכנה');
+    } catch (e: any) {
+      const message = e?.message ? String(e.message) : 'שגיאה לא ידועה';
+      Alert.alert('שגיאה', `לא ניתן לעדכן תמונת אירוע.\n\n${message}`);
+    } finally {
+      setCoverUploading(false);
+    }
+  };
 
   const validateForm = () => {
     if (!formData.name.trim()) {
@@ -121,11 +333,19 @@ export default function ProfileEditor() {
 
       // Update local user data
       if (userData) {
-        updateUserData({
-          ...userData,
-          name: formData.name.trim(),
-          email: formData.email.trim(),
-        });
+        const nextName = formData.name.trim();
+        const nextEmail = formData.email.trim();
+        const nameChanged = nextName !== (userData.name || '');
+        const emailChanged = nextEmail !== (userData.email || '');
+
+        // Only sync local store (and profile table) when name/email changed.
+        // Password change should NOT trigger a profile-table update.
+        if (nameChanged || emailChanged) {
+          await updateUserData({
+            name: nextName,
+            email: nextEmail,
+          });
+        }
       }
 
       Alert.alert('✅ עודכן בהצלחה', 'הפרטים האישיים עודכנו', [
@@ -170,6 +390,102 @@ export default function ProfileEditor() {
       </View>
 
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+        {/* Avatar Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>תמונת פרופיל</Text>
+
+          <View style={styles.avatarRow}>
+            <TouchableOpacity
+              style={styles.avatarBtn}
+              onPress={pickAndUploadAvatar}
+              disabled={avatarUploading}
+              accessibilityRole="button"
+              accessibilityLabel="בחירת תמונת פרופיל"
+            >
+              {userData?.avatar_url ? (
+                <Image
+                  source={{ uri: userData.avatar_url }}
+                  style={styles.avatarImg}
+                  contentFit="cover"
+                  cachePolicy="none"
+                  recyclingKey={userData.avatar_url}
+                  transition={120}
+                />
+              ) : (
+                <View style={styles.avatarPlaceholder}>
+                  <Ionicons name="person" size={34} color={colors.primary} />
+                </View>
+              )}
+              <View style={styles.avatarBadge}>
+                {avatarUploading ? (
+                  <ActivityIndicator size="small" color={colors.white} />
+                ) : (
+                  <Ionicons name="camera" size={16} color={colors.white} />
+                )}
+              </View>
+            </TouchableOpacity>
+
+            <View style={styles.avatarMeta}>
+              <Text style={styles.avatarHint} numberOfLines={2}>
+                לחץ על התמונה כדי לבחור תמונה מהגלריה
+              </Text>
+              <TouchableOpacity
+                style={[styles.avatarActionBtn, avatarUploading && styles.avatarActionBtnDisabled]}
+                onPress={pickAndUploadAvatar}
+                disabled={avatarUploading}
+              >
+                <Text style={styles.avatarActionText}>{avatarUploading ? 'מעלה...' : 'בחר תמונה'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+
+        {/* Event Cover Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>תמונת אירוע</Text>
+          <Text style={styles.sectionSubtitle}>עדכון תמונת קאבר לאירוע (16:9)</Text>
+
+          <View style={styles.coverWrap}>
+            {eventCoverUrl && /^https?:\/\//i.test(eventCoverUrl) ? (
+              <Image
+                source={{ uri: eventCoverUrl }}
+                style={styles.coverImg}
+                contentFit="cover"
+                cachePolicy="none"
+                recyclingKey={eventCoverUrl}
+                transition={150}
+              />
+            ) : (
+              <View style={styles.coverPlaceholder}>
+                <Ionicons name="image-outline" size={34} color={colors.primary} />
+                <Text style={styles.coverPlaceholderText}>אין תמונת אירוע</Text>
+              </View>
+            )}
+
+            <TouchableOpacity
+              style={[styles.coverEditBtn, coverUploading && styles.coverEditBtnDisabled]}
+              onPress={pickAndUploadEventCover}
+              disabled={coverUploading}
+              accessibilityRole="button"
+              accessibilityLabel="בחירת תמונת אירוע"
+            >
+              {coverUploading ? (
+                <ActivityIndicator size="small" color={colors.white} />
+              ) : (
+                <Ionicons name="camera" size={16} color={colors.white} />
+              )}
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity
+            style={[styles.coverActionBtn, coverUploading && styles.coverActionBtnDisabled]}
+            onPress={pickAndUploadEventCover}
+            disabled={coverUploading}
+          >
+            <Text style={styles.coverActionText}>{coverUploading ? 'מעלה...' : 'בחר תמונה'}</Text>
+          </TouchableOpacity>
+        </View>
+
         {/* Basic Info Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>פרטים בסיסיים</Text>
@@ -349,5 +665,129 @@ const styles = StyleSheet.create({
     color: colors.text,
     backgroundColor: colors.gray[50],
     writingDirection: 'rtl',
+  },
+  avatarRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 14,
+    paddingTop: 6,
+  },
+  avatarBtn: {
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+    overflow: 'hidden',
+    backgroundColor: colors.gray[100],
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.08)',
+    position: 'relative',
+  },
+  avatarImg: {
+    width: '100%',
+    height: '100%',
+  },
+  avatarPlaceholder: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarBadge: {
+    position: 'absolute',
+    bottom: 4,
+    left: 4,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.85)',
+  },
+  avatarMeta: {
+    flex: 1,
+    alignItems: 'flex-end',
+  },
+  avatarHint: {
+    fontSize: 14,
+    color: colors.textLight,
+    textAlign: 'right',
+    marginBottom: 10,
+    lineHeight: 18,
+  },
+  avatarActionBtn: {
+    backgroundColor: colors.gray[100],
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+  },
+  avatarActionBtnDisabled: {
+    opacity: 0.65,
+  },
+  avatarActionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  coverWrap: {
+    width: '100%',
+    height: 160,
+    borderRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: colors.gray[100],
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
+    position: 'relative',
+    marginTop: 6,
+  },
+  coverImg: {
+    width: '100%',
+    height: '100%',
+  },
+  coverPlaceholder: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 6,
+  },
+  coverPlaceholderText: {
+    fontSize: 14,
+    color: colors.textLight,
+  },
+  coverEditBtn: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(17,24,39,0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.55)',
+  },
+  coverEditBtnDisabled: {
+    opacity: 0.75,
+  },
+  coverActionBtn: {
+    marginTop: 12,
+    alignSelf: 'flex-end',
+    backgroundColor: colors.gray[100],
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+  },
+  coverActionBtnDisabled: {
+    opacity: 0.65,
+  },
+  coverActionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary,
   },
 }); 

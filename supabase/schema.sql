@@ -19,6 +19,10 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(20);
 -- Add avatar_url column if missing (safe re-run)
 ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url VARCHAR(500);
 
+-- Add event_id column if missing (safe re-run)
+-- Links a user (usually `event_owner`) to a "primary" event for quick access.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS event_id UUID;
+
 -- Ensure user_type check constraint uses new values (safe re-run)
 ALTER TABLE users DROP CONSTRAINT IF EXISTS users_user_type_check;
 ALTER TABLE users
@@ -43,6 +47,22 @@ CREATE TABLE IF NOT EXISTS events (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Add FK from users.event_id -> events.id (safe re-run)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'users_event_id_fkey'
+  ) THEN
+    ALTER TABLE public.users
+      ADD CONSTRAINT users_event_id_fkey
+      FOREIGN KEY (event_id)
+      REFERENCES public.events(id)
+      ON DELETE SET NULL;
+  END IF;
+END $$;
 
 -- Add city column if missing (safe re-run)
 ALTER TABLE events ADD COLUMN IF NOT EXISTS city VARCHAR(255);
@@ -548,6 +568,88 @@ BEGIN
     AND (
       (e.date AT TIME ZONE 'Asia/Jerusalem')::date = (today_il + 7)
       OR (e.date AT TIME ZONE 'Asia/Jerusalem')::date = (today_il + 1)
+    )
+  ON CONFLICT DO NOTHING;
+END;
+$$;
+
+-- Automatic enqueue function (daily) for event-owner seating reminders
+-- Creates reminders:
+-- - 7 days before event
+-- - 3 days before event
+-- Includes number of PEOPLE (sum of guests.number_of_people) that are confirmed ("מגיע")
+-- but not assigned to any table (table_id IS NULL).
+CREATE OR REPLACE FUNCTION public.enqueue_event_owner_seating_reminders()
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  today_il date := (now() AT TIME ZONE 'Asia/Jerusalem')::date;
+BEGIN
+  INSERT INTO public.notifications (
+    recipient_user_id,
+    event_owner_id,
+    event_id,
+    type,
+    title,
+    body,
+    metadata,
+    created_at
+  )
+  SELECT
+    e.user_id AS recipient_user_id,
+    e.user_id AS event_owner_id,
+    e.id AS event_id,
+    CASE
+      WHEN (e.date AT TIME ZONE 'Asia/Jerusalem')::date = (today_il + 7) THEN 'event_owner_week_before'
+      ELSE 'event_owner_three_days_before'
+    END AS type,
+    CASE
+      WHEN (e.date AT TIME ZONE 'Asia/Jerusalem')::date = (today_il + 7) THEN 'תזכורת: האירוע בעוד שבוע'
+      ELSE 'תזכורת: האירוע בעוד 3 ימים'
+    END AS title,
+    CASE
+      WHEN (e.date AT TIME ZONE 'Asia/Jerusalem')::date = (today_il + 7) THEN
+        e.title || ' מתקיים בעוד שבוע (' ||
+        to_char((e.date AT TIME ZONE 'Asia/Jerusalem'), 'DD/MM/YYYY') ||
+        ') ב' || e.location ||
+        COALESCE(' (' || e.city || ')', '') ||
+        '. טרם הושבו ' || seating.unseated_people_count || ' מוזמנים.'
+      ELSE
+        e.title || ' מתקיים בעוד 3 ימים (' ||
+        to_char((e.date AT TIME ZONE 'Asia/Jerusalem'), 'DD/MM/YYYY') ||
+        ') ב' || e.location ||
+        COALESCE(' (' || e.city || ')', '') ||
+        '. טרם הושבו ' || seating.unseated_people_count || ' מוזמנים.'
+    END AS body,
+    jsonb_build_object(
+      'event_title', e.title,
+      'event_date', e.date,
+      'event_location', e.location,
+      'event_city', e.city,
+      'reminder_date_il', today_il,
+      'unseated_people_count', seating.unseated_people_count,
+      'reminder_kind', CASE
+        WHEN (e.date AT TIME ZONE 'Asia/Jerusalem')::date = (today_il + 7) THEN 'week_before'
+        ELSE 'three_days_before'
+      END
+    ) AS metadata,
+    now() AS created_at
+  FROM public.events AS e
+  LEFT JOIN LATERAL (
+    SELECT
+      COALESCE(SUM(COALESCE(g.number_of_people, 1)), 0)::int AS unseated_people_count
+    FROM public.guests AS g
+    WHERE g.event_id = e.id
+      AND g.status = 'מגיע'
+      AND g.table_id IS NULL
+  ) AS seating ON TRUE
+  WHERE e.date >= now()
+    AND (
+      (e.date AT TIME ZONE 'Asia/Jerusalem')::date = (today_il + 7)
+      OR (e.date AT TIME ZONE 'Asia/Jerusalem')::date = (today_il + 3)
     )
   ON CONFLICT DO NOTHING;
 END;

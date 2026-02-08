@@ -79,6 +79,7 @@ export const guestService = {
       if (updates.tableId !== undefined) updateData.table_id = updates.tableId;
       if (updates.gift !== undefined) updateData.gift_amount = updates.gift;
       if (updates.message !== undefined) updateData.message = updates.message;
+      if (updates.category_id !== undefined) updateData.category_id = updates.category_id;
       if (updates.numberOfPeople !== undefined) updateData.number_of_people = updates.numberOfPeople;
 
       const { data, error } = await supabase

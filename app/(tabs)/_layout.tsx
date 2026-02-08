@@ -3,9 +3,35 @@ import { Tabs, useRouter } from "expo-router";
 import { colors } from "@/constants/colors";
 import { Ionicons } from "@expo/vector-icons";
 import { Image, Platform, StyleSheet, View, TouchableOpacity } from "react-native";
+import { Image as ExpoImage } from 'expo-image';
 
 import { useUserStore } from "@/store/userStore";
 import { useLayoutStore } from '@/store/layoutStore';
+
+function ProfileTabIcon({ focused }: { focused: boolean }) {
+  const avatarUrl = useUserStore(s => s.userData?.avatar_url);
+
+  return (
+    <View style={[styles.iconContainer, focused && styles.activeIconContainer]}>
+      {avatarUrl ? (
+        <ExpoImage
+          key={avatarUrl}
+          source={{ uri: avatarUrl }}
+          style={[styles.tabAvatar, { borderColor: focused ? colors.white : 'rgba(0,0,0,0.14)' }]}
+          contentFit="cover"
+          cachePolicy="none"
+          transition={0}
+        />
+      ) : (
+        <Ionicons
+          name="person-circle"
+          size={24}
+          color={focused ? colors.white : colors.gray[500]}
+        />
+      )}
+    </View>
+  );
+}
 
 // NOTE: This layout will be kept for backward-compatibility but hidden once role groups exist
 export default function TabLayout() {
@@ -236,29 +262,7 @@ export default function TabLayout() {
         options={{
           href: userType === 'event_owner' ? undefined : null,
           title: "פרופיל",
-          tabBarIcon: ({ focused }) => (
-            <View style={[
-              styles.iconContainer,
-              focused && styles.activeIconContainer
-            ]}>
-              {userData?.avatar_url ? (
-                <Image
-                  source={{ uri: userData.avatar_url }}
-                  style={[
-                    styles.tabAvatar,
-                    { borderColor: focused ? colors.white : 'rgba(0,0,0,0.14)' },
-                  ]}
-                  resizeMode="cover"
-                />
-              ) : (
-                <Ionicons
-                  name="person-circle"
-                  size={24}
-                  color={focused ? colors.white : colors.gray[500]}
-                />
-              )}
-            </View>
-          ),
+          tabBarIcon: ({ focused }) => <ProfileTabIcon focused={focused} />,
         }}
       />
       <Tabs.Screen

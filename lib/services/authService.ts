@@ -424,14 +424,34 @@ export const authService = {
   },
 
   // Update user profile
-  updateProfile: async (updates: Partial<{ name: string; email: string; phone?: string }>) => {
+  updateProfile: async (updates: Partial<AuthUser>) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('No authenticated user');
 
+      // Never pass through arbitrary keys (e.g. `userType`, timestamps) to PostgREST.
+      // Map only existing DB columns, and map `userType` -> `user_type`.
+      const dbUpdates: Partial<{
+        name: string;
+        email: string;
+        phone: string | null;
+        avatar_url: string | null;
+        event_id: string | null;
+        user_type: UserType;
+      }> = {};
+
+      if (updates.name !== undefined) dbUpdates.name = updates.name;
+      if (updates.email !== undefined) dbUpdates.email = updates.email;
+      if (updates.phone !== undefined) dbUpdates.phone = updates.phone ?? null;
+      if (updates.avatar_url !== undefined) dbUpdates.avatar_url = updates.avatar_url ?? null;
+      if (updates.event_id !== undefined) dbUpdates.event_id = updates.event_id ?? null;
+      if (updates.userType !== undefined) dbUpdates.user_type = updates.userType;
+
+      if (Object.keys(dbUpdates).length === 0) return true;
+
       const { error } = await supabase
         .from('users')
-        .update(updates)
+        .update(dbUpdates)
         .eq('id', user.id);
 
       if (error) throw error;

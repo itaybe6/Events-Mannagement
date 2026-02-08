@@ -76,7 +76,9 @@ export default function NotificationsScreen() {
 
       const rawType = (n.type ?? 'system') as string;
       const displayType: NotificationType =
-        rawType.startsWith('admin_event_') ? 'task' : ((rawType as NotificationType) || 'system');
+        rawType.startsWith('admin_event_') || rawType.startsWith('event_owner_')
+          ? 'task'
+          : ((rawType as NotificationType) || 'system');
 
       const mapped = {
         id: n.id,

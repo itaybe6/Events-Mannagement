@@ -1,19 +1,31 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Modal, FlatList, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Modal, FlatList, KeyboardAvoidingView, Platform, Pressable, useWindowDimensions } from 'react-native';
 import { Link, useRouter, useFocusEffect } from 'expo-router';
 import { useUserStore } from '@/store/userStore';
 import { colors } from '@/constants/colors';
 import { GuestItem } from '@/components/GuestItem';
 import { Button } from '@/components/Button';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons as IoniconsIcon } from '@expo/vector-icons';
 import { guestService } from '@/lib/services/guestService';
 import { eventService } from '@/lib/services/eventService';
 import { supabase } from '@/lib/supabase';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
+
+// On web, icons are ultimately rendered as text glyphs. Wrapping them in <Text>
+// prevents "Text strings must be rendered within a <Text> component" errors.
+const Ionicons = (props: React.ComponentProps<typeof IoniconsIcon>) => (
+  <Text>
+    <IoniconsIcon {...props} />
+  </Text>
+);
 
 export default function GuestsScreen() {
   const { isLoggedIn, userData } = useUserStore();
   const router = useRouter();
   const [eventId, setEventId] = useState<string | null>(null);
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const isWide = windowWidth >= 640;
 
   useEffect(() => {
     if (!isLoggedIn) {
@@ -136,10 +148,7 @@ export default function GuestsScreen() {
   const [editGuestPhone, setEditGuestPhone] = useState('');
   const [editGuestStatus, setEditGuestStatus] = useState<'ממתין' | 'מגיע' | 'לא מגיע'>('ממתין');
   const [editGuestPeopleCount, setEditGuestPeopleCount] = useState('1');
-  const [editCategoryModalVisible, setEditCategoryModalVisible] = useState(false);
-  const [editCategoryName, setEditCategoryName] = useState('');
-  const [selectedCategoryGuests, setSelectedCategoryGuests] = useState<any[]>([]);
-  const [selectedGuestsToDelete, setSelectedGuestsToDelete] = useState<Set<string>>(new Set());
+  // Category editing moved to a dedicated screen: `/(couple)/edit-category`.
 
   useEffect(() => {
     if (eventId) {
@@ -179,6 +188,7 @@ export default function GuestsScreen() {
     pending: guests.filter(g => g.status === 'ממתין').reduce((sum, guest) => sum + (guest.numberOfPeople || 1), 0),
   };
 
+  const hasFilters = Boolean(statusFilter || sideFilter);
   const importContacts = async () => {
     try {
       if (!eventId) return;
@@ -307,68 +317,34 @@ export default function GuestsScreen() {
     switch (status) {
       case 'מגיע':
         return (
-          <Ionicons name="checkmark-circle" size={22} color={colors.success} />
+          <Text>
+            <Ionicons name="checkmark-circle" size={22} color={colors.success} />
+          </Text>
         );
       case 'לא מגיע':
         return (
-          <Ionicons name="close-circle" size={22} color={colors.error} />
+          <Text>
+            <Ionicons name="close-circle" size={22} color={colors.error} />
+          </Text>
         );
       case 'ממתין':
         return (
-          <Ionicons name="time-outline" size={22} color={colors.warning} />
+          <Text>
+            <Ionicons name="time-outline" size={22} color={colors.warning} />
+          </Text>
         );
       default:
-        return <Ionicons name="help-circle-outline" size={22} color={colors.gray[400]} />;
+        return (
+          <Text>
+            <Ionicons name="help-circle-outline" size={22} color={colors.gray[400]} />
+          </Text>
+        );
     }
   };
 
   const handleEditCategory = (category: any) => {
-    setSelectedCategory(category);
-    setEditCategoryName(category.name || '');
-    const guestsInCat = guests.filter(g => g.category_id === category.id);
-    setSelectedCategoryGuests(guestsInCat || []);
-    setSelectedGuestsToDelete(new Set());
-    setEditCategoryModalVisible(true);
-  };
-
-  const handleSaveCategoryName = async () => {
-    if (!selectedCategory || !editCategoryName.trim()) return;
-    try {
-      await guestService.updateGuestCategory(selectedCategory.id, { name: editCategoryName.trim() });
-      setCategories(prev => prev.map(cat => cat.id === selectedCategory.id ? { ...cat, name: editCategoryName.trim() } : cat));
-      setEditCategoryModalVisible(false);
-    } catch (e) {
-      Alert.alert('שגיאה', 'לא ניתן לעדכן את שם הקטגוריה');
-    }
-  };
-
-  const handleToggleGuestToDelete = (guestId: string) => {
-    setSelectedGuestsToDelete(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(guestId)) newSet.delete(guestId);
-      else newSet.add(guestId);
-      return newSet;
-    });
-  };
-
-  const handleDeleteSelectedGuests = async () => {
-    if (selectedGuestsToDelete.size === 0) return;
-    Alert.alert('מחיקת אורחים', `האם למחוק ${selectedGuestsToDelete.size} אורחים?`, [
-      { text: 'ביטול', style: 'cancel' },
-      {
-        text: 'מחק', style: 'destructive', onPress: async () => {
-          try {
-            for (const guestId of selectedGuestsToDelete) {
-              await guestService.deleteGuest(guestId);
-            }
-            setGuests(prev => prev.filter(g => !selectedGuestsToDelete.has(g.id)));
-            setEditCategoryModalVisible(false);
-          } catch (e) {
-            Alert.alert('שגיאה', 'לא ניתן למחוק אורחים');
-          }
-        }
-      }
-    ]);
+    if (!category?.id) return;
+    router.push({ pathname: '/(couple)/edit-category', params: { categoryId: String(category.id) } });
   };
 
   return (
@@ -376,7 +352,9 @@ export default function GuestsScreen() {
       <View style={styles.pageHeader}>
         <View style={styles.searchRow}>
           <View style={styles.searchContainer}>
-            <Ionicons name="search" size={18} color={colors.gray[500]} style={styles.searchIcon} />
+            <Text>
+              <Ionicons name="search" size={18} color={colors.gray[500]} style={styles.searchIcon} />
+            </Text>
             <TextInput
               style={styles.searchInput}
               placeholder="חיפוש שם או טלפון..."
@@ -392,7 +370,9 @@ export default function GuestsScreen() {
             accessibilityRole="button"
             accessibilityLabel="סינון"
           >
-            <Ionicons name="options-outline" size={20} color={colors.text} />
+            <Text>
+              <Ionicons name="options-outline" size={20} color={colors.text} />
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -401,7 +381,9 @@ export default function GuestsScreen() {
             accessibilityRole="button"
             accessibilityLabel="הוספת אורח"
           >
-            <Ionicons name="add" size={22} color={colors.text} />
+            <Text>
+              <Ionicons name="add" size={22} color={colors.text} />
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -413,82 +395,170 @@ export default function GuestsScreen() {
         animationType="fade"
         onRequestClose={() => setFilterModalVisible(false)}
       >
-        <View style={styles.filterModalOverlay}>
-          <View style={styles.filterModalCard}>
-            <View style={styles.filterModalHeader}>
-              <Text style={styles.filterModalTitle}>סינון</Text>
-              <TouchableOpacity
-                onPress={() => setFilterModalVisible(false)}
-                style={styles.filterModalClose}
-              >
-                <Ionicons name="close" size={22} color={colors.text} />
-              </TouchableOpacity>
-            </View>
+        <Pressable
+          style={[styles.filterModalOverlay, isWide ? styles.filterModalOverlayWide : styles.filterModalOverlayNarrow]}
+          onPress={() => setFilterModalVisible(false)}
+        >
+          <BlurView intensity={18} tint="dark" style={styles.filterBackdropBlur} />
 
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <Text style={styles.filterSectionTitle}>סטטוס</Text>
-              {[
-                { key: null, label: `הכל (${guestCounts.total})` },
-                { key: 'מגיע', label: `מגיעים (${guestCounts.coming})` },
-                { key: 'ממתין', label: `ממתינים (${guestCounts.pending})` },
-                { key: 'לא מגיע', label: `לא מגיעים (${guestCounts.notComing})` },
-              ].map(opt => {
-                const active = statusFilter === opt.key;
-                return (
-                  <TouchableOpacity
-                    key={String(opt.key)}
-                    style={[styles.filterOptionRow, active && styles.filterOptionRowActive]}
-                    onPress={() => setStatusFilter(opt.key as any)}
-                  >
-                    <Text style={[styles.filterOptionText, active && styles.filterOptionTextActive]}>
-                      {opt.label}
-                    </Text>
-                    {active && <Ionicons name="checkmark" size={18} color={colors.white} />}
-                  </TouchableOpacity>
-                );
-              })}
-
-              <Text style={[styles.filterSectionTitle, { marginTop: 16 }]}>צד</Text>
-              {[
-                { key: null, label: 'הכל' },
-                { key: 'groom', label: `חתן (${sideCounts.groom})` },
-                { key: 'bride', label: `כלה (${sideCounts.bride})` },
-              ].map(opt => {
-                const active = sideFilter === opt.key;
-                return (
-                  <TouchableOpacity
-                    key={String(opt.key)}
-                    style={[styles.filterOptionRow, active && styles.filterOptionRowActive]}
-                    onPress={() => setSideFilter(opt.key as any)}
-                  >
-                    <Text style={[styles.filterOptionText, active && styles.filterOptionTextActive]}>
-                      {opt.label}
-                    </Text>
-                    {active && <Ionicons name="checkmark" size={18} color={colors.white} />}
-                  </TouchableOpacity>
-                );
-              })}
-
-              <View style={styles.filterActionsRow}>
+          <Pressable onPress={() => { /* swallow */ }} style={[styles.filterSheet, isWide ? styles.filterSheetWide : styles.filterSheetNarrow]}>
+            <View
+              style={[
+                styles.filterGlassPanel,
+                isWide ? styles.filterGlassPanelWide : styles.filterGlassPanelNarrow,
+                { maxHeight: Math.min(0.9 * windowHeight, 760) },
+              ]}
+            >
+              <View style={styles.filterHeader}>
                 <TouchableOpacity
-                  style={styles.filterClearButton}
+                  onPress={() => setFilterModalVisible(false)}
+                  style={styles.filterCloseButton}
+                  accessibilityRole="button"
+                  accessibilityLabel="סגירת חלון סינון"
+                >
+                  <Text>
+                    <Ionicons name="close" size={22} color={stylesApple.textMuted} />
+                  </Text>
+                </TouchableOpacity>
+
+                <View style={styles.filterHeaderCenter}>
+                  <Text style={styles.filterTitle}>סינון</Text>
+                </View>
+
+                <View style={styles.filterHeaderSpacer} />
+              </View>
+
+              <Text style={styles.filterHintText}>
+                בחר פילטרים כדי לדייק את הרשימה
+              </Text>
+
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.filterBody}
+              >
+                <View>
+                  <Text style={styles.filterSectionTitleApple}>סטטוס</Text>
+                  <View style={styles.filterStatusGrid}>
+                    {[
+                      { key: null, label: 'הכל', count: guestCounts.total, icon: 'apps' as const },
+                      { key: 'מגיע', label: 'מגיעים', count: guestCounts.coming, icon: 'checkmark-circle' as const },
+                      { key: 'ממתין', label: 'ממתינים', count: guestCounts.pending, icon: 'time' as const },
+                      { key: 'לא מגיע', label: 'לא מגיעים', count: guestCounts.notComing, icon: 'close-circle' as const },
+                    ].map(opt => {
+                      const active = statusFilter === opt.key;
+                      return (
+                        <TouchableOpacity
+                          key={`status-${String(opt.key)}`}
+                          style={[styles.filterAppleButton, active ? styles.filterAppleButtonActive : styles.filterAppleButtonInactive]}
+                          onPress={() => setStatusFilter(opt.key as any)}
+                          accessibilityRole="button"
+                          accessibilityLabel={`סינון לפי סטטוס ${opt.label}`}
+                        >
+                          <View style={styles.filterAppleButtonLeft}>
+                            <Text>
+                              <Ionicons
+                                name={opt.icon}
+                                size={22}
+                                color={active ? stylesApple.primary : stylesApple.iconMuted}
+                              />
+                            </Text>
+                            <Text style={[styles.filterAppleButtonText, active ? styles.filterAppleButtonTextActive : styles.filterAppleButtonTextInactive]}>
+                              {opt.label}
+                            </Text>
+                          </View>
+
+                          <View style={[styles.filterAppleCountPill, active ? styles.filterAppleCountPillActive : styles.filterAppleCountPillInactive]}>
+                            <Text style={[styles.filterAppleCountText, active ? styles.filterAppleCountTextActive : styles.filterAppleCountTextInactive]}>
+                              {opt.count}
+                            </Text>
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                <View style={{ marginTop: 18 }}>
+                  <Text style={styles.filterSectionTitleApple}>צד</Text>
+                  <View style={styles.filterSideStack}>
+                    {[
+                      { key: null, label: 'הכל', count: sideCounts.groom + sideCounts.bride, icon: 'people' as const },
+                      { key: 'groom', label: 'חתן', count: sideCounts.groom, icon: 'male' as const },
+                      { key: 'bride', label: 'כלה', count: sideCounts.bride, icon: 'female' as const },
+                    ].map(opt => {
+                      const active = sideFilter === opt.key;
+                      return (
+                        <TouchableOpacity
+                          key={`side-${String(opt.key)}`}
+                          style={[styles.filterAppleButtonFull, active ? styles.filterAppleButtonActive : styles.filterAppleButtonInactive]}
+                          onPress={() => setSideFilter(opt.key as any)}
+                          accessibilityRole="button"
+                          accessibilityLabel={`סינון לפי צד ${opt.label}`}
+                        >
+                          <View style={styles.filterAppleButtonLeft}>
+                            <Text>
+                              <Ionicons
+                                name={opt.icon}
+                                size={22}
+                                color={active ? stylesApple.primary : stylesApple.iconMuted}
+                              />
+                            </Text>
+                            <Text style={[styles.filterAppleButtonText, active ? styles.filterAppleButtonTextActive : styles.filterAppleButtonTextInactive]}>
+                              {opt.label}
+                            </Text>
+                          </View>
+
+                          <View style={[styles.filterAppleCountPill, active ? styles.filterAppleCountPillActive : styles.filterAppleCountPillInactive]}>
+                            <Text style={[styles.filterAppleCountText, active ? styles.filterAppleCountTextActive : styles.filterAppleCountTextInactive]}>
+                              {opt.count}
+                            </Text>
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                {/* bottom padding so content doesn't hide behind action bar */}
+                <View style={{ height: 120 }} />
+              </ScrollView>
+
+              <View style={styles.filterActionBar}>
+                <BlurView intensity={22} tint="light" style={styles.filterActionBarBlur} />
+                <TouchableOpacity
+                  style={[styles.filterClearInline, !hasFilters && styles.filterClearInlineDisabled]}
+                  disabled={!hasFilters}
                   onPress={() => {
                     setStatusFilter(null);
                     setSideFilter(null);
                   }}
+                  accessibilityRole="button"
+                  accessibilityLabel="נקה את כל הסינונים"
                 >
-                  <Text style={styles.filterClearText}>נקה סינון</Text>
+                  <Text>
+                    <Ionicons name="refresh" size={20} color={!hasFilters ? stylesApple.textMuted : stylesApple.text} />
+                  </Text>
+                  <Text style={[styles.filterClearInlineText, !hasFilters && styles.filterClearInlineTextDisabled]}>נקה</Text>
                 </TouchableOpacity>
+
                 <TouchableOpacity
-                  style={styles.filterDoneButton}
+                  style={styles.filterDonePrimary}
                   onPress={() => setFilterModalVisible(false)}
+                  accessibilityRole="button"
+                  accessibilityLabel="סיום"
                 >
-                  <Text style={styles.filterDoneText}>סיום</Text>
+                  <LinearGradient
+                    colors={[stylesApple.primary, stylesApple.primaryDark]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.filterDonePrimaryBg}
+                  />
+                  <Text style={styles.filterDonePrimaryText}>סיום</Text>
                 </TouchableOpacity>
               </View>
-            </ScrollView>
-          </View>
-        </View>
+            </View>
+          </Pressable>
+        </Pressable>
       </Modal>
 
       {/* Modal בחירת קטגוריה - Apple style */}
@@ -501,7 +571,9 @@ export default function GuestsScreen() {
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.25)' }}>
           <View style={styles.appleCategoryModal}>
             <TouchableOpacity style={styles.appleCloseButton} onPress={() => setCategoryModalVisible(false)}>
-              <Ionicons name="close" size={24} color={colors.text} />
+              <Text>
+                <Ionicons name="close" size={24} color={colors.text} />
+              </Text>
             </TouchableOpacity>
             <Text style={styles.appleCategoryTitle}>בחר קטגוריה</Text>
             <FlatList
@@ -515,7 +587,9 @@ export default function GuestsScreen() {
                 >
                   <Text style={[styles.appleCategoryName, selectedCategory?.id === item.id && styles.appleCategoryNameActive]}>{item.name}</Text>
                   {selectedCategory?.id === item.id && (
-                    <Ionicons name="checkmark" size={18} color={colors.white} />
+                    <Text>
+                      <Ionicons name="checkmark" size={18} color={colors.white} />
+                    </Text>
                   )}
                 </TouchableOpacity>
               )}
@@ -528,11 +602,13 @@ export default function GuestsScreen() {
                   style={[styles.sideButton, newCategorySide === 'groom' && styles.sideButtonActive]}
                   onPress={() => setNewCategorySide('groom')}
                 >
-                  <Ionicons
-                    name="male"
-                    size={20}
-                    color={newCategorySide === 'groom' ? colors.white : colors.primary}
-                  />
+                  <Text>
+                    <Ionicons
+                      name="male"
+                      size={20}
+                      color={newCategorySide === 'groom' ? colors.white : colors.primary}
+                    />
+                  </Text>
                   <Text style={[styles.sideButtonText, newCategorySide === 'groom' && styles.sideButtonTextActive]}>
                     חתן
                   </Text>
@@ -541,11 +617,13 @@ export default function GuestsScreen() {
                   style={[styles.sideButton, newCategorySide === 'bride' && styles.sideButtonActive]}
                   onPress={() => setNewCategorySide('bride')}
                 >
-                  <Ionicons
-                    name="female"
-                    size={20}
-                    color={newCategorySide === 'bride' ? colors.white : colors.primary}
-                  />
+                  <Text>
+                    <Ionicons
+                      name="female"
+                      size={20}
+                      color={newCategorySide === 'bride' ? colors.white : colors.primary}
+                    />
+                  </Text>
                   <Text style={[styles.sideButtonText, newCategorySide === 'bride' && styles.sideButtonTextActive]}>
                     כלה
                   </Text>
@@ -560,7 +638,9 @@ export default function GuestsScreen() {
                 onChangeText={setNewCategoryName}
               />
               <TouchableOpacity style={styles.appleAddCategoryButton} onPress={handleAddCategory}>
-                <Ionicons name="add" size={22} color={colors.white} />
+                <Text>
+                  <Ionicons name="add" size={22} color={colors.white} />
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -589,8 +669,15 @@ export default function GuestsScreen() {
                       </Text>
                     </View>
                   </View>
-                  <TouchableOpacity onPress={() => handleEditCategory(cat)} style={styles.categoryMenuButton}>
-                    <Ionicons name="ellipsis-horizontal" size={20} color={colors.gray[600]} />
+                  <TouchableOpacity
+                    onPress={() => handleEditCategory(cat)}
+                    style={styles.categoryMenuButton}
+                    accessibilityRole="button"
+                    accessibilityLabel={`עריכת קטגוריה ${String(cat?.name ?? '').trim() || ''}`.trim()}
+                  >
+                    <Text>
+                      <Ionicons name="create-outline" size={20} color={colors.gray[600]} />
+                    </Text>
                   </TouchableOpacity>
                 </View>
                 <View style={styles.guestsList}>
@@ -606,7 +693,9 @@ export default function GuestsScreen() {
                       >
                         <View style={styles.guestMain}>
                           <View style={styles.guestAvatar}>
-                            <Ionicons name="person" size={20} color={colors.gray[500]} />
+                            <Text>
+                              <Ionicons name="person" size={20} color={colors.gray[500]} />
+                            </Text>
                           </View>
                           <View style={styles.guestInfo}>
                             <Text style={styles.guestName} numberOfLines={1}>
@@ -619,7 +708,9 @@ export default function GuestsScreen() {
                         </View>
                         <View style={styles.guestMeta}>
                           <View style={styles.peopleCountBadge}>
-                            <Ionicons name="person" size={12} color={colors.gray[700]} />
+                            <Text>
+                              <Ionicons name="person" size={12} color={colors.gray[700]} />
+                            </Text>
                             <Text style={styles.peopleCountText}>{guest.numberOfPeople || 1}</Text>
                           </View>
                           {getStatusIcon(guest.status)}
@@ -655,7 +746,9 @@ export default function GuestsScreen() {
               onPress={() => setContactsModalVisible(false)}
               style={styles.closeButton}
             >
-              <Ionicons name="close" size={24} color={colors.text} />
+              <Text>
+                <Ionicons name="close" size={24} color={colors.text} />
+              </Text>
             </TouchableOpacity>
           </View>
           
@@ -679,7 +772,9 @@ export default function GuestsScreen() {
                 </View>
                 <View style={styles.checkboxContainer}>
                   {selectedContacts.has(item.id) && (
-                    <Ionicons name="checkmark" size={20} color={colors.primary} />
+                    <Text>
+                      <Ionicons name="checkmark" size={20} color={colors.primary} />
+                    </Text>
                   )}
                 </View>
               </TouchableOpacity>
@@ -723,7 +818,9 @@ export default function GuestsScreen() {
               }}
               style={styles.closeButton}
             >
-              <Ionicons name="close" size={24} color={colors.text} />
+              <Text>
+                <Ionicons name="close" size={24} color={colors.text} />
+              </Text>
             </TouchableOpacity>
           </View>
           
@@ -758,21 +855,39 @@ export default function GuestsScreen() {
                   style={[styles.statusOption, editGuestStatus === 'ממתין' && styles.statusOptionActive]}
                   onPress={() => setEditGuestStatus('ממתין')}
                 >
-                  <Ionicons name="time" size={16} color={editGuestStatus === 'ממתין' ? colors.white : colors.warning} />
+                  <Text>
+                    <Ionicons
+                      name="time"
+                      size={16}
+                      color={editGuestStatus === 'ממתין' ? colors.white : colors.warning}
+                    />
+                  </Text>
                   <Text style={[styles.statusOptionText, editGuestStatus === 'ממתין' && styles.statusOptionTextActive]}>ממתין</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.statusOption, editGuestStatus === 'מגיע' && styles.statusOptionActive]}
                   onPress={() => setEditGuestStatus('מגיע')}
                 >
-                  <Ionicons name="checkmark" size={16} color={editGuestStatus === 'מגיע' ? colors.white : colors.success} />
+                  <Text>
+                    <Ionicons
+                      name="checkmark"
+                      size={16}
+                      color={editGuestStatus === 'מגיע' ? colors.white : colors.success}
+                    />
+                  </Text>
                   <Text style={[styles.statusOptionText, editGuestStatus === 'מגיע' && styles.statusOptionTextActive]}>מגיע</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.statusOption, editGuestStatus === 'לא מגיע' && styles.statusOptionActive]}
                   onPress={() => setEditGuestStatus('לא מגיע')}
                 >
-                  <Ionicons name="close" size={16} color={editGuestStatus === 'לא מגיע' ? colors.white : colors.error} />
+                  <Text>
+                    <Ionicons
+                      name="close"
+                      size={16}
+                      color={editGuestStatus === 'לא מגיע' ? colors.white : colors.error}
+                    />
+                  </Text>
                   <Text style={[styles.statusOptionText, editGuestStatus === 'לא מגיע' && styles.statusOptionTextActive]}>לא מגיע</Text>
                 </TouchableOpacity>
               </View>
@@ -796,7 +911,9 @@ export default function GuestsScreen() {
               style={[styles.actionButton, styles.deleteButton]} 
               onPress={handleDeleteGuest}
             >
-              <Ionicons name="trash" size={20} color={colors.white} />
+              <Text>
+                <Ionicons name="trash" size={20} color={colors.white} />
+              </Text>
               <Text style={styles.deleteButtonText}>מחק</Text>
             </TouchableOpacity>
             
@@ -804,7 +921,9 @@ export default function GuestsScreen() {
               style={[styles.actionButton, styles.saveButton]} 
               onPress={handleEditGuest}
             >
-              <Ionicons name="checkmark" size={20} color={colors.white} />
+              <Text>
+                <Ionicons name="checkmark" size={20} color={colors.white} />
+              </Text>
               <Text style={styles.saveButtonText}>שמור</Text>
             </TouchableOpacity>
           </View>
@@ -812,94 +931,21 @@ export default function GuestsScreen() {
       </KeyboardAvoidingView>
     </Modal>
 
-    {/* מודל עריכת קטגוריה */}
-    <Modal
-      visible={editCategoryModalVisible}
-      transparent={true}
-      animationType="slide"
-      onRequestClose={() => setEditCategoryModalVisible(false)}
-    >
-      <KeyboardAvoidingView style={styles.modalContainer} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <View style={[styles.modalContent, { maxHeight: 500, minHeight: 350, width: '96%', padding: 28 }]}> {/* הגדלה */}
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>עריכת קטגוריה</Text>
-            <TouchableOpacity onPress={() => setEditCategoryModalVisible(false)} style={styles.closeButton}>
-              <Text>
-                <Ionicons name="close" size={24} color={colors.text} />
-              </Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>שם הקטגוריה:</Text>
-            <TextInput
-              style={styles.editInput}
-              value={editCategoryName || ''}
-              onChangeText={setEditCategoryName}
-              placeholder="הזן שם"
-              textAlign="right"
-            />
-          </View>
-          <Text style={[styles.inputLabel, { marginBottom: 8 }]}>בחר אורחים למחיקה:</Text>
-          <ScrollView style={{ maxHeight: 180 }}>
-            {selectedCategoryGuests && Array.isArray(selectedCategoryGuests) && selectedCategoryGuests.length > 0 ? (
-              <View>
-                {selectedCategoryGuests.map(guest => {
-                  if (!guest || !guest.id) return null;
-                  return (
-                    <TouchableOpacity
-                      key={guest.id}
-                      style={{ flexDirection: 'row-reverse', alignItems: 'center', marginBottom: 10, paddingVertical: 5 }}
-                      onPress={() => handleToggleGuestToDelete(guest.id)}
-                    >
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 17, color: colors.text, textAlign: 'right' }}>
-                          {guest.name || 'שם לא זמין'}
-                        </Text>
-                      </View>
-                      <Text style={{ marginLeft: 12 }}>
-                        <Ionicons
-                          name={selectedGuestsToDelete.has(guest.id) ? 'checkbox' : 'square-outline'}
-                          size={24}
-                          color={selectedGuestsToDelete.has(guest.id) ? colors.primary : colors.gray[400]}
-                        />
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            ) : (
-              <View style={{ paddingVertical: 20 }}>
-                <Text style={styles.emptyStateText}>אין אורחים בקטגוריה זו</Text>
-              </View>
-            )}
-          </ScrollView>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 18 }}>
-            <TouchableOpacity
-              style={[styles.actionButton, styles.deleteButton, { flex: 1, marginLeft: 8 }]}
-              onPress={handleDeleteSelectedGuests}
-              disabled={selectedGuestsToDelete.size === 0}
-            >
-              <Text style={styles.deleteButtonText}>מחק נבחרים</Text>
-              <Text>
-                <Ionicons name="trash" size={20} color={colors.white} />
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.actionButton, styles.saveButton, { flex: 1, marginRight: 8 }]}
-              onPress={handleSaveCategoryName}
-            >
-              <Text style={styles.saveButtonText}>שמור שם</Text>
-              <Text>
-                <Ionicons name="checkmark" size={20} color={colors.white} />
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
     </View>
   );
 }
+
+const stylesApple = {
+  primary: '#007AFF',
+  primaryDark: '#0062CC',
+  primarySoft: 'rgba(0, 122, 255, 0.13)',
+  backgroundLight: 'rgba(242, 242, 247, 0.80)',
+  surfaceLight: 'rgba(255, 255, 255, 0.65)',
+  borderLight: 'rgba(0, 0, 0, 0.05)',
+  text: '#111827',
+  textMuted: 'rgba(17, 24, 39, 0.55)',
+  iconMuted: 'rgba(17, 24, 39, 0.35)',
+} as const;
 
 const styles = StyleSheet.create({
   container: {
@@ -995,108 +1041,253 @@ const styles = StyleSheet.create({
   },
   filterModalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    backgroundColor: 'rgba(0,0,0,0.30)',
+    padding: 0,
+  },
+  filterModalOverlayNarrow: {
+    justifyContent: 'flex-end',
+    alignItems: 'stretch',
+  },
+  filterModalOverlayWide: {
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
   },
-  filterModalCard: {
+  filterBackdropBlur: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  filterSheet: {
     width: '100%',
-    maxWidth: 420,
-    backgroundColor: colors.white,
-    borderRadius: 24,
-    padding: 18,
-    shadowColor: colors.black,
-    shadowOpacity: 0.12,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 8,
   },
-  filterModalHeader: {
+  filterSheetNarrow: {
+    paddingHorizontal: 0,
+    paddingBottom: 0,
+  },
+  filterSheetWide: {
+    maxWidth: 440,
+  },
+  filterGlassPanel: {
+    position: 'relative',
+    width: '100%',
+    backgroundColor: stylesApple.backgroundLight,
+    borderColor: stylesApple.borderLight,
+    borderWidth: 1,
+    overflow: 'hidden',
+    shadowColor: colors.black,
+    shadowOpacity: 0.18,
+    shadowRadius: 32,
+    shadowOffset: { width: 0, height: 14 },
+    elevation: 12,
+  },
+  filterGlassPanelNarrow: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+  },
+  filterGlassPanelWide: {
+    borderRadius: 24,
+  },
+  filterHeader: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 10,
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0, 0, 0, 0.06)',
   },
-  filterModalTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: colors.text,
-    textAlign: 'right',
-  },
-  filterModalClose: {
+  filterCloseButton: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: colors.gray[100],
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.04)',
   },
-  filterSectionTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.gray[700],
+  filterHeaderCenter: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  filterHeaderSpacer: {
+    width: 36,
+    height: 36,
+  },
+  filterTitle: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: stylesApple.text,
+    letterSpacing: -0.2,
+  },
+  filterHintText: {
+    textAlign: 'center',
+    color: stylesApple.textMuted,
+    fontSize: 13.5,
+    fontWeight: '600',
+    marginTop: 12,
+    marginBottom: 4,
+    paddingHorizontal: 18,
+  },
+  filterBody: {
+    paddingHorizontal: 18,
+    paddingTop: 10,
+    paddingBottom: 0,
+  },
+  filterSectionTitleApple: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: stylesApple.textMuted,
     textAlign: 'right',
-    marginTop: 8,
-    marginBottom: 8,
+    marginBottom: 10,
+    paddingHorizontal: 2,
   },
-  filterOptionRow: {
+  filterStatusGrid: {
+    flexDirection: 'row-reverse',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  filterSideStack: {
+    gap: 12,
+  },
+  filterAppleButton: {
+    width: '48%',
+    minWidth: 160,
+    flexGrow: 1,
+    flexBasis: '48%',
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
     flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 12,
+    shadowColor: colors.black,
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+    transform: [{ scale: 1 }],
+  },
+  filterAppleButtonFull: {
+    width: '100%',
+    borderRadius: 14,
+    paddingVertical: 14,
     paddingHorizontal: 14,
-    borderRadius: 16,
-    backgroundColor: colors.gray[100],
-    marginBottom: 8,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    shadowColor: colors.black,
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  filterAppleButtonActive: {
+    backgroundColor: stylesApple.primarySoft,
     borderWidth: 1,
-    borderColor: colors.gray[100],
+    borderColor: 'rgba(0, 122, 255, 0.55)',
   },
-  filterOptionRowActive: {
-    backgroundColor: colors.text,
-    borderColor: colors.text,
+  filterAppleButtonInactive: {
+    backgroundColor: stylesApple.surfaceLight,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.02)',
   },
-  filterOptionText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.text,
+  filterAppleButtonLeft: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+  },
+  filterAppleButtonText: {
+    fontSize: 15,
     textAlign: 'right',
   },
-  filterOptionTextActive: {
-    color: colors.white,
+  filterAppleButtonTextActive: {
+    fontWeight: '800',
+    color: stylesApple.primary,
   },
-  filterActionsRow: {
+  filterAppleButtonTextInactive: {
+    fontWeight: '700',
+    color: stylesApple.textMuted,
+  },
+  filterAppleCountPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  filterAppleCountPillActive: {
+    backgroundColor: 'rgba(255,255,255,0.60)',
+  },
+  filterAppleCountPillInactive: {
+    backgroundColor: 'rgba(0,0,0,0.06)',
+  },
+  filterAppleCountText: {
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  filterAppleCountTextActive: {
+    color: stylesApple.primary,
+  },
+  filterAppleCountTextInactive: {
+    color: stylesApple.iconMuted,
+  },
+  filterActionBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: Platform.OS === 'ios' ? 16 : 14,
     flexDirection: 'row-reverse',
-    gap: 10,
-    marginTop: 14,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 14,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.06)',
+    backgroundColor: 'rgba(255,255,255,0.60)',
   },
-  filterClearButton: {
+  filterActionBarBlur: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  filterClearInline: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  filterClearInlineDisabled: {
+    opacity: 0.55,
+  },
+  filterClearInlineText: {
+    fontSize: 13.5,
+    fontWeight: '800',
+    color: stylesApple.textMuted,
+  },
+  filterClearInlineTextDisabled: {
+    color: stylesApple.textMuted,
+  },
+  filterDonePrimary: {
     flex: 1,
-    height: 44,
-    borderRadius: 16,
-    backgroundColor: colors.gray[100],
+    borderRadius: 14,
+    overflow: 'hidden',
+    height: 48,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: colors.gray[200],
+    shadowColor: stylesApple.primary,
+    shadowOpacity: 0.22,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 6,
   },
-  filterClearText: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: colors.gray[700],
+  filterDonePrimaryBg: {
+    ...StyleSheet.absoluteFillObject,
   },
-  filterDoneButton: {
-    flex: 1,
-    height: 44,
-    borderRadius: 16,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  filterDoneText: {
-    fontSize: 14,
-    fontWeight: '800',
+  filterDonePrimaryText: {
     color: colors.white,
+    fontSize: 17,
+    fontWeight: '900',
   },
   guestList: {
     flex: 1,
