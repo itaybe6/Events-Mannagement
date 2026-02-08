@@ -41,7 +41,7 @@ export default function ContactsListScreen() {
   // Local palette - clean white design
   const ui = useMemo(
     () => ({
-      primary: '#6366f1', // Indigo-500
+      primary: '#1d4ed8', // App primary (blue)
       bg: '#F3F4F6', // Gray background behind cards
       surface: '#FFFFFF',
       surfaceSoft: 'rgba(255,255,255,0.98)',
@@ -322,7 +322,7 @@ export default function ContactsListScreen() {
                       >
                         {selectedCategory ? (
                           <LinearGradient
-                            colors={['rgba(99,102,241,0.20)', 'rgba(99,102,241,0.12)']}
+                  colors={['rgba(29,78,216,0.20)', 'rgba(29,78,216,0.12)']}
                             start={{ x: 0, y: 0 }}
                             end={{ x: 1, y: 1 }}
                             style={StyleSheet.absoluteFillObject}
@@ -444,41 +444,37 @@ export default function ContactsListScreen() {
               style={styles.itemRow}
             >
               {({ pressed }) => (
-                <>
-                  {/* Card (right side) */}
-                  <View
-                    style={[
-                      styles.contactCard,
-                      {
-                        backgroundColor: selected ? ui.selectedBg : pressed ? ui.pressedBg : ui.surface,
-                        borderColor: selected ? ui.selectedBorder : ui.border,
-                        opacity: pressed ? 0.98 : 1,
-                        transform: [{ scale: pressed ? 0.995 : 1 }],
-                      },
-                    ]}
-                  >
-                    <View style={[styles.contactLeft, { opacity: contentOpacity }]}>
-                      <LinearGradient
-                        colors={[avatar.from, avatar.to]}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 1 }}
-                        style={styles.avatarCircle}
-                      >
-                        <Text style={[styles.avatarText, { color: avatar.fg }]}>{initials}</Text>
-                      </LinearGradient>
+                <View
+                  style={[
+                    styles.rowCard,
+                    {
+                      backgroundColor: selected ? ui.selectedBg : pressed ? ui.pressedBg : ui.surface,
+                      borderColor: selected ? ui.selectedBorder : ui.border,
+                      opacity: pressed ? 0.98 : 1,
+                      transform: [{ scale: pressed ? 0.995 : 1 }],
+                    },
+                  ]}
+                >
+                  {/* Contact content (right side) */}
+                  <View style={[styles.contactLeft, { opacity: contentOpacity }]}>
+                    <LinearGradient
+                      colors={[avatar.from, avatar.to]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.avatarCircle}
+                    >
+                      <Text style={[styles.avatarText, { color: avatar.fg }]}>{initials}</Text>
+                    </LinearGradient>
 
-                      <View style={{ flexShrink: 1 }}>
-                        <Text style={[styles.contactName, { color: ui.textStrong }]} numberOfLines={1}>
-                          {item?.name || 'ללא שם'}
-                        </Text>
-                        <Text style={[styles.contactPhone, { color: ui.muted }]}>
-                          {phone}
-                        </Text>
-                      </View>
+                    <View style={{ flexShrink: 1 }}>
+                      <Text style={[styles.contactName, { color: ui.textStrong }]} numberOfLines={1}>
+                        {item?.name || 'ללא שם'}
+                      </Text>
+                      <Text style={[styles.contactPhone, { color: ui.muted }]}>{phone}</Text>
                     </View>
                   </View>
 
-                  {/* Selection circle (left side, OUTSIDE the card) */}
+                  {/* Selection circle (left side, now INSIDE the white card) */}
                   <View style={styles.selectWrap} pointerEvents="none">
                     <View
                       style={[
@@ -492,7 +488,7 @@ export default function ContactsListScreen() {
                       {selected && <View style={[styles.selectDot, { backgroundColor: ui.primary }]} />}
                     </View>
                   </View>
-                </>
+                </View>
               )}
             </Pressable>
           );
@@ -513,24 +509,51 @@ export default function ContactsListScreen() {
         <Pressable
           onPress={handleAddGuests}
           disabled={!canAdd}
+          accessibilityRole="button"
+          accessibilityLabel="הוסף אורחים"
           style={({ pressed }) => [
-            styles.bottomButtonSurface,
-            {
-              backgroundColor: ui.surface,
-              borderColor: ui.border,
-              opacity: !canAdd ? 0.72 : pressed ? 0.92 : 1,
-            },
+            styles.bottomButtonOuter,
+            canAdd && styles.bottomButtonOuterActive,
+            !canAdd && styles.bottomButtonOuterDisabled,
+            pressed && canAdd && styles.bottomButtonOuterPressed,
           ]}
         >
-          <MaterialIcons
-            name="group-add"
-            size={22}
-            color={canAdd ? ui.primary : '#9CA3AF'}
-            style={{ marginLeft: 8 }}
-          />
-          <Text style={[styles.bottomButtonText, { color: canAdd ? ui.primary : '#9CA3AF' }]}>
-            הוסף {selectedContacts.size} אורחים
-          </Text>
+          {({ pressed }) => (
+            <View
+              style={[
+                styles.bottomButtonInner,
+                !canAdd && styles.bottomButtonInnerDisabled,
+                pressed && canAdd && styles.bottomButtonInnerPressed,
+              ]}
+            >
+              {canAdd ? (
+                <LinearGradient
+                  colors={['#1d4ed8', '#1e40af']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={StyleSheet.absoluteFillObject}
+                />
+              ) : null}
+
+              <View style={styles.bottomButtonContent}>
+                <View
+                  style={[
+                    styles.bottomIconPill,
+                    {
+                      backgroundColor: canAdd ? 'rgba(255,255,255,0.18)' : '#F3F4F6',
+                      borderColor: canAdd ? 'rgba(255,255,255,0.28)' : '#E5E7EB',
+                    },
+                  ]}
+                >
+                  <MaterialIcons name="group-add" size={22} color={canAdd ? '#FFFFFF' : '#9CA3AF'} />
+                </View>
+
+                <Text style={[styles.bottomButtonText, { color: canAdd ? '#FFFFFF' : '#9CA3AF' }]}>
+                  הוסף {selectedContacts.size} אורחים
+                </Text>
+              </View>
+            </View>
+          )}
         </Pressable>
       </View>
     </View>
@@ -605,7 +628,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.10,
   },
   topButtonOuterPrimary: {
-    shadowColor: '#6366f1',
+    shadowColor: '#1d4ed8',
   },
   topButtonOuterSecondary: {
     shadowColor: '#000',
@@ -641,15 +664,15 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   topButtonPrimary: {
-    backgroundColor: 'rgba(99,102,241,0.14)',
-    borderColor: 'rgba(99,102,241,0.35)',
+    backgroundColor: 'rgba(29,78,216,0.14)',
+    borderColor: 'rgba(29,78,216,0.32)',
   },
   topButtonPrimarySelected: {
-    borderColor: 'rgba(99,102,241,0.45)',
+    borderColor: 'rgba(29,78,216,0.42)',
   },
   topButtonPrimaryPressed: {
-    backgroundColor: 'rgba(99,102,241,0.24)',
-    borderColor: 'rgba(99,102,241,0.50)',
+    backgroundColor: 'rgba(29,78,216,0.22)',
+    borderColor: 'rgba(29,78,216,0.52)',
   },
   topButtonSecondary: {
     backgroundColor: '#FFFFFF',
@@ -688,10 +711,28 @@ const styles = StyleSheet.create({
   },
   itemRow: {
     width: '100%',
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
     marginBottom: 12,
     paddingHorizontal: 16,
+  },
+  rowCard: {
+    flex: 1,
+    borderRadius: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 1,
+    ...Platform.select({
+      web: {
+        boxShadow: '0 4px 20px -2px rgba(0, 0, 0, 0.05)' as any,
+      },
+    }),
   },
   contactCard: {
     flex: 1,
@@ -775,11 +816,57 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 12,
   },
-  bottomButtonSurface: {
+  bottomButtonOuter: {
     height: 60,
-    borderRadius: 16,
+    borderRadius: 18,
+    shadowColor: '#000',
+    shadowOpacity: 0.10,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 4,
+  },
+  bottomButtonOuterActive: {
+    shadowColor: '#1d4ed8',
+    shadowOpacity: 0.22,
+  },
+  bottomButtonOuterDisabled: {
+    shadowOpacity: 0.06,
+  },
+  bottomButtonOuterPressed: {
+    transform: [{ scale: 0.99 }],
+    shadowOpacity: 0.28,
+  },
+  bottomButtonInner: {
+    height: 60,
+    borderRadius: 18,
     borderWidth: 1,
     flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E5E7EB',
+  },
+  bottomButtonInnerDisabled: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E5E7EB',
+    opacity: 0.78,
+  },
+  bottomButtonInnerPressed: {
+    opacity: 0.96,
+  },
+  bottomButtonContent: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+    gap: 10,
+  },
+  bottomIconPill: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },

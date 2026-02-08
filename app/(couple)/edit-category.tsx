@@ -17,11 +17,13 @@ import { useUserStore } from '@/store/userStore';
 import { guestService } from '@/lib/services/guestService';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GuestCategorySelectionSheet } from '@/components/GuestCategorySelectionSheet';
+import { useLayoutStore } from '@/store/layoutStore';
 
 export default function EditCategoryScreen() {
   const router = useRouter();
   const { isLoggedIn, userData } = useUserStore();
   const insets = useSafeAreaInsets();
+  const { setTabBarVisible } = useLayoutStore();
   const params = useLocalSearchParams<{ categoryId?: string }>();
   const categoryId = useMemo(() => String(params.categoryId || '').trim(), [params.categoryId]);
 
@@ -74,6 +76,12 @@ export default function EditCategoryScreen() {
       setLoading(false);
     }
   }, [categoryId, eventId]);
+
+  useEffect(() => {
+    // This is a full-screen editor: hide the tab bar while focused.
+    setTabBarVisible(false);
+    return () => setTabBarVisible(true);
+  }, [setTabBarVisible]);
 
   const moveSelectedToCategory = async (target: any) => {
     if (!target?.id) return;
