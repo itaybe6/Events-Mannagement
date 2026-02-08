@@ -149,7 +149,18 @@ export const useUserStore = create<UserState>()(
             console.log('Token expired during auth initialization, resetting auth state');
           }
 
-          // Always reset auth state on any error during initialization
+          const errorMessage = typeof error === 'string' ? error : error instanceof Error ? error.message : '';
+          const isTimeout = errorMessage.includes('Auth initialization timeout');
+          const currentState = get();
+
+          // If we already have a valid session in memory, don't wipe it on timeout.
+          if (isTimeout && currentState.isLoggedIn && currentState.userData) {
+            console.warn('Auth init timed out; keeping existing session.');
+            set({ loading: false });
+            return;
+          }
+
+          // Always reset auth state on any non-timeout error during initialization
           set({
             isLoggedIn: false,
             userType: null,

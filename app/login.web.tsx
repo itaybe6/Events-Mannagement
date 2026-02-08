@@ -14,6 +14,7 @@ import { useRouter } from 'expo-router';
 import { colors } from '@/constants/colors';
 import { useUserStore } from '@/store/userStore';
 import { supabase } from '@/lib/supabase';
+import { authService } from '@/lib/services/authService';
 
 export default function LoginWebScreen() {
   const [username, setUsername] = useState('');
@@ -85,6 +86,13 @@ export default function LoginWebScreen() {
             'לא נמצא פרופיל משתמש בדאטאבייס (users). ודא שהרצת את ה-SQL ב-supabase/schema.sql וש-RLS מוגדר נכון.'
           );
           return;
+        }
+      }
+
+      if (!userRow.event_id && userRow.user_type === 'event_owner') {
+        const resolvedEventId = await authService.getPrimaryEventId(userRow.id);
+        if (resolvedEventId) {
+          userRow.event_id = resolvedEventId;
         }
       }
 

@@ -5,7 +5,6 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
-import DateTimePickerModal from 'react-native-modal-datetime-picker';
 
 interface NotificationSetting {
   id?: string;
@@ -13,15 +12,19 @@ interface NotificationSetting {
   title: string;
   enabled: boolean;
   message_content?: string;
-  notification_date?: string; // ISO string date
+  days_from_wedding?: number; // negative=before, 0=event day, positive=after
+  channel?: 'SMS' | 'WHATSAPP';
 }
 
 const DEFAULT_NOTIFICATION_TEMPLATES: Omit<NotificationSetting, 'id' | 'enabled'>[] = [
-  { notification_type: 'reminder_1', title: 'הזכרה ראשונה', notification_date: new Date(new Date().setDate(new Date().getDate() - 30)).toISOString(), message_content: 'שלום! זה תזכורת ראשונה לחתונה שלנו בעוד חודש!' },
-  { notification_type: 'reminder_2', title: 'הזכרה שנייה', notification_date: new Date(new Date().setDate(new Date().getDate() - 14)).toISOString(), message_content: 'היי! החתונה שלנו בעוד שבועיים, מחכים לראות אתכם!' },
-  { notification_type: 'whatsapp_1', title: 'וואצאפ ראשון', notification_date: new Date(new Date().setDate(new Date().getDate() - 7)).toISOString(), message_content: 'החתונה בעוד שבוע! אל תשכחו לאשר הגעה 💒' },
-  { notification_type: 'whatsapp_2', title: 'וואצאפ שני', notification_date: new Date(new Date().setDate(new Date().getDate() - 3)).toISOString(), message_content: 'בעוד 3 ימים נתחתן! מתרגשים לראות אתכם 🎉' },
-  { notification_type: 'whatsapp_3', title: 'וואצאפ שלישי', notification_date: new Date(new Date().setDate(new Date().getDate() - 1)).toISOString(), message_content: 'מחר החתונה! נתראה שם ❤️' }
+  // 3 regular (SMS) before the event
+  { notification_type: 'reminder_1', title: 'הודעה רגילה 1 (לפני האירוע)', days_from_wedding: -30, channel: 'SMS', message_content: 'שלום! רצינו להזכיר לכם על האירוע הקרוב שלנו.' },
+  { notification_type: 'reminder_2', title: 'הודעה רגילה 2 (לפני האירוע)', days_from_wedding: -14, channel: 'SMS', message_content: 'היי! האירוע בעוד שבועיים, מחכים לראות אתכם!' },
+  { notification_type: 'reminder_3', title: 'הודעה רגילה 3 (לפני האירוע)', days_from_wedding: -7, channel: 'SMS', message_content: 'תזכורת אחרונה: האירוע בעוד שבוע. נשמח לראותכם!' },
+  // 1 WhatsApp on the event day
+  { notification_type: 'whatsapp_event_day', title: 'וואטסאפ ביום האירוע', days_from_wedding: 0, channel: 'WHATSAPP', message_content: 'היום האירוע! נתראה שם' },
+  // 1 regular (SMS) after the event
+  { notification_type: 'after_1', title: 'הודעה רגילה אחרי האירוע', days_from_wedding: 1, channel: 'SMS', message_content: 'תודה שבאתם! היה לנו כיף גדול איתכם.' },
 ];
 
 export default function BrideGroomSettings() {
@@ -33,8 +36,7 @@ export default function BrideGroomSettings() {
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editingNotification, setEditingNotification] = useState<NotificationSetting | null>(null);
   const [editedMessage, setEditedMessage] = useState('');
-  const [editedDate, setEditedDate] = useState<Date | null>(null);
-  const [isDatePickerVisible, setDatePickerVisibility] = useState(false);
+  const [editedDaysFromEvent, setEditedDaysFromEvent] = useState<string>('0');
 
   const getDefaultMessageContent = (userName?: string) => {
     const displayName = userName && userName.trim().length > 0 ? userName.trim() : 'בעל/ת האירוע';
@@ -88,21 +90,19 @@ export default function BrideGroomSettings() {
   const fetchOrCreateNotificationSettings = async () => {
     if (!userData?.event_id) return;
 
-    // Fetch existing settings from database
     const { data: existingSettings, error: fetchError } = await supabase
       .from('notification_settings')
       .select('*')
       .eq('event_id', userData.event_id)
-      .order('notification_date'); // השתמש בעמודה החדשה
+      .order('days_from_wedding', { ascending: true });
 
     if (fetchError) {
       console.error('Error fetching notification settings:', fetchError);
-      return;
     }
 
     // Create a map of existing settings by notification_type
     const existingSettingsMap = new Map(
-      (existingSettings || []).map(setting => [setting.notification_type, setting])
+      (((existingSettings as any[]) || [])).map(setting => [setting.notification_type, setting])
     );
 
     // Merge templates with existing settings
@@ -110,15 +110,20 @@ export default function BrideGroomSettings() {
       const existingSetting = existingSettingsMap.get(template.notification_type);
       if (existingSetting) {
         // Use existing setting from database
-        return existingSetting;
+        return {
+          ...existingSetting,
+          days_from_wedding:
+            typeof existingSetting.days_from_wedding === 'number'
+              ? existingSetting.days_from_wedding
+              : (template.days_from_wedding ?? 0),
+          channel: (existingSetting.channel as any) || (template.channel as any) || 'SMS',
+        };
       } else {
         // Use template with enabled = false (not saved to DB yet)
         return {
           ...template,
           enabled: false,
-          message_content: template.notification_type === 'reminder_1'
-            ? getDefaultMessageContent(userData?.name)
-            : (template.message_content || undefined)
+          message_content: template.message_content || getDefaultMessageContent(userData?.name),
         };
       }
     });
@@ -126,14 +131,30 @@ export default function BrideGroomSettings() {
     setNotifications(mergedNotifications);
   };
 
-  const formatDate = (date: string | null) => {
-    if (!date) return '';
-    return new Date(date).toLocaleDateString('he-IL', {
+  const computeSendDate = (days: number) => {
+    if (!weddingDate) return null;
+    const d = new Date(weddingDate);
+    d.setDate(d.getDate() + days);
+    return d;
+  };
+
+  const formatSendLabel = (days: number) => {
+    if (days === 0) return 'ביום האירוע';
+    const abs = Math.abs(days);
+    return days < 0 ? `${abs} ימים לפני האירוע` : `${abs} ימים אחרי האירוע`;
+  };
+
+  const formatDate = (d: Date | null) => {
+    if (!d) return '';
+    return d.toLocaleDateString('he-IL', {
       day: '2-digit',
       month: '2-digit',
-      year: 'numeric'
+      year: 'numeric',
     });
   };
+
+  const isMissingColumn = (err: any, column: string) =>
+    String(err?.code) === '42703' && String(err?.message || '').toLowerCase().includes(column.toLowerCase());
 
   const toggleNotification = async (id: string | undefined, notification_type: string, currentEnabled: boolean) => {
     try {
@@ -165,21 +186,30 @@ export default function BrideGroomSettings() {
         const template = DEFAULT_NOTIFICATION_TEMPLATES.find(t => t.notification_type === notification_type);
         if (!template || !userData?.event_id) return;
 
-        const newSetting = {
+        const newSetting: any = {
           ...template,
           event_id: userData.event_id,
           enabled: true,
-          notification_date: new Date().toISOString(), // הוסף את התאריך הנוכחי כערך ברירת מחדל
-          message_content: template.notification_type === 'reminder_1'
-            ? getDefaultMessageContent(userData?.name)
-            : (template.message_content || undefined)
+          message_content: template.message_content || getDefaultMessageContent(userData?.name),
+          days_from_wedding: template.days_from_wedding ?? 0,
+          channel: template.channel || 'SMS',
         };
 
-        const { data, error } = await supabase
+        let { data, error } = await supabase
           .from('notification_settings')
           .insert(newSetting)
           .select()
           .single();
+        if (error && isMissingColumn(error, 'channel')) {
+          delete newSetting.channel;
+          const retry = await supabase
+            .from('notification_settings')
+            .insert(newSetting)
+            .select()
+            .single();
+          data = retry.data as any;
+          error = retry.error as any;
+        }
 
         if (error) {
           console.error('Error creating notification setting:', error);
@@ -212,27 +242,31 @@ export default function BrideGroomSettings() {
   const openEditModal = (notification: NotificationSetting) => {
     setEditingNotification(notification);
     setEditedMessage(notification.message_content || '');
-    setEditedDate(notification.notification_date ? new Date(notification.notification_date) : new Date());
+    setEditedDaysFromEvent(String(notification.days_from_wedding ?? 0));
     setEditModalVisible(true);
   };
 
-  const handleConfirmDate = (selectedDate: Date) => {
-    setEditedDate(selectedDate);
-    setDatePickerVisibility(false);
-  };
-
   const handleSaveEdit = async () => {
-    if (!editingNotification || !userData?.event_id || !editedDate) return;
+    if (!editingNotification || !userData?.event_id) return;
 
     try {
+      const nextDays = Number.parseInt((editedDaysFromEvent || '').trim(), 10);
+      const daysToSave = Number.isFinite(nextDays) ? nextDays : (editingNotification.days_from_wedding ?? 0);
+
       if (editingNotification.id) {
-        const { error } = await supabase
+        const updatePayload: any = { message_content: editedMessage, days_from_wedding: daysToSave, channel: editingNotification.channel };
+        let { error } = await supabase
           .from('notification_settings')
-          .update({ 
-            notification_date: editedDate.toISOString(),
-            message_content: editedMessage,
-          })
+          .update(updatePayload)
           .eq('id', editingNotification.id);
+        if (error && isMissingColumn(error, 'channel')) {
+          delete updatePayload.channel;
+          const retry = await supabase
+            .from('notification_settings')
+            .update(updatePayload)
+            .eq('id', editingNotification.id);
+          error = retry.error as any;
+        }
 
         if (error) {
           console.error('Error updating notification:', error);
@@ -243,23 +277,39 @@ export default function BrideGroomSettings() {
         setNotifications(prev =>
           prev.map(n =>
             n.notification_type === editingNotification.notification_type
-              ? { ...n, notification_date: editedDate.toISOString(), message_content: editedMessage }
+              ? {
+                  ...n,
+                  message_content: editedMessage,
+                  days_from_wedding: daysToSave,
+                }
               : n
           )
         );
       } else {
-        const { data, error } = await supabase
+        const insertPayload: any = {
+          event_id: userData.event_id,
+          notification_type: editingNotification.notification_type,
+          title: editingNotification.title,
+          message_content: editedMessage,
+          enabled: editingNotification.enabled ?? false,
+          days_from_wedding: daysToSave,
+          channel: editingNotification.channel || 'SMS',
+        };
+        let { data, error } = await supabase
           .from('notification_settings')
-          .insert({
-            event_id: userData.event_id,
-            notification_type: editingNotification.notification_type,
-            title: editingNotification.title,
-            notification_date: editedDate.toISOString(),
-            message_content: editedMessage,
-            enabled: editingNotification.enabled ?? false,
-          })
+          .insert(insertPayload)
           .select()
           .single();
+        if (error && isMissingColumn(error, 'channel')) {
+          delete insertPayload.channel;
+          const retry = await supabase
+            .from('notification_settings')
+            .insert(insertPayload)
+            .select()
+            .single();
+          data = retry.data as any;
+          error = retry.error as any;
+        }
 
         if (error) {
           console.error('Error creating notification:', error);
@@ -290,8 +340,8 @@ export default function BrideGroomSettings() {
   }
 
   // Group notifications by type
-  const regularNotifications = notifications.filter(n => n.notification_type.includes('reminder') || n.notification_type.includes('call'));
-  const whatsappNotifications = notifications.filter(n => n.notification_type.includes('whatsapp'));
+  const regularNotifications = notifications.filter(n => (n.channel || 'SMS') !== 'WHATSAPP');
+  const whatsappNotifications = notifications.filter(n => (n.channel || 'SMS') === 'WHATSAPP');
 
   const renderNotificationGroup = (title: string, notificationsList: NotificationSetting[], iconName: string, iconColor: string) => (
     <View style={styles.notificationGroup}>
@@ -321,7 +371,9 @@ export default function BrideGroomSettings() {
                 <View style={styles.dateContainer}>
                   <Ionicons name="calendar" size={16} color={colors.primary} style={{ marginRight: 8 }} />
                   <Text style={styles.notificationDate}>
-                    {formatDate(notification.notification_date || null)}
+                    {`${formatSendLabel(notification.days_from_wedding ?? 0)}${
+                      weddingDate ? ` · ${formatDate(computeSendDate(notification.days_from_wedding ?? 0))}` : ''
+                    }`}
                   </Text>
                 </View>
               </TouchableOpacity>
@@ -392,6 +444,24 @@ export default function BrideGroomSettings() {
             </TouchableOpacity>
             <Text style={styles.modalTitle}>עריכת הודעה</Text>
             <Text style={styles.modalSubtitle}>{editingNotification?.title}</Text>
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputLabel}>ימים מהאירוע (מינוס = לפני)</Text>
+              <TextInput
+                style={styles.daysInput}
+                value={editedDaysFromEvent}
+                onChangeText={setEditedDaysFromEvent}
+                placeholder="-14"
+                placeholderTextColor={colors.gray[500]}
+                keyboardType="numeric"
+                textAlign="left"
+              />
+              {weddingDate ? (
+                <Text style={styles.daysHint}>
+                  {`תאריך מחושב: ${formatDate(computeSendDate(Number.parseInt(editedDaysFromEvent || '0', 10) || 0))}`}
+                </Text>
+              ) : null}
+            </View>
             
             <View style={styles.inputContainer}>
               <Text style={styles.inputLabel}>תוכן ההודעה</Text>
@@ -406,14 +476,6 @@ export default function BrideGroomSettings() {
                 textAlign="right"
                 textAlignVertical="top"
               />
-            </View>
-            
-            <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>תאריך שליחה</Text>
-              <TouchableOpacity style={styles.dateRow} onPress={() => { Keyboard.dismiss(); setTimeout(() => setDatePickerVisibility(true), 75); }}>
-                <Ionicons name="calendar" size={18} color={colors.primary} />
-                <Text style={styles.dateDisplay}>{editedDate ? editedDate.toLocaleDateString('he-IL') : ''}</Text>
-              </TouchableOpacity>
             </View>
             
             <View style={styles.modalButtons}>
@@ -433,16 +495,6 @@ export default function BrideGroomSettings() {
           </View>
         </View>
       </Modal>
-
-      {/* Date Picker Modal */}
-      <DateTimePickerModal
-        isVisible={isDatePickerVisible}
-        mode="date"
-        date={editedDate || new Date()}
-        onConfirm={handleConfirmDate}
-        onCancel={() => setDatePickerVisibility(false)}
-        minimumDate={new Date()}
-      />
     </View>
   );
 }
@@ -714,6 +766,22 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.textLight,
     marginBottom: 8,
+    textAlign: 'right',
+  },
+  daysInput: {
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+    borderRadius: 12,
+    paddingHorizontal: 15,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: colors.text,
+    backgroundColor: colors.gray[50],
+  },
+  daysHint: {
+    marginTop: 8,
+    fontSize: 12,
+    color: colors.textLight,
     textAlign: 'right',
   },
   dateInput: {

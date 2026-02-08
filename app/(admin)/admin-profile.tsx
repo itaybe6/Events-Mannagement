@@ -219,6 +219,11 @@ export default function AdminProfileScreen() {
   }
 
   const maxBar = Math.max(1, ...bars6.map((b) => b.value));
+  // This screen sits under the custom bottom tab bar (see `app/(tabs)/_layout.tsx`).
+  // Keep the fixed actions above it so they remain visible.
+  const TAB_BAR_HEIGHT = 65;
+  const TAB_BAR_BOTTOM_GAP = Platform.OS === "ios" ? 30 : 20;
+  const footerBottomOffset = TAB_BAR_HEIGHT + TAB_BAR_BOTTOM_GAP + 12;
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -251,7 +256,11 @@ export default function AdminProfileScreen() {
 
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={[styles.content, { paddingBottom: 140 + insets.bottom }]}
+        // Footer is positioned above the tab bar; keep enough room so content won't be covered.
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: footerBottomOffset + 140 + insets.bottom },
+        ]}
         showsVerticalScrollIndicator={false}
       >
         {/* Top App Bar */}
@@ -300,27 +309,6 @@ export default function AdminProfileScreen() {
               {userData.email}
             </Text>
           </View>
-        </View>
-
-        {/* Action Pills */}
-        <View style={styles.actions}>
-          <Pressable
-            onPress={() => setEditOpen(true)}
-            style={({ pressed }) => [styles.glassBtn, pressed && styles.glassBtnPressed]}
-            accessibilityRole="button"
-          >
-            <Ionicons name="create-outline" size={18} color={ui.primary} />
-            <Text style={[styles.glassBtnText, { color: ui.primary }]}>עריכה</Text>
-          </Pressable>
-
-          <Pressable
-            onPress={handleLogout}
-            style={({ pressed }) => [styles.glassBtn, pressed && styles.glassBtnPressed]}
-            accessibilityRole="button"
-          >
-            <Ionicons name="log-out-outline" size={18} color={ui.danger} />
-            <Text style={[styles.glassBtnText, { color: ui.danger }]}>התנתק</Text>
-          </Pressable>
         </View>
 
         {/* Key Metrics */}
@@ -385,6 +373,39 @@ export default function AdminProfileScreen() {
           </GlassPanel>
         </View>
       </ScrollView>
+
+      {/* Bottom actions (fixed above the tab bar) */}
+      <View style={[styles.footerWrap, { bottom: footerBottomOffset }]}>
+        <GlassPanel style={[styles.footerPanel, { paddingBottom: 12 + insets.bottom }]}>
+          <View style={styles.actions}>
+            <Pressable
+              onPress={() => setEditOpen(true)}
+              style={({ pressed }) => [
+                styles.actionBtn,
+                styles.actionBtnPrimary,
+                pressed && styles.actionBtnPressed,
+              ]}
+              accessibilityRole="button"
+            >
+              <Ionicons name="create-outline" size={18} color="white" />
+              <Text style={[styles.actionBtnText, { color: "white" }]}>עריכה</Text>
+            </Pressable>
+
+            <Pressable
+              onPress={handleLogout}
+              style={({ pressed }) => [
+                styles.actionBtn,
+                styles.actionBtnDanger,
+                pressed && styles.actionBtnPressed,
+              ]}
+              accessibilityRole="button"
+            >
+              <Ionicons name="log-out-outline" size={18} color={ui.danger} />
+              <Text style={[styles.actionBtnText, { color: ui.danger }]}>התנתק</Text>
+            </Pressable>
+          </View>
+        </GlassPanel>
+      </View>
 
       {/* Edit Modal */}
       <Modal transparent visible={editOpen} animationType="fade" onRequestClose={() => setEditOpen(false)}>
@@ -535,30 +556,62 @@ const styles = StyleSheet.create({
   email: { fontSize: 16, fontWeight: "600", color: ui.muted },
 
   actions: {
-    marginTop: 22,
-    paddingHorizontal: 20,
     flexDirection: "row",
     gap: 12,
   },
-  glassBtn: {
+  footerWrap: {
+    // On web, "fixed" keeps actions visible at the bottom of the viewport.
+    // On native, "absolute" is correct within the screen.
+    position: Platform.OS === "web" ? ("fixed" as any) : "absolute",
+    left: 0,
+    right: 0,
+    // bottom is set inline to account for the custom tab bar height
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    zIndex: 50,
+    elevation: 50,
+  },
+  footerPanel: {
+    width: "100%",
+    maxWidth: 420,
+    alignSelf: "center",
+    paddingTop: 12,
+    paddingHorizontal: 14,
+  },
+  actionBtn: {
     flex: 1,
-    height: 48,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.5)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.45)",
-    flexDirection: "row",
+    height: 52,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    flexDirection: "row-reverse",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
-    shadowColor: "rgba(0,0,0,0.12)",
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
+    gap: 10,
+    ...(Platform.OS === "web"
+      ? ({
+          // @ts-expect-error web-only style
+          boxShadow: "0 10px 30px rgba(15, 23, 42, 0.12)",
+        } as any)
+      : {
+          shadowColor: "rgba(15, 23, 42, 0.22)",
+          shadowOpacity: 0.14,
+          shadowRadius: 16,
+          shadowOffset: { width: 0, height: 10 },
+          elevation: 6,
+        }),
   },
-  glassBtnPressed: { transform: [{ scale: 0.98 }], backgroundColor: "rgba(255,255,255,0.75)" },
-  glassBtnText: { fontSize: 13, fontWeight: "800" },
+  actionBtnPrimary: {
+    backgroundColor: ui.primary,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.22)",
+  },
+  actionBtnDanger: {
+    backgroundColor: "rgba(255,255,255,0.92)",
+    borderWidth: 1,
+    borderColor: "rgba(227, 77, 77, 0.35)",
+  },
+  actionBtnPressed: { transform: [{ scale: 0.985 }], opacity: 0.92 },
+  actionBtnText: { fontSize: 14, fontWeight: "900", letterSpacing: -0.1 },
 
   metrics: { marginTop: 26, paddingHorizontal: 20, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 18 },
   metricCol: { alignItems: "center", gap: 6, minWidth: 130 },

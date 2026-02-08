@@ -56,7 +56,7 @@ export default function MessageEditor() {
     setLoading(true);
 
     try {
-      // Update each notification's message content and date
+      // Update each notification's message content and schedule
       const updatePromises = notifications
         .filter(notification => notification.id) // Only update existing records
         .map(notification => 
@@ -64,7 +64,8 @@ export default function MessageEditor() {
             .from('notification_settings')
             .update({ 
               message_content: notification.message_content,
-              notification_date: notification.notification_date
+              // Use the current DB column (`days_from_wedding`) as the schedule source.
+              days_from_wedding: notification.days_from_wedding
             })
             .eq('id', notification.id)
         );

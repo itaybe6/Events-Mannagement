@@ -1,15 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { ScrollView, View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import { ScrollView, View, Text, StyleSheet, Platform, Pressable, Image } from 'react-native';
 import { Link, useRouter, useFocusEffect } from 'expo-router';
 import { useUserStore } from '@/store/userStore';
 import { colors } from '@/constants/colors';
-import { Card } from '@/components/Card';
 import { CountdownTimer } from '@/components/CountdownTimer';
-import { StatCard } from '@/components/StatCard';
 import { Ionicons } from '@expo/vector-icons';
 import { eventService } from '@/lib/services/eventService';
 import { guestService } from '@/lib/services/guestService';
 import { giftService } from '@/lib/services/giftService';
+import { BlurView } from 'expo-blur';
 
 export default function HomeScreen() {
   const { isLoggedIn, userData, initializeAuth } = useUserStore();
@@ -85,7 +84,9 @@ export default function HomeScreen() {
       if (isLoggedIn && userData?.event_id) {
         const reloadData = async () => {
           try {
-            const event = await eventService.getEvent(userData.event_id);
+            const eventId = userData?.event_id;
+            if (!eventId) return;
+            const event = await eventService.getEvent(eventId);
             setCurrentEvent(event);
             if (event) {
               const guestsData = await guestService.getGuests(event.id);
@@ -112,24 +113,24 @@ export default function HomeScreen() {
 
   if (!isLoggedIn) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.title}>אין אירוע פעיל</Text>
+      <View style={styles.center}>
+        <Text style={styles.centerTitle}>אין אירוע פעיל</Text>
       </View>
     );
   }
 
   if (loading) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.title}>טוען...</Text>
+      <View style={styles.center}>
+        <Text style={styles.centerTitle}>טוען...</Text>
       </View>
     );
   }
 
   if (!currentEvent) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.title}>אין אירוע פעיל</Text>
+      <View style={styles.center}>
+        <Text style={styles.centerTitle}>אין אירוע פעיל</Text>
       </View>
     );
   }
@@ -150,179 +151,433 @@ export default function HomeScreen() {
   const pendingGuests = guests.filter(guest => guest.status === 'ממתין').length;
   const totalGuests = guests.length;
   const seatedGuests = guests.filter(guest => guest.status === 'מגיע' && guest.table_id).length;
-  const completedTasks = currentEvent.tasks ? currentEvent.tasks.filter((task: any) => task.completed).length : 0;
-  const totalTasks = currentEvent.tasks ? currentEvent.tasks.length : 0;
+
+  const getInitials = (name?: string) => {
+    if (!name) return '';
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return '';
+    const first = parts[0][0] ?? '';
+    const last = parts.length > 1 ? parts[parts.length - 1][0] ?? '' : '';
+    return (first + last).toUpperCase();
+  };
+
+  const StatPill = ({
+    title,
+    value,
+    iconName,
+    tintColor,
+    iconBg,
+  }: {
+    title: string;
+    value: string | number;
+    iconName: keyof typeof Ionicons.glyphMap;
+    tintColor: string;
+    iconBg: string;
+  }) => (
+    <BlurView intensity={28} tint="light" style={styles.statPill}>
+      <View style={[styles.statIconWrap, { backgroundColor: iconBg }]}>
+        <Ionicons name={iconName} size={18} color={tintColor} />
+      </View>
+      <View style={styles.statTextWrap}>
+        <Text style={styles.statTitle}>{title}</Text>
+        <Text style={styles.statValue}>{value}</Text>
+      </View>
+    </BlurView>
+  );
+
+  const ActionTile = ({
+    title,
+    subtitle,
+    iconName,
+    variant = 'square',
+  }: {
+    title: string;
+    subtitle: string;
+    iconName: keyof typeof Ionicons.glyphMap;
+    variant?: 'square' | 'wide';
+  }) => (
+    <Pressable
+      accessibilityRole="button"
+      style={({ hovered, pressed }) => [
+        styles.actionTile,
+        variant === 'wide' && styles.actionTileWide,
+        (hovered || pressed) && styles.actionTilePressed,
+      ]}
+    >
+      <BlurView intensity={24} tint="light" style={styles.actionTileInner}>
+        <View style={styles.actionTileTopRow}>
+          <View style={styles.actionTileIconBox}>
+            <Ionicons name={iconName} size={22} color={colors.text} />
+          </View>
+          <View style={styles.actionTileDot} />
+        </View>
+        <View>
+          <Text style={styles.actionTileTitle}>{title}</Text>
+          <Text style={styles.actionTileSubtitle}>{subtitle}</Text>
+        </View>
+      </BlurView>
+    </Pressable>
+  );
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-      <View style={styles.header}>
-        <View style={styles.eventInfo}>
-          <Text style={styles.title}>{currentEvent.title}</Text>
-          <Text style={styles.date}>{formatDate(currentEvent.date)}</Text>
-          <Text style={styles.location}>{currentEvent.location}</Text>
+    <View style={styles.screen}>
+      <View pointerEvents="none" style={styles.bgBlobs}>
+        <View style={styles.blobTopRight} />
+        <View style={styles.blobBottomLeft} />
+      </View>
+
+      <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+        <View style={styles.hero}>
+          <View style={styles.heroAvatar}>
+            {userData?.avatar_url ? (
+              <Image source={{ uri: userData.avatar_url }} style={styles.avatarImage} />
+            ) : (
+              <View style={styles.avatarFallback}>
+                {getInitials(userData?.name) ? (
+                  <Text style={styles.avatarInitials}>{getInitials(userData?.name)}</Text>
+                ) : (
+                  <Ionicons name="person" size={28} color={stylesVars.primaryBlue} />
+                )}
+              </View>
+            )}
+          </View>
+          <Text style={styles.heroDate}>{formatDate(currentEvent.date)}</Text>
+
+          <BlurView intensity={28} tint="light" style={styles.locationPill}>
+            <Ionicons name="location" size={16} color={stylesVars.primaryBlue} />
+            <Text style={styles.locationPillText}>{currentEvent.location}</Text>
+          </BlurView>
         </View>
-        <Image
-          source={{ uri: currentEvent.image }}
-          style={styles.eventImage}
-        />
-      </View>
 
-      <Card style={styles.countdownCard}>
-        <Text style={styles.countdownTitle}>זמן לאירוע</Text>
-        <CountdownTimer targetDate={currentEvent.date} />
-      </Card>
+        <View style={styles.countdownSection}>
+          <CountdownTimer targetDate={currentEvent.date} />
+          <View style={styles.countdownCaption}>
+            <Ionicons name="heart" size={14} color={stylesVars.primaryBlue} />
+            <Text style={styles.countdownCaptionText}>עד החופה</Text>
+          </View>
+        </View>
 
-      <View style={styles.statsContainer}>
-        <StatCard
-          title="אורחים שאישרו"
-          value={`${confirmedGuests}/${totalGuests}`}
-          icon={<Ionicons name="people" size={20} color={colors.primary} />}
-        />
-        <StatCard
-          title="מתנות"
-          value={`₪${totalGifts}`}
-          icon={<Ionicons name="gift" size={20} color={colors.secondary} />}
-          color={colors.secondary}
-        />
-        {/* כרטיסייה חדשה לאורחים שצריך להושיב */}
-        <StatCard
-          title="אורחים שצריך להושיב"
-          value={confirmedGuests - seatedGuests}
-          icon={<Ionicons name="alert-circle" size={20} color={colors.danger} />}
-          color={colors.danger}
-        />
-        <StatCard
-          title="אורחים בהמתנה"
-          value={pendingGuests}
-          icon={<Ionicons name="people" size={20} color={colors.warning} />}
-          color={colors.warning}
-        />
-      </View>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.statsRow}
+          style={styles.statsScroll}
+        >
+          <StatPill
+            title="אורחים מאושרים"
+            value={`${confirmedGuests}/${totalGuests}`}
+            iconName="people"
+            tintColor={stylesVars.primaryBlue}
+            iconBg="rgba(19, 91, 236, 0.12)"
+          />
+          <StatPill
+            title="מתנות שהתקבלו"
+            value={`₪${totalGifts}`}
+            iconName="gift"
+            tintColor={stylesVars.purple}
+            iconBg="rgba(124, 58, 237, 0.12)"
+          />
+          <StatPill
+            title="אורחים שצריך להושיב"
+            value={Math.max(0, confirmedGuests - seatedGuests)}
+            iconName="alert-circle"
+            tintColor={stylesVars.red}
+            iconBg="rgba(239, 68, 68, 0.10)"
+          />
+          <StatPill
+            title="אורחים בהמתנה"
+            value={pendingGuests}
+            iconName="time-outline"
+            tintColor={stylesVars.amber}
+            iconBg="rgba(245, 158, 11, 0.12)"
+          />
+        </ScrollView>
 
-      <Text style={styles.sectionTitle}>פעולות מהירות</Text>
-      <View style={styles.quickActionsContainer}>
-        <Link href="/(couple)/guests" asChild>
-          <TouchableOpacity style={styles.quickAction}>
-            <View style={[styles.actionIcon, { backgroundColor: `${colors.primary}20` }]}>
-              <Ionicons name="people" size={24} color={colors.primary} />
-            </View>
-            <Text style={styles.actionText}>הזמנת אורחים</Text>
-          </TouchableOpacity>
-        </Link>
+        <View style={styles.actionsGrid}>
+          <View style={styles.actionTileWrapper}>
+            <Link href="/(couple)/guests" asChild>
+              <ActionTile title={'רשימת\nמוזמנים'} subtitle="נהל אישורי הגעה" iconName="list" />
+            </Link>
+          </View>
 
-        <Link href="/(couple)/BrideGroomSeating" asChild>
-          <TouchableOpacity style={styles.quickAction}>
-            <View style={[styles.actionIcon, { backgroundColor: `${colors.info}20` }]}>
-              <Ionicons name="calendar" size={24} color={colors.info} />
-            </View>
-            <Text style={styles.actionText}>סידור ישיבה</Text>
-          </TouchableOpacity>
-        </Link>
-      </View>
+          <View style={styles.actionTileWrapper}>
+            <Link href="/(couple)/BrideGroomSeating" asChild>
+              <ActionTile title={'סידור\nהושבה'} subtitle="גרור ושחרר אורחים" iconName="grid" />
+            </Link>
+          </View>
 
-
-    </ScrollView>
+          <View style={styles.actionTileWrapperWide}>
+            <Link href="/(couple)/timeline" asChild>
+              <ActionTile variant="wide" title="לוח זמנים" subtitle="בקרוב" iconName="time-outline" />
+            </Link>
+          </View>
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 
+const stylesVars = {
+  primaryBlue: '#135bec',
+  purple: '#7c3aed',
+  red: '#ef4444',
+  amber: '#f59e0b',
+};
+
 const styles = StyleSheet.create({
-  container: {
+  screen: {
     flex: 1,
-    backgroundColor: colors.gray[100],
+    backgroundColor: '#f6f6f8',
   },
-  contentContainer: {
-    padding: 16,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  eventInfo: {
+  center: {
     flex: 1,
-    alignItems: 'flex-end',
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: colors.text,
-    textAlign: 'right',
-  },
-  date: {
-    fontSize: 16,
-    color: colors.primary,
-    marginTop: 4,
-    textAlign: 'right',
-  },
-  location: {
-    fontSize: 14,
-    color: colors.textLight,
-    marginTop: 2,
-    textAlign: 'right',
-  },
-  eventImage: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    marginLeft: 16,
-  },
-  countdownCard: {
     alignItems: 'center',
-    marginBottom: 16,
-  },
-  countdownTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 8,
-  },
-  statsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    marginHorizontal: -8,
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 12,
-    textAlign: 'right',
-  },
-  quickActionsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  quickAction: {
-    width: '48%',
-    backgroundColor: colors.white,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    alignItems: 'center',
-    shadowColor: colors.black,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  actionIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
     justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 8,
+    backgroundColor: '#f6f6f8',
+    padding: 24,
   },
-  actionText: {
-    fontSize: 14,
-    fontWeight: '500',
+  centerTitle: {
+    fontSize: 18,
+    fontWeight: '900',
     color: colors.text,
     textAlign: 'center',
   },
+  bgBlobs: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: Platform.OS === 'web' ? 0.6 : 0.5,
+  },
+  blobTopRight: {
+    position: 'absolute',
+    top: -80,
+    right: -90,
+    width: 520,
+    height: 520,
+    borderRadius: 520,
+    backgroundColor: 'rgba(19, 91, 236, 0.14)',
+    transform: [{ scaleX: 1.05 }],
+  },
+  blobBottomLeft: {
+    position: 'absolute',
+    bottom: -90,
+    left: -140,
+    width: 420,
+    height: 420,
+    borderRadius: 420,
+    backgroundColor: 'rgba(99, 102, 241, 0.10)',
+  },
+  container: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
+  contentContainer: {
+    paddingHorizontal: 24,
+    // header is transparent (76px), keep content below it
+    paddingTop: 18 + 76,
+    paddingBottom: 130,
+  },
 
+  hero: {
+    alignItems: 'center',
+    paddingTop: 10,
+    paddingBottom: 16,
+  },
+  heroAvatar: {
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.8)',
+    shadowColor: colors.black,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+  },
+  avatarFallback: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(19, 91, 236, 0.08)',
+  },
+  avatarInitials: {
+    fontSize: 34,
+    fontWeight: '900',
+    color: stylesVars.primaryBlue,
+  },
+  heroDate: {
+    marginTop: 8,
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.gray[600],
+    textAlign: 'center',
+  },
+  locationPill: {
+    marginTop: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.55)',
+    backgroundColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.35)' : 'transparent',
+  },
+  locationPillText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.gray[600],
+    textAlign: 'right',
+  },
+
+  countdownSection: {
+    marginTop: 4,
+    marginBottom: 18,
+    alignItems: 'center',
+  },
+  countdownCaption: {
+    marginTop: 10,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+    opacity: 0.85,
+  },
+  countdownCaptionText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: stylesVars.primaryBlue,
+  },
+
+  statsScroll: {
+    marginBottom: 18,
+  },
+  statsRow: {
+    paddingHorizontal: 2,
+    gap: 12,
+  },
+  statPill: {
+    minWidth: 170,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.60)',
+    backgroundColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.35)' : 'transparent',
+  },
+  statIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statTextWrap: {
+    alignItems: 'flex-end',
+  },
+  statTitle: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: colors.gray[600],
+    letterSpacing: 1.0,
+  },
+  statValue: {
+    marginTop: 2,
+    fontSize: 18,
+    fontWeight: '900',
+    color: colors.text,
+  },
+
+  actionsHeaderRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'right',
+  },
+
+  actionsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  actionTileWrapper: {
+    width: '48%',
+  },
+  actionTileWrapperWide: {
+    width: '100%',
+  },
+  actionTile: {
+    width: '100%',
+    aspectRatio: 1,
+    borderRadius: 28,
+    overflow: 'hidden',
+  },
+  actionTileWide: {
+    aspectRatio: undefined,
+    minHeight: 110,
+  },
+  actionTilePressed: {
+    transform: [{ scale: 0.99 }],
+    opacity: 0.98,
+  },
+  actionTileInner: {
+    flex: 1,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.55)',
+    backgroundColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.55)' : 'transparent',
+    justifyContent: 'space-between',
+  },
+  actionTileTopRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
+  actionTileIconBox: {
+    width: 48,
+    height: 48,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.70)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
+  },
+  actionTileDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 8,
+    backgroundColor: 'rgba(19, 91, 236, 0.22)',
+  },
+  actionTileTitle: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'right',
+    lineHeight: 26,
+  },
+  actionTileSubtitle: {
+    marginTop: 6,
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.gray[600],
+    textAlign: 'right',
+  },
 });

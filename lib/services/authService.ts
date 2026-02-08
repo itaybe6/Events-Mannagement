@@ -14,6 +14,44 @@ export interface AuthUser {
 }
 
 export const authService = {
+  // Resolve a primary event id for an event owner (fallback if users.event_id is missing)
+  getPrimaryEventId: async (userId: string): Promise<string | null> => {
+    try {
+      const nowIso = new Date().toISOString();
+      const { data: upcoming, error: upcomingError } = await supabase
+        .from('events')
+        .select('id')
+        .eq('user_id', userId)
+        .gte('date', nowIso)
+        .order('date', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (upcomingError) {
+        console.error('Get upcoming event error:', upcomingError);
+      }
+
+      if (upcoming?.id) return upcoming.id;
+
+      const { data: latest, error: latestError } = await supabase
+        .from('events')
+        .select('id')
+        .eq('user_id', userId)
+        .order('date', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (latestError) {
+        console.error('Get latest event error:', latestError);
+      }
+
+      return latest?.id ?? null;
+    } catch (error) {
+      console.error('Get primary event id error:', error);
+      return null;
+    }
+  },
+
   // Helper function to check if error is a token expiry error
   isTokenExpiredError: (error: any): boolean => {
     if (!error) return false;
@@ -28,9 +66,15 @@ export const authService = {
   // Helper function to handle token expiry by clearing session
   handleTokenExpiry: async (): Promise<void> => {
     try {
-      await supabase.auth.signOut();
+      // Use local scope so we can always clear storage even if refresh token is missing/invalid.
+      const { error } = await supabase.auth.signOut({ scope: 'local' });
+      if (error) {
+        // Best-effort cleanup; don't rethrow from a recovery path.
+        console.warn('Auth cleanup (local signOut) error:', error);
+      }
     } catch (signOutError) {
-      console.error('Error signing out after token expiry:', signOutError);
+      // Best-effort cleanup; avoid surfacing as a hard error.
+      console.warn('Auth cleanup exception:', signOutError);
     }
   },
 
@@ -326,13 +370,15 @@ export const authService = {
 
       // No session is a normal state (not an error).
       if (sessionError) {
-        console.error('Auth session error:', sessionError);
-
+        // Treat refresh-token issues as a normal "logged out" state.
+        // This commonly happens in dev when AsyncStorage contains a stale/corrupt auth payload,
+        // or when opening the app without ever signing in.
         if (authService.isTokenExpiredError(sessionError)) {
           await authService.handleTokenExpiry();
           return null;
         }
 
+        console.error('Auth session error:', sessionError);
         throw sessionError;
       }
 
@@ -352,13 +398,18 @@ export const authService = {
 
       if (!profile) return null;
 
+      let resolvedEventId = profile.event_id;
+      if (!resolvedEventId && profile.user_type === 'event_owner') {
+        resolvedEventId = await authService.getPrimaryEventId(profile.id);
+      }
+
       return {
         id: profile.id,
         email: profile.email,
         name: profile.name,
         phone: profile.phone,
         avatar_url: profile.avatar_url || undefined,
-        event_id: profile.event_id,
+        event_id: resolvedEventId ?? undefined,
         userType: profile.user_type as UserType,
       };
     } catch (error) {

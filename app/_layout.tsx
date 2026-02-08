@@ -3,10 +3,11 @@ import { Ionicons } from "@expo/vector-icons";
 import { useFonts } from "expo-font";
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import { useEffect, useState } from "react";
-import { ActivityIndicator, I18nManager, Platform, Text, TextInput, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ActivityIndicator, I18nManager, Platform, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useUserStore } from '@/store/userStore';
 import { supabase } from '@/lib/supabase';
+import { colors } from '@/constants/colors';
 
 if (Platform.OS === 'web') {
   // Load Tailwind styles on web only to avoid platform resolution cycles.
@@ -84,24 +85,47 @@ function RootLayoutNav() {
   const segments = useSegments();
   const router = useRouter();
   const [initializing, setInitializing] = useState(true);
+  const [initTimedOut, setInitTimedOut] = useState(false);
+  const initTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isMountedRef = useRef(true);
+  const AUTH_INIT_UI_TIMEOUT_MS = 15_000;
+
+  const startAuthInit = useCallback(async () => {
+    if (!isMountedRef.current) return;
+
+    setInitTimedOut(false);
+    setInitializing(true);
+
+    if (initTimeoutRef.current) {
+      clearTimeout(initTimeoutRef.current);
+    }
+
+    initTimeoutRef.current = setTimeout(() => {
+      if (!isMountedRef.current) return;
+      setInitTimedOut(true);
+      setInitializing(false);
+    }, AUTH_INIT_UI_TIMEOUT_MS);
+
+    try {
+      // Initialize auth state
+      await initializeAuth();
+    } catch (error) {
+      console.error('Auth initialization error:', error);
+      // Reset auth state on any error during initialization
+      resetAuth();
+    } finally {
+      if (!isMountedRef.current) return;
+      if (initTimeoutRef.current) {
+        clearTimeout(initTimeoutRef.current);
+        initTimeoutRef.current = null;
+      }
+      setInitTimedOut(false);
+      setInitializing(false);
+    }
+  }, [initializeAuth, resetAuth]);
 
   useEffect(() => {
-    let mounted = true;
-
-    const initAuth = async () => {
-      try {
-        // Initialize auth state
-        await initializeAuth();
-      } catch (error) {
-        console.error('Auth initialization error:', error);
-        // Reset auth state on any error during initialization
-        resetAuth();
-      } finally {
-        if (mounted) {
-          setInitializing(false);
-        }
-      }
-    };
+    isMountedRef.current = true;
 
     // Set up auth state listener for token changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
@@ -110,17 +134,17 @@ function RootLayoutNav() {
         if (event === 'SIGNED_OUT') {
           // User signed out or token is invalid
           resetAuth();
-          if (mounted) {
+          if (isMountedRef.current) {
             router.replace('/login');
           }
         } else if (event === 'TOKEN_REFRESHED') {
-          // Token was refreshed successfully, reinitialize
+          // Token was refreshed successfully, reinitialize (with timeout guard)
           try {
-            await initializeAuth();
+            await startAuthInit();
           } catch (error) {
             console.error('Error during token refresh:', error);
             resetAuth();
-            if (mounted) {
+            if (isMountedRef.current) {
               router.replace('/login');
             }
           }
@@ -128,10 +152,14 @@ function RootLayoutNav() {
       }
     });
 
-    initAuth();
+    startAuthInit();
 
     return () => {
-      mounted = false;
+      isMountedRef.current = false;
+      if (initTimeoutRef.current) {
+        clearTimeout(initTimeoutRef.current);
+        initTimeoutRef.current = null;
+      }
       subscription.unsubscribe();
     };
   }, []);
@@ -155,8 +183,34 @@ function RootLayoutNav() {
     }
   }, [isLoggedIn, segments, initializing, loading]);
 
-  // Show loading screen while initializing
-  if (initializing || loading) {
+  if (initTimedOut) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', padding: 24 }}>
+        <Text style={{ fontSize: 18, fontWeight: '600', marginBottom: 8 }}>לא ניתן להתחבר כרגע</Text>
+        <Text style={{ fontSize: 14, color: colors.gray[600], textAlign: 'center', marginBottom: 20 }}>
+          בדוק חיבור לאינטרנט או נסה שוב בעוד רגע.
+        </Text>
+        <TouchableOpacity
+          onPress={startAuthInit}
+          style={{ backgroundColor: colors.primary, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 10, marginBottom: 10 }}
+        >
+          <Text style={{ color: colors.white, fontSize: 16 }}>נסה שוב</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => {
+            resetAuth();
+            router.replace('/login');
+          }}
+          style={{ paddingVertical: 8, paddingHorizontal: 24 }}
+        >
+          <Text style={{ color: colors.yaleBlue, fontSize: 16 }}>חזרה להתחברות</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  // Show loading screen while initializing (avoid blocking if already logged in)
+  if (initializing || (loading && !isLoggedIn)) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff' }}>
         <ActivityIndicator size="large" />

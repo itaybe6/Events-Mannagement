@@ -36,11 +36,12 @@ export default function AdminEventDetailsScreen() {
     const load = async () => {
       setLoading(true);
       const eventData = await eventService.getEvent(id as string);
-      setEvent(eventData);
       const guestsData = await guestService.getGuests(id as string);
+      setEvent(eventData);
       setGuests(guestsData);
       
       // שליפת שם המשתמש
+      let ownerName = '';
       if (eventData?.user_id) {
         const { data: userData, error } = await supabase
           .from('users')
@@ -49,9 +50,14 @@ export default function AdminEventDetailsScreen() {
           .single();
         
         if (!error && userData) {
-          setUserName(userData.name || '');
+          ownerName = userData.name || '';
+          setUserName(ownerName);
           setUserAvatarUrl(userData.avatar_url || '');
         }
+      }
+
+      if (eventData?.id && eventData?.date) {
+        await fetchOrCreateNotificationSettings(eventData.id, eventData.date as any, ownerName);
       }
       
       setLoading(false);
@@ -436,6 +442,30 @@ export default function AdminEventDetailsScreen() {
             </View>
           </GlassPanel>
 
+          {/* Notifications "window" → dedicated screen */}
+          <GlassPanel style={styles.notificationsPanel}>
+            <TouchableOpacity
+              style={styles.notificationsWindow}
+              activeOpacity={0.9}
+              onPress={() => router.push(`/(admin)/admin-event-notifications?eventId=${event.id}`)}
+              accessibilityRole="button"
+              accessibilityLabel="הודעות אוטומטיות"
+            >
+              <View style={styles.notificationsWindowIcon}>
+                <Ionicons name="chatbubble-ellipses-outline" size={18} color={ui.primary} />
+              </View>
+
+              <View style={styles.notificationsWindowContent}>
+                <Text style={[styles.notificationsWindowTitle, { color: ui.text }]}>הודעות אוטומטיות</Text>
+                <Text style={[styles.notificationsWindowSubtitle, { color: ui.muted }]}>
+                  עריכה והפעלה של תזכורות והודעות וואטסאפ
+                </Text>
+              </View>
+
+              <Ionicons name="chevron-back" size={18} color={ui.muted} />
+            </TouchableOpacity>
+          </GlassPanel>
+
           {/* Stat tiles (match screenshot style) */}
           <View style={styles.tilesRow}>
             {/* Dark tile: seating progress */}
@@ -702,6 +732,37 @@ const styles = StyleSheet.create({
   },
 
   panel: {},
+  notificationsPanel: {
+    marginTop: 12,
+  },
+  notificationsWindow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 12,
+  },
+  notificationsWindowIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: 'rgba(15,69,230,0.10)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  notificationsWindowContent: {
+    flex: 1,
+    alignItems: 'flex-end',
+  },
+  notificationsWindowTitle: {
+    fontSize: 16,
+    fontWeight: '900',
+    textAlign: 'right',
+  },
+  notificationsWindowSubtitle: {
+    marginTop: 4,
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'right',
+  },
   panelHeaderRow: {
     flexDirection: 'row-reverse',
     alignItems: 'center',

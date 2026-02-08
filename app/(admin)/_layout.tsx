@@ -9,11 +9,22 @@ import { useUserStore } from '@/store/userStore';
 export default function AdminTabsLayout() {
   const router = useRouter();
   const { isTabBarVisible, setTabBarVisible } = useLayoutStore();
-  const { userType } = useUserStore();
+  const { userType, isLoggedIn, loading } = useUserStore();
 
   useEffect(() => {
     setTabBarVisible(true);
   }, [setTabBarVisible]);
+
+  useEffect(() => {
+    if (loading) return;
+    if (!isLoggedIn) {
+      router.replace('/login');
+      return;
+    }
+    if (userType !== 'admin' && userType !== 'employee') {
+      router.replace('/(couple)');
+    }
+  }, [isLoggedIn, userType, loading, router]);
 
   const headerRight = () => (
     <TouchableOpacity
@@ -46,7 +57,7 @@ export default function AdminTabsLayout() {
         },
         headerStyle: {
           backgroundColor: colors.gray[100],
-          height: 76,
+          height: 90,
           elevation: 0,
           shadowOpacity: 0,
           borderBottomWidth: 0,
@@ -154,6 +165,13 @@ export default function AdminTabsLayout() {
           },
         }}
       />
+      <Tabs.Screen
+        name="admin-event-notifications"
+        options={{
+          href: null,
+          headerShown: false,
+        }}
+      />
       {/* Hidden admin wrappers for seating screens (keep admin tab bar) */}
       <Tabs.Screen name="BrideGroomSeating" options={{ href: null, headerShown: false }} />
       <Tabs.Screen name="seating-templates" options={{ href: null, headerShown: false }} />
@@ -178,19 +196,21 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: colors.white,
+    backgroundColor: 'rgba(255,255,255,0.35)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.55)',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 15,
     shadowColor: colors.richBlack,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    elevation: 6,
   },
   logoHeader: {
-    width: 260,
-    height: 60,
+    width: 320,
+    height: 80,
   },
 });
 
