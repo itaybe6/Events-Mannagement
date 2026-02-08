@@ -301,37 +301,92 @@ export default function ContactsListScreen() {
 
             <View style={{ gap: 16, paddingBottom: 16 }}>
               <View style={styles.topButtonsGrid}>
-                <Pressable
-                  onPress={() => setCategoryModalVisible(true)}
-                  accessibilityRole="button"
-                  accessibilityLabel="בחר קטגוריה"
-                  style={({ pressed }) => [
-                    styles.topButtonBase,
-                    styles.topButtonPrimary,
-                    pressed && styles.topButtonPrimaryPressed,
-                  ]}
-                >
-                  <MaterialIcons name="label" size={18} color={ui.primary} style={{ marginLeft: 8 }} />
-                  <Text style={[styles.topButtonText, { color: ui.primary }]} numberOfLines={1}>
-                    {selectedCategory ? selectedCategory.name : 'בחר קטגוריה'}
-                  </Text>
-                </Pressable>
+                <View style={styles.topButtonCol}>
+                  <Pressable
+                    onPress={() => setCategoryModalVisible(true)}
+                    accessibilityRole="button"
+                    accessibilityLabel="בחר קטגוריה"
+                    style={({ pressed }) => [
+                      styles.topButtonBase,
+                      styles.topButtonOuterPrimary,
+                      pressed && styles.topButtonOuterPressed,
+                    ]}
+                  >
+                    {({ pressed }) => (
+                      <View
+                        style={[
+                          styles.topButtonInner,
+                          selectedCategory ? styles.topButtonPrimarySelected : styles.topButtonPrimary,
+                          pressed && styles.topButtonPrimaryPressed,
+                        ]}
+                      >
+                        {selectedCategory ? (
+                          <LinearGradient
+                            colors={['rgba(99,102,241,0.20)', 'rgba(99,102,241,0.12)']}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                            style={StyleSheet.absoluteFillObject}
+                          />
+                        ) : null}
+                        <View style={styles.buttonContent}>
+                          <View style={styles.buttonIconWrap}>
+                            <MaterialIcons
+                              name={selectedCategory ? 'check-circle' : 'label'}
+                              size={20}
+                              color={ui.primary}
+                            />
+                          </View>
+                          <Text style={[styles.topButtonText, { color: ui.primary }]} numberOfLines={1}>
+                            {selectedCategory ? selectedCategory.name : 'בחר קטגוריה'}
+                          </Text>
+                        </View>
+                      </View>
+                    )}
+                  </Pressable>
+                </View>
 
-                <Pressable
-                  onPress={() => setCategoryModalVisible(true)}
-                  accessibilityRole="button"
-                  accessibilityLabel="החלף קטגוריה"
-                  style={({ pressed }) => [
-                    styles.topButtonBase,
-                    styles.topButtonSecondary,
-                    pressed && styles.topButtonSecondaryPressed,
-                  ]}
-                >
-                  <MaterialIcons name="swap-horiz" size={18} color="#374151" style={{ marginLeft: 8 }} />
-                  <Text style={[styles.topButtonText, { color: '#374151' }]} numberOfLines={1}>
-                    החלף קטגוריה
-                  </Text>
-                </Pressable>
+                <View style={styles.topButtonsSpacer} />
+
+                <View style={styles.topButtonCol}>
+                  <Pressable
+                    onPress={() => setCategoryModalVisible(true)}
+                    accessibilityRole="button"
+                    accessibilityLabel="החלף קטגוריה"
+                    style={({ pressed }) => [
+                      styles.topButtonBase,
+                      !selectedCategory && styles.topButtonDisabled,
+                      styles.topButtonOuterSecondary,
+                      pressed && styles.topButtonOuterPressed,
+                    ]}
+                    disabled={!selectedCategory}
+                  >
+                    {({ pressed }) => (
+                      <View
+                        style={[
+                          styles.topButtonInner,
+                          styles.topButtonSecondary,
+                          pressed && styles.topButtonSecondaryPressed,
+                        ]}
+                      >
+                        <View style={styles.buttonContent}>
+                          <View style={styles.buttonIconWrap}>
+                            <MaterialIcons
+                              name="swap-horiz"
+                              size={20}
+                              color={selectedCategory ? '#374151' : '#9CA3AF'}
+                            />
+                          </View>
+                          <Text
+                            style={[styles.topButtonText, { color: selectedCategory ? '#374151' : '#9CA3AF' }]}
+                            numberOfLines={1}
+                          >
+                            החלף קטגוריה
+                          </Text>
+                        </View>
+                      </View>
+                    )}
+                  </Pressable>
+                </View>
               </View>
 
               <View style={styles.searchWrap}>
@@ -530,40 +585,87 @@ const styles = StyleSheet.create({
   },
   topButtonsGrid: {
     flexDirection: 'row-reverse',
-    // Don't rely on `gap` for iOS compatibility across RN versions.
-    marginHorizontal: -6, // creates `gap-3` (12px) using child margins
+    alignItems: 'stretch',
+  },
+  topButtonCol: {
+    flex: 1,
+    minWidth: 0,
+  },
+  topButtonsSpacer: {
+    width: 12,
   },
   topButtonBase: {
     flex: 1,
-    height: 44,
-    borderRadius: 8, // rounded-lg
-    paddingVertical: 10, // py-2.5
-    paddingHorizontal: 12, // px-3
-    borderWidth: 1,
+    height: 52,
+    borderRadius: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 12,
+    elevation: 3,
+    shadowOpacity: 0.10,
+  },
+  topButtonOuterPrimary: {
+    shadowColor: '#6366f1',
+  },
+  topButtonOuterSecondary: {
+    shadowColor: '#000',
+  },
+  topButtonOuterPressed: {
+    transform: [{ scale: 0.985 }],
+    shadowOpacity: 0.16,
+  },
+  topButtonInner: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderWidth: 1.5,
     flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'center',
-    marginHorizontal: 6, // half of gap-3
+    overflow: 'hidden',
+    backgroundColor: '#FFFFFF',
+  },
+  buttonContent: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1,
   },
   topButtonText: {
-    fontSize: 14, // text-sm
-    fontWeight: '500', // font-medium
+    fontSize: 15,
+    fontWeight: '700',
     textAlign: 'right',
     flexShrink: 1,
   },
   topButtonPrimary: {
-    backgroundColor: 'rgba(99,102,241,0.10)', // primary/10
-    borderColor: 'rgba(99,102,241,0.20)', // primary/20
+    backgroundColor: 'rgba(99,102,241,0.14)',
+    borderColor: 'rgba(99,102,241,0.35)',
+  },
+  topButtonPrimarySelected: {
+    borderColor: 'rgba(99,102,241,0.45)',
   },
   topButtonPrimaryPressed: {
-    backgroundColor: 'rgba(99,102,241,0.20)', // primary/20
+    backgroundColor: 'rgba(99,102,241,0.24)',
+    borderColor: 'rgba(99,102,241,0.50)',
   },
   topButtonSecondary: {
     backgroundColor: '#FFFFFF',
-    borderColor: '#D1D5DB', // gray-300
+    borderColor: '#E5E7EB',
+  },
+  topButtonDisabled: {
+    opacity: 0.55,
   },
   topButtonSecondaryPressed: {
-    backgroundColor: '#F9FAFB', // gray-50
+    backgroundColor: '#F9FAFB',
+    borderColor: '#D1D5DB',
+  },
+  buttonIconWrap: {
+    marginLeft: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   searchWrap: {
     position: 'relative',

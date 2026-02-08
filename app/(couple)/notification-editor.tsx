@@ -270,11 +270,21 @@ export default function NotificationEditorScreen() {
     <SafeAreaView style={[styles.page, { backgroundColor: ui.bg }]}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      <View style={[styles.headerWrap, { paddingTop: Math.max(12, insets.top + 10), backgroundColor: ui.surface }]}>
+      <View
+        style={[
+          styles.headerWrap,
+          {
+            paddingTop: Math.max(12, insets.top + 10),
+            backgroundColor: ui.surface,
+            borderBottomColor: ui.border,
+          },
+        ]}
+      >
         <BlurView intensity={22} tint="light" style={StyleSheet.absoluteFillObject} />
+
         <View style={styles.header}>
           <TouchableOpacity
-            style={[styles.headerBtn, { borderColor: ui.border }]}
+            style={[styles.headerBtn, { backgroundColor: ui.surfaceMuted }]}
             onPress={() => router.back()}
             accessibilityRole="button"
             accessibilityLabel="חזרה"
@@ -287,30 +297,30 @@ export default function NotificationEditorScreen() {
             <Text style={[styles.headerTitle, { color: ui.text }]} numberOfLines={1}>
               עריכת הודעה
             </Text>
-            <Text style={[styles.headerSubtitle, { color: ui.sub }]} numberOfLines={1} ellipsizeMode="tail">
-              {row?.title ?? ''}
-            </Text>
+
+            <View style={[styles.headerSubtitlePill, { backgroundColor: ui.surfaceMuted, borderColor: ui.border }]}>
+              <Text style={[styles.headerSubtitle, { color: ui.sub }]} numberOfLines={1} ellipsizeMode="tail">
+                {row?.title ?? ''}
+              </Text>
+            </View>
           </View>
 
-          <View style={{ width: 40 }} />
+          <View style={{ width: 44 }} />
         </View>
       </View>
 
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? Math.max(0, insets.top + 88) : 0}
-      >
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-          <View style={styles.flex}>
-            <ScrollView
-              style={styles.flex}
-              contentContainerStyle={[styles.content, { paddingBottom: 18 }]}
-              keyboardShouldPersistTaps="handled"
-              keyboardDismissMode="on-drag"
-              automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
-              showsVerticalScrollIndicator={false}
-            >
+      {Platform.OS === 'ios' ? (
+        <View style={styles.flex}>
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+            <View style={styles.flex}>
+              <ScrollView
+                style={styles.flex}
+                contentContainerStyle={[styles.content, { paddingBottom: 18 }]}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="on-drag"
+                automaticallyAdjustKeyboardInsets
+                showsVerticalScrollIndicator={false}
+              >
               {/* Scheduling */}
               <View style={styles.section}>
                 <Text style={[styles.sectionTitle, { color: ui.text }]}>תזמון ההודעה</Text>
@@ -429,9 +439,147 @@ export default function NotificationEditorScreen() {
               </View>
             </ScrollView>
 
-          </View>
-        </TouchableWithoutFeedback>
-      </KeyboardAvoidingView>
+            </View>
+          </TouchableWithoutFeedback>
+        </View>
+      ) : (
+        <KeyboardAvoidingView style={styles.flex} behavior="height" keyboardVerticalOffset={0}>
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+            <View style={styles.flex}>
+              <ScrollView
+                style={styles.flex}
+                contentContainerStyle={[styles.content, { paddingBottom: 18 }]}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="on-drag"
+                showsVerticalScrollIndicator={false}
+              >
+                {/* Scheduling */}
+                <View style={styles.section}>
+                  <Text style={[styles.sectionTitle, { color: ui.text }]}>תזמון ההודעה</Text>
+
+                  <View style={[styles.segmentWrap, { backgroundColor: ui.surfaceMuted }]}>
+                    <Pressable
+                      onPress={() => setTimingMode('after')}
+                      style={[styles.segmentBtn, timingMode === 'after' ? styles.segmentBtnActive : null]}
+                      accessibilityRole="button"
+                      accessibilityLabel="אחרי האירוע"
+                    >
+                      <Text style={[styles.segmentText, { color: timingMode === 'after' ? ui.primary : ui.sub }]}>
+                        אחרי האירוע
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => setTimingMode('before')}
+                      style={[styles.segmentBtn, timingMode === 'before' ? styles.segmentBtnActive : null]}
+                      accessibilityRole="button"
+                      accessibilityLabel="לפני האירוע"
+                    >
+                      <Text style={[styles.segmentText, { color: timingMode === 'before' ? ui.primary : ui.sub }]}>
+                        לפני האירוע
+                      </Text>
+                    </Pressable>
+                  </View>
+
+                  <View style={styles.cardsRow}>
+                    <View
+                      style={[
+                        styles.computedCard,
+                        { backgroundColor: ui.softBlue, borderColor: 'rgba(59,130,246,0.18)' },
+                      ]}
+                    >
+                      <Text style={[styles.computedLabel, { color: 'rgba(59,130,246,0.85)' }]}>תאריך מחושב</Text>
+                      <Text style={[styles.computedValue, { color: ui.primary }]}>{computedDateText}</Text>
+                    </View>
+
+                    <View style={[styles.daysCard, { backgroundColor: ui.surface, borderColor: ui.border }]}>
+                      <View style={styles.daysCardTop}>
+                        <Text style={[styles.daysMeta, { color: ui.sub }]}>ימים</Text>
+                        <Ionicons name="calendar-outline" size={18} color={ui.iconMuted} />
+                      </View>
+
+                      <TextInput
+                        value={editedAbsDays}
+                        onChangeText={onChangeDays}
+                        placeholder="0"
+                        placeholderTextColor={ui.iconMuted}
+                        style={[styles.daysValue, { color: ui.text }]}
+                        keyboardType="numeric"
+                        inputMode="numeric"
+                        textAlign="center"
+                        maxLength={4}
+                      />
+                    </View>
+                  </View>
+                </View>
+
+                {/* Message */}
+                <View style={styles.section}>
+                  <View style={styles.messageHeaderRow}>
+                    <Text style={[styles.sectionTitle, { color: ui.text }]}>תוכן ההודעה</Text>
+
+                    <View style={styles.messageTools}>
+                      <TouchableOpacity
+                        style={[
+                          styles.toolBtn,
+                          { backgroundColor: ui.surfaceMuted, borderColor: 'rgba(17,24,39,0.06)' },
+                        ]}
+                        activeOpacity={0.92}
+                        onPress={() => setEditedMessage(prev => `${prev}${prev ? ' ' : ''}{{event_date}}`)}
+                        accessibilityRole="button"
+                        accessibilityLabel="הוסף תאריך"
+                      >
+                        <Ionicons name="calendar-outline" size={18} color={ui.sub} />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[
+                          styles.toolBtn,
+                          { backgroundColor: ui.surfaceMuted, borderColor: 'rgba(17,24,39,0.06)' },
+                        ]}
+                        activeOpacity={0.92}
+                        onPress={() => setEditedMessage(prev => `${prev}${prev ? ' ' : ''}{{name}}`)}
+                        accessibilityRole="button"
+                        accessibilityLabel="הוסף שם"
+                      >
+                        <Ionicons name="person-add-outline" size={18} color={ui.sub} />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  <View style={styles.textareaWrap}>
+                    <TextInput
+                      value={editedMessage}
+                      onChangeText={setEditedMessage}
+                      placeholder="הקלד את ההודעה כאן..."
+                      placeholderTextColor={ui.iconMuted}
+                      style={[
+                        styles.textarea,
+                        {
+                          color: ui.text,
+                          backgroundColor: ui.surfaceMuted,
+                          borderColor: isOverLimit ? ui.danger : 'rgba(17,24,39,0.10)',
+                        },
+                      ]}
+                      multiline
+                      textAlign="right"
+                      textAlignVertical="top"
+                      maxLength={5000}
+                    />
+                    <View style={[styles.charCountPill, { borderColor: 'rgba(17,24,39,0.08)' }]}>
+                      <Text style={[styles.charCountText, { color: isOverLimit ? ui.danger : ui.sub }]}>
+                        {`${charsCount}/${maxChars} תווים`}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <Text style={[styles.helperText, { color: ui.sub }]}>
+                    * שימוש במשתנים דינמיים עשוי לשנות את אורך ההודעה הסופי.
+                  </Text>
+                </View>
+              </ScrollView>
+            </View>
+          </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
+      )}
 
       {/* Bottom actions (part of the page, NOT floating) */}
       <View
@@ -489,27 +637,39 @@ const styles = StyleSheet.create({
     position: 'relative',
     zIndex: 5,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(229,231,235,0.9)',
+    borderBottomLeftRadius: 28,
+    borderBottomRightRadius: 28,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 6,
   },
   header: {
     paddingHorizontal: 18,
-    paddingBottom: 14,
+    paddingBottom: 16,
     flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
   headerBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 1,
-    backgroundColor: '#FFFFFF',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  headerTitles: { flex: 1, alignItems: 'center' },
+  headerTitles: { flex: 1, alignItems: 'center', gap: 6 },
   headerTitle: { fontSize: 18, fontWeight: '900', textAlign: 'center' },
-  headerSubtitle: { marginTop: 2, fontSize: 12, fontWeight: '700', textAlign: 'center', opacity: 0.9 },
+  headerSubtitlePill: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    maxWidth: '92%',
+  },
+  headerSubtitle: { fontSize: 12, fontWeight: '800', textAlign: 'center' },
 
   content: {
     paddingHorizontal: 16,
