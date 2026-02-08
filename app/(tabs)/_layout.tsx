@@ -29,7 +29,7 @@ export default function TabLayout() {
       style={styles.notificationButton}
       onPress={() => router.push('/notifications')}
     >
-      <Ionicons name="notifications" size={24} color={colors.primary} />
+      <Ionicons name="notifications" size={24} color="#FF0000" />
     </TouchableOpacity>
   );
 
