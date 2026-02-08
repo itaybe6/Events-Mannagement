@@ -208,6 +208,7 @@ ALTER TABLE tables ENABLE ROW LEVEL SECURITY;
 ALTER TABLE seating_maps ENABLE ROW LEVEL SECURITY;
 ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE gifts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE notification_settings ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies
 
@@ -374,6 +375,56 @@ CREATE POLICY "Users can update gifts of own events" ON gifts FOR UPDATE
     USING (EXISTS (SELECT 1 FROM events WHERE events.id = gifts.event_id AND events.user_id = auth.uid()));
 CREATE POLICY "Users can delete gifts of own events" ON gifts FOR DELETE 
     USING (EXISTS (SELECT 1 FROM events WHERE events.id = gifts.event_id AND events.user_id = auth.uid()));
+
+-- Notification settings policies
+DROP POLICY IF EXISTS "Users can view notification settings of own events" ON notification_settings;
+DROP POLICY IF EXISTS "Users can insert notification settings for own events" ON notification_settings;
+DROP POLICY IF EXISTS "Users can update notification settings of own events" ON notification_settings;
+DROP POLICY IF EXISTS "Users can delete notification settings of own events" ON notification_settings;
+CREATE POLICY "Users can view notification settings of own events" ON notification_settings FOR SELECT
+  USING (
+    public.is_admin()
+    OR EXISTS (
+      SELECT 1 FROM events
+      WHERE events.id = notification_settings.event_id
+        AND events.user_id = auth.uid()
+    )
+  );
+CREATE POLICY "Users can insert notification settings for own events" ON notification_settings FOR INSERT
+  WITH CHECK (
+    public.is_admin()
+    OR EXISTS (
+      SELECT 1 FROM events
+      WHERE events.id = notification_settings.event_id
+        AND events.user_id = auth.uid()
+    )
+  );
+CREATE POLICY "Users can update notification settings of own events" ON notification_settings FOR UPDATE
+  USING (
+    public.is_admin()
+    OR EXISTS (
+      SELECT 1 FROM events
+      WHERE events.id = notification_settings.event_id
+        AND events.user_id = auth.uid()
+    )
+  )
+  WITH CHECK (
+    public.is_admin()
+    OR EXISTS (
+      SELECT 1 FROM events
+      WHERE events.id = notification_settings.event_id
+        AND events.user_id = auth.uid()
+    )
+  );
+CREATE POLICY "Users can delete notification settings of own events" ON notification_settings FOR DELETE
+  USING (
+    public.is_admin()
+    OR EXISTS (
+      SELECT 1 FROM events
+      WHERE events.id = notification_settings.event_id
+        AND events.user_id = auth.uid()
+    )
+  );
 
 -- Functions for updating updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()

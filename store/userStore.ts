@@ -142,11 +142,12 @@ export const useUserStore = create<UserState>()(
             loading: false,
           });
         } catch (error) {
-          console.error('Initialize auth error:', error);
-
           // Handle refresh token errors specifically using helper
           if (authService.isTokenExpiredError(error)) {
-            console.log('Token expired during auth initialization, resetting auth state');
+            // Treat as logged out; avoid noisy error logs on first run.
+            console.warn('Auth init: invalid/missing refresh token, clearing local auth state');
+          } else {
+            console.error('Initialize auth error:', error);
           }
 
           const errorMessage = typeof error === 'string' ? error : error instanceof Error ? error.message : '';

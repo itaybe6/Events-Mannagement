@@ -1,12 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Keyboard,
   Modal,
   SafeAreaView,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -19,6 +19,8 @@ import { colors } from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
 import { eventService } from '@/lib/services/eventService';
 import { Event } from '@/types';
+import { BlurView } from 'expo-blur';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type NotificationTemplate = {
   notification_type: string;
@@ -53,10 +55,13 @@ const NOTIFICATION_TEMPLATES: NotificationTemplate[] = [
 export default function AdminEventNotificationsScreen() {
   const router = useRouter();
   const { eventId } = useLocalSearchParams();
+  const insets = useSafeAreaInsets();
 
   const [event, setEvent] = useState<Event | null>(null);
   const [ownerName, setOwnerName] = useState<string>('');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [savingMap, setSavingMap] = useState<Record<string, boolean>>({});
 
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettingRow[]>([]);
 
@@ -67,13 +72,15 @@ export default function AdminEventNotificationsScreen() {
 
   const ui = useMemo(
     () => ({
-      bg: '#f6f6f8',
-      card: 'rgba(255,255,255,0.92)',
-      text: '#0d111c',
-      muted: 'rgba(13,17,28,0.55)',
-      primary: colors.primary,
-      border: 'rgba(17,24,39,0.10)',
+      bg: '#F9FAFB',
+      card: '#FFFFFF',
+      text: '#111827',
+      muted: '#6B7280',
+      primary: '#3b82f6',
+      whatsapp: '#25D366',
+      border: 'rgba(17,24,39,0.08)',
       divider: 'rgba(17,24,39,0.06)',
+      headerFill: 'rgba(249,250,251,0.92)',
     }),
     []
   );
@@ -169,8 +176,17 @@ export default function AdminEventNotificationsScreen() {
         return;
       }
       setLoading(true);
+      setError(null);
       try {
         const eventData = await eventService.getEvent(eventId);
+        if (!eventData) {
+          setEvent(null);
+          setOwnerName('');
+          setNotificationSettings([]);
+          setError('האירוע לא נמצא');
+          return;
+        }
+
         setEvent(eventData);
         const name = await loadOwnerName(eventData as any);
         setOwnerName(name);
@@ -187,12 +203,21 @@ export default function AdminEventNotificationsScreen() {
 
   const toggleNotification = async (row: NotificationSettingRow) => {
     if (!event?.id) return;
+    if (savingMap[row.notification_type]) return;
+
     const nextEnabled = !row.enabled;
+    const previousEnabled = row.enabled;
+
+    // Optimistic UI: update immediately, then persist in background.
+    setSavingMap(prev => ({ ...prev, [row.notification_type]: true }));
+    setNotificationSettings(prev =>
+      prev.map(r => (r.notification_type === row.notification_type ? { ...r, enabled: nextEnabled } : r))
+    );
+
     try {
       if (row.id) {
         const { error } = await supabase.from('notification_settings').update({ enabled: nextEnabled }).eq('id', row.id);
         if (error) throw error;
-        setNotificationSettings(prev => prev.map(r => (r.notification_type === row.notification_type ? { ...r, enabled: nextEnabled } : r)));
         return;
       }
 
@@ -218,6 +243,16 @@ export default function AdminEventNotificationsScreen() {
       setNotificationSettings(prev => prev.map(r => (r.notification_type === row.notification_type ? { ...(r as any), ...(data as any) } : r)));
     } catch (e) {
       console.error('Error toggling notification (admin screen):', e);
+      const msg = String((e as any)?.message || '');
+      const isRls = String((e as any)?.code || '') === '42501' || msg.toLowerCase().includes('row-level security');
+      Alert.alert('שגיאה', isRls ? 'אין הרשאה לעדכן הודעות (RLS). צריך להוסיף Policy בסופאבייס.' : 'לא ניתן לעדכן את ההודעה');
+
+      // Revert optimistic UI on failure.
+      setNotificationSettings(prev =>
+        prev.map(r => (r.notification_type === row.notification_type ? { ...r, enabled: previousEnabled } : r))
+      );
+    } finally {
+      setSavingMap(prev => ({ ...prev, [row.notification_type]: false }));
     }
   };
 
@@ -277,45 +312,93 @@ export default function AdminEventNotificationsScreen() {
       setEditVisible(false);
     } catch (e) {
       console.error('Error saving notification edit (admin screen):', e);
+      const msg = String((e as any)?.message || '');
+      const isRls = String((e as any)?.code || '') === '42501' || msg.toLowerCase().includes('row-level security');
+      Alert.alert('שגיאה', isRls ? 'אין הרשאה לשמור שינוי (RLS). צריך להוסיף Policy בסופאבייס.' : 'לא ניתן לשמור את השינוי');
     }
   };
 
   const regular = notificationSettings.filter(n => (n.channel || 'SMS') !== 'WHATSAPP');
   const whatsapp = notificationSettings.filter(n => (n.channel || 'SMS') === 'WHATSAPP');
 
-  const renderRow = (row: NotificationSettingRow, showDivider: boolean) => (
-    <View key={row.notification_type}>
-      <View style={styles.row}>
-        <Switch
-          value={row.enabled}
-          onValueChange={() => toggleNotification(row)}
-          trackColor={{ false: 'rgba(17,24,39,0.12)', true: 'rgba(15,69,230,0.35)' }}
-          thumbColor={row.enabled ? ui.primary : 'rgba(255,255,255,0.95)'}
-          ios_backgroundColor={'rgba(17,24,39,0.12)'}
-          style={styles.rowSwitch}
-        />
+  const stop = (e: any) => e?.stopPropagation?.();
 
-        <TouchableOpacity style={styles.rowContent} activeOpacity={0.85} onPress={() => openEdit(row)}>
-          <View style={styles.rowTitleLine}>
-            <Text style={[styles.rowTitle, { color: ui.text }]}>{row.title}</Text>
-            <View style={styles.editPill}>
-              <Ionicons name="create-outline" size={14} color={ui.primary} />
-              <Text style={[styles.editPillText, { color: ui.primary }]}>עריכה</Text>
-            </View>
-          </View>
-          <View style={styles.rowMetaLine}>
-            <Ionicons name="calendar-outline" size={14} color={ui.muted} />
-            <Text style={[styles.rowMetaText, { color: ui.muted }]}>
-              {event?.date ? `${formatOffsetLabel(row.days_from_wedding)} · ${formatDate(computeSendDate((event as any).date, row.days_from_wedding))}` : formatOffsetLabel(row.days_from_wedding)}
+  const renderCardRow = (row: NotificationSettingRow, variant: 'regular' | 'whatsapp') => {
+    const isSaving = Boolean(savingMap[row.notification_type]);
+    const enabled = Boolean(row.enabled);
+    const metaText = event?.date
+      ? `${formatOffsetLabel(row.days_from_wedding)} · ${formatDate(
+          computeSendDate((event as any).date, row.days_from_wedding)
+        )}`
+      : formatOffsetLabel(row.days_from_wedding);
+
+    const pillBg = enabled ? 'rgba(34,197,94,0.12)' : 'rgba(17,24,39,0.06)';
+    const pillBorder = enabled ? 'rgba(34,197,94,0.18)' : 'rgba(17,24,39,0.10)';
+    const pillText = enabled ? '#15803D' : 'rgba(17,24,39,0.55)';
+    const dotColor = enabled ? '#22C55E' : 'rgba(17,24,39,0.35)';
+
+    return (
+      <TouchableOpacity
+        key={row.notification_type}
+        style={[
+          styles.cardRow,
+          { backgroundColor: ui.card, borderColor: ui.border },
+          variant === 'whatsapp' ? styles.cardRowWhatsapp : null,
+        ]}
+        activeOpacity={0.92}
+        onPress={() => openEdit(row)}
+        accessibilityRole="button"
+        accessibilityLabel={`עריכת ${row.title}`}
+      >
+        {variant === 'whatsapp' ? <View style={[styles.whatsappAccent, { backgroundColor: ui.whatsapp }]} /> : null}
+
+        <View style={styles.cardChevron}>
+          <Ionicons name="chevron-back" size={18} color={'rgba(17,24,39,0.35)'} />
+        </View>
+
+        <View style={styles.cardContent}>
+          <View style={styles.cardTitleLine}>
+            <Text style={[styles.cardTitle, { color: ui.text }]} numberOfLines={2}>
+              {row.title}
             </Text>
-          </View>
-        </TouchableOpacity>
-      </View>
-      {showDivider ? <View style={[styles.divider, { backgroundColor: ui.divider }]} /> : null}
-    </View>
-  );
 
-  if (loading || !event) {
+            <TouchableOpacity
+              onPress={(e) => {
+                stop(e);
+                toggleNotification(row);
+              }}
+              onPressIn={stop}
+              activeOpacity={0.9}
+              disabled={isSaving}
+              style={[styles.statusPill, { backgroundColor: pillBg, borderColor: pillBorder, opacity: isSaving ? 0.75 : 1 }]}
+              accessibilityRole="button"
+              accessibilityLabel={enabled ? 'כיבוי הודעה' : 'הפעלת הודעה'}
+            >
+              {isSaving ? (
+                <ActivityIndicator size="small" color={enabled ? '#16A34A' : 'rgba(17,24,39,0.45)'} />
+              ) : (
+                <View style={[styles.statusDot, { backgroundColor: dotColor }]} />
+              )}
+              <Text style={[styles.statusText, { color: pillText }]}>{enabled ? 'פעיל' : 'כבוי'}</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.cardMetaLine}>
+            <View style={styles.cardMetaItem}>
+              <Text style={[styles.cardMetaText, { color: ui.muted }]}>{formatOffsetLabel(row.days_from_wedding)}</Text>
+              <Ionicons name="calendar-outline" size={14} color={'rgba(17,24,39,0.35)'} style={{ marginLeft: 6 }} />
+            </View>
+
+            <View style={styles.cardMetaDivider} />
+
+            <Text style={[styles.cardMetaDate, { color: 'rgba(17,24,39,0.70)' }]}>{event?.date ? formatDate(computeSendDate((event as any).date, row.days_from_wedding)) : ''}</Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  if (loading) {
     return (
       <SafeAreaView style={[styles.safe, { backgroundColor: ui.bg }]}>
         <View style={styles.center}>
@@ -325,34 +408,81 @@ export default function AdminEventNotificationsScreen() {
     );
   }
 
+  if (error) {
+    return (
+      <SafeAreaView style={[styles.safe, { backgroundColor: ui.bg }]}>
+        <View style={[styles.center, { paddingHorizontal: 18 }]}>
+          <Text style={{ fontSize: 16, fontWeight: '800', color: ui.text, textAlign: 'center' }}>{error}</Text>
+          <TouchableOpacity
+            style={[styles.backBtn, { marginTop: 16 }]}
+            onPress={() => router.back()}
+            accessibilityRole="button"
+            accessibilityLabel="חזרה"
+          >
+            <Ionicons name="chevron-forward" size={22} color={ui.text} />
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!event) {
+    return (
+      <SafeAreaView style={[styles.safe, { backgroundColor: ui.bg }]}>
+        <View style={[styles.center, { paddingHorizontal: 18 }]}>
+          <Text style={{ fontSize: 16, fontWeight: '800', color: ui.text, textAlign: 'center' }}>האירוע לא נמצא</Text>
+          <TouchableOpacity
+            style={[styles.backBtn, { marginTop: 16 }]}
+            onPress={() => router.back()}
+            accessibilityRole="button"
+            accessibilityLabel="חזרה"
+          >
+            <Ionicons name="chevron-forward" size={22} color={ui.text} />
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: ui.bg }]}>
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-          <Ionicons name="chevron-forward" size={22} color={ui.text} />
-        </TouchableOpacity>
-        <View style={styles.headerTitles}>
-          <Text style={[styles.headerTitle, { color: ui.text }]}>הודעות אוטומטיות</Text>
-          <Text style={[styles.headerSubtitle, { color: ui.muted }]}>{`של ${ownerName || 'בעל/ת האירוע'}`}</Text>
+      <View style={[styles.headerWrap, { paddingTop: Math.max(10, insets.top + 8) }]}>
+        <BlurView intensity={24} tint="light" style={[styles.headerBlur, { backgroundColor: ui.headerFill }]} />
+        <View style={[styles.header, { borderBottomColor: 'rgba(17,24,39,0.06)' }]}>
+          <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} activeOpacity={0.85}>
+            <Ionicons name="chevron-forward" size={22} color={ui.text} />
+          </TouchableOpacity>
+          <View style={styles.headerTitles}>
+            <Text style={[styles.headerTitle, { color: ui.text }]}>הודעות אוטומטיות</Text>
+            <Text style={[styles.headerSubtitle, { color: 'rgba(17,24,39,0.55)' }]} numberOfLines={1}>
+              {`של ${ownerName || 'בעל/ת האירוע'}`}
+            </Text>
+          </View>
+          <View style={styles.headerSpacer} />
         </View>
-        <View style={styles.headerSpacer} />
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={[styles.card, { backgroundColor: ui.card, borderColor: ui.border }]}>
-          <View style={styles.groupHeader}>
-            <Ionicons name="mail-outline" size={18} color={ui.primary} />
-            <Text style={[styles.groupTitle, { color: ui.text }]}>הודעות רגילות</Text>
+        {/* Regular */}
+        <View style={styles.sectionHeader}>
+          <Text style={[styles.sectionTitle, { color: ui.text }]}>הודעות רגילות</Text>
+          <View style={[styles.sectionIconCircle, { backgroundColor: 'rgba(59,130,246,0.10)', borderColor: 'rgba(59,130,246,0.18)' }]}>
+            <Ionicons name="mail-outline" size={16} color={ui.primary} />
           </View>
-          {regular.map((r, idx) => renderRow(r, idx < regular.length - 1))}
+        </View>
+        <View style={styles.cardsStack}>
+          {regular.map(r => renderCardRow(r, 'regular'))}
         </View>
 
-        <View style={[styles.card, { backgroundColor: ui.card, borderColor: ui.border }]}>
-          <View style={styles.groupHeader}>
-            <Ionicons name="logo-whatsapp" size={18} color={'#22C55E'} />
-            <Text style={[styles.groupTitle, { color: ui.text }]}>הודעות וואטסאפ</Text>
+        {/* WhatsApp */}
+        <View style={[styles.sectionHeader, { marginTop: 18 }]}>
+          <Text style={[styles.sectionTitle, { color: ui.text }]}>הודעות וואטסאפ</Text>
+          <View style={[styles.sectionIconCircle, { backgroundColor: 'rgba(37,211,102,0.10)', borderColor: 'rgba(37,211,102,0.18)' }]}>
+            <Ionicons name="chatbubble-ellipses-outline" size={16} color={ui.whatsapp} />
           </View>
-          {whatsapp.map((r, idx) => renderRow(r, idx < whatsapp.length - 1))}
+        </View>
+        <View style={styles.cardsStack}>
+          {whatsapp.map(r => renderCardRow(r, 'whatsapp'))}
         </View>
       </ScrollView>
 
@@ -430,72 +560,142 @@ const styles = StyleSheet.create({
   safe: { flex: 1 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
+  headerWrap: {
+    position: 'relative',
+    zIndex: 5,
+  },
+  headerBlur: {
+    ...StyleSheet.absoluteFillObject,
+  },
   header: {
     paddingHorizontal: 18,
-    paddingTop: 10,
     paddingBottom: 12,
     flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'space-between',
+    borderBottomWidth: 1,
   },
   backBtn: {
     width: 40,
     height: 40,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.75)',
+    backgroundColor: 'rgba(255,255,255,0.90)',
     borderWidth: 1,
-    borderColor: 'rgba(17,24,39,0.10)',
+    borderColor: 'rgba(17,24,39,0.08)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   headerTitles: { flex: 1, alignItems: 'center' },
-  headerTitle: { fontSize: 18, fontWeight: '900', textAlign: 'center' },
-  headerSubtitle: { marginTop: 4, fontSize: 13, fontWeight: '700', textAlign: 'center' },
+  headerTitle: { fontSize: 20, fontWeight: '900', textAlign: 'center' },
+  headerSubtitle: { marginTop: 4, fontSize: 12, fontWeight: '700', textAlign: 'center' },
   headerSpacer: { width: 40, height: 40 },
 
-  content: { paddingHorizontal: 18, paddingBottom: 120, gap: 14 },
-  card: {
+  content: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 140,
+    gap: 8,
+    maxWidth: 520,
+    alignSelf: 'center',
+    width: '100%',
+  },
+
+  sectionHeader: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    gap: 10,
+    paddingHorizontal: 4,
+    marginTop: 10,
+    marginBottom: 10,
+  },
+  sectionTitle: { fontSize: 18, fontWeight: '900', textAlign: 'right' },
+  sectionIconCircle: {
+    width: 34,
+    height: 34,
+    borderRadius: 999,
+    justifyContent: 'center',
+    alignItems: 'center',
     borderWidth: 1,
-    borderRadius: 20,
-    padding: 14,
+  },
+  cardsStack: { gap: 12 },
+
+  cardRow: {
+    position: 'relative',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
     shadowColor: colors.black,
     shadowOpacity: 0.06,
-    shadowRadius: 14,
+    shadowRadius: 18,
     shadowOffset: { width: 0, height: 10 },
     elevation: 3,
   },
-  groupHeader: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 10,
+  cardRowWhatsapp: {
+    borderColor: 'rgba(37,211,102,0.18)',
   },
-  groupTitle: { fontSize: 15, fontWeight: '900', textAlign: 'right' },
-
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
-  rowSwitch: { transform: [{ scaleX: 0.9 }, { scaleY: 0.9 }] },
-  rowContent: { flex: 1, alignItems: 'flex-end' },
-  rowTitleLine: {
+  whatsappAccent: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: 4,
+    height: '100%',
+    borderTopRightRadius: 16,
+    borderBottomRightRadius: 16,
+  },
+  cardChevron: {
+    width: 34,
+    height: 34,
+    borderRadius: 999,
+    backgroundColor: 'rgba(17,24,39,0.04)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 8,
+  },
+  cardContent: { flex: 1, alignItems: 'flex-end' },
+  cardTitleLine: {
     width: '100%',
     flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 10,
   },
-  rowTitle: { fontSize: 16, fontWeight: '800', textAlign: 'right' },
-  editPill: {
+  cardTitle: { flex: 1, fontSize: 16, fontWeight: '900', textAlign: 'right' },
+
+  statusPill: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: 'rgba(15,69,230,0.07)',
+    borderWidth: 1,
+    minWidth: 72,
+    justifyContent: 'center',
   },
-  editPillText: { fontSize: 12, fontWeight: '900' },
-  rowMetaLine: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, marginTop: 6 },
-  rowMetaText: { fontSize: 13, fontWeight: '700', textAlign: 'right' },
-  divider: { height: 1 },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 99,
+  },
+  statusText: { fontSize: 11, fontWeight: '900' },
+
+  cardMetaLine: {
+    marginTop: 8,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 10,
+    width: '100%',
+    justifyContent: 'flex-end',
+  },
+  cardMetaItem: { flexDirection: 'row', alignItems: 'center' },
+  cardMetaText: { fontSize: 12, fontWeight: '700' },
+  cardMetaDivider: { width: 1, height: 14, backgroundColor: 'rgba(17,24,39,0.15)' },
+  cardMetaDate: { fontSize: 12, fontWeight: '800' },
 
   modalOverlay: {
     flex: 1,

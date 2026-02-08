@@ -27,48 +27,110 @@ export default function AdminEventDetailsScreen() {
   const [userName, setUserName] = useState<string>('');
   const [userAvatarUrl, setUserAvatarUrl] = useState<string>('');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   // Tabs header height (see `app/(admin)/_layout.tsx` headerStyle.height)
   const headerHeight = 76;
 
   useEffect(() => {
+    const eventId =
+      typeof id === 'string' ? id : Array.isArray(id) ? id[0] : undefined;
+
+    let active = true;
     const load = async () => {
-      setLoading(true);
-      const eventData = await eventService.getEvent(id as string);
-      const guestsData = await guestService.getGuests(id as string);
-      setEvent(eventData);
-      setGuests(guestsData);
-      
-      // שליפת שם המשתמש
-      let ownerName = '';
-      if (eventData?.user_id) {
-        const { data: userData, error } = await supabase
-          .from('users')
-          .select('name, avatar_url')
-          .eq('id', eventData.user_id)
-          .single();
-        
-        if (!error && userData) {
-          ownerName = userData.name || '';
-          setUserName(ownerName);
-          setUserAvatarUrl(userData.avatar_url || '');
-        }
+      if (!eventId) {
+        if (!active) return;
+        setError('חסר מזהה אירוע');
+        setEvent(null);
+        setGuests([]);
+        setLoading(false);
+        return;
       }
 
-      if (eventData?.id && eventData?.date) {
-        await fetchOrCreateNotificationSettings(eventData.id, eventData.date as any, ownerName);
+      if (!active) return;
+      setLoading(true);
+      setError(null);
+
+      try {
+        const [eventData, guestsData] = await Promise.all([
+          eventService.getEvent(eventId),
+          guestService.getGuests(eventId),
+        ]);
+
+        if (!active) return;
+
+        setEvent(eventData ?? null);
+        setGuests(Array.isArray(guestsData) ? guestsData : []);
+
+        if (!eventData) {
+          setError('האירוע לא נמצא');
+          return;
+        }
+
+        // שליפת שם המשתמש
+        if (eventData.user_id) {
+          const { data: userData, error: userError } = await supabase
+            .from('users')
+            .select('name, avatar_url')
+            .eq('id', eventData.user_id)
+            .maybeSingle();
+
+          if (active && !userError && userData) {
+            setUserName(String(userData.name || ''));
+            setUserAvatarUrl(String((userData as any).avatar_url || ''));
+          }
+        }
+      } catch (e) {
+        console.error('Admin event details load error:', e);
+        if (!active) return;
+        setError('שגיאה בטעינת האירוע');
+        setEvent(null);
+        setGuests([]);
+      } finally {
+        if (active) setLoading(false);
       }
-      
-      setLoading(false);
     };
     load();
+    return () => {
+      active = false;
+    };
   }, [id]);
 
-  if (loading || !event) {
+  if (loading) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.gray[100], justifyContent: 'center', alignItems: 'center' }}>
         <ActivityIndicator size="large" color={colors.primary} />
+      </SafeAreaView>
+    );
+  }
+
+  if (error) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.gray[100], justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+        <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text, textAlign: 'center' }}>{error}</Text>
+        <TouchableOpacity
+          onPress={() => router.replace('/(admin)/admin-events')}
+          style={{ marginTop: 16, paddingHorizontal: 18, paddingVertical: 12, borderRadius: 12, backgroundColor: colors.primary }}
+          activeOpacity={0.9}
+        >
+          <Text style={{ color: '#fff', fontWeight: '800' }}>חזרה לרשימת אירועים</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
+
+  if (!event) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.gray[100], justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+        <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text, textAlign: 'center' }}>האירוע לא נמצא</Text>
+        <TouchableOpacity
+          onPress={() => router.replace('/(admin)/admin-events')}
+          style={{ marginTop: 16, paddingHorizontal: 18, paddingVertical: 12, borderRadius: 12, backgroundColor: colors.primary }}
+          activeOpacity={0.9}
+        >
+          <Text style={{ color: '#fff', fontWeight: '800' }}>חזרה לרשימת אירועים</Text>
+        </TouchableOpacity>
       </SafeAreaView>
     );
   }
@@ -111,12 +173,12 @@ export default function AdminEventDetailsScreen() {
   // IMPORTANT: do not use a hook here, because this screen has an early return during loading
   // (changing hook order between renders breaks the Rules of Hooks).
   const ui = {
-    bg: '#f6f6f8',
+    bg: '#F3F4F6',
     text: '#0d111c',
     muted: '#5d6b88',
     primary: '#0f45e6',
-    glassBorder: 'rgba(255,255,255,0.55)',
-    glassFill: 'rgba(255,255,255,0.65)',
+    glassBorder: 'rgba(17, 24, 39, 0.08)',
+    glassFill: '#FFFFFF',
   } as const;
 
   const getHeroImageSource = () => {
@@ -232,63 +294,46 @@ export default function AdminEventDetailsScreen() {
     );
   };
 
-  const Actions = ({ variant }: { variant: 'floating' | 'inline' }) => {
-    const wrapStyle = variant === 'floating' ? styles.bottomWrap : styles.bottomInlineWrap;
-    const gradientStyle = variant === 'floating' ? styles.bottomGradient : styles.bottomInlineGradient;
-    // Tab-bar/menu overlap compensation (native). Adjust if your bottom menu height differs.
-    const tabBarOffset = variant === 'floating' ? (Platform.OS === 'ios' ? 86 : 76) : 0;
-
+  const ActionRow = ({
+    title,
+    subtitle,
+    iconName,
+    iconBg,
+    iconColor,
+    onPress,
+    accessibilityLabel,
+  }: {
+    title: string;
+    subtitle: string;
+    iconName: keyof typeof Ionicons.glyphMap;
+    iconBg: string;
+    iconColor: string;
+    onPress: () => void;
+    accessibilityLabel: string;
+  }) => {
     return (
-      <View
-        style={[
-          wrapStyle,
-          variant === 'floating'
-            ? {
-                bottom: tabBarOffset,
-                paddingBottom: 16 + insets.bottom,
-              }
-            : null,
-        ]}
-        pointerEvents={variant === 'floating' ? 'box-none' : 'auto'}
+      <TouchableOpacity
+        style={styles.actionRow}
+        activeOpacity={0.9}
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel}
       >
-        <LinearGradient
-          colors={[ui.bg, 'rgba(246,246,248,0.92)', 'rgba(246,246,248,0)']}
-          start={{ x: 0.5, y: 1 }}
-          end={{ x: 0.5, y: 0 }}
-          style={gradientStyle}
-          pointerEvents="none"
-        />
+        <View style={styles.actionRowContent}>
+          <View style={styles.actionRowTextWrap}>
+            <Text style={[styles.actionRowTitle, { color: ui.text }]}>{title}</Text>
+            <Text style={[styles.actionRowSubtitle, { color: 'rgba(17, 24, 39, 0.60)' }]}>{subtitle}</Text>
+          </View>
 
-        {/* Segmented action pill (match screenshot): Map + Scan */}
-        <View style={styles.segmentPill}>
-          <TouchableOpacity
-            style={styles.segmentMap}
-            activeOpacity={0.9}
-            onPress={handleSeatingMap}
-            accessibilityRole="button"
-            accessibilityLabel="מפת הושבה"
-          >
-            <View style={styles.segmentMapIconCircle}>
-              <Ionicons name="grid-outline" size={20} color={ui.text} />
-            </View>
-            <Text style={[styles.segmentMapText, { color: ui.text }]}>מפת הושבה</Text>
-          </TouchableOpacity>
-
-          <View style={styles.segmentDivider} />
-
-          <TouchableOpacity
-            style={styles.segmentScan}
-            activeOpacity={0.92}
-            // IMPORTANT: Keep admin tab bar by staying inside /(admin) group
-            onPress={() => router.push(`/(admin)/seating-templates?eventId=${event.id}`)}
-            accessibilityRole="button"
-            accessibilityLabel="עריכת סקיצה"
-          >
-            <Ionicons name="library-outline" size={20} color="#fff" />
-            <Text style={styles.segmentScanText}>עריכת סקיצה</Text>
-          </TouchableOpacity>
+          <View style={[styles.actionRowIconSquare, { backgroundColor: iconBg }]}>
+            <Ionicons name={iconName} size={22} color={iconColor} />
+          </View>
         </View>
-      </View>
+
+        <View style={styles.actionRowChevronCircle}>
+          <Ionicons name="chevron-back" size={20} color={'rgba(17, 24, 39, 0.55)'} />
+        </View>
+      </TouchableOpacity>
     );
   };
 
@@ -442,30 +487,6 @@ export default function AdminEventDetailsScreen() {
             </View>
           </GlassPanel>
 
-          {/* Notifications "window" → dedicated screen */}
-          <GlassPanel style={styles.notificationsPanel}>
-            <TouchableOpacity
-              style={styles.notificationsWindow}
-              activeOpacity={0.9}
-              onPress={() => router.push(`/(admin)/admin-event-notifications?eventId=${event.id}`)}
-              accessibilityRole="button"
-              accessibilityLabel="הודעות אוטומטיות"
-            >
-              <View style={styles.notificationsWindowIcon}>
-                <Ionicons name="chatbubble-ellipses-outline" size={18} color={ui.primary} />
-              </View>
-
-              <View style={styles.notificationsWindowContent}>
-                <Text style={[styles.notificationsWindowTitle, { color: ui.text }]}>הודעות אוטומטיות</Text>
-                <Text style={[styles.notificationsWindowSubtitle, { color: ui.muted }]}>
-                  עריכה והפעלה של תזכורות והודעות וואטסאפ
-                </Text>
-              </View>
-
-              <Ionicons name="chevron-back" size={18} color={ui.muted} />
-            </TouchableOpacity>
-          </GlassPanel>
-
           {/* Stat tiles (match screenshot style) */}
           <View style={styles.tilesRow}>
             {/* Dark tile: seating progress */}
@@ -512,8 +533,40 @@ export default function AdminEventDetailsScreen() {
             </GlassPanel>
           </View>
 
-          {/* Actions are part of the sheet (not floating) */}
-          <Actions variant="inline" />
+          {/* Notifications "window" → dedicated screen (should be under the two tiles) */}
+          <View style={styles.notificationsPanel}>
+            <ActionRow
+              title="הודעות אוטומטיות"
+              subtitle="עריכה והפעלה של תזכורות והודעות וואטסאפ"
+              iconName="chatbubble-ellipses-outline"
+              iconBg="rgba(37, 99, 235, 0.10)"
+              iconColor={ui.primary}
+              onPress={() => router.push(`/(admin)/admin-event-notifications?eventId=${event.id}`)}
+              accessibilityLabel="הודעות אוטומטיות"
+            />
+          </View>
+
+          {/* Bottom actions (match provided design): two stacked action cards */}
+          <View style={styles.bottomActions}>
+            <ActionRow
+              title="עריכת סקיצה"
+              subtitle="ניהול סידורי הושבה וסקיצות"
+              iconName="create-outline"
+              iconBg="rgba(249, 115, 22, 0.14)"
+              iconColor="#F97316"
+              onPress={() => router.push(`/(admin)/seating-templates?eventId=${event.id}`)}
+              accessibilityLabel="עריכת סקיצה"
+            />
+            <ActionRow
+              title="מפת הושבה"
+              subtitle="צפייה וניהול מפת האולם"
+              iconName="grid-outline"
+              iconBg="rgba(168, 85, 247, 0.14)"
+              iconColor="#A855F7"
+              onPress={handleSeatingMap}
+              accessibilityLabel="מפת הושבה"
+            />
+          </View>
         </View>
       </ScrollView>
       </SafeAreaView>
@@ -622,7 +675,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 22,
     paddingBottom: 24,
-    backgroundColor: 'rgba(255,255,255,0.92)',
+    backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 34,
     borderTopRightRadius: 34,
   },
@@ -733,35 +786,67 @@ const styles = StyleSheet.create({
 
   panel: {},
   notificationsPanel: {
-    marginTop: 12,
+    marginTop: 14,
+    alignItems: 'center',
   },
-  notificationsWindow: {
+
+  actionRow: {
+    width: '100%',
+    maxWidth: 560,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(17, 24, 39, 0.06)',
+    shadowColor: colors.black,
+    shadowOpacity: 0.06,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 3,
     flexDirection: 'row-reverse',
     alignItems: 'center',
+    justifyContent: 'space-between',
     gap: 12,
   },
-  notificationsWindowIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
-    backgroundColor: 'rgba(15,69,230,0.10)',
-    justifyContent: 'center',
+  actionRowContent: {
+    flex: 1,
+    flexDirection: 'row-reverse',
     alignItems: 'center',
+    justifyContent: 'flex-start',
+    gap: 14,
   },
-  notificationsWindowContent: {
+  actionRowTextWrap: {
     flex: 1,
     alignItems: 'flex-end',
+    justifyContent: 'center',
   },
-  notificationsWindowTitle: {
-    fontSize: 16,
+  actionRowTitle: {
+    fontSize: 17,
     fontWeight: '900',
     textAlign: 'right',
+    letterSpacing: -0.2,
   },
-  notificationsWindowSubtitle: {
+  actionRowSubtitle: {
     marginTop: 4,
     fontSize: 13,
     fontWeight: '600',
     textAlign: 'right',
+    lineHeight: 18,
+  },
+  actionRowIconSquare: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  actionRowChevronCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 999,
+    backgroundColor: 'rgba(17, 24, 39, 0.04)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   panelHeaderRow: {
     flexDirection: 'row-reverse',
@@ -981,114 +1066,10 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
-  bottomWrap: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    paddingHorizontal: 24,
-    bottom: 0,
-    paddingBottom: 16,
-    paddingTop: 22,
+  bottomActions: {
+    marginTop: 14,
     alignItems: 'center',
-    gap: 10,
-  },
-  bottomGradient: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: 160,
-  },
-  bottomInlineWrap: {
-    marginTop: 10,
-    paddingTop: 14,
-    paddingBottom: 16,
-    alignItems: 'center',
-    gap: 10,
-  },
-  bottomInlineGradient: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    height: 90,
-  },
-
-  // Segmented action pill (map + scan)
-  segmentPill: {
-    width: '100%',
-    maxWidth: 560,
-    height: 84,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.78)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.65)',
-    shadowColor: colors.black,
-    shadowOpacity: 0.10,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 14 },
-    elevation: 6,
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    gap: 10,
-    overflow: 'hidden',
-  },
-  segmentMap: {
-    flex: 1,
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    paddingVertical: 12,
-    borderRadius: 999,
-  },
-  segmentMapIconCircle: {
-    width: 48,
-    height: 48,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.92)',
-    borderWidth: 1,
-    borderColor: 'rgba(17,24,39,0.10)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: colors.black,
-    shadowOpacity: 0.10,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 3,
-  },
-  segmentMapText: {
-    fontSize: 18,
-    fontWeight: '900',
-    textAlign: 'right',
-  },
-  segmentDivider: {
-    width: 1,
-    height: 46,
-    backgroundColor: 'rgba(17,24,39,0.10)',
-  },
-  segmentScan: {
-    height: 60,
-    minWidth: 180,
-    borderRadius: 999,
-    backgroundColor: 'rgba(15,69,230,0.92)',
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    paddingHorizontal: 20,
-    shadowColor: '#0f45e6',
-    shadowOpacity: 0.28,
-    shadowRadius: 22,
-    shadowOffset: { width: 0, height: 14 },
-    elevation: 7,
-  },
-  segmentScanText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '900',
-    textAlign: 'right',
+    gap: 12,
   },
   primaryAction: {
     width: '100%',

@@ -413,13 +413,12 @@ export const authService = {
         userType: profile.user_type as UserType,
       };
     } catch (error) {
-      console.error('Get current user error:', error);
-      
-      // Handle token expiry errors using helper
       if (authService.isTokenExpiredError(error)) {
         await authService.handleTokenExpiry();
+        return null;
       }
       
+      console.error('Get current user error:', error);
       return null;
     }
   },
