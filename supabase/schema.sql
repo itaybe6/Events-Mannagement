@@ -33,6 +33,8 @@ CREATE TABLE IF NOT EXISTS events (
     date TIMESTAMP WITH TIME ZONE NOT NULL,
     location VARCHAR(255) NOT NULL,
     city VARCHAR(255),
+    groom_name TEXT,
+    bride_name TEXT,
     image VARCHAR(500),
     story TEXT,
     guests_count INTEGER DEFAULT 0,
@@ -43,6 +45,10 @@ CREATE TABLE IF NOT EXISTS events (
 
 -- Add city column if missing (safe re-run)
 ALTER TABLE events ADD COLUMN IF NOT EXISTS city VARCHAR(255);
+
+-- Add groom/bride name columns if missing (safe re-run)
+ALTER TABLE events ADD COLUMN IF NOT EXISTS groom_name TEXT;
+ALTER TABLE events ADD COLUMN IF NOT EXISTS bride_name TEXT;
 
 -- Tasks table
 CREATE TABLE IF NOT EXISTS tasks (
@@ -161,6 +167,20 @@ CREATE TABLE IF NOT EXISTS notification_settings (
     UNIQUE(event_id, notification_type)
 );
 
+-- Notifications table (in-app inbox)
+CREATE TABLE IF NOT EXISTS notifications (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    recipient_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    event_owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    event_id UUID REFERENCES events(id) ON DELETE SET NULL,
+    type TEXT NOT NULL DEFAULT 'system',
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    read_at TIMESTAMP WITH TIME ZONE
+);
+
 -- Add foreign key constraint for table_id in guests
 DO $$
 BEGIN
@@ -197,6 +217,11 @@ CREATE INDEX IF NOT EXISTS idx_guests_category_id ON guests(category_id);
 CREATE INDEX IF NOT EXISTS idx_tables_event_id ON tables(event_id);
 CREATE INDEX IF NOT EXISTS idx_messages_event_id ON messages(event_id);
 CREATE INDEX IF NOT EXISTS idx_gifts_event_id ON gifts(event_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_recipient_created_at ON notifications(recipient_user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notifications_event_owner_created_at ON notifications(event_owner_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notifications_event_id ON notifications(event_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_recipient_unread ON notifications(recipient_user_id, created_at DESC) WHERE read_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_notifications_recipient_event_type ON notifications(recipient_user_id, event_id, type) WHERE event_id IS NOT NULL;
 
 -- Enable Row Level Security (RLS)
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
@@ -209,6 +234,7 @@ ALTER TABLE seating_maps ENABLE ROW LEVEL SECURITY;
 ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE gifts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notification_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies
 
@@ -426,6 +452,103 @@ CREATE POLICY "Users can delete notification settings of own events" ON notifica
     )
   );
 
+-- Notifications policies
+DROP POLICY IF EXISTS "Staff can manage notifications" ON notifications;
+DROP POLICY IF EXISTS "Recipients can read notifications" ON notifications;
+DROP POLICY IF EXISTS "Recipients can insert own notifications" ON notifications;
+DROP POLICY IF EXISTS "Recipients can update own notifications" ON notifications;
+DROP POLICY IF EXISTS "Recipients can delete own notifications" ON notifications;
+
+CREATE POLICY "Admins can manage notifications" ON notifications
+  FOR ALL
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
+
+CREATE POLICY "Recipients can read own notifications" ON notifications
+  FOR SELECT
+  USING (auth.uid() = recipient_user_id OR public.is_admin());
+
+CREATE POLICY "Recipients can update own notifications" ON notifications
+  FOR UPDATE
+  USING (auth.uid() = recipient_user_id OR public.is_admin())
+  WITH CHECK (auth.uid() = recipient_user_id OR public.is_admin());
+
+-- Note: Inserts are done by server-side jobs (cron) or admins; app clients don't need insert policy.
+
+-- Automatic enqueue function (daily) for admin event reminders
+CREATE OR REPLACE FUNCTION public.enqueue_admin_event_reminders()
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  today_il date := (now() AT TIME ZONE 'Asia/Jerusalem')::date;
+BEGIN
+  INSERT INTO public.notifications (
+    recipient_user_id,
+    event_owner_id,
+    event_id,
+    type,
+    title,
+    body,
+    metadata,
+    created_at
+  )
+  SELECT
+    admin_u.id,
+    e.user_id,
+    e.id,
+    CASE
+      WHEN (e.date AT TIME ZONE 'Asia/Jerusalem')::date = (today_il + 7) THEN 'admin_event_week_before'
+      ELSE 'admin_event_day_before'
+    END,
+    CASE
+      WHEN (e.date AT TIME ZONE 'Asia/Jerusalem')::date = (today_il + 7) THEN 'תזכורת: אירוע בעוד שבוע'
+      ELSE 'תזכורת: אירוע מחר'
+    END,
+    CASE
+      WHEN (e.date AT TIME ZONE 'Asia/Jerusalem')::date = (today_il + 7) THEN
+        e.title || ' מתקיים בעוד שבוע (' ||
+        to_char((e.date AT TIME ZONE 'Asia/Jerusalem'), 'DD/MM/YYYY') ||
+        ') ב' || e.location ||
+        COALESCE(' (' || e.city || ')', '') ||
+        COALESCE('. בעל/ת האירוע: ' || owner_u.name, '')
+      ELSE
+        e.title || ' מתקיים מחר (' ||
+        to_char((e.date AT TIME ZONE 'Asia/Jerusalem'), 'DD/MM/YYYY') ||
+        ' ' || to_char((e.date AT TIME ZONE 'Asia/Jerusalem'), 'HH24:MI') ||
+        ') ב' || e.location ||
+        COALESCE(' (' || e.city || ')', '') ||
+        COALESCE('. בעל/ת האירוע: ' || owner_u.name, '')
+    END,
+    jsonb_build_object(
+      'event_title', e.title,
+      'event_date', e.date,
+      'event_location', e.location,
+      'event_city', e.city,
+      'event_owner_id', e.user_id,
+      'event_owner_name', owner_u.name,
+      'reminder_date_il', today_il,
+      'reminder_kind', CASE
+        WHEN (e.date AT TIME ZONE 'Asia/Jerusalem')::date = (today_il + 7) THEN 'week_before'
+        ELSE 'day_before'
+      END
+    ),
+    now()
+  FROM public.users admin_u
+  JOIN public.events e ON TRUE
+  LEFT JOIN public.users owner_u ON owner_u.id = e.user_id
+  WHERE admin_u.user_type = 'admin'
+    AND e.date >= now()
+    AND (
+      (e.date AT TIME ZONE 'Asia/Jerusalem')::date = (today_il + 7)
+      OR (e.date AT TIME ZONE 'Asia/Jerusalem')::date = (today_il + 1)
+    )
+  ON CONFLICT DO NOTHING;
+END;
+$$;
+
 -- Functions for updating updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
@@ -497,6 +620,17 @@ EXCEPTION
     NULL;
 END $$;
 
+-- Public bucket for event images (safe re-run)
+DO $$
+BEGIN
+  INSERT INTO storage.buckets (id, name, public)
+  VALUES ('event-images', 'event-images', true)
+  ON CONFLICT (id) DO UPDATE SET public = true;
+EXCEPTION
+  WHEN undefined_table THEN
+    NULL;
+END $$;
+
 -- Public read access policy for avatars bucket (safe re-run)
 DO $$
 BEGIN
@@ -505,6 +639,19 @@ BEGIN
     FOR SELECT
     TO public
     USING (bucket_id = 'avatars');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+  WHEN undefined_table THEN NULL;
+END $$;
+
+-- Public read access policy for event-images bucket (safe re-run)
+DO $$
+BEGIN
+  CREATE POLICY "Public read event-images"
+    ON storage.objects
+    FOR SELECT
+    TO public
+    USING (bucket_id = 'event-images');
 EXCEPTION
   WHEN duplicate_object THEN NULL;
   WHEN undefined_table THEN NULL;

@@ -26,6 +26,8 @@ export const eventService = {
         story: event.story || '',
         guests: event.guests_count || 0,
         budget: Number(event.budget) || 0,
+        groomName: (event as any).groom_name ?? undefined,
+        brideName: (event as any).bride_name ?? undefined,
         user_id: event.user_id,
         userName: (event as any)?.users?.name ?? undefined,
         tasks: event.tasks.map((task: any) => ({
@@ -67,6 +69,8 @@ export const eventService = {
         story: data.story || '',
         guests: data.guests_count || 0,
         budget: Number(data.budget) || 0,
+        groomName: (data as any).groom_name ?? undefined,
+        brideName: (data as any).bride_name ?? undefined,
         user_id: data.user_id, // הוסף את user_id
         userName: (data as any)?.users?.name ?? undefined,
         tasks: data.tasks.map((task: any) => ({
@@ -88,19 +92,23 @@ export const eventService = {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('No authenticated user');
 
+      const insertData: any = {
+        user_id: user.id,
+        title: eventData.title,
+        date: eventData.date.toISOString(),
+        location: eventData.location,
+        city: eventData.city,
+        image: eventData.image,
+        story: eventData.story,
+        guests_count: eventData.guests,
+        budget: eventData.budget,
+      };
+      if (eventData.groomName !== undefined) insertData.groom_name = eventData.groomName;
+      if (eventData.brideName !== undefined) insertData.bride_name = eventData.brideName;
+
       const { data, error } = await supabase
         .from('events')
-        .insert({
-          user_id: user.id,
-          title: eventData.title,
-          date: eventData.date.toISOString(),
-          location: eventData.location,
-          city: eventData.city,
-          image: eventData.image,
-          story: eventData.story,
-          guests_count: eventData.guests,
-          budget: eventData.budget,
-        })
+        .insert(insertData)
         .select()
         .single();
 
@@ -116,6 +124,8 @@ export const eventService = {
         story: data.story || '',
         guests: data.guests_count || 0,
         budget: Number(data.budget) || 0,
+        groomName: (data as any).groom_name ?? undefined,
+        brideName: (data as any).bride_name ?? undefined,
         tasks: [],
       };
     } catch (error) {
@@ -127,19 +137,23 @@ export const eventService = {
   // Create new event for a specific user (admin)
   createEventForUser: async (userId: string, eventData: Omit<Event, 'id' | 'tasks'>): Promise<Event> => {
     try {
+      const insertData: any = {
+        user_id: userId,
+        title: eventData.title,
+        date: eventData.date.toISOString(),
+        location: eventData.location,
+        city: eventData.city,
+        image: eventData.image,
+        story: eventData.story,
+        guests_count: eventData.guests,
+        budget: eventData.budget,
+      };
+      if (eventData.groomName !== undefined) insertData.groom_name = eventData.groomName;
+      if (eventData.brideName !== undefined) insertData.bride_name = eventData.brideName;
+
       const { data, error } = await supabase
         .from('events')
-        .insert({
-          user_id: userId,
-          title: eventData.title,
-          date: eventData.date.toISOString(),
-          location: eventData.location,
-          city: eventData.city,
-          image: eventData.image,
-          story: eventData.story,
-          guests_count: eventData.guests,
-          budget: eventData.budget,
-        })
+        .insert(insertData)
         .select()
         .single();
 
@@ -161,6 +175,8 @@ export const eventService = {
         story: data.story || '',
         guests: data.guests_count || 0,
         budget: Number(data.budget) || 0,
+        groomName: (data as any).groom_name ?? undefined,
+        brideName: (data as any).bride_name ?? undefined,
         tasks: [],
       };
     } catch (error) {
@@ -182,6 +198,8 @@ export const eventService = {
       if (updates.story) updateData.story = updates.story;
       if (updates.guests !== undefined) updateData.guests_count = updates.guests;
       if (updates.budget !== undefined) updateData.budget = updates.budget;
+      if (updates.groomName !== undefined) updateData.groom_name = updates.groomName;
+      if (updates.brideName !== undefined) updateData.bride_name = updates.brideName;
 
       const { data, error } = await supabase
         .from('events')
@@ -205,6 +223,8 @@ export const eventService = {
         story: data.story || '',
         guests: data.guests_count || 0,
         budget: Number(data.budget) || 0,
+        groomName: (data as any).groom_name ?? undefined,
+        brideName: (data as any).bride_name ?? undefined,
         tasks: data.tasks.map((task: any) => ({
           id: task.id,
           title: task.title,

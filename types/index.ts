@@ -47,6 +47,8 @@ export type Event = {
   story: string;
   guests: number;
   budget: number;
+  groomName?: string;
+  brideName?: string;
   tasks: Task[];
   user_id?: string; // מזהה המשתמש שהאירוע שלו
   userName?: string; // שם המשתמש שהאירוע שלו (לתצוגת אדמין)
@@ -68,4 +70,17 @@ export type Gift = {
   message: string;
   date: Date;
   status: 'התקבל' | 'בתהליך';
+};
+
+export type Notification = {
+  id: string;
+  recipientUserId: string;
+  eventOwnerId: string;
+  eventId: string | null;
+  type: string;
+  title: string;
+  body: string;
+  metadata: any;
+  createdAt: Date;
+  readAt: Date | null;
 };

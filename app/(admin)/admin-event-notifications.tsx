@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  I18nManager,
   Keyboard,
   Modal,
   SafeAreaView,
@@ -43,7 +44,7 @@ type NotificationSettingRow = {
 
 const NOTIFICATION_TEMPLATES: NotificationTemplate[] = [
   // 3 regular (SMS) before the event
-  { notification_type: 'reminder_1', title: 'הודעה רגילה 1 (לפני האירוע)', days_from_wedding: -30, channel: 'SMS', defaultMessage: 'שלום! רצינו להזכיר לכם על האירוע הקרוב שלנו.' },
+  { notification_type: 'reminder_1', title: 'הודעה רגילה 1 (לפני האירוע)', days_from_wedding: -30, channel: 'SMS' },
   { notification_type: 'reminder_2', title: 'הודעה רגילה 2 (לפני האירוע)', days_from_wedding: -14, channel: 'SMS', defaultMessage: 'היי! האירוע בעוד שבועיים, מחכים לראות אתכם!' },
   { notification_type: 'reminder_3', title: 'הודעה רגילה 3 (לפני האירוע)', days_from_wedding: -7, channel: 'SMS', defaultMessage: 'תזכורת אחרונה: האירוע בעוד שבוע. נשמח לראותכם!' },
   // 1 WhatsApp on the event day
@@ -68,7 +69,9 @@ export default function AdminEventNotificationsScreen() {
   const [editVisible, setEditVisible] = useState(false);
   const [editing, setEditing] = useState<NotificationSettingRow | null>(null);
   const [editedMessage, setEditedMessage] = useState('');
-  const [editedDateText, setEditedDateText] = useState(''); // YYYY-MM-DD
+  // Absolute days value. Direction is controlled by `timingMode`.
+  const [editedDateText, setEditedDateText] = useState(''); // e.g. "30"
+  const [timingMode, setTimingMode] = useState<'before' | 'after'>('before');
 
   const ui = useMemo(
     () => ({
@@ -88,6 +91,67 @@ export default function AdminEventNotificationsScreen() {
   const getDefaultMessageContent = (name?: string) => {
     const displayName = name && name.trim().length > 0 ? name.trim() : 'בעל/ת האירוע';
     return `הנכם מוזמנים לאירוע של ${displayName}\nפרטי האירוע ואישור הגעתכם בקישור\nנשמח לראותכם בין אורחינו.`;
+  };
+
+  const isWeddingEvent = (eventData: Event | null) => {
+    const title = String((eventData as any)?.title ?? '').trim();
+    return title === 'חתונה' || title.includes('חתונה');
+  };
+
+  const getWeddingNamesLabel = (eventData: Event | null) => {
+    const groom = String((eventData as any)?.groomName ?? '').trim();
+    const bride = String((eventData as any)?.brideName ?? '').trim();
+    const groomLabel = groom || 'שם חתן לא הוזן';
+    const brideLabel = bride || 'שם כלה לא הוזן';
+    return `${groomLabel} ו${brideLabel}`;
+  };
+
+  const getEventOwnerLabel = (eventData: Event | null, owner?: string) => {
+    if (isWeddingEvent(eventData)) return getWeddingNamesLabel(eventData);
+    const raw = (owner || '').trim();
+    return raw || 'בעל/ת האירוע';
+  };
+
+  const getDefaultFirstReminderMessage = (eventData: Event | null, owner?: string) => {
+    const title = String((eventData as any)?.title ?? '').toLowerCase();
+    const ownerName = getEventOwnerLabel(eventData, owner);
+
+    const kind: 'wedding' | 'brit' | 'barMitzvah' | 'batMitzvah' | 'henna' | 'event' =
+      isWeddingEvent(eventData) || title.includes('wedding')
+        ? 'wedding'
+        : title.includes('ברית') || title.includes('בריתה') || title.includes('baby')
+          ? 'brit'
+          : title.includes('בר מצו') || title.includes('בר-מצו') || title.includes('bar mitz')
+            ? 'barMitzvah'
+            : title.includes('בת מצו') || title.includes('בת-מצו') || title.includes('bat mitz')
+              ? 'batMitzvah'
+              : title.includes('חינה')
+                ? 'henna'
+                : 'event';
+
+    const label =
+      kind === 'wedding'
+        ? `לחתונה של ${ownerName}`
+        : kind === 'brit'
+          ? `לברית של ${ownerName}`
+          : kind === 'barMitzvah'
+            ? `לבר מצווה של ${ownerName}`
+            : kind === 'batMitzvah'
+              ? `לבת מצווה של ${ownerName}`
+              : kind === 'henna'
+                ? `לחינה של ${ownerName}`
+                : `לאירוע של ${ownerName}`;
+
+    const dateText = (eventData as any)?.date ? new Date((eventData as any).date).toLocaleDateString('he-IL') : '';
+
+    // Best-effort RSVP link: use explicit fields if exist, otherwise fall back to event id.
+    const explicitLink = String((eventData as any)?.rsvp_link ?? (eventData as any)?.rsvpLink ?? '').trim();
+    const base = 'https://l.e2grsvp.com/e/';
+    const code = String((eventData as any)?.rsvp_code ?? (eventData as any)?.rsvpCode ?? (eventData as any)?.id ?? '').trim();
+    const link = explicitLink || `${base}${code}`;
+
+    // Match screenshot structure (link in its own line).
+    return `שלום, הוזמנתם ${label} בתאריך ${dateText}.\nלפרטים ואישור הגעה הכנסו לקישור הבא:\n${link}`;
   };
 
   const formatDate = (d: Date) => {
@@ -111,6 +175,14 @@ export default function AdminEventNotificationsScreen() {
   const isMissingColumn = (err: any, column: string) =>
     String(err?.code) === '42703' && String(err?.message || '').toLowerCase().includes(column.toLowerCase());
 
+  const getDraftSignedDays = () => {
+    const absText = (editedDateText || '').trim();
+    const abs = Number.parseInt(absText, 10);
+    if (!Number.isFinite(abs)) return 0;
+    if (abs === 0) return 0;
+    return timingMode === 'before' ? -Math.abs(abs) : Math.abs(abs);
+  };
+
   const loadOwnerName = async (eventData: Event) => {
     if (!eventData?.user_id) return '';
     const { data, error } = await supabase
@@ -122,11 +194,11 @@ export default function AdminEventNotificationsScreen() {
     return String((data as any)?.name || '');
   };
 
-  const fetchSettings = async (event_id: string, eventDateISO: string, owner?: string) => {
+  const fetchSettings = async (eventData: Event, owner?: string) => {
     const { data: rows, error } = await supabase
       .from('notification_settings')
       .select('*')
-      .eq('event_id', event_id)
+      .eq('event_id', eventData.id)
       .order('days_from_wedding', { ascending: true });
 
     if (error) {
@@ -154,7 +226,9 @@ export default function AdminEventNotificationsScreen() {
       }
 
       const defaultMessage =
-        tpl.defaultMessage ?? getDefaultMessageContent(owner);
+        tpl.notification_type === 'reminder_1'
+          ? getDefaultFirstReminderMessage(eventData, owner)
+          : (tpl.defaultMessage ?? getDefaultMessageContent(owner));
 
       return {
         notification_type: tpl.notification_type,
@@ -190,8 +264,8 @@ export default function AdminEventNotificationsScreen() {
         setEvent(eventData);
         const name = await loadOwnerName(eventData as any);
         setOwnerName(name);
-        if ((eventData as any)?.id && (eventData as any)?.date) {
-          await fetchSettings((eventData as any).id, (eventData as any).date, name);
+        if ((eventData as any)?.id) {
+          await fetchSettings(eventData as any, name);
         }
       } finally {
         setLoading(false);
@@ -227,7 +301,7 @@ export default function AdminEventNotificationsScreen() {
         notification_type: row.notification_type,
         title: row.title,
         enabled: nextEnabled,
-        message_content: row.message_content || getDefaultMessageContent(ownerName),
+        message_content: row.message_content || getDefaultMessageContent(getEventOwnerLabel(event, ownerName)),
         days_from_wedding: typeof row.days_from_wedding === 'number' ? row.days_from_wedding : (tpl?.days_from_wedding ?? 0),
         channel: (row.channel as any) || tpl?.channel || 'SMS',
       };
@@ -257,20 +331,58 @@ export default function AdminEventNotificationsScreen() {
   };
 
   const openEdit = (row: NotificationSettingRow) => {
+    const rawDays = typeof row.days_from_wedding === 'number' ? row.days_from_wedding : 0;
+    const mode: 'before' | 'after' = rawDays < 0 ? 'before' : 'after';
     setEditing(row);
     setEditedMessage(row.message_content || '');
-    setEditedDateText(String(row.days_from_wedding ?? 0));
+    setTimingMode(rawDays === 0 ? 'before' : mode);
+    setEditedDateText(String(Math.abs(rawDays)));
     setEditVisible(true);
   };
+
+  const editingRowFromStore = useMemo(() => {
+    if (!editing) return null;
+    return (
+      notificationSettings.find(r => r.notification_type === editing.notification_type) ?? editing
+    );
+  }, [notificationSettings, editing]);
+
+  // Keep `editing` meta (id/enabled/channel) in sync with store updates,
+  // without overriding the draft fields (message + days) the user is editing.
+  useEffect(() => {
+    if (!editVisible || !editing) return;
+    const latest = notificationSettings.find(r => r.notification_type === editing.notification_type);
+    if (!latest) return;
+    setEditing(prev => {
+      if (!prev || prev.notification_type !== latest.notification_type) return prev;
+      if (
+        prev.id === latest.id &&
+        prev.enabled === latest.enabled &&
+        prev.channel === latest.channel &&
+        prev.event_id === latest.event_id
+      ) {
+        return prev;
+      }
+      return {
+        ...prev,
+        id: latest.id ?? prev.id,
+        event_id: latest.event_id ?? prev.event_id,
+        enabled: Boolean(latest.enabled),
+        channel: latest.channel ?? prev.channel,
+      };
+    });
+  }, [editVisible, editing?.notification_type, notificationSettings]);
 
   const saveEdit = async () => {
     if (!event?.id || !editing) return;
     const msg = (editedMessage || '').trim();
     if (!msg) return;
 
-    const daysText = (editedDateText || '').trim();
-    const nextDays = Number.parseInt(daysText, 10);
-    const daysToSave = Number.isFinite(nextDays) ? nextDays : editing.days_from_wedding;
+    const absText = (editedDateText || '').trim();
+    const abs = Number.parseInt(absText, 10);
+    const signed =
+      Number.isFinite(abs) ? (abs === 0 ? 0 : timingMode === 'before' ? -Math.abs(abs) : Math.abs(abs)) : NaN;
+    const daysToSave = Number.isFinite(signed) ? signed : editing.days_from_wedding;
 
     try {
       if (editing.id) {
@@ -326,16 +438,8 @@ export default function AdminEventNotificationsScreen() {
   const renderCardRow = (row: NotificationSettingRow, variant: 'regular' | 'whatsapp') => {
     const isSaving = Boolean(savingMap[row.notification_type]);
     const enabled = Boolean(row.enabled);
-    const metaText = event?.date
-      ? `${formatOffsetLabel(row.days_from_wedding)} · ${formatDate(
-          computeSendDate((event as any).date, row.days_from_wedding)
-        )}`
-      : formatOffsetLabel(row.days_from_wedding);
 
-    const pillBg = enabled ? 'rgba(34,197,94,0.12)' : 'rgba(17,24,39,0.06)';
-    const pillBorder = enabled ? 'rgba(34,197,94,0.18)' : 'rgba(17,24,39,0.10)';
-    const pillText = enabled ? '#15803D' : 'rgba(17,24,39,0.55)';
-    const dotColor = enabled ? '#22C55E' : 'rgba(17,24,39,0.35)';
+    const statusColor = enabled ? '#16A34A' : 'rgba(17,24,39,0.40)';
 
     return (
       <TouchableOpacity
@@ -352,16 +456,12 @@ export default function AdminEventNotificationsScreen() {
       >
         {variant === 'whatsapp' ? <View style={[styles.whatsappAccent, { backgroundColor: ui.whatsapp }]} /> : null}
 
-        <View style={styles.cardChevron}>
-          <Ionicons name="chevron-back" size={18} color={'rgba(17,24,39,0.35)'} />
-        </View>
+        <View style={styles.cardMain}>
+          <Text style={[styles.cardTitle, { color: ui.text }]} numberOfLines={2}>
+            {row.title}
+          </Text>
 
-        <View style={styles.cardContent}>
-          <View style={styles.cardTitleLine}>
-            <Text style={[styles.cardTitle, { color: ui.text }]} numberOfLines={2}>
-              {row.title}
-            </Text>
-
+          <View style={styles.cardMetaRow}>
             <TouchableOpacity
               onPress={(e) => {
                 stop(e);
@@ -370,29 +470,25 @@ export default function AdminEventNotificationsScreen() {
               onPressIn={stop}
               activeOpacity={0.9}
               disabled={isSaving}
-              style={[styles.statusPill, { backgroundColor: pillBg, borderColor: pillBorder, opacity: isSaving ? 0.75 : 1 }]}
+              style={styles.metaStatusBtn}
               accessibilityRole="button"
               accessibilityLabel={enabled ? 'כיבוי הודעה' : 'הפעלת הודעה'}
             >
               {isSaving ? (
-                <ActivityIndicator size="small" color={enabled ? '#16A34A' : 'rgba(17,24,39,0.45)'} />
+                <ActivityIndicator size="small" color={statusColor} />
               ) : (
-                <View style={[styles.statusDot, { backgroundColor: dotColor }]} />
+                <Text style={[styles.metaStatusText, { color: statusColor }]}>{enabled ? 'פעיל' : 'כבוי'}</Text>
               )}
-              <Text style={[styles.statusText, { color: pillText }]}>{enabled ? 'פעיל' : 'כבוי'}</Text>
             </TouchableOpacity>
+            <Text style={styles.metaBullet}>•</Text>
+            <Text style={[styles.metaOffsetText, { color: ui.muted }]} numberOfLines={1}>
+              {formatOffsetLabel(row.days_from_wedding)}
+            </Text>
           </View>
+        </View>
 
-          <View style={styles.cardMetaLine}>
-            <View style={styles.cardMetaItem}>
-              <Text style={[styles.cardMetaText, { color: ui.muted }]}>{formatOffsetLabel(row.days_from_wedding)}</Text>
-              <Ionicons name="calendar-outline" size={14} color={'rgba(17,24,39,0.35)'} style={{ marginLeft: 6 }} />
-            </View>
-
-            <View style={styles.cardMetaDivider} />
-
-            <Text style={[styles.cardMetaDate, { color: 'rgba(17,24,39,0.70)' }]}>{event?.date ? formatDate(computeSendDate((event as any).date, row.days_from_wedding)) : ''}</Text>
-          </View>
+        <View style={styles.cardChevronRight}>
+          <Ionicons name="chevron-back" size={20} color={'rgba(17,24,39,0.35)'} />
         </View>
       </TouchableOpacity>
     );
@@ -455,7 +551,7 @@ export default function AdminEventNotificationsScreen() {
           <View style={styles.headerTitles}>
             <Text style={[styles.headerTitle, { color: ui.text }]}>הודעות אוטומטיות</Text>
             <Text style={[styles.headerSubtitle, { color: 'rgba(17,24,39,0.55)' }]} numberOfLines={1}>
-              {`של ${ownerName || 'בעל/ת האירוע'}`}
+              {`של ${getEventOwnerLabel(event, ownerName)}`}
             </Text>
           </View>
           <View style={styles.headerSpacer} />
@@ -493,60 +589,231 @@ export default function AdminEventNotificationsScreen() {
           </TouchableWithoutFeedback>
 
           <View style={[styles.modalCard, { borderColor: ui.border }]}>
-            <TouchableOpacity
-              style={styles.modalClose}
-              onPress={() => {
-                Keyboard.dismiss();
-                setEditVisible(false);
-              }}
-            >
-              <Ionicons name="close" size={18} color={'rgba(13,17,28,0.75)'} />
-            </TouchableOpacity>
-
-            <Text style={styles.modalTitle}>עריכת הודעה</Text>
-            <Text style={styles.modalSubtitle}>{editing?.title ?? ''}</Text>
-
-            <View style={styles.field}>
-              <Text style={styles.label}>ימים מהאירוע (מינוס = לפני)</Text>
-              <TextInput
-                value={editedDateText}
-                onChangeText={setEditedDateText}
-                placeholder="-14"
-                placeholderTextColor={'rgba(17,24,39,0.35)'}
-                style={styles.input}
-                keyboardType="numeric"
-                autoCapitalize="none"
-                autoCorrect={false}
-                textAlign="left"
-              />
-              {event?.date ? (
-                <Text style={styles.hintText}>
-                  {`תאריך מחושב: ${formatDate(computeSendDate((event as any).date, Number.parseInt(editedDateText || '0', 10) || 0))}`}
-                </Text>
-              ) : null}
-            </View>
-
-            <View style={styles.field}>
-              <Text style={styles.label}>תוכן ההודעה</Text>
-              <TextInput
-                value={editedMessage}
-                onChangeText={setEditedMessage}
-                placeholder="כתוב כאן את תוכן ההודעה..."
-                placeholderTextColor={'rgba(17,24,39,0.35)'}
-                style={styles.textarea}
-                multiline
-                textAlign="right"
-                textAlignVertical="top"
-                writingDirection="rtl"
-              />
-            </View>
-
-            <View style={styles.buttons}>
-              <TouchableOpacity style={styles.btnSecondary} onPress={() => setEditVisible(false)} activeOpacity={0.9}>
-                <Text style={styles.btnSecondaryText}>ביטול</Text>
+            {/* Header */}
+            <View style={styles.modalHeader}>
+              <TouchableOpacity
+                style={styles.modalCloseBtn}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  setEditVisible(false);
+                }}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel="סגירה"
+              >
+                <Ionicons name="close" size={18} color={'rgba(17,24,39,0.60)'} />
               </TouchableOpacity>
-              <TouchableOpacity style={styles.btnPrimary} onPress={saveEdit} activeOpacity={0.9}>
-                <Text style={styles.btnPrimaryText}>שמור</Text>
+
+              <View style={styles.modalHeaderTitles}>
+                <Text style={styles.modalTitle}>עריכת הודעה</Text>
+                <Text style={styles.modalSubtitle} numberOfLines={2}>
+                  {editing?.title ?? ''}
+                </Text>
+              </View>
+              <View style={{ width: 40 }} />
+            </View>
+
+            <View style={styles.modalDivider} />
+
+            {/* Body */}
+            <View style={styles.modalBody}>
+              {/* Enabled toggle */}
+              {editingRowFromStore ? (
+                <View style={styles.statusRow}>
+                  <Text style={styles.blockLabel}>סטטוס הודעה</Text>
+                  <View style={styles.statusToggleWrap}>
+                    <Text
+                      style={[
+                        styles.statusToggleLabel,
+                        { color: editingRowFromStore.enabled ? '#16A34A' : 'rgba(17,24,39,0.55)' },
+                      ]}
+                    >
+                      {editingRowFromStore.enabled ? 'פעיל' : 'כבוי'}
+                    </Text>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.switchTrack,
+                        editingRowFromStore.enabled ? styles.switchTrackOn : styles.switchTrackOff,
+                        savingMap[editingRowFromStore.notification_type] ? { opacity: 0.75 } : null,
+                      ]}
+                      activeOpacity={0.9}
+                      disabled={Boolean(savingMap[editingRowFromStore.notification_type])}
+                      onPress={() => toggleNotification(editingRowFromStore)}
+                      accessibilityRole="switch"
+                      accessibilityState={{
+                        checked: Boolean(editingRowFromStore.enabled),
+                        disabled: Boolean(savingMap[editingRowFromStore.notification_type]),
+                      }}
+                      accessibilityLabel="הפעלת/כיבוי הודעה"
+                    >
+                      <View
+                        style={[
+                          styles.switchThumb,
+                          savingMap[editingRowFromStore.notification_type]
+                            ? styles.switchThumbLoading
+                            : I18nManager.isRTL
+                              ? (editingRowFromStore.enabled ? styles.switchThumbRtlOn : styles.switchThumbRtlOff)
+                              : (editingRowFromStore.enabled ? styles.switchThumbLtrOn : styles.switchThumbLtrOff),
+                        ]}
+                      >
+                        {savingMap[editingRowFromStore.notification_type] ? (
+                          <ActivityIndicator size="small" color={'rgba(17,24,39,0.55)'} />
+                        ) : null}
+                      </View>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : null}
+
+              {/* Timing */}
+              <View style={styles.block}>
+                <Text style={styles.blockLabel}>תיזמון ההודעה</Text>
+                <View style={styles.segmentWrap}>
+                  <TouchableOpacity
+                    style={[styles.segmentBtn, timingMode === 'before' ? styles.segmentBtnActive : null]}
+                    onPress={() => setTimingMode('before')}
+                    activeOpacity={0.9}
+                    accessibilityRole="button"
+                    accessibilityLabel="לפני האירוע"
+                  >
+                    <Text style={[styles.segmentText, timingMode === 'before' ? styles.segmentTextActive : null]}>
+                      לפני האירוע
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.segmentBtn, timingMode === 'after' ? styles.segmentBtnActive : null]}
+                    onPress={() => setTimingMode('after')}
+                    activeOpacity={0.9}
+                    accessibilityRole="button"
+                    accessibilityLabel="אחרי האירוע"
+                  >
+                    <Text style={[styles.segmentText, timingMode === 'after' ? styles.segmentTextActive : null]}>
+                      אחרי האירוע
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.daysRow}>
+                  <View style={styles.daysInputWrap}>
+                    <Ionicons name="calendar-outline" size={18} color={'rgba(17,24,39,0.45)'} style={styles.daysIcon} />
+                    <TextInput
+                      value={editedDateText}
+                      onChangeText={setEditedDateText}
+                      placeholder="0"
+                      placeholderTextColor={'rgba(17,24,39,0.35)'}
+                      style={styles.daysInput}
+                      keyboardType="numeric"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      textAlign="center"
+                    />
+                    <Text style={styles.daysSuffix}>ימים</Text>
+                  </View>
+
+                  <View style={styles.computedPill}>
+                    <Text style={styles.computedLabel}>תאריך מחושב</Text>
+                    <Text style={styles.computedValue}>
+                      {event?.date
+                        ? formatDate(computeSendDate((event as any).date, getDraftSignedDays() as any))
+                        : ''}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.bodyDivider} />
+
+              {/* Message */}
+              <View style={styles.block}>
+                <View style={styles.messageHeaderRow}>
+                  <View style={styles.messageTools}>
+                    <TouchableOpacity
+                      style={styles.toolBtn}
+                      activeOpacity={0.9}
+                      onPress={() => setEditedMessage(prev => `${prev}${prev ? ' ' : ''}{{name}}`)}
+                      accessibilityRole="button"
+                      accessibilityLabel="הוסף שם"
+                    >
+                      <Ionicons name="person-add-outline" size={16} color={'rgba(17,24,39,0.55)'} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.toolBtn}
+                      activeOpacity={0.9}
+                      onPress={() => setEditedMessage(prev => `${prev}${prev ? ' ' : ''}{{groom_name}}`)}
+                      accessibilityRole="button"
+                      accessibilityLabel="הוסף שם חתן"
+                    >
+                      <Ionicons name="man-outline" size={16} color={'rgba(17,24,39,0.55)'} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.toolBtn}
+                      activeOpacity={0.9}
+                      onPress={() => setEditedMessage(prev => `${prev}${prev ? ' ' : ''}{{bride_name}}`)}
+                      accessibilityRole="button"
+                      accessibilityLabel="הוסף שם כלה"
+                    >
+                      <Ionicons name="woman-outline" size={16} color={'rgba(17,24,39,0.55)'} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.toolBtn}
+                      activeOpacity={0.9}
+                      onPress={() => setEditedMessage(prev => `${prev}${prev ? ' ' : ''}{{event_date}}`)}
+                      accessibilityRole="button"
+                      accessibilityLabel="הוסף תאריך"
+                    >
+                      <Ionicons name="calendar-outline" size={16} color={'rgba(17,24,39,0.55)'} />
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={styles.blockLabel}>תוכן ההודעה</Text>
+                </View>
+
+                {isWeddingEvent(event) ? (
+                  <Text style={{ marginTop: -2, fontSize: 12, fontWeight: '800', color: 'rgba(17,24,39,0.55)', textAlign: 'right' }}>
+                    {`חתן/כלה: ${getWeddingNamesLabel(event)}`}
+                  </Text>
+                ) : null}
+
+                <View style={styles.textareaWrap}>
+                  <TextInput
+                    value={editedMessage}
+                    onChangeText={setEditedMessage}
+                    placeholder="הקלד את הודעתך כאן..."
+                    placeholderTextColor={'rgba(17,24,39,0.35)'}
+                    style={styles.textarea}
+                    multiline
+                    textAlign="right"
+                    textAlignVertical="top"
+                    writingDirection="rtl"
+                  />
+                  <View style={styles.charCountPill}>
+                    <Text style={styles.charCountText}>{`${editedMessage.length}/160 תווים`}</Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+
+            {/* Footer */}
+            <View style={styles.modalFooter}>
+              <TouchableOpacity
+                style={styles.footerBtnSecondary}
+                onPress={() => setEditVisible(false)}
+                activeOpacity={0.9}
+                accessibilityRole="button"
+                accessibilityLabel="ביטול"
+              >
+                <Text style={styles.footerBtnSecondaryText}>ביטול</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.footerBtnPrimary}
+                onPress={saveEdit}
+                activeOpacity={0.92}
+                accessibilityRole="button"
+                accessibilityLabel="שמור שינויים"
+              >
+                <Ionicons name="save-outline" size={16} color="#fff" />
+                <Text style={styles.footerBtnPrimaryText}>שמור שינויים</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -622,13 +889,13 @@ const styles = StyleSheet.create({
 
   cardRow: {
     position: 'relative',
-    flexDirection: 'row',
+    flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'space-between',
     borderRadius: 16,
     borderWidth: 1,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
+    paddingVertical: 18,
+    paddingHorizontal: 18,
     shadowColor: colors.black,
     shadowOpacity: 0.06,
     shadowRadius: 18,
@@ -647,55 +914,24 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 16,
     borderBottomRightRadius: 16,
   },
-  cardChevron: {
-    width: 34,
-    height: 34,
-    borderRadius: 999,
-    backgroundColor: 'rgba(17,24,39,0.04)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginLeft: 8,
-  },
-  cardContent: { flex: 1, alignItems: 'flex-end' },
-  cardTitleLine: {
-    width: '100%',
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  cardTitle: { flex: 1, fontSize: 16, fontWeight: '900', textAlign: 'right' },
-
-  statusPill: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-    minWidth: 72,
-    justifyContent: 'center',
-  },
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 99,
-  },
-  statusText: { fontSize: 11, fontWeight: '900' },
-
-  cardMetaLine: {
+  cardMain: { flex: 1, alignItems: 'flex-end' },
+  cardTitle: { fontSize: 18, fontWeight: '900', textAlign: 'right' },
+  cardMetaRow: {
     marginTop: 8,
+    alignSelf: 'flex-end',
     flexDirection: 'row-reverse',
     alignItems: 'center',
-    gap: 10,
-    width: '100%',
-    justifyContent: 'flex-end',
   },
-  cardMetaItem: { flexDirection: 'row', alignItems: 'center' },
-  cardMetaText: { fontSize: 12, fontWeight: '700' },
-  cardMetaDivider: { width: 1, height: 14, backgroundColor: 'rgba(17,24,39,0.15)' },
-  cardMetaDate: { fontSize: 12, fontWeight: '800' },
+  metaStatusBtn: { paddingVertical: 2 },
+  metaStatusText: { fontSize: 14, fontWeight: '900' },
+  metaBullet: { marginHorizontal: 10, color: 'rgba(17,24,39,0.22)', fontSize: 14, fontWeight: '900' },
+  metaOffsetText: { fontSize: 14, fontWeight: '700' },
+  cardChevronRight: {
+    paddingRight: 4,
+    paddingLeft: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
 
   modalOverlay: {
     flex: 1,
@@ -708,86 +944,226 @@ const styles = StyleSheet.create({
   modalCard: {
     width: '100%',
     maxWidth: 520,
-    borderRadius: 22,
+    borderRadius: 28,
     backgroundColor: 'rgba(255,255,255,0.98)',
-    padding: 18,
+    padding: 0,
     borderWidth: 1,
     shadowColor: colors.black,
     shadowOpacity: 0.16,
     shadowRadius: 20,
     shadowOffset: { width: 0, height: 12 },
     elevation: 6,
+    overflow: 'hidden',
   },
-  modalClose: {
-    position: 'absolute',
-    left: 12,
-    top: 12,
-    width: 36,
-    height: 36,
+  modalHeader: {
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 12,
+    flexDirection: 'row-reverse',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
+  modalCloseBtn: {
+    width: 40,
+    height: 40,
     borderRadius: 999,
     backgroundColor: 'rgba(17,24,39,0.06)',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  modalTitle: { fontSize: 18, fontWeight: '900', color: '#0d111c', textAlign: 'center' },
-  modalSubtitle: { marginTop: 6, fontSize: 14, fontWeight: '700', color: 'rgba(13,17,28,0.55)', textAlign: 'center' },
-  field: { marginTop: 14 },
-  label: { fontSize: 13, fontWeight: '800', color: 'rgba(13,17,28,0.65)', textAlign: 'right', marginBottom: 8 },
-  hintText: {
-    marginTop: 8,
-    fontSize: 12,
-    fontWeight: '700',
-    color: 'rgba(13,17,28,0.55)',
-    textAlign: 'right',
+  modalHeaderTitles: { flex: 1, alignItems: 'center', paddingHorizontal: 10 },
+  modalTitle: { fontSize: 20, fontWeight: '900', color: '#111827', textAlign: 'center' },
+  modalSubtitle: { marginTop: 6, fontSize: 14, fontWeight: '700', color: 'rgba(17,24,39,0.55)', textAlign: 'center' },
+  modalDivider: { height: 1, backgroundColor: 'rgba(17,24,39,0.08)', marginHorizontal: 18 },
+  modalBody: { paddingHorizontal: 18, paddingTop: 16, paddingBottom: 18, gap: 16 },
+  block: { gap: 10 },
+  blockLabel: { fontSize: 13, fontWeight: '900', color: '#111827', textAlign: 'right' },
+
+  statusRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  input: {
+  statusToggleWrap: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 10,
+  },
+  statusToggleLabel: { fontSize: 13, fontWeight: '900' },
+
+  switchTrack: {
+    width: 54,
+    height: 32,
+    borderRadius: 999,
     borderWidth: 1,
-    borderColor: 'rgba(17,24,39,0.12)',
-    backgroundColor: 'rgba(17,24,39,0.03)',
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#0d111c',
+    justifyContent: 'center',
+    position: 'relative',
   },
-  textarea: {
-    borderWidth: 1,
-    borderColor: 'rgba(17,24,39,0.12)',
-    backgroundColor: 'rgba(17,24,39,0.03)',
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#0d111c',
-    minHeight: 110,
+  switchTrackOn: {
+    backgroundColor: 'rgba(59,130,246,0.95)',
+    borderColor: 'rgba(59,130,246,0.55)',
   },
-  buttons: { marginTop: 16, flexDirection: 'row-reverse', gap: 10 },
-  btnPrimary: {
-    flex: 1,
-    height: 48,
-    borderRadius: 14,
-    backgroundColor: 'rgba(15,69,230,0.95)',
+  switchTrackOff: {
+    backgroundColor: 'rgba(17,24,39,0.12)',
+    borderColor: 'rgba(17,24,39,0.14)',
+  },
+  switchThumb: {
+    position: 'absolute',
+    top: 2,
+    width: 28,
+    height: 28,
+    borderRadius: 999,
+    backgroundColor: '#FFFFFF',
+    shadowColor: colors.black,
+    shadowOpacity: 0.16,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#0f45e6',
-    shadowOpacity: 0.18,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 4,
   },
-  btnPrimaryText: { color: '#fff', fontSize: 15, fontWeight: '900' },
-  btnSecondary: {
+  switchThumbLoading: {
+    left: 13,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+  },
+  // Thumb positioning (use left to be consistent on web)
+  switchThumbLtrOff: { left: 2 },
+  switchThumbLtrOn: { left: 24 },
+  switchThumbRtlOff: { left: 24 },
+  switchThumbRtlOn: { left: 2 },
+
+  segmentWrap: {
+    flexDirection: 'row-reverse',
+    gap: 8,
+    padding: 6,
+    borderRadius: 14,
+    backgroundColor: 'rgba(17,24,39,0.04)',
+  },
+  segmentBtn: {
     flex: 1,
-    height: 48,
+    height: 40,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  segmentBtnActive: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: colors.black,
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 2,
+  },
+  segmentText: { fontSize: 13, fontWeight: '800', color: 'rgba(17,24,39,0.55)' },
+  segmentTextActive: { color: '#1d4ed8' },
+
+  daysRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12 },
+  daysInputWrap: {
+    flex: 1,
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.10)',
+    justifyContent: 'center',
+  },
+  daysIcon: { position: 'absolute', right: 12 },
+  daysSuffix: { position: 'absolute', left: 12, fontSize: 12, fontWeight: '700', color: 'rgba(17,24,39,0.55)' },
+  daysInput: {
+    paddingHorizontal: 40,
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#111827',
+    height: 52,
+  },
+  computedPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: 'rgba(29,78,216,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(29,78,216,0.14)',
+    alignItems: 'flex-end',
+    minWidth: 128,
+  },
+  computedLabel: { fontSize: 11, fontWeight: '800', color: 'rgba(29,78,216,0.75)' },
+  computedValue: { marginTop: 4, fontSize: 13, fontWeight: '900', color: 'rgba(29,78,216,0.95)' },
+
+  bodyDivider: { height: 1, backgroundColor: 'rgba(17,24,39,0.08)' },
+
+  messageHeaderRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  messageTools: { flexDirection: 'row-reverse', gap: 8 },
+  toolBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: 'rgba(17,24,39,0.06)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  textareaWrap: { position: 'relative' },
+  textarea: {
+    borderWidth: 0,
+    backgroundColor: 'rgba(17,24,39,0.04)',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#111827',
+    minHeight: 140,
+    lineHeight: 20,
+  },
+  charCountPill: {
+    position: 'absolute',
+    left: 10,
+    bottom: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.08)',
+  },
+  charCountText: { fontSize: 11, fontWeight: '800', color: 'rgba(17,24,39,0.55)' },
+
+  modalFooter: {
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(17,24,39,0.08)',
+    flexDirection: 'row-reverse',
+    gap: 10,
+    backgroundColor: 'rgba(255,255,255,0.98)',
+  },
+  footerBtnSecondary: {
+    flex: 1,
+    height: 52,
     borderRadius: 14,
     backgroundColor: 'rgba(17,24,39,0.06)',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(17,24,39,0.08)',
   },
-  btnSecondaryText: { color: 'rgba(13,17,28,0.85)', fontSize: 15, fontWeight: '900' },
+  footerBtnSecondaryText: { fontSize: 15, fontWeight: '900', color: '#111827' },
+  footerBtnPrimary: {
+    flex: 2,
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: '#1d4ed8',
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexDirection: 'row-reverse',
+    gap: 8,
+    shadowColor: '#1d4ed8',
+    shadowOpacity: 0.22,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 4,
+  },
+  footerBtnPrimaryText: { fontSize: 15, fontWeight: '900', color: '#fff' },
 });
 

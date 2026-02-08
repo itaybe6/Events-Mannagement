@@ -18,7 +18,8 @@ interface NotificationSetting {
 
 const DEFAULT_NOTIFICATION_TEMPLATES: Omit<NotificationSetting, 'id' | 'enabled'>[] = [
   // 3 regular (SMS) before the event
-  { notification_type: 'reminder_1', title: 'הודעה רגילה 1 (לפני האירוע)', days_from_wedding: -30, channel: 'SMS', message_content: 'שלום! רצינו להזכיר לכם על האירוע הקרוב שלנו.' },
+  // reminder_1 default is generated dynamically based on event type + owner name
+  { notification_type: 'reminder_1', title: 'הודעה רגילה 1 (לפני האירוע)', days_from_wedding: -30, channel: 'SMS', message_content: '' },
   { notification_type: 'reminder_2', title: 'הודעה רגילה 2 (לפני האירוע)', days_from_wedding: -14, channel: 'SMS', message_content: 'היי! האירוע בעוד שבועיים, מחכים לראות אתכם!' },
   { notification_type: 'reminder_3', title: 'הודעה רגילה 3 (לפני האירוע)', days_from_wedding: -7, channel: 'SMS', message_content: 'תזכורת אחרונה: האירוע בעוד שבוע. נשמח לראותכם!' },
   // 1 WhatsApp on the event day
@@ -31,6 +32,7 @@ export default function BrideGroomSettings() {
   const { userData, logout } = useUserStore();
   const router = useRouter();
   const [weddingDate, setWeddingDate] = useState<Date | null>(null);
+  const [eventMeta, setEventMeta] = useState<{ id: string; title: string; date: Date; groomName?: string; brideName?: string } | null>(null);
   const [notifications, setNotifications] = useState<NotificationSetting[]>([]);
   const [loading, setLoading] = useState(true);
   const [editModalVisible, setEditModalVisible] = useState(false);
@@ -41,6 +43,49 @@ export default function BrideGroomSettings() {
   const getDefaultMessageContent = (userName?: string) => {
     const displayName = userName && userName.trim().length > 0 ? userName.trim() : 'בעל/ת האירוע';
     return `הנכם מוזמנים לטקס החינה של ${displayName}\nפרטי האירוע ואישור הגעתכם בקישור\nנשמח לראותכם בין אורחינו.`;
+  };
+
+  const getDefaultFirstReminderMessage = () => {
+    const ownerName = (userData?.name || '').trim() || 'בעל/ת האירוע';
+    const title = String(eventMeta?.title ?? '').toLowerCase();
+    const hasCoupleNames = Boolean(eventMeta?.groomName || eventMeta?.brideName);
+
+    const kind: 'wedding' | 'brit' | 'barMitzvah' | 'batMitzvah' | 'henna' | 'event' =
+      hasCoupleNames || title.includes('חתונה') || title.includes('wedding')
+        ? 'wedding'
+        : title.includes('ברית') || title.includes('בריתה') || title.includes('baby')
+          ? 'brit'
+          : title.includes('בר מצו') || title.includes('בר-מצו') || title.includes('bar mitz')
+            ? 'barMitzvah'
+            : title.includes('בת מצו') || title.includes('בת-מצו') || title.includes('bat mitz')
+              ? 'batMitzvah'
+              : title.includes('חינה')
+                ? 'henna'
+                : 'event';
+
+    const groom = String(eventMeta?.groomName ?? '').trim();
+    const bride = String(eventMeta?.brideName ?? '').trim();
+    const couple = groom && bride ? `${groom} ו${bride}` : ownerName;
+
+    const label =
+      kind === 'wedding'
+        ? `לחתונה של ${couple}`
+        : kind === 'brit'
+          ? `לברית של ${ownerName}`
+          : kind === 'barMitzvah'
+            ? `לבר מצווה של ${ownerName}`
+            : kind === 'batMitzvah'
+              ? `לבת מצווה של ${ownerName}`
+              : kind === 'henna'
+                ? `לחינה של ${ownerName}`
+                : `לאירוע של ${ownerName}`;
+
+    const dateText = eventMeta?.date ? eventMeta.date.toLocaleDateString('he-IL') : '';
+    const base = 'https://l.e2grsvp.com/e/';
+    const code = String((eventMeta as any)?.id ?? userData?.event_id ?? '').trim();
+    const link = `${base}${code}`;
+
+    return `שלום, הוזמנתם ${label} בתאריך ${dateText}.\nלפרטים ואישור הגעה הכנסו לקישור הבא:\n${link}`;
   };
 
   useEffect(() => {
@@ -78,12 +123,19 @@ export default function BrideGroomSettings() {
     
     const { data, error } = await supabase
       .from('events')
-      .select('date')
+      .select('id, title, date, groom_name, bride_name')
       .eq('id', userData.event_id)
       .single();
     
     if (!error && data) {
       setWeddingDate(new Date(data.date));
+      setEventMeta({
+        id: data.id,
+        title: String((data as any).title || ''),
+        date: new Date(data.date),
+        groomName: (data as any).groom_name ?? undefined,
+        brideName: (data as any).bride_name ?? undefined,
+      });
     }
   };
 
@@ -120,10 +172,14 @@ export default function BrideGroomSettings() {
         };
       } else {
         // Use template with enabled = false (not saved to DB yet)
+        const message =
+          template.notification_type === 'reminder_1'
+            ? getDefaultFirstReminderMessage()
+            : (template.message_content || getDefaultMessageContent(userData?.name));
         return {
           ...template,
           enabled: false,
-          message_content: template.message_content || getDefaultMessageContent(userData?.name),
+          message_content: message,
         };
       }
     });
@@ -186,11 +242,16 @@ export default function BrideGroomSettings() {
         const template = DEFAULT_NOTIFICATION_TEMPLATES.find(t => t.notification_type === notification_type);
         if (!template || !userData?.event_id) return;
 
+        const defaultMsg =
+          notification_type === 'reminder_1'
+            ? getDefaultFirstReminderMessage()
+            : (template.message_content || getDefaultMessageContent(userData?.name));
+
         const newSetting: any = {
           ...template,
           event_id: userData.event_id,
           enabled: true,
-          message_content: template.message_content || getDefaultMessageContent(userData?.name),
+          message_content: defaultMsg,
           days_from_wedding: template.days_from_wedding ?? 0,
           channel: template.channel || 'SMS',
         };

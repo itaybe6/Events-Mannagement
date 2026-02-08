@@ -1,17 +1,19 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, SafeAreaView, TouchableOpacity, Platform, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, SafeAreaView, TouchableOpacity, Platform, useWindowDimensions, Modal, Alert, Pressable, TextInput, KeyboardAvoidingView } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { colors } from '@/constants/colors';
 import { eventService } from '@/lib/services/eventService';
 import { guestService } from '@/lib/services/guestService';
 import { Ionicons } from '@expo/vector-icons';
 import { Event, Guest } from '@/types';
-import { supabase } from '@/lib/supabase';
+import { supabase, supabaseAdmin } from '@/lib/supabase';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import Svg, { Circle } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
+import DateTimePickerModal from 'react-native-modal-datetime-picker';
 
 const HERO_IMAGES = {
   baby: require('../../assets/images/baby.jpg'),
@@ -26,10 +28,31 @@ export default function AdminEventDetailsScreen() {
   const [guests, setGuests] = useState<Guest[]>([]);
   const [userName, setUserName] = useState<string>('');
   const [userAvatarUrl, setUserAvatarUrl] = useState<string>('');
+  const [avatarPreviewOpen, setAvatarPreviewOpen] = useState(false);
+
+  const [editOpen, setEditOpen] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+  const [coverUploading, setCoverUploading] = useState(false);
+  const [editDatePickerOpen, setEditDatePickerOpen] = useState(false);
+  const [editForm, setEditForm] = useState<{
+    date: Date;
+    location: string;
+    city: string;
+    image: string;
+    groomName: string;
+    brideName: string;
+  }>({
+    date: new Date(),
+    location: '',
+    city: '',
+    image: '',
+    groomName: '',
+    brideName: '',
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
-  const { height: windowHeight } = useWindowDimensions();
+  const { height: windowHeight, width: windowWidth } = useWindowDimensions();
   // Tabs header height (see `app/(admin)/_layout.tsx` headerStyle.height)
   const headerHeight = 76;
 
@@ -169,6 +192,191 @@ export default function AdminEventDetailsScreen() {
     router.push(`/(admin)/BrideGroomSeating?eventId=${event.id}`);
   };
 
+  const openEditEvent = () => {
+    if (!event) return;
+    const nextDate = event?.date ? new Date(event.date) : new Date();
+    setEditForm({
+      date: Number.isFinite(nextDate.getTime()) ? nextDate : new Date(),
+      location: String(event.location ?? ''),
+      city: String(event.city ?? ''),
+      image: String(event.image ?? ''),
+      groomName: String((event as any).groomName ?? ''),
+      brideName: String((event as any).brideName ?? ''),
+    });
+    setEditOpen(true);
+  };
+
+  const base64ToUint8Array = (base64: string) => {
+    const cleaned = base64.replace(/[^A-Za-z0-9+/=]/g, '');
+    const padding = cleaned.endsWith('==') ? 2 : cleaned.endsWith('=') ? 1 : 0;
+    const byteLength = (cleaned.length * 3) / 4 - padding;
+    const bytes = new Uint8Array(byteLength);
+
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+    let byteIndex = 0;
+
+    for (let i = 0; i < cleaned.length; i += 4) {
+      const c1 = chars.indexOf(cleaned[i]);
+      const c2 = chars.indexOf(cleaned[i + 1]);
+      const c3 = chars.indexOf(cleaned[i + 2]);
+      const c4 = chars.indexOf(cleaned[i + 3]);
+
+      const triple = (c1 << 18) | (c2 << 12) | ((c3 & 63) << 6) | (c4 & 63);
+      if (byteIndex < byteLength) bytes[byteIndex++] = (triple >> 16) & 0xff;
+      if (byteIndex < byteLength) bytes[byteIndex++] = (triple >> 8) & 0xff;
+      if (byteIndex < byteLength) bytes[byteIndex++] = triple & 0xff;
+    }
+
+    return bytes;
+  };
+
+  const guessImageExt = (asset: { uri: string; fileName?: string | null; mimeType?: string | null }) => {
+    const mime = String(asset.mimeType || '').toLowerCase();
+    const fromMime = mime.split('/')[1];
+    if (fromMime && ['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif'].includes(fromMime)) {
+      return fromMime === 'jpeg' ? 'jpg' : fromMime;
+    }
+
+    const candidate = String(asset.fileName || asset.uri).split('?')[0];
+    const dot = candidate.lastIndexOf('.');
+    if (dot !== -1 && dot < candidate.length - 1) {
+      const ext = candidate.slice(dot + 1).toLowerCase();
+      if (['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif'].includes(ext)) {
+        return ext === 'jpeg' ? 'jpg' : ext;
+      }
+    }
+
+    return 'jpg';
+  };
+
+  const guessContentType = (ext: string, fallback?: string | null) => {
+    if (fallback) return fallback;
+    switch (ext) {
+      case 'png':
+        return 'image/png';
+      case 'webp':
+        return 'image/webp';
+      case 'gif':
+        return 'image/gif';
+      case 'heic':
+      case 'heif':
+        return 'image/heic';
+      case 'jpg':
+      default:
+        return 'image/jpeg';
+    }
+  };
+
+  const pickAndUploadEventCover = async () => {
+    if (!event?.id) return;
+
+    try {
+      if (Platform.OS !== 'web') {
+        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!permission.granted) {
+          Alert.alert('הרשאה נדרשת', 'כדי לבחור תמונה יש לאשר גישה לגלריה');
+          return;
+        }
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [16, 9],
+        quality: 0.85,
+        base64: true,
+      });
+
+      if (result.canceled || !result.assets?.[0]) return;
+      const asset = result.assets[0];
+
+      const ext = guessImageExt(asset);
+      const filePath = `events/${event.id}/${Date.now()}.${ext}`;
+      const contentType = guessContentType(ext, (asset as any)?.mimeType);
+
+      setCoverUploading(true);
+
+      let uploadBody: Blob | Uint8Array | null = null;
+      if ((asset as any)?.base64) {
+        uploadBody = base64ToUint8Array((asset as any).base64);
+      } else {
+        const res = await fetch(asset.uri);
+        uploadBody = await res.blob();
+      }
+      if (!uploadBody) throw new Error('חסרים נתוני תמונה להעלאה');
+
+      const { error: uploadError } = await supabaseAdmin.storage
+        .from('event-images')
+        .upload(filePath, uploadBody as any, { upsert: true, contentType });
+      if (uploadError) throw uploadError;
+
+      const { data: publicData } = supabase.storage.from('event-images').getPublicUrl(filePath);
+      const publicUrl = publicData.publicUrl;
+
+      let finalUrl = publicUrl;
+      try {
+        const probe = await fetch(publicUrl, { method: 'GET' });
+        if (!probe.ok) throw new Error('Public URL not accessible');
+      } catch {
+        const { data: signedData } = await supabaseAdmin.storage.from('event-images').createSignedUrl(filePath, 60 * 60 * 24 * 30);
+        if (signedData?.signedUrl) finalUrl = signedData.signedUrl;
+      }
+
+      setEditForm(f => ({ ...f, image: finalUrl }));
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'שגיאה לא ידועה';
+      Alert.alert('שגיאה', `לא ניתן להעלות תמונה.\n\n${message}`);
+    } finally {
+      setCoverUploading(false);
+    }
+  };
+
+  const saveEditEvent = async () => {
+    if (!event?.id) return;
+
+    const nextLocation = (editForm.location || '').trim();
+    if (!nextLocation) {
+      Alert.alert('שגיאה', 'יש להזין מיקום');
+      return;
+    }
+
+    // If wedding, require names (basic validation)
+    if (isWeddingEvent()) {
+      const g = (editForm.groomName || '').trim();
+      const b = (editForm.brideName || '').trim();
+      if (!g || !b) {
+        Alert.alert('שגיאה', 'באירוע חתונה יש להזין שם חתן ושם כלה');
+        return;
+      }
+    }
+
+    setEditSaving(true);
+    try {
+      const updates: any = {
+        date: editForm.date,
+        location: nextLocation,
+        city: (editForm.city || '').trim(),
+      };
+      const img = (editForm.image || '').trim();
+      if (img) updates.image = img;
+
+      if (isWeddingEvent()) {
+        updates.groomName = (editForm.groomName || '').trim();
+        updates.brideName = (editForm.brideName || '').trim();
+      }
+
+      const updated = await eventService.updateEvent(event.id, updates);
+      setEvent(updated);
+      setEditOpen(false);
+      Alert.alert('נשמר', 'פרטי האירוע עודכנו');
+    } catch (e) {
+      console.error('Save event edit error:', e);
+      Alert.alert('שגיאה', 'לא ניתן לשמור את השינויים');
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
   // Color system inspired by the provided HTML mock (kept local to this screen)
   // IMPORTANT: do not use a hook here, because this screen has an early return during loading
   // (changing hook order between renders breaks the Rules of Hooks).
@@ -209,6 +417,14 @@ export default function AdminEventDetailsScreen() {
     const parts = raw.split(/(?:\s*[–—-]\s*)/g).map(p => p.trim()).filter(Boolean);
     return parts[0] || raw;
   };
+
+  const isWeddingEvent = () => {
+    const label = getEventTypeLabel();
+    return label === 'חתונה' || String(event?.title ?? '').includes('חתונה');
+  };
+
+  const groomLabel = () => (event?.groomName || '').trim() || 'לא הוזן';
+  const brideLabel = () => (event?.brideName || '').trim() || 'לא הוזן';
 
   const getInitials = (name: string) => {
     const trimmed = (name || '').trim();
@@ -413,24 +629,43 @@ export default function AdminEventDetailsScreen() {
               <BlurView intensity={24} tint="light" style={styles.heroWindowBlur}>
                 <View style={[styles.heroWindowInner, { backgroundColor: 'rgba(255,255,255,0.78)' }]}>
                   <View style={styles.heroTopRow}>
-                    <View style={styles.heroAvatarRing}>
-                      {userAvatarUrl ? (
-                        <Image source={{ uri: userAvatarUrl }} style={styles.heroAvatar} contentFit="cover" transition={150} />
-                      ) : (
-                        <View style={styles.heroAvatarFallback}>
-                          {getInitials(userName) ? (
-                            <Text style={styles.heroAvatarInitials}>{getInitials(userName)}</Text>
-                          ) : (
-                            <Ionicons name="person" size={18} color={'rgba(13,17,28,0.65)'} />
-                          )}
-                        </View>
-                      )}
+                    <View style={styles.heroAvatarWrap}>
+                      <TouchableOpacity
+                        style={styles.heroAvatarRing}
+                        onPress={() => setAvatarPreviewOpen(true)}
+                        activeOpacity={0.88}
+                        accessibilityRole="button"
+                        accessibilityLabel="הגדלת תמונת פרופיל"
+                      >
+                        {userAvatarUrl ? (
+                          <Image source={{ uri: userAvatarUrl }} style={styles.heroAvatar} contentFit="cover" transition={150} />
+                        ) : (
+                          <View style={styles.heroAvatarFallback}>
+                            {getInitials(userName) ? (
+                              <Text style={styles.heroAvatarInitials}>{getInitials(userName)}</Text>
+                            ) : (
+                              <Ionicons name="person" size={18} color={'rgba(13,17,28,0.65)'} />
+                            )}
+                          </View>
+                        )}
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.heroAvatarEditBadge}
+                        onPress={openEditEvent}
+                        activeOpacity={0.9}
+                        disabled={editSaving}
+                        accessibilityRole="button"
+                        accessibilityLabel="עריכת אירוע"
+                      >
+                        <Ionicons name="create-outline" size={16} color={ui.primary} />
+                      </TouchableOpacity>
                     </View>
                   </View>
 
                   <View style={styles.heroTitleWrap}>
                     <Text style={[styles.heroTitleType, { color: ui.text }]}>{getEventTypeLabel()}</Text>
-                    {userName ? <Text style={[styles.heroTitleOwner, { color: ui.primary }]}>{`של ${userName}`}</Text> : null}
+                    {userName ? <Text style={[styles.heroTitleOwner, { color: ui.primary }]}>{`לקוח: ${userName}`}</Text> : null}
                   </View>
 
                   <View style={styles.heroMetaRow}>
@@ -439,6 +674,15 @@ export default function AdminEventDetailsScreen() {
                       {`${weekday}, ${day} | ${String(event.location ?? '')}`}
                     </Text>
                   </View>
+
+                  {isWeddingEvent() ? (
+                    <View style={styles.heroMetaRow}>
+                      <Ionicons name="heart-outline" size={18} color={ui.muted} />
+                      <Text style={[styles.heroMetaText, { color: ui.muted }]}>
+                        {`חתן: ${groomLabel()} | כלה: ${brideLabel()}`}
+                      </Text>
+                    </View>
+                  ) : null}
                 </View>
               </BlurView>
             </View>
@@ -570,6 +814,247 @@ export default function AdminEventDetailsScreen() {
         </View>
       </ScrollView>
       </SafeAreaView>
+
+      {/* Avatar preview (big centered) */}
+      <Modal
+        transparent
+        visible={avatarPreviewOpen}
+        animationType="fade"
+        onRequestClose={() => setAvatarPreviewOpen(false)}
+      >
+        <Pressable style={styles.previewOverlay} onPress={() => setAvatarPreviewOpen(false)}>
+          <TouchableOpacity
+            style={[styles.previewCloseBtn, { top: Math.max(18, insets.top + 10) }]}
+            onPress={() => setAvatarPreviewOpen(false)}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="סגירת תמונה"
+          >
+            <Ionicons name="close" size={18} color={'rgba(255,255,255,0.90)'} />
+          </TouchableOpacity>
+
+          <Pressable onPress={() => null} style={styles.previewContent}>
+            {userAvatarUrl ? (
+              <Image
+                source={{ uri: userAvatarUrl }}
+                style={{
+                  width: Math.min(windowWidth * 0.96, 920),
+                  height: Math.min(windowHeight * 0.86, 820),
+                  borderRadius: 22,
+                  backgroundColor: 'rgba(255,255,255,0.06)',
+                }}
+                contentFit="contain"
+                transition={150}
+              />
+            ) : (
+              <View style={styles.previewFallback}>
+                <Ionicons name="person" size={34} color={'rgba(255,255,255,0.78)'} />
+                <Text style={[styles.previewFallbackText, { color: 'rgba(255,255,255,0.78)' }]}>אין תמונה להצגה</Text>
+              </View>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Edit event modal */}
+      <Modal transparent visible={editOpen} animationType="fade" onRequestClose={() => setEditOpen(false)}>
+        <Pressable style={styles.editOverlay} onPress={() => setEditOpen(false)}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ width: '100%' }}>
+            <Pressable style={styles.editCard} onPress={() => null}>
+              <View style={styles.editHeader}>
+                <TouchableOpacity
+                  style={styles.editCloseBtn}
+                  onPress={() => setEditOpen(false)}
+                  activeOpacity={0.85}
+                  accessibilityRole="button"
+                  accessibilityLabel="סגירה"
+                >
+                  <Ionicons name="close" size={18} color={'rgba(17,24,39,0.70)'} />
+                </TouchableOpacity>
+
+                <View style={{ flex: 1, alignItems: 'center' }}>
+                  <Text style={styles.editTitle}>עריכת אירוע</Text>
+                  <Text style={styles.editSubtitle} numberOfLines={1}>
+                    {getEventTypeLabel()}
+                  </Text>
+                </View>
+
+                <View style={{ width: 40 }} />
+              </View>
+
+              <View style={styles.editDivider} />
+
+              <ScrollView contentContainerStyle={styles.editBody} showsVerticalScrollIndicator={false}>
+                {/* Cover image */}
+                <View style={styles.editBlock}>
+                  <View style={styles.editBlockHeaderRow}>
+                    <Text style={styles.editBlockLabel}>תמונת אירוע</Text>
+                    <TouchableOpacity
+                      style={[styles.smallBtn, coverUploading ? { opacity: 0.75 } : null]}
+                      onPress={pickAndUploadEventCover}
+                      disabled={coverUploading}
+                      activeOpacity={0.9}
+                      accessibilityRole="button"
+                      accessibilityLabel="בחר תמונת אירוע"
+                    >
+                      {coverUploading ? (
+                        <ActivityIndicator size="small" color={ui.primary} />
+                      ) : (
+                        <Ionicons name="image-outline" size={16} color={ui.primary} />
+                      )}
+                      <Text style={styles.smallBtnText}>{coverUploading ? 'מעלה...' : 'בחר תמונה'}</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.coverPreviewWrap}>
+                    {(editForm.image || '').trim() ? (
+                      <Image
+                        source={{ uri: (editForm.image || '').trim() }}
+                        style={styles.coverPreviewImg}
+                        contentFit="cover"
+                        transition={150}
+                      />
+                    ) : (
+                      <View style={styles.coverPreviewFallback}>
+                        <Ionicons name="image" size={26} color={'rgba(17,24,39,0.35)'} />
+                        <Text style={styles.coverPreviewFallbackText}>לא נבחרה תמונה</Text>
+                      </View>
+                    )}
+                  </View>
+
+                  <TextInput
+                    value={editForm.image}
+                    onChangeText={(t) => setEditForm((f) => ({ ...f, image: t }))}
+                    placeholder="או הדבק/י קישור לתמונה (URL)"
+                    placeholderTextColor={'rgba(17,24,39,0.35)'}
+                    style={styles.editInput}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    textAlign="right"
+                  />
+                </View>
+
+                {/* Date */}
+                <View style={styles.editBlock}>
+                  <Text style={styles.editBlockLabel}>תאריך האירוע</Text>
+                  <TouchableOpacity
+                    style={styles.dateRow}
+                    onPress={() => setEditDatePickerOpen(true)}
+                    activeOpacity={0.9}
+                    accessibilityRole="button"
+                    accessibilityLabel="בחירת תאריך"
+                  >
+                    <Ionicons name="calendar-outline" size={18} color={'rgba(17,24,39,0.55)'} />
+                    <Text style={styles.dateRowText}>
+                      {Number.isFinite(editForm.date.getTime())
+                        ? editForm.date.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                        : ''}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Location + City */}
+                <View style={styles.editBlock}>
+                  <Text style={styles.editBlockLabel}>מיקום</Text>
+                  <TextInput
+                    value={editForm.location}
+                    onChangeText={(t) => setEditForm((f) => ({ ...f, location: t }))}
+                    placeholder="מיקום"
+                    placeholderTextColor={'rgba(17,24,39,0.35)'}
+                    style={styles.editInput}
+                    textAlign="right"
+                  />
+
+                  <Text style={[styles.editBlockLabel, { marginTop: 10 }]}>עיר</Text>
+                  <TextInput
+                    value={editForm.city}
+                    onChangeText={(t) => setEditForm((f) => ({ ...f, city: t }))}
+                    placeholder="עיר"
+                    placeholderTextColor={'rgba(17,24,39,0.35)'}
+                    style={styles.editInput}
+                    textAlign="right"
+                  />
+                </View>
+
+                {/* Groom / Bride */}
+                {isWeddingEvent() ? (
+                  <View style={styles.editBlock}>
+                    <Text style={styles.editBlockLabel}>פרטי חתונה</Text>
+
+                    <Text style={[styles.editBlockLabel, { marginTop: 10, fontSize: 12, color: 'rgba(17,24,39,0.60)' }]}>
+                      שם חתן
+                    </Text>
+                    <TextInput
+                      value={editForm.groomName}
+                      onChangeText={(t) => setEditForm((f) => ({ ...f, groomName: t }))}
+                      placeholder="שם החתן"
+                      placeholderTextColor={'rgba(17,24,39,0.35)'}
+                      style={styles.editInput}
+                      textAlign="right"
+                    />
+
+                    <Text style={[styles.editBlockLabel, { marginTop: 10, fontSize: 12, color: 'rgba(17,24,39,0.60)' }]}>
+                      שם כלה
+                    </Text>
+                    <TextInput
+                      value={editForm.brideName}
+                      onChangeText={(t) => setEditForm((f) => ({ ...f, brideName: t }))}
+                      placeholder="שם הכלה"
+                      placeholderTextColor={'rgba(17,24,39,0.35)'}
+                      style={styles.editInput}
+                      textAlign="right"
+                    />
+                  </View>
+                ) : null}
+
+                <View style={{ height: 6 }} />
+              </ScrollView>
+
+              <View style={styles.editFooter}>
+                <TouchableOpacity
+                  style={styles.footerBtnSecondary}
+                  onPress={() => setEditOpen(false)}
+                  activeOpacity={0.9}
+                  accessibilityRole="button"
+                  accessibilityLabel="ביטול"
+                >
+                  <Text style={styles.footerBtnSecondaryText}>ביטול</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.footerBtnPrimary, (editSaving || coverUploading) ? { opacity: 0.85 } : null]}
+                  onPress={saveEditEvent}
+                  activeOpacity={0.92}
+                  disabled={editSaving || coverUploading}
+                  accessibilityRole="button"
+                  accessibilityLabel="שמירת שינויים"
+                >
+                  {editSaving ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <>
+                      <Ionicons name="save-outline" size={16} color="#fff" />
+                      <Text style={styles.footerBtnPrimaryText}>שמור</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+
+              <DateTimePickerModal
+                isVisible={editDatePickerOpen}
+                mode="date"
+                onConfirm={(d) => {
+                  setEditDatePickerOpen(false);
+                  if (d) setEditForm((f) => ({ ...f, date: d }));
+                }}
+                onCancel={() => setEditDatePickerOpen(false)}
+                locale="he-IL"
+                date={editForm.date}
+              />
+            </Pressable>
+          </KeyboardAvoidingView>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -670,7 +1155,9 @@ const styles = StyleSheet.create({
 
   // Bottom "sheet" (white background with rounded top corners)
   sheet: {
-    marginTop: 18, // push down so it doesn't overlap/cut the hero card
+    // Pull the sheet upward so it slightly overlaps the hero image (like the reference)
+    // Tweak this value if you want more/less overlap.
+    marginTop: -34,
     marginHorizontal: -24, // extend to screen edges (counteracts content padding)
     paddingHorizontal: 24,
     paddingTop: 22,
@@ -678,6 +1165,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 34,
     borderTopRightRadius: 34,
+    zIndex: 4,
+    shadowColor: colors.black,
+    shadowOpacity: 0.08,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: -2 },
+    elevation: 6,
   },
   heroTitleWrap: {
     alignItems: 'center',
@@ -734,12 +1227,15 @@ const styles = StyleSheet.create({
   heroTopRow: {
     width: '100%',
     flexDirection: 'row-reverse',
-    justifyContent: 'flex-start',
-    marginBottom: 8,
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  heroAvatarWrap: {
+    position: 'relative',
   },
   heroAvatarRing: {
-    width: 54,
-    height: 54,
+    width: 92,
+    height: 92,
     borderRadius: 999,
     backgroundColor: 'rgba(255,255,255,0.95)',
     borderWidth: 1,
@@ -762,10 +1258,190 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(15,69,230,0.08)',
   },
   heroAvatarInitials: {
-    fontSize: 16,
+    fontSize: 22,
     fontWeight: '900',
     color: '#0d111c',
   },
+  heroAvatarEditBadge: {
+    position: 'absolute',
+    bottom: -8,
+    left: -8,
+    width: 36,
+    height: 36,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.98)',
+    borderWidth: 1,
+    borderColor: 'rgba(13,17,28,0.10)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: colors.black,
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
+  },
+
+  previewOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.78)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 18,
+  },
+  previewContent: { alignItems: 'center', justifyContent: 'center' },
+  previewCloseBtn: {
+    position: 'absolute',
+    left: 16,
+    width: 34,
+    height: 34,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.22)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 2,
+  },
+  previewFallback: {
+    width: 280,
+    height: 240,
+    borderRadius: 18,
+    backgroundColor: 'rgba(17,24,39,0.04)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 10,
+  },
+  previewFallbackText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: 'rgba(17,24,39,0.60)',
+    textAlign: 'center',
+  },
+
+  editOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 18,
+  },
+  editCard: {
+    width: '100%',
+    maxWidth: 560,
+    borderRadius: 26,
+    backgroundColor: 'rgba(255,255,255,0.98)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.7)',
+    shadowColor: colors.black,
+    shadowOpacity: 0.20,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 14 },
+    elevation: 10,
+    overflow: 'hidden',
+    maxHeight: '88%',
+  },
+  editHeader: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 12,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  editCloseBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 999,
+    backgroundColor: 'rgba(17,24,39,0.06)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  editTitle: { fontSize: 18, fontWeight: '900', color: '#111827', textAlign: 'center' },
+  editSubtitle: { marginTop: 4, fontSize: 12, fontWeight: '800', color: 'rgba(17,24,39,0.55)', textAlign: 'center' },
+  editDivider: { height: 1, backgroundColor: 'rgba(17,24,39,0.08)', marginHorizontal: 16 },
+  editBody: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 14, gap: 12 },
+  editBlock: { gap: 10 },
+  editBlockHeaderRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  editBlockLabel: { fontSize: 13, fontWeight: '900', color: '#111827', textAlign: 'right' },
+  editInput: {
+    height: 48,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.10)',
+    backgroundColor: 'rgba(17,24,39,0.04)',
+    color: '#111827',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  smallBtn: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: 'rgba(15,69,230,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,69,230,0.16)',
+  },
+  smallBtnText: { fontSize: 12, fontWeight: '900', color: '#0f45e6' },
+  coverPreviewWrap: {
+    height: 160,
+    borderRadius: 18,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.10)',
+    backgroundColor: 'rgba(17,24,39,0.04)',
+  },
+  coverPreviewImg: { width: '100%', height: '100%' },
+  coverPreviewFallback: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 8 },
+  coverPreviewFallbackText: { fontSize: 12, fontWeight: '800', color: 'rgba(17,24,39,0.55)' },
+  dateRow: {
+    height: 52,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.10)',
+    backgroundColor: 'rgba(17,24,39,0.04)',
+    paddingHorizontal: 14,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  dateRowText: { fontSize: 15, fontWeight: '900', color: '#111827' },
+  editFooter: {
+    padding: 14,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(17,24,39,0.08)',
+    flexDirection: 'row-reverse',
+    gap: 10,
+    backgroundColor: 'rgba(255,255,255,0.98)',
+  },
+  footerBtnSecondary: {
+    flex: 1,
+    height: 50,
+    borderRadius: 14,
+    backgroundColor: 'rgba(17,24,39,0.06)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  footerBtnSecondaryText: { fontSize: 14, fontWeight: '900', color: '#111827' },
+  footerBtnPrimary: {
+    flex: 2,
+    height: 50,
+    borderRadius: 14,
+    backgroundColor: '#1d4ed8',
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexDirection: 'row-reverse',
+    gap: 8,
+    shadowColor: '#1d4ed8',
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 4,
+  },
+  footerBtnPrimaryText: { fontSize: 14, fontWeight: '900', color: '#fff' },
 
   glassOuter: {
     borderWidth: 1,
@@ -945,14 +1621,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row-reverse',
     gap: 12,
     alignItems: 'stretch',
+    marginTop: 14,
   },
 
   tileDarkOuter: {
-    flex: 0.9,
-    minWidth: 140,
+    flex: 1,
+    height: 120,
   },
   tileDark: {
-    height: 110,
+    flex: 1,
     borderRadius: 24,
     padding: 14,
     justifyContent: 'space-between',
@@ -1006,8 +1683,8 @@ const styles = StyleSheet.create({
   },
 
   tileLight: {
-    flex: 1.1,
-    height: 110,
+    flex: 1,
+    height: 120,
   },
   tileLightDecorWrap: {
     ...StyleSheet.absoluteFillObject,
