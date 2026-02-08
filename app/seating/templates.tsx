@@ -1363,6 +1363,10 @@ function SeatingFreeformMap({
   const panStartX = useSharedValue(0);
   const panStartY = useSharedValue(0);
   const pinchStartScale = useSharedValue(0.75);
+  const pinchStartX = useSharedValue(0);
+  const pinchStartY = useSharedValue(0);
+  const pinchAnchorX = useSharedValue(0);
+  const pinchAnchorY = useSharedValue(0);
   const isDragging = useSharedValue(false);
 
   // Keep a JS snapshot of camera so "add table" uses latest view
@@ -1483,48 +1487,6 @@ function SeatingFreeformMap({
     [multiSelect]
   );
 
-  const updateGroupDrag = useCallback(
-    (anchorId: number, anchorX: number, anchorY: number) => {
-      const selected = selectedIdsRef.current;
-      const anchorStart = groupAnchorStartRef.current;
-      const dx = anchorX - anchorStart.x;
-      const dy = anchorY - anchorStart.y;
-
-      const ids = selected.size ? Array.from(selected) : [anchorId];
-
-      // Move other selected tables by same delta
-      for (const id of ids) {
-        if (id === anchorId) continue;
-        const start = groupStartByIdRef.current.get(id);
-        const pos = posByIdRef.current.get(id);
-        if (!start || !pos) continue;
-        pos.x.value = start.x + dx;
-        pos.y.value = start.y + dy;
-      }
-
-      updateGuides(anchorId, anchorX, anchorY);
-    },
-    [updateGuides]
-  );
-
-  const commitGroupDrag = useCallback(
-    (anchorId: number, anchorX: number, anchorY: number) => {
-      const selected = selectedIdsRef.current;
-      const ids = selected.size ? Array.from(selected) : [anchorId];
-
-      // Commit all selected positions to React state (via onMoveTable)
-      for (const id of ids) {
-        const pos = posByIdRef.current.get(id);
-        const x = id === anchorId ? anchorX : Math.round((pos?.x.value ?? 0) / SNAP) * SNAP;
-        const y = id === anchorId ? anchorY : Math.round((pos?.y.value ?? 0) / SNAP) * SNAP;
-        onMoveTable(id, x, y);
-      }
-
-      clearGuides();
-    },
-    [clearGuides, onMoveTable]
-  );
-
   const bounds = useMemo(() => {
     if (!tables.length) {
       return { minX: 0, minY: 0, maxX: 1200, maxY: 800 };
@@ -1546,28 +1508,49 @@ function SeatingFreeformMap({
     return { w, h, pad };
   }, [bounds]);
 
+  // Shift world coordinates into stage space so negative X/Y remain visible.
+  // StageSpace = WorldSpace + origin
+  const origin = useMemo(() => {
+    return {
+      x: -bounds.minX + worldSize.pad,
+      y: -bounds.minY + worldSize.pad,
+    };
+  }, [bounds.minX, bounds.minY, worldSize.pad]);
+
   const centerOnTables = useCallback(() => {
     const baseScale = 0.75;
     cameraScale.value = withTiming(baseScale, { duration: 180 });
     const centerWorldX = (bounds.minX + bounds.maxX) / 2;
     const centerWorldY = (bounds.minY + bounds.maxY) / 2;
-    const tx = screenW / 2 - centerWorldX * baseScale;
-    const ty = screenH / 2 - centerWorldY * baseScale;
+    const tx = screenW / 2 - (centerWorldX + origin.x) * baseScale;
+    const ty = screenH / 2 - (centerWorldY + origin.y) * baseScale;
     cameraX.value = withTiming(tx, { duration: 180 });
     cameraY.value = withTiming(ty, { duration: 180 });
     updateCameraSnapshot(tx, ty, baseScale);
-  }, [bounds.maxX, bounds.maxY, bounds.minX, bounds.minY, cameraScale, cameraX, cameraY, screenH, screenW]);
+  }, [
+    bounds.maxX,
+    bounds.maxY,
+    bounds.minX,
+    bounds.minY,
+    cameraScale,
+    cameraX,
+    cameraY,
+    origin.x,
+    origin.y,
+    screenH,
+    screenW,
+  ]);
 
   const focusWorldPoint = useCallback(
     (wx: number, wy: number) => {
       const s = cameraJsRef.current.scale || 0.75;
-      const tx = screenW / 2 - wx * s;
-      const ty = screenH / 2 - wy * s;
+      const tx = screenW / 2 - (wx + origin.x) * s;
+      const ty = screenH / 2 - (wy + origin.y) * s;
       cameraX.value = withTiming(tx, { duration: 180 });
       cameraY.value = withTiming(ty, { duration: 180 });
       updateCameraSnapshot(tx, ty, s);
     },
-    [cameraX, cameraY, screenH, screenW, updateCameraSnapshot]
+    [cameraX, cameraY, origin.x, origin.y, screenH, screenW, updateCameraSnapshot]
   );
 
   const didInitRef = useRef(false);
@@ -1653,60 +1636,190 @@ function SeatingFreeformMap({
       }
 
       if (bestV) {
-        vGuideX.value = bestV.x;
+        // Store stage-space coordinate so the guide aligns with shifted content.
+        vGuideX.value = bestV.x + origin.x;
         vGuideOpacity.value = withTiming(1, { duration: 60 });
       } else {
         vGuideOpacity.value = withTiming(0, { duration: 90 });
       }
 
       if (bestH) {
-        hGuideY.value = bestH.y;
+        // Store stage-space coordinate so the guide aligns with shifted content.
+        hGuideY.value = bestH.y + origin.y;
         hGuideOpacity.value = withTiming(1, { duration: 60 });
       } else {
         hGuideOpacity.value = withTiming(0, { duration: 90 });
       }
     },
-    [hGuideOpacity, hGuideY, sizeById, tables, vGuideOpacity, vGuideX]
+    [hGuideOpacity, hGuideY, origin.x, origin.y, sizeById, tables, vGuideOpacity, vGuideX]
+  );
+
+  const updateGroupDrag = useCallback(
+    (anchorId: number, anchorX: number, anchorY: number) => {
+      const selected = selectedIdsRef.current;
+      const anchorStart = groupAnchorStartRef.current;
+      const dx = anchorX - anchorStart.x;
+      const dy = anchorY - anchorStart.y;
+
+      const ids = selected.size ? Array.from(selected) : [anchorId];
+
+      // Move other selected tables by same delta
+      for (const id of ids) {
+        if (id === anchorId) continue;
+        const start = groupStartByIdRef.current.get(id);
+        const pos = posByIdRef.current.get(id);
+        if (!start || !pos) continue;
+        pos.x.value = start.x + dx;
+        pos.y.value = start.y + dy;
+      }
+
+      updateGuides(anchorId, anchorX, anchorY);
+    },
+    [updateGuides]
+  );
+
+  const commitGroupDrag = useCallback(
+    (anchorId: number, anchorX: number, anchorY: number) => {
+      const selected = selectedIdsRef.current;
+      const ids = selected.size ? Array.from(selected) : [anchorId];
+
+      // Commit all selected positions to React state (via onMoveTable)
+      for (const id of ids) {
+        const pos = posByIdRef.current.get(id);
+        const x = id === anchorId ? anchorX : Math.round((pos?.x.value ?? 0) / SNAP) * SNAP;
+        const y = id === anchorId ? anchorY : Math.round((pos?.y.value ?? 0) / SNAP) * SNAP;
+        onMoveTable(id, x, y);
+      }
+
+      clearGuides();
+    },
+    [clearGuides, onMoveTable]
+  );
+
+  const clampCameraToWorld = useCallback(
+    (tx: number, ty: number, s: number) => {
+      'worklet';
+      const margin = 80; // small breathing room so it doesn't feel "stuck"
+      const scaledW = worldSize.w * s;
+      const scaledH = worldSize.h * s;
+
+      let minTx = screenW - scaledW - margin;
+      let maxTx = margin;
+      if (minTx > maxTx) {
+        const mid = (minTx + maxTx) / 2;
+        minTx = mid;
+        maxTx = mid;
+      }
+
+      let minTy = screenH - scaledH - margin;
+      let maxTy = margin;
+      if (minTy > maxTy) {
+        const mid = (minTy + maxTy) / 2;
+        minTy = mid;
+        maxTy = mid;
+      }
+
+      return {
+        x: clamp(tx, minTx, maxTx),
+        y: clamp(ty, minTy, maxTy),
+      };
+    },
+    [screenH, screenW, worldSize.h, worldSize.w]
   );
 
   const panGesture = useMemo(
     () =>
       Gesture.Pan()
+        // Don't allow 2-finger pan to fight with pinch-zoom.
+        .maxPointers(1)
         .onBegin(() => {
           panStartX.value = cameraX.value;
           panStartY.value = cameraY.value;
         })
         .onUpdate(e => {
           if (isDragging.value) return;
-          cameraX.value = panStartX.value + e.translationX;
-          cameraY.value = panStartY.value + e.translationY;
+          const nextX = panStartX.value + e.translationX;
+          const nextY = panStartY.value + e.translationY;
+          const s = cameraScale.value || 1;
+          const clamped = clampCameraToWorld(nextX, nextY, s);
+          cameraX.value = clamped.x;
+          cameraY.value = clamped.y;
         })
         .onEnd(() => {
-          runOnJS(updateCameraSnapshot)(cameraX.value, cameraY.value, cameraScale.value);
+          const s = cameraScale.value || 1;
+          const clamped = clampCameraToWorld(cameraX.value, cameraY.value, s);
+          cameraX.value = withTiming(clamped.x, { duration: 140 });
+          cameraY.value = withTiming(clamped.y, { duration: 140 });
+          runOnJS(updateCameraSnapshot)(clamped.x, clamped.y, s);
         })
         .onFinalize(() => {
-          runOnJS(updateCameraSnapshot)(cameraX.value, cameraY.value, cameraScale.value);
+          const s = cameraScale.value || 1;
+          const clamped = clampCameraToWorld(cameraX.value, cameraY.value, s);
+          cameraX.value = withTiming(clamped.x, { duration: 140 });
+          cameraY.value = withTiming(clamped.y, { duration: 140 });
+          runOnJS(updateCameraSnapshot)(clamped.x, clamped.y, s);
         }),
-    [cameraScale, cameraX, cameraY, isDragging, panStartX, panStartY, updateCameraSnapshot]
+    [cameraScale, cameraX, cameraY, clampCameraToWorld, isDragging, panStartX, panStartY, updateCameraSnapshot]
   );
 
   const pinchGesture = useMemo(
     () =>
       Gesture.Pinch()
-        .onBegin(() => {
+        .onBegin((e) => {
           pinchStartScale.value = cameraScale.value;
+          pinchStartX.value = cameraX.value;
+          pinchStartY.value = cameraY.value;
+          // Center-zoom: keep the screen center stable (no left/right drift).
+          // We intentionally ignore focalX/focalY for a "straight line" zoom.
+          pinchAnchorX.value = screenW / 2;
+          pinchAnchorY.value = screenH / 2;
         })
         .onUpdate(e => {
           if (isDragging.value) return;
-          cameraScale.value = clamp(pinchStartScale.value * e.scale, 0.4, 3);
+          const startScale = pinchStartScale.value || 1;
+          const nextScale = clamp(startScale * e.scale, 0.4, 3);
+
+          // Zoom around a fixed anchor captured onBegin.
+          const ax = pinchAnchorX.value || screenW / 2;
+          const ay = pinchAnchorY.value || screenH / 2;
+          const ratio = nextScale / startScale;
+
+          const nextX = ax - (ax - pinchStartX.value) * ratio;
+          const nextY = ay - (ay - pinchStartY.value) * ratio;
+
+          cameraScale.value = nextScale;
+          // Don't clamp during pinch updates (it feels like "side drift").
+          // We'll clamp onEnd/onFinalize instead.
+          cameraX.value = nextX;
+          cameraY.value = nextY;
         })
         .onEnd(() => {
-          runOnJS(updateCameraSnapshot)(cameraX.value, cameraY.value, cameraScale.value);
+          const s = cameraScale.value || 1;
+          const clamped = clampCameraToWorld(cameraX.value, cameraY.value, s);
+          cameraX.value = withTiming(clamped.x, { duration: 140 });
+          cameraY.value = withTiming(clamped.y, { duration: 140 });
+          runOnJS(updateCameraSnapshot)(clamped.x, clamped.y, s);
         })
         .onFinalize(() => {
-          runOnJS(updateCameraSnapshot)(cameraX.value, cameraY.value, cameraScale.value);
+          const s = cameraScale.value || 1;
+          const clamped = clampCameraToWorld(cameraX.value, cameraY.value, s);
+          cameraX.value = withTiming(clamped.x, { duration: 140 });
+          cameraY.value = withTiming(clamped.y, { duration: 140 });
+          runOnJS(updateCameraSnapshot)(clamped.x, clamped.y, s);
         }),
-    [cameraScale, cameraX, cameraY, isDragging, pinchStartScale, updateCameraSnapshot]
+    [
+      cameraScale,
+      cameraX,
+      cameraY,
+      clampCameraToWorld,
+      isDragging,
+      pinchStartScale,
+      pinchStartX,
+      pinchStartY,
+      screenH,
+      screenW,
+      updateCameraSnapshot,
+    ]
   );
 
   const canvasGesture = useMemo(() => Gesture.Simultaneous(panGesture, pinchGesture), [panGesture, pinchGesture]);
@@ -1714,21 +1827,25 @@ function SeatingFreeformMap({
   const stageStyle = useAnimatedStyle(() => {
     return {
       transform: [
+        // IMPORTANT: scale first, then translate.
+        // This keeps screen<->world math consistent: world = (screen - translate) / scale
+        { scale: cameraScale.value },
         { translateX: cameraX.value },
         { translateY: cameraY.value },
-        { scale: cameraScale.value },
       ],
     };
   });
 
   const addAtCenter = useCallback(
     (kind: 'regular' | 'knight' | 'reserve') => {
-      const worldX = (screenW / 2 - cameraX.value) / cameraScale.value;
-      const worldY = (screenH / 2 - cameraY.value) / cameraScale.value;
+      const s = cameraScale.value || 1;
+      // Convert screen-center -> world, then remove origin shift.
+      const worldX = (screenW / 2 - cameraX.value) / s - origin.x;
+      const worldY = (screenH / 2 - cameraY.value) / s - origin.y;
       onAddTable(kind, Math.round(worldX), Math.round(worldY));
     },
     // Do not include `.value` in deps; it triggers Reanimated strict-mode warnings.
-    [cameraScale, cameraX, cameraY, onAddTable, screenH, screenW]
+    [cameraScale, cameraX, cameraY, onAddTable, origin.x, origin.y, screenH, screenW]
   );
 
   // Add flow modal (count -> layout if needed)
@@ -1750,8 +1867,9 @@ function SeatingFreeformMap({
     const count = Math.max(1, Math.min(200, addCount || 1));
     // Use JS camera snapshot so we don't accidentally add to (0,0) if shared values are stale on JS thread.
     const { x: cx, y: cy, scale: cs } = cameraJsRef.current;
-    const baseX = Math.round((screenW / 2 - cx) / cs / 10) * 10;
-    const baseY = Math.round((screenH / 2 - cy) / cs / 10) * 10;
+    // Convert screen-center -> world, then remove origin shift. Snap to 10 world-units.
+    const baseX = Math.round((((screenW / 2 - cx) / cs - origin.x) / 10)) * 10;
+    const baseY = Math.round((((screenH / 2 - cy) / cs - origin.y) / 10)) * 10;
 
     if (count <= 1) {
       onAddTable(addKind, baseX, baseY);
@@ -1776,7 +1894,7 @@ function SeatingFreeformMap({
     const stepY = addLayout === 'column' ? h + gap : 0;
     focusWorldPoint(baseX + ((count - 1) * stepX) / 2, baseY + ((count - 1) * stepY) / 2);
     setAddOpen(false);
-  }, [addCount, addKind, addLayout, addStep, focusWorldPoint, onAddTable, onAddTablesBatch, screenH, screenW]);
+  }, [addCount, addKind, addLayout, addStep, focusWorldPoint, onAddTable, onAddTablesBatch, origin.x, origin.y, screenH, screenW]);
 
   const cancelAddFlow = useCallback(() => {
     if (addStep === 'layout') {
@@ -2011,28 +2129,49 @@ function SeatingFreeformMap({
             <Text style={{ fontSize: 12, color: ui.muted, marginTop: 2 }}>לחיצה ארוכה על שולחן ואז גרירה</Text>
           </View>
 
-          <TouchableOpacity
-            onPress={onSave}
-            disabled={loading}
-            activeOpacity={0.9}
-            style={{
-              paddingHorizontal: 14,
-              height: 40,
-              borderRadius: 12,
-              backgroundColor: ui.primary,
-              alignItems: 'center',
-              justifyContent: 'center',
-              opacity: loading ? 0.7 : 1,
-            }}
-            accessibilityRole="button"
-            accessibilityLabel="שמור"
-          >
-            {loading ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Text style={{ color: '#fff', fontWeight: '800' }}>שמור</Text>
-            )}
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8 }}>
+            <TouchableOpacity
+              onPress={centerOnTables}
+              activeOpacity={0.85}
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 12,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: 'rgba(255,255,255,0.9)',
+                borderWidth: 1,
+                borderColor: ui.borderSoft,
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="מרכז מפה"
+            >
+              <Ionicons name="locate" size={20} color={ui.primary} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={onSave}
+              disabled={loading}
+              activeOpacity={0.9}
+              style={{
+                paddingHorizontal: 14,
+                height: 40,
+                borderRadius: 12,
+                backgroundColor: ui.primary,
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: loading ? 0.7 : 1,
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="שמור"
+            >
+              {loading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={{ color: '#fff', fontWeight: '800' }}>שמור</Text>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
     </View>
@@ -2216,6 +2355,8 @@ function SeatingFreeformMap({
             seats={t.seats}
             selected={selectedIds.has(t.id)}
             ui={ui}
+            originX={origin.x}
+            originY={origin.y}
             posX={pos.x}
             posY={pos.y}
             cameraScale={cameraScale}
@@ -2458,6 +2599,8 @@ type DraggableTableNodeProps = {
   seats: number;
   selected: boolean;
   ui: UiPalette;
+  originX: number;
+  originY: number;
   posX: Animated.SharedValue<number>;
   posY: Animated.SharedValue<number>;
   cameraScale: Animated.SharedValue<number>;
@@ -2477,6 +2620,8 @@ function DraggableTableNode({
   seats,
   selected,
   ui,
+  originX,
+  originY,
   posX,
   posY,
   cameraScale,
@@ -2577,7 +2722,7 @@ function DraggableTableNode({
 
   const nodeStyle = useAnimatedStyle(() => {
     return {
-      transform: [{ translateX: posX.value }, { translateY: posY.value }],
+      transform: [{ translateX: posX.value + originX }, { translateY: posY.value + originY }],
     };
   });
 
