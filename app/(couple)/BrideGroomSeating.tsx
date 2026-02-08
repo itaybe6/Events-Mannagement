@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated, Pressable, ActivityIndicator, Modal, SectionList, TextInput, FlatList, Dimensions, Alert, PanResponder } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated, Pressable, ActivityIndicator, Modal, SectionList, TextInput, FlatList, Dimensions, Alert, PanResponder, Platform, StatusBar } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { useUserStore } from '@/store/userStore';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,6 +7,7 @@ import { useLayoutStore } from '@/store/layoutStore';
 import { Table } from '@/types';
 import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { colors } from '@/constants/colors';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width, height } = Dimensions.get('window');
 
@@ -14,6 +15,7 @@ export default function BrideGroomSeating() {
   const { userData } = useUserStore();
   const { eventId: queryEventId } = useLocalSearchParams();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   
   // קביעת eventId: אם יש query param (אדמין) - השתמש בו, אחרת השתמש ב-userData
   const eventId = queryEventId || userData?.event_id;
@@ -344,6 +346,12 @@ export default function BrideGroomSeating() {
     }
   }, [tables]);
 
+  // חישוב גבולות המפה לפי השולחנות (נדרש גם לשמירת מיקום אחרי גרירה)
+  const minX = tables.length > 0 ? Math.min(...tables.map(t => t.x ?? 0)) : 0;
+  const maxX = tables.length > 0 ? Math.max(...tables.map(t => t.x ?? 0)) : width;
+  const padding = 100;
+  const canvasWidth = maxX - minX + padding * 2;
+
   const persistDraggedTablePosition = useCallback(
     async (tableId: string) => {
       if (!positions[tableId]) return;
@@ -560,14 +568,18 @@ export default function BrideGroomSeating() {
     })
     .filter(Boolean) as any[];
 
-  // חישוב גבולות המפה לפי השולחנות
-  const minX = tables.length > 0 ? Math.min(...tables.map(t => t.x ?? 0)) : 0;
-  const maxX = tables.length > 0 ? Math.max(...tables.map(t => t.x ?? 0)) : width;
-  const padding = 100;
-  const canvasWidth = maxX - minX + padding * 2;
-
   return (
-    <View style={styles.container}>
+    <View
+      style={[
+        styles.container,
+        {
+          // Add top padding so the header/status-bar won't cover the top UI.
+          // Use the larger of safe-area and status-bar, then add extra breathing room.
+          paddingTop:
+            Math.max(insets.top || 0, Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) : 0) + 28,
+        },
+      ]}
+    >
       {dragMode && (
         <TouchableOpacity
           style={styles.dragModePill}
@@ -994,7 +1006,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-around',
     paddingVertical: 16,
-    paddingTop: 20,
+    paddingTop: 12,
     backgroundColor: colors.white,
     borderBottomWidth: 1,
     borderBottomColor: colors.gray[200],

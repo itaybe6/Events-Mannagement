@@ -110,7 +110,10 @@ export type NotificationSetting = {
   event_id: string;
   notification_type: string;
   title: string;
-  notification_date: string; // השתמש בעמודה החדשה
+  days_from_wedding?: number | null;
+  channel?: 'SMS' | 'WHATSAPP' | null;
+  // Legacy / optional column (some environments may not have it)
+  notification_date?: string | null;
   enabled: boolean;
   message_content?: string;
   created_at: string;

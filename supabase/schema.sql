@@ -136,6 +136,7 @@ CREATE TABLE IF NOT EXISTS notification_settings (
     notification_type VARCHAR(50) NOT NULL,
     days_from_wedding INTEGER,
     notification_date TIMESTAMP WITH TIME ZONE,
+    channel VARCHAR(20) DEFAULT 'SMS' CHECK (channel IN ('SMS', 'WHATSAPP')),
     title VARCHAR(255) NOT NULL,
     message_content TEXT NOT NULL,
     enabled BOOLEAN DEFAULT true,

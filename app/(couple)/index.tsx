@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ScrollView, View, Text, StyleSheet, TouchableOpacity, Platform, Pressable, Image } from 'react-native';
+import { ScrollView, View, Text, StyleSheet, Platform, Pressable, Image } from 'react-native';
 import { Link, useRouter, useFocusEffect } from 'expo-router';
 import { useUserStore } from '@/store/userStore';
 import { colors } from '@/constants/colors';
@@ -173,17 +173,15 @@ export default function HomeScreen() {
     title,
     subtitle,
     iconName,
-    onPress,
     variant = 'square',
   }: {
     title: string;
     subtitle: string;
     iconName: keyof typeof Ionicons.glyphMap;
-    onPress?: () => void;
     variant?: 'square' | 'wide';
   }) => (
     <Pressable
-      onPress={onPress}
+      accessibilityRole="button"
       style={({ hovered, pressed }) => [
         styles.actionTile,
         variant === 'wide' && styles.actionTileWide,
@@ -280,33 +278,35 @@ export default function HomeScreen() {
         </ScrollView>
 
         <View style={styles.actionsGrid}>
-          <Link href="/(couple)/guests" asChild>
-            <TouchableOpacity activeOpacity={0.9} style={styles.actionTileWrapper}>
+          <View style={styles.actionTileWrapper}>
+            <Link href="/(couple)/guests" asChild>
               <ActionTile
                 title={'רשימת\nמוזמנים'}
                 subtitle="נהל אישורי הגעה"
                 iconName="list"
               />
-            </TouchableOpacity>
-          </Link>
+            </Link>
+          </View>
 
-          <Link href="/(couple)/BrideGroomSeating" asChild>
-            <TouchableOpacity activeOpacity={0.9} style={styles.actionTileWrapper}>
+          <View style={styles.actionTileWrapper}>
+            <Link href="/(couple)/BrideGroomSeating" asChild>
               <ActionTile
                 title={'סידור\nהושבה'}
                 subtitle="גרור ושחרר אורחים"
                 iconName="grid"
               />
-            </TouchableOpacity>
-          </Link>
+            </Link>
+          </View>
 
           <View style={styles.actionTileWrapperWide}>
-            <ActionTile
-              variant="wide"
-              title="לוח זמנים"
-              subtitle="בקרוב"
-              iconName="time-outline"
-            />
+            <Link href="/(couple)/timeline" asChild>
+              <ActionTile
+                variant="wide"
+                title="לוח זמנים"
+                subtitle="בקרוב"
+                iconName="time-outline"
+              />
+            </Link>
           </View>
         </View>
       </ScrollView>

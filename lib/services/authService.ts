@@ -66,9 +66,15 @@ export const authService = {
   // Helper function to handle token expiry by clearing session
   handleTokenExpiry: async (): Promise<void> => {
     try {
-      await supabase.auth.signOut();
+      // Use local scope so we can always clear storage even if refresh token is missing/invalid.
+      const { error } = await supabase.auth.signOut({ scope: 'local' });
+      if (error) {
+        // Best-effort cleanup; don't rethrow from a recovery path.
+        console.warn('Auth cleanup (local signOut) error:', error);
+      }
     } catch (signOutError) {
-      console.error('Error signing out after token expiry:', signOutError);
+      // Best-effort cleanup; avoid surfacing as a hard error.
+      console.warn('Auth cleanup exception:', signOutError);
     }
   },
 
@@ -364,13 +370,15 @@ export const authService = {
 
       // No session is a normal state (not an error).
       if (sessionError) {
-        console.error('Auth session error:', sessionError);
-
+        // Treat refresh-token issues as a normal "logged out" state.
+        // This commonly happens in dev when AsyncStorage contains a stale/corrupt auth payload,
+        // or when opening the app without ever signing in.
         if (authService.isTokenExpiredError(sessionError)) {
           await authService.handleTokenExpiry();
           return null;
         }
 
+        console.error('Auth session error:', sessionError);
         throw sessionError;
       }
 
