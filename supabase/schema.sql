@@ -74,11 +74,27 @@ CREATE TABLE IF NOT EXISTS tables (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     event_id UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
+    number INTEGER,
     capacity INTEGER NOT NULL,
     area VARCHAR(255),
-    shape VARCHAR(50) DEFAULT 'square' CHECK (shape IN ('square', 'rectangle')),
+    shape VARCHAR(50) DEFAULT 'square' CHECK (shape IN ('square', 'rectangle', 'reserve')),
+    x INTEGER,
+    y INTEGER,
+    seated_guests INTEGER DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Seating maps table (freeform layout + annotations)
+CREATE TABLE IF NOT EXISTS seating_maps (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    event_id UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    num_tables INTEGER NOT NULL DEFAULT 0,
+    tables JSONB NOT NULL DEFAULT '[]'::jsonb,
+    annotations JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(event_id)
 );
 
 -- Messages table
@@ -147,6 +163,7 @@ ALTER TABLE events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE guests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tables ENABLE ROW LEVEL SECURITY;
+ALTER TABLE seating_maps ENABLE ROW LEVEL SECURITY;
 ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE gifts ENABLE ROW LEVEL SECURITY;
 
@@ -258,6 +275,21 @@ CREATE POLICY "Users can update tables of own events" ON tables FOR UPDATE
     USING (EXISTS (SELECT 1 FROM events WHERE events.id = tables.event_id AND events.user_id = auth.uid()));
 CREATE POLICY "Users can delete tables of own events" ON tables FOR DELETE 
     USING (EXISTS (SELECT 1 FROM events WHERE events.id = tables.event_id AND events.user_id = auth.uid()));
+
+-- Seating maps policies
+DROP POLICY IF EXISTS "Users can view seating_maps of own events" ON seating_maps;
+DROP POLICY IF EXISTS "Users can insert seating_maps for own events" ON seating_maps;
+DROP POLICY IF EXISTS "Users can update seating_maps of own events" ON seating_maps;
+DROP POLICY IF EXISTS "Users can delete seating_maps of own events" ON seating_maps;
+CREATE POLICY "Users can view seating_maps of own events" ON seating_maps FOR SELECT
+    USING (EXISTS (SELECT 1 FROM events WHERE events.id = seating_maps.event_id AND events.user_id = auth.uid()));
+CREATE POLICY "Users can insert seating_maps for own events" ON seating_maps FOR INSERT
+    WITH CHECK (EXISTS (SELECT 1 FROM events WHERE events.id = seating_maps.event_id AND events.user_id = auth.uid()));
+CREATE POLICY "Users can update seating_maps of own events" ON seating_maps FOR UPDATE
+    USING (EXISTS (SELECT 1 FROM events WHERE events.id = seating_maps.event_id AND events.user_id = auth.uid()))
+    WITH CHECK (EXISTS (SELECT 1 FROM events WHERE events.id = seating_maps.event_id AND events.user_id = auth.uid()));
+CREATE POLICY "Users can delete seating_maps of own events" ON seating_maps FOR DELETE
+    USING (EXISTS (SELECT 1 FROM events WHERE events.id = seating_maps.event_id AND events.user_id = auth.uid()));
 
 -- Messages policies
 DROP POLICY IF EXISTS "Users can view messages of own events" ON messages;

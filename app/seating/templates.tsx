@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -9,13 +9,28 @@ import {
   Alert,
   Platform,
   ActivityIndicator,
+  Dimensions,
+  Pressable,
+  Modal,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { colors } from '@/constants/colors';
 import { Ionicons } from '@expo/vector-icons';
+import { Feather } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
 import { BlurView } from 'expo-blur';
 import Svg, { Defs, Pattern, Rect, Circle } from 'react-native-svg';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import Animated, {
+  makeMutable,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useLayoutStore } from '@/store/layoutStore';
+import { MotiPressable } from 'moti/interactions';
 
 interface TableColumn {
   id: number;
@@ -44,6 +59,18 @@ export default function SeatingTemplatesScreen() {
   const [loading, setLoading] = useState(false);
   const [existingMap, setExistingMap] = useState<any>(null);
   const [selectedTableId, setSelectedTableId] = useState<number | null>(null);
+  const [mode, setMode] = useState<'builder' | 'map'>('builder');
+  const [baseTables, setBaseTables] = useState<BuiltTable[]>([]);
+  const [manualTables, setManualTables] = useState<BuiltTable[]>([]);
+  const [hiddenTableIds, setHiddenTableIds] = useState<Set<number>>(new Set());
+  const { setTabBarVisible } = useLayoutStore();
+
+  const tablesForEdit = useMemo(() => {
+    const hidden = hiddenTableIds;
+    const all = [...baseTables, ...manualTables].filter(t => !hidden.has(t.id));
+    all.sort((a, b) => a.id - b.id);
+    return all;
+  }, [baseTables, manualTables, hiddenTableIds]);
 
   // Local UI palette inspired by the provided HTML mock
   const ui = {
@@ -76,7 +103,7 @@ export default function SeatingTemplatesScreen() {
   const [editingGap, setEditingGap] = useState<string | null>(null);
 
   // Load existing seating map if available
-  React.useEffect(() => {
+  useEffect(() => {
     const loadExistingMap = async () => {
       if (!eventId) return;
       
@@ -185,6 +212,9 @@ export default function SeatingTemplatesScreen() {
     setColumns(newColumns);
     setKnightTables(newKnightTables);
     setReserveTables(newReserveTables);
+    setBaseTables(existingTables);
+    setManualTables([]);
+    setHiddenTableIds(new Set());
   };
 
   const generateTablesFromColumns = (): BuiltTable[] => {
@@ -244,6 +274,32 @@ export default function SeatingTemplatesScreen() {
     return tables;
   };
 
+  const mergeGeneratedTablesPreservingPositions = useCallback(
+    (prev: BuiltTable[], generated: BuiltTable[]) => {
+      const hidden = hiddenTableIds;
+      const prevById = new Map<number, BuiltTable>(prev.map(t => [t.id, t]));
+      return generated.filter(t => !hidden.has(t.id)).map(t => {
+        const prevT = prevById.get(t.id);
+        if (!prevT) return t;
+        return {
+          ...t,
+          x: typeof prevT.x === 'number' ? prevT.x : t.x,
+          y: typeof prevT.y === 'number' ? prevT.y : t.y,
+          seated_guests:
+            typeof prevT.seated_guests === 'number' ? prevT.seated_guests : t.seated_guests,
+        };
+      });
+    },
+    [hiddenTableIds]
+  );
+
+  // Keep generated tables in sync with builder inputs, but preserve any manual positioning edits.
+  useEffect(() => {
+    const generated = generateTablesFromColumns();
+    setBaseTables(prev => mergeGeneratedTablesPreservingPositions(prev, generated));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [columns, horizontalGaps, knightTables, reserveTables, mergeGeneratedTablesPreservingPositions]);
+
   const addColumn = () => {
     const newColumn: TableColumn = {
       id: Date.now(),
@@ -270,6 +326,9 @@ export default function SeatingTemplatesScreen() {
           setReserveTables(new Set());
           setHorizontalGaps(new Map());
           setEditingGap(null);
+          setBaseTables([]);
+          setManualTables([]);
+          setHiddenTableIds(new Set());
         }}
       ]
     );
@@ -366,24 +425,26 @@ export default function SeatingTemplatesScreen() {
   };
 
   const getTotalTables = () => {
-    return columns.reduce((total, column) => total + column.tablesCount, 0);
+    return tablesForEdit.length;
   };
 
   const getTotalSeats = () => {
-    const tables = generateTablesFromColumns();
-    return tables.reduce((total, table) => total + table.seats, 0);
+    return tablesForEdit.reduce((total, table) => total + (table.seats ?? 0), 0);
   };
 
   const handleCreateMap = async () => {
-    if (columns.length === 0) {
-      Alert.alert('שגיאה', 'נא להוסיף לפחות עמודה אחת של שולחנות');
+    const tables = tablesForEdit.map(t => ({
+      ...t,
+      seated_guests: typeof t.seated_guests === 'number' ? t.seated_guests : 0,
+    }));
+
+    if (tables.length === 0) {
+      Alert.alert('שגיאה', 'נא להוסיף לפחות שולחן אחד');
       return;
     }
 
     setLoading(true);
     try {
-      const tables = generateTablesFromColumns();
-      
       if (existingMap) {
         // Update existing map
         await updateSeatingMap(tables);
@@ -400,19 +461,31 @@ export default function SeatingTemplatesScreen() {
   };
 
   const createSeatingMap = async (tables: BuiltTable[]) => {
-    // Create the seating map with all table details
-    const { data: seatingMapData, error: seatingMapError } = await supabase
-      .from('seating_maps')
-      .insert({
-        event_id: eventId,
-        num_tables: tables.length,
-        tables: tables, // This contains all the detailed table info including positions
-        annotations: [],
-      })
-      .select('*')
-      .single();
+    if (!eventId) {
+      Alert.alert('שגיאה', 'חסר eventId. חזור למסך האירוע ופתח שוב את הבונה.');
+      return;
+    }
 
-    if (seatingMapError) throw seatingMapError;
+    // Create or update seating_maps row (UNIQUE(event_id) => upsert).
+    const { error: seatingMapError } = await supabase
+      .from('seating_maps')
+      .upsert(
+        {
+          event_id: eventId,
+          num_tables: tables.length,
+          tables: tables,
+          annotations: [],
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'event_id' }
+      );
+
+    // Supabase PostgREST: PGRST205 => table not found in schema cache
+    if (seatingMapError && seatingMapError.code !== 'PGRST205') throw seatingMapError;
+
+    // Make tables write idempotent: remove existing records then re-insert
+    const { error: deleteError } = await supabase.from('tables').delete().eq('event_id', eventId);
+    if (deleteError) throw deleteError;
 
     // Create table records for the tables table
     const tableRecords = tables.map(table => {
@@ -441,18 +514,23 @@ export default function SeatingTemplatesScreen() {
   };
 
   const updateSeatingMap = async (tables: BuiltTable[]) => {
-    // Update the seating map with all table details
+    if (!eventId) {
+      Alert.alert('שגיאה', 'חסר eventId. חזור למסך האירוע ופתח שוב את הבונה.');
+      return;
+    }
+
+    // Update seating_maps if exists, otherwise ignore and persist tables only.
     const { error: seatingMapError } = await supabase
       .from('seating_maps')
       .update({
         num_tables: tables.length,
-        tables: tables, // This contains all the detailed table info including positions
+        tables: tables,
         annotations: [],
         updated_at: new Date().toISOString(),
       })
       .eq('event_id', eventId);
 
-    if (seatingMapError) throw seatingMapError;
+    if (seatingMapError && seatingMapError.code !== 'PGRST205') throw seatingMapError;
 
     // Delete existing table records for this event
     const { error: deleteError } = await supabase
@@ -512,7 +590,8 @@ export default function SeatingTemplatesScreen() {
   };
 
   const renderPreview = () => {
-    const tables = generateTablesFromColumns();
+    // Preview should reflect the actual saved/freeform positions (x/y) too.
+    const tables = tablesForEdit;
     
     if (tables.length === 0) {
       return (
@@ -523,24 +602,24 @@ export default function SeatingTemplatesScreen() {
       );
     }
 
-    // Preview layout: compute columns and give them explicit spacing,
-    // so tables won't stick together horizontally on iPhone.
-    const xPositions = [...new Set(tables.map(t => t.x))].sort((a, b) => b - a); // right -> left
-    const columnIndexByX = new Map<number, number>(xPositions.map((x, idx) => [x, idx]));
+    // Scale world coordinates into the preview canvas.
+    const xs = tables.map(t => t.x ?? 0);
+    const ys = tables.map(t => t.y ?? 0);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
 
-    const BASE_COLUMN_GAP = 28; // gap between table cards (normal)
-    const WIDE_COLUMN_GAP_EXTRA = 34; // extra gap when aisle === 'wide'
     const H_PADDING = 24;
+    const V_PADDING = 24;
 
-    const xByColumnIndex: number[] = [];
-    let nextLeft = H_PADDING;
-    for (let i = 0; i < xPositions.length; i++) {
-      xByColumnIndex[i] = nextLeft;
-      const aisle = columns[i]?.aisle ?? 'normal';
-      const gap = BASE_COLUMN_GAP + (aisle === 'wide' ? WIDE_COLUMN_GAP_EXTRA : 0);
-      nextLeft += PREVIEW_TABLE_CARD_WIDTH + gap;
-    }
-    const totalWidth = Math.max(400, nextLeft + H_PADDING);
+    // Fit-to-height scale (keep it <= 1 so preview doesn't blow up)
+    const scale = Math.min(
+      1,
+      (PREVIEW_MAP_HEIGHT - V_PADDING * 2) / Math.max(1, (maxY - minY) + 140)
+    );
+
+    const totalWidth = Math.max(400, (maxX - minX) * scale + H_PADDING * 2 + 120);
 
     return (
       <View style={styles.hallVisualization}>
@@ -581,8 +660,7 @@ export default function SeatingTemplatesScreen() {
           <View style={[styles.tablesArea, { width: totalWidth, height: PREVIEW_MAP_HEIGHT }]}>
             {/* Render tables (same map logic, updated visuals) */}
             {tables.map((table) => {
-              const colIdx = columnIndexByX.get(table.x) ?? 0;
-              const adjustedX = xByColumnIndex[colIdx] ?? H_PADDING;
+              const adjustedX = ((table.x ?? 0) - minX) * scale + H_PADDING;
               const isSelected = selectedTableId === table.id;
 
               // A tiny "seat dots" row just for visual hint (kept light)
@@ -601,7 +679,7 @@ export default function SeatingTemplatesScreen() {
                     isSelected && styles.tableCardSelected,
                     {
                       left: adjustedX,
-                      top: (table.y / PREVIEW_MAP_Y_RANGE) * PREVIEW_MAP_HEIGHT,
+                      top: ((table.y ?? 0) - minY) * scale + V_PADDING,
                     },
                   ]}
                 >
@@ -639,6 +717,166 @@ export default function SeatingTemplatesScreen() {
     );
   };
 
+  const updateTablePosition = useCallback((tableId: number, x: number, y: number) => {
+    setBaseTables(prev =>
+      prev.some(t => t.id === tableId) ? prev.map(t => (t.id === tableId ? { ...t, x, y } : t)) : prev
+    );
+    setManualTables(prev =>
+      prev.some(t => t.id === tableId) ? prev.map(t => (t.id === tableId ? { ...t, x, y } : t)) : prev
+    );
+  }, []);
+
+  const addManualTableAt = useCallback(
+    (kind: 'regular' | 'knight' | 'reserve', x: number, y: number) => {
+      const maxId = tablesForEdit.reduce((m, t) => Math.max(m, t.id), 0);
+      const nextId = maxId + 1;
+      const isKnight = kind === 'knight';
+      const isReserve = kind === 'reserve';
+      const seats = isKnight ? 20 : isReserve ? 8 : 12;
+
+      const newTable: BuiltTable = {
+        id: nextId,
+        x,
+        y,
+        isKnight,
+        isReserve,
+        rotation: 0,
+        seats,
+        seated_guests: 0,
+      };
+
+      setManualTables(prev => [...prev, newTable]);
+    },
+    [tablesForEdit]
+  );
+
+  const addManualTablesBatchAt = useCallback(
+    (
+      kind: 'regular' | 'knight' | 'reserve',
+      count: number,
+      layout: 'row' | 'column',
+      x: number,
+      y: number
+    ) => {
+      const safeCount = Math.max(1, Math.min(200, Math.floor(count || 1)));
+      const isKnight = kind === 'knight';
+      const isReserve = kind === 'reserve';
+      const seats = isKnight ? 20 : isReserve ? 8 : 12;
+
+      // spacing in world units (snapped feel)
+      const w = isKnight ? 68 : 78;
+      const h = isKnight ? 130 : 78;
+      const gap = 26;
+      const stepX = layout === 'row' ? w + gap : 0;
+      const stepY = layout === 'column' ? h + gap : 0;
+
+      setManualTables(prev => {
+        const maxBase = baseTables.reduce((m, t) => Math.max(m, t.id), 0);
+        const maxManual = prev.reduce((m, t) => Math.max(m, t.id), 0);
+        const startId = Math.max(maxBase, maxManual) + 1;
+
+        const newTables: BuiltTable[] = Array.from({ length: safeCount }).map((_, i) => ({
+          id: startId + i,
+          x: x + i * stepX,
+          y: y + i * stepY,
+          isKnight,
+          isReserve,
+          rotation: 0,
+          seats,
+          seated_guests: 0,
+        }));
+
+        return [...prev, ...newTables];
+      });
+    },
+    [baseTables]
+  );
+
+  const handleTableTypePress = useCallback(
+    (tableId: number) => {
+      const manual = manualTables.find(t => t.id === tableId);
+      if (!manual) {
+        toggleTableType(tableId);
+        return;
+      }
+
+      let currentType = 'רגיל';
+      if (manual.isKnight) currentType = 'אביר';
+      if (manual.isReserve) currentType = 'רזרבה';
+
+      Alert.alert('בחר סוג שולחן', `שולחן ${tableId} כרגע הוא: ${currentType}`, [
+        {
+          text: 'שולחן רגיל',
+          onPress: () =>
+            setManualTables(prev =>
+              prev.map(t =>
+                t.id === tableId ? { ...t, isKnight: false, isReserve: false, seats: 12 } : t
+              )
+            ),
+        },
+        {
+          text: 'שולחן אביר',
+          onPress: () =>
+            setManualTables(prev =>
+              prev.map(t =>
+                t.id === tableId ? { ...t, isKnight: true, isReserve: false, seats: 20 } : t
+              )
+            ),
+        },
+        {
+          text: 'שולחן רזרבה',
+          onPress: () =>
+            setManualTables(prev =>
+              prev.map(t =>
+                t.id === tableId ? { ...t, isKnight: false, isReserve: true, seats: 8 } : t
+              )
+            ),
+        },
+        { text: 'ביטול', style: 'cancel' },
+      ]);
+    },
+    [manualTables, toggleTableType]
+  );
+
+  const handleRequestDeleteTable = useCallback((tableId: number) => {
+    Alert.alert('מחיקת שולחן', `האם אתה בטוח שברצונך למחוק את שולחן ${tableId}?`, [
+      { text: 'ביטול', style: 'cancel' },
+      {
+        text: 'מחק',
+        style: 'destructive',
+        onPress: () => {
+          setHiddenTableIds(prev => {
+            const next = new Set(prev);
+            next.add(tableId);
+            return next;
+          });
+          setBaseTables(prev => prev.filter(t => t.id !== tableId));
+          setManualTables(prev => prev.filter(t => t.id !== tableId));
+        },
+      },
+    ]);
+  }, []);
+
+  if (mode === 'map') {
+    return (
+      <GestureHandlerRootView style={{ flex: 1, backgroundColor: ui.bg }}>
+        <SeatingFreeformMap
+          ui={ui}
+          tables={tablesForEdit}
+          loading={loading}
+          onBack={() => setMode('builder')}
+          onSave={handleCreateMap}
+          onAddTable={addManualTableAt}
+          onAddTablesBatch={addManualTablesBatchAt}
+          onMoveTable={updateTablePosition}
+          onPressTable={handleTableTypePress}
+          onRequestDeleteTable={handleRequestDeleteTable}
+          setTabBarVisible={setTabBarVisible}
+        />
+      </GestureHandlerRootView>
+    );
+  }
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: ui.bg }]}>
       {/* Header (glass) */}
@@ -664,6 +902,16 @@ export default function SeatingTemplatesScreen() {
                 <Text style={[styles.headerSubtitle, { color: ui.muted }]}>יצירת תבנית חדשה</Text>
               )}
             </View>
+
+            <TouchableOpacity
+              style={[styles.headerIconBtn, { borderColor: ui.borderSoft }]}
+              onPress={() => setMode('map')}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="מצב מפה"
+            >
+              <Ionicons name="map-outline" size={22} color={ui.primary} />
+            </TouchableOpacity>
 
             <TouchableOpacity
               style={[
@@ -1035,7 +1283,7 @@ export default function SeatingTemplatesScreen() {
         </View>
 
         {/* Secondary create/update button (kept for accessibility; header is primary) */}
-        {columns.length > 0 && (
+        {tablesForEdit.length > 0 && (
           <View style={[styles.card, { backgroundColor: ui.card, borderColor: ui.borderSoft }]}>
             <TouchableOpacity
               style={[styles.primaryCta, { backgroundColor: ui.primary }, loading && { opacity: 0.7 }]}
@@ -1052,6 +1300,1324 @@ export default function SeatingTemplatesScreen() {
         )}
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+function clamp(n: number, min: number, max: number) {
+  'worklet';
+  return Math.min(max, Math.max(min, n));
+}
+
+type UiPalette = {
+  primary: string;
+  bg: string;
+  card: string;
+  canvas: string;
+  text: string;
+  muted: string;
+  borderSoft: string;
+  borderGlass: string;
+  glassFill: string;
+};
+
+type SeatingFreeformMapProps = {
+  ui: UiPalette;
+  tables: BuiltTable[];
+  loading: boolean;
+  onBack: () => void;
+  onSave: () => void;
+  onAddTable: (kind: 'regular' | 'knight' | 'reserve', x: number, y: number) => void;
+  onAddTablesBatch: (
+    kind: 'regular' | 'knight' | 'reserve',
+    count: number,
+    layout: 'row' | 'column',
+    x: number,
+    y: number
+  ) => void;
+  onMoveTable: (tableId: number, x: number, y: number) => void;
+  onPressTable: (tableId: number) => void;
+  onRequestDeleteTable: (tableId: number) => void;
+  setTabBarVisible: (isVisible: boolean) => void;
+};
+
+function SeatingFreeformMap({
+  ui,
+  tables,
+  loading,
+  onBack,
+  onSave,
+  onAddTable,
+  onAddTablesBatch,
+  onMoveTable,
+  onPressTable,
+  onRequestDeleteTable,
+  setTabBarVisible,
+}: SeatingFreeformMapProps) {
+  const { width: screenW, height: screenH } = Dimensions.get('window');
+  const insets = useSafeAreaInsets();
+
+  // Camera transform (screen space)
+  const cameraX = useSharedValue(0);
+  const cameraY = useSharedValue(0);
+  const cameraScale = useSharedValue(0.75);
+  const panStartX = useSharedValue(0);
+  const panStartY = useSharedValue(0);
+  const pinchStartScale = useSharedValue(0.75);
+  const isDragging = useSharedValue(false);
+
+  // Keep a JS snapshot of camera so "add table" uses latest view
+  const cameraJsRef = useRef({ x: 0, y: 0, scale: 0.75 });
+  const updateCameraSnapshot = useCallback((x: number, y: number, scale: number) => {
+    cameraJsRef.current = { x, y, scale };
+  }, []);
+
+  const [multiSelect, setMultiSelect] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const selectedIdsRef = useRef<Set<number>>(new Set());
+  const [primarySelectedId, setPrimarySelectedId] = useState<number | null>(null);
+
+  useEffect(() => {
+    selectedIdsRef.current = selectedIds;
+    if (selectedIds.size === 0) setPrimarySelectedId(null);
+  }, [selectedIds]);
+
+  const toggleSelected = useCallback((id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+    setPrimarySelectedId(id);
+  }, []);
+
+  const selectSingle = useCallback((id: number) => {
+    setSelectedIds(new Set([id]));
+    setPrimarySelectedId(id);
+  }, []);
+
+  const clearSelection = useCallback(() => {
+    setSelectedIds(new Set());
+    setPrimarySelectedId(null);
+  }, []);
+
+  // Hide tab bar while in full-screen map mode
+  useEffect(() => {
+    setTabBarVisible(false);
+    return () => setTabBarVisible(true);
+  }, [setTabBarVisible]);
+
+  // Keep per-table mutable positions (not React state, for smooth drag).
+  const posByIdRef = useRef(
+    new Map<number, { x: Animated.SharedValue<number>; y: Animated.SharedValue<number> }>()
+  );
+
+  // Alignment guides (world-space). Visible only while dragging near alignment.
+  const vGuideX = useSharedValue(0);
+  const vGuideOpacity = useSharedValue(0);
+  const hGuideY = useSharedValue(0);
+  const hGuideOpacity = useSharedValue(0);
+
+  const vGuideStyle = useAnimatedStyle(() => ({
+    opacity: vGuideOpacity.value,
+    transform: [{ translateX: vGuideX.value }],
+  }));
+
+  const hGuideStyle = useAnimatedStyle(() => ({
+    opacity: hGuideOpacity.value,
+    transform: [{ translateY: hGuideY.value }],
+  }));
+
+  const sizeById = useMemo(() => {
+    const map = new Map<number, { w: number; h: number }>();
+    for (const t of tables) {
+      if (t.isKnight) map.set(t.id, { w: 68, h: 130 });
+      else map.set(t.id, { w: 78, h: 78 });
+    }
+    return map;
+  }, [tables]);
+
+  // Group drag state (JS thread)
+  const SNAP = 10;
+  const groupAnchorIdRef = useRef<number | null>(null);
+  const groupAnchorStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const groupStartByIdRef = useRef<Map<number, { x: number; y: number }>>(new Map());
+
+  const beginDrag = useCallback(
+    (anchorId: number) => {
+      // Ensure anchor is selected
+      if (multiSelect) {
+        if (!selectedIdsRef.current.has(anchorId)) {
+          setSelectedIds(prev => new Set(prev).add(anchorId));
+        }
+      } else {
+        // Single selection mode: dragging selects only this table
+        setSelectedIds(new Set([anchorId]));
+      }
+      setPrimarySelectedId(anchorId);
+
+      const ids = Array.from(selectedIdsRef.current.size ? selectedIdsRef.current : new Set([anchorId]));
+      // If selection hasn't updated yet (due to state async), force include anchor
+      if (!ids.includes(anchorId)) ids.push(anchorId);
+
+      groupAnchorIdRef.current = anchorId;
+      groupStartByIdRef.current = new Map();
+
+      // Snap starting positions and store them
+      for (const id of ids) {
+        const pos = posByIdRef.current.get(id);
+        if (!pos) continue;
+        const sx = Math.round(pos.x.value / SNAP) * SNAP;
+        const sy = Math.round(pos.y.value / SNAP) * SNAP;
+        pos.x.value = sx;
+        pos.y.value = sy;
+        groupStartByIdRef.current.set(id, { x: sx, y: sy });
+      }
+
+      const anchorPos = posByIdRef.current.get(anchorId);
+      groupAnchorStartRef.current = {
+        x: anchorPos ? Math.round(anchorPos.x.value / SNAP) * SNAP : 0,
+        y: anchorPos ? Math.round(anchorPos.y.value / SNAP) * SNAP : 0,
+      };
+    },
+    [multiSelect]
+  );
+
+  const updateGroupDrag = useCallback(
+    (anchorId: number, anchorX: number, anchorY: number) => {
+      const selected = selectedIdsRef.current;
+      const anchorStart = groupAnchorStartRef.current;
+      const dx = anchorX - anchorStart.x;
+      const dy = anchorY - anchorStart.y;
+
+      const ids = selected.size ? Array.from(selected) : [anchorId];
+
+      // Move other selected tables by same delta
+      for (const id of ids) {
+        if (id === anchorId) continue;
+        const start = groupStartByIdRef.current.get(id);
+        const pos = posByIdRef.current.get(id);
+        if (!start || !pos) continue;
+        pos.x.value = start.x + dx;
+        pos.y.value = start.y + dy;
+      }
+
+      updateGuides(anchorId, anchorX, anchorY);
+    },
+    [updateGuides]
+  );
+
+  const commitGroupDrag = useCallback(
+    (anchorId: number, anchorX: number, anchorY: number) => {
+      const selected = selectedIdsRef.current;
+      const ids = selected.size ? Array.from(selected) : [anchorId];
+
+      // Commit all selected positions to React state (via onMoveTable)
+      for (const id of ids) {
+        const pos = posByIdRef.current.get(id);
+        const x = id === anchorId ? anchorX : Math.round((pos?.x.value ?? 0) / SNAP) * SNAP;
+        const y = id === anchorId ? anchorY : Math.round((pos?.y.value ?? 0) / SNAP) * SNAP;
+        onMoveTable(id, x, y);
+      }
+
+      clearGuides();
+    },
+    [clearGuides, onMoveTable]
+  );
+
+  const bounds = useMemo(() => {
+    if (!tables.length) {
+      return { minX: 0, minY: 0, maxX: 1200, maxY: 800 };
+    }
+    const xs = tables.map(t => t.x);
+    const ys = tables.map(t => t.y);
+    return {
+      minX: Math.min(...xs),
+      maxX: Math.max(...xs),
+      minY: Math.min(...ys),
+      maxY: Math.max(...ys),
+    };
+  }, [tables]);
+
+  const worldSize = useMemo(() => {
+    const pad = 360;
+    const w = Math.max(1400, bounds.maxX - bounds.minX + pad * 2);
+    const h = Math.max(1000, bounds.maxY - bounds.minY + pad * 2);
+    return { w, h, pad };
+  }, [bounds]);
+
+  const centerOnTables = useCallback(() => {
+    const baseScale = 0.75;
+    cameraScale.value = withTiming(baseScale, { duration: 180 });
+    const centerWorldX = (bounds.minX + bounds.maxX) / 2;
+    const centerWorldY = (bounds.minY + bounds.maxY) / 2;
+    const tx = screenW / 2 - centerWorldX * baseScale;
+    const ty = screenH / 2 - centerWorldY * baseScale;
+    cameraX.value = withTiming(tx, { duration: 180 });
+    cameraY.value = withTiming(ty, { duration: 180 });
+    updateCameraSnapshot(tx, ty, baseScale);
+  }, [bounds.maxX, bounds.maxY, bounds.minX, bounds.minY, cameraScale, cameraX, cameraY, screenH, screenW]);
+
+  const focusWorldPoint = useCallback(
+    (wx: number, wy: number) => {
+      const s = cameraJsRef.current.scale || 0.75;
+      const tx = screenW / 2 - wx * s;
+      const ty = screenH / 2 - wy * s;
+      cameraX.value = withTiming(tx, { duration: 180 });
+      cameraY.value = withTiming(ty, { duration: 180 });
+      updateCameraSnapshot(tx, ty, s);
+    },
+    [cameraX, cameraY, screenH, screenW, updateCameraSnapshot]
+  );
+
+  const didInitRef = useRef(false);
+  useEffect(() => {
+    if (didInitRef.current) return;
+    if (!tables.length) return;
+    didInitRef.current = true;
+    centerOnTables();
+  }, [tables.length, centerOnTables]);
+
+  // Sync mutable positions with latest prop values.
+  useEffect(() => {
+    const map = posByIdRef.current;
+    const ids = new Set<number>(tables.map(t => t.id));
+
+    for (const t of tables) {
+      const existing = map.get(t.id);
+      if (!existing) {
+        map.set(t.id, { x: makeMutable(t.x), y: makeMutable(t.y) });
+      } else {
+        existing.x.value = t.x;
+        existing.y.value = t.y;
+      }
+    }
+
+    for (const id of Array.from(map.keys())) {
+      if (!ids.has(id)) map.delete(id);
+    }
+  }, [tables]);
+
+  const clearGuides = useCallback(() => {
+    vGuideOpacity.value = withTiming(0, { duration: 90 });
+    hGuideOpacity.value = withTiming(0, { duration: 90 });
+  }, [hGuideOpacity, vGuideOpacity]);
+
+  const updateGuides = useCallback(
+    (dragId: number, x: number, y: number) => {
+      const TOL = 8; // alignment tolerance in world-units
+      const dragSize = sizeById.get(dragId) ?? { w: 78, h: 78 };
+
+      const dragLeft = x;
+      const dragRight = x + dragSize.w;
+      const dragCx = x + dragSize.w / 2;
+      const dragTop = y;
+      const dragBottom = y + dragSize.h;
+      const dragCy = y + dragSize.h / 2;
+
+      let bestV: { diff: number; x: number } | null = null;
+      let bestH: { diff: number; y: number } | null = null;
+
+      for (const t of tables) {
+        if (t.id === dragId) continue;
+
+        const pos = posByIdRef.current.get(t.id);
+        const ox = pos?.x.value ?? t.x ?? 0;
+        const oy = pos?.y.value ?? t.y ?? 0;
+        const sz = sizeById.get(t.id) ?? { w: 78, h: 78 };
+
+        const left = ox;
+        const right = ox + sz.w;
+        const cx = ox + sz.w / 2;
+        const top = oy;
+        const bottom = oy + sz.h;
+        const cy = oy + sz.h / 2;
+
+        const vTargets = [left, cx, right];
+        const vSources = [dragLeft, dragCx, dragRight];
+        for (const s of vSources) {
+          for (const target of vTargets) {
+            const diff = Math.abs(s - target);
+            if (diff <= TOL && (!bestV || diff < bestV.diff)) bestV = { diff, x: target };
+          }
+        }
+
+        const hTargets = [top, cy, bottom];
+        const hSources = [dragTop, dragCy, dragBottom];
+        for (const s of hSources) {
+          for (const target of hTargets) {
+            const diff = Math.abs(s - target);
+            if (diff <= TOL && (!bestH || diff < bestH.diff)) bestH = { diff, y: target };
+          }
+        }
+      }
+
+      if (bestV) {
+        vGuideX.value = bestV.x;
+        vGuideOpacity.value = withTiming(1, { duration: 60 });
+      } else {
+        vGuideOpacity.value = withTiming(0, { duration: 90 });
+      }
+
+      if (bestH) {
+        hGuideY.value = bestH.y;
+        hGuideOpacity.value = withTiming(1, { duration: 60 });
+      } else {
+        hGuideOpacity.value = withTiming(0, { duration: 90 });
+      }
+    },
+    [hGuideOpacity, hGuideY, sizeById, tables, vGuideOpacity, vGuideX]
+  );
+
+  const panGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .onBegin(() => {
+          panStartX.value = cameraX.value;
+          panStartY.value = cameraY.value;
+        })
+        .onUpdate(e => {
+          if (isDragging.value) return;
+          cameraX.value = panStartX.value + e.translationX;
+          cameraY.value = panStartY.value + e.translationY;
+        })
+        .onEnd(() => {
+          runOnJS(updateCameraSnapshot)(cameraX.value, cameraY.value, cameraScale.value);
+        })
+        .onFinalize(() => {
+          runOnJS(updateCameraSnapshot)(cameraX.value, cameraY.value, cameraScale.value);
+        }),
+    [cameraScale, cameraX, cameraY, isDragging, panStartX, panStartY, updateCameraSnapshot]
+  );
+
+  const pinchGesture = useMemo(
+    () =>
+      Gesture.Pinch()
+        .onBegin(() => {
+          pinchStartScale.value = cameraScale.value;
+        })
+        .onUpdate(e => {
+          if (isDragging.value) return;
+          cameraScale.value = clamp(pinchStartScale.value * e.scale, 0.4, 3);
+        })
+        .onEnd(() => {
+          runOnJS(updateCameraSnapshot)(cameraX.value, cameraY.value, cameraScale.value);
+        })
+        .onFinalize(() => {
+          runOnJS(updateCameraSnapshot)(cameraX.value, cameraY.value, cameraScale.value);
+        }),
+    [cameraScale, cameraX, cameraY, isDragging, pinchStartScale, updateCameraSnapshot]
+  );
+
+  const canvasGesture = useMemo(() => Gesture.Simultaneous(panGesture, pinchGesture), [panGesture, pinchGesture]);
+
+  const stageStyle = useAnimatedStyle(() => {
+    return {
+      transform: [
+        { translateX: cameraX.value },
+        { translateY: cameraY.value },
+        { scale: cameraScale.value },
+      ],
+    };
+  });
+
+  const addAtCenter = useCallback(
+    (kind: 'regular' | 'knight' | 'reserve') => {
+      const worldX = (screenW / 2 - cameraX.value) / cameraScale.value;
+      const worldY = (screenH / 2 - cameraY.value) / cameraScale.value;
+      onAddTable(kind, Math.round(worldX), Math.round(worldY));
+    },
+    // Do not include `.value` in deps; it triggers Reanimated strict-mode warnings.
+    [cameraScale, cameraX, cameraY, onAddTable, screenH, screenW]
+  );
+
+  // Add flow modal (count -> layout if needed)
+  const [addOpen, setAddOpen] = useState(false);
+  const [addStep, setAddStep] = useState<'count' | 'layout'>('count');
+  const [addKind, setAddKind] = useState<'regular' | 'knight' | 'reserve'>('regular');
+  const [addCount, setAddCount] = useState(1);
+  const [addLayout, setAddLayout] = useState<'row' | 'column'>('row');
+
+  const openAddFlow = useCallback((kind: 'regular' | 'knight' | 'reserve') => {
+    setAddKind(kind);
+    setAddCount(1);
+    setAddLayout('row');
+    setAddStep('count');
+    setAddOpen(true);
+  }, []);
+
+  const confirmAddFlow = useCallback(() => {
+    const count = Math.max(1, Math.min(200, addCount || 1));
+    // Use JS camera snapshot so we don't accidentally add to (0,0) if shared values are stale on JS thread.
+    const { x: cx, y: cy, scale: cs } = cameraJsRef.current;
+    const baseX = Math.round((screenW / 2 - cx) / cs / 10) * 10;
+    const baseY = Math.round((screenH / 2 - cy) / cs / 10) * 10;
+
+    if (count <= 1) {
+      onAddTable(addKind, baseX, baseY);
+      focusWorldPoint(baseX, baseY);
+      setAddOpen(false);
+      return;
+    }
+
+    // If we are at count step, move to layout step first
+    if (addStep === 'count') {
+      setAddStep('layout');
+      return;
+    }
+
+    onAddTablesBatch(addKind, count, addLayout, baseX, baseY);
+    // Focus on center of the new group so it's obvious where it was added
+    const isKnight = addKind === 'knight';
+    const w = isKnight ? 68 : 78;
+    const h = isKnight ? 130 : 78;
+    const gap = 26;
+    const stepX = addLayout === 'row' ? w + gap : 0;
+    const stepY = addLayout === 'column' ? h + gap : 0;
+    focusWorldPoint(baseX + ((count - 1) * stepX) / 2, baseY + ((count - 1) * stepY) / 2);
+    setAddOpen(false);
+  }, [addCount, addKind, addLayout, addStep, focusWorldPoint, onAddTable, onAddTablesBatch, screenH, screenW]);
+
+  const cancelAddFlow = useCallback(() => {
+    if (addStep === 'layout') {
+      setAddStep('count');
+      return;
+    }
+    setAddOpen(false);
+  }, [addStep]);
+
+  type FabItem = {
+    key:
+      | 'add-regular'
+      | 'add-reserve'
+      | 'add-knight'
+      | 'multi'
+      ;
+    color: string;
+  };
+
+  const [fabOpen, setFabOpen] = useState(false);
+
+  const menuItems: FabItem[] = useMemo(
+    () => [
+      // Only the requested options
+      { key: 'add-regular', color: '#2b8cee' }, // שולחן (מרובע)
+      { key: 'add-knight', color: '#111827' }, // אביר (מלבני)
+      { key: 'add-reserve', color: '#7c3aed' }, // רזרבה (מרובע + ?)
+      { key: 'multi', color: '#0ea5e9' }, // בחירה מרובה (checkbox)
+    ],
+    [multiSelect]
+  );
+
+  const renderFabItemIcon = useCallback(
+    (item: FabItem, size: number) => {
+      const stroke = Math.max(2, Math.round(size * 0.11));
+      const sq = Math.round(size * 0.86);
+      const rectW = Math.round(size * 1.08);
+      const rectH = Math.round(size * 0.64);
+      const badge = Math.round(size * 0.46);
+
+      const SquareIcon = ({ withBadge }: { withBadge?: boolean }) => (
+        <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+          <View
+            style={{
+              width: sq,
+              height: sq,
+              borderRadius: 10,
+              borderWidth: stroke,
+              borderColor: '#fff',
+              opacity: 0.95,
+            }}
+          />
+          {withBadge ? (
+            <View
+              style={{
+                position: 'absolute',
+                // Place the "?" badge centered inside the table icon
+                top: (size - sq) / 2 + (sq - badge) / 2,
+                left: (size - sq) / 2 + (sq - badge) / 2,
+                width: badge,
+                height: badge,
+                borderRadius: 999,
+                backgroundColor: 'rgba(255,255,255,0.92)',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Text
+                style={{
+                  color: '#111827',
+                  fontWeight: '900',
+                  // Make the glyph center reliably: fill the circle with lineHeight == height
+                  width: badge,
+                  height: badge,
+                  fontSize: Math.round(badge * 0.62),
+                  lineHeight: badge,
+                  textAlign: 'center',
+                  includeFontPadding: false,
+                }}
+              >
+                ?
+              </Text>
+            </View>
+          ) : null}
+        </View>
+      );
+
+      const RectIcon = () => (
+        <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+          <View
+            style={{
+              width: rectW,
+              height: rectH,
+              borderRadius: 12,
+              borderWidth: stroke,
+              borderColor: '#fff',
+              opacity: 0.95,
+            }}
+          />
+        </View>
+      );
+
+      const MultiSelectIcon = ({ active }: { active: boolean }) => (
+        <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+          <View
+            style={{
+              width: sq,
+              height: sq,
+              borderRadius: 10,
+              borderWidth: stroke,
+              borderColor: '#fff',
+              opacity: 0.95,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            {/* Check mark (always visible for "multi select" icon; dim when inactive) */}
+            <View
+              style={{
+                width: sq * 0.34,
+                height: sq * 0.20,
+                borderLeftWidth: stroke,
+                borderBottomWidth: stroke,
+                borderColor: '#fff',
+                transform: [{ rotate: '-45deg' }],
+                opacity: active ? 1 : 0.7,
+                marginTop: sq * 0.02,
+              }}
+            />
+          </View>
+        </View>
+      );
+
+      switch (item.key) {
+        case 'add-regular':
+          return <SquareIcon />;
+        case 'add-knight':
+          return <RectIcon />;
+        case 'add-reserve':
+          return <SquareIcon withBadge />;
+        case 'multi':
+          return <MultiSelectIcon active={multiSelect} />;
+      }
+    },
+    [multiSelect]
+  );
+
+  const fabItemLabel = useCallback((item: FabItem) => {
+    switch (item.key) {
+      case 'add-regular':
+        return 'שולחן';
+      case 'add-knight':
+        return 'אביר';
+      case 'add-reserve':
+        return 'רזרבה';
+      case 'multi':
+        return 'בחירה';
+    }
+  }, []);
+
+  const onFabPress = useCallback(
+    (item: FabItem) => {
+      setFabOpen(false);
+      switch (item.key) {
+        case 'add-regular':
+          openAddFlow('regular');
+          break;
+        case 'add-knight':
+          openAddFlow('knight');
+          break;
+        case 'add-reserve':
+          openAddFlow('reserve');
+          break;
+        case 'multi':
+          setMultiSelect(v => !v);
+          clearSelection();
+          break;
+      }
+    },
+    [clearSelection, openAddFlow]
+  );
+
+  const FAB_SIZE = 62;
+  const FAB_OFFSET = 4;
+
+  const header = (
+    <View
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        paddingTop: Math.max(8, insets.top + 8),
+        zIndex: 50,
+      }}
+    >
+      <View style={{ paddingHorizontal: 14 }}>
+        <View
+          style={{
+            flexDirection: 'row-reverse',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            backgroundColor: 'rgba(255,255,255,0.92)',
+            borderRadius: 16,
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            borderWidth: 1,
+            borderColor: ui.borderSoft,
+          }}
+        >
+          <TouchableOpacity
+            onPress={onBack}
+            activeOpacity={0.85}
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 999,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: 'rgba(255,255,255,0.9)',
+              borderWidth: 1,
+              borderColor: ui.borderSoft,
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="חזרה"
+          >
+            <Ionicons name="chevron-forward" size={22} color={ui.primary} />
+          </TouchableOpacity>
+
+          <View style={{ flex: 1, alignItems: 'center', paddingHorizontal: 10 }}>
+            <Text style={{ fontSize: 16, fontWeight: '800', color: ui.text }}>מצב מפה</Text>
+            <Text style={{ fontSize: 12, color: ui.muted, marginTop: 2 }}>לחיצה ארוכה על שולחן ואז גרירה</Text>
+          </View>
+
+          <TouchableOpacity
+            onPress={onSave}
+            disabled={loading}
+            activeOpacity={0.9}
+            style={{
+              paddingHorizontal: 14,
+              height: 40,
+              borderRadius: 12,
+              backgroundColor: ui.primary,
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: loading ? 0.7 : 1,
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="שמור"
+          >
+            {loading ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={{ color: '#fff', fontWeight: '800' }}>שמור</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  );
+
+  const fabMenu = (
+    <View
+      pointerEvents="box-none"
+      style={{
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        top: 0,
+        bottom: 0,
+        alignItems: 'center',
+        justifyContent: 'flex-end',
+        zIndex: 80,
+      }}
+    >
+      <View style={{ paddingBottom: Math.max(insets.bottom + 16, 16), alignItems: 'center' }}>
+      {/* menu items open above the FAB */}
+      <View style={{ position: 'absolute' }}>
+        {menuItems.map((menuItem, index) => {
+          // Even, symmetric spread (works for even/odd counts)
+          const n = menuItems.length;
+          const totalAngle = Math.PI * 0.75; // overall arc (≈135deg)
+          const offsetAngle = totalAngle / Math.max(1, n - 1);
+          const radius = FAB_SIZE * 1.35;
+          const midPoint = (n - 1) / 2; // fractional midpoint for even counts
+          const reflectedIndex = index - midPoint; // 4 => [-1.5,-0.5,0.5,1.5]
+          const iconSize = FAB_SIZE * 0.40;
+          return (
+            <MotiPressable
+              key={menuItem.key}
+              onPress={() => onFabPress(menuItem)}
+              animate={{
+                translateX:
+                  Math.sin(reflectedIndex * offsetAngle) * (fabOpen ? radius : FAB_OFFSET),
+                translateY:
+                  -Math.cos(reflectedIndex * offsetAngle) * (fabOpen ? radius : FAB_OFFSET),
+                opacity: fabOpen ? 1 : 0,
+                scale: fabOpen ? 1 : 0.6,
+              }}
+              style={{
+                position: 'absolute',
+                left: -FAB_SIZE / 2,
+                top: -FAB_SIZE / 2,
+                width: FAB_SIZE,
+                height: FAB_SIZE,
+                borderRadius: FAB_SIZE / 2,
+                backgroundColor: menuItem.color,
+                alignItems: 'center',
+                justifyContent: 'center',
+                shadowColor: '#000',
+                shadowOpacity: 0.16,
+                shadowRadius: 12,
+                shadowOffset: { width: 0, height: 8 },
+                elevation: 8,
+              }}
+              transition={{
+                delay: index * 60,
+                type: 'timing',
+                duration: 320,
+              }}
+            >
+              <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+                {renderFabItemIcon(menuItem, iconSize)}
+                <Text
+                  style={{
+                    marginTop: 4,
+                    color: 'rgba(255,255,255,0.92)',
+                    fontWeight: '700',
+                    fontSize: 10,
+                    letterSpacing: -0.2,
+                  }}
+                  numberOfLines={1}
+                >
+                  {fabItemLabel(menuItem)}
+                </Text>
+              </View>
+            </MotiPressable>
+          );
+        })}
+      </View>
+
+      <MotiPressable
+        onPress={() => setFabOpen(v => !v)}
+        style={{
+          width: FAB_SIZE,
+          height: FAB_SIZE,
+          borderRadius: FAB_SIZE / 2,
+          backgroundColor: '#1D1520',
+          alignItems: 'center',
+          justifyContent: 'center',
+          shadowColor: '#000',
+          shadowOpacity: 0.2,
+          shadowRadius: 16,
+          shadowOffset: { width: 0, height: 10 },
+          elevation: 10,
+        }}
+        animate={{
+          rotate: fabOpen ? '0deg' : '-45deg',
+        }}
+        transition={{ type: 'timing', duration: 260 }}
+      >
+        <Feather name="x" size={FAB_SIZE * 0.42} color="#fff" />
+      </MotiPressable>
+      </View>
+    </View>
+  );
+
+  const stage = (
+    <Animated.View
+      style={[
+        {
+          width: worldSize.w,
+          height: worldSize.h,
+          backgroundColor: ui.canvas,
+        },
+        stageStyle,
+      ]}
+    >
+      {/* Dot-grid background */}
+      <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+        <Svg width="100%" height="100%">
+          <Defs>
+            <Pattern id="dotGridMap" x="0" y="0" width="28" height="28" patternUnits="userSpaceOnUse">
+              <Circle cx="1.6" cy="1.6" r="1.6" fill="#cbd5e1" opacity={0.7} />
+            </Pattern>
+          </Defs>
+          <Rect x="0" y="0" width="100%" height="100%" fill="url(#dotGridMap)" opacity={0.55} />
+        </Svg>
+      </View>
+
+      {/* Alignment guides (appear only near other tables while dragging) */}
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          {
+            position: 'absolute',
+            top: 0,
+            bottom: 0,
+            width: 2,
+            backgroundColor: 'rgba(43,140,238,0.95)',
+            borderRadius: 2,
+          },
+          vGuideStyle,
+        ]}
+      />
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          {
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            height: 2,
+            backgroundColor: 'rgba(43,140,238,0.95)',
+            borderRadius: 2,
+          },
+          hGuideStyle,
+        ]}
+      />
+
+      {tables.map(t => {
+        const map = posByIdRef.current;
+        const pos = map.get(t.id) ?? (() => {
+          const created = { x: makeMutable(t.x), y: makeMutable(t.y) };
+          map.set(t.id, created);
+          return created;
+        })();
+
+        const kind: 'square' | 'knight' | 'reserve' = t.isReserve ? 'reserve' : t.isKnight ? 'knight' : 'square';
+        const isSelected = selectedIds.has(t.id);
+
+        return (
+          <DraggableTableNode
+            key={t.id}
+            id={t.id}
+            kind={kind}
+            seats={t.seats}
+            selected={selectedIds.has(t.id)}
+            ui={ui}
+            posX={pos.x}
+            posY={pos.y}
+            cameraScale={cameraScale}
+            isDragging={isDragging}
+            multiSelect={multiSelect}
+            onTap={(id) => {
+              if (multiSelect) toggleSelected(id);
+              else {
+                // Tap selects only; type selection is done via the blue button below
+                selectSingle(id);
+              }
+            }}
+            onDragBegin={beginDrag}
+            onDragUpdate={updateGroupDrag}
+            onDragCommit={commitGroupDrag}
+            onDragEnd={clearGuides}
+            onDoubleTap={onRequestDeleteTable}
+          />
+        );
+      })}
+    </Animated.View>
+  );
+
+  return (
+    <View style={{ flex: 1, backgroundColor: ui.bg }}>
+      {header}
+      <GestureDetector gesture={canvasGesture}>
+        <View style={{ flex: 1, overflow: 'hidden', backgroundColor: ui.canvas }}>
+          {stage}
+        </View>
+      </GestureDetector>
+      {fabMenu}
+
+      <Modal visible={addOpen} transparent animationType="fade" onRequestClose={() => setAddOpen(false)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', padding: 20 }}>
+          <View
+            style={{
+              backgroundColor: 'rgba(255,255,255,0.96)',
+              borderRadius: 18,
+              padding: 16,
+              borderWidth: 1,
+              borderColor: ui.borderSoft,
+            }}
+          >
+            <Text style={{ fontSize: 16, fontWeight: '900', color: ui.text, textAlign: 'right' }}>
+              {addStep === 'count' ? 'כמה שולחנות להוסיף?' : 'איך להוסיף את השולחנות?'}
+            </Text>
+
+            {addStep === 'count' ? (
+              <>
+                <Text style={{ marginTop: 10, color: ui.muted, textAlign: 'right' }}>
+                  בחר כמות ואז המשך.
+                </Text>
+                <View
+                  style={{
+                    marginTop: 14,
+                    borderRadius: 18,
+                    borderWidth: 1,
+                    borderColor: ui.borderSoft,
+                    backgroundColor: 'rgba(255,255,255,0.95)',
+                    padding: 12,
+                  }}
+                >
+                  <View
+                    style={{
+                      flexDirection: 'row-reverse',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      borderRadius: 16,
+                      paddingHorizontal: 10,
+                      paddingVertical: 10,
+                      backgroundColor: 'rgba(17,24,39,0.04)',
+                    }}
+                  >
+                    <TouchableOpacity
+                      onPress={() => setAddCount(c => Math.max(1, c - 1))}
+                      onLongPress={() => setAddCount(c => Math.max(1, c - 5))}
+                      activeOpacity={0.9}
+                      style={{
+                        width: 44,
+                        height: 44,
+                        borderRadius: 14,
+                        backgroundColor: '#fff',
+                        borderWidth: 1,
+                        borderColor: ui.borderSoft,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel="הפחת כמות"
+                    >
+                      <Ionicons name="remove" size={22} color={ui.text} />
+                    </TouchableOpacity>
+
+                    <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+                      <Text style={{ fontSize: 34, fontWeight: '900', color: ui.text, letterSpacing: -0.6 }}>
+                        {addCount}
+                      </Text>
+                      <Text style={{ marginTop: 2, fontSize: 12, fontWeight: '700', color: ui.muted }}>
+                        שולחנות
+                      </Text>
+                    </View>
+
+                    <TouchableOpacity
+                      onPress={() => setAddCount(c => Math.min(200, c + 1))}
+                      onLongPress={() => setAddCount(c => Math.min(200, c + 5))}
+                      activeOpacity={0.9}
+                      style={{
+                        width: 44,
+                        height: 44,
+                        borderRadius: 14,
+                        backgroundColor: ui.primary,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel="הוסף כמות"
+                    >
+                      <Ionicons name="add" size={22} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
+
+                  <Text style={{ marginTop: 8, color: ui.muted, fontSize: 12, textAlign: 'right' }}>
+                    לחיצה ארוכה על +/− משנה ב־5
+                  </Text>
+                </View>
+              </>
+            ) : (
+              <>
+                <Text style={{ marginTop: 10, color: ui.muted, textAlign: 'right' }}>
+                  אם בחרת יותר מאחד—אפשר להוסיף אותם בשורה או בטור.
+                </Text>
+                <View style={{ flexDirection: 'row-reverse', gap: 10, marginTop: 14 }}>
+                  <TouchableOpacity
+                    onPress={() => setAddLayout('row')}
+                    activeOpacity={0.9}
+                    style={{
+                      flex: 1,
+                      height: 44,
+                      borderRadius: 14,
+                      borderWidth: 1,
+                      borderColor: addLayout === 'row' ? ui.primary : ui.borderSoft,
+                      backgroundColor: addLayout === 'row' ? 'rgba(43,140,238,0.12)' : '#fff',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Text style={{ fontWeight: '900', color: ui.text }}>שורה</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setAddLayout('column')}
+                    activeOpacity={0.9}
+                    style={{
+                      flex: 1,
+                      height: 44,
+                      borderRadius: 14,
+                      borderWidth: 1,
+                      borderColor: addLayout === 'column' ? ui.primary : ui.borderSoft,
+                      backgroundColor: addLayout === 'column' ? 'rgba(43,140,238,0.12)' : '#fff',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Text style={{ fontWeight: '900', color: ui.text }}>טור</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+
+            <View style={{ flexDirection: 'row-reverse', gap: 10, marginTop: 16 }}>
+              <TouchableOpacity
+                onPress={confirmAddFlow}
+                activeOpacity={0.9}
+                style={{
+                  flex: 1,
+                  height: 44,
+                  borderRadius: 14,
+                  backgroundColor: ui.primary,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Text style={{ fontWeight: '900', color: '#fff' }}>
+                  {addStep === 'count' && addCount > 1 ? 'המשך' : 'הוסף'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={cancelAddFlow}
+                activeOpacity={0.9}
+                style={{
+                  flex: 1,
+                  height: 44,
+                  borderRadius: 14,
+                  backgroundColor: 'rgba(17,24,39,0.08)',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Text style={{ fontWeight: '900', color: ui.text }}>
+                  {addStep === 'layout' ? 'חזרה' : 'ביטול'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+const miniBtnText = { color: '#fff', fontWeight: '800', fontSize: 12, marginRight: 6 } as const;
+function miniBtn(bg: string) {
+  return {
+    flexDirection: 'row-reverse' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    height: 40,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    backgroundColor: bg,
+  };
+}
+
+function iconOnlyBtn(border: string) {
+  return {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderWidth: 1,
+    borderColor: border,
+  };
+}
+
+type DraggableTableNodeProps = {
+  id: number;
+  kind: 'square' | 'knight' | 'reserve';
+  seats: number;
+  selected: boolean;
+  ui: UiPalette;
+  posX: Animated.SharedValue<number>;
+  posY: Animated.SharedValue<number>;
+  cameraScale: Animated.SharedValue<number>;
+  isDragging: Animated.SharedValue<boolean>;
+  multiSelect: boolean;
+  onTap: (id: number) => void;
+  onDragBegin: (id: number) => void;
+  onDragUpdate: (id: number, x: number, y: number) => void;
+  onDragCommit: (id: number, x: number, y: number) => void;
+  onDragEnd: () => void;
+  onDoubleTap: (id: number) => void;
+};
+
+function DraggableTableNode({
+  id,
+  kind,
+  seats,
+  selected,
+  ui,
+  posX,
+  posY,
+  cameraScale,
+  isDragging,
+  multiSelect,
+  onTap,
+  onDragBegin,
+  onDragUpdate,
+  onDragCommit,
+  onDragEnd,
+  onDoubleTap,
+}: DraggableTableNodeProps) {
+  const SNAP = 10; // "ריבועים" בלתי נראים: הצמדה כל 10px במרחב המפה
+  const dragStartX = useSharedValue(0);
+  const dragStartY = useSharedValue(0);
+  const lastGuideX = useSharedValue(0);
+  const lastGuideY = useSharedValue(0);
+
+  const tableSize = useMemo(() => {
+    if (kind === 'knight') return { w: 68, h: 130 };
+    return { w: 78, h: 78 };
+  }, [kind]);
+
+  const dragGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .activateAfterLongPress(260)
+        // Use onStart (ACTIVE) instead of onBegin (BEGAN) so taps won't "flash select".
+        .onStart(() => {
+          isDragging.value = true;
+          dragStartX.value = posX.value;
+          dragStartY.value = posY.value;
+          lastGuideX.value = posX.value;
+          lastGuideY.value = posY.value;
+          runOnJS(onDragBegin)(id);
+        })
+        .onUpdate(e => {
+          const s = cameraScale.value || 1;
+          const rawX = dragStartX.value + e.translationX / s;
+          const rawY = dragStartY.value + e.translationY / s;
+          // Snap-to-grid ("pixels") in world-space so alignment is exact
+          posX.value = Math.round(rawX / SNAP) * SNAP;
+          posY.value = Math.round(rawY / SNAP) * SNAP;
+
+          // Update alignment guides, but don't spam JS every tiny move
+          if (Math.abs(posX.value - lastGuideX.value) >= 2 || Math.abs(posY.value - lastGuideY.value) >= 2) {
+            lastGuideX.value = posX.value;
+            lastGuideY.value = posY.value;
+            runOnJS(onDragUpdate)(id, posX.value, posY.value);
+          }
+        })
+        .onEnd(() => {
+          isDragging.value = false;
+          // Ensure final position is snapped and persisted
+          const snappedX = Math.round(posX.value / SNAP) * SNAP;
+          const snappedY = Math.round(posY.value / SNAP) * SNAP;
+          posX.value = snappedX;
+          posY.value = snappedY;
+          runOnJS(onDragUpdate)(id, snappedX, snappedY);
+          runOnJS(onDragCommit)(id, snappedX, snappedY);
+          runOnJS(onDragEnd)();
+        })
+        .onFinalize(() => {
+          isDragging.value = false;
+          runOnJS(onDragEnd)();
+        }),
+    [cameraScale, dragStartX, dragStartY, id, isDragging, lastGuideX, lastGuideY, onDragBegin, onDragCommit, onDragEnd, onDragUpdate, posX, posY]
+  );
+
+  // Use a native Tap gesture for reliable multi-select (Pressable can be swallowed by Pan handlers)
+  const tapGesture = useMemo(
+    () =>
+      Gesture.Tap()
+        .maxDuration(220) // must be shorter than long-press activation
+        .maxDistance(12)
+        .onEnd(() => {
+          runOnJS(onTap)(id);
+        }),
+    [id, onTap]
+  );
+
+  const doubleTapGesture = useMemo(
+    () =>
+      Gesture.Tap()
+        .numberOfTaps(2)
+        .maxDelay(220)
+        .maxDistance(16)
+        .onEnd(() => {
+          runOnJS(onDoubleTap)(id);
+        }),
+    [id, onDoubleTap]
+  );
+
+  const composedGesture = useMemo(
+    () => Gesture.Simultaneous(dragGesture, Gesture.Exclusive(doubleTapGesture, tapGesture)),
+    [doubleTapGesture, dragGesture, tapGesture]
+  );
+
+  const nodeStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ translateX: posX.value }, { translateY: posY.value }],
+    };
+  });
+
+  const bg =
+    kind === 'reserve' ? '#7c3aed' : kind === 'knight' ? '#111827' : 'rgba(255,255,255,0.92)';
+  const borderColor = selected ? ui.primary : kind === 'reserve' ? 'rgba(124,58,237,0.25)' : ui.borderSoft;
+  const textColor = kind === 'reserve' || kind === 'knight' ? '#fff' : ui.text;
+  const subTextColor = kind === 'reserve' || kind === 'knight' ? 'rgba(255,255,255,0.85)' : ui.muted;
+
+  return (
+    <GestureDetector gesture={composedGesture}>
+      <Animated.View
+        style={[
+          {
+            position: 'absolute',
+            width: tableSize.w,
+            height: tableSize.h,
+            borderRadius: 14,
+            backgroundColor: bg,
+            borderWidth: selected ? 2 : 1,
+            borderColor,
+            alignItems: 'center',
+            justifyContent: 'center',
+            shadowColor: '#000',
+            shadowOpacity: 0.12,
+            shadowRadius: 10,
+            shadowOffset: { width: 0, height: 6 },
+            elevation: 6,
+          },
+          nodeStyle,
+        ]}
+      >
+        <View style={{ flex: 1, width: '100%', alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ color: textColor, fontWeight: '900', fontSize: 16 }}>#{id}</Text>
+          <Text style={{ color: subTextColor, fontWeight: '800', fontSize: 12, marginTop: 2 }}>
+            {seats} מקומות
+          </Text>
+        </View>
+      </Animated.View>
+    </GestureDetector>
   );
 }
 

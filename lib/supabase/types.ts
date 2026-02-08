@@ -62,9 +62,10 @@ export type Table = {
   number: number;
   capacity: number;
   area?: string;
-  shape: 'square' | 'rectangle';
+  shape: 'square' | 'rectangle' | 'reserve';
   x?: number; // מיקום אופקי על המפה
   y?: number; // מיקום אנכי על המפה
+  seated_guests?: number;
   created_at: string;
   updated_at: string;
 };
@@ -98,7 +99,7 @@ export type SeatingMap = {
   id: string;
   event_id: string;
   num_tables: number;
-  tables: any; // jsonb: list of table IDs or objects {table_id, name}
+  tables: any; // jsonb: list of tables with positions
   annotations: Array<{ text: string; x: number; y: number }>;
   created_at: string;
   updated_at: string;
