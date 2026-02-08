@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { I18nManager, Platform, Pressable, SectionList, StyleSheet, Text, View, useColorScheme } from 'react-native';
+import React, { useCallback, useMemo, useState } from 'react';
+import { ActivityIndicator, I18nManager, Platform, Pressable, SectionList, StyleSheet, Text, View, useColorScheme } from 'react-native';
 import { router } from 'expo-router';
 import { colors } from '@/constants/colors';
 import { Card } from '@/components/Card';
@@ -7,114 +7,123 @@ import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { notificationService } from '@/lib/services/notificationService';
+import { useFocusEffect } from '@react-navigation/native';
+import type { Notification } from '@/types';
 
 export default function NotificationsScreen() {
   const insets = useSafeAreaInsets();
   const scheme = useColorScheme();
-  const isDark = scheme === 'dark';
+  const forceLight = true; // match the provided design (light by default)
+  const isDark = forceLight ? false : scheme === 'dark';
   const isRTL = I18nManager.isRTL;
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [items, setItems] = useState<Notification[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const ui = useMemo(() => {
+    // Palette aligned to the HTML sample
+    const primary = '#1e3a8a';
     const bg = isDark ? '#0f172a' : '#f8fafc';
-    const card = isDark ? '#1e293b' : colors.white;
-    const text = isDark ? '#f1f5f9' : colors.text;
-    const muted = isDark ? '#94a3b8' : colors.gray[600];
-    const faint = isDark ? 'rgba(148, 163, 184, 0.55)' : colors.gray[500];
-    const border = isDark ? 'rgba(148, 163, 184, 0.22)' : 'rgba(15, 23, 42, 0.06)';
+    const card = isDark ? '#1e293b' : '#ffffff';
+    const text = isDark ? '#f1f5f9' : '#0f172a';
+    const muted = isDark ? '#94a3b8' : '#64748b';
+    const faint = isDark ? '#94a3b8' : '#9ca3af';
+    const border = isDark ? 'rgba(148, 163, 184, 0.22)' : 'rgba(226, 232, 240, 0.9)';
 
-    return { bg, card, text, muted, faint, border };
+    return { primary, bg, card, text, muted, faint, border };
   }, [isDark]);
 
   type NotificationType = 'guest' | 'task' | 'gift' | 'payment' | 'vendor' | 'system';
-  type Notification = {
-    id: string;
-    title: string;
-    message: string;
-    time: string;
-    read: boolean;
-    type: NotificationType;
-    avatarUrl?: string | null;
-    dimmed?: boolean;
+
+  const formatRelativeHe = (date: Date) => {
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMin = Math.floor(diffMs / 60_000);
+    if (diffMin < 1) return 'עכשיו';
+    if (diffMin < 60) return `לפני ${diffMin} דקות`;
+    const diffH = Math.floor(diffMin / 60);
+    if (diffH < 24) return `לפני ${diffH} שעות`;
+
+    const d = date.toLocaleDateString('he-IL', { weekday: 'long' });
+    const t = date.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+    return `${d}, ${t}`;
   };
 
-  const sections: Array<{ title: string; data: Notification[] }> = useMemo(() => {
-    const today: Notification[] = [
-      {
-        id: '1',
-        title: 'אורח חדש אישר הגעה',
-        message: 'יוסי כהן אישר הגעה לאירוע החתונה',
-        time: 'לפני 5 דקות',
-        read: false,
-        type: 'guest',
-        avatarUrl: 'https://i.pravatar.cc/96?u=yossi-cohen',
-      },
-      {
-        id: '2',
-        title: 'תזכורת משימה',
-        message: 'יש להזמין פרחים למרכז שולחן עד מחר בבוקר',
-        time: 'לפני 2 שעות',
-        read: false,
-        type: 'task',
-        avatarUrl: 'https://i.pravatar.cc/96?u=task-owner',
-      },
-      {
-        id: '3',
-        title: 'תשלום התקבל',
-        message: 'התקבל תשלום מקדמה על סך 2,000₪',
-        time: 'לפני 4 שעות',
-        read: true,
-        type: 'payment',
-        avatarUrl: 'https://i.pravatar.cc/96?u=finance',
-      },
-    ];
+  const bucketTitle = (date: Date) => {
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfYesterday = new Date(startOfToday);
+    startOfYesterday.setDate(startOfYesterday.getDate() - 1);
 
-    const yesterday: Notification[] = [
-      {
-        id: '4',
-        title: 'מתנה חדשה התקבלה',
-        message: 'התקבלה מתנה בסך 500₪ ממשפחת לוי',
-        time: 'אתמול, 14:30',
-        read: true,
-        type: 'gift',
-        avatarUrl: 'https://i.pravatar.cc/96?u=levi-family',
-        dimmed: true,
-      },
-      {
-        id: '5',
-        title: 'הודעה מספק',
-        message: 'הצלם שלח את התמונות לאישור סופי',
-        time: 'אתמול, 09:15',
-        read: true,
-        type: 'vendor',
-        avatarUrl: 'https://i.pravatar.cc/96?u=vendor-photographer',
-        dimmed: true,
-      },
-    ];
+    if (date >= startOfToday) return 'היום';
+    if (date >= startOfYesterday) return 'אתמול';
+    return 'מוקדם יותר השבוע';
+  };
 
-    const earlier: Notification[] = [
-      {
-        id: '6',
-        title: 'עדכון מערכת',
-        message: 'גרסה חדשה של האפליקציה זמינה',
-        time: 'יום ראשון',
-        read: true,
-        type: 'system',
-        avatarUrl: null,
-        dimmed: true,
-      },
-    ];
+  const sections = useMemo(() => {
+    const groups: Record<string, Array<any>> = {
+      'היום': [],
+      'אתמול': [],
+      'מוקדם יותר השבוע': [],
+    };
 
-    return [
-      { title: 'היום', data: today },
-      { title: 'אתמול', data: yesterday },
-      { title: 'מוקדם יותר השבוע', data: earlier },
-    ];
+    items.forEach((n) => {
+      const createdAt = n.createdAt;
+      const title = bucketTitle(createdAt);
+      const meta = (n.metadata ?? {}) as any;
+
+      const rawType = (n.type ?? 'system') as string;
+      const displayType: NotificationType =
+        rawType.startsWith('admin_event_') ? 'task' : ((rawType as NotificationType) || 'system');
+
+      const mapped = {
+        id: n.id,
+        title: n.title,
+        message: n.body,
+        time: formatRelativeHe(createdAt),
+        read: Boolean(n.readAt),
+        type: displayType,
+        avatarUrl: (meta.actor_avatar_url ?? meta.avatar_url ?? null) as string | null,
+        dimmed: Boolean(n.readAt),
+      };
+
+      (groups[title] ?? (groups[title] = [])).push(mapped);
+    });
+
+    return Object.entries(groups)
+      .map(([title, data]) => ({ title, data }))
+      .filter((s) => s.data.length > 0);
+  }, [items]);
+
+  const load = useCallback(async (mode: 'initial' | 'refresh' = 'initial') => {
+    if (mode === 'refresh') setRefreshing(true);
+    else setLoading(true);
+
+    setLoadError(null);
+    try {
+      const data = await notificationService.getMyNotifications(60);
+      setItems(data);
+    } catch (e) {
+      setLoadError('לא ניתן לטעון התראות כרגע');
+    } finally {
+      setRefreshing(false);
+      setLoading(false);
+    }
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void load('initial');
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
+  );
 
   const getBadge = (type: NotificationType) => {
     switch (type) {
       case 'guest':
-        return { icon: 'people', bg: isDark ? 'rgba(59, 130, 246, 0.22)' : 'rgba(59, 130, 246, 0.15)', fg: isDark ? '#93c5fd' : '#1d4ed8' };
+        return { icon: 'people', bg: isDark ? 'rgba(59, 130, 246, 0.22)' : 'rgba(30, 58, 138, 0.10)', fg: isDark ? '#93c5fd' : ui.primary };
       case 'task':
         return { icon: 'calendar', bg: isDark ? 'rgba(245, 158, 11, 0.22)' : 'rgba(245, 158, 11, 0.16)', fg: isDark ? '#fcd34d' : '#b45309' };
       case 'gift':
@@ -164,7 +173,7 @@ export default function NotificationsScreen() {
             <Ionicons name="arrow-forward" size={22} color={ui.text} />
           </Pressable>
 
-          <Text style={[styles.title, { color: isDark ? '#60a5fa' : colors.primary }]}>התראות</Text>
+          <Text style={[styles.title, { color: isDark ? '#60a5fa' : ui.primary }]}>התראות</Text>
           <View style={styles.placeholder} />
         </View>
       </HeaderSurface>
@@ -178,6 +187,26 @@ export default function NotificationsScreen() {
           { paddingTop: Math.max(insets.top, 10) + 88, paddingBottom: 28 + insets.bottom },
         ]}
         stickySectionHeadersEnabled={false}
+        onRefresh={() => load('refresh')}
+        refreshing={refreshing}
+        ListEmptyComponent={
+          loading ? (
+            <View style={styles.center}>
+              <ActivityIndicator />
+              <Text style={[styles.emptyText, { color: ui.muted }]}>טוען התראות...</Text>
+            </View>
+          ) : (
+            <View style={styles.center}>
+              <Ionicons name="notifications-outline" size={28} color={ui.faint} />
+              <Text style={[styles.emptyTitle, { color: ui.text }]}>
+                {loadError ?? 'אין התראות'}
+              </Text>
+              <Text style={[styles.emptyText, { color: ui.muted }]}>
+                כשתהיה פעילות באירוע—היא תופיע כאן.
+              </Text>
+            </View>
+          )
+        }
         renderSectionHeader={({ section }) => (
           <Text style={[styles.sectionTitle, { color: ui.muted }]}>{section.title}</Text>
         )}
@@ -189,8 +218,16 @@ export default function NotificationsScreen() {
             <Pressable
               accessibilityRole="button"
               style={({ pressed }) => [{ transform: [{ scale: pressed ? 0.995 : 1 }] }]}
-              onPress={() => {
-                // placeholder for future "open notification" action
+              onPress={async () => {
+                if (item.read) return;
+                setItems((prev) =>
+                  prev.map((n) => (n.id === item.id ? { ...n, readAt: new Date() } : n))
+                );
+                try {
+                  await notificationService.markAsRead(item.id);
+                } catch {
+                  // best-effort; keep UI responsive even if update fails
+                }
               }}
             >
               <Card
@@ -209,7 +246,7 @@ export default function NotificationsScreen() {
                     style={[
                       styles.unreadDot,
                       {
-                        backgroundColor: colors.primary,
+                        backgroundColor: ui.primary,
                         borderColor: ui.card,
                       },
                     ]}
@@ -387,5 +424,21 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 5,
     borderWidth: 2,
+  },
+  center: {
+    paddingTop: 40,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+  },
+  emptyTitle: {
+    marginTop: 10,
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  emptyText: {
+    marginTop: 6,
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 18,
   },
 });

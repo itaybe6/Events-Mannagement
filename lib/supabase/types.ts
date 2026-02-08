@@ -22,6 +22,8 @@ export type Event = {
   date: string;
   location: string;
   city?: string;
+  groom_name?: string;
+  bride_name?: string;
   image?: string;
   story?: string;
   guests_count: number;
@@ -120,3 +122,17 @@ export type NotificationSetting = {
   created_at: string;
   updated_at: string;
 }; 
+
+// ========== NOTIFICATIONS ==========
+export type Notification = {
+  id: string;
+  recipient_user_id: string;
+  event_owner_id: string;
+  event_id: string | null;
+  type: string;
+  title: string;
+  body: string;
+  metadata: any;
+  created_at: string;
+  read_at: string | null;
+};
