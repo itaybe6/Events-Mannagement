@@ -12,11 +12,13 @@ import {
 } from 'react-native';
 import * as Contacts from 'expo-contacts';
 import { guestService } from '@/lib/services/guestService';
+import { eventService } from '@/lib/services/eventService';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { GuestCategorySelectionSheet } from '@/components/GuestCategorySelectionSheet';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import BackSwipe from '@/components/BackSwipe';
 
 export default function ContactsListScreen() {
   const [contacts, setContacts] = useState<any[]>([]);
@@ -28,6 +30,7 @@ export default function ContactsListScreen() {
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
   const [existingGuests, setExistingGuests] = useState<any[]>([]);
   const [searchFocused, setSearchFocused] = useState(false);
+  const [enableSides, setEnableSides] = useState(true);
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
@@ -89,6 +92,25 @@ export default function ContactsListScreen() {
         // טען את כל האורחים הקיימים לבדיקת כפילויות
         const guests = await guestService.getGuests(eventId);
         setExistingGuests(guests);
+
+        // Enable "groom/bride" side UI only for wedding-like events.
+        // We infer event type from title (common convention in admin UI),
+        // and also enable if groom/bride names exist.
+        try {
+          const evt = await eventService.getEvent(eventId);
+          const title = String(evt?.title ?? '').trim();
+          const groom = String(evt?.groomName ?? '').trim();
+          const bride = String(evt?.brideName ?? '').trim();
+          const inferredType =
+            ['חתונה', 'בר מצווה', 'בת מצווה', 'ברית', 'אירוע חברה'].find(et => title.startsWith(et) || title.includes(et)) ||
+            null;
+
+          const shouldEnable = !!groom || !!bride ? true : inferredType && inferredType !== 'חתונה' ? false : true;
+          setEnableSides(shouldEnable);
+        } catch (e) {
+          console.warn('ContactsList: failed to load event for side UI', e);
+          setEnableSides(true);
+        }
       }
       // טען אנשי קשר
       const { status } = await Contacts.requestPermissionsAsync();
@@ -246,13 +268,15 @@ export default function ContactsListScreen() {
   const bottomSafe = Math.max(16, insets.bottom + 12);
 
   return (
-    <View style={[styles.container, { backgroundColor: ui.bg }]}>
-      <Stack.Screen options={{ headerShown: false }} />
+    <BackSwipe>
+      <View style={[styles.container, { backgroundColor: ui.bg }]}>
+        <Stack.Screen options={{ headerShown: false }} />
 
       <GuestCategorySelectionSheet
         visible={categoryModalVisible}
         categories={categories}
         selectedCategoryId={selectedCategory?.id ?? null}
+        enableSides={enableSides}
         onClose={() => setCategoryModalVisible(false)}
         onSelect={(cat) => setSelectedCategory(cat)}
         onCreateCategory={async (name, side) => {
@@ -284,19 +308,18 @@ export default function ContactsListScreen() {
               },
             ]}
           >
-            <View style={styles.navRow}>
-              <TouchableOpacity
-                style={styles.backBtn}
-                onPress={() => router.back()}
-                accessibilityRole="button"
-                accessibilityLabel="חזרה"
-              >
-                <Ionicons name="chevron-forward" size={24} color={ui.primary} />
-                <Text style={[styles.backText, { color: ui.primary }]}>חזרה</Text>
-              </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.backBtn, styles.backBtnAbs]}
+              onPress={() => router.back()}
+              accessibilityRole="button"
+              accessibilityLabel="חזרה"
+            >
+              <Ionicons name="chevron-back" size={24} color={ui.primary} />
+              <Text style={[styles.backText, { color: ui.primary }]}>חזרה</Text>
+            </TouchableOpacity>
 
+            <View style={styles.navRow}>
               <Text style={[styles.navTitle, { color: ui.textStrong }]}>רשימת אנשי קשר</Text>
-              <View style={{ width: 48 }} />
             </View>
 
             <View style={{ gap: 16, paddingBottom: 16 }}>
@@ -556,7 +579,8 @@ export default function ContactsListScreen() {
           )}
         </Pressable>
       </View>
-    </View>
+      </View>
+    </BackSwipe>
   );
 }
 
@@ -568,6 +592,7 @@ const styles = StyleSheet.create({
   },
 
   header: {
+    position: 'relative',
     borderBottomWidth: 1,
     paddingHorizontal: 16,
     width: '100%',
@@ -583,9 +608,8 @@ const styles = StyleSheet.create({
     }),
   },
   navRow: {
-    flexDirection: 'row-reverse',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     marginBottom: 12,
   },
   backBtn: {
@@ -594,6 +618,12 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingVertical: 6,
     paddingHorizontal: 8,
+  },
+  backBtnAbs: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    zIndex: 10,
   },
   backText: {
     fontSize: 16,
@@ -604,7 +634,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textAlign: 'center',
     flex: 1,
-    paddingRight: 20,
+    paddingHorizontal: 56,
   },
   topButtonsGrid: {
     flexDirection: 'row-reverse',

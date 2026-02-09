@@ -141,7 +141,7 @@ export default function MessageEditor() {
     >
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <Ionicons name="arrow-forward" size={24} color={colors.primary} />
+            <Ionicons name="arrow-back" size={24} color={colors.primary} />
         </TouchableOpacity>
         <Text style={styles.title}>עריכת הודעות</Text>
         <TouchableOpacity 
@@ -205,9 +205,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.gray[50],
   },
   header: {
+    position: 'relative',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     paddingHorizontal: 20,
     paddingTop: 20,
     paddingBottom: 20,
@@ -219,6 +220,9 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   backButton: {
+    position: 'absolute',
+    left: 20,
+    top: 20,
     width: 40,
     height: 40,
     borderRadius: 20,
@@ -232,6 +236,9 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   saveButton: {
+    position: 'absolute',
+    right: 20,
+    top: 24,
     backgroundColor: colors.primary,
     paddingHorizontal: 20,
     paddingVertical: 10,

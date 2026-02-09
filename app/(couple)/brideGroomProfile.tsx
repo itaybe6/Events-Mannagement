@@ -4,9 +4,8 @@ import { useUserStore } from '@/store/userStore';
 import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/colors';
-import { supabase, supabaseAdmin } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase';
 import { Image } from 'expo-image';
-import * as ImagePicker from 'expo-image-picker';
 
 interface NotificationSetting {
   id?: string;
@@ -45,11 +44,9 @@ export default function BrideGroomSettings() {
     groomName?: string;
     brideName?: string;
     rsvpLink?: string;
-    image?: string;
   } | null>(null);
   const [notifications, setNotifications] = useState<NotificationSetting[]>([]);
   const [loading, setLoading] = useState(true);
-  const [coverUploading, setCoverUploading] = useState(false);
 
 
   const notificationUI = {
@@ -137,7 +134,7 @@ export default function BrideGroomSettings() {
   useFocusEffect(
     React.useCallback(() => {
       if (userData?.event_id && !loading) {
-        // Refresh event meta too (image/date/names) so cover updates immediately after editing elsewhere.
+        // Refresh event meta too (date/names) so UI updates immediately after editing elsewhere.
         fetchWeddingDate();
         fetchOrCreateNotificationSettings();
       }
@@ -164,7 +161,7 @@ export default function BrideGroomSettings() {
     
     const { data, error } = await supabase
       .from('events')
-        .select('id, title, date, groom_name, bride_name, rsvp_link, image')
+      .select('id, title, date, groom_name, bride_name, rsvp_link')
       .eq('id', userData.event_id)
       .single();
     
@@ -177,7 +174,6 @@ export default function BrideGroomSettings() {
         groomName: (data as any).groom_name ?? undefined,
         brideName: (data as any).bride_name ?? undefined,
         rsvpLink: (data as any).rsvp_link ?? undefined,
-        image: (data as any).image ?? undefined,
       });
     }
   };
@@ -382,144 +378,6 @@ export default function BrideGroomSettings() {
 
   // Removed navigation to separate message editor; editing happens in modal now
 
-  const guessImageExt = (asset: any): string => {
-    const fileName = String(asset?.fileName ?? '');
-    const uri = String(asset?.uri ?? '');
-    const mimeType = String(asset?.mimeType ?? '');
-
-    const fromMime = mimeType.split('/')[1]?.toLowerCase();
-    if (fromMime && ['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif'].includes(fromMime)) {
-      return fromMime === 'jpeg' ? 'jpg' : fromMime;
-    }
-
-    const candidate = (fileName || uri).split('?')[0];
-    const dot = candidate.lastIndexOf('.');
-    if (dot !== -1 && dot < candidate.length - 1) {
-      const ext = candidate.slice(dot + 1).toLowerCase();
-      if (['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif'].includes(ext)) {
-        return ext === 'jpeg' ? 'jpg' : ext;
-      }
-    }
-
-    return 'jpg';
-  };
-
-  const base64ToUint8Array = (base64: string) => {
-    const cleaned = String(base64 || '').replace(/[^A-Za-z0-9+/=]/g, '');
-    const padding = cleaned.endsWith('==') ? 2 : cleaned.endsWith('=') ? 1 : 0;
-    const byteLength = (cleaned.length * 3) / 4 - padding;
-    const bytes = new Uint8Array(byteLength);
-
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-    let byteIndex = 0;
-
-    for (let i = 0; i < cleaned.length; i += 4) {
-      const c1 = chars.indexOf(cleaned[i]);
-      const c2 = chars.indexOf(cleaned[i + 1]);
-      const c3 = chars.indexOf(cleaned[i + 2]);
-      const c4 = chars.indexOf(cleaned[i + 3]);
-
-      const triple = (c1 << 18) | (c2 << 12) | ((c3 & 63) << 6) | (c4 & 63);
-      if (byteIndex < byteLength) bytes[byteIndex++] = (triple >> 16) & 0xff;
-      if (byteIndex < byteLength) bytes[byteIndex++] = (triple >> 8) & 0xff;
-      if (byteIndex < byteLength) bytes[byteIndex++] = triple & 0xff;
-    }
-
-    return bytes;
-  };
-
-  const guessContentType = (ext: string, fallback?: string | null) => {
-    if (fallback) return fallback;
-    switch (ext) {
-      case 'png':
-        return 'image/png';
-      case 'webp':
-        return 'image/webp';
-      case 'gif':
-        return 'image/gif';
-      case 'heic':
-      case 'heif':
-        return 'image/heic';
-      case 'jpg':
-      default:
-        return 'image/jpeg';
-    }
-  };
-
-  const pickAndUploadEventCover = async () => {
-    const eventId = String(eventMeta?.id ?? userData?.event_id ?? '').trim();
-    if (!eventId) {
-      Alert.alert('שגיאה', 'לא נמצא מזהה אירוע לעדכון תמונה');
-      return;
-    }
-
-    try {
-      if (Platform.OS !== 'web') {
-        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (!permission.granted) {
-          Alert.alert('הרשאה נדרשת', 'כדי לבחור תמונה יש לאשר גישה לגלריה');
-          return;
-        }
-      }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [16, 9],
-        quality: 0.85,
-        base64: true,
-      });
-
-      if (result.canceled || !result.assets?.[0]) return;
-      const asset = result.assets[0] as any;
-
-      const ext = guessImageExt(asset);
-      const filePath = `events/${eventId}/${Date.now()}.${ext}`;
-      const contentType = guessContentType(ext, asset?.mimeType);
-
-      setCoverUploading(true);
-
-      let uploadBody: Blob | Uint8Array | null = null;
-      if (asset?.base64) {
-        uploadBody = base64ToUint8Array(asset.base64);
-      } else {
-        const res = await fetch(asset.uri);
-        uploadBody = await res.blob();
-      }
-      if (!uploadBody) throw new Error('חסרים נתוני תמונה להעלאה');
-
-      const { error: uploadError } = await supabaseAdmin.storage
-        .from('event-images')
-        .upload(filePath, uploadBody as any, { upsert: true, contentType });
-      if (uploadError) throw uploadError;
-
-      const { data: publicData } = supabase.storage.from('event-images').getPublicUrl(filePath);
-      const publicUrl = publicData.publicUrl;
-
-      let finalUrl = publicUrl;
-      try {
-        const probe = await fetch(publicUrl, { method: 'GET' });
-        if (!probe.ok) throw new Error('Public URL not accessible');
-      } catch {
-        const { data: signedData } = await supabaseAdmin.storage
-          .from('event-images')
-          .createSignedUrl(filePath, 60 * 60 * 24 * 30);
-        if (signedData?.signedUrl) finalUrl = signedData.signedUrl;
-      }
-
-      const { error: updateError } = await supabase.from('events').update({ image: finalUrl }).eq('id', eventId);
-      if (updateError) throw updateError;
-
-      setEventMeta((prev) => (prev ? { ...prev, image: finalUrl } : prev));
-      Alert.alert('נשמר', 'תמונת האירוע עודכנה');
-    } catch (e: any) {
-      const message = e?.message ? String(e.message) : 'שגיאה לא ידועה';
-      Alert.alert('שגיאה', `לא ניתן להעלות תמונת אירוע.\n\n${message}`);
-    } finally {
-      setCoverUploading(false);
-    }
-  };
-
   const handleLogout = async () => {
     await logout();
     router.replace('/login');
@@ -541,9 +399,6 @@ export default function BrideGroomSettings() {
       title.includes('תינוקת') ||
       title.includes('baby') ||
       title.includes('בייבי');
-
-    const img = String(eventMeta?.image ?? '').trim();
-    if (/^https?:\/\//i.test(img)) return { uri: img };
 
     if (hasBarMitzvah) return require('../../assets/images/Bar Mitzvah.jpg');
     if (hasBaby) return require('../../assets/images/baby.jpg');
@@ -676,19 +531,6 @@ export default function BrideGroomSettings() {
               contentFit="cover"
               transition={150}
             />
-            <TouchableOpacity
-              style={[styles.coverEditBtn, coverUploading && styles.coverEditBtnDisabled]}
-              onPress={pickAndUploadEventCover}
-              disabled={coverUploading}
-              accessibilityRole="button"
-              accessibilityLabel="עריכת תמונת אירוע"
-            >
-              {coverUploading ? (
-                <ActivityIndicator size="small" color={colors.white} />
-              ) : (
-                <Ionicons name="camera" size={18} color={colors.white} />
-              )}
-            </TouchableOpacity>
           </View>
 
           <View style={styles.profileContent}>
@@ -779,22 +621,6 @@ const styles = StyleSheet.create({
   eventCoverImg: {
     width: '100%',
     height: '100%',
-  },
-  coverEditBtn: {
-    position: 'absolute',
-    top: 12,
-    left: 12,
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: 'rgba(17,24,39,0.55)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.55)',
-  },
-  coverEditBtnDisabled: {
-    opacity: 0.75,
   },
   profileContent: {
     width: '100%',

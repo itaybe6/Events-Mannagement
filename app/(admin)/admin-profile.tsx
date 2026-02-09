@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -13,9 +14,8 @@ import {
 } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { BlurView } from "expo-blur";
-import { LinearGradient } from "expo-linear-gradient";
 import { Image } from "expo-image";
+import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useUserStore } from "@/store/userStore";
@@ -24,62 +24,46 @@ import { eventService } from "@/lib/services/eventService";
 import { supabase } from "@/lib/supabase";
 
 const ui = {
-  primary: "#1152d4",
-  primaryLight: "#5c92f5",
-  bg: "#f2f4f8",
-  text: "#111318",
-  muted: "#616f89",
-  danger: "#e34d4d",
-  glass: "rgba(255, 255, 255, 0.65)",
-  glassBorder: "rgba(255, 255, 255, 0.5)",
+  bg: "#F4F7FB",
+  card: "#FFFFFF",
+  text: "#0F172A",
+  muted: "#64748B",
+  border: "rgba(15, 23, 42, 0.08)",
+  primary: "#1152D4",
+  primary2: "#5C92F5",
+  danger: "#E11D48",
 };
 
-type MonthBar = { label: string; value: number };
+type MonthBar = { monthIndex: number; label: string; value: number };
 
 function monthLabelHe(monthIndex0: number) {
   const months = ["ינו", "פבר", "מרץ", "אפר", "מאי", "יונ", "יול", "אוג", "ספט", "אוק", "נוב", "דצמ"];
   return months[monthIndex0] ?? "";
 }
 
-function getLastNMonthsBars(valuesByMonth: number[], n: number, now = new Date()): MonthBar[] {
-  const out: MonthBar[] = [];
-  const start = new Date(now.getFullYear(), now.getMonth(), 1);
-  for (let i = n - 1; i >= 0; i -= 1) {
-    const d = new Date(start.getFullYear(), start.getMonth() - i, 1);
-    out.push({
-      label: monthLabelHe(d.getMonth()),
-      value: valuesByMonth[d.getMonth()] ?? 0,
-    });
-  }
-  return out;
+function buildYearBars(valuesByMonth: number[]): MonthBar[] {
+  return Array.from({ length: 12 }).map((_, m) => ({
+    monthIndex: m,
+    label: monthLabelHe(m),
+    value: valuesByMonth[m] ?? 0,
+  }));
 }
 
-function GlassPanel({
-  children,
-  style,
-}: {
-  children: React.ReactNode;
-  style?: any;
-}) {
-  if (Platform.OS === "web") {
-    return (
-      <View
-        style={[
-          styles.glassBase,
-          // @ts-expect-error web-only style
-          { backdropFilter: "blur(20px)" },
-          style,
-        ]}
-      >
-        {children}
-      </View>
-    );
-  }
-
+function StatCard({ label, value, icon }: { label: string; value: string; icon: any }) {
   return (
-    <BlurView intensity={24} tint="light" style={[styles.glassBase, style]}>
-      {children}
-    </BlurView>
+    <View style={styles.statCard}>
+      <View style={styles.statIcon}>
+        <Ionicons name={icon} size={18} color={ui.primary} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.statValue} numberOfLines={1}>
+          {value}
+        </Text>
+        <Text style={styles.statLabel} numberOfLines={1}>
+          {label}
+        </Text>
+      </View>
+    </View>
   );
 }
 
@@ -92,17 +76,17 @@ export default function AdminProfileScreen() {
   const [form, setForm] = useState({ name: "", email: "", password: "", confirmPassword: "" });
   const [loading, setLoading] = useState(false);
 
+  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+  const [availableYears, setAvailableYears] = useState<number[]>([]);
   const [clientsCount, setClientsCount] = useState<number | null>(null);
   const [eventsThisYearCount, setEventsThisYearCount] = useState<number | null>(null);
-  const [bars6, setBars6] = useState<MonthBar[]>([]);
-  const [trendPct, setTrendPct] = useState<number>(0);
+  const [bars12, setBars12] = useState<MonthBar[]>([]);
+  const [yearTotal, setYearTotal] = useState<number>(0);
 
   useEffect(() => {
     if (userData) {
       setForm({ name: userData.name, email: userData.email, password: "", confirmPassword: "" });
     }
-    void loadStats();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userData?.id]);
 
   const avatarUri = useMemo(() => {
@@ -112,45 +96,69 @@ export default function AdminProfileScreen() {
     return `https://i.pravatar.cc/256?u=${seed}`;
   }, [userData?.avatar_url, userData?.email]);
 
+  const canPrevYear = useMemo(() => {
+    if (availableYears.length === 0) return true;
+    const min = Math.min(...availableYears);
+    return selectedYear > min;
+  }, [availableYears, selectedYear]);
+
+  const canNextYear = useMemo(() => {
+    if (availableYears.length === 0) return true;
+    const max = Math.max(...availableYears);
+    return selectedYear < max;
+  }, [availableYears, selectedYear]);
+
   const loadStats = async () => {
     setLoading(true);
     try {
       const [users, events] = await Promise.all([userService.getClients(), eventService.getEvents()]);
 
-      const now = new Date();
-      const year = now.getFullYear();
+      const years = new Set<number>();
+      years.add(new Date().getFullYear());
+      events.forEach((e: any) => {
+        const d = new Date(e.date);
+        if (!Number.isFinite(d.getTime())) return;
+        years.add(d.getFullYear());
+      });
+      const yearsSorted = Array.from(years).sort((a, b) => b - a);
+      setAvailableYears(yearsSorted);
+
+      const yearToUse = yearsSorted.includes(selectedYear) ? selectedYear : yearsSorted[0] ?? selectedYear;
+      if (yearToUse !== selectedYear) setSelectedYear(yearToUse);
+
       const eventsThisYear = events.filter((e: any) => {
         const d = new Date(e.date);
-        return Number.isFinite(d.getTime()) && d.getFullYear() === year;
+        return Number.isFinite(d.getTime()) && d.getFullYear() === yearToUse;
       });
 
-      // Build events count per month (current year not required, just month buckets).
       const eventsByMonth = Array(12).fill(0);
-      events.forEach((e: any) => {
+      eventsThisYear.forEach((e: any) => {
         const d = new Date(e.date);
         if (!Number.isFinite(d.getTime())) return;
         eventsByMonth[d.getMonth()] += 1;
       });
 
-      const last6 = getLastNMonthsBars(eventsByMonth, 6, now);
-      setBars6(last6);
-
-      const prev = last6.at(-2)?.value ?? 0;
-      const curr = last6.at(-1)?.value ?? 0;
-      const pct = prev > 0 ? Math.round(((curr - prev) / prev) * 100) : curr > 0 ? 100 : 0;
-      setTrendPct(pct);
-
+      const bars = buildYearBars(eventsByMonth);
+      setBars12(bars);
+      setYearTotal(bars.reduce((sum, b) => sum + b.value, 0));
       setClientsCount(users.length);
       setEventsThisYearCount(eventsThisYear.length);
     } catch (e) {
+      setAvailableYears([]);
       setClientsCount(null);
       setEventsThisYearCount(null);
-      setBars6([]);
-      setTrendPct(0);
+      setBars12([]);
+      setYearTotal(0);
     } finally {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!userData) return;
+    void loadStats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userData?.id, selectedYear]);
 
   const handleSave = async () => {
     if (!form.name.trim() || !form.email.trim()) {
@@ -166,10 +174,11 @@ export default function AdminProfileScreen() {
     try {
       const nextName = form.name.trim();
       const nextEmail = form.email.trim();
-      const emailChanged = nextEmail !== userData.email;
-      const nameChanged = nextName !== userData.name;
+      const emailChanged = nextEmail !== userData?.email;
+      const nameChanged = nextName !== userData?.name;
 
-      // Keep our public profile table in sync
+      if (!userData) throw new Error("Missing user");
+
       if (nameChanged || emailChanged) {
         const { error: profileError } = await supabase
           .from("users")
@@ -178,19 +187,16 @@ export default function AdminProfileScreen() {
         if (profileError) throw profileError;
       }
 
-      // Update auth email (may require re-verification depending on Supabase settings)
       if (emailChanged) {
         const { error: emailError } = await supabase.auth.updateUser({ email: nextEmail });
         if (emailError) throw emailError;
       }
 
-      // Update auth password (if provided)
       if (form.password) {
         const { error: passwordError } = await supabase.auth.updateUser({ password: form.password });
         if (passwordError) throw passwordError;
       }
 
-      // Update local store without extra network calls
       useUserStore.setState((state) => ({
         userData: state.userData ? { ...state.userData, name: nextName, email: nextEmail } : state.userData,
       }));
@@ -205,9 +211,20 @@ export default function AdminProfileScreen() {
     }
   };
 
-  const handleLogout = async () => {
-    await logout();
-    router.replace("/login");
+  const confirmLogout = () => {
+    Alert.alert("התנתקות", "לצאת מהחשבון?", [
+      { text: "ביטול", style: "cancel" },
+      {
+        text: "התנתק",
+        style: "destructive",
+        onPress: () => {
+          void (async () => {
+            await logout();
+            router.replace("/login");
+          })();
+        },
+      },
+    ]);
   };
 
   if (!userData) {
@@ -218,263 +235,251 @@ export default function AdminProfileScreen() {
     );
   }
 
-  const maxBar = Math.max(1, ...bars6.map((b) => b.value));
-  // This screen sits under the custom bottom tab bar (see `app/(tabs)/_layout.tsx`).
-  // Keep the fixed actions above it so they remain visible.
-  const TAB_BAR_HEIGHT = 65;
-  const TAB_BAR_BOTTOM_GAP = Platform.OS === "ios" ? 30 : 20;
-  const footerBottomOffset = TAB_BAR_HEIGHT + TAB_BAR_BOTTOM_GAP + 12;
+  const maxBar = Math.max(1, ...bars12.map((b) => b.value));
+  const now = new Date();
+  const isCurrentYear = selectedYear === now.getFullYear();
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      {/* Atmosphere blobs */}
-      <View pointerEvents="none" style={styles.blobsWrap}>
-        <View
-          style={[
-            styles.blob,
-            styles.blobA,
-            Platform.OS === "web" ? ({ filter: "blur(80px)" } as any) : null,
-          ]}
-        />
-        <View
-          style={[
-            styles.blob,
-            styles.blobB,
-            Platform.OS === "web" ? ({ filter: "blur(80px)" } as any) : null,
-          ]}
-        />
-        <View
-          style={[
-            styles.blob,
-            styles.blobC,
-            Platform.OS === "web" ? ({ filter: "blur(100px)" } as any) : null,
-          ]}
-        />
-      </View>
+      <LinearGradient colors={["#EAF2FF", "#F4F7FB"]} style={styles.header}>
+        <Pressable
+          onPress={() => router.back()}
+          style={({ pressed }) => [styles.iconBtn, pressed && styles.iconBtnPressed]}
+          accessibilityRole="button"
+          accessibilityLabel="חזרה"
+        >
+          <Ionicons name="chevron-forward" size={26} color={ui.text} />
+        </Pressable>
+
+        <Text style={styles.headerTitle} numberOfLines={1}>
+          פרופיל מנהל
+        </Text>
+
+        <View style={{ width: 44 }} />
+      </LinearGradient>
 
       <ScrollView
         style={styles.scroll}
-        // Footer is positioned above the tab bar; keep enough room so content won't be covered.
-        contentContainerStyle={[
-          styles.content,
-          { paddingBottom: footerBottomOffset + 140 + insets.bottom },
-        ]}
+        contentContainerStyle={[styles.content, { paddingBottom: 24 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Top App Bar */}
-        <View style={styles.topBar}>
-          <Pressable
-            onPress={() => router.back()}
-            style={({ pressed }) => [styles.topIconBtn, pressed && styles.pressed]}
-            accessibilityRole="button"
-            accessibilityLabel="חזרה"
-          >
-            <Ionicons name="chevron-forward" size={28} color={ui.text} />
-          </Pressable>
-
-          {/* Hidden title for spacing balance */}
-          <Text style={[styles.topTitle, { opacity: 0 }]} numberOfLines={1}>
-            פרופיל
-          </Text>
-
-          <Pressable
-            onPress={() => Alert.alert("עוד פעולות", "בקרוב")}
-            style={({ pressed }) => [styles.topIconBtn, pressed && styles.pressed]}
-            accessibilityRole="button"
-            accessibilityLabel="עוד פעולות"
-          >
-            <Ionicons name="ellipsis-horizontal" size={24} color={ui.text} />
-          </Pressable>
-        </View>
-
-        {/* Profile Hero */}
-        <View style={styles.hero}>
-          <Pressable onPress={() => setEditOpen(true)} style={styles.avatarWrap}>
-            <View style={styles.avatarGlow} />
-            <View style={styles.avatarRing}>
+        <View style={styles.card}>
+          <View style={styles.profileRow}>
+            <View style={styles.avatarWrap}>
               <Image source={{ uri: avatarUri }} style={styles.avatar} contentFit="cover" />
             </View>
-            <View style={styles.verifiedBadge}>
-              <Ionicons name="checkmark-circle" size={18} color={ui.primary} />
+
+            <View style={{ flex: 1 }}>
+              <Text style={styles.name} numberOfLines={1}>
+                {userData.name}
+              </Text>
+              <Text style={styles.email} numberOfLines={1}>
+                {userData.email}
+              </Text>
+
+              <View style={styles.badgesRow}>
+                <View style={styles.badge}>
+                  <Ionicons name="shield-checkmark-outline" size={14} color={ui.primary} />
+                  <Text style={styles.badgeText}>מנהל</Text>
+                </View>
+              </View>
             </View>
+
+            <Pressable
+              onPress={() => setEditOpen(true)}
+              style={({ pressed }) => [styles.smallBtn, pressed && styles.smallBtnPressed]}
+              accessibilityRole="button"
+              accessibilityLabel="עריכת פרופיל"
+            >
+              <Ionicons name="create-outline" size={18} color={ui.primary} />
+            </Pressable>
+          </View>
+        </View>
+
+        <View style={styles.statsRow}>
+          <StatCard
+            label={`אירועים בשנת ${selectedYear}`}
+            value={eventsThisYearCount === null ? "—" : String(eventsThisYearCount)}
+            icon="calendar-outline"
+          />
+          <StatCard label="לקוחות פעילים" value={clientsCount === null ? "—" : String(clientsCount)} icon="people-outline" />
+        </View>
+
+        <View style={styles.card}>
+          <View style={styles.sectionHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.sectionTitle}>פעילות חודשית</Text>
+              <Text style={styles.sectionSubtitle}>ינואר–דצמבר · {selectedYear}</Text>
+            </View>
+
+            <View style={styles.yearControls}>
+              <Pressable
+                onPress={() => setSelectedYear((y) => y - 1)}
+                disabled={!canPrevYear}
+                style={({ pressed }) => [
+                  styles.yearBtn,
+                  pressed && canPrevYear && styles.yearBtnPressed,
+                  !canPrevYear && { opacity: 0.35 },
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="שנה קודמת"
+              >
+                <Ionicons name="chevron-forward" size={18} color={ui.text} />
+              </Pressable>
+
+              <View style={styles.yearPill}>
+                <Ionicons name="calendar-outline" size={14} color={ui.text} />
+                <Text style={styles.yearPillText}>{selectedYear}</Text>
+                <View style={styles.dot} />
+                <Text style={styles.yearPillText}>סה״כ {yearTotal}</Text>
+              </View>
+
+              <Pressable
+                onPress={() => setSelectedYear((y) => y + 1)}
+                disabled={!canNextYear}
+                style={({ pressed }) => [
+                  styles.yearBtn,
+                  pressed && canNextYear && styles.yearBtnPressed,
+                  !canNextYear && { opacity: 0.35 },
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="שנה הבאה"
+              >
+                <Ionicons name="chevron-back" size={18} color={ui.text} />
+              </Pressable>
+            </View>
+          </View>
+
+          {loading && bars12.length === 0 ? (
+            <View style={styles.loadingBox}>
+              <ActivityIndicator color={ui.primary} />
+            </View>
+          ) : (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chartRow}>
+              {bars12.map((b) => {
+                const isCurrentMonth = isCurrentYear && b.monthIndex === now.getMonth();
+                const pct = b.value === 0 ? 0 : Math.max(0.08, b.value / maxBar);
+                return (
+                  <View key={`${selectedYear}-${b.monthIndex}`} style={styles.barCol}>
+                    <Text style={[styles.barValue, isCurrentMonth && styles.barValueHot]}>{b.value}</Text>
+                    <View style={styles.barTrack}>
+                      <LinearGradient
+                        colors={
+                          isCurrentMonth
+                            ? [ui.primary, ui.primary2]
+                            : ["rgba(17, 82, 212, 0.28)", "rgba(92, 146, 245, 0.16)"]
+                        }
+                        start={{ x: 0.5, y: 1 }}
+                        end={{ x: 0.5, y: 0 }}
+                        style={[styles.barFill, { height: `${Math.round(pct * 100)}%` } as any]}
+                      />
+                    </View>
+                    <Text style={[styles.barLabel, isCurrentMonth && styles.barLabelHot]}>{b.label}</Text>
+                  </View>
+                );
+              })}
+            </ScrollView>
+          )}
+        </View>
+
+        <View style={styles.actionsBlock}>
+          <Pressable
+            onPress={() => setEditOpen(true)}
+            style={({ pressed }) => [styles.actionBtnShadow, pressed && styles.btnPressed]}
+            accessibilityRole="button"
+          >
+            <LinearGradient colors={[ui.primary, ui.primary2]} style={styles.actionBtnSurface}>
+              <Ionicons name="create-outline" size={18} color="white" />
+              <Text style={styles.actionBtnTextLight}>עריכת פרופיל</Text>
+            </LinearGradient>
           </Pressable>
 
-          <View style={styles.heroText}>
-            <Text style={styles.name} numberOfLines={1}>
-              {userData.name}
-            </Text>
-            <Text style={styles.email} numberOfLines={1}>
-              {userData.email}
-            </Text>
-          </View>
-        </View>
-
-        {/* Key Metrics */}
-        <View style={styles.metrics}>
-          <View style={styles.metricCol}>
-            <Text style={styles.metricValue}>{eventsThisYearCount ?? "—"}</Text>
-            <Text style={styles.metricLabel}>אירועים השנה</Text>
-          </View>
-
-          <View style={styles.metricDivider} />
-
-          <View style={styles.metricCol}>
-            <Text style={styles.metricValue}>{clientsCount ?? "—"}</Text>
-            <Text style={styles.metricLabel}>לקוחות פעילים</Text>
-          </View>
-        </View>
-
-        {/* Monthly Activity */}
-        <View style={styles.sectionWrap}>
-          <GlassPanel style={styles.monthCard}>
-            <View style={styles.monthHeader}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.monthTitle}>פעילות חודשית</Text>
-                <Text style={styles.monthSubtitle}>סיכום 6 חודשים אחרונים</Text>
-              </View>
-
-              <View style={styles.trendPill}>
-                <Ionicons name="trending-up" size={16} color="#059669" />
-                <Text style={styles.trendText}>{trendPct >= 0 ? `+${trendPct}%` : `${trendPct}%`}</Text>
-              </View>
+          <Pressable
+            onPress={confirmLogout}
+            style={({ pressed }) => [styles.actionBtnShadow, pressed && styles.btnPressed]}
+            accessibilityRole="button"
+          >
+            <View style={[styles.actionBtnSurface, styles.actionBtnSurfaceOutline]}>
+              <Ionicons name="log-out-outline" size={18} color={ui.danger} />
+              <Text style={styles.actionBtnTextDanger}>התנתק</Text>
             </View>
-
-            {loading && bars6.length === 0 ? (
-              <View style={styles.loadingBox}>
-                <ActivityIndicator color={ui.primary} />
-              </View>
-            ) : (
-              <View style={styles.barGrid}>
-                {bars6.map((b, idx) => {
-                  const pct = Math.max(0.12, b.value / maxBar);
-                  const isHot = idx >= bars6.length - 2;
-                  return (
-                    <View key={`${b.label}-${idx}`} style={styles.barCol}>
-                      <View style={styles.barTrack}>
-                        <LinearGradient
-                          colors={
-                            isHot
-                              ? [ui.primary, ui.primaryLight]
-                              : ["rgba(17, 82, 212, 0.35)", "rgba(92, 146, 245, 0.20)"]
-                          }
-                          start={{ x: 0.5, y: 1 }}
-                          end={{ x: 0.5, y: 0 }}
-                          style={[styles.barFill, { height: `${Math.round(pct * 100)}%` } as any]}
-                        />
-                      </View>
-                      <Text style={[styles.barLabel, isHot && styles.barLabelHot]}>{b.label}</Text>
-                    </View>
-                  );
-                })}
-              </View>
-            )}
-          </GlassPanel>
+          </Pressable>
         </View>
       </ScrollView>
 
-      {/* Bottom actions (fixed above the tab bar) */}
-      <View style={[styles.footerWrap, { bottom: footerBottomOffset }]}>
-        <GlassPanel style={[styles.footerPanel, { paddingBottom: 12 + insets.bottom }]}>
-          <View style={styles.actions}>
-            <Pressable
-              onPress={() => setEditOpen(true)}
-              style={({ pressed }) => [
-                styles.actionBtn,
-                styles.actionBtnPrimary,
-                pressed && styles.actionBtnPressed,
-              ]}
-              accessibilityRole="button"
-            >
-              <Ionicons name="create-outline" size={18} color="white" />
-              <Text style={[styles.actionBtnText, { color: "white" }]}>עריכה</Text>
-            </Pressable>
-
-            <Pressable
-              onPress={handleLogout}
-              style={({ pressed }) => [
-                styles.actionBtn,
-                styles.actionBtnDanger,
-                pressed && styles.actionBtnPressed,
-              ]}
-              accessibilityRole="button"
-            >
-              <Ionicons name="log-out-outline" size={18} color={ui.danger} />
-              <Text style={[styles.actionBtnText, { color: ui.danger }]}>התנתק</Text>
-            </Pressable>
-          </View>
-        </GlassPanel>
-      </View>
-
-      {/* Edit Modal */}
       <Modal transparent visible={editOpen} animationType="fade" onRequestClose={() => setEditOpen(false)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setEditOpen(false)}>
-          <Pressable style={styles.modalCard} onPress={() => null}>
-            <Text style={styles.modalTitle}>עריכת פרופיל</Text>
+          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ width: "100%" }}>
+            <Pressable style={styles.modalCard} onPress={() => null}>
+              <Text style={styles.modalTitle}>עריכת פרופיל</Text>
 
-            <TextInput
-              style={styles.input}
-              value={form.name}
-              onChangeText={(t) => setForm((f) => ({ ...f, name: t }))}
-              placeholder="שם מלא"
-              placeholderTextColor="rgba(17,19,24,0.35)"
-              textAlign="right"
-            />
-            <TextInput
-              style={styles.input}
-              value={form.email}
-              onChangeText={(t) => setForm((f) => ({ ...f, email: t }))}
-              placeholder="אימייל"
-              placeholderTextColor="rgba(17,19,24,0.35)"
-              keyboardType="email-address"
-              autoCapitalize="none"
-              textAlign="right"
-            />
-            <TextInput
-              style={styles.input}
-              value={form.password}
-              onChangeText={(t) => setForm((f) => ({ ...f, password: t }))}
-              placeholder="סיסמה חדשה (לא חובה)"
-              placeholderTextColor="rgba(17,19,24,0.35)"
-              secureTextEntry
-              textAlign="right"
-            />
-            <TextInput
-              style={styles.input}
-              value={form.confirmPassword}
-              onChangeText={(t) => setForm((f) => ({ ...f, confirmPassword: t }))}
-              placeholder="אישור סיסמה"
-              placeholderTextColor="rgba(17,19,24,0.35)"
-              secureTextEntry
-              textAlign="right"
-            />
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 10 }} bounces={false}>
+                <TextInput
+                  style={styles.input}
+                  value={form.name}
+                  onChangeText={(t) => setForm((f) => ({ ...f, name: t }))}
+                  placeholder="שם מלא"
+                  placeholderTextColor="rgba(15,23,42,0.35)"
+                  textAlign="right"
+                />
+                <TextInput
+                  style={styles.input}
+                  value={form.email}
+                  onChangeText={(t) => setForm((f) => ({ ...f, email: t }))}
+                  placeholder="אימייל"
+                  placeholderTextColor="rgba(15,23,42,0.35)"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  textAlign="right"
+                />
+                <TextInput
+                  style={styles.input}
+                  value={form.password}
+                  onChangeText={(t) => setForm((f) => ({ ...f, password: t }))}
+                  placeholder="סיסמה חדשה (לא חובה)"
+                  placeholderTextColor="rgba(15,23,42,0.35)"
+                  secureTextEntry
+                  textAlign="right"
+                />
+                <TextInput
+                  style={styles.input}
+                  value={form.confirmPassword}
+                  onChangeText={(t) => setForm((f) => ({ ...f, confirmPassword: t }))}
+                  placeholder="אישור סיסמה"
+                  placeholderTextColor="rgba(15,23,42,0.35)"
+                  secureTextEntry
+                  textAlign="right"
+                />
+              </ScrollView>
 
-            <View style={styles.modalActions}>
-              <Pressable
-                onPress={() => setEditOpen(false)}
-                style={({ pressed }) => [styles.modalBtn, styles.modalBtnGhost, pressed && styles.pressed]}
-              >
-                <Text style={[styles.modalBtnText, { color: ui.muted }]}>ביטול</Text>
-              </Pressable>
+              <View style={styles.modalActions}>
+                <Pressable
+                  onPress={() => setEditOpen(false)}
+                  style={({ pressed }) => [styles.modalBtn, styles.modalBtnGhost, pressed && styles.modalBtnPressed]}
+                >
+                  <Text style={[styles.modalBtnText, { color: ui.muted }]}>ביטול</Text>
+                </Pressable>
 
-              <Pressable
-                onPress={handleSave}
-                disabled={loading}
-                style={({ pressed }) => [
-                  styles.modalBtn,
-                  styles.modalBtnPrimary,
-                  (pressed || loading) && { opacity: 0.9 },
-                ]}
-              >
-                {loading ? (
-                  <ActivityIndicator color="white" />
-                ) : (
-                  <Text style={[styles.modalBtnText, { color: "white" }]}>שמור</Text>
-                )}
-              </Pressable>
-            </View>
-          </Pressable>
+                <Pressable
+                  onPress={handleSave}
+                  disabled={loading}
+                  style={({ pressed }) => [
+                    styles.modalBtn,
+                    styles.modalBtnPrimary,
+                    (pressed || loading) && { opacity: 0.9 },
+                  ]}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="white" />
+                  ) : (
+                    <Text style={[styles.modalBtnText, { color: "white" }]}>שמור</Text>
+                  )}
+                </Pressable>
+              </View>
+            </Pressable>
+          </KeyboardAvoidingView>
         </Pressable>
       </Modal>
     </View>
@@ -483,230 +488,232 @@ export default function AdminProfileScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: ui.bg },
-  scroll: { flex: 1 },
-  content: { width: "100%", maxWidth: 420, alignSelf: "center" },
-
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
 
-  blobsWrap: { ...StyleSheet.absoluteFillObject, overflow: "hidden" },
-  blob: { position: "absolute", borderRadius: 9999, opacity: 0.7 },
-  blobA: { top: "-10%", left: "-10%", width: 500, height: 500, backgroundColor: "rgba(191, 219, 254, 0.7)" },
-  blobB: { top: "20%", right: "-20%", width: 400, height: 400, backgroundColor: "rgba(233, 213, 255, 0.7)" },
-  blobC: { bottom: "-10%", left: "20%", width: 600, height: 600, backgroundColor: "rgba(224, 231, 255, 0.8)" },
-
-  topBar: {
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 10,
-    flexDirection: "row",
+  header: {
+    paddingHorizontal: 14,
+    paddingTop: 10,
+    paddingBottom: 12,
+    flexDirection: "row-reverse",
     alignItems: "center",
     justifyContent: "space-between",
   },
-  topIconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 999,
+  headerTitle: { fontSize: 18, fontWeight: "900", color: ui.text, letterSpacing: -0.2 },
+  iconBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.80)",
+    borderWidth: 1,
+    borderColor: ui.border,
   },
-  pressed: { backgroundColor: "rgba(0,0,0,0.04)" },
-  topTitle: { fontSize: 18, fontWeight: "800", color: ui.text, letterSpacing: -0.2 },
+  iconBtnPressed: { opacity: 0.92, transform: [{ scale: 0.98 }] },
 
-  hero: { paddingHorizontal: 20, marginTop: 6, alignItems: "center", gap: 14 },
-  avatarWrap: { width: 132, height: 132, alignItems: "center", justifyContent: "center" },
-  avatarGlow: {
-    position: "absolute",
-    inset: 0,
-    borderRadius: 9999,
-    backgroundColor: ui.primary,
-    opacity: 0.18,
-    transform: [{ scale: 1.05 }],
-  },
-  avatarRing: {
-    width: 128,
-    height: 128,
-    borderRadius: 9999,
-    padding: 4,
-    backgroundColor: "white",
-    shadowColor: ui.primary,
-    shadowOpacity: 0.22,
-    shadowRadius: 20,
+  scroll: { flex: 1 },
+  content: { paddingHorizontal: 14, paddingTop: 12, gap: 12 },
+
+  card: {
+    backgroundColor: ui.card,
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: ui.border,
+    shadowColor: "rgba(15,23,42,0.25)",
+    shadowOpacity: 0.06,
+    shadowRadius: 14,
     shadowOffset: { width: 0, height: 10 },
-    elevation: 10,
+    elevation: 2,
   },
-  avatar: { width: "100%", height: "100%", borderRadius: 9999 },
-  verifiedBadge: {
-    position: "absolute",
-    bottom: 6,
-    right: 6,
-    backgroundColor: "white",
-    width: 28,
-    height: 28,
+
+  profileRow: { flexDirection: "row-reverse", alignItems: "center", gap: 12 },
+  avatarWrap: {
+    width: 62,
+    height: 62,
+    borderRadius: 20,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: ui.border,
+    backgroundColor: "rgba(15,23,42,0.02)",
+  },
+  avatar: { width: "100%", height: "100%" },
+  name: { fontSize: 18, fontWeight: "900", color: ui.text, textAlign: "right" },
+  email: { fontSize: 13, fontWeight: "700", color: ui.muted, textAlign: "right", marginTop: 2 },
+  badgesRow: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 8, marginTop: 10 },
+  badge: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: 999,
+    backgroundColor: "rgba(17,82,212,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(17,82,212,0.12)",
+  },
+  badgeText: { fontSize: 12, fontWeight: "900", color: ui.primary },
+
+  smallBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "rgba(0,0,0,0.2)",
-    shadowOpacity: 0.18,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
+    backgroundColor: "rgba(17,82,212,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(17,82,212,0.12)",
   },
-  heroText: { alignItems: "center", gap: 4 },
-  name: { fontSize: 30, fontWeight: "900", color: ui.text, letterSpacing: -0.6 },
-  email: { fontSize: 16, fontWeight: "600", color: ui.muted },
+  smallBtnPressed: { opacity: 0.9, transform: [{ scale: 0.98 }] },
 
-  actions: {
-    flexDirection: "row",
-    gap: 12,
-  },
-  footerWrap: {
-    // On web, "fixed" keeps actions visible at the bottom of the viewport.
-    // On native, "absolute" is correct within the screen.
-    position: Platform.OS === "web" ? ("fixed" as any) : "absolute",
-    left: 0,
-    right: 0,
-    // bottom is set inline to account for the custom tab bar height
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    zIndex: 50,
-    elevation: 50,
-  },
-  footerPanel: {
-    width: "100%",
-    maxWidth: 420,
-    alignSelf: "center",
-    paddingTop: 12,
-    paddingHorizontal: 14,
-  },
-  actionBtn: {
+  statsRow: { flexDirection: "row-reverse", gap: 12 },
+  statCard: {
     flex: 1,
-    height: 52,
-    borderRadius: 16,
-    paddingHorizontal: 14,
+    backgroundColor: ui.card,
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: ui.border,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 10,
+  },
+  statIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(17,82,212,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(17,82,212,0.12)",
+  },
+  statValue: { fontSize: 22, fontWeight: "900", color: ui.text, textAlign: "right" },
+  statLabel: { fontSize: 12, fontWeight: "800", color: ui.muted, textAlign: "right", marginTop: 2 },
+
+  sectionHeader: { flexDirection: "row-reverse", alignItems: "flex-end", justifyContent: "space-between", gap: 12 },
+  sectionTitle: { fontSize: 16, fontWeight: "900", color: ui.text, textAlign: "right" },
+  sectionSubtitle: { fontSize: 12, fontWeight: "800", color: ui.muted, textAlign: "right", marginTop: 4 },
+
+  yearControls: { flexDirection: "row-reverse", alignItems: "center", gap: 8 },
+  yearBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(15,23,42,0.04)",
+    borderWidth: 1,
+    borderColor: ui.border,
+  },
+  yearBtnPressed: { opacity: 0.92, transform: [{ scale: 0.98 }] },
+  yearPill: {
+    height: 34,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    backgroundColor: "rgba(15,23,42,0.04)",
+    borderWidth: 1,
+    borderColor: ui.border,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 8,
+  },
+  yearPillText: { fontSize: 12, fontWeight: "900", color: ui.text },
+  dot: { width: 4, height: 4, borderRadius: 99, backgroundColor: "rgba(15,23,42,0.25)" },
+
+  loadingBox: { height: 160, alignItems: "center", justifyContent: "center" },
+  chartRow: { paddingTop: 12, paddingBottom: 4, paddingHorizontal: 2, gap: 10 },
+  barCol: { width: 44, alignItems: "center", gap: 8 },
+  barValue: { fontSize: 12, fontWeight: "900", color: ui.muted },
+  barValueHot: { color: ui.text },
+  barTrack: {
+    width: 20,
+    height: 110,
+    borderRadius: 999,
+    overflow: "hidden",
+    backgroundColor: "rgba(15,23,42,0.05)",
+    justifyContent: "flex-end",
+  },
+  barFill: { width: "100%", borderRadius: 999 },
+  barLabel: { fontSize: 12, fontWeight: "800", color: ui.muted },
+  barLabelHot: { color: ui.text },
+
+  actionsBlock: {
+    gap: 12,
+    backgroundColor: ui.card,
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: ui.border,
+    shadowColor: "rgba(15,23,42,0.25)",
+    shadowOpacity: 0.06,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 2,
+  },
+  actionBtnShadow: {
+    height: 56,
+    borderRadius: 22,
+    width: "100%",
+    shadowColor: "rgba(2, 6, 23, 0.30)",
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 5,
+  },
+  actionBtnSurface: {
+    flex: 1,
     flexDirection: "row-reverse",
     alignItems: "center",
     justifyContent: "center",
     gap: 10,
-    ...(Platform.OS === "web"
-      ? ({
-          // @ts-expect-error web-only style
-          boxShadow: "0 10px 30px rgba(15, 23, 42, 0.12)",
-        } as any)
-      : {
-          shadowColor: "rgba(15, 23, 42, 0.22)",
-          shadowOpacity: 0.14,
-          shadowRadius: 16,
-          shadowOffset: { width: 0, height: 10 },
-          elevation: 6,
-        }),
-  },
-  actionBtnPrimary: {
-    backgroundColor: ui.primary,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.22)",
-  },
-  actionBtnDanger: {
-    backgroundColor: "rgba(255,255,255,0.92)",
-    borderWidth: 1,
-    borderColor: "rgba(227, 77, 77, 0.35)",
-  },
-  actionBtnPressed: { transform: [{ scale: 0.985 }], opacity: 0.92 },
-  actionBtnText: { fontSize: 14, fontWeight: "900", letterSpacing: -0.1 },
-
-  metrics: { marginTop: 26, paddingHorizontal: 20, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 18 },
-  metricCol: { alignItems: "center", gap: 6, minWidth: 130 },
-  metricValue: { fontSize: 52, fontWeight: "900", color: ui.text, letterSpacing: -1.5, lineHeight: 56 },
-  metricLabel: { fontSize: 12, fontWeight: "700", color: ui.muted },
-  metricDivider: {
-    width: 1,
-    height: 64,
-    backgroundColor: "rgba(219, 223, 230, 1)",
-    opacity: 0.8,
-  },
-
-  sectionWrap: { marginTop: 28, paddingHorizontal: 16 },
-  glassBase: {
-    backgroundColor: ui.glass,
-    borderWidth: 1,
-    borderColor: ui.glassBorder,
-    borderRadius: 26,
+    paddingHorizontal: 16,
+    borderRadius: 22,
     overflow: "hidden",
   },
-  monthCard: {
-    padding: 18,
-    shadowColor: "rgba(31, 38, 135, 0.20)",
-    shadowOpacity: 0.12,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 6,
+  actionBtnSurfaceOutline: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "rgba(225, 29, 72, 0.35)",
   },
-  monthHeader: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 16, gap: 12 },
-  monthTitle: { fontSize: 17, fontWeight: "800", color: ui.text },
-  monthSubtitle: { fontSize: 11, fontWeight: "700", color: ui.muted, marginTop: 4 },
-  trendPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "rgba(16, 185, 129, 0.10)",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-  },
-  trendText: { fontSize: 13, fontWeight: "900", color: "#059669" },
-
-  loadingBox: { height: 160, alignItems: "center", justifyContent: "center" },
-  barGrid: { height: 160, flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", paddingHorizontal: 4, gap: 10 },
-  barCol: { flex: 1, alignItems: "center", gap: 10 },
-  barTrack: {
-    width: 24,
-    height: 130,
-    borderRadius: 999,
-    overflow: "hidden",
-    backgroundColor: "rgba(15, 23, 42, 0.04)",
-    alignItems: "stretch",
-    justifyContent: "flex-end",
-  },
-  barFill: { width: "100%", borderRadius: 999 },
-  barLabel: { fontSize: 12, fontWeight: "700", color: ui.muted },
-  barLabelHot: { color: ui.text, fontWeight: "900" },
+  actionBtnTextLight: { fontSize: 14, fontWeight: "900", color: "white" },
+  actionBtnTextDanger: { fontSize: 14, fontWeight: "900", color: ui.danger },
+  btnPressed: { opacity: 0.92, transform: [{ scale: 0.985 }] },
 
   modalBackdrop: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.25)",
-    padding: 18,
+    backgroundColor: "rgba(2, 6, 23, 0.35)",
+    padding: 16,
     justifyContent: "center",
   },
   modalCard: {
-    backgroundColor: "rgba(255,255,255,0.95)",
-    borderRadius: 24,
-    padding: 16,
-    gap: 10,
+    width: "100%",
+    maxWidth: 520,
+    alignSelf: "center",
+    backgroundColor: "rgba(255,255,255,0.98)",
+    borderRadius: 18,
+    padding: 14,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.65)",
-    // web blur
-    ...(Platform.OS === "web" ? ({ backdropFilter: "blur(16px)" } as any) : null),
+    gap: 12,
   },
-  modalTitle: { fontSize: 18, fontWeight: "900", color: ui.text, textAlign: "right", marginBottom: 4 },
+  modalTitle: { fontSize: 16, fontWeight: "900", color: ui.text, textAlign: "right" },
   input: {
     height: 46,
     borderRadius: 14,
     paddingHorizontal: 14,
     borderWidth: 1,
-    borderColor: "rgba(17, 19, 24, 0.08)",
-    backgroundColor: "rgba(242, 244, 248, 0.7)",
+    borderColor: ui.border,
+    backgroundColor: "rgba(244, 247, 251, 0.9)",
     color: ui.text,
     fontSize: 15,
     fontWeight: "700",
   },
-  modalActions: { flexDirection: "row", gap: 10, marginTop: 4 },
-  modalBtn: {
-    flex: 1,
-    height: 46,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  modalBtnGhost: { backgroundColor: "rgba(17, 19, 24, 0.04)" },
+  modalActions: { flexDirection: "row-reverse", gap: 10 },
+  modalBtn: { flex: 1, height: 46, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  modalBtnGhost: { backgroundColor: "rgba(15,23,42,0.05)", borderWidth: 1, borderColor: ui.border },
   modalBtnPrimary: { backgroundColor: ui.primary },
+  modalBtnPressed: { opacity: 0.92, transform: [{ scale: 0.99 }] },
   modalBtnText: { fontSize: 14, fontWeight: "900" },
 });
+

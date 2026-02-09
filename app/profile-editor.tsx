@@ -3,19 +3,18 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Alert,
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/colors';
-import { supabase, supabaseAdmin } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase';
 import { useUserStore } from '@/store/userStore';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { avatarService } from '@/lib/services/avatarService';
+import BackSwipe from '@/components/BackSwipe';
 
 export default function ProfileEditor() {
   const router = useRouter();
   const { userData, updateUserData } = useUserStore();
   const [loading, setLoading] = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
-  const [coverUploading, setCoverUploading] = useState(false);
-  const [eventCoverUrl, setEventCoverUrl] = useState<string>('');
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -33,28 +32,6 @@ export default function ProfileEditor() {
       }));
     }
   }, [userData]);
-
-  useEffect(() => {
-    const loadCover = async () => {
-      const eventId = String(userData?.event_id ?? '').trim();
-      if (!eventId) {
-        setEventCoverUrl('');
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from('events')
-        .select('image')
-        .eq('id', eventId)
-        .maybeSingle();
-
-      if (!error && data) {
-        setEventCoverUrl(String((data as any).image ?? ''));
-      }
-    };
-
-    loadCover();
-  }, [userData?.event_id]);
 
   const guessImageExt = (asset: any): string => {
     const fileName = String(asset?.fileName ?? '');
@@ -163,80 +140,6 @@ export default function ProfileEditor() {
       Alert.alert('שגיאה', `לא ניתן לעדכן תמונת פרופיל.\n\n${message}`);
     } finally {
       setAvatarUploading(false);
-    }
-  };
-
-  const pickAndUploadEventCover = async () => {
-    const eventId = String(userData?.event_id ?? '').trim();
-    if (!eventId) {
-      Alert.alert('שגיאה', 'לא נמצא אירוע למשתמש הזה (event_id חסר)');
-      return;
-    }
-
-    try {
-      if (Platform.OS !== 'web') {
-        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (!permission.granted) {
-          Alert.alert('הרשאה נדרשת', 'כדי לבחור תמונה יש לאשר גישה לגלריה');
-          return;
-        }
-      }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [16, 9],
-        quality: 0.85,
-        base64: true,
-      });
-
-      if (result.canceled || !result.assets?.[0]) return;
-      const asset = result.assets[0] as any;
-
-      const ext = guessImageExt(asset);
-      const filePath = `events/${eventId}/${Date.now()}.${ext}`;
-      const contentType = guessContentType(ext, asset?.mimeType);
-
-      setCoverUploading(true);
-
-      let uploadBody: Blob | Uint8Array | null = null;
-      if (asset?.base64) {
-        uploadBody = base64ToUint8Array(asset.base64);
-      } else {
-        const res = await fetch(asset.uri);
-        uploadBody = await res.blob();
-      }
-      if (!uploadBody) throw new Error('חסרים נתוני תמונה להעלאה');
-
-      const { error: uploadError } = await supabaseAdmin.storage
-        .from('event-images')
-        .upload(filePath, uploadBody as any, { upsert: true, contentType });
-      if (uploadError) throw uploadError;
-
-      const { data: publicData } = supabase.storage.from('event-images').getPublicUrl(filePath);
-      const publicUrl = publicData.publicUrl;
-
-      let finalUrl = publicUrl;
-      try {
-        const probe = await fetch(publicUrl, { method: 'GET' });
-        if (!probe.ok) throw new Error('Public URL not accessible');
-      } catch {
-        const { data: signedData } = await supabaseAdmin.storage
-          .from('event-images')
-          .createSignedUrl(filePath, 60 * 60 * 24 * 30);
-        if (signedData?.signedUrl) finalUrl = signedData.signedUrl;
-      }
-
-      const { error: updateError } = await supabase.from('events').update({ image: finalUrl }).eq('id', eventId);
-      if (updateError) throw updateError;
-
-      setEventCoverUrl(finalUrl);
-      Alert.alert('נשמר', 'תמונת האירוע עודכנה');
-    } catch (e: any) {
-      const message = e?.message ? String(e.message) : 'שגיאה לא ידועה';
-      Alert.alert('שגיאה', `לא ניתן לעדכן תמונת אירוע.\n\n${message}`);
-    } finally {
-      setCoverUploading(false);
     }
   };
 
@@ -369,25 +272,26 @@ export default function ProfileEditor() {
   };
 
   return (
-    <KeyboardAvoidingView 
-      style={styles.container} 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <Ionicons name="arrow-forward" size={24} color={colors.primary} />
-        </TouchableOpacity>
-        <Text style={styles.title}>עריכת פרטים אישיים</Text>
-        <TouchableOpacity 
-          style={[styles.saveButton, loading && styles.saveButtonDisabled]} 
-          onPress={saveChanges}
-          disabled={loading}
-        >
-          <Text style={styles.saveButtonText}>
-            {loading ? 'שומר...' : 'שמור'}
-          </Text>
-        </TouchableOpacity>
-      </View>
+    <BackSwipe>
+      <KeyboardAvoidingView 
+        style={styles.container} 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+            <Ionicons name="arrow-back" size={24} color={colors.primary} />
+          </TouchableOpacity>
+          <Text style={styles.title}>עריכת פרטים אישיים</Text>
+          <TouchableOpacity 
+            style={[styles.saveButton, loading && styles.saveButtonDisabled]} 
+            onPress={saveChanges}
+            disabled={loading}
+          >
+            <Text style={styles.saveButtonText}>
+              {loading ? 'שומר...' : 'שמור'}
+            </Text>
+          </TouchableOpacity>
+        </View>
 
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
         {/* Avatar Section */}
@@ -438,52 +342,6 @@ export default function ProfileEditor() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
-
-        {/* Event Cover Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>תמונת אירוע</Text>
-          <Text style={styles.sectionSubtitle}>עדכון תמונת קאבר לאירוע (16:9)</Text>
-
-          <View style={styles.coverWrap}>
-            {eventCoverUrl && /^https?:\/\//i.test(eventCoverUrl) ? (
-              <Image
-                source={{ uri: eventCoverUrl }}
-                style={styles.coverImg}
-                contentFit="cover"
-                cachePolicy="none"
-                recyclingKey={eventCoverUrl}
-                transition={150}
-              />
-            ) : (
-              <View style={styles.coverPlaceholder}>
-                <Ionicons name="image-outline" size={34} color={colors.primary} />
-                <Text style={styles.coverPlaceholderText}>אין תמונת אירוע</Text>
-              </View>
-            )}
-
-            <TouchableOpacity
-              style={[styles.coverEditBtn, coverUploading && styles.coverEditBtnDisabled]}
-              onPress={pickAndUploadEventCover}
-              disabled={coverUploading}
-              accessibilityRole="button"
-              accessibilityLabel="בחירת תמונת אירוע"
-            >
-              {coverUploading ? (
-                <ActivityIndicator size="small" color={colors.white} />
-              ) : (
-                <Ionicons name="camera" size={16} color={colors.white} />
-              )}
-            </TouchableOpacity>
-          </View>
-
-          <TouchableOpacity
-            style={[styles.coverActionBtn, coverUploading && styles.coverActionBtnDisabled]}
-            onPress={pickAndUploadEventCover}
-            disabled={coverUploading}
-          >
-            <Text style={styles.coverActionText}>{coverUploading ? 'מעלה...' : 'בחר תמונה'}</Text>
-          </TouchableOpacity>
         </View>
 
         {/* Basic Info Section */}
@@ -564,7 +422,8 @@ export default function ProfileEditor() {
 
 
       </ScrollView>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </BackSwipe>
   );
 }
 
@@ -574,9 +433,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.gray[50],
   },
   header: {
+    position: 'relative',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     paddingHorizontal: 20,
     paddingTop: 60,
     paddingBottom: 20,
@@ -588,6 +448,9 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   backButton: {
+    position: 'absolute',
+    left: 20,
+    top: 60,
     width: 40,
     height: 40,
     borderRadius: 20,
@@ -601,6 +464,9 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   saveButton: {
+    position: 'absolute',
+    right: 20,
+    top: 64,
     backgroundColor: colors.primary,
     paddingHorizontal: 20,
     paddingVertical: 10,
@@ -727,65 +593,6 @@ const styles = StyleSheet.create({
     opacity: 0.65,
   },
   avatarActionText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.primary,
-  },
-  coverWrap: {
-    width: '100%',
-    height: 160,
-    borderRadius: 16,
-    overflow: 'hidden',
-    backgroundColor: colors.gray[100],
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.06)',
-    position: 'relative',
-    marginTop: 6,
-  },
-  coverImg: {
-    width: '100%',
-    height: '100%',
-  },
-  coverPlaceholder: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 6,
-  },
-  coverPlaceholderText: {
-    fontSize: 14,
-    color: colors.textLight,
-  },
-  coverEditBtn: {
-    position: 'absolute',
-    top: 12,
-    left: 12,
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: 'rgba(17,24,39,0.55)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.55)',
-  },
-  coverEditBtnDisabled: {
-    opacity: 0.75,
-  },
-  coverActionBtn: {
-    marginTop: 12,
-    alignSelf: 'flex-end',
-    backgroundColor: colors.gray[100],
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.gray[200],
-  },
-  coverActionBtnDisabled: {
-    opacity: 0.65,
-  },
-  coverActionText: {
     fontSize: 14,
     fontWeight: '600',
     color: colors.primary,

@@ -284,7 +284,7 @@ export default function TablesList() {
     <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity
-          style={styles.backButton}
+          style={[styles.backButton, styles.backBtnAbs]}
           onPress={() =>
             router.push({
               pathname: '/(couple)/BrideGroomSeating',
@@ -295,7 +295,7 @@ export default function TablesList() {
           <Ionicons name="chevron-back" size={24} color={colors.primary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>שולחנות</Text>
-        <View style={styles.headerStats}>
+        <View style={[styles.headerStats, styles.statsAbs]}>
           <View style={styles.statItem}>
             <Ionicons name="checkmark-circle" size={20} color={colors.success} />
             <Text style={styles.statText}>{fullTables} מלאים</Text>
@@ -537,13 +537,14 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   header: {
+    position: 'relative',
     backgroundColor: colors.white,
     paddingTop: 20,
     paddingHorizontal: 20,
     paddingBottom: 20,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     shadowColor: colors.richBlack,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -555,6 +556,12 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     backgroundColor: colors.gray[50],
   },
+  backBtnAbs: {
+    position: 'absolute',
+    left: 20,
+    top: 20,
+    zIndex: 10,
+  },
   headerTitle: {
     fontSize: 24,
     fontWeight: '700',
@@ -564,6 +571,12 @@ const styles = StyleSheet.create({
   headerStats: {
     flexDirection: 'row',
     gap: 16,
+  },
+  statsAbs: {
+    position: 'absolute',
+    right: 20,
+    top: 24,
+    zIndex: 10,
   },
   statItem: {
     flexDirection: 'row',

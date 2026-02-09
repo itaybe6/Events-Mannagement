@@ -284,17 +284,17 @@ export default function NotificationEditorScreen() {
       >
         <BlurView intensity={22} tint="light" style={StyleSheet.absoluteFillObject} />
 
-        <View style={styles.header}>
-          <TouchableOpacity
-            style={[styles.headerBtn, { backgroundColor: ui.surfaceMuted }]}
-            onPress={() => router.back()}
-            accessibilityRole="button"
-            accessibilityLabel="חזרה"
-            activeOpacity={0.9}
-          >
-            <Ionicons name="chevron-forward" size={22} color={ui.text} />
-          </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.headerBtn, styles.backBtnAbs, { backgroundColor: ui.surfaceMuted }]}
+          onPress={() => router.back()}
+          accessibilityRole="button"
+          accessibilityLabel="חזרה"
+          activeOpacity={0.9}
+        >
+          <Ionicons name="chevron-back" size={24} color={ui.text} />
+        </TouchableOpacity>
 
+        <View style={styles.header}>
           <View style={styles.headerTitles}>
             <Text style={[styles.headerTitle, { color: ui.text }]} numberOfLines={1}>
               עריכת הודעה
@@ -306,8 +306,6 @@ export default function NotificationEditorScreen() {
               </Text>
             </View>
           </View>
-
-          <View style={{ width: 44 }} />
         </View>
       </View>
 
@@ -651,9 +649,8 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: 18,
     paddingBottom: 16,
-    flexDirection: 'row-reverse',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
   },
   headerBtn: {
     width: 44,
@@ -661,6 +658,12 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  backBtnAbs: {
+    position: 'absolute',
+    left: 18,
+    top: 0,
+    zIndex: 10,
   },
   headerTitles: { flex: 1, alignItems: 'center', gap: 6 },
   headerTitle: { fontSize: 18, fontWeight: '900', textAlign: 'center' },

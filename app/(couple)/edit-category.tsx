@@ -15,9 +15,11 @@ import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-rou
 import { Ionicons } from '@expo/vector-icons';
 import { useUserStore } from '@/store/userStore';
 import { guestService } from '@/lib/services/guestService';
+import { eventService } from '@/lib/services/eventService';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GuestCategorySelectionSheet } from '@/components/GuestCategorySelectionSheet';
 import { useLayoutStore } from '@/store/layoutStore';
+import BackSwipe from '@/components/BackSwipe';
 
 export default function EditCategoryScreen() {
   const router = useRouter();
@@ -39,6 +41,7 @@ export default function EditCategoryScreen() {
   const [selectedToDelete, setSelectedToDelete] = useState<Set<string>>(new Set());
   const [categories, setCategories] = useState<any[]>([]);
   const [moveSheetVisible, setMoveSheetVisible] = useState(false);
+  const [enableSides, setEnableSides] = useState(true);
 
   const ui = useMemo(() => {
     return {
@@ -58,13 +61,22 @@ export default function EditCategoryScreen() {
     if (!eventId || !categoryId) return;
     setLoading(true);
     try {
-      const [cats, guests] = await Promise.all([
+      const [cats, guests, evt] = await Promise.all([
         guestService.getGuestCategories(eventId),
         guestService.getGuests(eventId),
+        eventService.getEvent(eventId),
       ]);
       const cat = (cats || []).find((c: any) => String(c.id) === categoryId);
       setCategoryName(String(cat?.name ?? ''));
       setCategories(cats || []);
+      const title = String(evt?.title ?? '').trim();
+      const groom = String(evt?.groomName ?? '').trim();
+      const bride = String(evt?.brideName ?? '').trim();
+      const inferredType =
+        ['חתונה', 'בר מצווה', 'בת מצווה', 'ברית', 'אירוע חברה'].find(et => title.startsWith(et) || title.includes(et)) ||
+        null;
+      const shouldEnable = !!groom || !!bride ? true : inferredType && inferredType !== 'חתונה' ? false : true;
+      setEnableSides(shouldEnable);
 
       const inCat = (guests || []).filter((g: any) => String(g.category_id) === categoryId);
       setGuestsInCategory(inCat);
@@ -228,14 +240,16 @@ export default function EditCategoryScreen() {
   };
 
   return (
-    <View style={[styles.page, { backgroundColor: ui.bg }]}>
-      <Stack.Screen options={{ headerShown: false }} />
+    <BackSwipe>
+      <View style={[styles.page, { backgroundColor: ui.bg }]}>
+        <Stack.Screen options={{ headerShown: false }} />
 
       <GuestCategorySelectionSheet
         visible={moveSheetVisible}
         title="בחר קטגוריה להעברה"
         categories={(categories || []).filter((c: any) => String(c.id) !== categoryId)}
         selectedCategoryId={null}
+        enableSides={enableSides}
         onClose={() => setMoveSheetVisible(false)}
         onSelect={(cat) => {
           void moveSelectedToCategory(cat as any);
@@ -250,19 +264,18 @@ export default function EditCategoryScreen() {
 
       {/* Header */}
       <View style={[styles.headerWrap, { backgroundColor: ui.surface, borderBottomColor: ui.border, paddingTop: Math.max(12, insets.top + 10) }]}>
-        <View style={styles.headerRow}>
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={[styles.headerBackBtn, { backgroundColor: ui.faint }]}
-            accessibilityRole="button"
-            accessibilityLabel="חזרה"
-            activeOpacity={0.9}
-          >
-            <Ionicons name="arrow-forward" size={20} color={ui.sub} />
-          </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={[styles.headerBackBtn, styles.backBtnAbs, { backgroundColor: ui.faint }]}
+          accessibilityRole="button"
+          accessibilityLabel="חזרה"
+          activeOpacity={0.9}
+        >
+          <Ionicons name="chevron-back" size={22} color={ui.sub} />
+        </TouchableOpacity>
 
+        <View style={styles.headerRow}>
           <Text style={[styles.headerTitle, { color: ui.text }]}>{headerTitle}</Text>
-          <View style={{ width: 40 }} />
         </View>
 
         <View style={styles.inputBlock}>
@@ -408,13 +421,15 @@ export default function EditCategoryScreen() {
           </View>
         </KeyboardAvoidingView>
       )}
-    </View>
+      </View>
+    </BackSwipe>
   );
 }
 
 const styles = StyleSheet.create({
   page: { flex: 1 },
   headerWrap: {
+    position: 'relative',
     borderBottomWidth: 1,
     paddingHorizontal: 18,
     paddingBottom: 18,
@@ -428,9 +443,8 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
   headerRow: {
-    flexDirection: 'row-reverse',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     marginBottom: 14,
   },
   headerBackBtn: {
@@ -439,6 +453,12 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  backBtnAbs: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    zIndex: 5,
   },
   headerTitle: {
     fontSize: 18,

@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Platform, ActivityIndicator, KeyboardAvoidingView, SafeAreaView, Alert, Modal } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Platform, ActivityIndicator, KeyboardAvoidingView, SafeAreaView, Alert, Modal, Keyboard } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { colors } from '@/constants/colors';
@@ -7,6 +7,7 @@ import { userService } from '@/lib/services/userService';
 import { eventService } from '@/lib/services/eventService';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import { LinearGradient } from 'expo-linear-gradient';
+import BackSwipe from '@/components/BackSwipe';
 
 const EVENT_TYPES = [
   { label: 'חתונה', value: 'חתונה' },
@@ -32,6 +33,8 @@ export default function AdminEventsCreateScreen() {
   const [loading, setLoading] = useState(false);
   const [showUserModal, setShowUserModal] = useState(false);
   const [userSearch, setUserSearch] = useState('');
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
   const filteredCouples = coupleOptions.filter(opt => {
     const query = userSearch.trim().toLowerCase();
     if (!query) {
@@ -42,6 +45,15 @@ export default function AdminEventsCreateScreen() {
 
   useEffect(() => {
     loadAvailableCouples();
+  }, []);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
   }, []);
 
   useEffect(() => {
@@ -77,7 +89,6 @@ export default function AdminEventsCreateScreen() {
           date: new Date(addForm.date),
           location: addForm.location,
           city: addForm.city,
-          image: '',
           story: '',
           guests: 0,
           budget: 0,
@@ -93,20 +104,30 @@ export default function AdminEventsCreateScreen() {
 
   const formatDate = (dateString: string) => new Date(dateString).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit' });
   const isFormValid = Boolean(addForm.user_id && addForm.title && addForm.date && addForm.location && addForm.city);
+  const scrollToInputs = () => {
+    setTimeout(() => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    }, 120);
+  };
 
   return (
-    <SafeAreaView style={styles.screen}>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 120 : 0}
-      >
-        <View style={styles.container}>
-          <ScrollView
-            contentContainerStyle={styles.contentContainer}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="on-drag"
-          >
+    <BackSwipe>
+      <SafeAreaView style={styles.screen}>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'height' : undefined}
+          keyboardVerticalOffset={0}
+        >
+          <View style={styles.container}>
+            <ScrollView
+              ref={scrollRef}
+              contentContainerStyle={[
+                styles.contentContainer,
+                { paddingBottom: keyboardVisible ? 140 : 40 },
+              ]}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+            >
             <View style={styles.header}>
               <TouchableOpacity
                 style={styles.backButton}
@@ -225,6 +246,7 @@ export default function AdminEventsCreateScreen() {
                       style={styles.infoInput}
                       value={addForm.location}
                       onChangeText={v => setAddForm(f => ({ ...f, location: v }))}
+                      onFocus={scrollToInputs}
                       textAlign="right"
                       placeholder="הזן מיקום"
                       placeholderTextColor={colors.gray[400]}
@@ -244,6 +266,7 @@ export default function AdminEventsCreateScreen() {
                       style={styles.infoInput}
                       value={addForm.city}
                       onChangeText={v => setAddForm(f => ({ ...f, city: v }))}
+                      onFocus={scrollToInputs}
                       textAlign="right"
                       placeholder="הזן עיר"
                       placeholderTextColor={colors.gray[400]}
@@ -338,8 +361,9 @@ export default function AdminEventsCreateScreen() {
             </View>
           </TouchableOpacity>
         </Modal>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </BackSwipe>
   );
 }
 
@@ -356,20 +380,23 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   header: {
+    position: 'relative',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-start',
+    justifyContent: 'center',
     paddingTop: Platform.OS === 'ios' ? 10 : 6,
     marginBottom: 10,
   },
   backButton: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.white,
     width: 40,
     height: 40,
     borderRadius: 20,
-    marginLeft: 15,
     shadowColor: colors.black,
     shadowOpacity: 0.08,
     shadowRadius: 8,

@@ -468,13 +468,13 @@ export default function AdminEventNotificationEditScreen() {
       <SafeAreaView style={[styles.safe, { backgroundColor: ui.bg }]}>
         <View style={[styles.header, { paddingTop: Math.max(12, insets.top + 8), borderBottomColor: ui.divider }]}>
           <TouchableOpacity
-            style={[styles.backBtn, { backgroundColor: ui.card, borderColor: ui.border }]}
+            style={[styles.backBtn, styles.backBtnAbs, { backgroundColor: ui.card, borderColor: ui.border }]}
             onPress={() => router.back()}
             activeOpacity={0.9}
             accessibilityRole="button"
             accessibilityLabel="חזרה"
           >
-            <Ionicons name="chevron-forward" size={22} color={ui.text} />
+            <Ionicons name="chevron-back" size={22} color={ui.text} />
           </TouchableOpacity>
 
           <View style={styles.headerTitles}>
@@ -485,8 +485,6 @@ export default function AdminEventNotificationEditScreen() {
               {`של ${getEventOwnerLabel(event, ownerName)}`}
             </Text>
           </View>
-
-          <View style={{ width: 40, height: 40 }} />
         </View>
 
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -617,11 +615,11 @@ const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
   header: {
+    position: 'relative',
     paddingHorizontal: 24,
     paddingBottom: 14,
-    flexDirection: isRTL ? 'row' : 'row-reverse',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     borderBottomWidth: 1,
   },
   headerTitles: { flex: 1, alignItems: 'center' },
@@ -639,6 +637,12 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
     elevation: 2,
+  },
+  backBtnAbs: {
+    position: 'absolute',
+    left: 24,
+    top: 0,
+    zIndex: 10,
   },
 
   content: {

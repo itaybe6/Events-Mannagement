@@ -163,12 +163,12 @@ export default function EmployeeEventDetailsScreen() {
       <View style={styles.topBar}>
         <TouchableOpacity
           onPress={() => router.back()}
-          style={styles.topIconBtn}
+          style={[styles.topIconBtn, styles.backBtnAbs]}
           activeOpacity={0.85}
           accessibilityRole="button"
           accessibilityLabel="חזרה"
         >
-          <Ionicons name="chevron-forward" size={26} color={colors.text} />
+          <Ionicons name="chevron-back" size={26} color={colors.text} />
         </TouchableOpacity>
 
         <View style={{ flex: 1, alignItems: "center" }}>
@@ -180,7 +180,6 @@ export default function EmployeeEventDetailsScreen() {
           </Text>
         </View>
 
-        <View style={{ width: 44 }} />
       </View>
 
       <ScrollView
@@ -373,12 +372,12 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
   topBar: {
+    position: "relative",
     paddingHorizontal: 14,
     paddingTop: 8,
     paddingBottom: 10,
-    flexDirection: "row-reverse",
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "center",
   },
   topIconBtn: {
     width: 44,
@@ -389,6 +388,12 @@ const styles = StyleSheet.create({
     borderColor: "rgba(0,0,0,0.06)",
     alignItems: "center",
     justifyContent: "center",
+  },
+  backBtnAbs: {
+    position: "absolute",
+    left: 14,
+    top: 8,
+    zIndex: 10,
   },
   topTitle: {
     fontSize: 16,

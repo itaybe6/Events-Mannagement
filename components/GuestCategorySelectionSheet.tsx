@@ -34,6 +34,7 @@ export function GuestCategorySelectionSheet({
   visible,
   categories,
   selectedCategoryId,
+  enableSides = true,
   onClose,
   onSelect,
   onCreateCategory,
@@ -42,6 +43,7 @@ export function GuestCategorySelectionSheet({
   visible: boolean;
   categories: GuestCategory[];
   selectedCategoryId?: string | null;
+  enableSides?: boolean;
   onClose: () => void;
   onSelect: (category: GuestCategory) => void;
   onCreateCategory: (name: string, side: Side) => Promise<GuestCategory>;
@@ -72,11 +74,22 @@ export function GuestCategorySelectionSheet({
     translateY.setValue(0);
   }, [visible, selectedCategoryId]);
 
+  // If the current event doesn't have "groom/bride" semantics (e.g. brit/bar-mitzvah),
+  // keep the sheet in a generic mode: no side filters and no "assign to side" UI.
+  useEffect(() => {
+    if (!visible) return;
+    if (!enableSides) {
+      setFilter('all');
+      setNewSide('groom'); // DB still expects a side value; keep a stable default.
+    }
+  }, [enableSides, visible]);
+
   const filteredCategories = useMemo(() => {
+    if (!enableSides) return categories;
     if (filter === 'all') return categories;
     if (filter === 'other') return [];
     return categories.filter(c => c.side === filter);
-  }, [categories, filter]);
+  }, [categories, enableSides, filter]);
 
   const selectedCategory = useMemo(() => {
     const id = pendingSelectedId ?? selectedCategoryId ?? null;
@@ -106,12 +119,15 @@ export function GuestCategorySelectionSheet({
     }
   };
 
-  const chips: Array<{ key: SideFilter; label: string; icon: keyof typeof Ionicons.glyphMap }> = [
-    { key: 'all', label: 'הכל', icon: 'people' },
-    { key: 'groom', label: 'חתן', icon: 'male' },
-    { key: 'bride', label: 'כלה', icon: 'female' },
-    { key: 'other', label: 'אחרים', icon: 'ellipsis-horizontal' },
-  ];
+  const chips: Array<{ key: SideFilter; label: string; icon: keyof typeof Ionicons.glyphMap }> = useMemo(() => {
+    if (!enableSides) return [{ key: 'all', label: 'הכל', icon: 'people' }];
+    return [
+      { key: 'all', label: 'הכל', icon: 'people' },
+      { key: 'groom', label: 'חתן', icon: 'male' },
+      { key: 'bride', label: 'כלה', icon: 'female' },
+      { key: 'other', label: 'אחרים', icon: 'ellipsis-horizontal' },
+    ];
+  }, [enableSides]);
 
   const { width } = Dimensions.get('window');
   const isCompact = width < 380;
@@ -149,10 +165,21 @@ export function GuestCategorySelectionSheet({
   const panResponder = useMemo(
     () =>
       PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onStartShouldSetPanResponderCapture: () => true,
         onMoveShouldSetPanResponder: (_, gesture) => {
           if (gesture.numberActiveTouches !== 1) return false;
           const isVertical = Math.abs(gesture.dy) > Math.abs(gesture.dx);
           return isVertical && gesture.dy > 4;
+        },
+        onMoveShouldSetPanResponderCapture: (_, gesture) => {
+          if (gesture.numberActiveTouches !== 1) return false;
+          const isVertical = Math.abs(gesture.dy) > Math.abs(gesture.dx);
+          return isVertical && gesture.dy > 1;
+        },
+        onPanResponderGrant: () => {
+          // Stop any in-flight animations so drag feels direct.
+          translateY.stopAnimation();
         },
         onPanResponderMove: (_, gesture) => {
           // only allow dragging downward
@@ -206,10 +233,19 @@ export function GuestCategorySelectionSheet({
         <Pressable style={styles.backdropPressArea} onPress={onClose} />
 
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          // Using 'height' prevents the sheet from being pushed too high on iOS
+          // when the keyboard opens (common with large bottom-sheets).
+          behavior={Platform.OS === 'ios' ? 'height' : undefined}
           style={styles.sheetWrap}
         >
-          <Animated.View style={[styles.sheetFrame, { height: sheetHeight, transform: [{ translateY }] }]}>
+          <Animated.View
+            style={[
+              styles.sheetFrame,
+              // Keep a cap on max height, but let the sheet shrink with the
+              // KeyboardAvoidingView when the keyboard is open.
+              { maxHeight: sheetHeight, transform: [{ translateY }] },
+            ]}
+          >
             <BlurView intensity={28} tint="light" style={styles.sheetGlass}>
               {/* Drag handle */}
               <View style={styles.handleRow} {...panResponder.panHandlers}>
@@ -240,7 +276,7 @@ export function GuestCategorySelectionSheet({
                 </View>
 
                 {/* Chips */}
-                {mode === 'existing' && (
+                {mode === 'existing' && enableSides && (
                   <ScrollView
                     horizontal
                     showsHorizontalScrollIndicator={false}
@@ -278,7 +314,11 @@ export function GuestCategorySelectionSheet({
               {/* Content */}
               <View style={styles.contentArea}>
                 {mode === 'new' ? (
-                  <View style={styles.createArea}>
+                  <ScrollView
+                    showsVerticalScrollIndicator={false}
+                    keyboardShouldPersistTaps="handled"
+                    contentContainerStyle={styles.createArea}
+                  >
                     <Text style={styles.createLabel}>שם הקטגוריה</Text>
                     <View style={styles.inputWrap}>
                       <TextInput
@@ -291,31 +331,51 @@ export function GuestCategorySelectionSheet({
                       />
                     </View>
 
-                    <Text style={[styles.createLabel, { marginTop: 14 }]}>שייך לצד</Text>
-                    <View style={styles.sideRow}>
-                      <Pressable
-                        onPress={() => setNewSide('groom')}
-                        style={[
-                          styles.sidePill,
-                          newSide === 'groom' && { backgroundColor: sheetPrimary, borderColor: sheetPrimary },
-                        ]}
-                      >
-                        <Ionicons name="male" size={18} color={newSide === 'groom' ? '#fff' : sheetPrimary} style={{ marginLeft: 8 }} />
-                        <Text style={[styles.sidePillText, newSide === 'groom' && { color: '#fff', fontWeight: '800' }]}>חתן</Text>
-                      </Pressable>
+                    {enableSides && (
+                      <>
+                        <Text style={[styles.createLabel, { marginTop: 14 }]}>שייך לצד</Text>
+                        <View style={styles.sideRow}>
+                          <Pressable
+                            onPress={() => setNewSide('groom')}
+                            style={[
+                              styles.sidePill,
+                              newSide === 'groom' && { backgroundColor: sheetPrimary, borderColor: sheetPrimary },
+                            ]}
+                          >
+                            <Ionicons
+                              name="male"
+                              size={18}
+                              color={newSide === 'groom' ? '#fff' : sheetPrimary}
+                              style={{ marginLeft: 8 }}
+                            />
+                            <Text style={[styles.sidePillText, newSide === 'groom' && { color: '#fff', fontWeight: '800' }]}>
+                              חתן
+                            </Text>
+                          </Pressable>
 
-                      <Pressable
-                        onPress={() => setNewSide('bride')}
-                        style={[
-                          styles.sidePill,
-                          newSide === 'bride' && { backgroundColor: sheetPrimary, borderColor: sheetPrimary },
-                        ]}
-                      >
-                        <Ionicons name="female" size={18} color={newSide === 'bride' ? '#fff' : sheetPrimary} style={{ marginLeft: 8 }} />
-                        <Text style={[styles.sidePillText, newSide === 'bride' && { color: '#fff', fontWeight: '800' }]}>כלה</Text>
-                      </Pressable>
-                    </View>
-                  </View>
+                          <Pressable
+                            onPress={() => setNewSide('bride')}
+                            style={[
+                              styles.sidePill,
+                              newSide === 'bride' && { backgroundColor: sheetPrimary, borderColor: sheetPrimary },
+                            ]}
+                          >
+                            <Ionicons
+                              name="female"
+                              size={18}
+                              color={newSide === 'bride' ? '#fff' : sheetPrimary}
+                              style={{ marginLeft: 8 }}
+                            />
+                            <Text style={[styles.sidePillText, newSide === 'bride' && { color: '#fff', fontWeight: '800' }]}>
+                              כלה
+                            </Text>
+                          </Pressable>
+                        </View>
+                      </>
+                    )}
+                    {/* Extra room so the input isn't glued to keyboard */}
+                    <View style={{ height: 24 }} />
+                  </ScrollView>
                 ) : (
                   <FlatList
                     data={filteredCategories}
@@ -326,8 +386,13 @@ export function GuestCategorySelectionSheet({
                     showsVerticalScrollIndicator={false}
                     renderItem={({ item }) => {
                       const isSelected = (pendingSelectedId ?? selectedCategoryId) === item.id;
-                      const iconName: keyof typeof Ionicons.glyphMap =
-                        item.side === 'groom' ? 'male' : item.side === 'bride' ? 'female' : 'ellipsis-horizontal';
+                      const iconName: keyof typeof Ionicons.glyphMap = !enableSides
+                        ? 'people'
+                        : item.side === 'groom'
+                          ? 'male'
+                          : item.side === 'bride'
+                            ? 'female'
+                            : 'ellipsis-horizontal';
 
                       return (
                         <Pressable
@@ -400,7 +465,13 @@ export function GuestCategorySelectionSheet({
                   >
                     <Ionicons name="checkmark" size={20} color="#fff" style={{ marginLeft: 8 }} />
                     <Text style={styles.primaryBtnText}>
-                      {mode === 'new' ? (creating ? 'מוסיף...' : 'הוסף קטגוריה') : 'בחירה'}
+                      {mode === 'new'
+                        ? creating
+                          ? 'מוסיף...'
+                          : enableSides
+                            ? 'הוסף קטגוריה'
+                            : 'שמור קטגוריה'
+                        : 'בחירה'}
                     </Text>
                   </Pressable>
                 </LinearGradient>
@@ -423,8 +494,10 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
   },
   sheetWrap: {
+    flex: 1,
     width: '100%',
     alignItems: 'center',
+    justifyContent: 'flex-end',
   },
   sheetFrame: {
     width: '100%',

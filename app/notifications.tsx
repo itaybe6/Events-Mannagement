@@ -167,18 +167,21 @@ export default function NotificationsScreen() {
     <View style={[styles.container, { backgroundColor: ui.bg }]}>
       <Stack.Screen options={{ headerShown: false }} />
       <HeaderSurface>
-        <View style={[styles.header, { paddingTop: Math.max(insets.top, 10) + 6 }]}>
-          <Pressable
-            accessibilityRole="button"
-            style={[styles.backButton, { backgroundColor: isDark ? 'rgba(148, 163, 184, 0.12)' : 'rgba(15, 23, 42, 0.04)' }]}
-            onPress={() => router.back()}
-          >
-            <Ionicons name="arrow-forward" size={22} color={ui.text} />
-          </Pressable>
+          <View style={[styles.header, { paddingTop: Math.max(insets.top, 10) + 6 }]}>
+            <Pressable
+              accessibilityRole="button"
+              style={[
+                styles.backButton,
+                styles.backBtnAbs,
+                { backgroundColor: isDark ? 'rgba(148, 163, 184, 0.12)' : 'rgba(15, 23, 42, 0.04)' },
+              ]}
+              onPress={() => router.back()}
+            >
+              <Ionicons name="arrow-back" size={22} color={ui.text} />
+            </Pressable>
 
-          <Text style={[styles.title, { color: isDark ? '#60a5fa' : ui.primary }]}>התראות</Text>
-          <View style={styles.placeholder} />
-        </View>
+            <Text style={[styles.title, { color: isDark ? '#60a5fa' : ui.primary }]}>התראות</Text>
+          </View>
       </HeaderSurface>
 
       <SectionList
@@ -315,9 +318,10 @@ const styles = StyleSheet.create({
     borderBottomColor: 'transparent',
   },
   header: {
+    position: 'relative',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     paddingHorizontal: 18,
     paddingBottom: 14,
     paddingTop: 18,
@@ -328,6 +332,12 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  backBtnAbs: {
+    position: 'absolute',
+    left: 18,
+    top: 0,
+    zIndex: 10,
   },
   title: {
     fontSize: 20,

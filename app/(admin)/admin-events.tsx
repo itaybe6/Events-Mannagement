@@ -243,8 +243,7 @@ export default function AdminEventsScreen() {
               const eventType = inferEventType(event.title) || 'חתונה';
               const badge = EVENT_BADGE_META[eventType];
               const cover = EVENT_IMAGE_BY_TYPE[eventType];
-              const coverUrl = String((event as any)?.image ?? '').trim();
-              const coverSource: any = /^https?:\/\//i.test(coverUrl) ? { uri: coverUrl } : cover;
+              const coverSource: any = cover;
 
               return (
                 <View key={event.id} style={styles.eventBlock}>

@@ -6,14 +6,14 @@ import { eventService } from '@/lib/services/eventService';
 import { guestService } from '@/lib/services/guestService';
 import { Ionicons } from '@expo/vector-icons';
 import { Event, Guest } from '@/types';
-import { supabase, supabaseAdmin } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import Svg, { Circle } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
-import * as ImagePicker from 'expo-image-picker';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
+import BackSwipe from '@/components/BackSwipe';
 
 const HERO_IMAGES = {
   baby: require('../../assets/images/baby.jpg'),
@@ -32,20 +32,17 @@ export default function AdminEventDetailsScreen() {
 
   const [editOpen, setEditOpen] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
-  const [coverUploading, setCoverUploading] = useState(false);
   const [editDatePickerOpen, setEditDatePickerOpen] = useState(false);
   const [editForm, setEditForm] = useState<{
     date: Date;
     location: string;
     city: string;
-    image: string;
     groomName: string;
     brideName: string;
   }>({
     date: new Date(),
     location: '',
     city: '',
-    image: '',
     groomName: '',
     brideName: '',
   });
@@ -122,39 +119,45 @@ export default function AdminEventDetailsScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: colors.gray[100], justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </SafeAreaView>
+      <BackSwipe>
+        <SafeAreaView style={{ flex: 1, backgroundColor: colors.gray[100], justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </SafeAreaView>
+      </BackSwipe>
     );
   }
 
   if (error) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: colors.gray[100], justifyContent: 'center', alignItems: 'center', padding: 24 }}>
-        <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text, textAlign: 'center' }}>{error}</Text>
-        <TouchableOpacity
-          onPress={() => router.replace('/(admin)/admin-events')}
-          style={{ marginTop: 16, paddingHorizontal: 18, paddingVertical: 12, borderRadius: 12, backgroundColor: colors.primary }}
-          activeOpacity={0.9}
-        >
-          <Text style={{ color: '#fff', fontWeight: '800' }}>חזרה לרשימת אירועים</Text>
-        </TouchableOpacity>
-      </SafeAreaView>
+      <BackSwipe>
+        <SafeAreaView style={{ flex: 1, backgroundColor: colors.gray[100], justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+          <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text, textAlign: 'center' }}>{error}</Text>
+          <TouchableOpacity
+            onPress={() => router.replace('/(admin)/admin-events')}
+            style={{ marginTop: 16, paddingHorizontal: 18, paddingVertical: 12, borderRadius: 12, backgroundColor: colors.primary }}
+            activeOpacity={0.9}
+          >
+            <Text style={{ color: '#fff', fontWeight: '800' }}>חזרה לרשימת אירועים</Text>
+          </TouchableOpacity>
+        </SafeAreaView>
+      </BackSwipe>
     );
   }
 
   if (!event) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: colors.gray[100], justifyContent: 'center', alignItems: 'center', padding: 24 }}>
-        <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text, textAlign: 'center' }}>האירוע לא נמצא</Text>
-        <TouchableOpacity
-          onPress={() => router.replace('/(admin)/admin-events')}
-          style={{ marginTop: 16, paddingHorizontal: 18, paddingVertical: 12, borderRadius: 12, backgroundColor: colors.primary }}
-          activeOpacity={0.9}
-        >
-          <Text style={{ color: '#fff', fontWeight: '800' }}>חזרה לרשימת אירועים</Text>
-        </TouchableOpacity>
-      </SafeAreaView>
+      <BackSwipe>
+        <SafeAreaView style={{ flex: 1, backgroundColor: colors.gray[100], justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+          <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text, textAlign: 'center' }}>האירוע לא נמצא</Text>
+          <TouchableOpacity
+            onPress={() => router.replace('/(admin)/admin-events')}
+            style={{ marginTop: 16, paddingHorizontal: 18, paddingVertical: 12, borderRadius: 12, backgroundColor: colors.primary }}
+            activeOpacity={0.9}
+          >
+            <Text style={{ color: '#fff', fontWeight: '800' }}>חזרה לרשימת אירועים</Text>
+          </TouchableOpacity>
+        </SafeAreaView>
+      </BackSwipe>
     );
   }
 
@@ -199,136 +202,10 @@ export default function AdminEventDetailsScreen() {
       date: Number.isFinite(nextDate.getTime()) ? nextDate : new Date(),
       location: String(event.location ?? ''),
       city: String(event.city ?? ''),
-      image: String(event.image ?? ''),
       groomName: String((event as any).groomName ?? ''),
       brideName: String((event as any).brideName ?? ''),
     });
     setEditOpen(true);
-  };
-
-  const base64ToUint8Array = (base64: string) => {
-    const cleaned = base64.replace(/[^A-Za-z0-9+/=]/g, '');
-    const padding = cleaned.endsWith('==') ? 2 : cleaned.endsWith('=') ? 1 : 0;
-    const byteLength = (cleaned.length * 3) / 4 - padding;
-    const bytes = new Uint8Array(byteLength);
-
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-    let byteIndex = 0;
-
-    for (let i = 0; i < cleaned.length; i += 4) {
-      const c1 = chars.indexOf(cleaned[i]);
-      const c2 = chars.indexOf(cleaned[i + 1]);
-      const c3 = chars.indexOf(cleaned[i + 2]);
-      const c4 = chars.indexOf(cleaned[i + 3]);
-
-      const triple = (c1 << 18) | (c2 << 12) | ((c3 & 63) << 6) | (c4 & 63);
-      if (byteIndex < byteLength) bytes[byteIndex++] = (triple >> 16) & 0xff;
-      if (byteIndex < byteLength) bytes[byteIndex++] = (triple >> 8) & 0xff;
-      if (byteIndex < byteLength) bytes[byteIndex++] = triple & 0xff;
-    }
-
-    return bytes;
-  };
-
-  const guessImageExt = (asset: { uri: string; fileName?: string | null; mimeType?: string | null }) => {
-    const mime = String(asset.mimeType || '').toLowerCase();
-    const fromMime = mime.split('/')[1];
-    if (fromMime && ['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif'].includes(fromMime)) {
-      return fromMime === 'jpeg' ? 'jpg' : fromMime;
-    }
-
-    const candidate = String(asset.fileName || asset.uri).split('?')[0];
-    const dot = candidate.lastIndexOf('.');
-    if (dot !== -1 && dot < candidate.length - 1) {
-      const ext = candidate.slice(dot + 1).toLowerCase();
-      if (['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif'].includes(ext)) {
-        return ext === 'jpeg' ? 'jpg' : ext;
-      }
-    }
-
-    return 'jpg';
-  };
-
-  const guessContentType = (ext: string, fallback?: string | null) => {
-    if (fallback) return fallback;
-    switch (ext) {
-      case 'png':
-        return 'image/png';
-      case 'webp':
-        return 'image/webp';
-      case 'gif':
-        return 'image/gif';
-      case 'heic':
-      case 'heif':
-        return 'image/heic';
-      case 'jpg':
-      default:
-        return 'image/jpeg';
-    }
-  };
-
-  const pickAndUploadEventCover = async () => {
-    if (!event?.id) return;
-
-    try {
-      if (Platform.OS !== 'web') {
-        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (!permission.granted) {
-          Alert.alert('הרשאה נדרשת', 'כדי לבחור תמונה יש לאשר גישה לגלריה');
-          return;
-        }
-      }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [16, 9],
-        quality: 0.85,
-        base64: true,
-      });
-
-      if (result.canceled || !result.assets?.[0]) return;
-      const asset = result.assets[0];
-
-      const ext = guessImageExt(asset);
-      const filePath = `events/${event.id}/${Date.now()}.${ext}`;
-      const contentType = guessContentType(ext, (asset as any)?.mimeType);
-
-      setCoverUploading(true);
-
-      let uploadBody: Blob | Uint8Array | null = null;
-      if ((asset as any)?.base64) {
-        uploadBody = base64ToUint8Array((asset as any).base64);
-      } else {
-        const res = await fetch(asset.uri);
-        uploadBody = await res.blob();
-      }
-      if (!uploadBody) throw new Error('חסרים נתוני תמונה להעלאה');
-
-      const { error: uploadError } = await supabaseAdmin.storage
-        .from('event-images')
-        .upload(filePath, uploadBody as any, { upsert: true, contentType });
-      if (uploadError) throw uploadError;
-
-      const { data: publicData } = supabase.storage.from('event-images').getPublicUrl(filePath);
-      const publicUrl = publicData.publicUrl;
-
-      let finalUrl = publicUrl;
-      try {
-        const probe = await fetch(publicUrl, { method: 'GET' });
-        if (!probe.ok) throw new Error('Public URL not accessible');
-      } catch {
-        const { data: signedData } = await supabaseAdmin.storage.from('event-images').createSignedUrl(filePath, 60 * 60 * 24 * 30);
-        if (signedData?.signedUrl) finalUrl = signedData.signedUrl;
-      }
-
-      setEditForm(f => ({ ...f, image: finalUrl }));
-    } catch (e) {
-      const message = e instanceof Error ? e.message : 'שגיאה לא ידועה';
-      Alert.alert('שגיאה', `לא ניתן להעלות תמונה.\n\n${message}`);
-    } finally {
-      setCoverUploading(false);
-    }
   };
 
   const saveEditEvent = async () => {
@@ -357,8 +234,6 @@ export default function AdminEventDetailsScreen() {
         location: nextLocation,
         city: (editForm.city || '').trim(),
       };
-      const img = (editForm.image || '').trim();
-      if (img) updates.image = img;
 
       if (isWeddingEvent()) {
         updates.groomName = (editForm.groomName || '').trim();
@@ -403,9 +278,6 @@ export default function AdminEventDetailsScreen() {
 
     if (hasBarMitzvah) return HERO_IMAGES.barMitzvah;
     if (hasBaby) return HERO_IMAGES.baby;
-
-    const img = String(event?.image ?? '').trim();
-    if (/^https?:\/\//i.test(img)) return { uri: img };
 
     return HERO_IMAGES.wedding;
   };
@@ -558,23 +430,24 @@ export default function AdminEventDetailsScreen() {
   const tabBarReserve = Platform.OS === 'web' ? 30 : (Platform.OS === 'ios' ? 30 : 20) + 65 + 24;
 
   return (
-    <View style={[styles.safeRoot, { backgroundColor: ui.bg }]}>
-      <SafeAreaView style={styles.safe}>
-      {/* Background blobs */}
-      <View pointerEvents="none" style={styles.bgLayer}>
-        <LinearGradient
-          colors={['rgba(224,231,255,0.95)', 'rgba(224,231,255,0)']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={[styles.blob, styles.blobLeft]}
-        />
-        <LinearGradient
-          colors={['rgba(237,233,254,0.95)', 'rgba(237,233,254,0)']}
-          start={{ x: 1, y: 0 }}
-          end={{ x: 0, y: 1 }}
-          style={[styles.blob, styles.blobRight]}
-        />
-      </View>
+    <BackSwipe>
+      <View style={[styles.safeRoot, { backgroundColor: ui.bg }]}>
+        <SafeAreaView style={styles.safe}>
+        {/* Background blobs */}
+        <View pointerEvents="none" style={styles.bgLayer}>
+          <LinearGradient
+            colors={['rgba(224,231,255,0.95)', 'rgba(224,231,255,0)']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[styles.blob, styles.blobLeft]}
+          />
+          <LinearGradient
+            colors={['rgba(237,233,254,0.95)', 'rgba(237,233,254,0)']}
+            start={{ x: 1, y: 0 }}
+            end={{ x: 0, y: 1 }}
+            style={[styles.blob, styles.blobRight]}
+          />
+        </View>
 
       <ScrollView
         style={styles.scroll}
@@ -619,9 +492,8 @@ export default function AdminEventDetailsScreen() {
               accessibilityRole="button"
               accessibilityLabel="חזרה"
             >
-              <Ionicons name="chevron-forward" size={22} color={ui.text} />
+              <Ionicons name="chevron-back" size={22} color={ui.text} />
             </TouchableOpacity>
-            <View style={styles.navRightSpacer} />
           </View>
 
           <View style={styles.hero}>
@@ -885,55 +757,6 @@ export default function AdminEventDetailsScreen() {
               <View style={styles.editDivider} />
 
               <ScrollView contentContainerStyle={styles.editBody} showsVerticalScrollIndicator={false}>
-                {/* Cover image */}
-                <View style={styles.editBlock}>
-                  <View style={styles.editBlockHeaderRow}>
-                    <Text style={styles.editBlockLabel}>תמונת אירוע</Text>
-                    <TouchableOpacity
-                      style={[styles.smallBtn, coverUploading ? { opacity: 0.75 } : null]}
-                      onPress={pickAndUploadEventCover}
-                      disabled={coverUploading}
-                      activeOpacity={0.9}
-                      accessibilityRole="button"
-                      accessibilityLabel="בחר תמונת אירוע"
-                    >
-                      {coverUploading ? (
-                        <ActivityIndicator size="small" color={ui.primary} />
-                      ) : (
-                        <Ionicons name="image-outline" size={16} color={ui.primary} />
-                      )}
-                      <Text style={styles.smallBtnText}>{coverUploading ? 'מעלה...' : 'בחר תמונה'}</Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  <View style={styles.coverPreviewWrap}>
-                    {(editForm.image || '').trim() ? (
-                      <Image
-                        source={{ uri: (editForm.image || '').trim() }}
-                        style={styles.coverPreviewImg}
-                        contentFit="cover"
-                        transition={150}
-                      />
-                    ) : (
-                      <View style={styles.coverPreviewFallback}>
-                        <Ionicons name="image" size={26} color={'rgba(17,24,39,0.35)'} />
-                        <Text style={styles.coverPreviewFallbackText}>לא נבחרה תמונה</Text>
-                      </View>
-                    )}
-                  </View>
-
-                  <TextInput
-                    value={editForm.image}
-                    onChangeText={(t) => setEditForm((f) => ({ ...f, image: t }))}
-                    placeholder="או הדבק/י קישור לתמונה (URL)"
-                    placeholderTextColor={'rgba(17,24,39,0.35)'}
-                    style={styles.editInput}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    textAlign="right"
-                  />
-                </View>
-
                 {/* Date */}
                 <View style={styles.editBlock}>
                   <Text style={styles.editBlockLabel}>תאריך האירוע</Text>
@@ -1022,10 +845,10 @@ export default function AdminEventDetailsScreen() {
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={[styles.footerBtnPrimary, (editSaving || coverUploading) ? { opacity: 0.85 } : null]}
+                  style={[styles.footerBtnPrimary, editSaving ? { opacity: 0.85 } : null]}
                   onPress={saveEditEvent}
                   activeOpacity={0.92}
-                  disabled={editSaving || coverUploading}
+                  disabled={editSaving}
                   accessibilityRole="button"
                   accessibilityLabel="שמירת שינויים"
                 >
@@ -1055,7 +878,8 @@ export default function AdminEventDetailsScreen() {
           </KeyboardAvoidingView>
         </Pressable>
       </Modal>
-    </View>
+      </View>
+    </BackSwipe>
   );
 }
 
@@ -1115,7 +939,7 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
     zIndex: 5,
   },
   scroll: {

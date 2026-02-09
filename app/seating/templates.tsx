@@ -1110,14 +1110,13 @@ export default function SeatingTemplatesScreen(props: SeatingTemplatesScreenProp
         <BlurView intensity={26} tint="light" style={styles.headerBlur}>
           <View style={[styles.headerInner, { borderBottomColor: ui.borderGlass }]}>
             <TouchableOpacity
-              style={[styles.headerIconBtn, { borderColor: ui.borderSoft }]}
+              style={[styles.headerIconBtn, styles.backBtnAbs, { borderColor: ui.borderSoft }]}
               onPress={() => router.back()}
               activeOpacity={0.85}
               accessibilityRole="button"
               accessibilityLabel="חזרה"
             >
-              {/* RTL back arrow points right */}
-              <Ionicons name="chevron-forward" size={24} color={ui.primary} />
+              <Ionicons name="chevron-back" size={24} color={ui.primary} />
             </TouchableOpacity>
 
             <View style={styles.headerTitleWrap}>
@@ -1129,36 +1128,38 @@ export default function SeatingTemplatesScreen(props: SeatingTemplatesScreenProp
               )}
             </View>
 
-            <TouchableOpacity
-              style={[styles.headerIconBtn, { borderColor: ui.borderSoft }]}
-              onPress={() => setMode('map')}
-              activeOpacity={0.85}
-              accessibilityRole="button"
-              accessibilityLabel="מצב מפה"
-            >
-              <Ionicons name="map-outline" size={22} color={ui.primary} />
-            </TouchableOpacity>
+            <View style={styles.headerRightActions}>
+              <TouchableOpacity
+                style={[styles.headerIconBtn, { borderColor: ui.borderSoft }]}
+                onPress={() => setMode('map')}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel="מצב מפה"
+              >
+                <Ionicons name="map-outline" size={22} color={ui.primary} />
+              </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[
-                styles.headerSaveBtn,
-                {
-                  backgroundColor: ui.primary,
-                  opacity: loading ? 0.7 : 1,
-                },
-              ]}
-              onPress={handleCreateMap}
-              disabled={loading}
-              activeOpacity={0.9}
-              accessibilityRole="button"
-              accessibilityLabel="שמור"
-            >
-              {loading ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Text style={styles.headerSaveText}>שמור</Text>
-              )}
-            </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.headerSaveBtn,
+                  {
+                    backgroundColor: ui.primary,
+                    opacity: loading ? 0.7 : 1,
+                  },
+                ]}
+                onPress={handleCreateMap}
+                disabled={loading}
+                activeOpacity={0.9}
+                accessibilityRole="button"
+                accessibilityLabel="שמור"
+              >
+                {loading ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.headerSaveText}>שמור</Text>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
         </BlurView>
       </View>
@@ -3751,13 +3752,29 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   headerInner: {
-    flexDirection: 'row-reverse',
+    position: 'relative',
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     paddingHorizontal: 18,
     paddingTop: Platform.OS === 'ios' ? 10 : 16,
     paddingBottom: 12,
     borderBottomWidth: 1,
+  },
+  backBtnAbs: {
+    position: 'absolute',
+    left: 18,
+    top: 0,
+    zIndex: 10,
+  },
+  headerRightActions: {
+    position: 'absolute',
+    right: 18,
+    top: 0,
+    zIndex: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   headerIconBtn: {
     width: 40,
