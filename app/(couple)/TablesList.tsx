@@ -2,15 +2,21 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, Modal, FlatList, TextInput } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { useUserStore } from '@/store/userStore';
+import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import { Ionicons } from '@expo/vector-icons';
 import { Table } from '@/types';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useLayoutStore } from '@/store/layoutStore';
 import { colors } from '@/constants/colors';
+import { EventSwitcher } from '@/components/EventSwitcher';
 
 export default function TablesList() {
   const { userData } = useUserStore();
   const router = useRouter();
+  const { eventId: queryEventId } = useLocalSearchParams<{ eventId?: string }>();
+  const activeUserId = useEventSelectionStore((s) => s.activeUserId);
+  const activeEventId = useEventSelectionStore((s) => s.activeEventId);
+  const setActiveEvent = useEventSelectionStore((s) => s.setActiveEvent);
   const { setTabBarVisible } = useLayoutStore();
   const [tables, setTables] = useState<Table[]>([]);
   const [guests, setGuests] = useState<any[]>([]);
@@ -24,30 +30,44 @@ export default function TablesList() {
   const [editingTableId, setEditingTableId] = useState<string | null>(null);
   const [selectedGuestsToDelete, setSelectedGuestsToDelete] = useState<Set<string>>(new Set());
 
+  const resolvedEventId =
+    String(
+      queryEventId ||
+        (userData?.id && activeUserId === userData.id ? activeEventId : null) ||
+        userData?.event_id ||
+        ''
+    ).trim() || null;
+
+  const handleSelectEventId = (nextEventId: string) => {
+    if (userData?.id) setActiveEvent(userData.id, nextEventId);
+    router.replace({ pathname: '/(couple)/TablesList', params: { eventId: nextEventId } });
+  };
+
   useEffect(() => {
-    if (userData?.event_id) {
+    if (resolvedEventId) {
       setLoading(true);
       Promise.all([
         fetchTables(),
         fetchGuests(),
       ]).finally(() => setLoading(false));
     }
-  }, [userData?.event_id]);
+    if (userData?.id && resolvedEventId) setActiveEvent(userData.id, resolvedEventId);
+  }, [resolvedEventId, userData?.id, setActiveEvent]);
 
   const fetchTables = async () => {
-    if (!userData?.event_id) return;
+    if (!resolvedEventId) return;
     
     const { data, error } = await supabase
       .from('tables')
       .select('*')
-      .eq('event_id', userData.event_id)
+      .eq('event_id', resolvedEventId)
       .order('number');
     
     if (!error) setTables(data || []);
   };
 
   const fetchGuests = async () => {
-    if (!userData?.event_id) return;
+    if (!resolvedEventId) return;
 
     try {
       // Avoid PostgREST relationship joins (PGRST200) by fetching separately and joining client-side.
@@ -58,9 +78,9 @@ export default function TablesList() {
         supabase
           .from('guests')
           .select('*')
-          .eq('event_id', userData.event_id)
+          .eq('event_id', resolvedEventId)
           .eq('status', 'מגיע'),
-        supabase.from('guest_categories').select('id,name').eq('event_id', userData.event_id),
+        supabase.from('guest_categories').select('id,name').eq('event_id', resolvedEventId),
       ]);
 
       if (guestsError) throw guestsError;
@@ -238,7 +258,7 @@ export default function TablesList() {
     );
   }
 
-  if (!userData?.event_id) {
+  if (!resolvedEventId) {
     return (
       <View style={styles.centered}>
         <Text style={styles.errorText}>אין אירוע זמין</Text>
@@ -263,7 +283,15 @@ export default function TablesList() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.push('/(couple)/BrideGroomSeating')}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() =>
+            router.push({
+              pathname: '/(couple)/BrideGroomSeating',
+              params: resolvedEventId ? { eventId: resolvedEventId } : {},
+            })
+          }
+        >
           <Ionicons name="chevron-back" size={24} color={colors.primary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>שולחנות</Text>
@@ -277,6 +305,15 @@ export default function TablesList() {
             <Text style={styles.statText}>{totalTables} בהושבה</Text>
           </View>
         </View>
+      </View>
+
+      <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
+        <EventSwitcher
+          userId={userData?.id}
+          selectedEventId={resolvedEventId}
+          onSelectEventId={handleSelectEventId}
+          label="אירוע פעיל"
+        />
       </View>
 
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollViewContent}>

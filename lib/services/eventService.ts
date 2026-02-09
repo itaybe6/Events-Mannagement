@@ -43,6 +43,35 @@ export const eventService = {
     }
   },
 
+  // Get all events for a specific user (event owner)
+  getEventsForUser: async (
+    userId: string,
+    opts?: { limit?: number }
+  ): Promise<Array<Pick<Event, 'id' | 'title' | 'date' | 'location' | 'city'>>> => {
+    try {
+      const query = supabase
+        .from('events')
+        .select('id,title,date,location,city')
+        .eq('user_id', userId)
+        .order('date', { ascending: true });
+
+      const { data, error } = await (opts?.limit ? query.limit(opts.limit) : query);
+
+      if (error) throw error;
+
+      return (data || []).map((e: any) => ({
+        id: e.id,
+        title: e.title,
+        date: new Date(e.date),
+        location: e.location,
+        city: e.city || '',
+      }));
+    } catch (error) {
+      console.error('Get events for user error:', error);
+      throw error;
+    }
+  },
+
   // Get single event by ID
   getEvent: async (eventId: string): Promise<Event | null> => {
     try {

@@ -11,8 +11,8 @@ import {
   Alert,
   Modal,
   Image,
-  Pressable,
   ActivityIndicator,
+  I18nManager,
 } from 'react-native';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { Stack, useRouter } from 'expo-router';
@@ -29,19 +29,22 @@ import { useLayoutStore } from '@/store/layoutStore';
 const ui = {
   primary: '#067ff9',
   bgLight: '#f5f7f8',
-  bgDark: '#0f1923',
 };
 
-const rtlTextAlign = Platform.select({ ios: 'right', default: 'right' }) as 'right';
+const rtlTextAlign = 'right' as const;
+const isRTL = I18nManager.isRTL;
+
 const baseShadow = {
   shadowColor: '#000',
-  shadowOffset: { width: 0, height: 2 },
-  shadowOpacity: 0.1,
-  shadowRadius: 4,
-  elevation: 3,
+  shadowOffset: { width: 0, height: 10 },
+  shadowOpacity: 0.12,
+  shadowRadius: 18,
+  elevation: 6,
 };
 
-export default function AddUserScreen() {
+type UserType = 'event_owner' | 'admin' | 'employee';
+
+export default function AddUserScreenV2() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   // This screen is intentionally "light" (per design request), regardless of device theme.
@@ -67,7 +70,7 @@ export default function AddUserScreen() {
     phone: '',
     password: '',
     confirmPassword: '',
-    user_type: 'event_owner' as 'event_owner' | 'admin' | 'employee',
+    user_type: 'event_owner' as UserType,
   });
 
   const theme = useMemo(() => {
@@ -75,9 +78,7 @@ export default function AddUserScreen() {
     const muted = '#64748b';
     const faint = '#94a3b8';
     const bg = ui.bgLight;
-    const surface = ui.bgLight;
-    const headerBg = 'rgba(245, 247, 248, 0.85)';
-    const footerBg = 'rgba(245, 247, 248, 0.95)';
+    const headerBg = 'rgba(245, 247, 248, 0.90)';
     const inputBg = '#ffffff';
     const border = '#e2e8f0';
     const divider = '#e2e8f0';
@@ -89,7 +90,6 @@ export default function AddUserScreen() {
 
     return {
       bg,
-      surface,
       text,
       muted,
       faint,
@@ -97,7 +97,6 @@ export default function AddUserScreen() {
       border,
       divider,
       headerBg,
-      footerBg,
       segmentBg,
       segmentActiveBg,
       primary,
@@ -111,8 +110,8 @@ export default function AddUserScreen() {
       router.replace('/login');
       return;
     }
-    checkConnection();
-  }, [isLoggedIn, userType]);
+    void checkConnection();
+  }, [isLoggedIn, userType, router]);
 
   useEffect(() => {
     // This screen is a focused flow; hide the bottom tabs while adding a user.
@@ -127,17 +126,9 @@ export default function AddUserScreen() {
       if (!connectionResult.success) {
         Alert.alert('אבחון בעיות דאטאבייס', connectionResult.message, [{ text: 'הבנתי' }]);
       }
-    } catch (error) {
+    } catch {
       setIsDemoMode(true);
     }
-  };
-
-  const HeaderSurface = ({ children }: { children: React.ReactNode }) => {
-    return (
-      <View style={[styles.headerSurface, { backgroundColor: theme.headerBg, borderBottomColor: theme.border }]}>
-        {children}
-      </View>
-    );
   };
 
   const handleAddUser = async () => {
@@ -233,7 +224,7 @@ export default function AddUserScreen() {
           },
         ]);
       }
-    } catch (error) {
+    } catch {
       Alert.alert('שגיאה', 'לא ניתן להוסיף את המשתמש');
     } finally {
       setLoading(false);
@@ -261,25 +252,44 @@ export default function AddUserScreen() {
       if (!result.canceled && result.assets?.[0]) {
         setAvatar(result.assets[0]);
       }
-    } catch (e) {
+    } catch {
       Alert.alert('שגיאה', 'לא ניתן לבחור תמונה');
     }
+  };
+
+  const RoleOption = ({ label, value }: { label: string; value: UserType }) => {
+    const active = newUser.user_type === value;
+    return (
+      <TouchableOpacity
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        activeOpacity={0.85}
+        onPress={() => setNewUser((prev) => ({ ...prev, user_type: value }))}
+        style={[styles.roleOption, active ? styles.roleOptionActive : styles.roleOptionInactive]}
+      >
+        <Text style={[styles.roleOptionText, active ? styles.roleOptionTextActive : styles.roleOptionTextInactive]}>
+          {label}
+        </Text>
+      </TouchableOpacity>
+    );
   };
 
   return (
     <View style={[styles.screen, { backgroundColor: theme.bg, paddingTop: insets.top }]}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      <HeaderSurface>
-        <View style={[styles.header, { paddingTop: 10 }]}>
-          <Pressable
+      {/* Header (stable: no row-reverse tricks, use RTL-aware direction) */}
+      <View style={[styles.headerSurface, { backgroundColor: theme.headerBg, borderBottomColor: theme.border }]}>
+        <View style={styles.headerRow}>
+          <TouchableOpacity
             accessibilityRole="button"
             accessibilityLabel="חזרה"
             onPress={() => router.back()}
-            style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
+            activeOpacity={0.85}
+            style={styles.backButton}
           >
             <MaterialIcons name="arrow-forward-ios" size={20} color={ui.primary} />
-          </Pressable>
+          </TouchableOpacity>
 
           <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>
             הוספת משתמש חדש
@@ -287,7 +297,7 @@ export default function AddUserScreen() {
 
           <View style={styles.headerPlaceholder} />
         </View>
-      </HeaderSurface>
+      </View>
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
@@ -298,23 +308,31 @@ export default function AddUserScreen() {
           style={{ flex: 1 }}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
         >
           {isDemoMode && (
-            <View style={[styles.demoNote, { borderColor: 'rgba(6, 127, 249, 0.18)', backgroundColor: 'rgba(6, 127, 249, 0.08)' }]}>
+            <View
+              style={[
+                styles.demoNote,
+                {
+                  borderColor: 'rgba(6, 127, 249, 0.18)',
+                  backgroundColor: 'rgba(6, 127, 249, 0.08)',
+                },
+              ]}
+            >
               <Ionicons name="information-circle" size={18} color={ui.primary} style={{ marginLeft: 8 }} />
-              <Text style={[styles.demoNoteText, { color: theme.text }]}>
-                מצב דמו: הנתונים נשמרים מקומית ולא בדאטאבייס.
-              </Text>
+              <Text style={[styles.demoNoteText, { color: theme.text }]}>מצב דמו: הנתונים נשמרים מקומית ולא בדאטאבייס.</Text>
             </View>
           )}
 
           {/* Avatar */}
           <View style={styles.avatarSection}>
-            <Pressable
+            <TouchableOpacity
               accessibilityRole="button"
               accessibilityLabel={avatar ? 'החלף תמונה' : 'הוסף תמונה'}
               onPress={handlePickAvatar}
-              style={({ pressed }) => [styles.avatarPressable, pressed && styles.pressed]}
+              activeOpacity={0.85}
+              style={styles.avatarPressable}
             >
               <View style={[styles.avatarCircle, { backgroundColor: theme.inputBg, borderColor: theme.border }]}>
                 {avatar?.uri ? (
@@ -324,18 +342,19 @@ export default function AddUserScreen() {
                 )}
               </View>
               <Text style={[styles.avatarCta, { marginTop: 10 }]}>הוסף תמונה</Text>
-            </Pressable>
+            </TouchableOpacity>
 
             {!!avatar && (
-              <Pressable
+              <TouchableOpacity
                 accessibilityRole="button"
                 accessibilityLabel="הסר תמונה"
                 onPress={() => setAvatar(null)}
-                style={({ pressed }) => [styles.removeAvatarBtn, pressed && { opacity: 0.85 }]}
+                activeOpacity={0.85}
+                style={styles.removeAvatarBtn}
               >
                 <Ionicons name="trash-outline" size={16} color="#F44336" style={{ marginLeft: 6 }} />
                 <Text style={styles.removeAvatarText}>הסר</Text>
-              </Pressable>
+              </TouchableOpacity>
             )}
           </View>
 
@@ -422,18 +441,19 @@ export default function AddUserScreen() {
                   onFocus={() => setFocusedField('password')}
                   onBlur={() => setFocusedField((f) => (f === 'password' ? null : f))}
                 />
-                <Pressable
+                <TouchableOpacity
                   accessibilityRole="button"
                   accessibilityLabel={showPassword ? 'הסתר סיסמה' : 'הצג סיסמה'}
                   onPress={() => setShowPassword((v) => !v)}
-                  style={({ pressed }) => [styles.eyeBtn, pressed && { opacity: 0.75 }]}
+                  activeOpacity={0.7}
+                  style={styles.eyeBtn}
                 >
                   <MaterialIcons
                     name={showPassword ? 'visibility-off' : 'visibility'}
                     size={20}
                     color={isDark ? '#94a3b8' : '#64748b'}
                   />
-                </Pressable>
+                </TouchableOpacity>
               </View>
             </View>
 
@@ -456,113 +476,64 @@ export default function AddUserScreen() {
                   onFocus={() => setFocusedField('confirmPassword')}
                   onBlur={() => setFocusedField((f) => (f === 'confirmPassword' ? null : f))}
                 />
-                <Pressable
+                <TouchableOpacity
                   accessibilityRole="button"
                   accessibilityLabel={showConfirmPassword ? 'הסתר אימות סיסמה' : 'הצג אימות סיסמה'}
                   onPress={() => setShowConfirmPassword((v) => !v)}
-                  style={({ pressed }) => [styles.eyeBtn, pressed && { opacity: 0.75 }]}
+                  activeOpacity={0.7}
+                  style={styles.eyeBtn}
                 >
                   <MaterialIcons
                     name={showConfirmPassword ? 'visibility-off' : 'visibility'}
                     size={20}
                     color={isDark ? '#94a3b8' : '#64748b'}
                   />
-                </Pressable>
+                </TouchableOpacity>
               </View>
             </View>
           </View>
 
-          {/* Role segmented control */}
+          {/* Role segmented control (new stable style inspired by HTML) */}
           <View style={styles.roleSection}>
             <Text style={[styles.roleLabel, { color: theme.muted }]}>תפקיד</Text>
             <View
               style={[
-                styles.segmentWrap,
+                styles.roleSegmentV3,
                 {
-                  backgroundColor: theme.segmentBg,
-                  borderColor: '#d8dee9',
+                  backgroundColor: '#E2E8F0', // slate-200 (opaque + visible)
+                  borderColor: '#CBD5E1', // slate-300
+                  flexDirection: isRTL ? 'row' : 'row-reverse',
                 },
               ]}
             >
-              <Pressable
-                hitSlop={{ top: 12, bottom: 12, left: 10, right: 10 }}
-                onPress={() => setNewUser((prev) => ({ ...prev, user_type: 'employee' }))}
-                style={({ pressed }) => [
-                  styles.segmentItem,
-                  newUser.user_type === 'employee' ? styles.segmentItemActive : styles.segmentItemInactive,
-                  pressed && styles.segmentPressed,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.segmentText,
-                    { color: theme.muted },
-                    newUser.user_type === 'employee' && { color: theme.primary },
-                  ]}
-                >
-                  עובד
-                </Text>
-              </Pressable>
-
-              <Pressable
-                hitSlop={{ top: 12, bottom: 12, left: 10, right: 10 }}
-                onPress={() => setNewUser((prev) => ({ ...prev, user_type: 'admin' }))}
-                style={({ pressed }) => [
-                  styles.segmentItem,
-                  newUser.user_type === 'admin' ? styles.segmentItemActive : styles.segmentItemInactive,
-                  pressed && styles.segmentPressed,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.segmentText,
-                    { color: theme.muted },
-                    newUser.user_type === 'admin' && { color: theme.primary },
-                  ]}
-                >
-                  מנהל
-                </Text>
-              </Pressable>
-
-              <Pressable
-                hitSlop={{ top: 12, bottom: 12, left: 10, right: 10 }}
-                onPress={() => setNewUser((prev) => ({ ...prev, user_type: 'event_owner' }))}
-                style={({ pressed }) => [
-                  styles.segmentItem,
-                  newUser.user_type === 'event_owner' ? styles.segmentItemActive : styles.segmentItemInactive,
-                  pressed && styles.segmentPressed,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.segmentText,
-                    { color: theme.muted },
-                    newUser.user_type === 'event_owner' && { color: theme.primary },
-                  ]}
-                >
-                  בעל אירוע
-                </Text>
-              </Pressable>
+              <RoleOption label="עובד" value="employee" />
+              <RoleOption label="מנהל" value="admin" />
+              <RoleOption label="בעל אירוע" value="event_owner" />
             </View>
           </View>
 
-          <View style={{ height: 50 }} />
+          <View style={{ height: 80 }} />
         </ScrollView>
-        {/* Sticky bottom action */}
-        <View style={[styles.footerWrap, { paddingBottom: insets.bottom, backgroundColor: theme.bg }]}>
-          <View style={[styles.footerPanel, { backgroundColor: theme.footerBg, borderColor: theme.border }]}>
-            <Pressable
-              onPress={handleAddUser}
-              disabled={loading}
-              style={({ pressed }) => [
-                styles.saveBtn,
-                (pressed || loading) && styles.saveBtnPressed,
-                loading && { opacity: 0.9 },
-              ]}
-            >
-              {loading ? <ActivityIndicator color="white" /> : <Text style={styles.saveBtnText}>שמור משתמש</Text>}
-            </Pressable>
-          </View>
+
+        {/* Sticky bottom action (new stable style inspired by HTML) */}
+        <View
+          style={[
+            styles.footerBar,
+            {
+              paddingBottom: Math.max(insets.bottom, 14),
+              backgroundColor: theme.bg,
+              borderTopColor: 'rgba(15, 23, 42, 0.06)',
+            },
+          ]}
+        >
+          <TouchableOpacity
+            onPress={handleAddUser}
+            disabled={loading}
+            activeOpacity={0.88}
+            style={[styles.primaryButtonV3, loading && { opacity: 0.75 }]}
+          >
+            {loading ? <ActivityIndicator color="white" /> : <Text style={styles.primaryButtonText}>שמור משתמש</Text>}
+          </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
 
@@ -623,12 +594,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: 'transparent',
   },
-  headerSurfaceInner: {
-    borderBottomWidth: 1,
-    borderBottomColor: 'transparent',
-  },
-  header: {
-    flexDirection: 'row-reverse',
+  headerRow: {
+    flexDirection: isRTL ? 'row' : 'row-reverse',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 18,
@@ -651,10 +618,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
   },
   headerPlaceholder: { width: 40 },
-  pressed: { opacity: 0.9, transform: [{ scale: 0.99 }] },
 
-  body: { flex: 1 },
-  scroll: { flex: 1 },
   content: {
     width: '100%',
     maxWidth: 440,
@@ -665,7 +629,7 @@ const styles = StyleSheet.create({
   },
 
   demoNote: {
-    flexDirection: 'row-reverse',
+    flexDirection: isRTL ? 'row' : 'row-reverse',
     alignItems: 'center',
     paddingVertical: 10,
     paddingHorizontal: 12,
@@ -695,12 +659,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
+    backgroundColor: '#fff',
     ...baseShadow,
   },
   avatarImage: { width: '100%', height: '100%', resizeMode: 'cover' },
   avatarCta: { fontSize: 14, fontWeight: '900', color: '#067ff9', textAlign: 'center' },
   removeAvatarBtn: {
-    flexDirection: 'row-reverse',
+    flexDirection: isRTL ? 'row' : 'row-reverse',
     alignItems: 'center',
     paddingVertical: 8,
     paddingHorizontal: 12,
@@ -755,38 +720,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  segmentWrap: {
-    flexDirection: 'row',
-    alignSelf: 'stretch',
-    borderRadius: 16,
-    padding: 2,
-    borderWidth: 1,
-    backgroundColor: '#e9edf3',
-    borderColor: '#d8dee9',
-    overflow: 'visible',
-  },
-  segmentItem: {
-    flex: 1,
-    height: 40,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginHorizontal: 2,
-    backgroundColor: 'transparent',
-    overflow: 'visible',
-  },
-  segmentItemInactive: {
-    backgroundColor: 'transparent',
-  },
-  segmentItemActive: {
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    ...baseShadow,
-  },
-  segmentPressed: { opacity: 0.92, transform: [{ scale: 0.99 }] },
-  segmentText: { fontSize: 13, fontWeight: '700', textAlign: 'center' },
-
   roleSection: {
     marginTop: 14,
     paddingTop: 6,
@@ -795,33 +728,69 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '900',
     textAlign: rtlTextAlign,
-    marginBottom: 8,
+    marginBottom: 10,
   },
-
-  footerWrap: {
-    paddingHorizontal: 16,
-    paddingTop: 10,
-  },
-  footerPanel: {
-    width: '100%',
-    maxWidth: 440,
-    alignSelf: 'center',
-    padding: 14,
-    borderRadius: 16,
+  roleSegment: {
     borderWidth: 1,
-    ...baseShadow,
+    borderRadius: 14,
+    padding: 4,
+    alignSelf: 'stretch',
+    overflow: 'hidden',
   },
-  saveBtn: {
-    width: '100%',
-    height: 48,
-    borderRadius: 12,
-    backgroundColor: '#067ff9',
+  // New: super-stable segmented container (no shadows, strong contrast)
+  roleSegmentV3: {
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 4,
+    alignSelf: 'stretch',
+  },
+  roleOption: {
+    flex: 1,
+    height: 40,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    ...baseShadow,
+    marginHorizontal: 4,
   },
-  saveBtnPressed: { transform: [{ scale: 0.99 }], opacity: 0.96 },
-  saveBtnText: { color: 'white', fontSize: 17, fontWeight: '900', letterSpacing: -0.2 },
+  roleOptionInactive: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  roleOptionActive: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#94A3B8', // slate-400
+  },
+  roleOptionText: {
+    fontSize: 13,
+    fontWeight: '800',
+    textAlign: 'center',
+    letterSpacing: -0.1,
+  },
+  roleOptionTextInactive: {
+    color: '#475569', // slate-600
+  },
+  roleOptionTextActive: {
+    color: ui.primary,
+  },
+
+  footerBar: {
+    borderTopWidth: 1,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+  },
+  // New: very simple primary button (no shadow, no transforms)
+  primaryButtonV3: {
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: ui.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
+  },
+  primaryButtonText: { color: 'white', fontSize: 17, fontWeight: '900', letterSpacing: -0.2 },
 
   successOverlay: {
     flex: 1,
@@ -894,3 +863,4 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
+

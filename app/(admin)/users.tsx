@@ -382,7 +382,7 @@ export default function UsersScreen() {
       <View style={styles.fabWrap}>
         <TouchableOpacity
           style={styles.fab}
-          onPress={() => router.push('/(admin)/add-user')}
+          onPress={() => router.push('/(admin)/add-user-v2')}
           activeOpacity={0.92}
         >
           <Ionicons name="add" size={32} color={colors.white} />
