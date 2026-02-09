@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Modal, FlatList, KeyboardAvoidingView, Platform, Pressable, useWindowDimensions } from 'react-native';
-import { Link, useRouter, useFocusEffect } from 'expo-router';
+import { Link, useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useUserStore } from '@/store/userStore';
+import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import { colors } from '@/constants/colors';
 import { GuestItem } from '@/components/GuestItem';
 import { Button } from '@/components/Button';
+import { EventSwitcher } from '@/components/EventSwitcher';
 import { Ionicons as IoniconsIcon } from '@expo/vector-icons';
 import { guestService } from '@/lib/services/guestService';
 import { eventService } from '@/lib/services/eventService';
@@ -23,49 +25,67 @@ const Ionicons = (props: React.ComponentProps<typeof IoniconsIcon>) => (
 export default function GuestsScreen() {
   const { isLoggedIn, userData } = useUserStore();
   const router = useRouter();
-  const [eventId, setEventId] = useState<string | null>(null);
+  const { eventId: queryEventId } = useLocalSearchParams<{ eventId?: string }>();
+  const activeUserId = useEventSelectionStore((s) => s.activeUserId);
+  const activeEventId = useEventSelectionStore((s) => s.activeEventId);
+  const setActiveEvent = useEventSelectionStore((s) => s.setActiveEvent);
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const isWide = windowWidth >= 640;
+
+  const resolvedEventId =
+    String(
+      queryEventId ||
+        (userData?.id && activeUserId === userData.id ? activeEventId : null) ||
+        userData?.event_id ||
+        ''
+    ).trim() || null;
+
+  const handleSelectEventId = (nextEventId: string) => {
+    if (userData?.id) setActiveEvent(userData.id, nextEventId);
+    router.replace({ pathname: './', params: { eventId: nextEventId } });
+  };
 
   useEffect(() => {
     if (!isLoggedIn) {
       router.replace('/login');
       return;
     }
-    if (!userData?.event_id) {
-      setEventId(null);
+
+    if (!resolvedEventId) {
       setGuests([]);
       setCategories([]);
       return;
     }
-    setEventId(userData.event_id);
-    // טען אורחים וקטגוריות לאירוע של המשתמש
+
+    if (userData?.id) setActiveEvent(userData.id, resolvedEventId);
+
+    // טען אורחים וקטגוריות לאירוע הנבחר
     const fetchGuestsAndCategories = async () => {
-      if (userData.event_id) {
-        const data = await guestService.getGuests(userData.event_id);
+      if (resolvedEventId) {
+        const data = await guestService.getGuests(resolvedEventId);
         setGuests(data);
-        await loadCategories(userData.event_id);
+        await loadCategories(resolvedEventId);
       }
     };
     fetchGuestsAndCategories();
-  }, [isLoggedIn, router, userData]);
+  }, [isLoggedIn, router, resolvedEventId, userData?.id]);
 
   // טען מחדש אורחים וקטגוריות כשהמסך חוזר למוקד
   useFocusEffect(
     React.useCallback(() => {
-      if (eventId) {
+      if (resolvedEventId) {
         const reloadGuests = async () => {
-          const data = await guestService.getGuests(eventId);
+          const data = await guestService.getGuests(resolvedEventId);
           setGuests(data);
-          await loadCategories(eventId);
+          await loadCategories(resolvedEventId);
         };
         reloadGuests();
       }
-    }, [eventId])
+    }, [resolvedEventId])
   );
 
   const loadCategories = async (eid?: string) => {
-    const id = eid || eventId;
+    const id = eid || resolvedEventId;
     if (!id) return;
     try {
       const cats = await guestService.getGuestCategories(id);
@@ -97,9 +117,9 @@ export default function GuestsScreen() {
   };
 
   const handleAddCategory = async () => {
-    if (!newCategoryName.trim() || !eventId) return;
+    if (!newCategoryName.trim() || !resolvedEventId) return;
     try {
-      const cat = await guestService.addGuestCategory(eventId, newCategoryName.trim(), newCategorySide);
+      const cat = await guestService.addGuestCategory(resolvedEventId, newCategoryName.trim(), newCategorySide);
       setCategories([...categories, cat]);
       setNewCategoryName('');
     } catch (e: any) {
@@ -151,10 +171,10 @@ export default function GuestsScreen() {
   // Category editing moved to a dedicated screen: `/(couple)/edit-category`.
 
   useEffect(() => {
-    if (eventId) {
+    if (resolvedEventId) {
       loadCategories();
     }
-  }, [eventId]);
+  }, [resolvedEventId]);
 
   // אורחים מסוננים לפי כל הפילטרים
   const filteredGuests = guests.filter(guest => {
@@ -191,10 +211,10 @@ export default function GuestsScreen() {
   const hasFilters = Boolean(statusFilter || sideFilter);
   const importContacts = async () => {
     try {
-      if (!eventId) return;
+      if (!resolvedEventId) return;
       // Navigate immediately and auto-open the category selector there.
       // Contacts permissions + loading are handled in `/contacts-list`.
-      router.push({ pathname: '/contacts-list', params: { eventId, autoOpenCategory: '1' } });
+      router.push({ pathname: '/contacts-list', params: { eventId: resolvedEventId, autoOpenCategory: '1' } });
     } catch (error) {
       Alert.alert('שגיאה', 'לא ניתן לפתוח את רשימת אנשי הקשר');
     }
@@ -216,7 +236,7 @@ export default function GuestsScreen() {
       if (contact && selectedCategory) {
         const phoneNumber = contact.phoneNumbers[0]?.number || '';
         const name = contact.name || '';
-        guestService.addGuest(eventId || '', {
+        guestService.addGuest(resolvedEventId || '', {
           name,
           phone: phoneNumber,
           status: 'ממתין',
@@ -350,6 +370,13 @@ export default function GuestsScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.pageHeader}>
+        <EventSwitcher
+          userId={userData?.id}
+          selectedEventId={resolvedEventId}
+          onSelectEventId={handleSelectEventId}
+        />
+        <View style={{ height: 10 }} />
+
         <View style={styles.searchRow}>
           <View style={styles.searchContainer}>
             <Text>

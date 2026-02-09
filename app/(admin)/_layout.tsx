@@ -150,7 +150,7 @@ export default function AdminTabsLayout() {
       />
 
       {/* Hidden routes in admin group */}
-      <Tabs.Screen name="add-user" options={{ href: null }} />
+      <Tabs.Screen name="add-user-v2" options={{ href: null }} />
       <Tabs.Screen
         name="admin-events-create"
         options={{
@@ -171,6 +171,13 @@ export default function AdminTabsLayout() {
       />
       <Tabs.Screen
         name="admin-event-notifications"
+        options={{
+          href: null,
+          headerShown: false,
+        }}
+      />
+      <Tabs.Screen
+        name="admin-event-notifications-v2"
         options={{
           href: null,
           headerShown: false,

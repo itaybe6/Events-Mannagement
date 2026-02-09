@@ -2,26 +2,38 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated, Pressable, ActivityIndicator, Modal, SectionList, TextInput, FlatList, Dimensions, Alert, PanResponder, Platform, StatusBar } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { useUserStore } from '@/store/userStore';
+import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import { Ionicons } from '@expo/vector-icons';
 import { useLayoutStore } from '@/store/layoutStore';
 import { Table } from '@/types';
 import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { colors } from '@/constants/colors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { EventSwitcher } from '@/components/EventSwitcher';
 
 const { width, height } = Dimensions.get('window');
 
 export default function BrideGroomSeating() {
   const { userData } = useUserStore();
-  const { eventId: queryEventId } = useLocalSearchParams();
+  const { eventId: queryEventId } = useLocalSearchParams<{ eventId?: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const activeUserId = useEventSelectionStore((s) => s.activeUserId);
+  const activeEventId = useEventSelectionStore((s) => s.activeEventId);
+  const setActiveEvent = useEventSelectionStore((s) => s.setActiveEvent);
   
-  // קביעת eventId: אם יש query param (אדמין) - השתמש בו, אחרת השתמש ב-userData
-  const eventId = queryEventId || userData?.event_id;
-  
-  // בדיקה אם המשתמש הוא אדמין (יש queryEventId)
-  const isAdmin = !!queryEventId;
+  const resolvedEventId =
+    String(
+      queryEventId ||
+        (userData?.id && activeUserId === userData.id ? activeEventId : null) ||
+        userData?.event_id ||
+        ''
+    ).trim() || null;
+
+  const handleSelectEventId = (nextEventId: string) => {
+    if (userData?.id) setActiveEvent(userData.id, nextEventId);
+    router.replace({ pathname: './', params: { eventId: nextEventId } });
+  };
   
   const [tables, setTables] = useState<Table[]>([]);
   const [guests, setGuests] = useState<any[]>([]);
@@ -286,7 +298,11 @@ export default function BrideGroomSeating() {
   };
 
   useEffect(() => {
-    if (eventId) {
+    if (userData?.id && resolvedEventId) setActiveEvent(userData.id, resolvedEventId);
+  }, [userData?.id, resolvedEventId, setActiveEvent]);
+
+  useEffect(() => {
+    if (resolvedEventId) {
       setLoading(true);
       Promise.all([
         fetchTables(),
@@ -294,12 +310,12 @@ export default function BrideGroomSeating() {
         fetchGuests(),
       ]).finally(() => setLoading(false));
     }
-  }, [eventId]);
+  }, [resolvedEventId]);
 
   useFocusEffect(
     useCallback(() => {
       // Fetch data every time the screen comes into focus
-      if (eventId) {
+      if (resolvedEventId) {
         setLoading(true);
         Promise.all([
           fetchTables(),
@@ -318,7 +334,7 @@ export default function BrideGroomSeating() {
           });
         }
       }, 200);
-    }, [eventId])
+    }, [resolvedEventId])
   );
 
   // יצירת Animated.ValueXY לכל שולחן
@@ -418,19 +434,19 @@ export default function BrideGroomSeating() {
   );
 
   const fetchTables = async () => {
-    if (!eventId) return;
+    if (!resolvedEventId) return;
     
     const { data, error } = await supabase
       .from('tables')
       .select('*')
-      .eq('event_id', eventId)
+      .eq('event_id', resolvedEventId)
       .order('number');
     
     if (!error) setTables(data || []);
   };
 
   const fetchGuests = async () => {
-    if (!eventId) return;
+    if (!resolvedEventId) return;
 
     try {
       // Avoid PostgREST relationship joins (PGRST200) by fetching separately and joining client-side.
@@ -439,9 +455,9 @@ export default function BrideGroomSeating() {
         { data: categoriesData, error: categoriesError },
         { data: tablesData, error: tablesError },
       ] = await Promise.all([
-        supabase.from('guests').select('*').eq('event_id', eventId),
-        supabase.from('guest_categories').select('id,name').eq('event_id', eventId),
-        supabase.from('tables').select('id,number').eq('event_id', eventId),
+        supabase.from('guests').select('*').eq('event_id', resolvedEventId),
+        supabase.from('guest_categories').select('id,name').eq('event_id', resolvedEventId),
+        supabase.from('tables').select('id,number').eq('event_id', resolvedEventId),
       ]);
 
       if (guestsError) throw guestsError;
@@ -472,12 +488,12 @@ export default function BrideGroomSeating() {
 
   // משיכת הערות (annotations) מה-DB
   const fetchTextAreas = async () => {
-    if (!eventId) return;
+    if (!resolvedEventId) return;
     
     const { data, error } = await supabase
       .from('seating_maps')
       .select('annotations')
-      .eq('event_id', eventId)
+      .eq('event_id', resolvedEventId)
       .single();
     if (!error && data && Array.isArray(data.annotations)) {
       setTextAreas(data.annotations);
@@ -533,7 +549,7 @@ export default function BrideGroomSeating() {
     return <View style={styles.centered}><ActivityIndicator size="large" /></View>;
   }
   
-  if (!eventId) {
+  if (!resolvedEventId) {
     return (
       <View style={styles.centered}>
         <Text style={{ fontSize: 24, fontWeight: 'bold', textAlign: 'center' }}>אין אירוע זמין</Text>
@@ -589,39 +605,50 @@ export default function BrideGroomSeating() {
           <Text style={styles.dragModeText}>סיים גרירה</Text>
         </TouchableOpacity>
       )}
+
+      <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
+        <EventSwitcher
+          userId={userData?.id}
+          selectedEventId={resolvedEventId}
+          onSelectEventId={handleSelectEventId}
+          label="אירוע פעיל"
+        />
+      </View>
+
       {/* Stats */}
       <View style={styles.statsContainer}>
         <TouchableOpacity 
-          style={[styles.statBox, isAdmin && styles.disabledStatBox]} 
-          onPress={isAdmin ? undefined : () => openModalWithGuests('אישרו הגעה', confirmedGuestsList)}
-          disabled={isAdmin}
+          style={styles.statBox}
+          onPress={() => openModalWithGuests('אישרו הגעה', confirmedGuestsList)}
         >
           <Ionicons name="checkmark-circle-outline" size={28} color={colors.primary} />
           <Text style={styles.statValue}>{confirmedGuestsCount}</Text>
           <Text style={styles.statLabel}>אישרו הגעה</Text>
         </TouchableOpacity>
         <TouchableOpacity 
-          style={[styles.statBox, isAdmin && styles.disabledStatBox]} 
-          onPress={isAdmin ? undefined : () => openModalWithGuests('הושבו', seatedGuestsList)}
-          disabled={isAdmin}
+          style={styles.statBox}
+          onPress={() => openModalWithGuests('הושבו', seatedGuestsList)}
         >
           <Ionicons name="body" size={28} color={colors.primary} />
           <Text style={styles.statValue}>{seatedGuestsCount}</Text>
           <Text style={styles.statLabel}>הושבו</Text>
         </TouchableOpacity>
         <TouchableOpacity 
-          style={[styles.statBox, isAdmin && styles.disabledStatBox]} 
-          onPress={isAdmin ? undefined : () => router.push('/(couple)/TablesList')}
-          disabled={isAdmin}
+          style={styles.statBox}
+          onPress={() =>
+            router.push({
+              pathname: '/(couple)/TablesList',
+              params: resolvedEventId ? { eventId: resolvedEventId } : {},
+            })
+          }
         >
           <Ionicons name="grid" size={28} color={colors.primary} />
           <Text style={styles.statValue}>{tables.length}</Text>
           <Text style={styles.statLabel}>שולחנות</Text>
         </TouchableOpacity>
         <TouchableOpacity 
-          style={[styles.statBox, isAdmin && styles.disabledStatBox]} 
-          onPress={isAdmin ? undefined : () => openModalWithGuests('טרם הושבו', unseatedGuestsList)}
-          disabled={isAdmin}
+          style={styles.statBox}
+          onPress={() => openModalWithGuests('טרם הושבו', unseatedGuestsList)}
         >
           <Ionicons name="walk" size={28} color={colors.primary} />
           <Text style={styles.statValue}>{unseatedGuestsCount}</Text>
@@ -1415,9 +1442,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.richBlack,
     marginLeft: 4,
-  },
-  disabledStatBox: {
-    opacity: 0.5,
   },
   reserveTableStyle: {
     backgroundColor: 'rgba(0, 0, 0, 0.7)', // שחור שקוף

@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { ScrollView, View, Text, StyleSheet, Platform, Pressable, Image } from 'react-native';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useUserStore } from '@/store/userStore';
+import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import { colors } from '@/constants/colors';
 import { CountdownTimer } from '@/components/CountdownTimer';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,14 +10,33 @@ import { eventService } from '@/lib/services/eventService';
 import { guestService } from '@/lib/services/guestService';
 import { giftService } from '@/lib/services/giftService';
 import { BlurView } from 'expo-blur';
+import { EventSwitcher } from '@/components/EventSwitcher';
 
 export default function HomeScreen() {
   const { isLoggedIn, userData, initializeAuth } = useUserStore();
   const router = useRouter();
+  const { eventId: queryEventId } = useLocalSearchParams<{ eventId?: string }>();
+  const activeUserId = useEventSelectionStore((s) => s.activeUserId);
+  const activeEventId = useEventSelectionStore((s) => s.activeEventId);
+  const setActiveEvent = useEventSelectionStore((s) => s.setActiveEvent);
   const [currentEvent, setCurrentEvent] = useState<any>(null);
   const [guests, setGuests] = useState<any[]>([]);
   const [gifts, setGifts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const resolvedEventId =
+    String(
+      queryEventId ||
+        (userData?.id && activeUserId === userData.id ? activeEventId : null) ||
+        userData?.event_id ||
+        ''
+    ).trim() || null;
+
+  const handleSelectEventId = (nextEventId: string) => {
+    if (userData?.id) setActiveEvent(userData.id, nextEventId);
+    // Use a relative route so Expo Router typed routes won't complain.
+    router.replace({ pathname: './', params: { eventId: nextEventId } });
+  };
 
   useEffect(() => {
     if (!isLoggedIn) {
@@ -26,10 +46,10 @@ export default function HomeScreen() {
     const loadData = async () => {
       try {
         setLoading(true);
-        let eventId = userData?.event_id;
+        let eventId = resolvedEventId;
         if (!eventId) {
           await initializeAuth();
-          eventId = useUserStore.getState().userData?.event_id;
+          eventId = useUserStore.getState().userData?.event_id || null;
         }
         if (!eventId) {
           setCurrentEvent(null);
@@ -38,6 +58,9 @@ export default function HomeScreen() {
           setLoading(false);
           return;
         }
+
+        if (userData?.id) setActiveEvent(userData.id, eventId);
+
         const event = await eventService.getEvent(eventId);
         if (event) {
           setCurrentEvent(event);
@@ -63,15 +86,15 @@ export default function HomeScreen() {
       }
     };
     loadData();
-  }, [isLoggedIn, router, userData]);
+  }, [isLoggedIn, router, userData?.id, resolvedEventId]);
 
   // טען מחדש נתונים כשהמסך חוזר למוקד
   useFocusEffect(
     React.useCallback(() => {
-      if (isLoggedIn && userData?.event_id) {
+      if (isLoggedIn && resolvedEventId) {
         const reloadData = async () => {
           try {
-            const event = await eventService.getEvent(userData!.event_id as string);
+            const event = await eventService.getEvent(resolvedEventId as string);
             setCurrentEvent(event);
             if (event) {
               const guestsData = await guestService.getGuests(event.id);
@@ -93,7 +116,7 @@ export default function HomeScreen() {
         };
         reloadData();
       }
-    }, [isLoggedIn, userData])
+    }, [isLoggedIn, resolvedEventId])
   );
 
   if (!isLoggedIn) {
@@ -230,6 +253,15 @@ export default function HomeScreen() {
           </View>
           <Text style={styles.heroDate}>{formatDate(currentEvent.date)}</Text>
 
+          <View style={{ width: '100%', marginTop: 12 }}>
+            <EventSwitcher
+              userId={userData?.id}
+              selectedEventId={resolvedEventId}
+              onSelectEventId={handleSelectEventId}
+              label="אירוע פעיל"
+            />
+          </View>
+
           <BlurView intensity={28} tint="light" style={styles.locationPill}>
             <Ionicons name="location" size={16} color={stylesVars.primaryBlue} />
             <Text style={styles.locationPillText}>{currentEvent.location}</Text>
@@ -286,7 +318,12 @@ export default function HomeScreen() {
               title={'רשימת\nמוזמנים'}
               subtitle="נהל אישורי הגעה"
               iconName="list"
-              onPress={() => router.push('/(couple)/guests')}
+              onPress={() =>
+                router.push({
+                  pathname: '/(couple)/guests',
+                  params: resolvedEventId ? { eventId: resolvedEventId } : {},
+                })
+              }
             />
           </View>
 
@@ -295,7 +332,12 @@ export default function HomeScreen() {
               title={'סידור\nהושבה'}
               subtitle="גרור ושחרר אורחים"
               iconName="grid"
-              onPress={() => router.push('/(couple)/BrideGroomSeating')}
+              onPress={() =>
+                router.push({
+                  pathname: '/(couple)/BrideGroomSeating',
+                  params: resolvedEventId ? { eventId: resolvedEventId } : {},
+                })
+              }
             />
           </View>
 
