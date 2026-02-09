@@ -40,7 +40,7 @@ export default function TablesList() {
 
   const handleSelectEventId = (nextEventId: string) => {
     if (userData?.id) setActiveEvent(userData.id, nextEventId);
-    router.replace({ pathname: '/(couple)/TablesList', params: { eventId: nextEventId } });
+    router.replace({ pathname: './', params: { eventId: nextEventId } });
   };
 
   useEffect(() => {

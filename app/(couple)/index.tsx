@@ -34,7 +34,8 @@ export default function HomeScreen() {
 
   const handleSelectEventId = (nextEventId: string) => {
     if (userData?.id) setActiveEvent(userData.id, nextEventId);
-    router.replace({ pathname: '/(couple)/index', params: { eventId: nextEventId } });
+    // Use a relative route so Expo Router typed routes won't complain.
+    router.replace({ pathname: './', params: { eventId: nextEventId } });
   };
 
   useEffect(() => {

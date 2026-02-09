@@ -42,7 +42,7 @@ export default function GuestsScreen() {
 
   const handleSelectEventId = (nextEventId: string) => {
     if (userData?.id) setActiveEvent(userData.id, nextEventId);
-    router.replace({ pathname: '/(couple)/guests', params: { eventId: nextEventId } });
+    router.replace({ pathname: './', params: { eventId: nextEventId } });
   };
 
   useEffect(() => {

@@ -32,7 +32,7 @@ export default function BrideGroomSeating() {
 
   const handleSelectEventId = (nextEventId: string) => {
     if (userData?.id) setActiveEvent(userData.id, nextEventId);
-    router.replace({ pathname: '/(couple)/BrideGroomSeating', params: { eventId: nextEventId } });
+    router.replace({ pathname: './', params: { eventId: nextEventId } });
   };
   
   const [tables, setTables] = useState<Table[]>([]);

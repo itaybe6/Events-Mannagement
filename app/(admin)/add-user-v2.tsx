@@ -307,7 +307,12 @@ export default function AddUserScreenV2() {
         <ScrollView
           style={{ flex: 1 }}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[
+            styles.content,
+            {
+              paddingBottom: 40 + 12 + 48 + Math.max(insets.bottom, 14),
+            },
+          ]}
           keyboardShouldPersistTaps="handled"
         >
           {isDemoMode && (
@@ -512,30 +517,29 @@ export default function AddUserScreenV2() {
             </View>
           </View>
 
-          <View style={{ height: 80 }} />
         </ScrollView>
-
-        {/* Sticky bottom action (new stable style inspired by HTML) */}
-        <View
-          style={[
-            styles.footerBar,
-            {
-              paddingBottom: Math.max(insets.bottom, 14),
-              backgroundColor: theme.bg,
-              borderTopColor: 'rgba(15, 23, 42, 0.06)',
-            },
-          ]}
-        >
-          <TouchableOpacity
-            onPress={handleAddUser}
-            disabled={loading}
-            activeOpacity={0.88}
-            style={[styles.primaryButtonV3, loading && { opacity: 0.75 }]}
-          >
-            {loading ? <ActivityIndicator color="white" /> : <Text style={styles.primaryButtonText}>שמור משתמש</Text>}
-          </TouchableOpacity>
-        </View>
       </KeyboardAvoidingView>
+
+      {/* Sticky bottom action (fixed: not affected by keyboard avoiding) */}
+      <View
+        style={[
+          styles.footerBar,
+          {
+            paddingBottom: Math.max(insets.bottom, 14),
+            backgroundColor: theme.bg,
+            borderTopColor: 'rgba(15, 23, 42, 0.06)',
+          },
+        ]}
+      >
+        <TouchableOpacity
+          onPress={handleAddUser}
+          disabled={loading}
+          activeOpacity={0.88}
+          style={[styles.primaryButtonV3, loading && { opacity: 0.75 }]}
+        >
+          {loading ? <ActivityIndicator color="white" /> : <Text style={styles.primaryButtonText}>שמור משתמש</Text>}
+        </TouchableOpacity>
+      </View>
 
       <Modal
         visible={showSuccessModal}

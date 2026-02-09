@@ -176,6 +176,13 @@ export default function AdminTabsLayout() {
           headerShown: false,
         }}
       />
+      <Tabs.Screen
+        name="admin-event-notifications-v2"
+        options={{
+          href: null,
+          headerShown: false,
+        }}
+      />
       {/* Hidden admin wrappers for seating screens (keep admin tab bar) */}
       <Tabs.Screen name="BrideGroomSeating" options={{ href: null, headerShown: false }} />
       <Tabs.Screen name="seating-templates" options={{ href: null, headerShown: false }} />
