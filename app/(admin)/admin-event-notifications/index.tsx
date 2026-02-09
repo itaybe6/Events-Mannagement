@@ -3,16 +3,11 @@ import {
   ActivityIndicator,
   Alert,
   I18nManager,
-  Keyboard,
-  Modal,
   SafeAreaView,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
-  TextInput,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   View,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -21,6 +16,7 @@ import { supabase } from '@/lib/supabase';
 import { eventService } from '@/lib/services/eventService';
 import { Event } from '@/types';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 
 type NotificationTemplate = {
   notification_type: string;
@@ -64,12 +60,6 @@ export default function AdminEventNotificationsScreen() {
   const [savingMap, setSavingMap] = useState<Record<string, boolean>>({});
 
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettingRow[]>([]);
-
-  const [editVisible, setEditVisible] = useState(false);
-  const [editing, setEditing] = useState<NotificationSettingRow | null>(null);
-  const [editedMessage, setEditedMessage] = useState('');
-  const [editedDateText, setEditedDateText] = useState(''); // absolute number string
-  const [timingMode, setTimingMode] = useState<'before' | 'after'>('before');
 
   const ui = useMemo(() => {
     // Stable: no BlurView and no transparency-heavy surfaces
@@ -196,14 +186,6 @@ export default function AdminEventNotificationsScreen() {
   const isMissingColumn = (err: any, column: string) =>
     String(err?.code) === '42703' && String(err?.message || '').toLowerCase().includes(column.toLowerCase());
 
-  const getDraftSignedDays = () => {
-    const absText = (editedDateText || '').trim();
-    const abs = Number.parseInt(absText, 10);
-    if (!Number.isFinite(abs)) return 0;
-    if (abs === 0) return 0;
-    return timingMode === 'before' ? -Math.abs(abs) : Math.abs(abs);
-  };
-
   const loadOwnerName = async (eventData: Event) => {
     if (!eventData?.user_id) return '';
     const { data, error } = await supabase.from('users').select('name').eq('id', (eventData as any).user_id).single();
@@ -317,6 +299,14 @@ export default function AdminEventNotificationsScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId]);
 
+  // Refresh when coming back from the edit screen.
+  useFocusEffect(
+    React.useCallback(() => {
+      if (!event || !eventId || typeof eventId !== 'string') return;
+      void fetchSettings(event as any, ownerName);
+    }, [event?.id, eventId, ownerName])
+  );
+
   const toggleNotification = async (row: NotificationSettingRow, nextEnabled?: boolean) => {
     if (!event?.id) return;
     if (savingMap[row.notification_type]) return;
@@ -372,97 +362,12 @@ export default function AdminEventNotificationsScreen() {
     }
   };
 
-  const openEdit = (row: NotificationSettingRow) => {
-    const rawDays = typeof row.days_from_wedding === 'number' ? row.days_from_wedding : 0;
-    const mode: 'before' | 'after' = rawDays < 0 ? 'before' : 'after';
-    setEditing(row);
-    setEditedMessage(row.message_content || '');
-    setTimingMode(rawDays === 0 ? 'before' : mode);
-    setEditedDateText(String(Math.abs(rawDays)));
-    setEditVisible(true);
-  };
-
-  const editingRowFromStore = useMemo(() => {
-    if (!editing) return null;
-    return notificationSettings.find((r) => r.notification_type === editing.notification_type) ?? editing;
-  }, [notificationSettings, editing]);
-
-  useEffect(() => {
-    if (!editVisible || !editing) return;
-    const latest = notificationSettings.find((r) => r.notification_type === editing.notification_type);
-    if (!latest) return;
-    setEditing((prev) => {
-      if (!prev || prev.notification_type !== latest.notification_type) return prev;
-      if (prev.id === latest.id && prev.enabled === latest.enabled && prev.channel === latest.channel && prev.event_id === latest.event_id) {
-        return prev;
-      }
-      return {
-        ...prev,
-        id: latest.id ?? prev.id,
-        event_id: latest.event_id ?? prev.event_id,
-        enabled: Boolean(latest.enabled),
-        channel: latest.channel ?? prev.channel,
-      };
+  const openEdit = (r: NotificationSettingRow) => {
+    if (!event?.id) return;
+    router.push({
+      pathname: '/(admin)/admin-event-notifications/edit',
+      params: { eventId: String(event.id), type: r.notification_type },
     });
-  }, [editVisible, editing?.notification_type, notificationSettings]);
-
-  const saveEdit = async () => {
-    if (!event?.id || !editing) return;
-    const msg = (editedMessage || '').trim();
-    if (!msg) return;
-
-    const absText = (editedDateText || '').trim();
-    const abs = Number.parseInt(absText, 10);
-    const signed =
-      Number.isFinite(abs) ? (abs === 0 ? 0 : timingMode === 'before' ? -Math.abs(abs) : Math.abs(abs)) : NaN;
-    const daysToSave = Number.isFinite(signed) ? signed : editing.days_from_wedding;
-
-    try {
-      if (editing.id) {
-        const updatePayload: any = { message_content: msg, days_from_wedding: daysToSave, channel: editing.channel };
-        let { error } = await supabase.from('notification_settings').update(updatePayload).eq('id', editing.id);
-        if (error && isMissingColumn(error, 'channel')) {
-          delete updatePayload.channel;
-          const retry = await supabase.from('notification_settings').update(updatePayload).eq('id', editing.id);
-          error = retry.error as any;
-        }
-        if (error) throw error;
-        setNotificationSettings((prev) =>
-          prev.map((r) =>
-            r.notification_type === editing.notification_type ? { ...r, message_content: msg, days_from_wedding: daysToSave } : r
-          )
-        );
-      } else {
-        const insertPayload: any = {
-          event_id: event.id,
-          notification_type: editing.notification_type,
-          title: editing.title,
-          enabled: editing.enabled ?? false,
-          message_content: msg,
-          days_from_wedding: daysToSave,
-          channel:
-            editing.channel ||
-            (NOTIFICATION_TEMPLATES.find((t) => t.notification_type === editing.notification_type)?.channel ?? 'SMS'),
-        };
-        let { data, error } = await supabase.from('notification_settings').insert(insertPayload).select().single();
-        if (error && isMissingColumn(error, 'channel')) {
-          delete insertPayload.channel;
-          const retry = await supabase.from('notification_settings').insert(insertPayload).select().single();
-          data = retry.data as any;
-          error = retry.error as any;
-        }
-        if (error) throw error;
-        setNotificationSettings((prev) =>
-          prev.map((r) => (r.notification_type === editing.notification_type ? { ...(r as any), ...(data as any) } : r))
-        );
-      }
-      setEditVisible(false);
-    } catch (e) {
-      console.error('Error saving notification edit (admin screen):', e);
-      const emsg = String((e as any)?.message || '');
-      const isRls = String((e as any)?.code || '') === '42501' || emsg.toLowerCase().includes('row-level security');
-      Alert.alert('שגיאה', isRls ? 'אין הרשאה לשמור שינוי (RLS). צריך להוסיף Policy בסופאבייס.' : 'לא ניתן לשמור את השינוי');
-    }
   };
 
   const regular = notificationSettings.filter((n) => (n.channel || 'SMS') !== 'WHATSAPP');
@@ -503,7 +408,7 @@ export default function AdminEventNotificationsScreen() {
           </View>
         </View>
 
-        <View style={styles.chevWrap}>
+          <View style={styles.chevWrap}>
           <Ionicons name="chevron-back" size={20} color={chevronColor} />
         </View>
       </TouchableOpacity>
@@ -611,133 +516,6 @@ export default function AdminEventNotificationsScreen() {
         <View style={{ height: 140 }} />
       </ScrollView>
 
-      <Modal animationType="fade" transparent visible={editVisible} onRequestClose={() => setEditVisible(false)}>
-        <View style={styles.modalOverlay}>
-          <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setEditVisible(false)} />
-
-          <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-            <View style={styles.modalCenter}>
-              <View style={[styles.modalCard, { backgroundColor: ui.card, borderColor: ui.border }]}>
-                <View style={styles.modalHeader}>
-                  <TouchableOpacity
-                    style={[styles.iconBtn, { backgroundColor: ui.bg, borderColor: ui.border }]}
-                    onPress={() => setEditVisible(false)}
-                    activeOpacity={0.9}
-                    accessibilityRole="button"
-                    accessibilityLabel="סגירה"
-                  >
-                    <Ionicons name="close" size={18} color={ui.muted} />
-                  </TouchableOpacity>
-
-                  <View style={styles.modalHeaderTitles}>
-                    <Text style={[styles.modalTitle, { color: ui.text }]}>עריכת הודעה</Text>
-                    <Text style={[styles.modalSubtitle, { color: ui.muted }]} numberOfLines={2}>
-                      {editing?.title ?? ''}
-                    </Text>
-                  </View>
-
-                  <View style={{ width: 40, height: 40 }} />
-                </View>
-
-                <View style={[styles.divider, { backgroundColor: ui.divider }]} />
-
-                <View style={styles.modalBody}>
-                  {editingRowFromStore ? (
-                    <View style={styles.rowBetween}>
-                      <Text style={[styles.label, { color: ui.text }]}>סטטוס הודעה</Text>
-                      <View style={styles.rowInline}>
-                        <Text style={[styles.value, { color: editingRowFromStore.enabled ? ui.whatsapp : ui.muted }]}>
-                          {editingRowFromStore.enabled ? 'פעיל' : 'כבוי'}
-                        </Text>
-                        <Switch
-                          value={Boolean(editingRowFromStore.enabled)}
-                          onValueChange={(v) => toggleNotification(editingRowFromStore, v)}
-                          disabled={Boolean(savingMap[editingRowFromStore.notification_type])}
-                          trackColor={{ false: 'rgba(148,163,184,0.35)', true: 'rgba(6,127,249,0.35)' }}
-                          thumbColor={editingRowFromStore.enabled ? ui.primary : '#f1f5f9'}
-                        />
-                      </View>
-                    </View>
-                  ) : null}
-
-                  <View style={styles.block}>
-                    <Text style={[styles.label, { color: ui.text }]}>תיזמון ההודעה</Text>
-                    <View style={[styles.segment, { backgroundColor: ui.bg, borderColor: ui.border }]}>
-                      <TouchableOpacity
-                        style={[styles.segmentBtn, timingMode === 'before' && styles.segmentBtnActive]}
-                        onPress={() => setTimingMode('before')}
-                        activeOpacity={0.9}
-                      >
-                        <Text style={[styles.segmentText, { color: timingMode === 'before' ? ui.primary : ui.muted }]}>לפני האירוע</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.segmentBtn, timingMode === 'after' && styles.segmentBtnActive]}
-                        onPress={() => setTimingMode('after')}
-                        activeOpacity={0.9}
-                      >
-                        <Text style={[styles.segmentText, { color: timingMode === 'after' ? ui.primary : ui.muted }]}>אחרי האירוע</Text>
-                      </TouchableOpacity>
-                    </View>
-
-                    <View style={styles.rowBetween}>
-                      <Text style={[styles.value, { color: ui.muted }]}>ימים</Text>
-                      <TextInput
-                        value={editedDateText}
-                        onChangeText={setEditedDateText}
-                        placeholder="0"
-                        placeholderTextColor={ui.faint}
-                        style={[styles.numberInput, { borderColor: ui.border, color: ui.text }]}
-                        keyboardType="numeric"
-                        textAlign="center"
-                      />
-                      <Text style={[styles.value, { color: ui.muted }]}>תאריך מחושב:</Text>
-                      <Text style={[styles.value, { color: ui.text, fontWeight: '900' }]}>
-                        {event?.date ? formatDate(computeSendDate((event as any).date, getDraftSignedDays() as any)) : ''}
-                      </Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.block}>
-                    <Text style={[styles.label, { color: ui.text }]}>תוכן ההודעה</Text>
-                    {isWeddingEvent(event) ? (
-                      <Text style={[styles.hint, { color: ui.muted }]}>{`חתן/כלה: ${getWeddingNamesLabel(event)}`}</Text>
-                    ) : null}
-                    <TextInput
-                      value={editedMessage}
-                      onChangeText={setEditedMessage}
-                      placeholder="הקלד את הודעתך כאן..."
-                      placeholderTextColor={ui.faint}
-                      style={[
-                        styles.textarea,
-                        { backgroundColor: ui.bg, borderColor: ui.border, color: ui.text },
-                        { writingDirection: 'rtl' },
-                      ]}
-                      multiline
-                      textAlign="right"
-                      textAlignVertical="top"
-                    />
-                    <Text style={[styles.charCount, { color: ui.muted }]}>{`${editedMessage.length}/160 תווים`}</Text>
-                  </View>
-                </View>
-
-                <View style={[styles.modalFooter, { borderTopColor: ui.divider }]}>
-                  <TouchableOpacity
-                    style={[styles.btnSecondary, { backgroundColor: ui.bg, borderColor: ui.border }]}
-                    onPress={() => setEditVisible(false)}
-                    activeOpacity={0.9}
-                  >
-                    <Text style={[styles.btnSecondaryText, { color: ui.text }]}>ביטול</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[styles.btnPrimary, { backgroundColor: ui.primary }]} onPress={saveEdit} activeOpacity={0.92}>
-                    <Ionicons name="save-outline" size={16} color="#fff" />
-                    <Text style={styles.btnPrimaryText}>שמור שינויים</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
-          </TouchableWithoutFeedback>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -861,131 +639,6 @@ const styles = StyleSheet.create({
   metaBullet: { marginHorizontal: 10, fontSize: 14, fontWeight: '900' },
   chevWrap: { width: 28, alignItems: 'center', justifyContent: 'center' },
 
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-  },
-  modalBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(15, 23, 42, 0.45)',
-  },
-  modalCenter: {
-    width: '100%',
-    maxWidth: 540,
-  },
-  modalCard: {
-    borderRadius: 22,
-    borderWidth: 1,
-    overflow: 'hidden',
-  },
-  modalHeader: {
-    paddingHorizontal: 14,
-    paddingTop: 14,
-    paddingBottom: 10,
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  modalHeaderTitles: { flex: 1, alignItems: 'center' },
-  modalTitle: { fontSize: 16, fontWeight: '900', textAlign: 'center' },
-  modalSubtitle: { marginTop: 4, fontSize: 12, fontWeight: '800', textAlign: 'center' },
-
-  iconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-
-  divider: { height: 1 },
-  modalBody: { padding: 14, gap: 14 },
-
-  rowBetween: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-    flexWrap: 'wrap',
-  },
-  rowInline: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
-
-  block: { gap: 10 },
-  label: { fontSize: 13, fontWeight: '900', textAlign: 'right' },
-  value: { fontSize: 12, fontWeight: '800', textAlign: 'right' },
-  hint: { fontSize: 12, fontWeight: '800', textAlign: 'right' },
-
-  segment: {
-    flexDirection: 'row-reverse',
-    borderWidth: 1,
-    borderRadius: 14,
-    padding: 4,
-    gap: 6,
-  },
-  segmentBtn: {
-    flex: 1,
-    height: 40,
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  segmentBtnActive: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: 'rgba(15, 23, 42, 0.10)',
-  },
-  segmentText: { fontSize: 12, fontWeight: '900', textAlign: 'center' },
-
-  numberInput: {
-    width: 70,
-    height: 44,
-    borderRadius: 12,
-    borderWidth: 1,
-    fontSize: 16,
-    fontWeight: '900',
-    backgroundColor: '#FFFFFF',
-  },
-
-  textarea: {
-    minHeight: 140,
-    borderRadius: 16,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    fontSize: 14,
-    fontWeight: '800',
-    lineHeight: 20,
-  },
-  charCount: { fontSize: 11, fontWeight: '800', textAlign: 'left' },
-
-  modalFooter: {
-    padding: 12,
-    borderTopWidth: 1,
-    flexDirection: 'row-reverse',
-    gap: 10,
-  },
-  btnSecondary: {
-    flex: 1,
-    height: 48,
-    borderRadius: 14,
-    borderWidth: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  btnSecondaryText: { fontSize: 14, fontWeight: '900' },
-  btnPrimary: {
-    flex: 2,
-    height: 48,
-    borderRadius: 14,
-    justifyContent: 'center',
-    alignItems: 'center',
-    flexDirection: 'row-reverse',
-    gap: 8,
-  },
-  btnPrimaryText: { fontSize: 14, fontWeight: '900', color: '#fff' },
+  // Modal styles removed: editing now opens a dedicated screen.
 });
 

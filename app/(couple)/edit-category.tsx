@@ -11,7 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useUserStore } from '@/store/userStore';
 import { guestService } from '@/lib/services/guestService';
@@ -77,11 +77,13 @@ export default function EditCategoryScreen() {
     }
   }, [categoryId, eventId]);
 
-  useEffect(() => {
-    // This is a full-screen editor: hide the tab bar while focused.
-    setTabBarVisible(false);
-    return () => setTabBarVisible(true);
-  }, [setTabBarVisible]);
+  useFocusEffect(
+    useCallback(() => {
+      // This is a full-screen editor: hide the tab bar while focused.
+      setTabBarVisible(false);
+      return () => setTabBarVisible(true);
+    }, [setTabBarVisible])
+  );
 
   const moveSelectedToCategory = async (target: any) => {
     if (!target?.id) return;

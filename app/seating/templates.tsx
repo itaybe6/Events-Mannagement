@@ -13,7 +13,7 @@ import {
   Pressable,
   Modal,
 } from 'react-native';
-import { useLocalSearchParams, usePathname, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, usePathname, useRouter } from 'expo-router';
 import { colors } from '@/constants/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { Feather } from '@expo/vector-icons';
@@ -1422,10 +1422,12 @@ function SeatingFreeformMap({
   }, []);
 
   // Hide tab bar while in full-screen map mode
-  useEffect(() => {
-    setTabBarVisible(false);
-    return () => setTabBarVisible(true);
-  }, [setTabBarVisible]);
+  useFocusEffect(
+    useCallback(() => {
+      setTabBarVisible(false);
+      return () => setTabBarVisible(true);
+    }, [setTabBarVisible])
+  );
 
   // Keep per-table mutable positions (not React state, for smooth drag).
   const posByIdRef = useRef(

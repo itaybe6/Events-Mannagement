@@ -170,14 +170,14 @@ export default function AdminTabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="admin-event-notifications"
+        name="admin-event-notifications/index"
         options={{
           href: null,
           headerShown: false,
         }}
       />
       <Tabs.Screen
-        name="admin-event-notifications-v2"
+        name="admin-event-notifications/edit"
         options={{
           href: null,
           headerShown: false,

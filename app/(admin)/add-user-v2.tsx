@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   ScrollView,
   TextInput,
   TouchableOpacity,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Alert,
@@ -15,7 +16,7 @@ import {
   I18nManager,
 } from 'react-native';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { colors } from '@/constants/colors';
 import { useUserStore } from '@/store/userStore';
 import { useDemoUsersStore } from '@/store/demoUsersStore';
@@ -27,7 +28,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLayoutStore } from '@/store/layoutStore';
 
 const ui = {
-  primary: '#067ff9',
+  // Use the app's brand dark-blue
+  primary: colors.primary,
   bgLight: '#f5f7f8',
 };
 
@@ -61,6 +63,7 @@ export default function AddUserScreenV2() {
   const [avatar, setAvatar] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [focusedField, setFocusedField] = useState<
     null | 'name' | 'email' | 'phone' | 'password' | 'confirmPassword'
   >(null);
@@ -113,11 +116,22 @@ export default function AddUserScreenV2() {
     void checkConnection();
   }, [isLoggedIn, userType, router]);
 
+  useFocusEffect(
+    useCallback(() => {
+      // This screen is a focused flow; hide the bottom tabs while adding a user.
+      setTabBarVisible(false);
+      return () => setTabBarVisible(true);
+    }, [setTabBarVisible])
+  );
+
   useEffect(() => {
-    // This screen is a focused flow; hide the bottom tabs while adding a user.
-    setTabBarVisible(false);
-    return () => setTabBarVisible(true);
-  }, [setTabBarVisible]);
+    const showSub = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const checkConnection = async () => {
     try {
@@ -301,7 +315,7 @@ export default function AddUserScreenV2() {
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'height' : 'height'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
         <ScrollView
@@ -310,7 +324,8 @@ export default function AddUserScreenV2() {
           contentContainerStyle={[
             styles.content,
             {
-              paddingBottom: 40 + 12 + 48 + Math.max(insets.bottom, 14),
+              // When keyboard is open the footer is behind it; avoid leaving a big empty "gray" gap.
+              paddingBottom: keyboardVisible ? 24 : 40 + 12 + 48 + Math.max(insets.bottom, 14),
             },
           ]}
           keyboardShouldPersistTaps="handled"
@@ -320,8 +335,8 @@ export default function AddUserScreenV2() {
               style={[
                 styles.demoNote,
                 {
-                  borderColor: 'rgba(6, 127, 249, 0.18)',
-                  backgroundColor: 'rgba(6, 127, 249, 0.08)',
+                  borderColor: 'rgba(6, 23, 62, 0.18)',
+                  backgroundColor: 'rgba(6, 23, 62, 0.08)',
                 },
               ]}
             >
@@ -610,7 +625,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(6, 127, 249, 0.10)',
+    backgroundColor: 'rgba(6, 23, 62, 0.10)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -667,7 +682,7 @@ const styles = StyleSheet.create({
     ...baseShadow,
   },
   avatarImage: { width: '100%', height: '100%', resizeMode: 'cover' },
-  avatarCta: { fontSize: 14, fontWeight: '900', color: '#067ff9', textAlign: 'center' },
+  avatarCta: { fontSize: 14, fontWeight: '900', color: ui.primary, textAlign: 'center' },
   removeAvatarBtn: {
     flexDirection: isRTL ? 'row' : 'row-reverse',
     alignItems: 'center',

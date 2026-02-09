@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -15,7 +15,7 @@ import {
   TouchableWithoutFeedback,
   View,
 } from 'react-native';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
@@ -90,11 +90,13 @@ export default function NotificationEditorScreen() {
     };
   }, []);
 
-  useEffect(() => {
-    // Full screen editor: hide tab bar while focused.
-    setTabBarVisible(false);
-    return () => setTabBarVisible(true);
-  }, [setTabBarVisible]);
+  useFocusEffect(
+    useCallback(() => {
+      // Full screen editor: hide tab bar while focused.
+      setTabBarVisible(false);
+      return () => setTabBarVisible(true);
+    }, [setTabBarVisible])
+  );
 
   useEffect(() => {
     const load = async () => {
