@@ -12,6 +12,7 @@ import {
   Dimensions,
   Pressable,
   Modal,
+  useWindowDimensions,
 } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, usePathname, useRouter } from 'expo-router';
 import { colors } from '@/constants/colors';
@@ -19,7 +20,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Feather } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
 import { BlurView } from 'expo-blur';
-import Svg, { Defs, Pattern, Rect, Circle } from 'react-native-svg';
+import Svg, { Defs, Pattern, Rect, Path, Circle } from 'react-native-svg';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, {
   makeMutable,
@@ -54,18 +55,35 @@ const PREVIEW_MAP_HEIGHT = 560;
 const PREVIEW_MAP_Y_RANGE = 800;
 const PREVIEW_TABLE_CARD_WIDTH = 44;
 
-export default function SeatingTemplatesScreen() {
-  const { eventId, keep } = useLocalSearchParams();
+type SeatingTemplatesScreenProps = {
+  startMode?: 'builder' | 'map';
+  eventId?: string;
+};
+
+export default function SeatingTemplatesScreen(props: SeatingTemplatesScreenProps = {}) {
+  const params = useLocalSearchParams();
+  const eventId = props.eventId ?? (params.eventId ? String(params.eventId) : undefined);
+  const keep = params.keep ? String(params.keep) : undefined;
+  const startModeParam = params.startMode ? String(params.startMode) : undefined;
   const router = useRouter();
   const pathname = usePathname();
   const [loading, setLoading] = useState(false);
   const [existingMap, setExistingMap] = useState<any>(null);
   const [selectedTableId, setSelectedTableId] = useState<number | null>(null);
-  const [mode, setMode] = useState<'builder' | 'map'>('builder');
+  const isWebMapRoute = Platform.OS === 'web' && pathname?.endsWith('/seating/templatesWeb');
+  const resolvedStartMode: 'builder' | 'map' =
+    props.startMode ?? (startModeParam === 'map' ? 'map' : isWebMapRoute ? 'map' : 'builder');
+  const [mode, setMode] = useState<'builder' | 'map'>(resolvedStartMode);
   const [baseTables, setBaseTables] = useState<BuiltTable[]>([]);
   const [manualTables, setManualTables] = useState<BuiltTable[]>([]);
   const [hiddenTableIds, setHiddenTableIds] = useState<Set<number>>(new Set());
   const { setTabBarVisible } = useLayoutStore();
+
+  // Fixed map size (big squares) for desktop map mode
+  const [mapSize, setMapSize] = useState<{ cols: number; rows: number } | null>(null);
+  const [mapSizeModalOpen, setMapSizeModalOpen] = useState(false);
+  const [mapColsDraft, setMapColsDraft] = useState(10);
+  const [mapRowsDraft, setMapRowsDraft] = useState(10);
 
   const tablesForEdit = useMemo(() => {
     const hidden = hiddenTableIds;
@@ -133,6 +151,14 @@ export default function SeatingTemplatesScreen() {
         
         if (seatingMapData && !seatingMapError) {
           setExistingMap(seatingMapData);
+          // Load persisted map size (if present)
+          const cols = typeof (seatingMapData as any).map_cols === 'number' ? (seatingMapData as any).map_cols : null;
+          const rows = typeof (seatingMapData as any).map_rows === 'number' ? (seatingMapData as any).map_rows : null;
+          if (cols && rows) {
+            setMapSize({ cols, rows });
+            setMapColsDraft(cols);
+            setMapRowsDraft(rows);
+          }
           // Load existing tables into the builder
           loadTablesFromExistingMap(seatingMapData.tables);
         } else {
@@ -163,6 +189,8 @@ export default function SeatingTemplatesScreen() {
               num_tables: tablesData.length,
               tables: builtTables,
               annotations: [],
+              map_cols: null,
+              map_rows: null,
               created_at: new Date().toISOString(),
               updated_at: new Date().toISOString(),
             };
@@ -179,6 +207,15 @@ export default function SeatingTemplatesScreen() {
 
     loadExistingMap();
   }, [eventId]);
+
+  // On desktop map route: force map size selection the first time (per event) until saved.
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    if (!isWebMapRoute) return;
+    if (!eventId) return;
+    if (mapSize) return;
+    setMapSizeModalOpen(true);
+  }, [eventId, isWebMapRoute, mapSize]);
 
   // Function to load existing tables into the builder
   const loadTablesFromExistingMap = (existingTables: BuiltTable[]) => {
@@ -491,6 +528,8 @@ export default function SeatingTemplatesScreen() {
           num_tables: tables.length,
           tables: tables,
           annotations: [],
+          map_cols: mapSize?.cols ?? 10,
+          map_rows: mapSize?.rows ?? 10,
           updated_at: new Date().toISOString(),
         },
         { onConflict: 'event_id' }
@@ -542,6 +581,8 @@ export default function SeatingTemplatesScreen() {
         num_tables: tables.length,
         tables: tables,
         annotations: [],
+        map_cols: mapSize?.cols ?? 10,
+        map_rows: mapSize?.rows ?? 10,
         updated_at: new Date().toISOString(),
       })
       .eq('event_id', eventId);
@@ -873,13 +914,43 @@ export default function SeatingTemplatesScreen() {
     ]);
   }, []);
 
+  const handleRequestDeleteTables = useCallback((tableIds: number[]) => {
+    const uniq = Array.from(new Set(tableIds)).filter(Boolean);
+    if (uniq.length === 0) return;
+
+    const sorted = uniq.slice().sort((a, b) => a - b);
+    const set = new Set(sorted);
+
+    Alert.alert(
+      'מחיקת שולחנות',
+      `האם אתה בטוח שברצונך למחוק ${sorted.length} שולחנות?`,
+      [
+        { text: 'ביטול', style: 'cancel' },
+        {
+          text: 'מחק',
+          style: 'destructive',
+          onPress: () => {
+            setHiddenTableIds(prev => {
+              const next = new Set(prev);
+              for (const id of sorted) next.add(id);
+              return next;
+            });
+            setBaseTables(prev => prev.filter(t => !set.has(t.id)));
+            setManualTables(prev => prev.filter(t => !set.has(t.id)));
+          },
+        },
+      ]
+    );
+  }, []);
+
   if (mode === 'map') {
     return (
-      <GestureHandlerRootView style={{ flex: 1, backgroundColor: ui.bg }}>
+      <GestureHandlerRootView style={{ flex: 1, backgroundColor: Platform.OS === 'web' ? '#e5e7eb' : ui.bg }}>
         <SeatingFreeformMap
           ui={ui}
           tables={tablesForEdit}
           loading={loading}
+          mapSize={mapSize}
           onBack={() => setMode('builder')}
           onSave={handleCreateMap}
           onAddTable={addManualTableAt}
@@ -887,8 +958,147 @@ export default function SeatingTemplatesScreen() {
           onMoveTable={updateTablePosition}
           onPressTable={handleTableTypePress}
           onRequestDeleteTable={handleRequestDeleteTable}
+          onRequestDeleteTables={handleRequestDeleteTables}
           setTabBarVisible={setTabBarVisible}
         />
+
+        {/* First-time map size selection (web) */}
+        <Modal
+          visible={Platform.OS === 'web' && isWebMapRoute && mapSizeModalOpen}
+          transparent
+          animationType="fade"
+          onRequestClose={() => {}}
+        >
+          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', padding: 24 }}>
+            <View
+              style={{
+                maxWidth: 520,
+                width: '100%',
+                alignSelf: 'center',
+                backgroundColor: 'rgba(255,255,255,0.96)',
+                borderRadius: 18,
+                padding: 16,
+                borderWidth: 1,
+                borderColor: ui.borderSoft,
+              }}
+            >
+              <Text style={{ fontSize: 18, fontWeight: '900', color: ui.text, textAlign: 'right' }}>
+                הגדרת גודל המפה
+              </Text>
+              <Text style={{ marginTop: 6, fontSize: 13, fontWeight: '700', color: ui.muted, textAlign: 'right' }}>
+                בחר כמה ריבועים גדולים יהיו לרוחב ולגובה (לדוגמה 10×10).
+              </Text>
+
+              <View style={{ marginTop: 14, flexDirection: 'row-reverse', gap: 12 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: ui.text, textAlign: 'right' }}>רוחב</Text>
+                  <View
+                    style={{
+                      marginTop: 8,
+                      flexDirection: 'row-reverse',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      borderWidth: 1,
+                      borderColor: ui.borderSoft,
+                      borderRadius: 14,
+                      padding: 10,
+                      backgroundColor: '#fff',
+                    }}
+                  >
+                    <Pressable
+                      onPress={() => setMapColsDraft(c => Math.max(4, c - 1))}
+                      style={{ width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(17,24,39,0.04)' }}
+                      accessibilityRole="button"
+                      accessibilityLabel="הפחת רוחב"
+                    >
+                      <Ionicons name="remove" size={20} color={ui.text} />
+                    </Pressable>
+                    <Text style={{ fontSize: 22, fontWeight: '900', color: ui.text }}>{mapColsDraft}</Text>
+                    <Pressable
+                      onPress={() => setMapColsDraft(c => Math.min(60, c + 1))}
+                      style={{ width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(43, 140, 238, 0.12)' }}
+                      accessibilityRole="button"
+                      accessibilityLabel="הוסף רוחב"
+                    >
+                      <Ionicons name="add" size={20} color={ui.primary} />
+                    </Pressable>
+                  </View>
+                </View>
+
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: ui.text, textAlign: 'right' }}>גובה</Text>
+                  <View
+                    style={{
+                      marginTop: 8,
+                      flexDirection: 'row-reverse',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      borderWidth: 1,
+                      borderColor: ui.borderSoft,
+                      borderRadius: 14,
+                      padding: 10,
+                      backgroundColor: '#fff',
+                    }}
+                  >
+                    <Pressable
+                      onPress={() => setMapRowsDraft(r => Math.max(4, r - 1))}
+                      style={{ width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(17,24,39,0.04)' }}
+                      accessibilityRole="button"
+                      accessibilityLabel="הפחת גובה"
+                    >
+                      <Ionicons name="remove" size={20} color={ui.text} />
+                    </Pressable>
+                    <Text style={{ fontSize: 22, fontWeight: '900', color: ui.text }}>{mapRowsDraft}</Text>
+                    <Pressable
+                      onPress={() => setMapRowsDraft(r => Math.min(60, r + 1))}
+                      style={{ width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(43, 140, 238, 0.12)' }}
+                      accessibilityRole="button"
+                      accessibilityLabel="הוסף גובה"
+                    >
+                      <Ionicons name="add" size={20} color={ui.primary} />
+                    </Pressable>
+                  </View>
+                </View>
+              </View>
+
+              <View style={{ marginTop: 16, flexDirection: 'row-reverse', gap: 10 }}>
+                <Pressable
+                  onPress={async () => {
+                    const cols = Math.max(4, Math.min(60, Math.floor(mapColsDraft || 10)));
+                    const rows = Math.max(4, Math.min(60, Math.floor(mapRowsDraft || 10)));
+                    setMapSize({ cols, rows });
+                    setMapSizeModalOpen(false);
+
+                    // Persist immediately so zoom/overview stays consistent per event
+                    if (eventId) {
+                      const { error } = await supabase.from('seating_maps').upsert(
+                        { event_id: eventId, map_cols: cols, map_rows: rows, updated_at: new Date().toISOString() },
+                        { onConflict: 'event_id' }
+                      );
+                      // If migration wasn't applied yet, ignore and keep local state.
+                      if (error && error.code !== 'PGRST204' && error.code !== 'PGRST205') {
+                        console.error('Error saving map size:', error);
+                      }
+                    }
+                  }}
+                  style={({ hovered, pressed }) => ({
+                    flex: 1,
+                    height: 44,
+                    borderRadius: 12,
+                    backgroundColor: ui.primary,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    opacity: pressed ? 0.92 : 1,
+                  })}
+                  accessibilityRole="button"
+                  accessibilityLabel="אישור גודל מפה"
+                >
+                  <Text style={{ color: '#fff', fontWeight: '900' }}>אישור</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </GestureHandlerRootView>
     );
   }
@@ -1340,6 +1550,7 @@ type SeatingFreeformMapProps = {
   ui: UiPalette;
   tables: BuiltTable[];
   loading: boolean;
+  mapSize: { cols: number; rows: number } | null;
   onBack: () => void;
   onSave: () => void;
   onAddTable: (kind: 'regular' | 'knight' | 'reserve', x: number, y: number) => void;
@@ -1353,6 +1564,7 @@ type SeatingFreeformMapProps = {
   onMoveTable: (tableId: number, x: number, y: number) => void;
   onPressTable: (tableId: number) => void;
   onRequestDeleteTable: (tableId: number) => void;
+  onRequestDeleteTables: (tableIds: number[]) => void;
   setTabBarVisible: (isVisible: boolean) => void;
 };
 
@@ -1360,6 +1572,7 @@ function SeatingFreeformMap({
   ui,
   tables,
   loading,
+  mapSize,
   onBack,
   onSave,
   onAddTable,
@@ -1367,15 +1580,29 @@ function SeatingFreeformMap({
   onMoveTable,
   onPressTable,
   onRequestDeleteTable,
+  onRequestDeleteTables,
   setTabBarVisible,
 }: SeatingFreeformMapProps) {
-  const { width: screenW, height: screenH } = Dimensions.get('window');
+  const { width: screenW, height: screenH } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const isWeb = Platform.OS === 'web';
+  const [rootSize, setRootSize] = useState<{ w: number; h: number } | null>(null);
+  const [sidebarW, setSidebarW] = useState<number>(320);
+  const [viewportSize, setViewportSize] = useState<{ w: number; h: number } | null>(null);
+  // For all camera/screen math we want the map viewport size (excluding the sidebar).
+  // On web, rely on measured layout sizes (more stable across environments and RTL).
+  const viewportW = isWeb
+    ? Math.max(320, viewportSize?.w ?? Math.max(320, (rootSize?.w ?? screenW) - (sidebarW || 320)))
+    : screenW;
+  const viewportH = isWeb ? (viewportSize?.h ?? rootSize?.h ?? screenH) : screenH;
+  const GRID_MINOR = 40;
+  const GRID_MAJOR = 200;
 
   // Camera transform (screen space)
   const cameraX = useSharedValue(0);
   const cameraY = useSharedValue(0);
   const cameraScale = useSharedValue(0.75);
+  const minZoomScale = useSharedValue(0.4);
   const panStartX = useSharedValue(0);
   const panStartY = useSharedValue(0);
   const pinchStartScale = useSharedValue(0.75);
@@ -1387,14 +1614,53 @@ function SeatingFreeformMap({
 
   // Keep a JS snapshot of camera so "add table" uses latest view
   const cameraJsRef = useRef({ x: 0, y: 0, scale: 0.75 });
+  const minZoomScaleJsRef = useRef(0.4);
   const updateCameraSnapshot = useCallback((x: number, y: number, scale: number) => {
     cameraJsRef.current = { x, y, scale };
   }, []);
 
+  const zoomAtCenter = useCallback(
+    (multiplier: number) => {
+      const { x: cx, y: cy, scale: cs } = cameraJsRef.current;
+      const nextScale = clamp((cs || 1) * multiplier, minZoomScaleJsRef.current, 3);
+      const ax = viewportW / 2;
+      const ay = viewportH / 2;
+      const ratio = nextScale / (cs || 1);
+      const nextX = ax - (ax - cx) * ratio;
+      const nextY = ay - (ay - cy) * ratio;
+      cameraScale.value = withTiming(nextScale, { duration: 140 });
+      cameraX.value = withTiming(nextX, { duration: 140 });
+      cameraY.value = withTiming(nextY, { duration: 140 });
+      updateCameraSnapshot(nextX, nextY, nextScale);
+    },
+    [cameraScale, cameraX, cameraY, updateCameraSnapshot, viewportH, viewportW]
+  );
+
+  const handleWheelZoom = useCallback(
+    (e: any) => {
+      if (!isWeb) return;
+      // Prevent page scroll while zooming
+      e?.preventDefault?.();
+      e?.stopPropagation?.();
+      const dy = e?.nativeEvent?.deltaY ?? e?.deltaY ?? 0;
+      // Wheel/trackpad: negative = zoom in, positive = zoom out
+      const factor = dy < 0 ? 1.08 : 1 / 1.08;
+      zoomAtCenter(factor);
+    },
+    [isWeb, zoomAtCenter]
+  );
+
   const [multiSelect, setMultiSelect] = useState(false);
+  const [selectToolEnabled, setSelectToolEnabled] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const selectedIdsRef = useRef<Set<number>>(new Set());
   const [primarySelectedId, setPrimarySelectedId] = useState<number | null>(null);
+  const pendingFocusRef = useRef<{ x: number; y: number } | null>(null);
+
+  type LassoState = { x0: number; y0: number; x1: number; y1: number };
+  const [lasso, setLasso] = useState<LassoState | null>(null);
+  const lassoRef = useRef<LassoState | null>(null);
+  const lassoCameraRef = useRef({ x: 0, y: 0, scale: 0.75 });
 
   useEffect(() => {
     selectedIdsRef.current = selectedIds;
@@ -1459,6 +1725,19 @@ function SeatingFreeformMap({
     return map;
   }, [tables]);
 
+  const clampTableToMap = useCallback(
+    (id: number, x: number, y: number) => {
+      if (!mapSize?.cols || !mapSize?.rows) return { x, y };
+      const sz = sizeById.get(id) ?? { w: 78, h: 78 };
+      const mapW = mapSize.cols * GRID_MAJOR;
+      const mapH = mapSize.rows * GRID_MAJOR;
+      const clampedX = clamp(x, 0, Math.max(0, mapW - sz.w));
+      const clampedY = clamp(y, 0, Math.max(0, mapH - sz.h));
+      return { x: clampedX, y: clampedY };
+    },
+    [GRID_MAJOR, mapSize?.cols, mapSize?.rows, sizeById]
+  );
+
   // Group drag state (JS thread)
   const SNAP = 10;
   const groupAnchorIdRef = useRef<number | null>(null);
@@ -1506,6 +1785,15 @@ function SeatingFreeformMap({
   );
 
   const bounds = useMemo(() => {
+    if (mapSize?.cols && mapSize?.rows) {
+      return {
+        minX: 0,
+        minY: 0,
+        maxX: mapSize.cols * GRID_MAJOR,
+        maxY: mapSize.rows * GRID_MAJOR,
+      };
+    }
+
     if (!tables.length) {
       return { minX: 0, minY: 0, maxX: 1200, maxY: 800 };
     }
@@ -1517,34 +1805,119 @@ function SeatingFreeformMap({
       minY: Math.min(...ys),
       maxY: Math.max(...ys),
     };
-  }, [tables]);
+  }, [GRID_MAJOR, mapSize?.cols, mapSize?.rows, tables]);
 
   const worldSize = useMemo(() => {
-    const pad = 360;
-    const w = Math.max(1400, bounds.maxX - bounds.minX + pad * 2);
-    const h = Math.max(1000, bounds.maxY - bounds.minY + pad * 2);
+    const pad = mapSize?.cols && mapSize?.rows ? 0 : 360;
+    const w = mapSize?.cols && mapSize?.rows ? bounds.maxX - bounds.minX : Math.max(1400, bounds.maxX - bounds.minX + pad * 2);
+    const h = mapSize?.cols && mapSize?.rows ? bounds.maxY - bounds.minY : Math.max(1000, bounds.maxY - bounds.minY + pad * 2);
     return { w, h, pad };
-  }, [bounds]);
+  }, [bounds.maxX, bounds.maxY, bounds.minX, bounds.minY, mapSize?.cols, mapSize?.rows]);
 
   // Shift world coordinates into stage space so negative X/Y remain visible.
   // StageSpace = WorldSpace + origin
   const origin = useMemo(() => {
+    if (mapSize?.cols && mapSize?.rows) {
+      return { x: 0, y: 0 };
+    }
     return {
       x: -bounds.minX + worldSize.pad,
       y: -bounds.minY + worldSize.pad,
     };
-  }, [bounds.minX, bounds.minY, worldSize.pad]);
+  }, [bounds.minX, bounds.minY, mapSize?.cols, mapSize?.rows, worldSize.pad]);
+
+  const cancelLasso = useCallback(() => {
+    lassoRef.current = null;
+    setLasso(null);
+  }, []);
+
+  const startLasso = useCallback((sx: number, sy: number) => {
+    lassoCameraRef.current = cameraJsRef.current;
+    const next: LassoState = { x0: sx, y0: sy, x1: sx, y1: sy };
+    lassoRef.current = next;
+    setLasso(next);
+  }, []);
+
+  const updateLasso = useCallback((sx: number, sy: number) => {
+    const prev = lassoRef.current;
+    if (!prev) return;
+    const next: LassoState = { ...prev, x1: sx, y1: sy };
+    lassoRef.current = next;
+    setLasso(next);
+  }, []);
+
+  const endLasso = useCallback(
+    (sx: number, sy: number) => {
+      const prev = lassoRef.current;
+      if (!prev) return;
+      const next: LassoState = { ...prev, x1: sx, y1: sy };
+
+      const left = Math.min(next.x0, next.x1);
+      const right = Math.max(next.x0, next.x1);
+      const top = Math.min(next.y0, next.y1);
+      const bottom = Math.max(next.y0, next.y1);
+
+      // Ignore tiny drags (treat as no-op)
+      if (right - left < 6 || bottom - top < 6) {
+        cancelLasso();
+        return;
+      }
+
+      const { x: cx, y: cy, scale: cs } = lassoCameraRef.current;
+      const toWorld = (vx: number, vy: number) => ({
+        x: (vx - cx) / cs - origin.x,
+        y: (vy - cy) / cs - origin.y,
+      });
+
+      const w0 = toWorld(left, top);
+      const w1 = toWorld(right, bottom);
+      const selMinX = Math.min(w0.x, w1.x);
+      const selMaxX = Math.max(w0.x, w1.x);
+      const selMinY = Math.min(w0.y, w1.y);
+      const selMaxY = Math.max(w0.y, w1.y);
+
+      const hit = new Set<number>();
+      for (const t of tables) {
+        const pos = posByIdRef.current.get(t.id);
+        const tx = pos?.x.value ?? t.x;
+        const ty = pos?.y.value ?? t.y;
+        const sz = sizeById.get(t.id) ?? { w: 78, h: 78 };
+
+        const tMinX = tx;
+        const tMaxX = tx + sz.w;
+        const tMinY = ty;
+        const tMaxY = ty + sz.h;
+
+        const intersects = tMinX <= selMaxX && tMaxX >= selMinX && tMinY <= selMaxY && tMaxY >= selMinY;
+        if (intersects) hit.add(t.id);
+      }
+
+      setSelectedIds(hit);
+      setPrimarySelectedId(hit.size ? Array.from(hit)[0] : null);
+      cancelLasso();
+    },
+    [cancelLasso, origin.x, origin.y, sizeById, tables]
+  );
 
   const centerOnTables = useCallback(() => {
-    const baseScale = 0.75;
-    cameraScale.value = withTiming(baseScale, { duration: 180 });
+    // Fit-to-bounds (desktop-first). Keep within the same min/max range as pinch-zoom.
+    const fitPad = 0;
+    const contentW = Math.max(1, bounds.maxX - bounds.minX + fitPad * 2);
+    const contentH = Math.max(1, bounds.maxY - bounds.minY + fitPad * 2);
+    const fitScale = clamp(Math.min(viewportW / contentW, viewportH / contentH) * 0.98, 0.4, 3);
+
+    // Lock zoom-out to the initial overview (as requested)
+    minZoomScale.value = fitScale;
+    minZoomScaleJsRef.current = fitScale;
+
+    cameraScale.value = withTiming(fitScale, { duration: 180 });
     const centerWorldX = (bounds.minX + bounds.maxX) / 2;
     const centerWorldY = (bounds.minY + bounds.maxY) / 2;
-    const tx = screenW / 2 - (centerWorldX + origin.x) * baseScale;
-    const ty = screenH / 2 - (centerWorldY + origin.y) * baseScale;
+    const tx = viewportW / 2 - (centerWorldX + origin.x) * fitScale;
+    const ty = viewportH / 2 - (centerWorldY + origin.y) * fitScale;
     cameraX.value = withTiming(tx, { duration: 180 });
     cameraY.value = withTiming(ty, { duration: 180 });
-    updateCameraSnapshot(tx, ty, baseScale);
+    updateCameraSnapshot(tx, ty, fitScale);
   }, [
     bounds.maxX,
     bounds.maxY,
@@ -1553,22 +1926,38 @@ function SeatingFreeformMap({
     cameraScale,
     cameraX,
     cameraY,
+    minZoomScale,
     origin.x,
     origin.y,
-    screenH,
-    screenW,
+    viewportH,
+    viewportW,
   ]);
+
+  // When mapSize is chosen (even before any tables exist), set the initial "overview" and lock min-zoom.
+  useEffect(() => {
+    if (!isWeb) return;
+    if (!mapSize?.cols || !mapSize?.rows) return;
+    centerOnTables();
+  }, [centerOnTables, isWeb, mapSize?.cols, mapSize?.rows, viewportH, viewportW]);
+
+  // Re-center when viewport is measured / resized (keeps map centered in gray area).
+  useEffect(() => {
+    if (!isWeb) return;
+    if (!mapSize?.cols || !mapSize?.rows) return;
+    if (!viewportSize && !rootSize) return;
+    centerOnTables();
+  }, [centerOnTables, isWeb, mapSize?.cols, mapSize?.rows, rootSize, sidebarW, viewportSize]);
 
   const focusWorldPoint = useCallback(
     (wx: number, wy: number) => {
       const s = cameraJsRef.current.scale || 0.75;
-      const tx = screenW / 2 - (wx + origin.x) * s;
-      const ty = screenH / 2 - (wy + origin.y) * s;
+      const tx = viewportW / 2 - (wx + origin.x) * s;
+      const ty = viewportH / 2 - (wy + origin.y) * s;
       cameraX.value = withTiming(tx, { duration: 180 });
       cameraY.value = withTiming(ty, { duration: 180 });
       updateCameraSnapshot(tx, ty, s);
     },
-    [cameraX, cameraY, origin.x, origin.y, screenH, screenW, updateCameraSnapshot]
+    [cameraX, cameraY, origin.x, origin.y, updateCameraSnapshot, viewportH, viewportW]
   );
 
   const didInitRef = useRef(false);
@@ -1578,6 +1967,14 @@ function SeatingFreeformMap({
     didInitRef.current = true;
     centerOnTables();
   }, [tables.length, centerOnTables]);
+
+  // If we added tables, focus after bounds/origin settle (web sidebar makes immediate focus unreliable).
+  useEffect(() => {
+    const pending = pendingFocusRef.current;
+    if (!pending) return;
+    pendingFocusRef.current = null;
+    focusWorldPoint(pending.x, pending.y);
+  }, [focusWorldPoint, tables.length]);
 
   // Sync mutable positions with latest prop values.
   useEffect(() => {
@@ -1676,8 +2073,10 @@ function SeatingFreeformMap({
     (anchorId: number, anchorX: number, anchorY: number) => {
       const selected = selectedIdsRef.current;
       const anchorStart = groupAnchorStartRef.current;
-      const dx = anchorX - anchorStart.x;
-      const dy = anchorY - anchorStart.y;
+      // Clamp anchor to map bounds (so group cannot drift into gray area)
+      const clampedAnchor = clampTableToMap(anchorId, anchorX, anchorY);
+      const dx = clampedAnchor.x - anchorStart.x;
+      const dy = clampedAnchor.y - anchorStart.y;
 
       const ids = selected.size ? Array.from(selected) : [anchorId];
 
@@ -1687,13 +2086,14 @@ function SeatingFreeformMap({
         const start = groupStartByIdRef.current.get(id);
         const pos = posByIdRef.current.get(id);
         if (!start || !pos) continue;
-        pos.x.value = start.x + dx;
-        pos.y.value = start.y + dy;
+        const next = clampTableToMap(id, start.x + dx, start.y + dy);
+        pos.x.value = next.x;
+        pos.y.value = next.y;
       }
 
-      updateGuides(anchorId, anchorX, anchorY);
+      updateGuides(anchorId, clampedAnchor.x, clampedAnchor.y);
     },
-    [updateGuides]
+    [clampTableToMap, updateGuides]
   );
 
   const commitGroupDrag = useCallback(
@@ -1704,14 +2104,17 @@ function SeatingFreeformMap({
       // Commit all selected positions to React state (via onMoveTable)
       for (const id of ids) {
         const pos = posByIdRef.current.get(id);
-        const x = id === anchorId ? anchorX : Math.round((pos?.x.value ?? 0) / SNAP) * SNAP;
-        const y = id === anchorId ? anchorY : Math.round((pos?.y.value ?? 0) / SNAP) * SNAP;
-        onMoveTable(id, x, y);
+        const rawX = id === anchorId ? anchorX : (pos?.x.value ?? 0);
+        const rawY = id === anchorId ? anchorY : (pos?.y.value ?? 0);
+        const snappedX = Math.round(rawX / SNAP) * SNAP;
+        const snappedY = Math.round(rawY / SNAP) * SNAP;
+        const next = clampTableToMap(id, snappedX, snappedY);
+        onMoveTable(id, next.x, next.y);
       }
 
       clearGuides();
     },
-    [clearGuides, onMoveTable]
+    [clampTableToMap, clearGuides, onMoveTable]
   );
 
   const clampCameraToWorld = useCallback(
@@ -1721,7 +2124,7 @@ function SeatingFreeformMap({
       const scaledW = worldSize.w * s;
       const scaledH = worldSize.h * s;
 
-      let minTx = screenW - scaledW - margin;
+      let minTx = viewportW - scaledW - margin;
       let maxTx = margin;
       if (minTx > maxTx) {
         const mid = (minTx + maxTx) / 2;
@@ -1729,7 +2132,7 @@ function SeatingFreeformMap({
         maxTx = mid;
       }
 
-      let minTy = screenH - scaledH - margin;
+      let minTy = viewportH - scaledH - margin;
       let maxTy = margin;
       if (minTy > maxTy) {
         const mid = (minTy + maxTy) / 2;
@@ -1742,7 +2145,7 @@ function SeatingFreeformMap({
         y: clamp(ty, minTy, maxTy),
       };
     },
-    [screenH, screenW, worldSize.h, worldSize.w]
+    [viewportH, viewportW, worldSize.h, worldSize.w]
   );
 
   const panGesture = useMemo(
@@ -1789,17 +2192,17 @@ function SeatingFreeformMap({
           pinchStartY.value = cameraY.value;
           // Center-zoom: keep the screen center stable (no left/right drift).
           // We intentionally ignore focalX/focalY for a "straight line" zoom.
-          pinchAnchorX.value = screenW / 2;
-          pinchAnchorY.value = screenH / 2;
+          pinchAnchorX.value = viewportW / 2;
+          pinchAnchorY.value = viewportH / 2;
         })
         .onUpdate(e => {
           if (isDragging.value) return;
           const startScale = pinchStartScale.value || 1;
-          const nextScale = clamp(startScale * e.scale, 0.4, 3);
+          const nextScale = clamp(startScale * e.scale, minZoomScale.value, 3);
 
           // Zoom around a fixed anchor captured onBegin.
-          const ax = pinchAnchorX.value || screenW / 2;
-          const ay = pinchAnchorY.value || screenH / 2;
+          const ax = pinchAnchorX.value || viewportW / 2;
+          const ay = pinchAnchorY.value || viewportH / 2;
           const ratio = nextScale / startScale;
 
           const nextX = ax - (ax - pinchStartX.value) * ratio;
@@ -1834,23 +2237,58 @@ function SeatingFreeformMap({
       pinchStartScale,
       pinchStartX,
       pinchStartY,
-      screenH,
-      screenW,
       updateCameraSnapshot,
+      viewportH,
+      viewportW,
     ]
+  );
+
+  const lassoGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .enabled(isWeb && selectToolEnabled)
+        .maxPointers(1)
+        .onStart(e => {
+          runOnJS(startLasso)(e.x, e.y);
+        })
+        .onUpdate(e => {
+          runOnJS(updateLasso)(e.x, e.y);
+        })
+        .onEnd(e => {
+          runOnJS(endLasso)(e.x, e.y);
+        })
+        .onFinalize(() => {
+          runOnJS(cancelLasso)();
+        }),
+    [cancelLasso, endLasso, isWeb, selectToolEnabled, startLasso, updateLasso]
   );
 
   const canvasGesture = useMemo(() => Gesture.Simultaneous(panGesture, pinchGesture), [panGesture, pinchGesture]);
 
+  const viewportGesture = useMemo(() => {
+    if (isWeb && selectToolEnabled) {
+      // In selection mode: drag draws a lasso (no panning). Keep pinch-zoom if available.
+      return Gesture.Simultaneous(pinchGesture, lassoGesture);
+    }
+    return canvasGesture;
+  }, [canvasGesture, isWeb, lassoGesture, pinchGesture, selectToolEnabled]);
+
   const stageStyle = useAnimatedStyle(() => {
+    // Camera math assumes:
+    //   screen = world * scale + translate
+    //   world  = (screen - translate) / scale
+    //
+    // Camera math assumes:
+    //   screen = world * scale + translate
+    // Therefore we apply scale first, then translate (translation should NOT be scaled).
     return {
-      transform: [
-        // IMPORTANT: scale first, then translate.
-        // This keeps screen<->world math consistent: world = (screen - translate) / scale
-        { scale: cameraScale.value },
-        { translateX: cameraX.value },
-        { translateY: cameraY.value },
-      ],
+      ...(Platform.OS === 'web'
+        ? ({
+            // Ensure scaling is anchored at top-left (otherwise default center-scaling adds offset).
+            transformOrigin: '0 0',
+          } as any)
+        : null),
+      transform: [{ scale: cameraScale.value }, { translateX: cameraX.value }, { translateY: cameraY.value }],
     };
   });
 
@@ -1858,12 +2296,12 @@ function SeatingFreeformMap({
     (kind: 'regular' | 'knight' | 'reserve') => {
       const s = cameraScale.value || 1;
       // Convert screen-center -> world, then remove origin shift.
-      const worldX = (screenW / 2 - cameraX.value) / s - origin.x;
-      const worldY = (screenH / 2 - cameraY.value) / s - origin.y;
+      const worldX = (viewportW / 2 - cameraX.value) / s - origin.x;
+      const worldY = (viewportH / 2 - cameraY.value) / s - origin.y;
       onAddTable(kind, Math.round(worldX), Math.round(worldY));
     },
     // Do not include `.value` in deps; it triggers Reanimated strict-mode warnings.
-    [cameraScale, cameraX, cameraY, onAddTable, origin.x, origin.y, screenH, screenW]
+    [cameraScale, cameraX, cameraY, onAddTable, origin.x, origin.y, viewportH, viewportW]
   );
 
   // Add flow modal (count -> layout if needed)
@@ -1886,12 +2324,21 @@ function SeatingFreeformMap({
     // Use JS camera snapshot so we don't accidentally add to (0,0) if shared values are stale on JS thread.
     const { x: cx, y: cy, scale: cs } = cameraJsRef.current;
     // Convert screen-center -> world, then remove origin shift. Snap to 10 world-units.
-    const baseX = Math.round((((screenW / 2 - cx) / cs - origin.x) / 10)) * 10;
-    const baseY = Math.round((((screenH / 2 - cy) / cs - origin.y) / 10)) * 10;
+    let baseX = Math.round((((viewportW / 2 - cx) / cs - origin.x) / 10)) * 10;
+    let baseY = Math.round((((viewportH / 2 - cy) / cs - origin.y) / 10)) * 10;
 
     if (count <= 1) {
+      // Clamp inside the white map area (if mapSize is set)
+      const kindW = addKind === 'knight' ? 68 : 78;
+      const kindH = addKind === 'knight' ? 130 : 78;
+      if (mapSize?.cols && mapSize?.rows) {
+        const mapW = mapSize.cols * GRID_MAJOR;
+        const mapH = mapSize.rows * GRID_MAJOR;
+        baseX = clamp(baseX, 0, Math.max(0, mapW - kindW));
+        baseY = clamp(baseY, 0, Math.max(0, mapH - kindH));
+      }
       onAddTable(addKind, baseX, baseY);
-      focusWorldPoint(baseX, baseY);
+      pendingFocusRef.current = { x: baseX, y: baseY };
       setAddOpen(false);
       return;
     }
@@ -1910,9 +2357,21 @@ function SeatingFreeformMap({
     const gap = 26;
     const stepX = addLayout === 'row' ? w + gap : 0;
     const stepY = addLayout === 'column' ? h + gap : 0;
-    focusWorldPoint(baseX + ((count - 1) * stepX) / 2, baseY + ((count - 1) * stepY) / 2);
+
+    if (mapSize?.cols && mapSize?.rows) {
+      const mapW = mapSize.cols * GRID_MAJOR;
+      const mapH = mapSize.rows * GRID_MAJOR;
+      const groupW = w + (count - 1) * stepX;
+      const groupH = h + (count - 1) * stepY;
+      baseX = clamp(baseX, 0, Math.max(0, mapW - groupW));
+      baseY = clamp(baseY, 0, Math.max(0, mapH - groupH));
+    }
+    pendingFocusRef.current = {
+      x: baseX + ((count - 1) * stepX) / 2,
+      y: baseY + ((count - 1) * stepY) / 2,
+    };
     setAddOpen(false);
-  }, [addCount, addKind, addLayout, addStep, focusWorldPoint, onAddTable, onAddTablesBatch, origin.x, origin.y, screenH, screenW]);
+  }, [GRID_MAJOR, addCount, addKind, addLayout, addStep, mapSize?.cols, mapSize?.rows, onAddTable, onAddTablesBatch, origin.x, origin.y, viewportH, viewportW]);
 
   const cancelAddFlow = useCallback(() => {
     if (addStep === 'layout') {
@@ -2382,22 +2841,91 @@ function SeatingFreeformMap({
         {
           width: worldSize.w,
           height: worldSize.h,
-          backgroundColor: ui.canvas,
+          // Keep stage transparent on web so the gray "outside map" is fixed (viewport background),
+          // and only the map area itself moves.
+          backgroundColor: isWeb ? 'transparent' : ui.canvas,
         },
         stageStyle,
       ]}
     >
-      {/* Dot-grid background */}
-      <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-        <Svg width="100%" height="100%">
-          <Defs>
-            <Pattern id="dotGridMap" x="0" y="0" width="28" height="28" patternUnits="userSpaceOnUse">
-              <Circle cx="1.6" cy="1.6" r="1.6" fill="#cbd5e1" opacity={0.7} />
-            </Pattern>
-          </Defs>
-          <Rect x="0" y="0" width="100%" height="100%" fill="url(#dotGridMap)" opacity={0.55} />
-        </Svg>
-      </View>
+      {mapSize?.cols && mapSize?.rows ? (
+        <>
+          {/* Map area background */}
+          <View
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              left: origin.x,
+              top: origin.y,
+              width: mapSize.cols * GRID_MAJOR,
+              height: mapSize.rows * GRID_MAJOR,
+              backgroundColor: '#ffffff',
+              borderWidth: 1,
+              borderColor: 'rgba(148,163,184,0.70)',
+            }}
+          />
+
+          {/* Square grid inside map area */}
+          <View pointerEvents="none" style={{ position: 'absolute', left: origin.x, top: origin.y }}>
+            <Svg width={mapSize.cols * GRID_MAJOR} height={mapSize.rows * GRID_MAJOR}>
+              <Defs>
+                <Pattern
+                  id="gridMinor"
+                  x="0"
+                  y="0"
+                  width={GRID_MINOR}
+                  height={GRID_MINOR}
+                  patternUnits="userSpaceOnUse"
+                >
+                  <Rect x="0" y="0" width={GRID_MINOR} height={GRID_MINOR} fill="transparent" />
+                  <Path
+                    d={`M ${GRID_MINOR} 0 L 0 0 0 ${GRID_MINOR}`}
+                    fill="none"
+                    stroke="rgba(148,163,184,0.35)"
+                    strokeWidth="1"
+                  />
+                </Pattern>
+                <Pattern
+                  id="gridMajor"
+                  x="0"
+                  y="0"
+                  width={GRID_MAJOR}
+                  height={GRID_MAJOR}
+                  patternUnits="userSpaceOnUse"
+                >
+                  <Rect x="0" y="0" width={GRID_MAJOR} height={GRID_MAJOR} fill="transparent" />
+                  <Path
+                    d={`M ${GRID_MAJOR} 0 L 0 0 0 ${GRID_MAJOR}`}
+                    fill="none"
+                    stroke="rgba(148,163,184,0.55)"
+                    strokeWidth="1"
+                  />
+                </Pattern>
+              </Defs>
+              <Rect x="0" y="0" width="100%" height="100%" fill="url(#gridMinor)" />
+              <Rect x="0" y="0" width="100%" height="100%" fill="url(#gridMajor)" />
+            </Svg>
+          </View>
+        </>
+      ) : (
+        /* Fallback: grid across whole stage */
+        <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+          <Svg width="100%" height="100%">
+            <Defs>
+              <Pattern id="gridMinor" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse">
+                <Rect x="0" y="0" width="40" height="40" fill="transparent" />
+                <Path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(148,163,184,0.35)" strokeWidth="1" />
+              </Pattern>
+              <Pattern id="gridMajor" x="0" y="0" width="200" height="200" patternUnits="userSpaceOnUse">
+                <Rect x="0" y="0" width="200" height="200" fill="transparent" />
+                <Path d="M 200 0 L 0 0 0 200" fill="none" stroke="rgba(148,163,184,0.55)" strokeWidth="1" />
+              </Pattern>
+            </Defs>
+            <Rect x="0" y="0" width="100%" height="100%" fill="url(#gridMinor)" />
+            <Rect x="0" y="0" width="100%" height="100%" fill="url(#gridMajor)" opacity={1} />
+          </Svg>
+        </View>
+      )}
 
       {/* Alignment guides (appear only near other tables while dragging) */}
       <Animated.View
@@ -2474,14 +3002,366 @@ function SeatingFreeformMap({
   );
 
   return (
-    <View style={{ flex: 1, backgroundColor: ui.bg }}>
-      {header}
-      <GestureDetector gesture={canvasGesture}>
-        <View style={{ flex: 1, overflow: 'hidden', backgroundColor: ui.canvas }}>
-          {stage}
+    <View
+      style={{ flex: 1, backgroundColor: isWeb ? '#e5e7eb' : ui.bg, flexDirection: isWeb ? 'row' : 'column' }}
+      onLayout={(e) => {
+        if (!isWeb) return;
+        const { width, height } = e.nativeEvent.layout;
+        if (!width || !height) return;
+        setRootSize((prev) => {
+          if (prev && Math.abs(prev.w - width) < 1 && Math.abs(prev.h - height) < 1) return prev;
+          return { w: width, h: height };
+        });
+      }}
+    >
+      {isWeb ? (
+        <View
+          style={{
+            width: 320,
+            borderRightWidth: 1,
+            borderRightColor: 'rgba(17, 24, 39, 0.10)',
+            backgroundColor: 'rgba(255,255,255,0.92)',
+            paddingTop: 18,
+            paddingHorizontal: 14,
+            paddingBottom: 14,
+          }}
+          onLayout={(e) => {
+            if (!isWeb) return;
+            const w = e.nativeEvent.layout.width;
+            if (!w) return;
+            setSidebarW((prev) => (Math.abs((prev || 0) - w) < 1 ? prev : w));
+          }}
+        >
+          <Text style={{ fontSize: 18, fontWeight: '900', color: ui.text, textAlign: 'right' }}>
+            מפת הושבה
+          </Text>
+          <Text style={{ marginTop: 4, fontSize: 12, fontWeight: '700', color: ui.muted, textAlign: 'right' }}>
+            גרירה לפי משבצות · זום עם גלגלת/טאצ׳פד
+          </Text>
+
+          <View style={{ marginTop: 14 }}>
+            <Text style={{ fontSize: 13, fontWeight: '900', color: ui.text, textAlign: 'right' }}>
+              הוספה
+            </Text>
+            <View style={{ flexDirection: 'column', gap: 10, marginTop: 10 }}>
+              <Pressable
+                onPress={() => openAddFlow('regular')}
+                style={({ hovered, pressed }) => ({
+                  height: 44,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: ui.borderSoft,
+                  backgroundColor: hovered || pressed ? 'rgba(43, 140, 238, 0.10)' : '#fff',
+                  paddingHorizontal: 12,
+                  flexDirection: 'row-reverse',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                })}
+                accessibilityRole="button"
+                accessibilityLabel="הוסף שולחן רגיל"
+              >
+                <Text style={{ fontWeight: '900', color: ui.text }}>שולחן רגיל</Text>
+                <Ionicons name="add" size={18} color={ui.primary} />
+              </Pressable>
+
+              <Pressable
+                onPress={() => openAddFlow('knight')}
+                style={({ hovered, pressed }) => ({
+                  height: 44,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: ui.borderSoft,
+                  backgroundColor: hovered || pressed ? 'rgba(17, 24, 39, 0.06)' : '#fff',
+                  paddingHorizontal: 12,
+                  flexDirection: 'row-reverse',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                })}
+                accessibilityRole="button"
+                accessibilityLabel="הוסף שולחן אביר"
+              >
+                <Text style={{ fontWeight: '900', color: ui.text }}>אביר (מלבן)</Text>
+                <Ionicons name="add" size={18} color={ui.text} />
+              </Pressable>
+
+              <Pressable
+                onPress={() => openAddFlow('reserve')}
+                style={({ hovered, pressed }) => ({
+                  height: 44,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: ui.borderSoft,
+                  backgroundColor: hovered || pressed ? 'rgba(124, 58, 237, 0.08)' : '#fff',
+                  paddingHorizontal: 12,
+                  flexDirection: 'row-reverse',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                })}
+                accessibilityRole="button"
+                accessibilityLabel="הוסף שולחן רזרבה"
+              >
+                <Text style={{ fontWeight: '900', color: ui.text }}>רזרבה</Text>
+                <Ionicons name="add" size={18} color={'#7c3aed'} />
+              </Pressable>
+            </View>
+          </View>
+
+          <View style={{ marginTop: 18 }}>
+            <Text style={{ fontSize: 13, fontWeight: '900', color: ui.text, textAlign: 'right' }}>
+              עריכה
+            </Text>
+            <View style={{ flexDirection: 'column', gap: 10, marginTop: 10 }}>
+              <Pressable
+                onPress={() => {
+                  const next = !multiSelect;
+                  setMultiSelect(next);
+                  if (!next) {
+                    setSelectToolEnabled(false);
+                    cancelLasso();
+                  }
+                  clearSelection();
+                }}
+                style={({ hovered, pressed }) => ({
+                  height: 44,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: ui.borderSoft,
+                  backgroundColor:
+                    multiSelect ? 'rgba(43, 140, 238, 0.12)' : hovered || pressed ? 'rgba(17, 24, 39, 0.04)' : '#fff',
+                  paddingHorizontal: 12,
+                  flexDirection: 'row-reverse',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                })}
+                accessibilityRole="button"
+                accessibilityLabel="בחירה מרובה"
+              >
+                <Text style={{ fontWeight: '900', color: ui.text }}>
+                  בחירה מרובה {selectedIds.size ? `(${selectedIds.size})` : ''}
+                </Text>
+                <Ionicons name={multiSelect ? 'checkbox' : 'square-outline'} size={18} color={ui.primary} />
+              </Pressable>
+
+              <Pressable
+                onPress={() => {
+                  const next = !selectToolEnabled;
+                  setSelectToolEnabled(next);
+                  if (next) {
+                    // Lasso implies multi-select on desktop
+                    setMultiSelect(true);
+                    clearSelection();
+                  } else {
+                    cancelLasso();
+                  }
+                }}
+                style={({ hovered, pressed }) => ({
+                  height: 44,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: ui.borderSoft,
+                  backgroundColor:
+                    selectToolEnabled ? 'rgba(17, 24, 39, 0.08)' : hovered || pressed ? 'rgba(17, 24, 39, 0.04)' : '#fff',
+                  paddingHorizontal: 12,
+                  flexDirection: 'row-reverse',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                })}
+                accessibilityRole="button"
+                accessibilityLabel="כלי בחירה עם עכבר"
+              >
+                <Text style={{ fontWeight: '900', color: ui.text }}>כלי בחירה (מלבן)</Text>
+                <Ionicons name={selectToolEnabled ? 'hand-left' : 'hand-left-outline'} size={18} color={ui.text} />
+              </Pressable>
+
+              <Pressable
+                onPress={() => {
+                  const ids = Array.from(selectedIds);
+                  if (ids.length === 0) return;
+                  onRequestDeleteTables(ids);
+                  clearSelection();
+                  cancelLasso();
+                }}
+                disabled={selectedIds.size === 0}
+                style={({ hovered, pressed }) => ({
+                  height: 44,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: 'rgba(244, 67, 54, 0.25)',
+                  backgroundColor:
+                    selectedIds.size === 0
+                      ? 'rgba(244, 67, 54, 0.05)'
+                      : hovered || pressed
+                        ? 'rgba(244, 67, 54, 0.14)'
+                        : 'rgba(244, 67, 54, 0.10)',
+                  paddingHorizontal: 12,
+                  flexDirection: 'row-reverse',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  opacity: selectedIds.size === 0 ? 0.55 : 1,
+                })}
+                accessibilityRole="button"
+                accessibilityLabel="מחק נבחרים"
+              >
+                <Text style={{ fontWeight: '900', color: '#b91c1c' }}>מחק נבחרים</Text>
+                <Ionicons name="trash-outline" size={18} color="#b91c1c" />
+              </Pressable>
+            </View>
+          </View>
+
+          <View style={{ marginTop: 18 }}>
+            <Text style={{ fontSize: 13, fontWeight: '900', color: ui.text, textAlign: 'right' }}>
+              פעולות
+            </Text>
+            <View style={{ flexDirection: 'column', gap: 10, marginTop: 10 }}>
+              <View style={{ flexDirection: 'row-reverse', gap: 10 }}>
+                <Pressable
+                  onPress={() => zoomAtCenter(1.15)}
+                  style={({ hovered, pressed }) => ({
+                    flex: 1,
+                    height: 44,
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: ui.borderSoft,
+                    backgroundColor: hovered || pressed ? 'rgba(17, 24, 39, 0.04)' : '#fff',
+                    paddingHorizontal: 12,
+                    flexDirection: 'row-reverse',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  })}
+                  accessibilityRole="button"
+                  accessibilityLabel="זום אין"
+                >
+                  <Text style={{ fontWeight: '900', color: ui.text }}>זום +</Text>
+                  <Ionicons name="add" size={18} color={ui.primary} />
+                </Pressable>
+
+                <Pressable
+                  onPress={() => zoomAtCenter(1 / 1.15)}
+                  style={({ hovered, pressed }) => ({
+                    flex: 1,
+                    height: 44,
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: ui.borderSoft,
+                    backgroundColor: hovered || pressed ? 'rgba(17, 24, 39, 0.04)' : '#fff',
+                    paddingHorizontal: 12,
+                    flexDirection: 'row-reverse',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  })}
+                  accessibilityRole="button"
+                  accessibilityLabel="זום אאוט"
+                >
+                  <Text style={{ fontWeight: '900', color: ui.text }}>זום -</Text>
+                  <Ionicons name="remove" size={18} color={ui.primary} />
+                </Pressable>
+              </View>
+
+              <Pressable
+                onPress={centerOnTables}
+                style={({ hovered, pressed }) => ({
+                  height: 44,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: ui.borderSoft,
+                  backgroundColor: hovered || pressed ? 'rgba(17, 24, 39, 0.04)' : '#fff',
+                  paddingHorizontal: 12,
+                  flexDirection: 'row-reverse',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                })}
+                accessibilityRole="button"
+                accessibilityLabel="מרכז מפה"
+              >
+                <Text style={{ fontWeight: '900', color: ui.text }}>מרכז מפה</Text>
+                <Ionicons name="locate" size={18} color={ui.primary} />
+              </Pressable>
+
+              <Pressable
+                onPress={onSave}
+                disabled={loading}
+                style={({ hovered, pressed }) => ({
+                  height: 44,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: 'rgba(43, 140, 238, 0.30)',
+                  backgroundColor: hovered || pressed ? 'rgba(43, 140, 238, 0.92)' : ui.primary,
+                  paddingHorizontal: 12,
+                  flexDirection: 'row-reverse',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  opacity: loading ? 0.75 : 1,
+                })}
+                accessibilityRole="button"
+                accessibilityLabel="שמור"
+              >
+                <Text style={{ fontWeight: '900', color: '#fff' }}>{loading ? 'שומר...' : 'שמור'}</Text>
+                <Ionicons name="save-outline" size={18} color="#fff" />
+              </Pressable>
+
+              <Pressable
+                onPress={onBack}
+                style={({ hovered, pressed }) => ({
+                  height: 44,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: ui.borderSoft,
+                  backgroundColor: hovered || pressed ? 'rgba(17, 24, 39, 0.04)' : '#fff',
+                  paddingHorizontal: 12,
+                  flexDirection: 'row-reverse',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                })}
+                accessibilityRole="button"
+                accessibilityLabel="חזרה לבונה"
+              >
+                <Text style={{ fontWeight: '900', color: ui.text }}>חזרה לבונה</Text>
+                <Ionicons name="arrow-forward" size={18} color={ui.primary} />
+              </Pressable>
+            </View>
+          </View>
         </View>
-      </GestureDetector>
-      {fabMenu}
+      ) : (
+        header
+      )}
+
+      <View style={{ flex: 1 }}>
+        <GestureDetector gesture={viewportGesture}>
+          <View
+            style={{ flex: 1, overflow: 'hidden', backgroundColor: isWeb ? '#e5e7eb' : ui.canvas }}
+            {...(isWeb ? ({ onWheel: handleWheelZoom } as any) : {})}
+            onLayout={(e) => {
+              if (!isWeb) return;
+              const { width, height } = e.nativeEvent.layout;
+              if (!width || !height) return;
+              setViewportSize((prev) => {
+                if (prev && Math.abs(prev.w - width) < 1 && Math.abs(prev.h - height) < 1) return prev;
+                return { w: width, h: height };
+              });
+            }}
+          >
+            {stage}
+            {isWeb && selectToolEnabled && lasso ? (
+              <View
+                pointerEvents="none"
+                style={{
+                  position: 'absolute',
+                  left: Math.min(lasso.x0, lasso.x1),
+                  top: Math.min(lasso.y0, lasso.y1),
+                  width: Math.abs(lasso.x1 - lasso.x0),
+                  height: Math.abs(lasso.y1 - lasso.y0),
+                  borderWidth: 1,
+                  borderColor: 'rgba(43, 140, 238, 0.95)',
+                  backgroundColor: 'rgba(43, 140, 238, 0.14)',
+                  borderRadius: 6,
+                }}
+              />
+            ) : null}
+          </View>
+        </GestureDetector>
+      </View>
+
+      {!isWeb && fabMenu}
 
       <Modal visible={addOpen} transparent animationType="fade" onRequestClose={() => setAddOpen(false)}>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', padding: 20 }}>
