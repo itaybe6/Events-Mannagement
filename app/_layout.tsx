@@ -171,8 +171,10 @@ function RootLayoutNav() {
     // אם המשתמש מחובר והוא בעמוד ההתחברות - העבר לקבוצת הטאבים לפי תפקיד
     if (isLoggedIn && segments[0] === 'login') {
       const { userType } = useUserStore.getState();
-      if (userType === 'admin' || userType === 'employee') {
+      if (userType === 'admin') {
         router.replace('/(admin)/admin-events');
+      } else if (userType === 'employee') {
+        router.replace('/(employee)/employee-events');
       } else {
         router.replace('/(couple)');
       }
@@ -232,6 +234,7 @@ function RootLayoutNav() {
       {/* New role-based groups */}
       <Stack.Screen name="(admin)" options={{ headerShown: false }} />
       <Stack.Screen name="(couple)" options={{ headerShown: false }} />
+      <Stack.Screen name="(employee)" options={{ headerShown: false }} />
       <Stack.Screen name="modal" options={{ presentation: "modal" }} />
       
       <Stack.Screen name="rsvp/invite" options={{ title: "הזמנת אורחים" }} />

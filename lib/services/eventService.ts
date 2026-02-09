@@ -22,7 +22,6 @@ export const eventService = {
         date: new Date(event.date),
         location: event.location,
         city: event.city || '',
-        image: event.image || '',
         story: event.story || '',
         guests: event.guests_count || 0,
         budget: Number(event.budget) || 0,
@@ -66,7 +65,6 @@ export const eventService = {
         date: new Date(data.date),
         location: data.location,
         city: data.city || '',
-        image: data.image || '',
         story: data.story || '',
         guests: data.guests_count || 0,
         budget: Number(data.budget) || 0,
@@ -100,7 +98,6 @@ export const eventService = {
         date: eventData.date.toISOString(),
         location: eventData.location,
         city: eventData.city,
-        image: eventData.image,
         story: eventData.story,
         guests_count: eventData.guests,
         budget: eventData.budget,
@@ -123,7 +120,6 @@ export const eventService = {
         date: new Date(data.date),
         location: data.location,
         city: data.city || '',
-        image: data.image || '',
         story: data.story || '',
         guests: data.guests_count || 0,
         budget: Number(data.budget) || 0,
@@ -147,7 +143,6 @@ export const eventService = {
         date: eventData.date.toISOString(),
         location: eventData.location,
         city: eventData.city,
-        image: eventData.image,
         story: eventData.story,
         guests_count: eventData.guests,
         budget: eventData.budget,
@@ -176,7 +171,6 @@ export const eventService = {
         date: new Date(data.date),
         location: data.location,
         city: data.city || '',
-        image: data.image || '',
         story: data.story || '',
         guests: data.guests_count || 0,
         budget: Number(data.budget) || 0,
@@ -200,7 +194,6 @@ export const eventService = {
       if (updates.date) updateData.date = updates.date.toISOString();
       if (updates.location) updateData.location = updates.location;
       if (updates.city !== undefined) updateData.city = updates.city;
-      if (updates.image) updateData.image = updates.image;
       if (updates.story) updateData.story = updates.story;
       if (updates.guests !== undefined) updateData.guests_count = updates.guests;
       if (updates.budget !== undefined) updateData.budget = updates.budget;
@@ -226,7 +219,6 @@ export const eventService = {
         date: new Date(data.date),
         location: data.location,
         city: data.city || '',
-        image: data.image || '',
         story: data.story || '',
         guests: data.guests_count || 0,
         budget: Number(data.budget) || 0,

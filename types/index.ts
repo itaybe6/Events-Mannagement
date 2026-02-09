@@ -43,7 +43,6 @@ export type Event = {
   date: Date;
   location: string;
   city: string;
-  image: string;
   story: string;
   guests: number;
   budget: number;

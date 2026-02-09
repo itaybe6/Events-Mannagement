@@ -40,7 +40,6 @@ CREATE TABLE IF NOT EXISTS events (
     groom_name TEXT,
     bride_name TEXT,
     rsvp_link TEXT,
-    image VARCHAR(500),
     story TEXT,
     guests_count INTEGER DEFAULT 0,
     budget DECIMAL(10,2) DEFAULT 0,
@@ -726,17 +725,6 @@ EXCEPTION
     NULL;
 END $$;
 
--- Public bucket for event images (safe re-run)
-DO $$
-BEGIN
-  INSERT INTO storage.buckets (id, name, public)
-  VALUES ('event-images', 'event-images', true)
-  ON CONFLICT (id) DO UPDATE SET public = true;
-EXCEPTION
-  WHEN undefined_table THEN
-    NULL;
-END $$;
-
 -- Public read access policy for avatars bucket (safe re-run)
 DO $$
 BEGIN
@@ -745,19 +733,6 @@ BEGIN
     FOR SELECT
     TO public
     USING (bucket_id = 'avatars');
-EXCEPTION
-  WHEN duplicate_object THEN NULL;
-  WHEN undefined_table THEN NULL;
-END $$;
-
--- Public read access policy for event-images bucket (safe re-run)
-DO $$
-BEGIN
-  CREATE POLICY "Public read event-images"
-    ON storage.objects
-    FOR SELECT
-    TO public
-    USING (bucket_id = 'event-images');
 EXCEPTION
   WHEN duplicate_object THEN NULL;
   WHEN undefined_table THEN NULL;

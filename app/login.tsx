@@ -126,8 +126,10 @@ export default function LoginScreen() {
       });
 
       // ניתוב לקבוצת טאבים לפי סוג משתמש
-      if (userRow.user_type === 'admin' || userRow.user_type === 'employee') {
+      if (userRow.user_type === 'admin') {
         router.replace('/(admin)/admin-events');
+      } else if (userRow.user_type === 'employee') {
+        router.replace('/(employee)/employee-events');
       } else {
         router.replace('/(couple)');
       }

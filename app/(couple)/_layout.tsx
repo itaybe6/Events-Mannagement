@@ -44,8 +44,12 @@ export default function CoupleTabsLayout() {
       router.replace('/login');
       return;
     }
-    if (userType === 'admin' || userType === 'employee') {
+    if (userType === 'admin') {
       router.replace('/(admin)/admin-events');
+      return;
+    }
+    if (userType === 'employee') {
+      router.replace('/(employee)/employee-events');
     }
   }, [isLoggedIn, userType, loading, router]);
 

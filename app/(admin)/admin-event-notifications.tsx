@@ -13,7 +13,6 @@ import {
   TextInput,
   TouchableOpacity,
   TouchableWithoutFeedback,
-  useColorScheme,
   View,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -59,8 +58,7 @@ export default function AdminEventNotificationsScreen() {
   const router = useRouter();
   const { eventId } = useLocalSearchParams();
   const insets = useSafeAreaInsets();
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
+  const isDark = false;
 
   const [event, setEvent] = useState<Event | null>(null);
   const [ownerName, setOwnerName] = useState<string>('');
@@ -103,19 +101,19 @@ export default function AdminEventNotificationsScreen() {
           card: '#FFFFFF',
           text: '#111827',
           muted: '#6B7280',
-          faint: 'rgba(17,24,39,0.45)',
+          faint: '#9CA3AF',
           primary: '#3b82f6',
           whatsapp: '#25D366',
-          border: '#E5E7EB',
-          divider: 'rgba(17,24,39,0.08)',
+          border: '#F3F4F6',
+          divider: '#F3F4F6',
           headerFill: 'rgba(249,250,251,0.95)',
-          blueIconBg: 'rgba(59,130,246,0.10)',
-          blueIconBorder: 'rgba(59,130,246,0.18)',
-          greenIconBg: 'rgba(37,211,102,0.10)',
-          greenIconBorder: 'rgba(37,211,102,0.18)',
-          blueHoverBorder: 'rgba(59,130,246,0.35)',
-          greenHoverBorder: 'rgba(37,211,102,0.35)',
-          whatsappCardBorder: 'rgba(37,211,102,0.18)',
+          blueIconBg: '#EFF6FF',
+          blueIconBorder: '#DBEAFE',
+          greenIconBg: '#ECFDF5',
+          greenIconBorder: '#D1FAE5',
+          blueHoverBorder: '#BFDBFE',
+          greenHoverBorder: '#BBF7D0',
+          whatsappCardBorder: '#ECFDF5',
         };
   }, [isDark]);
 
@@ -524,8 +522,7 @@ export default function AdminEventNotificationsScreen() {
         ? formatDate(computeSendDate((event as any).date, row.days_from_wedding))
         : '';
 
-    const statusColor = enabled ? '#16A34A' : 'rgba(17,24,39,0.40)';
-    const statusColorDark = enabled ? 'rgba(74,222,128,0.95)' : 'rgba(249,250,251,0.45)';
+    const statusColor = enabled ? '#16A34A' : '#9CA3AF';
 
     return (
       <Pressable
@@ -568,7 +565,7 @@ export default function AdminEventNotificationsScreen() {
               {isSaving ? (
                 <ActivityIndicator size="small" color={statusColor} />
               ) : (
-                <Text style={[styles.metaStatusText, { color: isDark ? statusColorDark : statusColor }]}>
+                <Text style={[styles.metaStatusText, { color: statusColor }]}>
                   {enabled ? 'פעיל' : 'כבוי'}
                 </Text>
               )}
@@ -682,7 +679,7 @@ export default function AdminEventNotificationsScreen() {
 
         {/* WhatsApp */}
         <View style={[styles.sectionHeader, { marginTop: 18 }]}>
-          <View style={[styles.sectionIconCircle, { backgroundColor: ui.greenIconBg, borderColor: ui.greenIconBorder }]}>
+          <View style={[styles.sectionIconCircle, { backgroundColor: ui.greenIconBg, borderColor: ui.greenIconBorder, borderWidth: 1 }]}>
             <Ionicons name="chatbubble-ellipses-outline" size={17} color={ui.whatsapp} />
           </View>
           <Text style={[styles.sectionTitle, { color: ui.text }]}>הודעות וואטסאפ</Text>
@@ -961,21 +958,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: colors.black,
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 2,
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 1,
   },
   headerTitles: { flex: 1, alignItems: 'center' },
-  headerTitle: { fontSize: 20, fontWeight: '900', textAlign: 'center' },
-  headerSubtitle: { marginTop: 4, fontSize: 12, fontWeight: '700', textAlign: 'center' },
+  headerTitle: { fontSize: 20, fontWeight: '800', textAlign: 'center' },
+  headerSubtitle: { marginTop: 2, fontSize: 12, fontWeight: '600', textAlign: 'center' },
   headerSpacer: { width: 40, height: 40 },
 
   content: {
     paddingHorizontal: 16,
     paddingTop: 24,
     paddingBottom: 140,
-    gap: 28,
+    gap: 32,
     maxWidth: 512,
     alignSelf: 'center',
     width: '100%',
@@ -988,16 +985,16 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingHorizontal: 8,
     marginTop: 0,
-    marginBottom: 12,
+    marginBottom: 16,
   },
-  sectionTitle: { fontSize: 18, fontWeight: '900', textAlign: 'right' },
+  sectionTitle: { fontSize: 18, fontWeight: '800', textAlign: 'right' },
   sectionIconCircle: {
     width: 32,
     height: 32,
     borderRadius: 999,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1,
+    borderWidth: 0,
   },
   cardsStack: { gap: 16 },
 
@@ -1021,7 +1018,7 @@ const styles = StyleSheet.create({
   noteText: {
     flex: 1,
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: '600',
     textAlign: 'right',
     lineHeight: 18,
   },
@@ -1038,11 +1035,11 @@ const styles = StyleSheet.create({
     shadowColor: colors.black,
     shadowOpacity: 0.05,
     shadowRadius: 20,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 3,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
   cardRowPressed: {
-    transform: [{ scale: 0.985 }],
+    transform: [{ scale: 0.98 }],
   },
   cardRowWhatsapp: {
     borderColor: 'rgba(37,211,102,0.18)',
@@ -1057,7 +1054,7 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 16,
   },
   cardMain: { flex: 1, alignItems: 'flex-end' },
-  cardTitle: { fontSize: 18, fontWeight: '900', textAlign: 'right' },
+  cardTitle: { fontSize: 18, fontWeight: '800', textAlign: 'right' },
   cardMetaRow: {
     marginTop: 8,
     alignSelf: 'flex-end',
@@ -1065,9 +1062,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   metaStatusBtn: { paddingVertical: 2 },
-  metaStatusText: { fontSize: 14, fontWeight: '900' },
-  metaBullet: { marginHorizontal: 10, color: 'rgba(107,114,128,0.70)', fontSize: 14, fontWeight: '900' },
-  metaOffsetText: { fontSize: 14, fontWeight: '700' },
+  metaStatusText: { fontSize: 14, fontWeight: '700' },
+  metaBullet: { marginHorizontal: 10, color: '#D1D5DB', fontSize: 14, fontWeight: '700' },
+  metaOffsetText: { fontSize: 14, fontWeight: '600' },
   cardChevronRight: {
     paddingRight: 4,
     paddingLeft: 8,

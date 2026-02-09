@@ -318,15 +318,16 @@ export default function AdminEventsScreen() {
         </View>
       </ScrollView>
 
-      {/* FAB */}
-      <TouchableOpacity
-        style={styles.fabNew}
-        onPress={() => router.push('/(admin)/admin-events-create')}
-        activeOpacity={0.9}
-      >
-        <View style={styles.fabGlow} />
-        <Ionicons name="add" size={28} color={colors.primary} />
-      </TouchableOpacity>
+      {/* Floating Action Button */}
+      <View style={styles.fabWrap}>
+        <TouchableOpacity
+          style={styles.fab}
+          onPress={() => router.push('/(admin)/admin-events-create')}
+          activeOpacity={0.92}
+        >
+          <Ionicons name="add" size={32} color={colors.white} />
+        </TouchableOpacity>
+      </View>
     </SafeAreaView>
   );
 }
@@ -630,28 +631,25 @@ const styles = StyleSheet.create({
     marginTop: 12,
     textAlign: 'center',
   },
-  fabNew: {
+
+  fabWrap: {
     position: 'absolute',
-    right: 18,
-    bottom: Platform.OS === 'ios' ? 34 : 22,
+    left: 18,
+    bottom: 108,
+  },
+  fab: {
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: 'rgba(255,255,255,0.78)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.55)',
+    backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: colors.black,
-    shadowOpacity: 0.12,
+    shadowColor: colors.primary,
+    shadowOpacity: 0.22,
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 10 },
     elevation: 6,
-  },
-  fabGlow: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: 32,
-    backgroundColor: colors.primary,
-    opacity: 0.12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
   },
 }); 

@@ -1,12 +1,42 @@
 import React, { useEffect } from "react";
 import { Tabs, useRouter } from "expo-router";
-import { colors } from "@/constants/colors";
 import { Ionicons } from "@expo/vector-icons";
-import { Image, Platform, StyleSheet, View, TouchableOpacity } from "react-native";
-import { useLayoutStore } from '@/store/layoutStore';
-import { useUserStore } from '@/store/userStore';
+import { Image, Platform, StyleSheet, TouchableOpacity, View } from "react-native";
+import { Image as ExpoImage } from "expo-image";
 
-export default function AdminTabsLayout() {
+import { colors } from "@/constants/colors";
+import { useUserStore } from "@/store/userStore";
+import { useLayoutStore } from "@/store/layoutStore";
+
+function ProfileTabIcon({ focused }: { focused: boolean }) {
+  const avatarUrl = useUserStore((s) => s.userData?.avatar_url);
+
+  return (
+    <View style={[styles.iconContainer, focused && styles.activeIconContainer]}>
+      {avatarUrl ? (
+        <ExpoImage
+          key={avatarUrl}
+          source={{ uri: avatarUrl }}
+          style={[
+            styles.tabAvatar,
+            { borderColor: focused ? colors.white : "rgba(0,0,0,0.14)" },
+          ]}
+          contentFit="cover"
+          cachePolicy="none"
+          transition={0}
+        />
+      ) : (
+        <Ionicons
+          name="person-circle"
+          size={24}
+          color={focused ? colors.white : colors.gray[500]}
+        />
+      )}
+    </View>
+  );
+}
+
+export default function EmployeeTabsLayout() {
   const router = useRouter();
   const { isTabBarVisible, setTabBarVisible } = useLayoutStore();
   const { userType, isLoggedIn, loading } = useUserStore();
@@ -18,22 +48,24 @@ export default function AdminTabsLayout() {
   useEffect(() => {
     if (loading) return;
     if (!isLoggedIn) {
-      router.replace('/login');
+      router.replace("/login");
       return;
     }
-    if (userType === 'employee') {
-      router.replace('/(employee)/employee-events');
+    if (userType === "admin") {
+      router.replace("/(admin)/admin-events");
       return;
     }
-    if (userType !== 'admin') {
-      router.replace('/(couple)');
+    if (userType !== "employee") {
+      router.replace("/(couple)");
     }
   }, [isLoggedIn, userType, loading, router]);
 
   const headerRight = () => (
     <TouchableOpacity
       style={styles.notificationButton}
-      onPress={() => router.push('/notifications')}
+      onPress={() => router.push("/notifications")}
+      accessibilityRole="button"
+      accessibilityLabel="התראות"
     >
       <Ionicons name="notifications" size={24} color={colors.primary} />
     </TouchableOpacity>
@@ -41,7 +73,7 @@ export default function AdminTabsLayout() {
 
   const headerTitle = () => (
     <Image
-      source={require('../../assets/images/logo-moon.png')}
+      source={require("../../assets/images/logo-moon.png")}
       style={styles.logoHeader}
       resizeMode="contain"
     />
@@ -60,7 +92,7 @@ export default function AdminTabsLayout() {
           alignItems: "center",
         },
         headerStyle: {
-          backgroundColor: '#FFFFFF',
+          backgroundColor: "#FFFFFF",
           height: 90,
           elevation: 0,
           shadowOpacity: 0,
@@ -69,8 +101,8 @@ export default function AdminTabsLayout() {
         headerRight: headerRight,
         tabBarShowLabel: false,
         tabBarStyle: {
-          position: 'absolute',
-          bottom: Platform.OS === 'ios' ? 30 : 20,
+          position: "absolute",
+          bottom: Platform.OS === "ios" ? 30 : 20,
           left: 15,
           right: 15,
           height: 65,
@@ -86,16 +118,16 @@ export default function AdminTabsLayout() {
           elevation: 25,
           borderTopWidth: 0,
           borderWidth: 1,
-          borderColor: 'rgba(0,0,0,0.08)',
-          display: isTabBarVisible ? 'flex' : 'none',
+          borderColor: "rgba(0,0,0,0.08)",
+          display: isTabBarVisible ? "flex" : "none",
         },
         tabBarItemStyle: {
           marginHorizontal: 3,
           paddingVertical: 6,
           paddingHorizontal: 8,
           height: 30,
-          justifyContent: 'center',
-          alignItems: 'center',
+          justifyContent: "center",
+          alignItems: "center",
         },
         tabBarIconStyle: {
           marginRight: 0,
@@ -104,11 +136,11 @@ export default function AdminTabsLayout() {
       }}
     >
       <Tabs.Screen
-        name="admin-events"
+        name="employee-events"
         options={{
           title: "אירועים",
           tabBarIcon: ({ focused }) => (
-            <View style={[styles.iconContainer, focused && styles.activeIconContainer] }>
+            <View style={[styles.iconContainer, focused && styles.activeIconContainer]}>
               <Ionicons
                 name="calendar-outline"
                 size={24}
@@ -119,66 +151,15 @@ export default function AdminTabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="users"
+        name="employee-profile"
         options={{
-          title: "ניהול משתמשים",
-          tabBarIcon: ({ focused }) => (
-            <View style={[styles.iconContainer, focused && styles.activeIconContainer] }>
-              <Ionicons
-                name="people-circle"
-                size={24}
-                color={focused ? colors.white : colors.gray[500]}
-              />
-            </View>
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="admin-profile"
-        options={{
-          title: 'פרופיל',
-          tabBarIcon: ({ focused }) => (
-            <View style={[styles.iconContainer, focused && styles.activeIconContainer] }>
-              <Ionicons
-                name="person-circle"
-                size={24}
-                color={focused ? colors.white : colors.gray[500]}
-              />
-            </View>
-          ),
+          title: "פרופיל",
+          tabBarIcon: ({ focused }) => <ProfileTabIcon focused={focused} />,
         }}
       />
 
-      {/* Hidden routes in admin group */}
-      <Tabs.Screen name="add-user" options={{ href: null }} />
-      <Tabs.Screen
-        name="admin-events-create"
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="admin-event-details"
-        options={{
-          href: null,
-          // Let the hero image extend behind the top header (logo + notifications)
-          headerTransparent: true,
-          headerShadowVisible: false,
-          headerStyle: {
-            backgroundColor: 'transparent',
-          },
-        }}
-      />
-      <Tabs.Screen
-        name="admin-event-notifications"
-        options={{
-          href: null,
-          headerShown: false,
-        }}
-      />
-      {/* Hidden admin wrappers for seating screens (keep admin tab bar) */}
-      <Tabs.Screen name="BrideGroomSeating" options={{ href: null, headerShown: false }} />
-      <Tabs.Screen name="seating-templates" options={{ href: null, headerShown: false }} />
+      {/* Hidden employee internal routes */}
+      <Tabs.Screen name="employee-event-details" options={{ href: null, headerShown: false }} />
     </Tabs>
   );
 }
@@ -188,8 +169,8 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   activeIconContainer: {
     backgroundColor: colors.primary,
@@ -200,11 +181,11 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.35)',
+    backgroundColor: "rgba(255,255,255,0.35)",
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.55)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    borderColor: "rgba(255,255,255,0.55)",
+    justifyContent: "center",
+    alignItems: "center",
     marginRight: 15,
     shadowColor: colors.richBlack,
     shadowOffset: { width: 0, height: 6 },
@@ -216,6 +197,12 @@ const styles = StyleSheet.create({
     width: 320,
     height: 80,
   },
+  tabAvatar: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 2,
+    backgroundColor: colors.gray[100],
+  },
 });
-
 

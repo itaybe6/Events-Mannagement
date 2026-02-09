@@ -142,21 +142,31 @@ export const useUserStore = create<UserState>()(
             loading: false,
           });
         } catch (error) {
+          const errorMessage =
+            typeof error === 'string' ? error : error instanceof Error ? error.message : '';
+          const isTimeout = errorMessage.includes('Auth initialization timeout');
+
           // Handle refresh token errors specifically using helper
           if (authService.isTokenExpiredError(error)) {
             // Treat as logged out; avoid noisy error logs on first run.
             console.warn('Auth init: invalid/missing refresh token, clearing local auth state');
+          } else if (isTimeout) {
+            console.warn('Auth init timed out; continuing without session.');
           } else {
             console.error('Initialize auth error:', error);
           }
 
-          const errorMessage = typeof error === 'string' ? error : error instanceof Error ? error.message : '';
-          const isTimeout = errorMessage.includes('Auth initialization timeout');
           const currentState = get();
 
           // If we already have a valid session in memory, don't wipe it on timeout.
           if (isTimeout && currentState.isLoggedIn && currentState.userData) {
             console.warn('Auth init timed out; keeping existing session.');
+            set({ loading: false });
+            return;
+          }
+
+          // If we timed out and there's no active session, just stop loading.
+          if (isTimeout && !currentState.isLoggedIn) {
             set({ loading: false });
             return;
           }
