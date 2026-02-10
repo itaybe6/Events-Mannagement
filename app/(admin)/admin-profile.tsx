@@ -284,17 +284,16 @@ export default function AdminProfileScreen() {
                 </View>
               </View>
             </View>
-
-            <Pressable
-              onPress={() => setEditOpen(true)}
-              style={({ pressed }) => [styles.smallBtn, pressed && styles.smallBtnPressed]}
-              accessibilityRole="button"
-              accessibilityLabel="עריכת פרופיל"
-            >
-              <Ionicons name="create-outline" size={18} color={ui.primary} />
-            </Pressable>
           </View>
         </View>
+
+        <Pressable
+          onPress={confirmLogout}
+          style={({ pressed }) => [styles.logoutButton, pressed && styles.btnPressed]}
+          accessibilityRole="button"
+        >
+          <Text style={styles.logoutButtonText}>התנתק</Text>
+        </Pressable>
 
         <View style={styles.statsRow}>
           <StatCard
@@ -382,26 +381,6 @@ export default function AdminProfileScreen() {
           )}
         </View>
 
-        <View style={styles.actionsBlock}>
-          <Pressable
-            onPress={confirmLogout}
-            style={({ pressed }) => [styles.logoutButton, pressed && styles.btnPressed]}
-            accessibilityRole="button"
-          >
-            <Text style={styles.logoutButtonText}>התנתק</Text>
-          </Pressable>
-
-          <Pressable
-            onPress={() => setEditOpen(true)}
-            style={({ pressed }) => [styles.actionBtnShadow, pressed && styles.btnPressed]}
-            accessibilityRole="button"
-          >
-            <LinearGradient colors={[ui.primary, ui.primary2]} style={styles.actionBtnSurface}>
-              <Ionicons name="create-outline" size={18} color="white" />
-              <Text style={styles.actionBtnTextLight}>עריכת פרופיל</Text>
-            </LinearGradient>
-          </Pressable>
-        </View>
       </ScrollView>
 
       <Modal transparent visible={editOpen} animationType="fade" onRequestClose={() => setEditOpen(false)}>
