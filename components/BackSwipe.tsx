@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { Dimensions, I18nManager, PanResponder, Platform, View, ViewProps } from 'react-native';
 import { useRouter } from 'expo-router';
 
@@ -12,9 +12,28 @@ import { useRouter } from 'expo-router';
 export default function BackSwipe({
   children,
   style,
+  // Optional fallback route if there is no back stack.
+  fallbackHref,
+  // Optional override for back action (used by swipe gesture).
+  onBack,
   ...rest
-}: ViewProps & { children: React.ReactNode }) {
+}: ViewProps & { children: React.ReactNode; fallbackHref?: string; onBack?: () => void }) {
   const router = useRouter();
+
+  const safeBack = useCallback(() => {
+    if (onBack) {
+      onBack();
+      return;
+    }
+    const canGoBackFn = (router as any)?.canGoBack;
+    if (typeof canGoBackFn === 'function') {
+      if (canGoBackFn()) router.back();
+      else if (fallbackHref) router.replace(fallbackHref as any);
+      return;
+    }
+    // If canGoBack isn't available, avoid triggering a dev warning.
+    if (fallbackHref) router.replace(fallbackHref as any);
+  }, [fallbackHref, onBack, router]);
 
   const panResponder = useMemo(() => {
     if (Platform.OS === 'web') return null;
@@ -37,19 +56,19 @@ export default function BackSwipe({
       onPanResponderRelease: (_, gesture) => {
         if (!isFromEdge(gesture.x0)) return;
         if (!isBackSwipe(gesture.dx)) return;
-        try {
-          // expo-router has canGoBack in newer versions; guard to avoid crashes.
-          const canGoBack = typeof (router as any).canGoBack === 'function' ? (router as any).canGoBack() : true;
-          if (canGoBack) router.back();
-        } catch {
-          // ignore
-        }
+        safeBack();
       },
     });
-  }, [router]);
+  }, [safeBack]);
 
   return (
-    <View {...rest} style={style} {...(panResponder ? panResponder.panHandlers : null)}>
+    <View
+      {...rest}
+      // Ensure wrappers around screens don't collapse to 0 height.
+      style={[{ flex: 1 }, style]}
+      // Never spread null/undefined into props (can crash on web).
+      {...(panResponder ? panResponder.panHandlers : {})}
+    >
       {children}
     </View>
   );

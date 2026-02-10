@@ -48,6 +48,29 @@ export default function BrideGroomSettings() {
   const [notifications, setNotifications] = useState<NotificationSetting[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const AVATAR_SIZE = 104;
+  const avatarUri = userData?.avatar_url?.trim() || '';
+
+  const refreshAvatarUrl = async () => {
+    if (!userData?.id) return;
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('avatar_url')
+        .eq('id', userData.id)
+        .maybeSingle();
+
+      if (error) return;
+      const nextUrl = (data as any)?.avatar_url ? String((data as any).avatar_url).trim() : '';
+      if (nextUrl && nextUrl !== (userData.avatar_url || '').trim()) {
+        useUserStore.setState((state) => ({
+          userData: state.userData ? { ...state.userData, avatar_url: nextUrl } : state.userData,
+        }));
+      }
+    } catch {
+      // ignore refresh errors - UI will keep last known avatar
+    }
+  };
 
   const notificationUI = {
     primary: '#3b82f6',
@@ -138,6 +161,8 @@ export default function BrideGroomSettings() {
         fetchWeddingDate();
         fetchOrCreateNotificationSettings();
       }
+      // Always refresh avatar from users table when screen is focused
+      refreshAvatarUrl();
     }, [userData?.event_id, loading])
   );
 
@@ -536,15 +561,15 @@ export default function BrideGroomSettings() {
           <View style={styles.profileContent}>
           
           <View style={styles.profileIconContainer}>
-            {userData?.avatar_url ? (
+            {avatarUri ? (
               <Image
-                source={{ uri: userData.avatar_url }}
+                source={{ uri: avatarUri }}
                 style={styles.profileAvatar}
                 contentFit="cover"
                 transition={120}
               />
             ) : (
-              <Ionicons name="person-circle" size={80} color={colors.primary} />
+              <Ionicons name="person-circle" size={AVATAR_SIZE} color={colors.primary} />
             )}
           </View>
           <Text style={styles.profileName}>{weddingNames || userData?.name}</Text>
@@ -629,14 +654,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   profileIconContainer: {
-    marginTop: -44,
+    marginTop: -52,
     marginBottom: 16,
   },
   profileAvatar: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    borderWidth: 2,
+    width: 104,
+    height: 104,
+    borderRadius: 52,
+    borderWidth: 3,
     borderColor: 'rgba(0,0,0,0.08)',
     backgroundColor: colors.gray[100],
   },

@@ -147,6 +147,15 @@ export default function ContactsListScreen() {
     return phone.replace(/\D/g, '');
   };
 
+  const existingGuestPhones = useMemo(() => {
+    const set = new Set<string>();
+    for (const g of existingGuests) {
+      const p = normalizePhoneNumber(String((g as any)?.phone ?? ''));
+      if (p) set.add(p);
+    }
+    return set;
+  }, [existingGuests]);
+
   const getInitials = (name?: string) => {
     const n = (name || '').trim();
     if (!n) return 'א';
@@ -255,14 +264,26 @@ export default function ContactsListScreen() {
     setSelectedContacts(newSelected);
   };
 
-  // סינון אנשי קשר לפי חיפוש
-  const filteredContacts = contacts.filter(c => {
-    const name = String(c?.name || '');
-    const phone = String(c?.phoneNumbers?.[0]?.number || '');
-    const q = search.trim();
-    if (!q) return !!name;
-    return name.toLowerCase().includes(q.toLowerCase()) || phone.includes(q);
-  });
+  // סינון אנשי קשר לפי חיפוש + מיון לפי א-ב
+  const filteredContacts = useMemo(() => {
+    const q = search.trim().toLowerCase();
+
+    const filtered = contacts.filter(c => {
+      const name = String(c?.name || '');
+      const phone = String(c?.phoneNumbers?.[0]?.number || '');
+      const normalizedPhone = normalizePhoneNumber(phone);
+      // הצג רק אנשי קשר שלא קיימים כבר כאורחים (כלומר לא משויכים לקטגוריה).
+      if (normalizedPhone && existingGuestPhones.has(normalizedPhone)) return false;
+      if (!q) return !!name;
+      return name.toLowerCase().includes(q) || phone.includes(search.trim());
+    });
+
+    return filtered.sort((a, b) => {
+      const an = String(a?.name || '').trim();
+      const bn = String(b?.name || '').trim();
+      return an.localeCompare(bn, 'he', { sensitivity: 'base' });
+    });
+  }, [contacts, existingGuestPhones, search]);
 
   const canAdd = !!selectedCategory && selectedContacts.size > 0;
   const bottomSafe = Math.max(16, insets.bottom + 12);
@@ -302,15 +323,27 @@ export default function ContactsListScreen() {
             style={[
               styles.header,
               {
-                paddingTop: Math.max(12, insets.top) + 12,
+                // Keep content below the iOS safe area (notch / status bar).
+                paddingTop: insets.top + 16,
                 backgroundColor: ui.surfaceSoft,
                 borderBottomColor: ui.border,
               },
             ]}
           >
             <TouchableOpacity
-              style={[styles.backBtn, styles.backBtnAbs]}
-              onPress={() => router.back()}
+              // Absolute-positioned button doesn't respect parent's paddingTop,
+              // so we must offset it explicitly below the safe area.
+              style={[styles.backBtn, styles.backBtnAbs, { top: insets.top + 16 }]}
+              onPress={() => {
+                const canGoBackFn = (router as any)?.canGoBack;
+                if (typeof canGoBackFn === 'function') {
+                  if (canGoBackFn()) router.back();
+                  else router.replace('/(couple)/guests');
+                  return;
+                }
+                // Fallback: don't trigger GO_BACK warning when opened directly.
+                router.replace('/(couple)/guests');
+              }}
               accessibilityRole="button"
               accessibilityLabel="חזרה"
             >

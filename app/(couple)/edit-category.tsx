@@ -13,7 +13,9 @@ import {
 } from 'react-native';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useUserStore } from '@/store/userStore';
+import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import { guestService } from '@/lib/services/guestService';
 import { eventService } from '@/lib/services/eventService';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -26,10 +28,21 @@ export default function EditCategoryScreen() {
   const { isLoggedIn, userData } = useUserStore();
   const insets = useSafeAreaInsets();
   const { setTabBarVisible } = useLayoutStore();
-  const params = useLocalSearchParams<{ categoryId?: string }>();
+  const params = useLocalSearchParams<{ categoryId?: string; eventId?: string }>();
   const categoryId = useMemo(() => String(params.categoryId || '').trim(), [params.categoryId]);
-
-  const eventId = userData?.event_id ? String(userData.event_id) : '';
+  const activeUserId = useEventSelectionStore((s) => s.activeUserId);
+  const activeEventId = useEventSelectionStore((s) => s.activeEventId);
+  const setActiveEvent = useEventSelectionStore((s) => s.setActiveEvent);
+  const eventId = useMemo(
+    () =>
+      String(
+        params.eventId ||
+          (userData?.id && activeUserId === userData.id ? activeEventId : null) ||
+          userData?.event_id ||
+          ''
+      ).trim(),
+    [params.eventId, userData?.id, activeUserId, activeEventId, userData?.event_id]
+  );
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -106,8 +119,6 @@ export default function EditCategoryScreen() {
     }
     if (selectedToDelete.size === 0) return;
     if (moving) return;
-
-    setMoveSheetVisible(false);
     setMoving(true);
     try {
       const ids = Array.from(selectedToDelete);
@@ -125,18 +136,30 @@ export default function EditCategoryScreen() {
     }
   };
 
+  const goToGuests = useCallback(() => {
+    if (eventId) {
+      router.replace({ pathname: '/(couple)/guests', params: { eventId } });
+      return;
+    }
+    router.replace('/(couple)/guests');
+  }, [eventId, router]);
+
   useEffect(() => {
     if (!isLoggedIn) {
       router.replace('/login');
       return;
     }
     if (!categoryId) {
-      router.back();
+      goToGuests();
       return;
     }
-    if (!eventId) return;
+    if (!eventId) {
+      setLoading(false);
+      return;
+    }
+    if (userData?.id) setActiveEvent(userData.id, eventId);
     void load();
-  }, [categoryId, eventId, isLoggedIn, load, router]);
+  }, [categoryId, eventId, goToGuests, isLoggedIn, load, router, setActiveEvent, userData?.id]);
 
   const toggleGuest = (guestId: string) => {
     setSelectedToDelete(prev => {
@@ -240,7 +263,7 @@ export default function EditCategoryScreen() {
   };
 
   return (
-    <BackSwipe>
+    <BackSwipe onBack={goToGuests}>
       <View style={[styles.page, { backgroundColor: ui.bg }]}>
         <Stack.Screen options={{ headerShown: false }} />
 
@@ -263,15 +286,37 @@ export default function EditCategoryScreen() {
       />
 
       {/* Header */}
-      <View style={[styles.headerWrap, { backgroundColor: ui.surface, borderBottomColor: ui.border, paddingTop: Math.max(12, insets.top + 10) }]}>
+      <View
+        style={[
+          styles.headerWrap,
+          { backgroundColor: ui.surface, borderBottomColor: ui.border, paddingTop: Math.max(12, insets.top + 10) + 10 },
+        ]}
+      >
         <TouchableOpacity
-          onPress={() => router.back()}
-          style={[styles.headerBackBtn, styles.backBtnAbs, { backgroundColor: ui.faint }]}
+          onPress={goToGuests}
+          style={[
+            styles.headerBackBtn,
+            styles.backBtnAbs,
+            { backgroundColor: ui.faint, top: Math.max(8, insets.top + 6) },
+          ]}
           accessibilityRole="button"
           accessibilityLabel="חזרה"
           activeOpacity={0.9}
         >
           <Ionicons name="chevron-back" size={22} color={ui.sub} />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={saveName}
+          disabled={saving}
+          style={[styles.headerSaveBtn, styles.saveBtnAbs, { top: Math.max(8, insets.top + 6) }]}
+          accessibilityRole="button"
+          accessibilityLabel="שמור"
+          activeOpacity={0.9}
+        >
+          <Text style={[styles.headerSaveText, { color: ui.primary, opacity: saving ? 0.6 : 1 }]}>
+            {saving ? 'שומר...' : 'שמור'}
+          </Text>
         </TouchableOpacity>
 
         <View style={styles.headerRow}>
@@ -363,43 +408,34 @@ export default function EditCategoryScreen() {
           </ScrollView>
 
           {/* Bottom floating actions (HTML-like) */}
-          <View
+          <LinearGradient
+            colors={['rgba(255,255,255,0.96)', 'rgba(255,255,255,0.92)', 'rgba(255,255,255,0)']}
+            start={{ x: 0.5, y: 1 }}
+            end={{ x: 0.5, y: 0 }}
             style={[
               styles.bottomBar,
               {
                 paddingBottom: bottomSafe,
-                backgroundColor: 'rgba(255,255,255,0.92)',
-                borderTopColor: ui.border,
               },
             ]}
           >
-            <TouchableOpacity
-              onPress={() => setMoveSheetVisible(true)}
-              disabled={selectedCount === 0 || moving || deleting || saving}
-              activeOpacity={0.92}
-              style={[
-                styles.primaryWideBtn,
-                {
-                  backgroundColor: ui.primary,
-                  opacity: selectedCount === 0 || moving || deleting || saving ? 0.6 : 1,
-                },
-              ]}
-            >
-              <Ionicons name="swap-horizontal" size={20} color="#fff" />
-              <Text style={styles.primaryWideText}>
-                {moving ? 'מעביר...' : `העבר נבחרים (${selectedCount}) לקטגוריה אחרת`}
-              </Text>
-            </TouchableOpacity>
-
-            <View style={styles.bottomGrid}>
+            <View style={styles.bottomActionsRow}>
               <TouchableOpacity
-                onPress={saveName}
-                disabled={saving}
+                onPress={() => setMoveSheetVisible(true)}
+                disabled={selectedCount === 0 || moving || deleting}
                 activeOpacity={0.92}
-                style={[styles.pillBtn, { backgroundColor: ui.primary, opacity: saving ? 0.75 : 1 }]}
+                style={[
+                  styles.bottomBtn,
+                  styles.bottomBtnSecondary,
+                  {
+                    opacity: selectedCount === 0 || moving || deleting ? 0.6 : 1,
+                  },
+                ]}
               >
-                <Ionicons name="checkmark" size={20} color="#fff" />
-                <Text style={styles.pillText}>{saving ? 'שומר...' : 'שמור שם'}</Text>
+                <Ionicons name="swap-horizontal" size={20} color={ui.primary} />
+                <Text style={[styles.bottomBtnText, { color: ui.primary }]}>
+                  {moving ? 'מעביר...' : `העבר (${selectedCount})`}
+                </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -407,18 +443,18 @@ export default function EditCategoryScreen() {
                 disabled={selectedCount === 0 || deleting}
                 activeOpacity={0.92}
                 style={[
-                  styles.pillBtn,
+                  styles.bottomBtn,
+                  styles.bottomBtnDanger,
                   {
-                    backgroundColor: ui.primary,
                     opacity: selectedCount === 0 || deleting ? 0.6 : 1,
                   },
                 ]}
               >
-                <Ionicons name="trash-outline" size={20} color="#fff" />
-                <Text style={styles.pillText}>מחק נבחרים</Text>
+                <Ionicons name="trash-outline" size={20} color="#DC2626" />
+                <Text style={[styles.bottomBtnText, { color: '#DC2626' }]}>מחק נבחרים</Text>
               </TouchableOpacity>
             </View>
-          </View>
+          </LinearGradient>
         </KeyboardAvoidingView>
       )}
       </View>
@@ -454,14 +490,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  headerSaveBtn: {
+    height: 38,
+    minWidth: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   backBtnAbs: {
     position: 'absolute',
     left: 0,
     top: 0,
     zIndex: 5,
   },
+  saveBtnAbs: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    zIndex: 5,
+  },
   headerTitle: {
     fontSize: 18,
+    fontWeight: '800',
+  },
+  headerSaveText: {
+    fontSize: 14,
     fontWeight: '800',
   },
   inputBlock: {},
@@ -542,45 +594,36 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     paddingHorizontal: 18,
-    paddingTop: 14,
-    borderTopWidth: 1,
+    paddingTop: 18,
     shadowColor: '#000',
     shadowOpacity: 0.12,
     shadowRadius: 18,
     shadowOffset: { width: 0, height: -10 },
     elevation: 10,
   },
-  primaryWideBtn: {
-    width: '100%',
-    height: 56,
+  bottomActionsRow: { flexDirection: 'row-reverse', gap: 12 },
+  bottomBtn: {
+    flex: 1,
+    height: 54,
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row-reverse',
-    gap: 10,
+    gap: 8,
     shadowColor: '#0F172A',
-    shadowOpacity: 0.25,
+    shadowOpacity: 0.18,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 8 },
     elevation: 6,
-    marginBottom: 14,
   },
-  primaryWideText: { color: '#fff', fontSize: 15, fontWeight: '900', textAlign: 'center' },
-  bottomGrid: { flexDirection: 'row-reverse', gap: 12 },
-  pillBtn: {
-    flex: 1,
-    height: 52,
-    borderRadius: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row-reverse',
-    gap: 10,
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.20,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 5,
+  bottomBtnSecondary: {
+    backgroundColor: 'rgba(107,114,128,0.12)',
   },
-  pillText: { color: '#fff', fontSize: 15, fontWeight: '900' },
+  bottomBtnDanger: {
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FEE2E2',
+  },
+  bottomBtnText: { fontSize: 13, fontWeight: '800' },
 });
 

@@ -364,7 +364,10 @@ export default function GuestsScreen() {
 
   const handleEditCategory = (category: any) => {
     if (!category?.id) return;
-    router.push({ pathname: '/(couple)/edit-category', params: { categoryId: String(category.id) } });
+    router.push({
+      pathname: '/(couple)/edit-category',
+      params: { categoryId: String(category.id), eventId: resolvedEventId || undefined },
+    });
   };
 
   return (
