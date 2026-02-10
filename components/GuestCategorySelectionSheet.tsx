@@ -52,6 +52,7 @@ export function GuestCategorySelectionSheet({
   const insets = useSafeAreaInsets();
   const translateY = useMemo(() => new Animated.Value(0), []);
   const isClosingRef = useRef(false);
+  const prevVisibleRef = useRef(false);
 
   const [mode, setMode] = useState<Mode>('existing');
   const [filter, setFilter] = useState<SideFilter>('all');
@@ -63,16 +64,18 @@ export function GuestCategorySelectionSheet({
   const sheetPrimary = '#135bec';
 
   useEffect(() => {
-    if (!visible) return;
-    setMode('existing');
-    setFilter('all');
-    setPendingSelectedId(selectedCategoryId ?? null);
-    setNewName('');
-    setNewSide('groom');
-    setCreating(false);
-    isClosingRef.current = false;
-    translateY.setValue(0);
-  }, [visible, selectedCategoryId]);
+    if (visible && !prevVisibleRef.current) {
+      setMode('existing');
+      setFilter('all');
+      setPendingSelectedId(selectedCategoryId ?? null);
+      setNewName('');
+      setNewSide('groom');
+      setCreating(false);
+      isClosingRef.current = false;
+      translateY.setValue(0);
+    }
+    prevVisibleRef.current = visible;
+  }, [selectedCategoryId, translateY, visible]);
 
   // If the current event doesn't have "groom/bride" semantics (e.g. brit/bar-mitzvah),
   // keep the sheet in a generic mode: no side filters and no "assign to side" UI.
@@ -103,7 +106,7 @@ export function GuestCategorySelectionSheet({
     if (mode === 'existing') {
       if (!selectedCategory) return;
       onSelect(selectedCategory);
-      onClose();
+      requestClose();
       return;
     }
 
@@ -113,7 +116,7 @@ export function GuestCategorySelectionSheet({
       setCreating(true);
       const created = await onCreateCategory(name, newSide);
       onSelect(created);
-      onClose();
+      requestClose();
     } finally {
       setCreating(false);
     }
@@ -211,7 +214,7 @@ export function GuestCategorySelectionSheet({
   );
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={requestClose}>
       <View style={styles.modalRoot}>
         {/* Background */}
         <View style={StyleSheet.absoluteFill}>
@@ -230,7 +233,7 @@ export function GuestCategorySelectionSheet({
         </View>
 
         {/* Tap outside */}
-        <Pressable style={styles.backdropPressArea} onPress={onClose} />
+        <Pressable style={styles.backdropPressArea} onPress={requestClose} />
 
         <KeyboardAvoidingView
           // Using 'height' prevents the sheet from being pushed too high on iOS

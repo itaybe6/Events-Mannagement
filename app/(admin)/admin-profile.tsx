@@ -384,6 +384,14 @@ export default function AdminProfileScreen() {
 
         <View style={styles.actionsBlock}>
           <Pressable
+            onPress={confirmLogout}
+            style={({ pressed }) => [styles.logoutButton, pressed && styles.btnPressed]}
+            accessibilityRole="button"
+          >
+            <Text style={styles.logoutButtonText}>התנתק</Text>
+          </Pressable>
+
+          <Pressable
             onPress={() => setEditOpen(true)}
             style={({ pressed }) => [styles.actionBtnShadow, pressed && styles.btnPressed]}
             accessibilityRole="button"
@@ -392,17 +400,6 @@ export default function AdminProfileScreen() {
               <Ionicons name="create-outline" size={18} color="white" />
               <Text style={styles.actionBtnTextLight}>עריכת פרופיל</Text>
             </LinearGradient>
-          </Pressable>
-
-          <Pressable
-            onPress={confirmLogout}
-            style={({ pressed }) => [styles.actionBtnShadow, pressed && styles.btnPressed]}
-            accessibilityRole="button"
-          >
-            <View style={[styles.actionBtnSurface, styles.actionBtnSurfaceOutline]}>
-              <Ionicons name="log-out-outline" size={18} color={ui.danger} />
-              <Text style={styles.actionBtnTextDanger}>התנתק</Text>
-            </View>
           </Pressable>
         </View>
       </ScrollView>
@@ -682,6 +679,20 @@ const styles = StyleSheet.create({
   },
   actionBtnTextLight: { fontSize: 14, fontWeight: "900", color: "white" },
   actionBtnTextDanger: { fontSize: 14, fontWeight: "900", color: ui.danger },
+  logoutButton: {
+    height: 56,
+    borderRadius: 12,
+    width: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: ui.danger,
+    shadowColor: ui.danger,
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  logoutButtonText: { fontSize: 17, fontWeight: "600", color: "#FFFFFF" },
   btnPressed: { opacity: 0.92, transform: [{ scale: 0.985 }] },
 
   modalBackdrop: {

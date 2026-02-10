@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Alert, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
-import { useRouter } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
@@ -272,26 +272,30 @@ export default function ProfileEditor() {
   };
 
   return (
-    <BackSwipe>
-      <KeyboardAvoidingView 
-        style={styles.container} 
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-            <Ionicons name="arrow-back" size={24} color={colors.primary} />
-          </TouchableOpacity>
-          <Text style={styles.title}>עריכת פרטים אישיים</Text>
-          <TouchableOpacity 
-            style={[styles.saveButton, loading && styles.saveButtonDisabled]} 
-            onPress={saveChanges}
-            disabled={loading}
-          >
-            <Text style={styles.saveButtonText}>
-              {loading ? 'שומר...' : 'שמור'}
-            </Text>
-          </TouchableOpacity>
-        </View>
+    <>
+      {/* Hide Expo Router's default Stack header (prevents duplicate header on web) */}
+      <Stack.Screen options={{ headerShown: false }} />
+
+      <BackSwipe>
+        <KeyboardAvoidingView 
+          style={styles.container} 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={styles.header}>
+            <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+              <Ionicons name="arrow-back" size={24} color={colors.primary} />
+            </TouchableOpacity>
+            <Text style={styles.title}>עריכת פרטים אישיים</Text>
+            <TouchableOpacity 
+              style={[styles.saveButton, loading && styles.saveButtonDisabled]} 
+              onPress={saveChanges}
+              disabled={loading}
+            >
+              <Text style={styles.saveButtonText}>
+                {loading ? 'שומר...' : 'שמור'}
+              </Text>
+            </TouchableOpacity>
+          </View>
 
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
         {/* Avatar Section */}
@@ -422,8 +426,9 @@ export default function ProfileEditor() {
 
 
       </ScrollView>
-      </KeyboardAvoidingView>
-    </BackSwipe>
+        </KeyboardAvoidingView>
+      </BackSwipe>
+    </>
   );
 }
 
