@@ -9,3 +9,17 @@ body,
   text-align: right;
 }
 
+/* Strengthen RTL inheritance for web (incl. 3rd-party components) */
+#root,
+#root * {
+  direction: rtl;
+}
+
+input,
+textarea,
+select {
+  direction: rtl;
+  text-align: right;
+}
+
+

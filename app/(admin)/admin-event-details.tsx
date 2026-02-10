@@ -427,7 +427,9 @@ export default function AdminEventDetailsScreen() {
 
   const heroHeight = Math.max(420, Math.min(620, windowHeight * 0.62));
   // Keep the end of the scroll content above the tab bar
-  const tabBarReserve = Platform.OS === 'web' ? 30 : (Platform.OS === 'ios' ? 30 : 20) + 65 + 24;
+  const tabBarBottomOffset = Platform.OS === 'ios' ? 30 : 20;
+  const tabBarHeight = 65;
+  const tabBarReserve = tabBarBottomOffset + tabBarHeight + 24;
 
   return (
     <BackSwipe>
@@ -453,11 +455,9 @@ export default function AdminEventDetailsScreen() {
         style={styles.scroll}
         contentContainerStyle={[
           styles.content,
-          Platform.OS !== 'web'
-            ? {
-                paddingBottom: tabBarReserve + insets.bottom,
-              }
-            : null,
+          {
+            paddingBottom: tabBarReserve + insets.bottom,
+          },
         ]}
         showsVerticalScrollIndicator={false}
       >
@@ -943,6 +943,7 @@ const styles = StyleSheet.create({
     zIndex: 5,
   },
   scroll: {
+    flex: 1,
     zIndex: 3,
   },
   navBtn: {

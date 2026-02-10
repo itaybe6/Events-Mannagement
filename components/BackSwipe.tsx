@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo } from 'react';
-import { Dimensions, I18nManager, PanResponder, Platform, View, ViewProps } from 'react-native';
+import { Dimensions, I18nManager, PanResponder, Platform, StyleSheet, View, ViewProps } from 'react-native';
 import { useRouter } from 'expo-router';
 
 /**
@@ -64,8 +64,7 @@ export default function BackSwipe({
   return (
     <View
       {...rest}
-      // Ensure wrappers around screens don't collapse to 0 height.
-      style={[{ flex: 1 }, style]}
+      style={[styles.root, style]}
       // Never spread null/undefined into props (can crash on web).
       {...(panResponder ? panResponder.panHandlers : {})}
     >
@@ -73,4 +72,10 @@ export default function BackSwipe({
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+  },
+});
 
