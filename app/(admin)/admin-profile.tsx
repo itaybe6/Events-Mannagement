@@ -246,18 +246,16 @@ export default function AdminProfileScreen() {
       <LinearGradient colors={["#EAF2FF", "#F4F7FB"]} style={styles.header}>
         <Pressable
           onPress={() => router.back()}
-          style={({ pressed }) => [styles.iconBtn, pressed && styles.iconBtnPressed]}
+          style={({ pressed }) => [styles.iconBtn, styles.backBtnAbs, pressed && styles.iconBtnPressed]}
           accessibilityRole="button"
           accessibilityLabel="חזרה"
         >
-          <Ionicons name="chevron-forward" size={26} color={ui.text} />
+          <Ionicons name="chevron-back" size={26} color={ui.text} />
         </Pressable>
 
         <Text style={styles.headerTitle} numberOfLines={1}>
           פרופיל מנהל
         </Text>
-
-        <View style={{ width: 44 }} />
       </LinearGradient>
 
       <ScrollView
@@ -491,12 +489,12 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
 
   header: {
+    position: "relative",
     paddingHorizontal: 14,
     paddingTop: 10,
     paddingBottom: 12,
-    flexDirection: "row-reverse",
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "center",
   },
   headerTitle: { fontSize: 18, fontWeight: "900", color: ui.text, letterSpacing: -0.2 },
   iconBtn: {
@@ -508,6 +506,12 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.80)",
     borderWidth: 1,
     borderColor: ui.border,
+  },
+  backBtnAbs: {
+    position: "absolute",
+    left: 14,
+    top: 10,
+    zIndex: 10,
   },
   iconBtnPressed: { opacity: 0.92, transform: [{ scale: 0.98 }] },
 
