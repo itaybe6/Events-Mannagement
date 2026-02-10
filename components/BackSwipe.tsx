@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Dimensions, I18nManager, PanResponder, Platform, View, ViewProps } from 'react-native';
+import { Dimensions, I18nManager, PanResponder, Platform, StyleSheet, View, ViewProps } from 'react-native';
 import { useRouter } from 'expo-router';
 
 /**
@@ -49,9 +49,19 @@ export default function BackSwipe({
   }, [router]);
 
   return (
-    <View {...rest} style={style} {...(panResponder ? panResponder.panHandlers : null)}>
+    <View
+      {...rest}
+      style={[styles.root, style]}
+      {...(panResponder ? panResponder.panHandlers : null)}
+    >
       {children}
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+  },
+});
 

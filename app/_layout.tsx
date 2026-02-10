@@ -50,8 +50,14 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    // Ensure real RTL at the DOM level (some web libs read `body.dir`)
     document.documentElement.setAttribute('dir', 'rtl');
     document.documentElement.setAttribute('lang', 'he');
+    document.body?.setAttribute('dir', 'rtl');
+    if (document.body) {
+      document.body.style.direction = 'rtl';
+      document.body.style.textAlign = 'right';
+    }
   }, []);
 
   useEffect(() => {

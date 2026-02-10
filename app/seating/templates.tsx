@@ -1592,9 +1592,9 @@ function SeatingFreeformMap({
   const [viewportSize, setViewportSize] = useState<{ w: number; h: number } | null>(null);
   // For all camera/screen math we want the map viewport size (excluding the sidebar).
   // On web, rely on measured layout sizes (more stable across environments and RTL).
-  const viewportW = isWeb
-    ? Math.max(320, viewportSize?.w ?? Math.max(320, (rootSize?.w ?? screenW) - (sidebarW || 320)))
-    : screenW;
+  // NOTE: On wide desktop screens some browsers can report a "flex child" width that still includes
+  // the sidebar due to layout/RTL quirks. Root width minus the measured sidebar is the most stable.
+  const viewportW = isWeb ? Math.max(320, (rootSize?.w ?? screenW) - (sidebarW || 320)) : screenW;
   const viewportH = isWeb ? (viewportSize?.h ?? rootSize?.h ?? screenH) : screenH;
   const GRID_MINOR = 40;
   const GRID_MAJOR = 200;
@@ -1938,8 +1938,12 @@ function SeatingFreeformMap({
   useEffect(() => {
     if (!isWeb) return;
     if (!mapSize?.cols || !mapSize?.rows) return;
+    // Wait for both layout measurements before running initial centering.
+    // Otherwise the first render can compute a wrong viewport width/height (flex + RTL + sidebar),
+    // which creates a large gray gap and misplaces "add table" coordinates.
+    if (!viewportSize || !rootSize) return;
     centerOnTables();
-  }, [centerOnTables, isWeb, mapSize?.cols, mapSize?.rows, viewportH, viewportW]);
+  }, [centerOnTables, isWeb, mapSize?.cols, mapSize?.rows, viewportSize, rootSize]);
 
   // Re-center when viewport is measured / resized (keeps map centered in gray area).
   useEffect(() => {
@@ -1965,9 +1969,10 @@ function SeatingFreeformMap({
   useEffect(() => {
     if (didInitRef.current) return;
     if (!tables.length) return;
+    if (isWeb && (!viewportSize || !rootSize)) return;
     didInitRef.current = true;
     centerOnTables();
-  }, [tables.length, centerOnTables]);
+  }, [tables.length, centerOnTables, isWeb, rootSize, viewportSize]);
 
   // If we added tables, focus after bounds/origin settle (web sidebar makes immediate focus unreliable).
   useEffect(() => {
@@ -2274,24 +2279,16 @@ function SeatingFreeformMap({
     return canvasGesture;
   }, [canvasGesture, isWeb, lassoGesture, pinchGesture, selectToolEnabled]);
 
-  const stageStyle = useAnimatedStyle(() => {
-    // Camera math assumes:
-    //   screen = world * scale + translate
-    //   world  = (screen - translate) / scale
-    //
-    // Camera math assumes:
-    //   screen = world * scale + translate
-    // Therefore we apply scale first, then translate (translation should NOT be scaled).
-    return {
-      ...(Platform.OS === 'web'
-        ? ({
-            // Ensure scaling is anchored at top-left (otherwise default center-scaling adds offset).
-            transformOrigin: '0 0',
-          } as any)
-        : null),
-      transform: [{ scale: cameraScale.value }, { translateX: cameraX.value }, { translateY: cameraY.value }],
-    };
-  });
+  const stageStyle = useAnimatedStyle(() => ({
+    // IMPORTANT:
+    // - Web (CSS) applies transforms right-to-left.
+    //   To get `screen = world * scale + translate`, we must output `translate(...) scale(...)`.
+    // - Native applies transforms in array order, so we keep `scale` first then `translate`.
+    transform:
+      Platform.OS === 'web'
+        ? [{ translateX: cameraX.value }, { translateY: cameraY.value }, { scale: cameraScale.value }]
+        : [{ scale: cameraScale.value }, { translateX: cameraX.value }, { translateY: cameraY.value }],
+  }));
 
   const addAtCenter = useCallback(
     (kind: 'regular' | 'knight' | 'reserve') => {
@@ -2842,9 +2839,20 @@ function SeatingFreeformMap({
         {
           width: worldSize.w,
           height: worldSize.h,
+          ...(Platform.OS === 'web'
+            ? ({
+                // Detach from RTL flex alignment: fixed-width flex children can be aligned to inline-start (right),
+                // which creates a huge gray gap. The camera transform should fully control positioning.
+                position: 'absolute',
+                left: 0,
+                top: 0,
+              } as any)
+            : null),
           // Keep stage transparent on web so the gray "outside map" is fixed (viewport background),
           // and only the map area itself moves.
           backgroundColor: isWeb ? 'transparent' : ui.canvas,
+          // On web, ensure CSS scale anchors at top-left. Use explicit px to avoid style normalization quirks.
+          ...(Platform.OS === 'web' ? ({ transformOrigin: '0px 0px' } as any) : null),
         },
         stageStyle,
       ]}
@@ -3004,7 +3012,13 @@ function SeatingFreeformMap({
 
   return (
     <View
-      style={{ flex: 1, backgroundColor: isWeb ? '#e5e7eb' : ui.bg, flexDirection: isWeb ? 'row' : 'column' }}
+      style={{
+        flex: 1,
+        width: '100%',
+        backgroundColor: isWeb ? '#e5e7eb' : ui.bg,
+        // Make the layout deterministic on web: sidebar on the right, canvas on the left
+        flexDirection: isWeb ? 'row-reverse' : 'column',
+      }}
       onLayout={(e) => {
         if (!isWeb) return;
         const { width, height } = e.nativeEvent.layout;
@@ -3019,8 +3033,9 @@ function SeatingFreeformMap({
         <View
           style={{
             width: 320,
-            borderRightWidth: 1,
-            borderRightColor: 'rgba(17, 24, 39, 0.10)',
+            flexShrink: 0,
+            borderLeftWidth: 1,
+            borderLeftColor: 'rgba(17, 24, 39, 0.10)',
             backgroundColor: 'rgba(255,255,255,0.92)',
             paddingTop: 18,
             paddingHorizontal: 14,
@@ -3326,10 +3341,15 @@ function SeatingFreeformMap({
         header
       )}
 
-      <View style={{ flex: 1 }}>
+      <View style={{ flex: 1, minWidth: 0 }}>
         <GestureDetector gesture={viewportGesture}>
           <View
-            style={{ flex: 1, overflow: 'hidden', backgroundColor: isWeb ? '#e5e7eb' : ui.canvas }}
+            style={{
+              flex: 1,
+              overflow: 'hidden',
+              backgroundColor: isWeb ? '#e5e7eb' : ui.canvas,
+              ...(isWeb ? { position: 'relative' as const } : null),
+            }}
             {...(isWeb ? ({ onWheel: handleWheelZoom } as any) : {})}
             onLayout={(e) => {
               if (!isWeb) return;
