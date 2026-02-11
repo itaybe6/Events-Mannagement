@@ -1,9 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, SafeAreaView, TouchableOpacity, Platform, useWindowDimensions, Modal, Alert, Pressable, TextInput, KeyboardAvoidingView } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { colors } from '@/constants/colors';
 import { eventService } from '@/lib/services/eventService';
-import { guestService } from '@/lib/services/guestService';
 import { Ionicons } from '@expo/vector-icons';
 import { Event, Guest } from '@/types';
 import { supabase } from '@/lib/supabase';
@@ -14,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import BackSwipe from '@/components/BackSwipe';
+import { useAdminEventDetailsModel } from '@/features/events/useAdminEventDetailsModel';
 
 const HERO_IMAGES = {
   baby: require('../../assets/images/baby.jpg'),
@@ -24,10 +24,12 @@ const HERO_IMAGES = {
 export default function AdminEventDetailsScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
-  const [event, setEvent] = useState<Event | null>(null);
-  const [guests, setGuests] = useState<Guest[]>([]);
-  const [userName, setUserName] = useState<string>('');
-  const [userAvatarUrl, setUserAvatarUrl] = useState<string>('');
+  const eventId = useMemo(
+    () => (typeof id === 'string' ? id : Array.isArray(id) ? id[0] : ''),
+    [id]
+  );
+  const { event, setEvent, guests, userName, userAvatarUrl, loading, error, stats } =
+    useAdminEventDetailsModel(eventId);
   const [avatarPreviewOpen, setAvatarPreviewOpen] = useState(false);
 
   const [editOpen, setEditOpen] = useState(false);
@@ -46,74 +48,8 @@ export default function AdminEventDetailsScreen() {
     groomName: '',
     brideName: '',
   });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
   const { height: windowHeight, width: windowWidth } = useWindowDimensions();
-
-  useEffect(() => {
-    const eventId =
-      typeof id === 'string' ? id : Array.isArray(id) ? id[0] : undefined;
-
-    let active = true;
-    const load = async () => {
-      if (!eventId) {
-        if (!active) return;
-        setError('חסר מזהה אירוע');
-        setEvent(null);
-        setGuests([]);
-        setLoading(false);
-        return;
-      }
-
-      if (!active) return;
-      setLoading(true);
-      setError(null);
-
-      try {
-        const [eventData, guestsData] = await Promise.all([
-          eventService.getEvent(eventId),
-          guestService.getGuests(eventId),
-        ]);
-
-        if (!active) return;
-
-        setEvent(eventData ?? null);
-        setGuests(Array.isArray(guestsData) ? guestsData : []);
-
-        if (!eventData) {
-          setError('האירוע לא נמצא');
-          return;
-        }
-
-        // שליפת שם המשתמש
-        if (eventData.user_id) {
-          const { data: userData, error: userError } = await supabase
-            .from('users')
-            .select('name, avatar_url')
-            .eq('id', eventData.user_id)
-            .maybeSingle();
-
-          if (active && !userError && userData) {
-            setUserName(String(userData.name || ''));
-            setUserAvatarUrl(String((userData as any).avatar_url || ''));
-          }
-        }
-      } catch (e) {
-        console.error('Admin event details load error:', e);
-        if (!active) return;
-        setError('שגיאה בטעינת האירוע');
-        setEvent(null);
-        setGuests([]);
-      } finally {
-        if (active) setLoading(false);
-      }
-    };
-    load();
-    return () => {
-      active = false;
-    };
-  }, [id]);
 
   if (loading) {
     return (
@@ -159,19 +95,15 @@ export default function AdminEventDetailsScreen() {
     );
   }
 
-  const confirmed = guests.filter(g => g.status === 'מגיע').length;
-  const declined = guests.filter(g => g.status === 'לא מגיע').length;
-  const pending = guests.filter(g => g.status === 'ממתין').length;
-  const seated = guests.filter(g => g.tableId).length;
-  const totalGuests = guests.length;
-  const seatedPercent = totalGuests ? Math.round((seated / totalGuests) * 100) : 0;
-  const sumPeople = (rows: Array<{ numberOfPeople?: number }>) =>
-    rows.reduce((sum, r) => sum + (Number(r.numberOfPeople) || 1), 0);
-
-  const invitedPeople = sumPeople(guests);
-  const confirmedPeople = sumPeople(guests.filter((g) => g.status === "מגיע"));
-  const pendingPeople = sumPeople(guests.filter((g) => g.status === "ממתין"));
-  const declinedPeople = sumPeople(guests.filter((g) => g.status === "לא מגיע"));
+  const confirmed = stats.confirmed;
+  const declined = stats.declined;
+  const pending = stats.pending;
+  const totalGuests = stats.totalGuests;
+  const seatedPercent = stats.seatedPercent;
+  const invitedPeople = stats.invitedPeople;
+  const confirmedPeople = stats.confirmedPeople;
+  const pendingPeople = stats.pendingPeople;
+  const declinedPeople = stats.declinedPeople;
 
   // Format date: 23.10 | חמישי
   const dateObj = new Date(event.date);

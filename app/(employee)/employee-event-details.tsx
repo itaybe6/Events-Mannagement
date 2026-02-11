@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -16,14 +16,13 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { colors } from "@/constants/colors";
-import { supabase } from "@/lib/supabase";
-import { guestService } from "@/lib/services/guestService";
 import { Event, Guest } from "@/types";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import Svg, { Circle } from "react-native-svg";
 import { Image } from "expo-image";
 import BackSwipe from "@/components/BackSwipe";
+import { useEmployeeEventDetailsModel } from "@/features/events/useEmployeeEventDetailsModel";
 
 const HERO_IMAGES = {
   baby: require("../../assets/images/baby.jpg"),
@@ -42,154 +41,23 @@ export default function EmployeeEventDetailsScreen() {
     [id]
   );
 
-  const [loading, setLoading] = useState(true);
-  const [event, setEvent] = useState<Event | null>(null);
-  const [guests, setGuests] = useState<Guest[]>([]);
-  const [userAvatarUrl, setUserAvatarUrl] = useState<string>("");
-  const [totalSeats, setTotalSeats] = useState<number>(0);
-  const [tables, setTables] = useState<Array<{ id: string; capacity: number; shape: string | null }>>([]);
-
-  const load = async () => {
-    if (!eventId) {
-      setEvent(null);
-      setGuests([]);
-      setUserAvatarUrl("");
-      setTotalSeats(0);
-      setTables([]);
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const [{ data: evRow, error: evError }, gs, tablesRes] = await Promise.all([
-        supabase
-          .from("events")
-          .select(
-            "id,title,date,location,city,story,guests_count,budget,groom_name,bride_name,rsvp_link,user_id,user:users(name, avatar_url)"
-          )
-          .eq("id", eventId)
-          .maybeSingle(),
-        guestService.getGuests(eventId),
-        supabase.from("tables").select("id,capacity,shape").eq("event_id", eventId),
-      ]);
-
-      if (evError) throw evError;
-      if (tablesRes.error) throw tablesRes.error;
-
-      const ev: Event | null = evRow
-        ? {
-            id: (evRow as any).id,
-            title: (evRow as any).title,
-            date: new Date((evRow as any).date),
-            location: String((evRow as any).location ?? ""),
-            city: String((evRow as any).city ?? ""),
-            image: "",
-            story: String((evRow as any).story ?? ""),
-            guests: Number((evRow as any).guests_count ?? 0) || 0,
-            budget: Number((evRow as any).budget ?? 0) || 0,
-            groomName: (evRow as any).groom_name ?? undefined,
-            brideName: (evRow as any).bride_name ?? undefined,
-            rsvpLink: (evRow as any).rsvp_link ?? undefined,
-            tasks: [],
-            user_id: (evRow as any).user_id ?? undefined,
-            userName: (evRow as any).user?.name ?? undefined,
-          }
-        : null;
-
-      setEvent(ev);
-      setGuests(Array.isArray(gs) ? gs : []);
-      setUserAvatarUrl(String((evRow as any)?.user?.avatar_url ?? ""));
-      const nextTables = Array.isArray(tablesRes.data) ? (tablesRes.data as any[]) : [];
-      setTables(
-        nextTables.map((t) => ({
-          id: String(t.id),
-          capacity: Number(t.capacity) || 0,
-          shape: (t.shape ?? null) as any,
-        }))
-      );
-      setTotalSeats(
-        nextTables.reduce((sum, t) => sum + (Number(t?.capacity) || 0), 0)
-      );
-    } catch (e) {
-      console.error("Employee event details load error:", e);
-      Alert.alert("שגיאה", "לא ניתן לטעון את האירוע");
-      setEvent(null);
-      setGuests([]);
-      setUserAvatarUrl("");
-      setTotalSeats(0);
-      setTables([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [eventId]);
-
-  const counts = useMemo(() => {
-    const coming = guests.filter((g) => g.status === "מגיע").length;
-    const pending = guests.filter((g) => g.status === "ממתין").length;
-    const notComing = guests.filter((g) => g.status === "לא מגיע").length;
-    return { coming, pending, notComing, total: guests.length };
-  }, [guests]);
-
-  const seatedCount = guests.filter((g) => Boolean(g.tableId)).length;
-  const seatedPercent = counts.total ? Math.round((seatedCount / counts.total) * 100) : 0;
-  const checkedInCount = guests.filter((g) => Boolean(g.checkedIn)).length;
-  const checkedInConfirmedCount = guests.filter(
-    (g) => g.status === "מגיע" && Boolean(g.checkedIn)
-  ).length;
-  const notConfirmedTotal = counts.pending + counts.notComing;
-  const checkedInNotConfirmedCount = guests.filter(
-    (g) => g.status !== "מגיע" && Boolean(g.checkedIn)
-  ).length;
-
-  const sumPeople = (rows: Array<{ numberOfPeople?: number }>) =>
-    rows.reduce((sum, r) => sum + (Number(r.numberOfPeople) || 1), 0);
-
-  const arrivedPeople = sumPeople(guests.filter((g) => Boolean(g.checkedIn)));
-  const seatedArrivedPeople = sumPeople(
-    guests.filter((g) => Boolean(g.checkedIn) && Boolean(g.tableId))
-  );
-  const arrivedNotSeatedPeople = Math.max(0, arrivedPeople - seatedArrivedPeople);
-  const freeSeats = Math.max(0, (Number(totalSeats) || 0) - seatedArrivedPeople);
-
-  const invitedPeople = sumPeople(guests);
-  const confirmedPeople = sumPeople(guests.filter((g) => g.status === "מגיע"));
-  const pendingPeople = sumPeople(guests.filter((g) => g.status === "ממתין"));
-  const declinedPeople = sumPeople(guests.filter((g) => g.status === "לא מגיע"));
-
-  const assignedPeopleByTableId = useMemo(() => {
-    const m = new Map<string, number>();
-    guests.forEach((g) => {
-      const tid = g.tableId;
-      if (!tid) return;
-      const prev = m.get(tid) || 0;
-      m.set(tid, prev + (Number(g.numberOfPeople) || 1));
-    });
-    return m;
-  }, [guests]);
-
-  const tableStats = useMemo(() => {
-    const regular = tables.filter((t) => t.shape !== "reserve");
-    const reserve = tables.filter((t) => t.shape === "reserve");
-
-    const isFull = (t: { id: string; capacity: number }) =>
-      (assignedPeopleByTableId.get(t.id) || 0) >= (Number(t.capacity) || 0);
-    const isOpened = (t: { id: string }) => (assignedPeopleByTableId.get(t.id) || 0) > 0;
-
-    const totalRegular = regular.length;
-    const fullRegular = regular.filter(isFull).length;
-    const notFullRegular = Math.max(0, totalRegular - fullRegular);
-
-    const totalReserve = reserve.length;
-    const openedReserve = reserve.filter(isOpened).length;
-
-    return { totalRegular, fullRegular, notFullRegular, totalReserve, openedReserve };
-  }, [assignedPeopleByTableId, tables]);
+  const { loading, event, guests, userAvatarUrl, totalSeats, tables, stats } =
+    useEmployeeEventDetailsModel(eventId);
+  const counts = stats.counts;
+  const seatedPercent = stats.seatedPercent;
+  const checkedInCount = stats.checkedInCount;
+  const checkedInConfirmedCount = stats.checkedInConfirmedCount;
+  const checkedInNotConfirmedCount = stats.checkedInNotConfirmedCount;
+  const notConfirmedTotal = stats.notConfirmedTotal;
+  const arrivedPeople = stats.arrivedPeople;
+  const seatedArrivedPeople = stats.seatedArrivedPeople;
+  const arrivedNotSeatedPeople = stats.arrivedNotSeatedPeople;
+  const freeSeats = stats.freeSeats;
+  const invitedPeople = stats.invitedPeople;
+  const confirmedPeople = stats.confirmedPeople;
+  const pendingPeople = stats.pendingPeople;
+  const declinedPeople = stats.declinedPeople;
+  const tableStats = stats.tableStats;
 
   // Keep content above the custom tab bar
   const TAB_BAR_HEIGHT = 65;

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, SafeAreaView, Platform, Alert, Image, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,14 +10,8 @@ import { Event } from '@/types';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getAppHeaderTotalHeight } from '@/components/AppHeader';
-
-const MONTHS = [
-  'ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני',
-  'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'
-];
-
-const EVENT_TYPES = ['חתונה', 'בר מצווה', 'בת מצווה', 'ברית', 'אירוע חברה'] as const;
-type EventType = (typeof EVENT_TYPES)[number];
+import { EVENT_BADGE_META, inferEventType, MONTHS, type EventType } from '@/features/events/eventsConstants';
+import { useEventsListModel } from '@/features/events/useEventsListModel';
 
 const EVENT_IMAGE_BY_TYPE: Record<EventType, number> = {
   חתונה: require('../../assets/images/wedding.jpg'),
@@ -27,94 +21,43 @@ const EVENT_IMAGE_BY_TYPE: Record<EventType, number> = {
   'אירוע חברה': require('../../assets/images/wedding.jpg'),
 };
 
-const EVENT_BADGE_META: Record<EventType, { icon: keyof typeof Ionicons.glyphMap; tint: string }> = {
-  חתונה: { icon: 'heart', tint: 'rgba(204, 160, 0, 0.85)' },
-  'בר מצווה': { icon: 'sparkles', tint: 'rgba(6, 23, 62, 0.85)' },
-  'בת מצווה': { icon: 'sparkles', tint: 'rgba(6, 23, 62, 0.85)' },
-  ברית: { icon: 'star', tint: 'rgba(240, 203, 70, 0.9)' },
-  'אירוע חברה': { icon: 'briefcase', tint: 'rgba(0, 53, 102, 0.85)' },
-};
-
-function inferEventType(title: string): EventType | null {
-  const t = (title || '').trim();
-  const match = EVENT_TYPES.find(et => t.startsWith(et) || t.includes(et));
-  return match || null;
-}
-
 export default function AdminEventsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const headerTotalHeight = getAppHeaderTotalHeight(insets.top);
   const monthsBarHeight = Platform.OS === 'ios' ? 68 : 64;
 
-  const [events, setEvents] = useState<Event[]>([]);
-  const [loading, setLoading] = useState(true);
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [filterDate, setFilterDate] = useState<Date | null>(null);
-  const [filterMonth, setFilterMonth] = useState('');
-  const [sortOrder, setSortOrder] = useState('asc');
-  const [query, setQuery] = useState('');
+  const loadEventsFn = useMemo(() => async () => {
+    const data = await eventService.getEvents();
+    return Array.isArray(data) ? (data as Event[]) : [];
+  }, []);
+
+  const {
+    loading,
+    query,
+    setQuery,
+    filterDate,
+    setFilterDate,
+    filterMonth,
+    setFilterMonth,
+    sortOrder,
+    setSortOrder,
+    refresh,
+    filteredEvents,
+  } = useEventsListModel(loadEventsFn, { errorTitle: 'שגיאה', errorMessage: 'לא ניתן לטעון אירועים כרגע' });
 
   // רענון ראשוני
   useEffect(() => {
-    loadEvents();
-  }, []);
+    void refresh();
+  }, [refresh]);
 
   // רענון בכל חזרה לפוקוס
   useFocusEffect(
     React.useCallback(() => {
-      loadEvents();
-    }, [])
+      void refresh();
+    }, [refresh])
   );
-
-  const loadEvents = async () => {
-    setLoading(true);
-    try {
-      const data = await eventService.getEvents();
-      setEvents(data);
-    } catch (e) {
-      console.error('Admin events load error:', e);
-      Alert.alert('שגיאה', 'לא ניתן לטעון אירועים כרגע');
-      setEvents([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Filtering
-  let filteredEvents: Event[] = [...events];
-  if (filterDate) {
-    filteredEvents = filteredEvents.filter(e => {
-      const d = new Date(e.date);
-      return d.toDateString() === filterDate.toDateString();
-    });
-  } else if (filterMonth) {
-    filteredEvents = filteredEvents.filter(e => {
-      const d = new Date(e.date);
-      return d.getMonth() === parseInt(filterMonth);
-    });
-  }
-  if (query.trim()) {
-    const q = query.trim().toLowerCase();
-    filteredEvents = filteredEvents.filter(e => {
-      const hay = [
-        e.title,
-        e.location,
-        e.city,
-        e.userName || '',
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-      return hay.includes(q);
-    });
-  }
-  // Sorting
-  filteredEvents.sort((a, b) => {
-    const da = new Date(a.date);
-    const db = new Date(b.date);
-    return sortOrder === 'asc' ? da.getTime() - db.getTime() : db.getTime() - da.getTime();
-  });
 
   // UI
   const today = new Date();

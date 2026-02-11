@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -17,12 +17,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { colors } from "@/constants/colors";
-import { guestService } from "@/lib/services/guestService";
 import { Guest, GuestCategory } from "@/types";
 import BackSwipe from "@/components/BackSwipe";
-
-type StatusFilter = "all" | Guest["status"];
-type GuestWithCategory = Guest & { categoryName: string };
+import { useRsvpApprovalsModel } from "@/features/rsvp/useRsvpApprovalsModel";
 
 const sanitizePhone = (raw: string) => (raw || "").replace(/[^\d+]/g, "");
 
@@ -40,128 +37,22 @@ export default function EmployeeRsvpApprovalsScreen() {
     [resolvedEventId]
   );
 
-  const [loading, setLoading] = useState(true);
-  const [guests, setGuests] = useState<Guest[]>([]);
-  const [categories, setCategories] = useState<GuestCategory[]>([]);
-  const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-  const [savingId, setSavingId] = useState<string | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-
-  const load = async () => {
-    if (!resolvedEventId) {
-      setGuests([]);
-      setCategories([]);
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const [gs, cats] = await Promise.all([
-        guestService.getGuests(resolvedEventId),
-        guestService.getGuestCategories(resolvedEventId),
-      ]);
-      setGuests(Array.isArray(gs) ? gs : []);
-      setCategories(Array.isArray(cats) ? (cats as any) : []);
-    } catch (e) {
-      console.error("Employee RSVP approvals load error:", e);
-      Alert.alert("שגיאה", "לא ניתן לטעון את המוזמנים");
-      setGuests([]);
-      setCategories([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resolvedEventId]);
-
-  const categoryNameById = useMemo(() => {
-    const m = new Map<string, string>();
-    categories.forEach((c) => {
-      if (c?.id) m.set(String(c.id), String(c.name || "").trim() || "ללא קטגוריה");
-    });
-    return m;
-  }, [categories]);
-
-  const filteredGuests = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const base = guests.filter((g) => (statusFilter === "all" ? true : g.status === statusFilter));
-    if (!q) return base;
-    return base.filter((g) => `${g.name} ${g.phone} ${g.status}`.toLowerCase().includes(q));
-  }, [guests, query, statusFilter]);
-
-  const stats = useMemo(() => {
-    const total = guests.length;
-    const coming = guests.filter((g) => g.status === "מגיע").length;
-    const pending = guests.filter((g) => g.status === "ממתין").length;
-    const notComing = guests.filter((g) => g.status === "לא מגיע").length;
-    return { total, coming, pending, notComing };
-  }, [guests]);
-
-  const guestsWithCategory = useMemo<GuestWithCategory[]>(() => {
-    return filteredGuests.map((g) => ({
-      ...g,
-      categoryName: g.category_id ? categoryNameById.get(String(g.category_id)) || "ללא קטגוריה" : "ללא קטגוריה",
-    }));
-  }, [filteredGuests, categoryNameById]);
-
-  const sections = useMemo(() => {
-    const order: string[] = categories.map((c) => String(c.name || "").trim() || "ללא קטגוריה");
-    const grouped = new Map<string, GuestWithCategory[]>();
-    guestsWithCategory.forEach((g) => {
-      const key = g.categoryName || "ללא קטגוריה";
-      const prev = grouped.get(key) || [];
-      prev.push(g);
-      grouped.set(key, prev);
-    });
-
-    const hasUncategorized = grouped.has("ללא קטגוריה") && !order.includes("ללא קטגוריה");
-    const finalOrder = hasUncategorized ? [...order, "ללא קטגוריה"] : order;
-    const inOrder = new Set(finalOrder);
-    const extra = Array.from(grouped.keys()).filter((k) => !inOrder.has(k)).sort((a, b) => a.localeCompare(b, "he"));
-
-    const names = [...finalOrder, ...extra].filter((n) => grouped.has(n));
-    return names.map((name) => ({ name, data: grouped.get(name) || [] }));
-  }, [categories, guestsWithCategory]);
-
-  const toggleCollapsed = (name: string) => {
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      if (next.has(name)) next.delete(name);
-      else next.add(name);
-      return next;
-    });
-  };
-
-  const callGuest = async (phone: string) => {
-    const p = sanitizePhone(phone);
-    if (!p) return;
-    try {
-      await Linking.openURL(`tel:${p}`);
-    } catch (e) {
-      console.error("Call openURL error:", e);
-      Alert.alert("שגיאה", "לא ניתן לפתוח שיחה");
-    }
-  };
-
-  const setStatus = async (guestId: string, status: Guest["status"]) => {
-    setSavingId(guestId);
-    try {
-      await guestService.updateGuestStatus(guestId, status);
-      setGuests((prev) => prev.map((g) => (g.id === guestId ? { ...g, status } : g)));
-      setEditingId(null);
-    } catch (e) {
-      console.error("Update RSVP status error:", e);
-      Alert.alert("שגיאה", "לא ניתן לעדכן סטטוס");
-    } finally {
-      setSavingId(null);
-    }
-  };
+  const {
+    loading,
+    query,
+    setQuery,
+    statusFilter,
+    setStatusFilter,
+    savingId,
+    editingId,
+    setEditingId,
+    collapsed,
+    toggleCollapsed,
+    stats,
+    sections,
+    callGuest,
+    setStatus,
+  } = useRsvpApprovalsModel(resolvedEventId);
 
   // Keep content above the custom tab bar
   const TAB_BAR_HEIGHT = 65;
