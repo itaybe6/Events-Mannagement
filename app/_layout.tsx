@@ -4,7 +4,7 @@ import { useFonts } from "expo-font";
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, I18nManager, Platform, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, I18nManager, Platform, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useUserStore } from '@/store/userStore';
 import { supabase } from '@/lib/supabase';
 import { colors } from '@/constants/colors';
@@ -19,6 +19,63 @@ I18nManager.allowRTL(true);
 I18nManager.forceRTL(true);
 
 const rtlTextStyle = { textAlign: 'right' as const, writingDirection: 'rtl' as const };
+const RTL_MARK = '\u200F';
+
+const toRtlAlertText = (value?: string) => {
+  if (typeof value !== 'string' || value.length === 0) return value;
+  return value.startsWith(RTL_MARK) ? value : `${RTL_MARK}${value}`;
+};
+
+const toRtlButtons = (buttons?: Parameters<typeof Alert.alert>[2]) =>
+  buttons?.map((button) => {
+    if (!button?.text) return button;
+    return { ...button, text: toRtlAlertText(button.text) ?? button.text };
+  });
+
+const patchAlertsForRTL = () => {
+  const alertWithFlag = Alert as typeof Alert & { __rtlPatched?: boolean };
+  if (alertWithFlag.__rtlPatched) return;
+
+  const originalAlert = Alert.alert.bind(Alert);
+  Alert.alert = ((...args: Parameters<typeof Alert.alert>) => {
+    const [title, message, buttons, options] = args;
+    return originalAlert(
+      toRtlAlertText(title) ?? title,
+      toRtlAlertText(message),
+      toRtlButtons(buttons),
+      options
+    );
+  }) as typeof Alert.alert;
+
+  alertWithFlag.__rtlPatched = true;
+};
+
+const patchGlobalAlertForRTL = () => {
+  const globalWithAlert = globalThis as typeof globalThis & {
+    alert?: (message?: unknown) => void;
+    __rtlGlobalAlertPatched?: boolean;
+  };
+
+  if (globalWithAlert.__rtlGlobalAlertPatched) return;
+  if (typeof globalWithAlert.alert !== 'function') {
+    globalWithAlert.__rtlGlobalAlertPatched = true;
+    return;
+  }
+
+  const originalGlobalAlert = globalWithAlert.alert.bind(globalWithAlert);
+  globalWithAlert.alert = (message?: unknown) => {
+    if (typeof message === 'string') {
+      originalGlobalAlert(toRtlAlertText(message) ?? message);
+      return;
+    }
+    originalGlobalAlert(message);
+  };
+
+  globalWithAlert.__rtlGlobalAlertPatched = true;
+};
+
+patchAlertsForRTL();
+patchGlobalAlertForRTL();
 
 Text.defaultProps = Text.defaultProps || {};
 Text.defaultProps.style = [rtlTextStyle, Text.defaultProps.style];

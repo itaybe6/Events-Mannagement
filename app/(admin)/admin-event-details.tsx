@@ -50,8 +50,6 @@ export default function AdminEventDetailsScreen() {
   const [error, setError] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
   const { height: windowHeight, width: windowWidth } = useWindowDimensions();
-  // Tabs header height (see `app/(admin)/_layout.tsx` headerStyle.height)
-  const headerHeight = 76;
 
   useEffect(() => {
     const eventId =
@@ -466,9 +464,8 @@ export default function AdminEventDetailsScreen() {
           style={[
             styles.heroStack,
             {
-              height: heroHeight + insets.top,
-              marginTop: -insets.top,
-              paddingTop: insets.top + headerHeight + 10,
+              height: heroHeight,
+              paddingTop: 10,
             },
           ]}
         >
@@ -482,18 +479,6 @@ export default function AdminEventDetailsScreen() {
               style={styles.heroBackdropFade}
             />
             <View style={styles.heroBackdropTint} />
-          </View>
-
-          <View style={[styles.nav, { top: insets.top + 10 }]} pointerEvents="box-none">
-            <TouchableOpacity
-              style={styles.navBtn}
-              onPress={() => router.replace('/(admin)/admin-events')}
-              activeOpacity={0.85}
-              accessibilityRole="button"
-              accessibilityLabel="חזרה"
-            >
-              <Ionicons name="chevron-back" size={22} color={ui.text} />
-            </TouchableOpacity>
           </View>
 
           <View style={styles.hero}>
@@ -930,37 +915,9 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
     marginHorizontal: -24, // extend hero image to screen edges
   },
-  nav: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    paddingHorizontal: 24,
-    paddingTop: Platform.OS === 'ios' ? 10 : 18,
-    paddingBottom: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    zIndex: 5,
-  },
   scroll: {
     flex: 1,
     zIndex: 3,
-  },
-  navBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.40)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.35)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: colors.black,
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 3,
-    overflow: 'hidden',
   },
   navRightSpacer: { width: 40, height: 40 },
 

@@ -23,6 +23,8 @@ export const guestService = {
         message: guest.message || '',
         category_id: guest.category_id,
         numberOfPeople: guest.number_of_people || 1,
+        checkedIn: Boolean((guest as any).checked_in),
+        checkedInAt: (guest as any).checked_in_at ? new Date((guest as any).checked_in_at) : null,
       }));
     } catch (error) {
       console.error('Get guests error:', error);
@@ -81,6 +83,11 @@ export const guestService = {
       if (updates.message !== undefined) updateData.message = updates.message;
       if (updates.category_id !== undefined) updateData.category_id = updates.category_id;
       if (updates.numberOfPeople !== undefined) updateData.number_of_people = updates.numberOfPeople;
+      if ((updates as any).checkedIn !== undefined) updateData.checked_in = Boolean((updates as any).checkedIn);
+      if ((updates as any).checkedInAt !== undefined)
+        updateData.checked_in_at = (updates as any).checkedInAt
+          ? (updates as any).checkedInAt
+          : null;
 
       const { data, error } = await supabase
         .from('guests')
@@ -101,6 +108,8 @@ export const guestService = {
         message: data.message || '',
         category_id: data.category_id,
         numberOfPeople: data.number_of_people || 1,
+        checkedIn: Boolean((data as any).checked_in),
+        checkedInAt: (data as any).checked_in_at ? new Date((data as any).checked_in_at) : null,
       };
     } catch (error) {
       console.error('Update guest error:', error);
@@ -143,6 +152,8 @@ export const guestService = {
         tableId: data.table_id,
         gift: Number(data.gift_amount) || 0,
         message: data.message || '',
+        checkedIn: Boolean((data as any).checked_in),
+        checkedInAt: (data as any).checked_in_at ? new Date((data as any).checked_in_at) : null,
       };
     } catch (error) {
       console.error('Update guest status error:', error);
@@ -170,9 +181,47 @@ export const guestService = {
         tableId: data.table_id,
         gift: Number(data.gift_amount) || 0,
         message: data.message || '',
+        checkedIn: Boolean((data as any).checked_in),
+        checkedInAt: (data as any).checked_in_at ? new Date((data as any).checked_in_at) : null,
       };
     } catch (error) {
       console.error('Assign guest to table error:', error);
+      throw error;
+    }
+  },
+
+  // Check-in (arrival to venue)
+  setGuestCheckedIn: async (guestId: string, checkedIn: boolean): Promise<Guest> => {
+    try {
+      const payload: any = {
+        checked_in: Boolean(checkedIn),
+        checked_in_at: checkedIn ? new Date().toISOString() : null,
+      };
+
+      const { data, error } = await supabase
+        .from('guests')
+        .update(payload)
+        .eq('id', guestId)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      return {
+        id: data.id,
+        name: data.name,
+        phone: data.phone || '',
+        status: data.status as Guest['status'],
+        tableId: data.table_id,
+        gift: Number(data.gift_amount) || 0,
+        message: data.message || '',
+        category_id: data.category_id,
+        numberOfPeople: data.number_of_people || 1,
+        checkedIn: Boolean((data as any).checked_in),
+        checkedInAt: (data as any).checked_in_at ? new Date((data as any).checked_in_at) : null,
+      };
+    } catch (error) {
+      console.error('Set guest checked-in error:', error);
       throw error;
     }
   },

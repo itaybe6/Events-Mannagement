@@ -2,11 +2,14 @@ import React, { useEffect } from "react";
 import { Tabs, useRouter } from "expo-router";
 import { colors } from "@/constants/colors";
 import { Ionicons } from "@expo/vector-icons";
-import { Image, Platform, StyleSheet, View, TouchableOpacity } from "react-native";
+import { Image, Platform, StyleSheet, View } from "react-native";
 import { Image as ExpoImage } from 'expo-image';
 
 import { useLayoutStore } from '@/store/layoutStore';
 import { useUserStore } from '@/store/userStore';
+import AppHeader from "@/components/AppHeader";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { getAppHeaderTotalHeight } from "@/components/AppHeader";
 
 function ProfileTabIcon({ focused }: { focused: boolean }) {
   const avatarUrl = useUserStore(s => s.userData?.avatar_url);
@@ -33,6 +36,8 @@ export default function CoupleTabsLayout() {
   const router = useRouter();
   const { isTabBarVisible, setTabBarVisible } = useLayoutStore();
   const { userType, isLoggedIn, loading, userData } = useUserStore();
+  const insets = useSafeAreaInsets();
+  const headerTotalHeight = getAppHeaderTotalHeight(insets.top);
 
   useEffect(() => {
     setTabBarVisible(true);
@@ -53,43 +58,24 @@ export default function CoupleTabsLayout() {
     }
   }, [isLoggedIn, userType, loading, router]);
 
-  const headerRight = () => (
-    <TouchableOpacity
-      style={styles.notificationButton}
-      onPress={() => router.push('/notifications')}
-    >
-      <Ionicons name="notifications" size={24} color={colors.primary} />
-    </TouchableOpacity>
-  );
-
-  const headerTitle = () => (
-    <Image
-      source={require('../../assets/images/logo-moon.png')}
-      style={styles.logoHeader}
-      resizeMode="contain"
-    />
-  );
-
   return (
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: colors.white,
         tabBarInactiveTintColor: colors.gray[500],
         headerShown: true,
-        headerTitle: headerTitle,
-        headerTitleAlign: "center",
-        headerTitleContainerStyle: {
-          width: "100%",
-          alignItems: "center",
-        },
         headerStyle: {
-          backgroundColor: '#FFFFFF',
-          height: 90,
-          elevation: 0,
-          shadowOpacity: 0,
-          borderBottomWidth: 0,
+          height: headerTotalHeight,
+          backgroundColor: "#FFFFFF",
         },
-        headerRight: headerRight,
+        headerShadowVisible: false,
+        header: ({ navigation }) => (
+          <AppHeader
+            canGoBack={navigation.canGoBack()}
+            onPressBack={() => navigation.goBack()}
+            onPressNotifications={() => router.push('/notifications')}
+          />
+        ),
         tabBarShowLabel: false,
         tabBarStyle: {
           position: 'absolute',
@@ -204,26 +190,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     borderWidth: 2,
     borderColor: colors.secondary,
-  },
-  notificationButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.35)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.55)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 15,
-    shadowColor: colors.richBlack,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.18,
-    shadowRadius: 10,
-    elevation: 6,
-  },
-  logoHeader: {
-    width: 320,
-    height: 80,
   },
   tabAvatar: {
     width: 26,

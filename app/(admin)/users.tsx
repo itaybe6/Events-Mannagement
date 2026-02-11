@@ -623,6 +623,9 @@ const styles = StyleSheet.create({
   filtersRow: {
     paddingHorizontal: 18,
     gap: 10,
+    flexDirection: 'row-reverse',
+    justifyContent: 'flex-start',
+    minWidth: '100%',
   },
   filterChip: {
     height: 40,

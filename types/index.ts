@@ -8,6 +8,9 @@ export type Guest = {
   message: string;
   category_id: string; // קטגוריה חובה
   numberOfPeople: number;
+  // Check-in (arrival to the venue). Optional for backward compatibility.
+  checkedIn?: boolean;
+  checkedInAt?: Date | null;
 };
 
 export type GuestCategory = {

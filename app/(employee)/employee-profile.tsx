@@ -35,6 +35,7 @@ export default function EmployeeProfileScreen() {
   const [editOpen, setEditOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ name: "", email: "", phone: "" });
+  const [avatarFromUsersTable, setAvatarFromUsersTable] = useState<string>("");
 
   useEffect(() => {
     if (userData) {
@@ -46,12 +47,39 @@ export default function EmployeeProfileScreen() {
     }
   }, [userData?.id]);
 
+  useEffect(() => {
+    const loadAvatarFromUsers = async () => {
+      if (!userData?.id) {
+        setAvatarFromUsersTable("");
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("users")
+        .select("avatar_url")
+        .eq("id", userData.id)
+        .maybeSingle();
+
+      if (error) {
+        console.error("Employee profile avatar fetch error:", error);
+        setAvatarFromUsersTable("");
+        return;
+      }
+
+      setAvatarFromUsersTable(String(data?.avatar_url ?? "").trim());
+    };
+
+    void loadAvatarFromUsers();
+  }, [userData?.id]);
+
   const avatarUri = useMemo(() => {
+    const fromUsers = avatarFromUsersTable.trim();
+    if (fromUsers) return fromUsers;
     const direct = String(userData?.avatar_url ?? "").trim();
     if (direct) return direct;
     const seed = encodeURIComponent(userData?.email ?? "employee");
     return `https://i.pravatar.cc/256?u=${seed}`;
-  }, [userData?.avatar_url, userData?.email]);
+  }, [avatarFromUsersTable, userData?.avatar_url, userData?.email]);
 
   const handleLogout = async () => {
     await logout();
@@ -260,7 +288,7 @@ export default function EmployeeProfileScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  content: { width: "100%", maxWidth: 520, alignSelf: "center", paddingHorizontal: 16, paddingTop: 14 },
+  content: { width: "100%", maxWidth: 520, alignSelf: "center", paddingHorizontal: 16, paddingTop: 28 },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
 
   hero: { alignItems: "center", gap: 12, marginTop: 6 },

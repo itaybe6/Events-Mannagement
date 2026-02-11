@@ -73,8 +73,10 @@ export default function AdminProfileScreen() {
   const { userData, logout } = useUserStore();
 
   const [editOpen, setEditOpen] = useState(false);
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   const [form, setForm] = useState({ name: "", email: "", password: "", confirmPassword: "" });
   const [loading, setLoading] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [availableYears, setAvailableYears] = useState<number[]>([]);
@@ -211,20 +213,21 @@ export default function AdminProfileScreen() {
     }
   };
 
-  const confirmLogout = () => {
-    Alert.alert("התנתקות", "לצאת מהחשבון?", [
-      { text: "ביטול", style: "cancel" },
-      {
-        text: "התנתק",
-        style: "destructive",
-        onPress: () => {
-          void (async () => {
-            await logout();
-            router.replace("/login");
-          })();
-        },
-      },
-    ]);
+  const performLogout = async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      await logout();
+      router.replace("/login");
+    } catch (e) {
+      Alert.alert("שגיאה", "לא ניתן להתנתק כרגע, נסה שוב.");
+    } finally {
+      setLoggingOut(false);
+    }
+  };
+
+  const handleLogoutPress = () => {
+    setLogoutConfirmOpen(true);
   };
 
   if (!userData) {
@@ -242,21 +245,6 @@ export default function AdminProfileScreen() {
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
       <Stack.Screen options={{ headerShown: false }} />
-
-      <LinearGradient colors={["#EAF2FF", "#F4F7FB"]} style={styles.header}>
-        <Pressable
-          onPress={() => router.back()}
-          style={({ pressed }) => [styles.iconBtn, styles.backBtnAbs, pressed && styles.iconBtnPressed]}
-          accessibilityRole="button"
-          accessibilityLabel="חזרה"
-        >
-          <Ionicons name="chevron-back" size={26} color={ui.text} />
-        </Pressable>
-
-        <Text style={styles.headerTitle} numberOfLines={1}>
-          פרופיל מנהל
-        </Text>
-      </LinearGradient>
 
       <ScrollView
         style={styles.scroll}
@@ -286,14 +274,6 @@ export default function AdminProfileScreen() {
             </View>
           </View>
         </View>
-
-        <Pressable
-          onPress={confirmLogout}
-          style={({ pressed }) => [styles.logoutButton, pressed && styles.btnPressed]}
-          accessibilityRole="button"
-        >
-          <Text style={styles.logoutButtonText}>התנתק</Text>
-        </Pressable>
 
         <View style={styles.statsRow}>
           <StatCard
@@ -381,7 +361,73 @@ export default function AdminProfileScreen() {
           )}
         </View>
 
+        <Pressable
+          onPress={handleLogoutPress}
+          disabled={loggingOut}
+          style={({ pressed }) => [styles.logoutBtnShadow, (pressed || loggingOut) && styles.iconBtnPressed]}
+          accessibilityRole="button"
+          accessibilityLabel="התנתקות"
+        >
+          <LinearGradient
+            colors={["#FB7185", "#E11D48"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.logoutBtnSurface}
+          >
+            {loggingOut ? (
+              <ActivityIndicator color="white" />
+            ) : (
+              <>
+                <Ionicons name="log-out-outline" size={18} color="white" />
+                <Text style={styles.actionBtnTextLight}>התנתק</Text>
+              </>
+            )}
+          </LinearGradient>
+        </Pressable>
+
       </ScrollView>
+
+      <Modal transparent visible={logoutConfirmOpen} animationType="fade" onRequestClose={() => setLogoutConfirmOpen(false)}>
+        <View style={styles.modalBackdrop}>
+          <Pressable
+            style={StyleSheet.absoluteFillObject}
+            onPress={() => setLogoutConfirmOpen(false)}
+            accessibilityRole="button"
+            accessibilityLabel="סגור חלון התנתקות"
+          />
+
+          <View style={styles.confirmModalWrap}>
+            <View style={styles.confirmModalCard}>
+              <Text style={styles.confirmTitle}>התנתקות</Text>
+              <Text style={styles.confirmMessage}>בטוח שברצונך להתנתק?</Text>
+
+              <View style={styles.confirmActions}>
+                <Pressable
+                  onPress={() => setLogoutConfirmOpen(false)}
+                  style={({ pressed }) => [styles.confirmBtn, styles.confirmBtnGhost, pressed && styles.modalBtnPressed]}
+                >
+                  <Text style={styles.confirmBtnGhostText}>ביטול</Text>
+                </Pressable>
+
+                <Pressable
+                  onPress={async () => {
+                    setLogoutConfirmOpen(false);
+                    await performLogout();
+                  }}
+                  disabled={loggingOut}
+                  style={({ pressed }) => [
+                    styles.confirmBtn,
+                    styles.confirmBtnDanger,
+                    (pressed || loggingOut) && styles.modalBtnPressed,
+                  ]}
+                >
+                  {loggingOut ? <ActivityIndicator color="white" /> : <Text style={styles.confirmBtnDangerText}>אישור</Text>}
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <Modal transparent visible={editOpen} animationType="fade" onRequestClose={() => setEditOpen(false)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setEditOpen(false)}>
@@ -658,21 +704,28 @@ const styles = StyleSheet.create({
   },
   actionBtnTextLight: { fontSize: 14, fontWeight: "900", color: "white" },
   actionBtnTextDanger: { fontSize: 14, fontWeight: "900", color: ui.danger },
-  logoutButton: {
+
+  logoutBtnShadow: {
     height: 56,
-    borderRadius: 12,
+    borderRadius: 22,
     width: "100%",
+    shadowColor: "rgba(2, 6, 23, 0.30)",
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 5,
+    marginTop: 8,
+  },
+  logoutBtnSurface: {
+    flex: 1,
+    flexDirection: "row-reverse",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: ui.danger,
-    shadowColor: ui.danger,
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    gap: 10,
+    paddingHorizontal: 16,
+    borderRadius: 22,
+    overflow: "hidden",
   },
-  logoutButtonText: { fontSize: 17, fontWeight: "600", color: "#FFFFFF" },
-  btnPressed: { opacity: 0.92, transform: [{ scale: 0.985 }] },
 
   modalBackdrop: {
     flex: 1,
@@ -709,5 +762,71 @@ const styles = StyleSheet.create({
   modalBtnPrimary: { backgroundColor: ui.primary },
   modalBtnPressed: { opacity: 0.92, transform: [{ scale: 0.99 }] },
   modalBtnText: { fontSize: 14, fontWeight: "900" },
+
+  confirmModalWrap: {
+    flex: 1,
+    width: "100%",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  confirmModalCard: {
+    width: "100%",
+    maxWidth: 420,
+    backgroundColor: "rgba(255,255,255,0.98)",
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.65)",
+    zIndex: 2,
+    elevation: 10,
+  },
+  confirmTitle: {
+    fontSize: 18,
+    fontWeight: "900",
+    color: ui.text,
+    textAlign: "right",
+    writingDirection: "rtl",
+  },
+  confirmMessage: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: ui.muted,
+    textAlign: "right",
+    writingDirection: "rtl",
+    lineHeight: 22,
+  },
+  confirmActions: {
+    flexDirection: "row-reverse",
+    marginTop: 12,
+    marginHorizontal: -6,
+  },
+  confirmBtn: {
+    flex: 1,
+    height: 46,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    marginHorizontal: 6,
+  },
+  confirmBtnGhost: {
+    backgroundColor: "rgba(15,23,42,0.05)",
+    borderWidth: 1,
+    borderColor: ui.border,
+  },
+  confirmBtnDanger: {
+    backgroundColor: ui.danger,
+  },
+  confirmBtnGhostText: {
+    fontSize: 14,
+    fontWeight: "900",
+    color: ui.muted,
+    writingDirection: "rtl",
+  },
+  confirmBtnDangerText: {
+    fontSize: 14,
+    fontWeight: "900",
+    color: "white",
+    writingDirection: "rtl",
+  },
 });
 
