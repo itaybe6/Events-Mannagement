@@ -45,6 +45,7 @@ export default function EmployeeEventDetailsScreen() {
   const [loading, setLoading] = useState(true);
   const [event, setEvent] = useState<Event | null>(null);
   const [guests, setGuests] = useState<Guest[]>([]);
+  const [userAvatarUrl, setUserAvatarUrl] = useState<string>("");
   const [totalSeats, setTotalSeats] = useState<number>(0);
   const [tables, setTables] = useState<Array<{ id: string; capacity: number; shape: string | null }>>([]);
 
@@ -52,6 +53,7 @@ export default function EmployeeEventDetailsScreen() {
     if (!eventId) {
       setEvent(null);
       setGuests([]);
+      setUserAvatarUrl("");
       setTotalSeats(0);
       setTables([]);
       setLoading(false);
@@ -64,7 +66,7 @@ export default function EmployeeEventDetailsScreen() {
         supabase
           .from("events")
           .select(
-            "id,title,date,location,city,story,guests_count,budget,groom_name,bride_name,rsvp_link,user_id,user:users(name)"
+            "id,title,date,location,city,story,guests_count,budget,groom_name,bride_name,rsvp_link,user_id,user:users(name, avatar_url)"
           )
           .eq("id", eventId)
           .maybeSingle(),
@@ -97,6 +99,7 @@ export default function EmployeeEventDetailsScreen() {
 
       setEvent(ev);
       setGuests(Array.isArray(gs) ? gs : []);
+      setUserAvatarUrl(String((evRow as any)?.user?.avatar_url ?? ""));
       const nextTables = Array.isArray(tablesRes.data) ? (tablesRes.data as any[]) : [];
       setTables(
         nextTables.map((t) => ({
@@ -113,6 +116,7 @@ export default function EmployeeEventDetailsScreen() {
       Alert.alert("שגיאה", "לא ניתן לטעון את האירוע");
       setEvent(null);
       setGuests([]);
+      setUserAvatarUrl("");
       setTotalSeats(0);
       setTables([]);
     } finally {
@@ -187,16 +191,6 @@ export default function EmployeeEventDetailsScreen() {
     return { totalRegular, fullRegular, notFullRegular, totalReserve, openedReserve };
   }, [assignedPeopleByTableId, tables]);
 
-  const safeBack = () => {
-    const canGoBackFn = (router as any)?.canGoBack;
-    if (typeof canGoBackFn === "function") {
-      if (canGoBackFn()) router.back();
-      else router.replace("/(employee)/employee-events");
-      return;
-    }
-    router.replace("/(employee)/employee-events");
-  };
-
   // Keep content above the custom tab bar
   const TAB_BAR_HEIGHT = 65;
   const TAB_BAR_BOTTOM_GAP = Platform.OS === "ios" ? 30 : 20;
@@ -257,6 +251,15 @@ export default function EmployeeEventDetailsScreen() {
     if (hasBarMitzvah) return HERO_IMAGES.barMitzvah;
     if (hasBaby) return HERO_IMAGES.baby;
     return HERO_IMAGES.wedding;
+  };
+
+  const getInitials = (name?: string) => {
+    const n = String(name ?? "").trim();
+    if (!n) return "";
+    const parts = n.split(/\s+/).filter(Boolean);
+    const first = parts[0]?.[0] ?? "";
+    const last = parts.length > 1 ? parts[parts.length - 1]?.[0] ?? "" : "";
+    return (first + last).toUpperCase();
   };
 
   const getEventTypeLabel = () => {
@@ -403,15 +406,26 @@ export default function EmployeeEventDetailsScreen() {
                   <BlurView intensity={24} tint="light" style={styles.heroWindowBlur}>
                     <View style={[styles.heroWindowInner, { backgroundColor: "rgba(255,255,255,0.78)" }]}>
                       <View style={styles.heroTopRow}>
-                        <TouchableOpacity
-                          style={styles.navCircle}
-                          onPress={safeBack}
-                          activeOpacity={0.85}
-                          accessibilityRole="button"
-                          accessibilityLabel="חזרה"
-                        >
-                          <Ionicons name="chevron-back" size={22} color={ui.primary} />
-                        </TouchableOpacity>
+                        <View style={styles.heroAvatarWrap}>
+                          <View style={styles.heroAvatarRing}>
+                            {userAvatarUrl ? (
+                              <Image
+                                source={{ uri: userAvatarUrl }}
+                                style={styles.heroAvatar}
+                                contentFit="cover"
+                                transition={150}
+                              />
+                            ) : (
+                              <View style={styles.heroAvatarFallback}>
+                                {getInitials(event.userName) ? (
+                                  <Text style={styles.heroAvatarInitials}>{getInitials(event.userName)}</Text>
+                                ) : (
+                                  <Ionicons name="person" size={18} color={"rgba(13,17,28,0.65)"} />
+                                )}
+                              </View>
+                            )}
+                          </View>
+                        </View>
                       </View>
 
                       <View style={styles.heroTitleWrap}>
@@ -813,23 +827,41 @@ const styles = StyleSheet.create({
   heroTopRow: {
     width: "100%",
     flexDirection: "row-reverse",
-    justifyContent: "flex-start",
-    marginBottom: 12,
-  },
-  navCircle: {
-    width: 42,
-    height: 42,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.96)",
-    borderWidth: 1,
-    borderColor: "rgba(13,17,28,0.10)",
     justifyContent: "center",
     alignItems: "center",
+    marginBottom: 12,
+  },
+  heroAvatarWrap: {
+    position: "relative",
+  },
+  heroAvatarRing: {
+    width: 92,
+    height: 92,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.95)",
+    borderWidth: 1,
+    borderColor: "rgba(13,17,28,0.10)",
     shadowColor: colors.black,
-    shadowOpacity: 0.10,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 3,
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 4,
+    overflow: "hidden",
+  },
+  heroAvatar: {
+    width: "100%",
+    height: "100%",
+  },
+  heroAvatarFallback: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(15,69,230,0.08)",
+  },
+  heroAvatarInitials: {
+    fontSize: 22,
+    fontWeight: "900",
+    color: "#0d111c",
   },
   heroTitleWrap: { alignItems: "center" },
   heroTitleType: {

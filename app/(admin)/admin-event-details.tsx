@@ -491,7 +491,7 @@ export default function AdminEventDetailsScreen() {
           <View style={styles.hero}>
             <View style={styles.heroWindowOuter}>
               <BlurView intensity={24} tint="light" style={styles.heroWindowBlur}>
-                <View style={[styles.heroWindowInner, { backgroundColor: 'rgba(255,255,255,0.78)' }]}>
+                <View style={[styles.heroWindowInner, { backgroundColor: 'rgba(255, 255, 255, 0.41)' }]}>
                   <View style={styles.heroTopRow}>
                     <View style={styles.heroAvatarWrap}>
                       <TouchableOpacity
@@ -992,7 +992,7 @@ const styles = StyleSheet.create({
   sheet: {
     // Pull the sheet upward so it slightly overlaps the hero image (like the reference)
     // Tweak this value if you want more/less overlap.
-    marginTop: -34,
+    marginTop: -184,
     marginHorizontal: -24, // extend to screen edges (counteracts content padding)
     paddingHorizontal: 24,
     paddingTop: 22,
