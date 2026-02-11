@@ -292,11 +292,6 @@ export default function AdminEventsScreen() {
                           {event.city ? `, ${event.city}` : ''}
                         </Text>
                       </View>
-                      {event.userName ? (
-                        <Text style={styles.ownerLine} numberOfLines={1}>
-                          {event.userName}
-                        </Text>
-                      ) : null}
                     </View>
                   </View>
 
@@ -312,14 +307,31 @@ export default function AdminEventsScreen() {
                     />
 
                     <View style={styles.badgePill}>
-                      <View style={[styles.badgeIconWrap, { backgroundColor: badge.tint }]} />
-                      <Ionicons
-                        name={badge.icon}
-                        size={14}
-                        color={colors.white}
-                        style={styles.badgeIcon}
-                      />
-                      <Text style={styles.badgeText}>{eventType}</Text>
+                      {event.userName ? (
+                        <>
+                          <View style={styles.ownerAvatarWrap}>
+                            {event.userAvatarUrl ? (
+                              <Image source={{ uri: event.userAvatarUrl }} style={styles.ownerAvatarImg} />
+                            ) : (
+                              <Ionicons name="person" size={14} color={colors.white} />
+                            )}
+                          </View>
+                          <Text style={styles.ownerBadgeText} numberOfLines={1}>
+                            {event.userName}
+                          </Text>
+                        </>
+                      ) : (
+                        <>
+                          <View style={[styles.badgeIconWrap, { backgroundColor: badge.tint }]} />
+                          <Ionicons
+                            name={badge.icon}
+                            size={14}
+                            color={colors.white}
+                            style={styles.badgeIcon}
+                          />
+                          <Text style={styles.badgeText}>{eventType}</Text>
+                        </>
+                      )}
                     </View>
 
                     <View style={styles.coverBottomRow}>
@@ -500,13 +512,14 @@ const styles = StyleSheet.create({
   eventTopRow: {
     flexDirection: 'row-reverse',
     alignItems: 'flex-end',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
     paddingHorizontal: 8,
     marginBottom: 12,
+    gap: -80,
   },
   dateCol: {
     width: 86,
-    alignItems: 'flex-start',
+    alignItems: 'flex-end',
     justifyContent: 'flex-end',
   },
   dayBig: {
@@ -526,7 +539,8 @@ const styles = StyleSheet.create({
   metaCol: {
     flex: 1,
     alignItems: 'flex-end',
-    paddingLeft: 10,
+    // In RTL, we want the content closer to the right edge
+    paddingStart: 0,
   },
   eventTitleNew: {
     fontSize: 18,
@@ -558,14 +572,6 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: colors.gray[500],
   },
-  ownerLine: {
-    marginTop: 6,
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.gray[600],
-    textAlign: 'right',
-  },
-
   coverCard: {
     width: '100%',
     aspectRatio: 16 / 9,
@@ -616,6 +622,25 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '900',
     color: colors.text,
+  },
+  ownerAvatarWrap: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    overflow: 'hidden',
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  ownerAvatarImg: {
+    width: '100%',
+    height: '100%',
+  },
+  ownerBadgeText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: colors.text,
+    maxWidth: 160,
   },
   coverBottomRow: {
     position: 'absolute',

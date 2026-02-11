@@ -55,6 +55,7 @@ export type Event = {
   tasks: Task[];
   user_id?: string; // מזהה המשתמש שהאירוע שלו
   userName?: string; // שם המשתמש שהאירוע שלו (לתצוגת אדמין)
+  userAvatarUrl?: string; // תמונת המשתמש שהאירוע שלו
 };
 
 export type Message = {

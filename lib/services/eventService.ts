@@ -10,7 +10,7 @@ export const eventService = {
         .select(`
           *,
           tasks (*),
-          users (name)
+          users (name, avatar_url)
         `)
         .order('date', { ascending: true });
 
@@ -30,6 +30,7 @@ export const eventService = {
         rsvpLink: (event as any).rsvp_link ?? undefined,
         user_id: event.user_id,
         userName: (event as any)?.users?.name ?? undefined,
+        userAvatarUrl: (event as any)?.users?.avatar_url ?? undefined,
         tasks: event.tasks.map((task: any) => ({
           id: task.id,
           title: task.title,
@@ -80,7 +81,7 @@ export const eventService = {
         .select(`
           *,
           tasks (*),
-          users (name)
+          users (name, avatar_url)
         `)
         .eq('id', eventId)
         .single();
@@ -102,6 +103,7 @@ export const eventService = {
         rsvpLink: (data as any).rsvp_link ?? undefined,
         user_id: data.user_id, // הוסף את user_id
         userName: (data as any)?.users?.name ?? undefined,
+        userAvatarUrl: (data as any)?.users?.avatar_url ?? undefined,
         tasks: data.tasks.map((task: any) => ({
           id: task.id,
           title: task.title,
