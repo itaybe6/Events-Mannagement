@@ -1,42 +1,15 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Platform, ActivityIndicator } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { useUserStore } from '@/store/userStore';
-import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
 import { Image } from 'expo-image';
 
-interface NotificationSetting {
-  id?: string;
-  notification_type: string;
-  title: string;
-  enabled: boolean;
-  message_content?: string;
-  days_from_wedding?: number; // negative=before, 0=event day, positive=after
-  channel?: 'SMS' | 'WHATSAPP';
-}
-
-const DEFAULT_NOTIFICATION_TEMPLATES: Omit<NotificationSetting, 'id' | 'enabled'>[] = [
-  // 3 regular (SMS) before the event
-  // reminder_1 default is generated dynamically based on event type + owner name
-  { notification_type: 'reminder_1', title: 'הודעה רגילה 1 (לפני האירוע)', days_from_wedding: -30, channel: 'SMS', message_content: '' },
-  { notification_type: 'reminder_2', title: 'הודעה רגילה 2 (לפני האירוע)', days_from_wedding: -14, channel: 'SMS', message_content: 'היי! האירוע בעוד שבועיים, מחכים לראות אתכם!' },
-  { notification_type: 'reminder_3', title: 'הודעה רגילה 3 (לפני האירוע)', days_from_wedding: -7, channel: 'SMS', message_content: 'תזכורת אחרונה: האירוע בעוד שבוע. נשמח לראותכם!' },
-  // 1 WhatsApp on the event day
-  { notification_type: 'whatsapp_event_day', title: 'וואטסאפ ביום האירוע', days_from_wedding: 0, channel: 'WHATSAPP', message_content: 'היום האירוע! נתראה שם' },
-  // 1 regular (SMS) after the event
-  { notification_type: 'after_1', title: 'הודעה רגילה אחרי האירוע', days_from_wedding: 1, channel: 'SMS', message_content: 'תודה שבאתם! היה לנו כיף גדול איתכם.' },
-];
-
 export default function BrideGroomSettings() {
   const { userData, logout } = useUserStore();
   const router = useRouter();
-  const { focus } = useLocalSearchParams<{ focus?: string }>();
-  const scrollRef = useRef<ScrollView>(null);
-  const [notificationsY, setNotificationsY] = useState<number | null>(null);
-  const [didAutoScroll, setDidAutoScroll] = useState(false);
-  const [weddingDate, setWeddingDate] = useState<Date | null>(null);
   const [eventMeta, setEventMeta] = useState<{
     id: string;
     title: string;
@@ -45,363 +18,80 @@ export default function BrideGroomSettings() {
     brideName?: string;
     rsvpLink?: string;
   } | null>(null);
-  const [notifications, setNotifications] = useState<NotificationSetting[]>([]);
   const [loading, setLoading] = useState(true);
 
   const AVATAR_SIZE = 104;
   const avatarUri = userData?.avatar_url?.trim() || '';
 
-  const refreshAvatarUrl = async () => {
-    if (!userData?.id) return;
-    try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('avatar_url')
-        .eq('id', userData.id)
-        .maybeSingle();
-
-      if (error) return;
-      const nextUrl = (data as any)?.avatar_url ? String((data as any).avatar_url).trim() : '';
-      if (nextUrl && nextUrl !== (userData.avatar_url || '').trim()) {
-        useUserStore.setState((state) => ({
-          userData: state.userData ? { ...state.userData, avatar_url: nextUrl } : state.userData,
-        }));
-      }
-    } catch {
-      // ignore refresh errors - UI will keep last known avatar
-    }
-  };
-
-  const notificationUI = {
-    primary: '#3b82f6',
-    whatsapp: '#25D366',
-    bg: '#F9FAFB',
-    card: '#FFFFFF',
-    border: '#E5E7EB',
-    text: '#111827',
-    muted: '#6B7280',
-    faint: 'rgba(17,24,39,0.45)',
-    green: '#16A34A',
-  };
-
-  const getDefaultMessageContent = (userName?: string) => {
-    const displayName = userName && userName.trim().length > 0 ? userName.trim() : 'בעל/ת האירוע';
-    return `הנכם מוזמנים לטקס החינה של ${displayName}\nפרטי האירוע ואישור הגעתכם בקישור\nנשמח לראותכם בין אורחינו.`;
-  };
-
-  const getDefaultFirstReminderMessage = () => {
-    const ownerName = (userData?.name || '').trim() || 'בעל/ת האירוע';
-    const title = String(eventMeta?.title ?? '').toLowerCase();
-    const hasCoupleNames = Boolean(eventMeta?.groomName || eventMeta?.brideName);
-
-    const kind: 'wedding' | 'brit' | 'barMitzvah' | 'batMitzvah' | 'henna' | 'event' =
-      hasCoupleNames || title.includes('חתונה') || title.includes('wedding')
-        ? 'wedding'
-        : title.includes('ברית') || title.includes('בריתה') || title.includes('baby')
-          ? 'brit'
-          : title.includes('בר מצו') || title.includes('בר-מצו') || title.includes('bar mitz')
-            ? 'barMitzvah'
-            : title.includes('בת מצו') || title.includes('בת-מצו') || title.includes('bat mitz')
-              ? 'batMitzvah'
-              : title.includes('חינה')
-                ? 'henna'
-                : 'event';
-
-    const groom = String(eventMeta?.groomName ?? '').trim();
-    const bride = String(eventMeta?.brideName ?? '').trim();
-    const couple = groom && bride ? `${groom} ול${bride}` : ownerName;
-
-    const label =
-      kind === 'wedding'
-        ? `לחתונה של ${couple}`
-        : kind === 'brit'
-          ? `לברית של ${ownerName}`
-          : kind === 'barMitzvah'
-            ? `לבר מצווה של ${ownerName}`
-            : kind === 'batMitzvah'
-              ? `לבת מצווה של ${ownerName}`
-              : kind === 'henna'
-                ? `לחינה של ${ownerName}`
-                : `לאירוע של ${ownerName}`;
-
-    const dateText = eventMeta?.date ? eventMeta.date.toLocaleDateString('he-IL') : '';
-    const explicitLink = String(eventMeta?.rsvpLink ?? '').trim();
-    const base = 'https://i.e2grsvp.com/e/';
-    const code = String((eventMeta as any)?.id ?? userData?.event_id ?? '').trim();
-    const link = explicitLink || `${base}${code}`;
-
-    return `שלום, הוזמנתם ${label} בתאריך ${dateText}.\nלפרטים ואישור הגעה היכנסו לקישור הבא:\n${link}`;
-  };
-
   useEffect(() => {
-    if (userData?.event_id) {
-      initializeData();
-    }
-  }, [userData?.event_id]);
+    let active = true;
 
-  useEffect(() => {
-    // When arriving via deep-link to the notifications section.
-    if (focus !== 'notifications') {
-      if (didAutoScroll) setDidAutoScroll(false);
-      return;
-    }
-    if (notificationsY == null) return;
-    if (didAutoScroll) return;
-
-    // Small offset so the section title is visible below any headers.
-    scrollRef.current?.scrollTo({ y: Math.max(0, notificationsY - 16), animated: true });
-    setDidAutoScroll(true);
-  }, [focus, notificationsY, didAutoScroll]);
-
-  // Refresh data when screen comes into focus (e.g., returning from message editor)
-  useFocusEffect(
-    React.useCallback(() => {
-      if (userData?.event_id && !loading) {
-        // Refresh event meta too (date/names) so UI updates immediately after editing elsewhere.
-        fetchWeddingDate();
-        fetchOrCreateNotificationSettings();
+    const load = async () => {
+      if (!userData?.id) {
+        if (active) setLoading(false);
+        return;
       }
-      // Always refresh avatar from users table when screen is focused
-      refreshAvatarUrl();
-    }, [userData?.event_id, loading])
-  );
 
-  const initializeData = async () => {
-    try {
       setLoading(true);
-      await Promise.all([
-        fetchWeddingDate(),
-        fetchOrCreateNotificationSettings()
-      ]);
-    } catch (error) {
-      console.error('Error initializing data:', error);
-      Alert.alert('שגיאה', 'לא ניתן לטעון את ההגדרות');
-    } finally {
-      setLoading(false);
-    }
-  };
+      try {
+        // Best-effort refresh avatar url from DB
+        const { data: avatarRow } = await supabase
+          .from('users')
+          .select('avatar_url')
+          .eq('id', userData.id)
+          .maybeSingle();
 
-  const fetchWeddingDate = async () => {
-    if (!userData?.event_id) return;
-    
-    const { data, error } = await supabase
-      .from('events')
-      .select('id, title, date, groom_name, bride_name, rsvp_link')
-      .eq('id', userData.event_id)
-      .single();
-    
-    if (!error && data) {
-      setWeddingDate(new Date(data.date));
-      setEventMeta({
-        id: data.id,
-        title: String((data as any).title || ''),
-        date: new Date(data.date),
-        groomName: (data as any).groom_name ?? undefined,
-        brideName: (data as any).bride_name ?? undefined,
-        rsvpLink: (data as any).rsvp_link ?? undefined,
-      });
-    }
-  };
+        const nextUrl = avatarRow?.avatar_url ? String((avatarRow as any).avatar_url).trim() : '';
+        if (nextUrl && nextUrl !== (userData.avatar_url || '').trim()) {
+          useUserStore.setState((state) => ({
+            userData: state.userData ? { ...state.userData, avatar_url: nextUrl } : state.userData,
+          }));
+        }
 
-  const fetchOrCreateNotificationSettings = async () => {
-    if (!userData?.event_id) return;
+        if (!userData.event_id) {
+          setEventMeta(null);
+          return;
+        }
 
-    const { data: existingSettings, error: fetchError } = await supabase
-      .from('notification_settings')
-      .select('*')
-      .eq('event_id', userData.event_id)
-      .order('days_from_wedding', { ascending: true });
+        const { data: eventRow, error } = await supabase
+          .from('events')
+          .select('id, title, date, groom_name, bride_name, rsvp_link')
+          .eq('id', userData.event_id)
+          .maybeSingle();
 
-    if (fetchError) {
-      console.error('Error fetching notification settings:', fetchError);
-    }
+        if (error) {
+          console.warn('Failed to load event meta:', error);
+          setEventMeta(null);
+          return;
+        }
 
-    // Create a map of existing settings by notification_type
-    const existingSettingsMap = new Map(
-      (((existingSettings as any[]) || [])).map(setting => [setting.notification_type, setting])
-    );
+        if (!eventRow) {
+          setEventMeta(null);
+          return;
+        }
 
-    const shouldReplaceLegacyFirstReminder = (msg: string) => {
-      const t = String(msg || '').trim();
-      if (!t) return true;
-      return (
-        t.includes('רצינו להזכיר') ||
-        t.includes('האירוע הקרוב שלנו') ||
-        t.includes('הנכם מוזמנים') ||
-        t.includes('מוזמנים לאירוע')
-      );
+        setEventMeta({
+          id: (eventRow as any).id,
+          title: String((eventRow as any).title || ''),
+          date: new Date((eventRow as any).date),
+          groomName: (eventRow as any).groom_name ?? undefined,
+          brideName: (eventRow as any).bride_name ?? undefined,
+          rsvpLink: (eventRow as any).rsvp_link ?? undefined,
+        });
+      } catch (e) {
+        console.error('Error loading couple profile:', e);
+        Alert.alert('שגיאה', 'לא ניתן לטעון את הפרופיל');
+      } finally {
+        if (active) setLoading(false);
+      }
     };
 
-    const legacyFixes: Array<{ id: string; message_content: string }> = [];
+    void load();
 
-    // Merge templates with existing settings
-    const mergedNotifications = DEFAULT_NOTIFICATION_TEMPLATES.map(template => {
-      const existingSetting = existingSettingsMap.get(template.notification_type);
-      if (existingSetting) {
-        // Use existing setting from database
-        if (template.notification_type === 'reminder_1' && existingSetting.id) {
-          const currentMsg = String(existingSetting.message_content ?? '');
-          if (shouldReplaceLegacyFirstReminder(currentMsg)) {
-            const nextMsg = getDefaultFirstReminderMessage();
-            legacyFixes.push({ id: existingSetting.id, message_content: nextMsg });
-            return {
-              ...existingSetting,
-              message_content: nextMsg,
-              days_from_wedding:
-                typeof existingSetting.days_from_wedding === 'number'
-                  ? existingSetting.days_from_wedding
-                  : (template.days_from_wedding ?? 0),
-              channel: (existingSetting.channel as any) || (template.channel as any) || 'SMS',
-            };
-          }
-        }
-        return {
-          ...existingSetting,
-          days_from_wedding:
-            typeof existingSetting.days_from_wedding === 'number'
-              ? existingSetting.days_from_wedding
-              : (template.days_from_wedding ?? 0),
-          channel: (existingSetting.channel as any) || (template.channel as any) || 'SMS',
-        };
-      } else {
-        // Use template with enabled = false (not saved to DB yet)
-        const message =
-          template.notification_type === 'reminder_1'
-            ? getDefaultFirstReminderMessage()
-            : (template.message_content || getDefaultMessageContent(userData?.name));
-        return {
-          ...template,
-          enabled: false,
-          message_content: message,
-        };
-      }
-    });
-
-    setNotifications(mergedNotifications);
-
-    // Best-effort: persist the fixed default for legacy reminder_1 rows.
-    if (legacyFixes.length) {
-      legacyFixes.forEach((fix) => {
-        supabase
-          .from('notification_settings')
-          .update({ message_content: fix.message_content })
-          .eq('id', fix.id)
-          .then(({ error: updateError }) => {
-            if (updateError) {
-              console.warn('Failed to auto-update legacy reminder_1 message (couple):', updateError);
-            }
-          });
-      });
-    }
-  };
-
-  const computeSendDate = (days: number) => {
-    if (!weddingDate) return null;
-    const d = new Date(weddingDate);
-    d.setDate(d.getDate() + days);
-    return d;
-  };
-
-  const formatSendLabel = (days: number) => {
-    if (days === 0) return 'ביום האירוע';
-    const abs = Math.abs(days);
-    return days < 0 ? `${abs} ימים לפני האירוע` : `${abs} ימים אחרי האירוע`;
-  };
-
-  const formatDate = (d: Date | null) => {
-    if (!d) return '';
-    return d.toLocaleDateString('he-IL', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    });
-  };
-
-  const isMissingColumn = (err: any, column: string) =>
-    String(err?.code) === '42703' && String(err?.message || '').toLowerCase().includes(column.toLowerCase());
-
-  const toggleNotification = async (id: string | undefined, notification_type: string, currentEnabled: boolean) => {
-    try {
-      const newEnabled = !currentEnabled;
-
-      if (id) {
-        // Update existing setting in database
-        const { error } = await supabase
-          .from('notification_settings')
-          .update({ enabled: newEnabled })
-          .eq('id', id);
-
-        if (error) {
-          console.error('Error updating notification setting:', error);
-          Alert.alert('שגיאה', 'לא ניתן לעדכן את ההגדרה');
-          return;
-        }
-
-        // Update local state
-        setNotifications(prev => 
-          prev.map(notification => 
-            notification.notification_type === notification_type
-              ? { ...notification, enabled: newEnabled }
-              : notification
-          )
-        );
-      } else {
-        // No ID means this setting doesn't exist in DB yet - create it
-        const template = DEFAULT_NOTIFICATION_TEMPLATES.find(t => t.notification_type === notification_type);
-        if (!template || !userData?.event_id) return;
-
-        const defaultMsg =
-          notification_type === 'reminder_1'
-            ? getDefaultFirstReminderMessage()
-            : (template.message_content || getDefaultMessageContent(userData?.name));
-
-        const newSetting: any = {
-          ...template,
-          event_id: userData.event_id,
-          enabled: true,
-          message_content: defaultMsg,
-          days_from_wedding: template.days_from_wedding ?? 0,
-          channel: template.channel || 'SMS',
-        };
-
-        let { data, error } = await supabase
-          .from('notification_settings')
-          .insert(newSetting)
-          .select()
-          .single();
-        if (error && isMissingColumn(error, 'channel')) {
-          delete newSetting.channel;
-          const retry = await supabase
-            .from('notification_settings')
-            .insert(newSetting)
-            .select()
-            .single();
-          data = retry.data as any;
-          error = retry.error as any;
-        }
-
-        if (error) {
-          console.error('Error creating notification setting:', error);
-          Alert.alert('שגיאה', 'לא ניתן ליצור את ההגדרה');
-          return;
-        }
-
-        // Update local state with the new setting that has an ID
-        setNotifications(prev => 
-          prev.map(notification => 
-            notification.notification_type === notification_type
-              ? data
-              : notification
-          )
-        );
-      }
-    } catch (error) {
-      console.error('Error toggling notification:', error);
-      Alert.alert('שגיאה', 'לא ניתן לעדכן את ההגדרה');
-    }
-  };
-
-  // Removed navigation to separate message editor; editing happens in modal now
+    return () => {
+      active = false;
+    };
+  }, [userData?.id, userData?.event_id]);
 
   const handleLogout = async () => {
     await logout();
@@ -435,13 +125,6 @@ export default function BrideGroomSettings() {
     return require('../../assets/images/wedding.jpg');
   };
 
-  const openEditScreen = (notification: NotificationSetting) => {
-    router.push({
-      pathname: '/(couple)/notification-editor',
-      params: { notificationType: notification.notification_type },
-    });
-  };
-
   if (loading) {
     return (
       <View style={[styles.container, styles.centered]}>
@@ -450,95 +133,9 @@ export default function BrideGroomSettings() {
     );
   }
 
-  // Group notifications by type
-  const regularNotifications = notifications.filter(n => (n.channel || 'SMS') !== 'WHATSAPP');
-  const whatsappNotifications = notifications.filter(n => (n.channel || 'SMS') === 'WHATSAPP');
-
-  const renderNotificationGroup = (title: string, notificationsList: NotificationSetting[], variant: 'regular' | 'whatsapp') => (
-    <View style={styles.notificationGroup}>
-      <View style={styles.groupHeader}>
-        <Text style={styles.groupTitle}>{title}</Text>
-      </View>
-      
-      <View style={styles.cardsStack}>
-        {notificationsList.map((notification) => {
-          const enabled = Boolean(notification.enabled);
-          const days = notification.days_from_wedding ?? 0;
-          const computed = weddingDate ? formatDate(computeSendDate(days)) : '';
-
-          return (
-            <TouchableOpacity
-              key={notification.notification_type}
-              activeOpacity={0.92}
-              style={[
-                styles.notificationCard,
-                { backgroundColor: notificationUI.card, borderColor: notificationUI.border },
-                variant === 'whatsapp' ? styles.notificationCardWhatsapp : null,
-              ]}
-              onPress={() => openEditScreen(notification)}
-              accessibilityRole="button"
-              accessibilityLabel={`עריכת ${notification.title}`}
-            >
-              {variant === 'whatsapp' ? (
-                <View style={[styles.whatsappAccent, { backgroundColor: notificationUI.whatsapp }]} />
-              ) : null}
-
-              <View style={styles.cardMain}>
-                <Text style={[styles.cardTitle, { color: notificationUI.text }]} numberOfLines={2}>
-                  {notification.title}
-                </Text>
-
-                <View style={styles.cardMetaRow}>
-                  <TouchableOpacity
-                    activeOpacity={0.9}
-                    style={styles.statusBtn}
-                    onPress={(e) => {
-                      (e as any)?.stopPropagation?.();
-                      toggleNotification(notification.id, notification.notification_type, enabled);
-                    }}
-                    accessibilityRole="button"
-                    accessibilityLabel={enabled ? 'כיבוי הודעה' : 'הפעלת הודעה'}
-                  >
-                    <Text
-                      style={[
-                        styles.statusText,
-                        { color: enabled ? notificationUI.green : notificationUI.faint },
-                      ]}
-                    >
-                      {enabled ? 'פעיל' : 'כבוי'}
-                    </Text>
-                  </TouchableOpacity>
-
-                  <Text style={[styles.metaBullet, { color: 'rgba(107,114,128,0.70)' }]}>•</Text>
-                  <Text style={[styles.metaText, { color: notificationUI.muted }]} numberOfLines={1}>
-                    {formatSendLabel(days)}
-                  </Text>
-
-                  {computed ? (
-                    <>
-                      <Text style={[styles.metaBullet, { color: 'rgba(107,114,128,0.70)' }]}>•</Text>
-                      <Text style={[styles.metaText, { color: notificationUI.muted }]} numberOfLines={1}>
-                        {computed}
-                      </Text>
-                    </>
-                  ) : null}
-                </View>
-              </View>
-
-              <View style={styles.cardChevron}>
-                <Ionicons name="chevron-back" size={20} color={notificationUI.faint} />
-              </View>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-    </View>
-  );
-
   return (
     <View style={styles.container}>
       <ScrollView 
-        ref={scrollRef}
         style={styles.scrollView} 
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
@@ -576,22 +173,6 @@ export default function BrideGroomSettings() {
           {weddingNames ? <Text style={styles.profileSubName}>{userData?.name}</Text> : null}
           <Text style={styles.profileEmail}>{userData?.email}</Text>
           </View>
-        </View>
-
-        {/* Removed separate message editor button; editing per reminder row */}
-
-        {/* Notifications Section */}
-        <View
-          style={styles.notificationsSection}
-          onLayout={(e) => {
-            setNotificationsY(e.nativeEvent.layout.y);
-          }}
-        >
-          {/* Regular Notifications */}
-          {renderNotificationGroup('הודעות רגילות', regularNotifications, 'regular')}
-          
-          {/* WhatsApp Notifications */}
-          {renderNotificationGroup('הודעות וואטסאפ', whatsappNotifications, 'whatsapp')}
         </View>
 
         {/* Logout Button */}

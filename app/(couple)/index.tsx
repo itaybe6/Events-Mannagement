@@ -8,7 +8,6 @@ import { CountdownTimer } from '@/components/CountdownTimer';
 import { Ionicons } from '@expo/vector-icons';
 import { eventService } from '@/lib/services/eventService';
 import { guestService } from '@/lib/services/guestService';
-import { giftService } from '@/lib/services/giftService';
 import { BlurView } from 'expo-blur';
 import { EventSwitcher } from '@/components/EventSwitcher';
 
@@ -21,7 +20,6 @@ export default function HomeScreen() {
   const setActiveEvent = useEventSelectionStore((s) => s.setActiveEvent);
   const [currentEvent, setCurrentEvent] = useState<any>(null);
   const [guests, setGuests] = useState<any[]>([]);
-  const [gifts, setGifts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const resolvedEventId =
@@ -54,7 +52,6 @@ export default function HomeScreen() {
         if (!eventId) {
           setCurrentEvent(null);
           setGuests([]);
-          setGifts([]);
           setLoading(false);
           return;
         }
@@ -66,21 +63,13 @@ export default function HomeScreen() {
           setCurrentEvent(event);
           const guestsData = await guestService.getGuests(event.id);
           setGuests(guestsData);
-          try {
-            const giftsData = await giftService.getGifts(event.id);
-            setGifts(giftsData);
-          } catch (e) {
-            setGifts([]);
-          }
         } else {
           setCurrentEvent(null);
           setGuests([]);
-          setGifts([]);
         }
       } catch (error) {
         setCurrentEvent(null);
         setGuests([]);
-        setGifts([]);
       } finally {
         setLoading(false);
       }
@@ -99,19 +88,11 @@ export default function HomeScreen() {
             if (event) {
               const guestsData = await guestService.getGuests(event.id);
               setGuests(guestsData);
-              try {
-                const giftsData = await giftService.getGifts(event.id);
-                setGifts(giftsData);
-              } catch (e) {
-                setGifts([]);
-              }
             } else {
               setGuests([]);
-              setGifts([]);
             }
           } catch (error) {
             setGuests([]);
-            setGifts([]);
           }
         };
         reloadData();
@@ -153,7 +134,7 @@ export default function HomeScreen() {
     });
   };
 
-  const totalGifts = gifts.reduce((sum, gift) => sum + gift.amount, 0);
+  const totalGifts = guests.reduce((sum, guest) => sum + Number(guest?.gift ?? 0), 0);
   const confirmedGuests = guests.filter(guest => guest.status === 'מגיע').length;
   const pendingGuests = guests.filter(guest => guest.status === 'ממתין').length;
   const totalGuests = guests.length;
@@ -338,16 +319,6 @@ export default function HomeScreen() {
                   params: resolvedEventId ? { eventId: resolvedEventId } : {},
                 })
               }
-            />
-          </View>
-
-          <View style={styles.actionTileWrapperWide}>
-            <ActionTile
-              variant="wide"
-              title={'הגדרות\nהודעות'}
-              subtitle="נהל הודעות אוטומטיות"
-              iconName="notifications-outline"
-              onPress={() => router.push('/(couple)/brideGroomProfile?focus=notifications')}
             />
           </View>
         </View>

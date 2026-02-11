@@ -388,45 +388,27 @@ export default function AdminProfileScreen() {
       </ScrollView>
 
       <Modal transparent visible={logoutConfirmOpen} animationType="fade" onRequestClose={() => setLogoutConfirmOpen(false)}>
-        <View style={styles.modalBackdrop}>
-          <Pressable
-            style={StyleSheet.absoluteFillObject}
-            onPress={() => setLogoutConfirmOpen(false)}
-            accessibilityRole="button"
-            accessibilityLabel="סגור חלון התנתקות"
-          />
+        <Pressable style={styles.logoutModalBackdrop} onPress={() => setLogoutConfirmOpen(false)}>
+          <Pressable style={styles.logoutModalContent} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.logoutModalTitle}>התנתקות</Text>
+            <Text style={styles.logoutModalMessage}>בטוח שברצונך להתנתק?</Text>
 
-          <View style={styles.confirmModalWrap}>
-            <View style={styles.confirmModalCard}>
-              <Text style={styles.confirmTitle}>התנתקות</Text>
-              <Text style={styles.confirmMessage}>בטוח שברצונך להתנתק?</Text>
+            <Pressable
+              onPress={async () => {
+                setLogoutConfirmOpen(false);
+                await performLogout();
+              }}
+              disabled={loggingOut}
+              style={styles.logoutConfirmButton}
+            >
+              {loggingOut ? <ActivityIndicator color="white" /> : <Text style={styles.logoutConfirmButtonText}>אישור</Text>}
+            </Pressable>
 
-              <View style={styles.confirmActions}>
-                <Pressable
-                  onPress={() => setLogoutConfirmOpen(false)}
-                  style={({ pressed }) => [styles.confirmBtn, styles.confirmBtnGhost, pressed && styles.modalBtnPressed]}
-                >
-                  <Text style={styles.confirmBtnGhostText}>ביטול</Text>
-                </Pressable>
-
-                <Pressable
-                  onPress={async () => {
-                    setLogoutConfirmOpen(false);
-                    await performLogout();
-                  }}
-                  disabled={loggingOut}
-                  style={({ pressed }) => [
-                    styles.confirmBtn,
-                    styles.confirmBtnDanger,
-                    (pressed || loggingOut) && styles.modalBtnPressed,
-                  ]}
-                >
-                  {loggingOut ? <ActivityIndicator color="white" /> : <Text style={styles.confirmBtnDangerText}>אישור</Text>}
-                </Pressable>
-              </View>
-            </View>
-          </View>
-        </View>
+            <Pressable onPress={() => setLogoutConfirmOpen(false)} style={styles.logoutCancelButton}>
+              <Text style={styles.logoutCancelButtonText}>ביטול</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
       </Modal>
 
       <Modal transparent visible={editOpen} animationType="fade" onRequestClose={() => setEditOpen(false)}>
@@ -763,70 +745,61 @@ const styles = StyleSheet.create({
   modalBtnPressed: { opacity: 0.92, transform: [{ scale: 0.99 }] },
   modalBtnText: { fontSize: 14, fontWeight: "900" },
 
-  confirmModalWrap: {
+  logoutModalBackdrop: {
     flex: 1,
-    width: "100%",
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
     justifyContent: "center",
     alignItems: "center",
+    padding: 20,
   },
-  confirmModalCard: {
+  logoutModalContent: {
     width: "100%",
-    maxWidth: 420,
-    backgroundColor: "rgba(255,255,255,0.98)",
-    borderRadius: 18,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.65)",
-    zIndex: 2,
-    elevation: 10,
+    maxWidth: 400,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 24,
+    alignItems: "center",
   },
-  confirmTitle: {
-    fontSize: 18,
+  logoutModalTitle: {
+    fontSize: 22,
     fontWeight: "900",
     color: ui.text,
-    textAlign: "right",
-    writingDirection: "rtl",
+    textAlign: "center",
+    marginBottom: 12,
   },
-  confirmMessage: {
-    fontSize: 14,
-    fontWeight: "700",
+  logoutModalMessage: {
+    fontSize: 16,
+    fontWeight: "600",
     color: ui.muted,
-    textAlign: "right",
-    writingDirection: "rtl",
-    lineHeight: 22,
+    textAlign: "center",
+    marginBottom: 24,
   },
-  confirmActions: {
-    flexDirection: "row-reverse",
-    marginTop: 12,
-    marginHorizontal: -6,
-  },
-  confirmBtn: {
-    flex: 1,
-    height: 46,
+  logoutConfirmButton: {
+    width: "100%",
+    height: 50,
+    backgroundColor: ui.danger,
     borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
-    marginHorizontal: 6,
+    marginBottom: 12,
   },
-  confirmBtnGhost: {
-    backgroundColor: "rgba(15,23,42,0.05)",
-    borderWidth: 1,
-    borderColor: ui.border,
-  },
-  confirmBtnDanger: {
-    backgroundColor: ui.danger,
-  },
-  confirmBtnGhostText: {
-    fontSize: 14,
+  logoutConfirmButtonText: {
+    fontSize: 16,
     fontWeight: "900",
-    color: ui.muted,
-    writingDirection: "rtl",
+    color: "#FFFFFF",
   },
-  confirmBtnDangerText: {
-    fontSize: 14,
+  logoutCancelButton: {
+    width: "100%",
+    height: 50,
+    backgroundColor: "rgba(15,23,42,0.08)",
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  logoutCancelButtonText: {
+    fontSize: 16,
     fontWeight: "900",
-    color: "white",
-    writingDirection: "rtl",
+    color: ui.text,
   },
 });
 

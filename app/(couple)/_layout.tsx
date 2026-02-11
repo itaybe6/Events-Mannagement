@@ -73,7 +73,6 @@ export default function CoupleTabsLayout() {
           <AppHeader
             canGoBack={navigation.canGoBack()}
             onPressBack={() => navigation.goBack()}
-            onPressNotifications={() => router.push('/notifications')}
           />
         ),
         tabBarShowLabel: false,
@@ -161,17 +160,9 @@ export default function CoupleTabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="notification-editor"
-        options={{
-          href: null,
-          headerShown: false,
-        }}
-      />
-      <Tabs.Screen
         name="edit-category"
         options={{
           href: null,
-          headerShown: false,
         }}
       />
     </Tabs>

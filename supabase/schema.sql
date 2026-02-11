@@ -162,18 +162,6 @@ CREATE TABLE IF NOT EXISTS messages (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Gifts table
-CREATE TABLE IF NOT EXISTS gifts (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    event_id UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-    guest_name VARCHAR(255) NOT NULL,
-    amount DECIMAL(10,2) NOT NULL,
-    message TEXT,
-    date TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    status VARCHAR(50) DEFAULT 'בתהליך' CHECK (status IN ('התקבל', 'בתהליך')),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
 -- Notification settings table
 CREATE TABLE IF NOT EXISTS notification_settings (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -239,7 +227,6 @@ CREATE INDEX IF NOT EXISTS idx_guests_table_id ON guests(table_id);
 CREATE INDEX IF NOT EXISTS idx_guests_category_id ON guests(category_id);
 CREATE INDEX IF NOT EXISTS idx_tables_event_id ON tables(event_id);
 CREATE INDEX IF NOT EXISTS idx_messages_event_id ON messages(event_id);
-CREATE INDEX IF NOT EXISTS idx_gifts_event_id ON gifts(event_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_recipient_created_at ON notifications(recipient_user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_notifications_event_owner_created_at ON notifications(event_owner_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_notifications_event_id ON notifications(event_id);
@@ -255,7 +242,6 @@ ALTER TABLE guest_categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tables ENABLE ROW LEVEL SECURITY;
 ALTER TABLE seating_maps ENABLE ROW LEVEL SECURITY;
 ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
-ALTER TABLE gifts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notification_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 
@@ -410,20 +396,6 @@ CREATE POLICY "Users can update messages of own events" ON messages FOR UPDATE
     USING (EXISTS (SELECT 1 FROM events WHERE events.id = messages.event_id AND events.user_id = auth.uid()));
 CREATE POLICY "Users can delete messages of own events" ON messages FOR DELETE 
     USING (EXISTS (SELECT 1 FROM events WHERE events.id = messages.event_id AND events.user_id = auth.uid()));
-
--- Gifts policies
-DROP POLICY IF EXISTS "Users can view gifts of own events" ON gifts;
-DROP POLICY IF EXISTS "Users can insert gifts for own events" ON gifts;
-DROP POLICY IF EXISTS "Users can update gifts of own events" ON gifts;
-DROP POLICY IF EXISTS "Users can delete gifts of own events" ON gifts;
-CREATE POLICY "Users can view gifts of own events" ON gifts FOR SELECT 
-    USING (EXISTS (SELECT 1 FROM events WHERE events.id = gifts.event_id AND events.user_id = auth.uid()));
-CREATE POLICY "Users can insert gifts for own events" ON gifts FOR INSERT 
-    WITH CHECK (EXISTS (SELECT 1 FROM events WHERE events.id = gifts.event_id AND events.user_id = auth.uid()));
-CREATE POLICY "Users can update gifts of own events" ON gifts FOR UPDATE 
-    USING (EXISTS (SELECT 1 FROM events WHERE events.id = gifts.event_id AND events.user_id = auth.uid()));
-CREATE POLICY "Users can delete gifts of own events" ON gifts FOR DELETE 
-    USING (EXISTS (SELECT 1 FROM events WHERE events.id = gifts.event_id AND events.user_id = auth.uid()));
 
 -- Notification settings policies
 DROP POLICY IF EXISTS "Users can view notification settings of own events" ON notification_settings;

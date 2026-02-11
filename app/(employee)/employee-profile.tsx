@@ -12,7 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { Stack, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 
@@ -150,12 +150,15 @@ export default function EmployeeProfileScreen() {
 
   return (
     <View style={[styles.root, { backgroundColor: ui.bg }]}>
-      <Stack.Screen options={{ headerShown: false }} />
-
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.content, { paddingBottom: footerBottomOffset + 160 }]}
       >
+        <View style={styles.topAccent} pointerEvents="none">
+          <View style={styles.topAccentBlobA} />
+          <View style={styles.topAccentBlobB} />
+        </View>
+
         <View style={styles.hero}>
           <View style={styles.avatarWrap}>
             <View style={styles.avatarRing}>
@@ -288,10 +291,38 @@ export default function EmployeeProfileScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  content: { width: "100%", maxWidth: 520, alignSelf: "center", paddingHorizontal: 16, paddingTop: 28 },
+  content: { width: "100%", maxWidth: 520, alignSelf: "center", paddingHorizontal: 16, paddingTop: 16 },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
 
-  hero: { alignItems: "center", gap: 12, marginTop: 6 },
+  topAccent: {
+    height: 118,
+    marginBottom: -84,
+    borderRadius: 26,
+    overflow: "hidden",
+    backgroundColor: "rgba(30, 79, 162, 0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(30, 79, 162, 0.10)",
+  },
+  topAccentBlobA: {
+    position: "absolute",
+    width: 220,
+    height: 220,
+    borderRadius: 220,
+    backgroundColor: "rgba(30, 79, 162, 0.18)",
+    top: -110,
+    right: -90,
+  },
+  topAccentBlobB: {
+    position: "absolute",
+    width: 180,
+    height: 180,
+    borderRadius: 180,
+    backgroundColor: "rgba(30, 79, 162, 0.12)",
+    bottom: -110,
+    left: -70,
+  },
+
+  hero: { alignItems: "center", gap: 12, marginTop: 10 },
   avatarWrap: { width: 132, height: 132, alignItems: "center", justifyContent: "center" },
   avatarRing: {
     width: 126,

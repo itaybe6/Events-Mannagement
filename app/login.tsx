@@ -18,7 +18,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useUserStore } from '@/store/userStore';
 import { LottieAnimation } from '@/components/LottieAnimation';
-import { mockEvents, mockGuests, mockTables, mockMessages, mockGifts } from '@/constants/mockData';
 import { supabase } from '@/lib/supabase';
 import { authService } from '@/lib/services/authService';
 

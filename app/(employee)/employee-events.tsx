@@ -8,6 +8,8 @@ import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import { Event } from '@/types';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '@/lib/supabase';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getAppHeaderTotalHeight } from '@/components/AppHeader';
 
 const MONTHS = [
   'ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני',
@@ -41,6 +43,10 @@ function inferEventType(title: string): EventType | null {
 
 export default function EmployeeEventsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const headerTotalHeight = getAppHeaderTotalHeight(insets.top);
+  const monthsBarHeight = Platform.OS === 'ios' ? 68 : 64;
+
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -64,7 +70,9 @@ export default function EmployeeEventsScreen() {
     try {
       const { data, error } = await supabase
         .from('events')
-        .select('id,title,date,location,city,story,guests_count,budget,groom_name,bride_name,rsvp_link,user_id')
+        .select(
+          'id,title,date,location,city,story,guests_count,budget,groom_name,bride_name,rsvp_link,user_id,user:users(name)'
+        )
         .order('date', { ascending: true });
 
       if (error) throw error;
@@ -84,6 +92,7 @@ export default function EmployeeEventsScreen() {
         rsvpLink: e.rsvp_link ?? undefined,
         tasks: [],
         user_id: e.user_id ?? undefined,
+        userName: e.user?.name ?? undefined,
       }));
 
       setEvents(mapped);
@@ -130,6 +139,54 @@ export default function EmployeeEventsScreen() {
     return diff >= 0 ? `עוד ${diff} ימים` : 'עבר';
   };
 
+  const monthsBarContent = (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.monthsRow}
+    >
+      {filterDate ? (
+        <TouchableOpacity
+          style={[styles.monthChip, styles.monthChipDate]}
+          onPress={() => setFilterDate(null)}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="close" size={14} color={colors.text} />
+          <Text style={styles.monthChipDateText}>
+            {filterDate.toLocaleDateString('he-IL')}
+          </Text>
+        </TouchableOpacity>
+      ) : null}
+
+      <TouchableOpacity
+        style={[styles.monthChip, !filterMonth && !filterDate && styles.monthChipActive]}
+        onPress={() => {
+          setFilterMonth('');
+          setFilterDate(null);
+        }}
+        activeOpacity={0.85}
+      >
+        <Text style={[styles.monthChipText, !filterMonth && !filterDate && styles.monthChipTextActive]}>הכל</Text>
+      </TouchableOpacity>
+
+      {MONTHS.map((m, i) => (
+        <TouchableOpacity
+          key={i}
+          style={[styles.monthChip, filterMonth === String(i) && styles.monthChipActive]}
+          onPress={() => {
+            setFilterMonth(String(i));
+            setFilterDate(null);
+          }}
+          activeOpacity={0.85}
+        >
+          <Text style={[styles.monthChipText, filterMonth === String(i) && styles.monthChipTextActive]}>
+            {m}
+          </Text>
+        </TouchableOpacity>
+      ))}
+    </ScrollView>
+  );
+
   return (
     <SafeAreaView style={styles.screen}>
       <View style={styles.bg}>
@@ -137,60 +194,24 @@ export default function EmployeeEventsScreen() {
         <View style={styles.bgBlobSecondary} />
       </View>
 
+      {/* Months chips (always fixed to top of this screen) */}
+      <View
+        style={[
+          styles.monthsWrap,
+          styles.monthsOverlay,
+          Platform.OS === 'web' ? { top: headerTotalHeight } : null,
+        ]}
+      >
+        {monthsBarContent}
+      </View>
+
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-        stickyHeaderIndices={[0]}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingTop: monthsBarHeight },
+        ]}
       >
-        {/* Months chips (sticky) */}
-        <View style={styles.monthsWrap}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.monthsRow}
-          >
-            {filterDate ? (
-              <TouchableOpacity
-                style={[styles.monthChip, styles.monthChipDate]}
-                onPress={() => setFilterDate(null)}
-                activeOpacity={0.85}
-              >
-                <Ionicons name="close" size={14} color={colors.text} />
-                <Text style={styles.monthChipDateText}>
-                  {filterDate.toLocaleDateString('he-IL')}
-                </Text>
-              </TouchableOpacity>
-            ) : null}
-
-            <TouchableOpacity
-              style={[styles.monthChip, !filterMonth && !filterDate && styles.monthChipActive]}
-              onPress={() => {
-                setFilterMonth('');
-                setFilterDate(null);
-              }}
-              activeOpacity={0.85}
-            >
-              <Text style={[styles.monthChipText, !filterMonth && !filterDate && styles.monthChipTextActive]}>הכל</Text>
-            </TouchableOpacity>
-
-            {MONTHS.map((m, i) => (
-              <TouchableOpacity
-                key={i}
-                style={[styles.monthChip, filterMonth === String(i) && styles.monthChipActive]}
-                onPress={() => {
-                  setFilterMonth(String(i));
-                  setFilterDate(null);
-                }}
-                activeOpacity={0.85}
-              >
-                <Text style={[styles.monthChipText, filterMonth === String(i) && styles.monthChipTextActive]}>
-                  {m}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-
         {/* Search / controls */}
         <View style={styles.controlsRow}>
           <View style={styles.searchCard}>
@@ -285,6 +306,17 @@ export default function EmployeeEventsScreen() {
                           {event.location}
                           {event.city ? `, ${event.city}` : ''}
                         </Text>
+                        {event.userName ? (
+                          <>
+                            <Text style={styles.metaDot}>•</Text>
+                            <View style={styles.metaItem}>
+                              <Ionicons name="person" size={14} color={colors.gray[600]} />
+                              <Text style={styles.metaText} numberOfLines={1}>
+                                {event.userName}
+                              </Text>
+                            </View>
+                          </>
+                        ) : null}
                       </View>
                     </View>
                   </View>
@@ -366,6 +398,16 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(248, 249, 250, 0.85)',
     paddingTop: Platform.OS === 'ios' ? 18 : 14,
     paddingBottom: 10,
+  },
+  monthsOverlay: {
+    ...(Platform.OS === 'web'
+      ? ({ position: 'fixed' as any } as any)
+      : { position: 'absolute' as const }),
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 200,
+    elevation: 10,
   },
   monthsRow: {
     paddingHorizontal: 18,

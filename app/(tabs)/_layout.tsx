@@ -74,7 +74,6 @@ export default function TabLayout() {
           <AppHeader
             canGoBack={navigation.canGoBack()}
             onPressBack={() => navigation.goBack()}
-            onPressNotifications={() => router.push('/notifications')}
           />
         ),
         tabBarShowLabel: false,

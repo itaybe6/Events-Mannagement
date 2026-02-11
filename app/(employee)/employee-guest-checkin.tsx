@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Linking,
   Platform,
   SafeAreaView,
   ScrollView,
@@ -17,11 +18,19 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { colors } from "@/constants/colors";
 import { guestService } from "@/lib/services/guestService";
+import { supabase } from "@/lib/supabase";
 import { Guest, GuestCategory } from "@/types";
 import BackSwipe from "@/components/BackSwipe";
 
 type CheckInFilter = "all" | "checked_in" | "not_checked_in";
-type GuestWithCategory = Guest & { categoryName: string };
+type CategoryKey = string; // category_id or a stable sentinel for uncategorized
+type Section = {
+  key: CategoryKey;
+  name: string;
+  data: Guest[];
+  checkedIn: number;
+  total: number;
+};
 
 export default function EmployeeGuestCheckInScreen() {
   const router = useRouter();
@@ -43,7 +52,12 @@ export default function EmployeeGuestCheckInScreen() {
   const [query, setQuery] = useState("");
   const [savingId, setSavingId] = useState<string | null>(null);
   const [filter, setFilter] = useState<CheckInFilter>("all");
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [collapsed, setCollapsed] = useState<Set<CategoryKey>>(new Set());
+
+  const normalizeCategoryId = (raw: unknown) => {
+    const s = String(raw ?? "").trim();
+    return s ? s.toLowerCase() : null;
+  };
 
   const load = async () => {
     if (!resolvedEventId) {
@@ -59,8 +73,68 @@ export default function EmployeeGuestCheckInScreen() {
         guestService.getGuests(resolvedEventId),
         guestService.getGuestCategories(resolvedEventId),
       ]);
-      setGuests(Array.isArray(data) ? data : []);
-      setCategories(Array.isArray(cats) ? (cats as any) : []);
+
+      const nextGuests = Array.isArray(data) ? data : [];
+      let nextCats = Array.isArray(cats) ? (cats as GuestCategory[]) : [];
+
+      // Fallback: if the category list comes back empty (or isn't visible to this user),
+      // try loading category names by the IDs referenced by guests.
+      if (nextGuests.length > 0) {
+        const idsFromGuests = Array.from(
+          new Set(
+            nextGuests
+              .map((g) => (g as any)?.category_id)
+              .filter(Boolean)
+              .map((id) => String(id).trim())
+              .filter(Boolean)
+          )
+        );
+
+        const known = new Set(nextCats.map((c) => normalizeCategoryId(c?.id)).filter(Boolean) as string[]);
+        const missing = idsFromGuests.filter((id) => {
+          const norm = normalizeCategoryId(id);
+          return norm ? !known.has(norm) : false;
+        });
+
+        // If categories came back empty OR we are missing some referenced categories, try fetching by IDs.
+        if ((nextCats.length === 0 || missing.length > 0) && idsFromGuests.length > 0) {
+          const idsToFetch = nextCats.length === 0 ? idsFromGuests : missing;
+          const { data: catRows, error } = await supabase
+            .from("guest_categories")
+            .select("id,name,event_id,side")
+            .in("id", idsToFetch);
+
+          if (!error && Array.isArray(catRows)) {
+            const fetched = catRows
+              .map((c: any) => ({
+                id: String(c?.id ?? ""),
+                name: String(c?.name ?? "").trim() || "ללא קטגוריה",
+                event_id: String(c?.event_id ?? resolvedEventId),
+                side: (c?.side ?? "groom") as any,
+              }))
+              .filter((c) => Boolean(c.id));
+
+            if (nextCats.length === 0) nextCats = fetched;
+            else {
+              const byNorm = new Map<string, GuestCategory>();
+              nextCats.forEach((c) => {
+                const norm = normalizeCategoryId(c?.id);
+                if (norm) byNorm.set(norm, c);
+              });
+              fetched.forEach((c) => {
+                const norm = normalizeCategoryId(c?.id);
+                if (norm && !byNorm.has(norm)) {
+                  nextCats.push(c);
+                  byNorm.set(norm, c);
+                }
+              });
+            }
+          }
+        }
+      }
+
+      setGuests(nextGuests);
+      setCategories(nextCats);
     } catch (e) {
       console.error("Employee check-in load error:", e);
       Alert.alert("שגיאה", "לא ניתן לטעון את רשימת האורחים");
@@ -98,47 +172,57 @@ export default function EmployeeGuestCheckInScreen() {
   const categoryNameById = useMemo(() => {
     const m = new Map<string, string>();
     categories.forEach((c) => {
-      if (c?.id) m.set(String(c.id), String(c.name || "").trim() || "ללא קטגוריה");
+      const norm = normalizeCategoryId(c?.id);
+      if (!norm) return;
+      m.set(norm, String(c.name || "").trim() || "ללא קטגוריה");
     });
     return m;
   }, [categories]);
 
-  const guestsWithCategory = useMemo<GuestWithCategory[]>(() => {
-    return filteredGuests.map((g) => ({
-      ...g,
-      categoryName: g.category_id ? categoryNameById.get(String(g.category_id)) || "ללא קטגוריה" : "ללא קטגוריה",
-    }));
-  }, [filteredGuests, categoryNameById]);
+  const UNCATEGORIZED_KEY = "__uncategorized__" as const;
 
-  const sections = useMemo(() => {
-    // Order categories as created, then "ללא קטגוריה" if needed.
-    const order: string[] = categories.map((c) => String(c.name || "").trim() || "ללא קטגוריה");
-    const grouped = new Map<string, GuestWithCategory[]>();
-    guestsWithCategory.forEach((g) => {
-      const key = g.categoryName || "ללא קטגוריה";
+  const sections = useMemo<Section[]>(() => {
+    // Group by stable category_id (NOT by name) to avoid collapsing everything
+    // into a single "ללא קטגוריה" section when names can't be resolved.
+    const grouped = new Map<CategoryKey, Guest[]>();
+    filteredGuests.forEach((g) => {
+      const rawId = (g as any)?.category_id;
+      const norm = normalizeCategoryId(rawId);
+      const key: CategoryKey = norm ? norm : UNCATEGORIZED_KEY;
       const prev = grouped.get(key) || [];
       prev.push(g);
       grouped.set(key, prev);
     });
 
-    const hasUncategorized = grouped.has("ללא קטגוריה") && !order.includes("ללא קטגוריה");
-    const finalOrder = hasUncategorized ? [...order, "ללא קטגוריה"] : order;
-    const inOrder = new Set(finalOrder);
-    const extra = Array.from(grouped.keys()).filter((k) => !inOrder.has(k)).sort((a, b) => a.localeCompare(b, "he"));
+    const labelForKey = (key: CategoryKey) => {
+      if (key === UNCATEGORIZED_KEY) return "ללא קטגוריה";
+      return categoryNameById.get(String(key)) || "קטגוריה";
+    };
 
-    const names = [...finalOrder, ...extra].filter((n) => grouped.has(n));
-    return names.map((name) => {
-      const data = grouped.get(name) || [];
+    // Order: category creation order (as loaded), then uncategorized, then extras.
+    const orderKeys = categories
+      .map((c) => normalizeCategoryId(c?.id))
+      .filter(Boolean) as string[];
+    const hasUncategorized = grouped.has(UNCATEGORIZED_KEY) && !orderKeys.includes(UNCATEGORIZED_KEY);
+    const finalOrderKeys = hasUncategorized ? [...orderKeys, UNCATEGORIZED_KEY] : orderKeys;
+    const inOrder = new Set(finalOrderKeys);
+    const extraKeys = Array.from(grouped.keys())
+      .filter((k) => !inOrder.has(k))
+      .sort((a, b) => labelForKey(a).localeCompare(labelForKey(b), "he"));
+
+    const keys = [...finalOrderKeys, ...extraKeys].filter((k) => grouped.has(k));
+    return keys.map((key) => {
+      const data = grouped.get(key) || [];
       const checkedIn = data.filter((g) => Boolean(g.checkedIn)).length;
-      return { name, data, checkedIn, total: data.length };
+      return { key, name: labelForKey(key), data, checkedIn, total: data.length };
     });
-  }, [categories, guestsWithCategory]);
+  }, [categories, categoryNameById, filteredGuests]);
 
-  const toggleCollapsed = (name: string) => {
+  const toggleCollapsed = (key: CategoryKey) => {
     setCollapsed((prev) => {
       const next = new Set(prev);
-      if (next.has(name)) next.delete(name);
-      else next.add(name);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   };
@@ -154,6 +238,28 @@ export default function EmployeeGuestCheckInScreen() {
       Alert.alert("שגיאה", "לא ניתן לעדכן הגעה");
     } finally {
       setSavingId(null);
+    }
+  };
+
+  const phoneToTel = (raw: string) => {
+    const cleaned = String(raw || "").replace(/[^\d+]/g, "").trim();
+    return cleaned || null;
+  };
+
+  const callGuest = async (rawPhone: string, guestName?: string) => {
+    const tel = phoneToTel(rawPhone);
+    if (!tel) return;
+    const url = `tel:${tel}`;
+    try {
+      const supported = await Linking.canOpenURL(url);
+      if (!supported) {
+        Alert.alert("שגיאה", "המכשיר לא תומך בחיוג");
+        return;
+      }
+      await Linking.openURL(url);
+    } catch (e) {
+      console.error("Call guest error:", e);
+      Alert.alert("שגיאה", `לא ניתן לפתוח שיחה${guestName ? ` ל-${guestName}` : ""}`);
     }
   };
 
@@ -273,13 +379,13 @@ export default function EmployeeGuestCheckInScreen() {
           {/* Categories */}
           <View style={{ gap: 12, marginTop: 12 }}>
             {sections.map((sec) => {
-              const isCollapsed = collapsed.has(sec.name);
+              const isCollapsed = collapsed.has(sec.key);
               const pct = sec.total ? Math.round((sec.checkedIn / sec.total) * 100) : 0;
               return (
-                <View key={sec.name} style={styles.categoryCard}>
+                <View key={sec.key} style={styles.categoryCard}>
                   <TouchableOpacity
                     style={styles.categoryHeader}
-                    onPress={() => toggleCollapsed(sec.name)}
+                    onPress={() => toggleCollapsed(sec.key)}
                     activeOpacity={0.9}
                     accessibilityRole="button"
                     accessibilityLabel={`קטגוריה ${sec.name}`}
@@ -339,9 +445,25 @@ export default function EmployeeGuestCheckInScreen() {
                                 {g.name}
                               </Text>
                               <View style={styles.guestMetaRow}>
-                                <Text style={styles.guestPhone} numberOfLines={1}>
-                                  {g.phone}
-                                </Text>
+                                <TouchableOpacity
+                                  onPress={() => void callGuest(g.phone, g.name)}
+                                  disabled={!phoneToTel(g.phone)}
+                                  activeOpacity={0.85}
+                                  style={[
+                                    styles.phoneBtn,
+                                    !phoneToTel(g.phone) && styles.phoneBtnDisabled,
+                                  ]}
+                                  accessibilityRole="button"
+                                  accessibilityLabel={
+                                    phoneToTel(g.phone) ? `התקשר ל-${g.name}` : `אין מספר טלפון עבור ${g.name}`
+                                  }
+                                >
+                                  <Ionicons
+                                    name="call-outline"
+                                    size={14}
+                                    color={phoneToTel(g.phone) ? colors.primary : "rgba(17,24,39,0.35)"}
+                                  />
+                                </TouchableOpacity>
                                 <View style={styles.peoplePill}>
                                   <Ionicons name="person" size={12} color={"rgba(17,24,39,0.65)"} />
                                   <Text style={styles.peopleText}>{Number(g.numberOfPeople) || 1}</Text>
@@ -527,6 +649,21 @@ const styles = StyleSheet.create({
     borderColor: "rgba(0,0,0,0.06)",
   },
   peopleText: { fontSize: 12, fontWeight: "900", color: "rgba(17,24,39,0.70)" },
+
+  phoneBtn: {
+    width: 34,
+    height: 28,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(17, 82, 212, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(17, 82, 212, 0.16)",
+  },
+  phoneBtnDisabled: {
+    backgroundColor: "rgba(0,0,0,0.04)",
+    borderColor: "rgba(0,0,0,0.06)",
+  },
 
   statusPill: {
     paddingHorizontal: 10,

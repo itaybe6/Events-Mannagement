@@ -7,7 +7,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   useWindowDimensions,
   View,
@@ -25,14 +24,6 @@ import { BlurView } from "expo-blur";
 import Svg, { Circle } from "react-native-svg";
 import { Image } from "expo-image";
 import BackSwipe from "@/components/BackSwipe";
-
-type GuestStatus = Guest["status"];
-
-const STATUS_OPTIONS: Array<{ key: GuestStatus; label: string; color: string; icon: keyof typeof Ionicons.glyphMap }> = [
-  { key: "מגיע", label: "מגיע", color: colors.success, icon: "checkmark-circle" },
-  { key: "ממתין", label: "ממתין", color: colors.warning, icon: "time" },
-  { key: "לא מגיע", label: "לא מגיע", color: colors.error, icon: "close-circle" },
-];
 
 const HERO_IMAGES = {
   baby: require("../../assets/images/baby.jpg"),
@@ -54,31 +45,35 @@ export default function EmployeeEventDetailsScreen() {
   const [loading, setLoading] = useState(true);
   const [event, setEvent] = useState<Event | null>(null);
   const [guests, setGuests] = useState<Guest[]>([]);
-  const [query, setQuery] = useState("");
-
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [saving, setSaving] = useState<GuestStatus | null>(null);
+  const [totalSeats, setTotalSeats] = useState<number>(0);
+  const [tables, setTables] = useState<Array<{ id: string; capacity: number; shape: string | null }>>([]);
 
   const load = async () => {
     if (!eventId) {
       setEvent(null);
       setGuests([]);
+      setTotalSeats(0);
+      setTables([]);
       setLoading(false);
       return;
     }
 
     setLoading(true);
     try {
-      const [{ data: evRow, error: evError }, gs] = await Promise.all([
+      const [{ data: evRow, error: evError }, gs, tablesRes] = await Promise.all([
         supabase
           .from("events")
-          .select("id,title,date,location,city,story,guests_count,budget,groom_name,bride_name,rsvp_link,user_id")
+          .select(
+            "id,title,date,location,city,story,guests_count,budget,groom_name,bride_name,rsvp_link,user_id,user:users(name)"
+          )
           .eq("id", eventId)
           .maybeSingle(),
         guestService.getGuests(eventId),
+        supabase.from("tables").select("id,capacity,shape").eq("event_id", eventId),
       ]);
 
       if (evError) throw evError;
+      if (tablesRes.error) throw tablesRes.error;
 
       const ev: Event | null = evRow
         ? {
@@ -96,16 +91,30 @@ export default function EmployeeEventDetailsScreen() {
             rsvpLink: (evRow as any).rsvp_link ?? undefined,
             tasks: [],
             user_id: (evRow as any).user_id ?? undefined,
+            userName: (evRow as any).user?.name ?? undefined,
           }
         : null;
 
       setEvent(ev);
       setGuests(Array.isArray(gs) ? gs : []);
+      const nextTables = Array.isArray(tablesRes.data) ? (tablesRes.data as any[]) : [];
+      setTables(
+        nextTables.map((t) => ({
+          id: String(t.id),
+          capacity: Number(t.capacity) || 0,
+          shape: (t.shape ?? null) as any,
+        }))
+      );
+      setTotalSeats(
+        nextTables.reduce((sum, t) => sum + (Number(t?.capacity) || 0), 0)
+      );
     } catch (e) {
       console.error("Employee event details load error:", e);
       Alert.alert("שגיאה", "לא ניתן לטעון את האירוע");
       setEvent(null);
       setGuests([]);
+      setTotalSeats(0);
+      setTables([]);
     } finally {
       setLoading(false);
     }
@@ -115,46 +124,6 @@ export default function EmployeeEventDetailsScreen() {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId]);
-
-  const filteredGuests = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return guests;
-    return guests.filter((g) => {
-      const hay = `${g.name} ${g.phone} ${g.status}`.toLowerCase();
-      return hay.includes(q);
-    });
-  }, [guests, query]);
-
-  const toggle = (guestId: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(guestId)) next.delete(guestId);
-      else next.add(guestId);
-      return next;
-    });
-  };
-
-  const clearSelection = () => setSelectedIds(new Set());
-
-  const applyStatusToSelection = async (status: GuestStatus) => {
-    const ids = Array.from(selectedIds);
-    if (ids.length === 0) {
-      Alert.alert("שים לב", "בחר אורחים כדי לעדכן סטטוס");
-      return;
-    }
-
-    setSaving(status);
-    try {
-      await Promise.all(ids.map((gid) => guestService.updateGuestStatus(gid, status)));
-      setGuests((prev) => prev.map((g) => (selectedIds.has(g.id) ? { ...g, status } : g)));
-      clearSelection();
-    } catch (e) {
-      console.error("Employee update status error:", e);
-      Alert.alert("שגיאה", "לא ניתן לעדכן סטטוס אורחים");
-    } finally {
-      setSaving(null);
-    }
-  };
 
   const counts = useMemo(() => {
     const coming = guests.filter((g) => g.status === "מגיע").length;
@@ -166,6 +135,67 @@ export default function EmployeeEventDetailsScreen() {
   const seatedCount = guests.filter((g) => Boolean(g.tableId)).length;
   const seatedPercent = counts.total ? Math.round((seatedCount / counts.total) * 100) : 0;
   const checkedInCount = guests.filter((g) => Boolean(g.checkedIn)).length;
+  const checkedInConfirmedCount = guests.filter(
+    (g) => g.status === "מגיע" && Boolean(g.checkedIn)
+  ).length;
+  const notConfirmedTotal = counts.pending + counts.notComing;
+  const checkedInNotConfirmedCount = guests.filter(
+    (g) => g.status !== "מגיע" && Boolean(g.checkedIn)
+  ).length;
+
+  const sumPeople = (rows: Array<{ numberOfPeople?: number }>) =>
+    rows.reduce((sum, r) => sum + (Number(r.numberOfPeople) || 1), 0);
+
+  const arrivedPeople = sumPeople(guests.filter((g) => Boolean(g.checkedIn)));
+  const seatedArrivedPeople = sumPeople(
+    guests.filter((g) => Boolean(g.checkedIn) && Boolean(g.tableId))
+  );
+  const arrivedNotSeatedPeople = Math.max(0, arrivedPeople - seatedArrivedPeople);
+  const freeSeats = Math.max(0, (Number(totalSeats) || 0) - seatedArrivedPeople);
+
+  const invitedPeople = sumPeople(guests);
+  const confirmedPeople = sumPeople(guests.filter((g) => g.status === "מגיע"));
+  const pendingPeople = sumPeople(guests.filter((g) => g.status === "ממתין"));
+  const declinedPeople = sumPeople(guests.filter((g) => g.status === "לא מגיע"));
+
+  const assignedPeopleByTableId = useMemo(() => {
+    const m = new Map<string, number>();
+    guests.forEach((g) => {
+      const tid = g.tableId;
+      if (!tid) return;
+      const prev = m.get(tid) || 0;
+      m.set(tid, prev + (Number(g.numberOfPeople) || 1));
+    });
+    return m;
+  }, [guests]);
+
+  const tableStats = useMemo(() => {
+    const regular = tables.filter((t) => t.shape !== "reserve");
+    const reserve = tables.filter((t) => t.shape === "reserve");
+
+    const isFull = (t: { id: string; capacity: number }) =>
+      (assignedPeopleByTableId.get(t.id) || 0) >= (Number(t.capacity) || 0);
+    const isOpened = (t: { id: string }) => (assignedPeopleByTableId.get(t.id) || 0) > 0;
+
+    const totalRegular = regular.length;
+    const fullRegular = regular.filter(isFull).length;
+    const notFullRegular = Math.max(0, totalRegular - fullRegular);
+
+    const totalReserve = reserve.length;
+    const openedReserve = reserve.filter(isOpened).length;
+
+    return { totalRegular, fullRegular, notFullRegular, totalReserve, openedReserve };
+  }, [assignedPeopleByTableId, tables]);
+
+  const safeBack = () => {
+    const canGoBackFn = (router as any)?.canGoBack;
+    if (typeof canGoBackFn === "function") {
+      if (canGoBackFn()) router.back();
+      else router.replace("/(employee)/employee-events");
+      return;
+    }
+    router.replace("/(employee)/employee-events");
+  };
 
   // Keep content above the custom tab bar
   const TAB_BAR_HEIGHT = 65;
@@ -252,7 +282,7 @@ export default function EmployeeEventDetailsScreen() {
     strokeWidth,
     progress,
     color,
-    value,
+    centerText,
     label,
     valueFontSize,
   }: {
@@ -260,7 +290,7 @@ export default function EmployeeEventDetailsScreen() {
     strokeWidth: number;
     progress: number; // 0..1
     color: string;
-    value: number;
+    centerText: string;
     label: string;
     valueFontSize: number;
   }) => {
@@ -297,7 +327,7 @@ export default function EmployeeEventDetailsScreen() {
             />
           </Svg>
           <View style={styles.ringCenter}>
-            <Text style={[styles.ringValue, { fontSize: valueFontSize, color: ui.text }]}>{value}</Text>
+            <Text style={[styles.ringValue, { fontSize: valueFontSize, color: ui.text }]}>{centerText}</Text>
           </View>
         </View>
         <Text style={[styles.ringLabel, { color: "rgba(17, 24, 39, 0.55)" }]}>{label}</Text>
@@ -375,7 +405,7 @@ export default function EmployeeEventDetailsScreen() {
                       <View style={styles.heroTopRow}>
                         <TouchableOpacity
                           style={styles.navCircle}
-                          onPress={() => router.back()}
+                          onPress={safeBack}
                           activeOpacity={0.85}
                           accessibilityRole="button"
                           accessibilityLabel="חזרה"
@@ -394,6 +424,13 @@ export default function EmployeeEventDetailsScreen() {
                         <Text style={[styles.heroMetaText, { color: ui.muted }]}>{metaLine}</Text>
                       </View>
 
+                      {event.userName ? (
+                        <View style={styles.heroMetaRow}>
+                          <Ionicons name="person-outline" size={18} color={ui.muted} />
+                          <Text style={[styles.heroMetaText, { color: ui.muted }]}>{`שם משתמש: ${event.userName}`}</Text>
+                        </View>
+                      ) : null}
+
                       {isWeddingEvent() ? (
                         <View style={styles.heroMetaRow}>
                           <Ionicons name="heart-outline" size={18} color={ui.muted} />
@@ -410,42 +447,210 @@ export default function EmployeeEventDetailsScreen() {
 
             {/* Bottom sheet */}
             <View style={styles.sheet}>
+              {/* RSVP approvals (top tile) */}
+              <TouchableOpacity
+                style={styles.tileWideOuter}
+                activeOpacity={0.9}
+                onPress={() => router.push(`/(employee)/employee-rsvp-approvals?eventId=${event.id}`)}
+                accessibilityRole="button"
+                accessibilityLabel="פתיחת אישורי הגעה"
+              >
+                <View pointerEvents="none" style={styles.tileLightDecorWrap}>
+                  <View style={styles.tileLightDecorCircle} />
+                  <View style={styles.tileLightDecorCircle2} />
+                </View>
+
+                <View style={styles.rsvpCardInner}>
+                  <View style={styles.rsvpHeaderRow}>
+                    <View style={styles.rsvpHeaderRight}>
+                      <View style={styles.rsvpHeaderValueRow}>
+                        <Text style={[styles.rsvpHeaderValue, { color: ui.primary }]}>{invitedPeople}</Text>
+                        <Text style={styles.rsvpHeaderLabelInline}>מוזמנים לאירוע</Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.rsvpHeaderLeft}>
+                      <View style={styles.rsvpArrowCircle}>
+                        <Ionicons name="chevron-back" size={18} color={"rgba(17,24,39,0.55)"} />
+                      </View>
+                    </View>
+                  </View>
+
+                  <View style={styles.rsvpDivider} />
+
+                  <View style={styles.rsvpGrid}>
+                    <View style={styles.rsvpStatCardGreen}>
+                      <View style={styles.rsvpStatIconCircle}>
+                        <Ionicons name="checkmark" size={16} color={colors.success} />
+                      </View>
+                      <Text style={styles.rsvpStatValue}>{confirmedPeople}</Text>
+                      <Text style={[styles.rsvpStatLabel, { color: colors.success }]}>אישרו</Text>
+                    </View>
+
+                    <View style={styles.rsvpStatCardYellow}>
+                      <View style={styles.rsvpStatIconCircle}>
+                        <Ionicons name="time" size={16} color={colors.warning} />
+                      </View>
+                      <Text style={styles.rsvpStatValue}>{pendingPeople}</Text>
+                      <Text style={[styles.rsvpStatLabel, { color: colors.warning }]}>ממתינים</Text>
+                    </View>
+
+                    <View style={styles.rsvpStatCardRed}>
+                      <View style={styles.rsvpStatIconCircle}>
+                        <Ionicons name="close" size={16} color={colors.error} />
+                      </View>
+                      <Text style={styles.rsvpStatValue}>{declinedPeople}</Text>
+                      <Text style={[styles.rsvpStatLabel, { color: colors.error }]}>לא</Text>
+                    </View>
+                  </View>
+                </View>
+              </TouchableOpacity>
+
               {/* Guest status */}
               <GlassPanel style={styles.panel}>
                 <View style={styles.panelHeaderRow}>
-                  <Text style={[styles.panelTitle, { color: ui.text }]}>סטטוס אורחים</Text>
-                  <View style={[styles.totalChip, { backgroundColor: "rgba(15,69,230,0.05)" }]}>
-                    <Text style={[styles.totalChipText, { color: ui.primary }]}>{`${counts.total} סה״כ`}</Text>
+                  <View style={{ alignItems: "flex-end" }}>
+                    <Text style={[styles.panelTitle, { color: ui.text }]}>סטטוס אורחים</Text>
+                    <Text style={styles.panelSubtitle}>{`הגיעו ${checkedInCount} מתוך ${counts.total}`}</Text>
+                  </View>
+
+                  <View style={styles.chipsRow}>
+                    <View style={[styles.totalChip, { backgroundColor: "rgba(15,69,230,0.05)" }]}>
+                      <Text style={[styles.totalChipText, { color: ui.primary }]}>{`${counts.total} סה״כ`}</Text>
+                    </View>
+                    <View style={[styles.totalChip, { backgroundColor: "rgba(52, 199, 89, 0.10)" }]}>
+                      <Text style={[styles.totalChipText, { color: colors.success }]}>{`${checkedInCount} הגיעו`}</Text>
+                    </View>
                   </View>
                 </View>
 
                 <View style={styles.ringsRow}>
                   <ProgressRing
-                    size={84}
-                    strokeWidth={9}
-                    progress={counts.total ? counts.coming / counts.total : 0}
+                    size={92}
+                    strokeWidth={10}
+                    progress={counts.total ? checkedInCount / counts.total : 0}
                     color={"#34C759"}
-                    value={counts.coming}
-                    label="אישרו"
-                    valueFontSize={20}
+                    centerText={`${checkedInCount}/${counts.total}`}
+                    label="מתוך סה״כ"
+                    valueFontSize={18}
                   />
                   <ProgressRing
                     size={68}
                     strokeWidth={9}
-                    progress={counts.total ? counts.pending / counts.total : 0}
+                    progress={counts.coming ? checkedInConfirmedCount / counts.coming : 0}
                     color={ui.primary}
-                    value={counts.pending}
-                    label="אולי"
+                    centerText={`${checkedInConfirmedCount}/${counts.coming}`}
+                    label="מתוך אישרו"
+                    valueFontSize={15}
+                  />
+                  <ProgressRing
+                    size={68}
+                    strokeWidth={9}
+                    progress={notConfirmedTotal ? checkedInNotConfirmedCount / notConfirmedTotal : 0}
+                    color={"#FF3B30"}
+                    centerText={`${checkedInNotConfirmedCount}/${notConfirmedTotal}`}
+                    label="מתוך לא/ממתין"
+                    valueFontSize={15}
+                  />
+                </View>
+              </GlassPanel>
+
+              {/* Seating stats */}
+              <GlassPanel style={styles.panel}>
+                <View style={styles.panelHeaderRow}>
+                  <View style={{ alignItems: "flex-end" }}>
+                    <Text style={[styles.panelTitle, { color: ui.text }]}>הושבה באולם</Text>
+                    <Text style={styles.panelSubtitle}>{`קיבולת ${totalSeats} מקומות • הושבו ${seatedArrivedPeople} שהגיעו`}</Text>
+                  </View>
+
+                  <View style={styles.chipsRow}>
+                    <View style={[styles.totalChip, { backgroundColor: "rgba(15,69,230,0.05)" }]}>
+                      <Text style={[styles.totalChipText, { color: ui.primary }]}>{`${totalSeats} מקומות`}</Text>
+                    </View>
+                    <View style={[styles.totalChip, { backgroundColor: "rgba(52, 199, 89, 0.10)" }]}>
+                      <Text style={[styles.totalChipText, { color: colors.success }]}>{`${seatedArrivedPeople} הושבו`}</Text>
+                    </View>
+                  </View>
+                </View>
+
+                <View style={styles.ringsRow}>
+                  <ProgressRing
+                    size={92}
+                    strokeWidth={10}
+                    progress={arrivedPeople ? seatedArrivedPeople / arrivedPeople : 0}
+                    color={"#34C759"}
+                    centerText={`${seatedArrivedPeople}/${arrivedPeople}`}
+                    label="הושבו מתוך הגיעו"
                     valueFontSize={18}
                   />
                   <ProgressRing
                     size={68}
                     strokeWidth={9}
-                    progress={counts.total ? counts.notComing / counts.total : 0}
-                    color={"#FF3B30"}
-                    value={counts.notComing}
-                    label="לא"
-                    valueFontSize={18}
+                    progress={arrivedPeople ? arrivedNotSeatedPeople / arrivedPeople : 0}
+                    color={"#F97316"}
+                    centerText={`${arrivedNotSeatedPeople}/${arrivedPeople}`}
+                    label="הגיעו ולא הושבו"
+                    valueFontSize={14}
+                  />
+                  <ProgressRing
+                    size={68}
+                    strokeWidth={9}
+                    progress={totalSeats ? freeSeats / totalSeats : 0}
+                    color={"#A855F7"}
+                    centerText={`${freeSeats}/${totalSeats}`}
+                    label="מקומות פנויים"
+                    valueFontSize={14}
+                  />
+                </View>
+              </GlassPanel>
+
+              {/* Tables stats */}
+              <GlassPanel style={styles.panel}>
+                <View style={styles.panelHeaderRow}>
+                  <View style={{ alignItems: "flex-end" }}>
+                    <Text style={[styles.panelTitle, { color: ui.text }]}>שולחנות באולם</Text>
+                    <Text style={styles.panelSubtitle}>
+                      {`שולחנות ${tableStats.totalRegular} • רזרבה ${tableStats.totalReserve}`}
+                    </Text>
+                  </View>
+
+                  <View style={styles.chipsRow}>
+                    <View style={[styles.totalChip, { backgroundColor: "rgba(15,69,230,0.05)" }]}>
+                      <Text style={[styles.totalChipText, { color: ui.primary }]}>{`${tableStats.totalRegular} שולחנות`}</Text>
+                    </View>
+                    <View style={[styles.totalChip, { backgroundColor: "rgba(168, 85, 247, 0.12)" }]}>
+                      <Text style={[styles.totalChipText, { color: "#A855F7" }]}>{`${tableStats.openedReserve} רזרבה נפתחו`}</Text>
+                    </View>
+                  </View>
+                </View>
+
+                <View style={styles.ringsRow}>
+                  <ProgressRing
+                    size={76}
+                    strokeWidth={9}
+                    progress={tableStats.totalRegular ? tableStats.fullRegular / tableStats.totalRegular : 0}
+                    color={"#34C759"}
+                    centerText={`${tableStats.fullRegular}/${tableStats.totalRegular}`}
+                    label="מלאים"
+                    valueFontSize={15}
+                  />
+                  <ProgressRing
+                    size={76}
+                    strokeWidth={9}
+                    progress={tableStats.totalRegular ? tableStats.notFullRegular / tableStats.totalRegular : 0}
+                    color={"#0f45e6"}
+                    centerText={`${tableStats.notFullRegular}/${tableStats.totalRegular}`}
+                    label="לא מלאים"
+                    valueFontSize={15}
+                  />
+                  <ProgressRing
+                    size={76}
+                    strokeWidth={9}
+                    progress={tableStats.totalReserve ? tableStats.openedReserve / tableStats.totalReserve : 0}
+                    color={"#A855F7"}
+                    centerText={`${tableStats.openedReserve}/${tableStats.totalReserve}`}
+                    label="רזרבה נפתחו"
+                    valueFontSize={15}
                   />
                 </View>
               </GlassPanel>
@@ -505,121 +710,6 @@ export default function EmployeeEventDetailsScreen() {
                   <Text style={styles.tileLabelLight}>הזנת מוזמנים</Text>
                   <Text style={styles.tileHintLight}>{`${Math.max(0, counts.total - checkedInCount)} נשארו`}</Text>
                 </TouchableOpacity>
-              </View>
-
-              {/* Search + bulk */}
-              <GlassPanel style={styles.panel}>
-                <View style={styles.searchRow}>
-                  <Ionicons name="search" size={18} color={"rgba(17,24,39,0.55)"} />
-                  <TextInput
-                    value={query}
-                    onChangeText={setQuery}
-                    placeholder="חיפוש אורח..."
-                    placeholderTextColor={"rgba(17,24,39,0.35)"}
-                    style={styles.searchInput}
-                    textAlign="right"
-                    returnKeyType="search"
-                  />
-                </View>
-
-                <View style={styles.bulkHeader2}>
-                  <Text style={styles.bulkTitle}>עדכון סטטוס</Text>
-                  <Text style={styles.bulkSubtitle}>{`נבחרו ${selectedIds.size} אורחים`}</Text>
-                </View>
-
-                <View style={styles.bulkButtonsRow}>
-                  {STATUS_OPTIONS.map((opt) => {
-                    const isBusy = saving !== null;
-                    const isThisBusy = saving === opt.key;
-                    return (
-                      <TouchableOpacity
-                        key={opt.key}
-                        style={[
-                          styles.bulkBtn,
-                          { backgroundColor: opt.color },
-                          isBusy && !isThisBusy ? { opacity: 0.6 } : null,
-                        ]}
-                        onPress={() => applyStatusToSelection(opt.key)}
-                        disabled={isBusy}
-                        activeOpacity={0.9}
-                        accessibilityRole="button"
-                        accessibilityLabel={`עדכון סטטוס לנבחרים: ${opt.label}`}
-                      >
-                        {isThisBusy ? (
-                          <ActivityIndicator color={colors.white} />
-                        ) : (
-                          <Ionicons name={opt.icon} size={18} color={colors.white} />
-                        )}
-                        <Text style={styles.bulkBtnText}>{opt.label}</Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-
-                <TouchableOpacity
-                  onPress={clearSelection}
-                  style={[styles.clearBtn, selectedIds.size === 0 ? { opacity: 0.5 } : null]}
-                  disabled={selectedIds.size === 0}
-                  accessibilityRole="button"
-                  accessibilityLabel="נקה בחירה"
-                >
-                  <Ionicons name="close" size={16} color={"rgba(17,24,39,0.70)"} />
-                  <Text style={styles.clearBtnText}>נקה בחירה</Text>
-                </TouchableOpacity>
-              </GlassPanel>
-
-              {/* Guests list */}
-              <View style={styles.listWrap}>
-                {filteredGuests.map((g) => {
-                  const selected = selectedIds.has(g.id);
-                  const statusMeta = STATUS_OPTIONS.find((o) => o.key === g.status);
-                  return (
-                    <TouchableOpacity
-                      key={g.id}
-                      style={[styles.guestCard, selected && styles.guestCardSelected]}
-                      onPress={() => toggle(g.id)}
-                      activeOpacity={0.9}
-                      accessibilityRole="button"
-                      accessibilityLabel={`בחירת אורח ${g.name}`}
-                    >
-                      <View style={styles.guestLeft}>
-                        <Ionicons
-                          name={selected ? "checkbox" : "square-outline"}
-                          size={22}
-                          color={selected ? ui.primary : "rgba(17,24,39,0.45)"}
-                        />
-                      </View>
-
-                      <View style={styles.guestMain}>
-                        <Text style={[styles.guestName, { color: ui.text }]} numberOfLines={1}>
-                          {g.name}
-                        </Text>
-                        <Text style={styles.guestPhone} numberOfLines={1}>
-                          {g.phone}
-                        </Text>
-                      </View>
-
-                      <View style={[styles.statusPill, statusMeta ? { borderColor: statusMeta.color } : null]}>
-                        {statusMeta ? (
-                          <>
-                            <Ionicons name={statusMeta.icon} size={16} color={statusMeta.color} />
-                            <Text style={[styles.statusText, { color: statusMeta.color }]}>{g.status}</Text>
-                          </>
-                        ) : (
-                          <Text style={styles.statusText}>{g.status}</Text>
-                        )}
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
-
-                {filteredGuests.length === 0 ? (
-                  <View style={styles.emptyCard}>
-                    <Ionicons name="people-outline" size={42} color={"rgba(17,24,39,0.45)"} />
-                    <Text style={styles.emptyTitle}>לא נמצאו אורחים</Text>
-                    <Text style={styles.emptyText}>נסה לשנות את החיפוש</Text>
-                  </View>
-                ) : null}
               </View>
             </View>
           </ScrollView>
@@ -803,9 +893,23 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     marginBottom: 14,
+    flexWrap: "wrap",
+    gap: 10,
   },
   panelTitle: { fontSize: 18, fontWeight: "800", textAlign: "right" },
-  totalChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 },
+  panelSubtitle: { marginTop: 4, fontSize: 12, fontWeight: "800", color: "rgba(17,24,39,0.55)", textAlign: "right" },
+  chipsRow: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+    justifyContent: "flex-start",
+    flexShrink: 0,
+    // Extra breathing room so chips won't clip on the left edge (web)
+    paddingLeft: 10,
+    marginLeft: 6,
+  },
+  totalChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, flexShrink: 0 },
   totalChipText: { fontSize: 13, fontWeight: "800" },
 
   ringsRow: {
@@ -816,7 +920,7 @@ const styles = StyleSheet.create({
   },
   ringWrap: { alignItems: "center", gap: 10 },
   ringCenter: { ...StyleSheet.absoluteFillObject, justifyContent: "center", alignItems: "center" },
-  ringValue: { fontWeight: "900" },
+  ringValue: { fontWeight: "900", textAlign: "center", letterSpacing: -0.3 },
   ringLabel: { fontSize: 13, fontWeight: "600" },
 
   tilesRow: {
@@ -840,6 +944,21 @@ const styles = StyleSheet.create({
   tileLightOuter: {
     flex: 1,
     height: 126,
+    borderRadius: 24,
+    padding: 14,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "rgba(17, 24, 39, 0.06)",
+    shadowColor: colors.black,
+    shadowOpacity: 0.06,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 3,
+    overflow: "hidden",
+  },
+  tileWideOuter: {
+    width: "100%",
+    minHeight: 232,
     borderRadius: 24,
     padding: 14,
     backgroundColor: "#FFFFFF",
@@ -960,162 +1079,130 @@ const styles = StyleSheet.create({
     marginTop: 0,
   },
 
-  searchRow: {
-    height: 54,
-    borderRadius: 18,
-    paddingHorizontal: 14,
+  // RSVP "Premium" tile (keeps blob background, upgrades inner layout)
+  rsvpCardInner: { flex: 1, justifyContent: "space-between" },
+  rsvpHeaderRow: {
     flexDirection: "row-reverse",
-    alignItems: "center",
-    gap: 10,
-    borderWidth: 1,
-    borderColor: "rgba(17,24,39,0.10)",
-    backgroundColor: "rgba(17,24,39,0.04)",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
   },
-  searchInput: {
-    flex: 1,
-    fontSize: 16,
-    fontWeight: "800",
-    color: "#111827",
+  rsvpHeaderRight: {
+    alignItems: "flex-end",
+    gap: 4,
   },
-
-  bulkHeader2: {
-    marginTop: 14,
+  rsvpHeaderLeft: {
+    alignItems: "flex-start",
+    justifyContent: "flex-start",
+  },
+  rsvpHeaderValueRow: {
     flexDirection: "row-reverse",
     alignItems: "baseline",
-    justifyContent: "space-between",
-    marginBottom: 12,
-  },
-  bulkTitle: {
-    fontSize: 16,
-    fontWeight: "900",
-    color: colors.text,
-    textAlign: "right",
-  },
-  bulkSubtitle: {
-    fontSize: 12,
-    fontWeight: "800",
-    color: colors.gray[600],
-    textAlign: "left",
-  },
-  bulkButtonsRow: {
-    flexDirection: "row-reverse",
     gap: 10,
   },
-  bulkBtn: {
-    flex: 1,
-    height: 44,
-    borderRadius: 14,
-    flexDirection: "row-reverse",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.22)",
-  },
-  bulkBtnText: {
-    color: colors.white,
-    fontSize: 13,
+  rsvpHeaderValue: {
+    fontSize: 54,
     fontWeight: "900",
+    letterSpacing: -1.0,
+    lineHeight: 56,
+    textAlign: "right",
   },
-  clearBtn: {
-    marginTop: 12,
-    alignSelf: "flex-end",
-    flexDirection: "row-reverse",
-    alignItems: "center",
-    gap: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 12,
-    backgroundColor: "rgba(0,0,0,0.04)",
-  },
-  clearBtnText: {
-    fontSize: 13,
+  rsvpHeaderLabel: {
+    fontSize: 16,
     fontWeight: "800",
-    color: colors.gray[700],
+    color: "rgba(17, 24, 39, 0.55)",
+    textAlign: "right",
   },
-
-  listWrap: { gap: 10, marginTop: 2 },
-  guestCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 24,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
+  rsvpHeaderLabelInline: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "rgba(17, 24, 39, 0.55)",
+    textAlign: "right",
+    // visually align with the big number, without dropping to a new line
+    marginBottom: 8,
+  },
+  rsvpArrowCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 999,
+    backgroundColor: "rgba(17, 24, 39, 0.04)",
     borderWidth: 1,
     borderColor: "rgba(17, 24, 39, 0.06)",
-    shadowColor: colors.black,
-    shadowOpacity: 0.06,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 3,
-    flexDirection: "row-reverse",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-  },
-  guestCardSelected: {
-    borderColor: "rgba(15,69,230,0.22)",
-    backgroundColor: "rgba(15,69,230,0.05)",
-  },
-  guestLeft: {
-    width: 28,
-    alignItems: "center",
     justifyContent: "center",
-  },
-  guestMain: {
-    flex: 1,
-    alignItems: "flex-end",
-    gap: 2,
-  },
-  guestName: {
-    fontSize: 15,
-    fontWeight: "900",
-    textAlign: "right",
-  },
-  guestPhone: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: colors.gray[600],
-    textAlign: "right",
-  },
-  statusPill: {
-    flexDirection: "row-reverse",
     alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.08)",
-    backgroundColor: "rgba(255,255,255,0.9)",
   },
-  statusText: {
+  rsvpDivider: {
+    height: 1,
+    width: "100%",
+    backgroundColor: "rgba(17, 24, 39, 0.07)",
+    marginTop: 8,
+    marginBottom: 10,
+  },
+  rsvpGrid: {
+    flexDirection: "row-reverse",
+    alignItems: "stretch",
+    gap: 10,
+  },
+  rsvpStatIconCircle: {
+    width: 30,
+    height: 30,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.65)",
+    borderWidth: 1,
+    borderColor: "rgba(17, 24, 39, 0.06)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  rsvpStatValue: {
+    fontSize: 20,
+    fontWeight: "900",
+    color: "rgba(17,24,39,0.92)",
+    marginTop: 2,
+    textAlign: "center",
+  },
+  rsvpStatLabel: {
     fontSize: 12,
     fontWeight: "900",
-    textAlign: "right",
-    color: colors.gray[800],
+    letterSpacing: 0.4,
+    textAlign: "center",
   },
-  emptyCard: {
-    marginTop: 24,
-    backgroundColor: colors.white,
+  rsvpStatCardGreen: {
+    flex: 1,
     borderRadius: 18,
-    padding: 18,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
     alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    overflow: "hidden",
+    backgroundColor: "rgba(52, 199, 89, 0.14)",
     borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.06)",
+    borderColor: "rgba(52, 199, 89, 0.18)",
   },
-  emptyTitle: {
-    marginTop: 10,
-    fontSize: 16,
-    fontWeight: "900",
-    color: colors.text,
-    textAlign: "center",
+  rsvpStatCardYellow: {
+    flex: 1,
+    borderRadius: 18,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    overflow: "hidden",
+    backgroundColor: "rgba(255, 193, 7, 0.16)",
+    borderWidth: 2,
+    borderColor: "rgba(255, 193, 7, 0.22)",
   },
-  emptyText: {
-    marginTop: 6,
-    fontSize: 13,
-    fontWeight: "700",
-    color: colors.gray[600],
-    textAlign: "center",
+  rsvpStatCardRed: {
+    flex: 1,
+    borderRadius: 18,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    overflow: "hidden",
+    backgroundColor: "rgba(255, 59, 48, 0.14)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 59, 48, 0.18)",
   },
 });
 

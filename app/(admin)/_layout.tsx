@@ -49,7 +49,6 @@ export default function AdminTabsLayout() {
           <AppHeader
             canGoBack={navigation.canGoBack()}
             onPressBack={() => navigation.goBack()}
-            onPressNotifications={() => router.push('/notifications')}
           />
         ),
         tabBarShowLabel: false,
@@ -151,23 +150,10 @@ export default function AdminTabsLayout() {
           },
         }}
       />
-      <Tabs.Screen
-        name="admin-event-notifications/index"
-        options={{
-          href: null,
-          headerShown: false,
-        }}
-      />
-      <Tabs.Screen
-        name="admin-event-notifications/edit"
-        options={{
-          href: null,
-          headerShown: false,
-        }}
-      />
+      <Tabs.Screen name="admin-rsvp-approvals" options={{ href: null }} />
       {/* Hidden admin wrappers for seating screens (keep admin tab bar) */}
-      <Tabs.Screen name="BrideGroomSeating" options={{ href: null, headerShown: false }} />
-      <Tabs.Screen name="seating-templates" options={{ href: null, headerShown: false }} />
+      <Tabs.Screen name="BrideGroomSeating" options={{ href: null }} />
+      <Tabs.Screen name="seating-templates" options={{ href: null }} />
     </Tabs>
   );
 }

@@ -1,4 +1,4 @@
-import { Guest, Table, Message, Gift, Event } from '@/types';
+import { Guest, Table, Message, Event } from '@/types';
 
 export const mockEvents: Event[] = [
   {
@@ -21,21 +21,21 @@ export const mockEvents: Event[] = [
 ];
 
 export const mockGuests: Guest[] = [
-  { id: '1', name: 'משה כהן', phone: '0501234567', status: 'מגיע', tableId: '1', gift: 500, message: 'מזל טוב! מאחל לכם חיים מאושרים יחד.' },
-  { id: '2', name: 'רחל לוי', phone: '0507654321', status: 'מגיע', tableId: '1', gift: 400, message: 'מזל טוב לבעלי האירוע המקסימים! אוהבת אתכם.' },
-  { id: '3', name: 'דוד ישראלי', phone: '0521234567', status: 'לא מגיע', tableId: null, gift: 0, message: '' },
-  { id: '4', name: 'שרה גולדברג', phone: '0541234567', status: 'ממתין', tableId: null, gift: 0, message: '' },
-  { id: '5', name: 'יעקב אברהם', phone: '0551234567', status: 'מגיע', tableId: '2', gift: 600, message: 'מזל טוב! שמח להיות חלק מהשמחה שלכם.' },
-  { id: '6', name: 'חנה פרץ', phone: '0561234567', status: 'מגיע', tableId: '2', gift: 450, message: 'מזל טוב ענקי! אוהבת אתכם המון.' },
-  { id: '7', name: 'יוסי מזרחי', phone: '0571234567', status: 'ממתין', tableId: null, gift: 0, message: '' },
-  { id: '8', name: 'מיכל אדלר', phone: '0581234567', status: 'מגיע', tableId: '3', gift: 350, message: 'מזל טוב! מאחלת לכם אושר ועושר.' },
-  { id: '9', name: 'אבי שמעוני', phone: '0591234567', status: 'לא מגיע', tableId: null, gift: 200, message: 'מצטער שלא אוכל להגיע, אבל שולח אהבה ומתנה קטנה.' },
-  { id: '10', name: 'נועה ברקוביץ', phone: '0501234568', status: 'מגיע', tableId: '3', gift: 500, message: 'מזל טוב! מאחלת לכם חיים מלאי אהבה.' },
-  { id: '11', name: 'אלון גולן', phone: '0501234569', status: 'מגיע', tableId: '4', gift: 450, message: 'מזל טוב! מאחל לכם חיים מאושרים.' },
-  { id: '12', name: 'מירי כהן', phone: '0501234570', status: 'מגיע', tableId: '4', gift: 300, message: 'מזל טוב! שמחה להשתתף בשמחתכם.' },
-  { id: '13', name: 'יובל לוי', phone: '0501234571', status: 'מגיע', tableId: '5', gift: 400, message: 'מזל טוב! מאחל לכם אושר ועושר.' },
-  { id: '14', name: 'שירה אברמוב', phone: '0501234572', status: 'מגיע', tableId: '5', gift: 350, message: 'מזל טוב! אוהבת אתכם המון.' },
-  { id: '15', name: 'עידן שרעבי', phone: '0501234573', status: 'ממתין', tableId: null, gift: 0, message: '' },
+  { id: '1', name: 'משה כהן', phone: '0501234567', status: 'מגיע', tableId: '1', gift: 500, message: 'מזל טוב! מאחל לכם חיים מאושרים יחד.', category_id: 'default', numberOfPeople: 1 },
+  { id: '2', name: 'רחל לוי', phone: '0507654321', status: 'מגיע', tableId: '1', gift: 400, message: 'מזל טוב לבעלי האירוע המקסימים! אוהבת אתכם.', category_id: 'default', numberOfPeople: 1 },
+  { id: '3', name: 'דוד ישראלי', phone: '0521234567', status: 'לא מגיע', tableId: null, gift: 0, message: '', category_id: 'default', numberOfPeople: 1 },
+  { id: '4', name: 'שרה גולדברג', phone: '0541234567', status: 'ממתין', tableId: null, gift: 0, message: '', category_id: 'default', numberOfPeople: 1 },
+  { id: '5', name: 'יעקב אברהם', phone: '0551234567', status: 'מגיע', tableId: '2', gift: 600, message: 'מזל טוב! שמח להיות חלק מהשמחה שלכם.', category_id: 'default', numberOfPeople: 1 },
+  { id: '6', name: 'חנה פרץ', phone: '0561234567', status: 'מגיע', tableId: '2', gift: 450, message: 'מזל טוב ענקי! אוהבת אתכם המון.', category_id: 'default', numberOfPeople: 1 },
+  { id: '7', name: 'יוסי מזרחי', phone: '0571234567', status: 'ממתין', tableId: null, gift: 0, message: '', category_id: 'default', numberOfPeople: 1 },
+  { id: '8', name: 'מיכל אדלר', phone: '0581234567', status: 'מגיע', tableId: '3', gift: 350, message: 'מזל טוב! מאחלת לכם אושר ועושר.', category_id: 'default', numberOfPeople: 1 },
+  { id: '9', name: 'אבי שמעוני', phone: '0591234567', status: 'לא מגיע', tableId: null, gift: 200, message: 'מצטער שלא אוכל להגיע, אבל שולח אהבה ומתנה קטנה.', category_id: 'default', numberOfPeople: 1 },
+  { id: '10', name: 'נועה ברקוביץ', phone: '0501234568', status: 'מגיע', tableId: '3', gift: 500, message: 'מזל טוב! מאחלת לכם חיים מלאי אהבה.', category_id: 'default', numberOfPeople: 1 },
+  { id: '11', name: 'אלון גולן', phone: '0501234569', status: 'מגיע', tableId: '4', gift: 450, message: 'מזל טוב! מאחל לכם חיים מאושרים.', category_id: 'default', numberOfPeople: 1 },
+  { id: '12', name: 'מירי כהן', phone: '0501234570', status: 'מגיע', tableId: '4', gift: 300, message: 'מזל טוב! שמחה להשתתף בשמחתכם.', category_id: 'default', numberOfPeople: 1 },
+  { id: '13', name: 'יובל לוי', phone: '0501234571', status: 'מגיע', tableId: '5', gift: 400, message: 'מזל טוב! מאחל לכם אושר ועושר.', category_id: 'default', numberOfPeople: 1 },
+  { id: '14', name: 'שירה אברמוב', phone: '0501234572', status: 'מגיע', tableId: '5', gift: 350, message: 'מזל טוב! אוהבת אתכם המון.', category_id: 'default', numberOfPeople: 1 },
+  { id: '15', name: 'עידן שרעבי', phone: '0501234573', status: 'ממתין', tableId: null, gift: 0, message: '', category_id: 'default', numberOfPeople: 1 },
 ];
 
 export const mockTables: Table[] = [
@@ -62,14 +62,4 @@ export const mockMessages: Message[] = [
   { id: '3', type: 'SMS', recipient: 'דוד ישראלי', phone: '0521234567', sentDate: new Date(2025, 6, 1), status: 'נשלח' },
   { id: '4', type: 'וואטסאפ', recipient: 'שרה גולדברג', phone: '0541234567', sentDate: new Date(2025, 6, 2), status: 'נשלח' },
   { id: '5', type: 'SMS', recipient: 'יעקב אברהם', phone: '0551234567', sentDate: new Date(2025, 6, 2), status: 'נשלח' },
-];
-
-export const mockGifts: Gift[] = [
-  { id: '1', guestName: 'משה כהן', amount: 500, message: 'מזל טוב! מאחל לכם חיים מאושרים יחד.', date: new Date(2025, 6, 10), status: 'התקבל' },
-  { id: '2', guestName: 'רחל לוי', amount: 400, message: 'מזל טוב לבעלי האירוע המקסימים! אוהבת אתכם.', date: new Date(2025, 6, 11), status: 'התקבל' },
-  { id: '3', guestName: 'יעקב אברהם', amount: 600, message: 'מזל טוב! שמח להיות חלק מהשמחה שלכם.', date: new Date(2025, 6, 12), status: 'התקבל' },
-  { id: '4', guestName: 'חנה פרץ', amount: 450, message: 'מזל טוב ענקי! אוהבת אתכם המון.', date: new Date(2025, 6, 13), status: 'בתהליך' },
-  { id: '5', guestName: 'מיכל אדלר', amount: 350, message: 'מזל טוב! מאחלת לכם אושר ועושר.', date: new Date(2025, 6, 14), status: 'בתהליך' },
-  { id: '6', guestName: 'אבי שמעוני', amount: 200, message: 'מצטער שלא אוכל להגיע, אבל שולח אהבה ומתנה קטנה.', date: new Date(2025, 6, 15), status: 'בתהליך' },
-  { id: '7', guestName: 'נועה ברקוביץ', amount: 500, message: 'מזל טוב! מאחלת לכם חיים מלאי אהבה.', date: new Date(2025, 6, 16), status: 'בתהליך' },
 ];

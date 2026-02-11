@@ -80,7 +80,6 @@ export default function EmployeeTabsLayout() {
           <AppHeader
             canGoBack={navigation.canGoBack()}
             onPressBack={() => navigation.goBack()}
-            onPressNotifications={() => router.push("/notifications")}
           />
         ),
         tabBarShowLabel: false,
@@ -143,9 +142,10 @@ export default function EmployeeTabsLayout() {
       />
 
       {/* Hidden employee internal routes */}
-      <Tabs.Screen name="employee-event-details" options={{ href: null, headerShown: false }} />
-      <Tabs.Screen name="employee-seating-map" options={{ href: null, headerShown: false }} />
-      <Tabs.Screen name="employee-guest-checkin" options={{ href: null, headerShown: false }} />
+      <Tabs.Screen name="employee-event-details" options={{ href: null }} />
+      <Tabs.Screen name="employee-seating-map" options={{ href: null }} />
+      <Tabs.Screen name="employee-guest-checkin" options={{ href: null }} />
+      <Tabs.Screen name="employee-rsvp-approvals" options={{ href: null }} />
     </Tabs>
   );
 }

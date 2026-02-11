@@ -7,7 +7,6 @@ import { CountdownTimer } from '@/components/CountdownTimer';
 import { Ionicons } from '@expo/vector-icons';
 import { eventService } from '@/lib/services/eventService';
 import { guestService } from '@/lib/services/guestService';
-import { giftService } from '@/lib/services/giftService';
 import { BlurView } from 'expo-blur';
 
 export default function HomeScreen() {
@@ -15,7 +14,6 @@ export default function HomeScreen() {
   const router = useRouter();
   const [currentEvent, setCurrentEvent] = useState<any>(null);
   const [guests, setGuests] = useState<any[]>([]);
-  const [gifts, setGifts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -36,7 +34,6 @@ export default function HomeScreen() {
         if (!eventId) {
           setCurrentEvent(null);
           setGuests([]);
-          setGifts([]);
           setLoading(false);
           return;
         }
@@ -47,22 +44,13 @@ export default function HomeScreen() {
           // טען אורחים
           const guestsData = await guestService.getGuests(event.id);
           setGuests(guestsData);
-          // טען מתנות
-          try {
-            const giftsData = await giftService.getGifts(event.id);
-            setGifts(giftsData);
-          } catch (e) {
-            setGifts([]);
-          }
         } else {
           setCurrentEvent(null);
           setGuests([]);
-          setGifts([]);
         }
       } catch (error) {
         setCurrentEvent(null);
         setGuests([]);
-        setGifts([]);
         console.error('Error loading data:', error);
       } finally {
         setLoading(false);
@@ -91,19 +79,11 @@ export default function HomeScreen() {
             if (event) {
               const guestsData = await guestService.getGuests(event.id);
               setGuests(guestsData);
-              try {
-                const giftsData = await giftService.getGifts(event.id);
-                setGifts(giftsData);
-              } catch (e) {
-                setGifts([]);
-              }
             } else {
               setGuests([]);
-              setGifts([]);
             }
           } catch (error) {
             setGuests([]);
-            setGifts([]);
           }
         };
         reloadData();
@@ -146,7 +126,7 @@ export default function HomeScreen() {
   };
 
   // חישוב נתונים אמיתיים
-  const totalGifts = gifts.reduce((sum, gift) => sum + gift.amount, 0);
+  const totalGifts = guests.reduce((sum, guest) => sum + Number(guest?.gift ?? 0), 0);
   const confirmedGuests = guests.filter(guest => guest.status === 'מגיע').length;
   const pendingGuests = guests.filter(guest => guest.status === 'ממתין').length;
   const totalGuests = guests.length;

@@ -165,6 +165,13 @@ export default function AdminEventDetailsScreen() {
   const seated = guests.filter(g => g.tableId).length;
   const totalGuests = guests.length;
   const seatedPercent = totalGuests ? Math.round((seated / totalGuests) * 100) : 0;
+  const sumPeople = (rows: Array<{ numberOfPeople?: number }>) =>
+    rows.reduce((sum, r) => sum + (Number(r.numberOfPeople) || 1), 0);
+
+  const invitedPeople = sumPeople(guests);
+  const confirmedPeople = sumPeople(guests.filter((g) => g.status === "מגיע"));
+  const pendingPeople = sumPeople(guests.filter((g) => g.status === "ממתין"));
+  const declinedPeople = sumPeople(guests.filter((g) => g.status === "לא מגיע"));
 
   // Format date: 23.10 | חמישי
   const dateObj = new Date(event.date);
@@ -548,6 +555,65 @@ export default function AdminEventDetailsScreen() {
 
         {/* White bottom sheet with rounded corners (like the reference) */}
         <View style={[styles.sheet, { marginBottom: Platform.OS === 'web' ? 30 : 0 }]}>
+          {/* RSVP approvals (top tile) */}
+          <TouchableOpacity
+            style={styles.tileWideOuter}
+            activeOpacity={0.9}
+            onPress={() => router.push(`/(admin)/admin-rsvp-approvals?eventId=${event.id}`)}
+            accessibilityRole="button"
+            accessibilityLabel="פתיחת אישורי הגעה"
+          >
+            <View pointerEvents="none" style={styles.tileLightDecorWrap}>
+              <View style={styles.tileLightDecorCircle} />
+              <View style={styles.tileLightDecorCircle2} />
+            </View>
+
+            <View style={styles.rsvpCardInner}>
+              <View style={styles.rsvpHeaderRow}>
+                <View style={styles.rsvpHeaderRight}>
+                  <View style={styles.rsvpHeaderValueRow}>
+                    <Text style={[styles.rsvpHeaderValue, { color: ui.primary }]}>{invitedPeople}</Text>
+                    <Text style={styles.rsvpHeaderLabelInline}>מוזמנים לאירוע</Text>
+                  </View>
+                </View>
+
+                <View style={styles.rsvpHeaderLeft}>
+                  <View style={styles.rsvpArrowCircle}>
+                    <Ionicons name="chevron-back" size={18} color={"rgba(17,24,39,0.55)"} />
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.rsvpDivider} />
+
+              <View style={styles.rsvpGrid}>
+                <View style={styles.rsvpStatCardGreen}>
+                  <View style={styles.rsvpStatIconCircle}>
+                    <Ionicons name="checkmark" size={16} color={colors.success} />
+                  </View>
+                  <Text style={styles.rsvpStatValue}>{confirmedPeople}</Text>
+                  <Text style={[styles.rsvpStatLabel, { color: colors.success }]}>אישרו</Text>
+                </View>
+
+                <View style={styles.rsvpStatCardYellow}>
+                  <View style={styles.rsvpStatIconCircle}>
+                    <Ionicons name="time" size={16} color={colors.warning} />
+                  </View>
+                  <Text style={styles.rsvpStatValue}>{pendingPeople}</Text>
+                  <Text style={[styles.rsvpStatLabel, { color: colors.warning }]}>ממתינים</Text>
+                </View>
+
+                <View style={styles.rsvpStatCardRed}>
+                  <View style={styles.rsvpStatIconCircle}>
+                    <Ionicons name="close" size={16} color={colors.error} />
+                  </View>
+                  <Text style={styles.rsvpStatValue}>{declinedPeople}</Text>
+                  <Text style={[styles.rsvpStatLabel, { color: colors.error }]}>לא</Text>
+                </View>
+              </View>
+            </View>
+          </TouchableOpacity>
+
           {/* Guest status (rings) */}
           <GlassPanel style={styles.panel}>
             <View style={styles.panelHeaderRow}>
@@ -632,19 +698,6 @@ export default function AdminEventDetailsScreen() {
               <Text style={[styles.tileLightValue, { color: ui.text }]}>{confirmed}</Text>
               <Text style={styles.tileLightLabel}>אורחים אישרו</Text>
             </GlassPanel>
-          </View>
-
-          {/* Notifications "window" → dedicated screen (should be under the two tiles) */}
-          <View style={styles.notificationsPanel}>
-            <ActionRow
-              title="הודעות אוטומטיות"
-              subtitle="עריכה והפעלה של תזכורות והודעות וואטסאפ"
-              iconName="chatbubble-ellipses-outline"
-              iconBg="rgba(37, 99, 235, 0.10)"
-              iconColor={ui.primary}
-              onPress={() => router.push(`/(admin)/admin-event-notifications?eventId=${event.id}`)}
-              accessibilityLabel="הודעות אוטומטיות"
-            />
           </View>
 
           {/* Bottom actions (match provided design): two stacked action cards */}
@@ -1490,6 +1543,140 @@ const styles = StyleSheet.create({
     top: -32,
     left: 30,
     backgroundColor: 'rgba(15,69,230,0.06)',
+  },
+  tileWideOuter: {
+    width: "100%",
+    minHeight: 232,
+    borderRadius: 24,
+    padding: 14,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "rgba(17, 24, 39, 0.06)",
+    shadowColor: colors.black,
+    shadowOpacity: 0.06,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 3,
+    overflow: "hidden",
+    marginBottom: 14,
+  },
+
+  rsvpCardInner: { flex: 1, justifyContent: "space-between" },
+  rsvpHeaderRow: {
+    flexDirection: "row-reverse",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+  },
+  rsvpHeaderRight: {
+    alignItems: "flex-end",
+    gap: 4,
+  },
+  rsvpHeaderLeft: {
+    alignItems: "flex-start",
+    justifyContent: "flex-start",
+  },
+  rsvpHeaderValueRow: {
+    flexDirection: "row-reverse",
+    alignItems: "baseline",
+    gap: 10,
+  },
+  rsvpHeaderValue: {
+    fontSize: 54,
+    fontWeight: "900",
+    letterSpacing: -1.0,
+    lineHeight: 56,
+    textAlign: "right",
+  },
+  rsvpHeaderLabelInline: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "rgba(17, 24, 39, 0.55)",
+    textAlign: "right",
+    marginBottom: 8,
+  },
+  rsvpArrowCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 999,
+    backgroundColor: "rgba(17, 24, 39, 0.04)",
+    borderWidth: 1,
+    borderColor: "rgba(17, 24, 39, 0.06)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  rsvpDivider: {
+    height: 1,
+    width: "100%",
+    backgroundColor: "rgba(17, 24, 39, 0.07)",
+    marginTop: 8,
+    marginBottom: 10,
+  },
+  rsvpGrid: {
+    flexDirection: "row-reverse",
+    alignItems: "stretch",
+    gap: 10,
+  },
+  rsvpStatIconCircle: {
+    width: 30,
+    height: 30,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.65)",
+    borderWidth: 1,
+    borderColor: "rgba(17, 24, 39, 0.06)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  rsvpStatValue: {
+    fontSize: 20,
+    fontWeight: "900",
+    color: "rgba(17,24,39,0.92)",
+    marginTop: 2,
+    textAlign: "center",
+  },
+  rsvpStatLabel: {
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 0.4,
+    textAlign: "center",
+  },
+  rsvpStatCardGreen: {
+    flex: 1,
+    borderRadius: 18,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    overflow: "hidden",
+    backgroundColor: "rgba(52, 199, 89, 0.14)",
+    borderWidth: 1,
+    borderColor: "rgba(52, 199, 89, 0.18)",
+  },
+  rsvpStatCardYellow: {
+    flex: 1,
+    borderRadius: 18,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    overflow: "hidden",
+    backgroundColor: "rgba(255, 193, 7, 0.16)",
+    borderWidth: 2,
+    borderColor: "rgba(255, 193, 7, 0.22)",
+  },
+  rsvpStatCardRed: {
+    flex: 1,
+    borderRadius: 18,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    overflow: "hidden",
+    backgroundColor: "rgba(255, 59, 48, 0.14)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 59, 48, 0.18)",
   },
   tileLightTopRow: {
     flexDirection: 'row-reverse',

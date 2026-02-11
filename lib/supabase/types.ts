@@ -84,18 +84,6 @@ export type Message = {
   created_at: string;
 };
 
-// ========== GIFTS ==========
-export type Gift = {
-  id: string;
-  event_id: string;
-  guest_name: string;
-  amount: number;
-  message?: string;
-  date: string;
-  status: 'התקבל' | 'בתהליך';
-  created_at: string;
-};
-
 // ========== SEATING MAPS ==========
 export type SeatingMap = {
   id: string;

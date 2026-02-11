@@ -66,15 +66,6 @@ export type Message = {
   status: string;
 };
 
-export type Gift = {
-  id: string;
-  guestName: string;
-  amount: number;
-  message: string;
-  date: Date;
-  status: 'התקבל' | 'בתהליך';
-};
-
 export type Notification = {
   id: string;
   recipientUserId: string;
