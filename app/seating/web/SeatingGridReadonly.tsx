@@ -1,7 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Svg, { Defs, Line, Pattern, Rect } from 'react-native-svg';
+import { GestureHandlerRootView, PinchGestureHandler, State as GHState } from 'react-native-gesture-handler';
 import { CELL_SIZE, TABLE_LABELS, clamp, tableCellSize, type Orientation, type TableType } from './types';
+
+function hexToRgba(hex: string, alpha: number) {
+  const h = String(hex || '').replace('#', '').trim();
+  if (h.length !== 6) return `rgba(0,0,0,${alpha})`;
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  if (![r, g, b].every(Number.isFinite)) return `rgba(0,0,0,${alpha})`;
+  return `rgba(${r},${g},${b},${alpha})`;
+}
 
 type TableItem = {
   id: string;
@@ -99,19 +110,27 @@ export function SeatingGridReadonly({
     const vw = viewport?.w ?? 0;
     const vh = viewport?.h ?? 0;
     if (!vw || !vh) return 1;
-    const pad = 44;
+    const pad = isWeb ? 44 : 18;
     const sx = (vw - pad * 2) / Math.max(1, baseW);
     const sy = (vh - pad * 2) / Math.max(1, baseH);
-    return clamp(Math.min(1, sx, sy), 0.2, 1);
-  }, [baseH, baseW, viewport?.h, viewport?.w]);
+    // Initial view should be "max zoom-out": fit to viewport (no upscaling).
+    const maxFit = 1;
+    return clamp(Math.min(maxFit, sx, sy), 0.2, maxFit);
+  }, [baseH, baseW, isWeb, viewport?.h, viewport?.w]);
 
   const [zoom, setZoom] = useState(1);
   const zoomRef = useRef(1);
   const fitZoomRef = useRef(1);
   const lastAutoFitTokenRef = useRef<string>('');
+  const minZoomRef = useRef(0.2);
+  const maxZoomRef = useRef(3);
+  const pinchStartZoomRef = useRef(1);
 
   useEffect(() => {
     fitZoomRef.current = fitZoom;
+    // Don't allow zoom-out smaller than initial fit.
+    minZoomRef.current = fitZoom;
+    maxZoomRef.current = Math.min(3, Math.max(fitZoom, fitZoom * 3));
   }, [fitZoom]);
 
   // Auto-fit only when the CONTENT changes (not on every viewport/layout change),
@@ -158,6 +177,30 @@ export function SeatingGridReadonly({
   const [tooltip, setTooltip] = useState<null | { text: string; x: number; y: number }>(null);
   const [tooltipSize, setTooltipSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
 
+  const innerTransform = useMemo(() => {
+    // Keep scaling centered (better for viewer), and center the content via layout.
+    return [{ scale: zoom }] as any;
+  }, [baseH, baseW, isWeb, zoom]);
+
+  const onPinchGestureEvent = useCallback((e: any) => {
+    const scale = e?.nativeEvent?.scale ?? 1;
+    const min = minZoomRef.current || 0.2;
+    const max = maxZoomRef.current || 3;
+    const next = clamp((pinchStartZoomRef.current || 1) * scale, min, max);
+    zoomRef.current = next;
+    setZoom(next);
+  }, []);
+
+  const onPinchStateChange = useCallback((e: any) => {
+    const state = e?.nativeEvent?.state;
+    if (state === GHState.BEGAN || state === GHState.ACTIVE) {
+      pinchStartZoomRef.current = zoomRef.current || 1;
+    }
+    if (state === GHState.END || state === GHState.CANCELLED || state === GHState.FAILED) {
+      pinchStartZoomRef.current = zoomRef.current || 1;
+    }
+  }, []);
+
   const handleWheel = useCallback(
     (e: any) => {
       if (!isWeb) return;
@@ -201,8 +244,10 @@ export function SeatingGridReadonly({
     return () => el.removeEventListener('wheel', listener as any);
   }, [handleWheel, isWeb]);
 
+  const Root = isWeb ? View : GestureHandlerRootView;
+
   return (
-    <View style={styles.root}>
+    <Root style={styles.root}>
       <View
         ref={workAreaRef}
         style={styles.workArea}
@@ -238,8 +283,93 @@ export function SeatingGridReadonly({
           </View>
         ) : null}
 
-        <View style={[styles.gridWrap, { width: stageW, height: stageH }]}>
-          <View style={[styles.gridInner, { width: baseW, height: baseH, transform: [{ scale: zoom }] }]}>
+        {/* Native: allow panning by scrollviews. Web: overflow is already handled via CSS. */}
+        {!isWeb ? (
+          <ScrollView
+            style={{ flex: 1, alignSelf: 'stretch' }}
+            contentContainerStyle={{ flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 18 }}
+            showsVerticalScrollIndicator={false}
+          >
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ flexGrow: 1, alignItems: 'center', justifyContent: 'center' }}
+            >
+              <PinchGestureHandler onGestureEvent={onPinchGestureEvent} onHandlerStateChange={onPinchStateChange}>
+                <View collapsable={false} style={[styles.gridWrap, styles.gridWrapNative, { width: stageW, height: stageH }]}>
+                  <View style={[styles.gridInnerNative, { width: baseW, height: baseH, transform: innerTransform }]}>
+                  <Svg width={baseW} height={baseH} style={StyleSheet.absoluteFill as any}>
+                    <Defs>
+                      <Pattern id="minor" x="0" y="0" width={CELL_SIZE} height={CELL_SIZE} patternUnits="userSpaceOnUse">
+                        <Rect x="0" y="0" width={CELL_SIZE} height={CELL_SIZE} fill="transparent" />
+                        <Line x1={CELL_SIZE} y1="0" x2="0" y2="0" stroke="rgba(148,163,184,0.18)" strokeWidth="1" />
+                        <Line x1="0" y1={CELL_SIZE} x2="0" y2="0" stroke="rgba(148,163,184,0.18)" strokeWidth="1" />
+                      </Pattern>
+                    </Defs>
+                    <Rect x="0" y="0" width="100%" height="100%" fill="url(#minor)" />
+                  </Svg>
+
+                  {/* Zones */}
+                  {zones.map(z => {
+                    const left = (z.gridX - contentRect.originX) * CELL_SIZE;
+                    const top = (z.gridY - contentRect.originY) * CELL_SIZE;
+                    const w = z.widthCells * CELL_SIZE;
+                    const h = z.heightCells * CELL_SIZE;
+                    return (
+                      <View key={z.id} style={[styles.zone, { left, top, width: w, height: h }]}>
+                        <Text style={styles.zoneText}>{z.name}</Text>
+                      </View>
+                    );
+                  })}
+
+                  {/* Tables */}
+                  {tables.map(t => {
+                    const sz = tableCellSize(t.type, t.seats, t.orientation);
+                    const color = t.type === 'reserve' ? '#F59E0B' : t.type === 'knight' ? '#7C3AED' : '#2563EB';
+                    const bg = hexToRgba(color, 0.13);
+                    const border = hexToRgba(color, 0.35);
+                    return (
+                      <Pressable
+                        key={t.id}
+                        onPress={() => onPressTableNumber?.(t.number)}
+                        style={[
+                          styles.table,
+                          {
+                            left: (t.gridX - contentRect.originX) * CELL_SIZE,
+                            top: (t.gridY - contentRect.originY) * CELL_SIZE,
+                            width: sz.w * CELL_SIZE,
+                            height: sz.h * CELL_SIZE,
+                            backgroundColor: bg,
+                            borderColor: border,
+                          },
+                        ]}
+                      >
+                        <Text style={[styles.tableNum, { color }]}>{t.number ?? ''}</Text>
+                        <Text style={styles.tableType}>{TABLE_LABELS[t.type]}</Text>
+                      </Pressable>
+                    );
+                  })}
+
+                  {/* Labels */}
+                  {labels.map(l => (
+                    <View
+                      key={l.id}
+                      style={[
+                        styles.labelWrap,
+                        { left: (l.gridX - contentRect.originX) * CELL_SIZE, top: (l.gridY - contentRect.originY) * CELL_SIZE },
+                      ]}
+                    >
+                      <Text style={styles.labelText}>{l.text}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+              </PinchGestureHandler>
+            </ScrollView>
+          </ScrollView>
+        ) : (
+          <View style={[styles.gridWrap, { width: stageW, height: stageH }]}>
+            <View style={[styles.gridInnerWeb, { width: baseW, height: baseH, transform: innerTransform }]}>
             <Svg width={baseW} height={baseH} style={StyleSheet.absoluteFill as any}>
               <Defs>
                 <Pattern id="minor" x="0" y="0" width={CELL_SIZE} height={CELL_SIZE} patternUnits="userSpaceOnUse">
@@ -275,6 +405,9 @@ export function SeatingGridReadonly({
               const sz = tableCellSize(t.type, t.seats, t.orientation);
               const color = t.type === 'reserve' ? '#F59E0B' : t.type === 'knight' ? '#7C3AED' : '#2563EB';
               const tip = getTableTooltip?.(t) ?? null;
+              // Use rgba (instead of 8-digit hex) for consistent native rendering.
+              const bg = hexToRgba(color, 0.13);
+              const border = hexToRgba(color, 0.35);
               return (
                 <Pressable
                   key={t.id}
@@ -310,8 +443,8 @@ export function SeatingGridReadonly({
                       top: (t.gridY - contentRect.originY) * CELL_SIZE,
                       width: sz.w * CELL_SIZE,
                       height: sz.h * CELL_SIZE,
-                      backgroundColor: `${color}22`,
-                      borderColor: `${color}55`,
+                      backgroundColor: bg,
+                      borderColor: border,
                       opacity: pressed ? 0.9 : 1,
                     },
                   ]}
@@ -336,8 +469,9 @@ export function SeatingGridReadonly({
             ))}
           </View>
         </View>
+        )}
       </View>
-    </View>
+    </Root>
   );
 }
 
@@ -345,9 +479,8 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: 'transparent' },
   workArea: {
     flex: 1,
-    alignItems: 'flex-start',
+    alignItems: 'stretch',
     justifyContent: 'flex-start',
-    padding: 18,
     ...(Platform.OS === 'web' ? ({ overflow: 'auto', userSelect: 'none', WebkitUserSelect: 'none' } as any) : null),
   },
   tooltip: {
@@ -373,11 +506,18 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     alignSelf: 'center',
   },
-  gridInner: {
+  gridWrapNative: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  gridInnerWeb: {
     position: 'absolute',
     left: 0,
     top: 0,
     transformOrigin: '0 0' as any,
+  },
+  gridInnerNative: {
+    position: 'relative',
   },
 
   table: {

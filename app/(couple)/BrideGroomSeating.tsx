@@ -502,6 +502,15 @@ export default function BrideGroomSeating() {
     return null;
   }
 
+  function toArrayMaybe(value: any) {
+    if (Array.isArray(value)) return value;
+    if (value && typeof value === 'object') {
+      // Some older/surprising shapes might be stored as object maps.
+      return Object.values(value);
+    }
+    return [];
+  }
+
   // משיכת הערות (annotations) + סקיצה מה-DB
   const fetchTextAreas = async () => {
     if (!resolvedEventId) return;
@@ -522,79 +531,115 @@ export default function BrideGroomSeating() {
     // Web sketch (readonly viewer): prefer web_v2, else fallback to legacy seating_maps.tables (or public.tables)
     try {
       const webV2 = getWebV2FromAnnotations(annotations);
-      if (webV2) {
-        const cols = typeof webV2?.grid?.cols === 'number' ? Math.round(webV2.grid.cols) : DEFAULT_GRID_COLS;
-        const rows = typeof webV2?.grid?.rows === 'number' ? Math.round(webV2.grid.rows) : DEFAULT_GRID_ROWS;
+      // We'll prefer web_v2 for zones/labels and grid size, but if tables are missing
+      // we'll fall back to legacy/public tables.
+      const webV2Cols =
+        webV2 && typeof webV2?.grid?.cols === 'number' ? Math.round(webV2.grid.cols) : DEFAULT_GRID_COLS;
+      const webV2Rows =
+        webV2 && typeof webV2?.grid?.rows === 'number' ? Math.round(webV2.grid.rows) : DEFAULT_GRID_ROWS;
+      const webV2Zones = webV2 ? toArrayMaybe(webV2.zones ?? webV2?.state?.zones ?? webV2?.data?.zones) : [];
+      const webV2Labels = webV2 ? toArrayMaybe(webV2.labels ?? webV2?.state?.labels ?? webV2?.data?.labels) : [];
+      const webV2Tables = webV2 ? toArrayMaybe(webV2.tables ?? webV2?.state?.tables ?? webV2?.data?.tables) : [];
+
+      let finalCols = webV2Cols;
+      let finalRows = webV2Rows;
+      let finalTables: any[] = webV2Tables;
+      let finalZones: any[] = webV2Zones;
+      let finalLabels: any[] = webV2Labels;
+
+      if (__DEV__ && webV2) {
+        console.log('[BrideGroomSeating:webSketch]', {
+          source: 'web_v2',
+          cols: finalCols,
+          rows: finalRows,
+          tables: finalTables.length,
+          zones: finalZones.length,
+          labels: finalLabels.length,
+        });
+      }
+
+      // If web_v2 didn't include tables, try legacy first.
+      if (!finalTables.length) {
+        const legacy = Array.isArray((data as any)?.tables) ? ((data as any).tables as any[]) : null;
+        if (legacy && legacy.length) {
+          const mapped = legacy.filter(Boolean).map((t: any, idx: number) => {
+            const type: TableType = t.isReserve ? 'reserve' : t.isKnight ? 'knight' : 'regular';
+            const num = typeof t.id === 'number' ? t.id : idx + 1;
+            const gridX = Math.round((Number(t.x) || 0) / 40);
+            const gridY = Math.round((Number(t.y) || 0) / 40);
+            return {
+              id: `table-legacy-${num}`,
+              type,
+              seats: Number(t.seats) || (type === 'knight' ? 20 : 12),
+              orientation: 'row' as Orientation,
+              gridX,
+              gridY,
+              number: num,
+            };
+          });
+          const maxX = mapped.reduce(
+            (m: number, t: any) => Math.max(m, t.gridX + tableCellSize(t.type, t.seats, t.orientation).w),
+            0
+          );
+          const maxY = mapped.reduce(
+            (m: number, t: any) => Math.max(m, t.gridY + tableCellSize(t.type, t.seats, t.orientation).h),
+            0
+          );
+          finalCols = Math.max(finalCols, DEFAULT_GRID_COLS, maxX + 6);
+          finalRows = Math.max(finalRows, DEFAULT_GRID_ROWS, maxY + 6);
+          finalTables = mapped;
+        }
+      }
+
+      // Last fallback: query public.tables directly (don't rely on state timing).
+      if (!finalTables.length) {
+        const { data: publicTables, error: publicTablesError } = await supabase
+          .from('tables')
+          .select('id,number,capacity,shape,x,y')
+          .eq('event_id', resolvedEventId);
+        if (!publicTablesError && Array.isArray(publicTables) && publicTables.length) {
+          const mapped = publicTables.map((t: any) => {
+            const type: TableType = t.shape === 'reserve' ? 'reserve' : t.shape === 'rectangle' ? 'knight' : 'regular';
+            const gridX = Math.round((Number(t.x) || 0) / 40);
+            const gridY = Math.round((Number(t.y) || 0) / 40);
+            return {
+              id: `table-public-${t.id}`,
+              type,
+              seats: Number(t.capacity) || (type === 'knight' ? 20 : 12),
+              orientation: 'row' as Orientation,
+              gridX,
+              gridY,
+              number: typeof t.number === 'number' ? t.number : undefined,
+            };
+          });
+          const maxX = mapped.reduce(
+            (m: number, t: any) => Math.max(m, t.gridX + tableCellSize(t.type, t.seats, t.orientation).w),
+            0
+          );
+          const maxY = mapped.reduce(
+            (m: number, t: any) => Math.max(m, t.gridY + tableCellSize(t.type, t.seats, t.orientation).h),
+            0
+          );
+          finalCols = Math.max(finalCols, DEFAULT_GRID_COLS, maxX + 6);
+          finalRows = Math.max(finalRows, DEFAULT_GRID_ROWS, maxY + 6);
+          finalTables = mapped;
+        }
+      }
+
+      if (finalTables.length || finalZones.length || finalLabels.length) {
         setWebSketch({
-          gridCols: cols,
-          gridRows: rows,
-          tables: Array.isArray(webV2.tables) ? webV2.tables : [],
-          zones: Array.isArray(webV2.zones) ? webV2.zones : [],
-          labels: Array.isArray(webV2.labels) ? webV2.labels : [],
+          gridCols: finalCols,
+          gridRows: finalRows,
+          tables: finalTables,
+          zones: finalZones,
+          labels: finalLabels,
         });
         return;
       }
 
-      const legacy = Array.isArray((data as any)?.tables) ? ((data as any).tables as any[]) : null;
-      if (legacy && legacy.length) {
-        const mapped = legacy.filter(Boolean).map((t: any, idx: number) => {
-          const type: TableType = t.isReserve ? 'reserve' : t.isKnight ? 'knight' : 'regular';
-          const num = typeof t.id === 'number' ? t.id : idx + 1;
-          const gridX = Math.round((Number(t.x) || 0) / 40);
-          const gridY = Math.round((Number(t.y) || 0) / 40);
-          return {
-            id: `table-legacy-${num}`,
-            type,
-            seats: Number(t.seats) || (type === 'knight' ? 20 : 12),
-            orientation: 'row' as Orientation,
-            gridX,
-            gridY,
-            number: num,
-          };
-        });
-
-        const maxX = mapped.reduce((m: number, t: any) => Math.max(m, t.gridX + tableCellSize(t.type, t.seats, t.orientation).w), 0);
-        const maxY = mapped.reduce((m: number, t: any) => Math.max(m, t.gridY + tableCellSize(t.type, t.seats, t.orientation).h), 0);
-        setWebSketch({
-          gridCols: Math.max(DEFAULT_GRID_COLS, maxX + 6),
-          gridRows: Math.max(DEFAULT_GRID_ROWS, maxY + 6),
-          tables: mapped,
-          zones: [],
-          labels: [],
-        });
-        return;
-      }
-
-      // Last fallback: derive from public.tables x/y (written by the editor as grid*40)
-      if (tables.length) {
-        const mapped = tables.map((t) => {
-          const type: TableType = t.shape === 'reserve' ? 'reserve' : t.shape === 'rectangle' ? 'knight' : 'regular';
-          const gridX = Math.round((Number(t.x) || 0) / 40);
-          const gridY = Math.round((Number(t.y) || 0) / 40);
-          return {
-            id: `table-public-${t.id}`,
-            type,
-            seats: Number(t.capacity) || (type === 'knight' ? 20 : 12),
-            orientation: 'row' as Orientation,
-            gridX,
-            gridY,
-            number: (t as any).number ?? undefined,
-          };
-        });
-
-        const maxX = mapped.reduce((m: number, t: any) => Math.max(m, t.gridX + tableCellSize(t.type, t.seats, t.orientation).w), 0);
-        const maxY = mapped.reduce((m: number, t: any) => Math.max(m, t.gridY + tableCellSize(t.type, t.seats, t.orientation).h), 0);
-        setWebSketch({
-          gridCols: Math.max(DEFAULT_GRID_COLS, maxX + 6),
-          gridRows: Math.max(DEFAULT_GRID_ROWS, maxY + 6),
-          tables: mapped,
-          zones: [],
-          labels: [],
-        });
-        return;
-      }
-
+      // No sketch content
       setWebSketch(null);
+      return;
     } catch {
       setWebSketch(null);
     }
@@ -1021,7 +1066,7 @@ export default function BrideGroomSeating() {
       </Modal>
 
       {/* Canvas */}
-      {Platform.OS === 'web' && webSketch ? (
+      {webSketch ? (
         <View style={styles.canvasScroll}>
           {/*
             Tooltip on hover: show seated guests count for this table number.
