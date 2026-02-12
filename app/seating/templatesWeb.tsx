@@ -1,6 +1,7 @@
 import React from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import SeatingTemplatesScreen from './templates';
+import SeatingMapWebScreen from './web/SeatingMapWebScreen';
 
 export default function SeatingTemplatesWebPage() {
   // On native we just render the same screen; this route is mainly for web.
@@ -10,7 +11,7 @@ export default function SeatingTemplatesWebPage() {
 
   return (
     <View style={styles.page}>
-      <SeatingTemplatesScreen />
+      <SeatingMapWebScreen />
     </View>
   );
 }
