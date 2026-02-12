@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -9,9 +9,10 @@ import {
   type TableType,
 } from './types';
 
-type TabKey = 'tables' | 'zones' | 'text';
+type TabKey = 'tables' | 'zones' | 'text' | 'map';
 
 type Props = {
+  onBack: () => void;
   onAddTable: (config: TableConfig) => void;
   onAddZone: (name: string, widthCells: number, heightCells: number) => void;
   onAddLabel: (text: string) => void;
@@ -19,9 +20,13 @@ type Props = {
   onDeleteSelected: () => void;
   hasSelection: boolean;
   saving?: boolean;
+  gridCols: number;
+  gridRows: number;
+  onSetGrid: (cols: number, rows: number) => void;
 };
 
 export function TableSidebar({
+  onBack,
   onAddTable,
   onAddZone,
   onAddLabel,
@@ -29,6 +34,9 @@ export function TableSidebar({
   onDeleteSelected,
   hasSelection,
   saving,
+  gridCols,
+  gridRows,
+  onSetGrid,
 }: Props) {
   const [tab, setTab] = useState<TabKey>('tables');
 
@@ -49,53 +57,96 @@ export function TableSidebar({
 
   const [labelText, setLabelText] = useState('');
 
+  // Map size (grid) controls
+  const [colsDraft, setColsDraft] = useState(gridCols);
+  const [rowsDraft, setRowsDraft] = useState(gridRows);
+  useEffect(() => setColsDraft(gridCols), [gridCols]);
+  useEffect(() => setRowsDraft(gridRows), [gridRows]);
+
   return (
     <View style={styles.sidebar}>
       <View style={styles.header}>
-        <Text style={styles.title}>מפת הושבה</Text>
-        <Text style={styles.subtitle}>גרירה לפי משבצות · בחירה מרובה עם Ctrl/Cmd</Text>
+        <View style={styles.headerRow}>
+          <View style={styles.headerTextWrap}>
+            <Text style={styles.title}>מפת הושבה</Text>
+            <Text style={styles.subtitle}>סדרו את מפת השולחנות של האירוע</Text>
+          </View>
+
+          <Pressable
+            onPress={onBack}
+            style={({ pressed }) => [styles.backBtn, pressed && { opacity: 0.85 }]}
+            hitSlop={10}
+          >
+            <Ionicons name="chevron-forward" size={22} color="rgba(17,24,39,0.70)" />
+          </Pressable>
+        </View>
       </View>
 
       <View style={styles.tabsRow}>
         <TabButton label="שולחנות" active={tab === 'tables'} onPress={() => setTab('tables')} />
         <TabButton label="אזורים" active={tab === 'zones'} onPress={() => setTab('zones')} />
         <TabButton label="טקסט" active={tab === 'text'} onPress={() => setTab('text')} />
+        <TabButton label="מפה" active={tab === 'map'} onPress={() => setTab('map')} />
       </View>
 
       <View style={styles.body}>
+        {tab === 'map' ? (
+          <View style={styles.mapSizeCard}>
+            <SectionTitle title="גודל מפה (משבצות)" />
+            <View style={styles.rowBetween}>
+              <Text style={styles.value}>{colsDraft}</Text>
+              <Text style={styles.label}>רוחב</Text>
+            </View>
+            <Stepper value={colsDraft} onChange={setColsDraft} min={20} max={300} />
+            <View style={styles.rowBetween}>
+              <Text style={styles.value}>{rowsDraft}</Text>
+              <Text style={styles.label}>גובה</Text>
+            </View>
+            <Stepper value={rowsDraft} onChange={setRowsDraft} min={20} max={300} />
+            <PrimaryButton label="החל גודל מפה" onPress={() => onSetGrid(colsDraft, rowsDraft)} />
+          </View>
+        ) : null}
+
         {tab === 'tables' ? (
           <>
             <SectionTitle title="סוג שולחן" />
             <View style={styles.typeRow}>
               <TypeButton
                 label="רגיל"
-                icon="add-circle-outline"
+                icon={(c) => <Ionicons name="square-outline" size={18} color={c} />}
                 active={tableType === 'regular'}
                 color="#2563EB"
                 onPress={() => setTableType('regular')}
               />
               <TypeButton
                 label="רזרבה"
-                icon="alert-circle-outline"
+                icon={(c) => (
+                  <View style={styles.iconStack}>
+                    <Ionicons name="square-outline" size={18} color={c} />
+                    <Ionicons name="help" size={12} color={c} style={styles.iconOverlay} />
+                  </View>
+                )}
                 active={tableType === 'reserve'}
                 color="#F59E0B"
                 onPress={() => setTableType('reserve')}
               />
               <TypeButton
                 label="אביר"
-                icon="square-outline"
+                // Ionicons doesn't reliably include a rectangle-outline glyph across builds,
+                // so we render a simple rectangle ourselves.
+                icon={(c) => <View style={[styles.iconRect, { borderColor: c }]} />}
                 active={tableType === 'knight'}
                 color="#7C3AED"
                 onPress={() => setTableType('knight')}
               />
             </View>
 
-            <View style={styles.rowBetween}>
-              <Text style={styles.label}>מקומות</Text>
-              <Text style={styles.value}>{seats}</Text>
+            <View style={styles.seatsStat}>
+              <Text style={styles.seatsLabel}>מקומות בשולחן</Text>
+              <Text style={styles.seatsValue}>{seats}</Text>
             </View>
 
-            <SectionTitle title="כמות" />
+            <SectionTitle title="כמות שולחנות" />
             <Stepper
               value={quantity}
               onChange={setQuantity}
@@ -105,8 +156,8 @@ export function TableSidebar({
 
             <SectionTitle title="כיוון סידור" />
             <View style={styles.segmentRow}>
-              <SegmentButton label="שורה" active={orientation === 'row'} onPress={() => setOrientation('row')} />
-              <SegmentButton label="טור" active={orientation === 'column'} onPress={() => setOrientation('column')} />
+              <SegmentButton label="שורה" icon="row" active={orientation === 'row'} onPress={() => setOrientation('row')} />
+              <SegmentButton label="טור" icon="column" active={orientation === 'column'} onPress={() => setOrientation('column')} />
             </View>
 
             <PrimaryButton
@@ -202,7 +253,14 @@ function SectionTitle({ title }: { title: string }) {
 
 function TabButton({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.tabBtn, active && styles.tabBtnActive, pressed && { opacity: 0.92 }]}>
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.tabBtn,
+        active ? styles.tabBtnActive : styles.tabBtnInactive,
+        pressed && { opacity: 0.82 },
+      ]}
+    >
       <Text style={[styles.tabText, active && styles.tabTextActive]}>{label}</Text>
     </Pressable>
   );
@@ -216,22 +274,41 @@ function TypeButton({
   onPress,
 }: {
   label: string;
-  icon: any;
+  icon: (iconColor: string) => React.ReactNode;
   active: boolean;
   color: string;
   onPress: () => void;
 }) {
+  const iconColor = active ? color : 'rgba(17,24,39,0.55)';
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.typeBtn, active && { borderColor: color }, pressed && { opacity: 0.92 }]}>
-      <Ionicons name={icon} size={18} color={active ? color : 'rgba(17,24,39,0.55)'} />
+      {icon(iconColor)}
       <Text style={[styles.typeText, active && { color }]}>{label}</Text>
     </Pressable>
   );
 }
 
-function SegmentButton({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+function SegmentButton({
+  label,
+  active,
+  icon,
+  onPress,
+}: {
+  label: string;
+  active: boolean;
+  icon: 'row' | 'column';
+  onPress: () => void;
+}) {
+  const c = active ? '#2b8cee' : 'rgba(17,24,39,0.35)';
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.segmentBtn, active && styles.segmentBtnActive, pressed && { opacity: 0.92 }]}>
+      <View
+        style={[
+          styles.segmentIcon,
+          icon === 'row' ? styles.segmentIconRow : styles.segmentIconCol,
+          { backgroundColor: c },
+        ]}
+      />
       <Text style={[styles.segmentText, active && styles.segmentTextActive]}>{label}</Text>
     </Pressable>
   );
@@ -297,37 +374,78 @@ const styles = StyleSheet.create({
     width: 340,
     flexShrink: 0,
     backgroundColor: 'rgba(255,255,255,0.96)',
-    borderLeftWidth: 1,
-    borderLeftColor: 'rgba(17,24,39,0.10)',
+    borderRightWidth: 1,
+    borderRightColor: 'rgba(17,24,39,0.10)',
     padding: 14,
   },
   header: {
     paddingVertical: 6,
     paddingHorizontal: 2,
   },
-  title: { fontSize: 18, fontWeight: '900', color: '#111418', textAlign: 'right' },
-  subtitle: { marginTop: 4, fontSize: 12, fontWeight: '700', color: 'rgba(17,24,39,0.55)', textAlign: 'right' },
-
-  tabsRow: { flexDirection: 'row-reverse', gap: 8, marginTop: 10 },
-  tabBtn: {
-    flex: 1,
-    height: 36,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(17,24,39,0.10)',
-    backgroundColor: '#fff',
+  // Center title/subtitle, keep back button on the right (like the screenshot).
+  headerRow: {
+    position: 'relative',
+    width: '100%',
+    minHeight: 56,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  tabBtnActive: {
-    borderColor: 'rgba(43,140,238,0.45)',
-    backgroundColor: 'rgba(43,140,238,0.10)',
+  headerTextWrap: { alignItems: 'center', justifyContent: 'center' },
+  backBtn: {
+    position: 'absolute',
+    right: 0,
+    top: '50%',
+    marginTop: -20,
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(17,24,39,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.08)',
   },
-  tabText: { fontWeight: '900', fontSize: 12, color: 'rgba(17,24,39,0.70)' },
+  title: { fontSize: 18, fontWeight: '900', color: '#111418', textAlign: 'center', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
+  subtitle: { marginTop: 4, fontSize: 12, fontWeight: '700', color: 'rgba(17,24,39,0.55)', textAlign: 'center', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
+
+  // Tabs (underline style, like the screenshot)
+  tabsRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 16,
+    marginTop: 10,
+    paddingHorizontal: 14,
+    paddingTop: 6,
+    paddingBottom: 2,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(17,24,39,0.10)',
+  },
+  tabBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 3,
+    marginBottom: -1, // sit on top of the row divider line
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  tabBtnActive: {
+    borderBottomColor: '#2b8cee',
+  },
+  tabBtnInactive: {
+    borderBottomColor: 'transparent',
+  },
+  tabText: { fontWeight: '900', fontSize: 12, color: 'rgba(17,24,39,0.70)', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
   tabTextActive: { color: '#2b8cee' },
 
   body: { marginTop: 12, gap: 10 },
-  sectionTitle: { marginTop: 6, fontSize: 12, fontWeight: '900', color: '#111418', textAlign: 'right' },
+  sectionTitle: { marginTop: 6, fontSize: 12, fontWeight: '900', color: '#111418', textAlign: 'right', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
+
+  mapSizeCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.10)',
+    backgroundColor: 'rgba(17,24,39,0.02)',
+    padding: 10,
+  },
 
   typeRow: { flexDirection: 'row-reverse', gap: 10, marginTop: 8 },
   typeBtn: {
@@ -342,11 +460,31 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
   },
-  typeText: { fontWeight: '900', color: 'rgba(17,24,39,0.70)' },
+  iconStack: {
+    width: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  iconOverlay: {
+    position: 'absolute',
+  },
+  iconRect: {
+    width: 20,
+    height: 12,
+    borderRadius: 3,
+    borderWidth: 2,
+  },
+  typeText: { fontWeight: '900', color: 'rgba(17,24,39,0.70)', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
 
   rowBetween: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 },
-  label: { fontSize: 12, fontWeight: '800', color: 'rgba(17,24,39,0.60)' },
-  value: { fontSize: 14, fontWeight: '900', color: '#111418' },
+  label: { fontSize: 12, fontWeight: '800', color: 'rgba(17,24,39,0.60)', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
+  value: { fontSize: 14, fontWeight: '900', color: '#111418', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
+
+  seatsStat: { marginTop: 10, alignItems: 'flex-start' },
+  seatsLabel: { fontSize: 12, fontWeight: '800', color: 'rgba(17,24,39,0.60)', textAlign: 'left', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
+  seatsValue: { marginTop: 6, fontSize: 20, fontWeight: '900', color: '#111418', textAlign: 'left', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
 
   stepper: {
     flexDirection: 'row-reverse',
@@ -373,7 +511,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#2b8cee',
     borderColor: 'rgba(43,140,238,0.30)',
   },
-  stepValue: { fontSize: 24, fontWeight: '900', color: '#111418', letterSpacing: -0.4 },
+  stepValue: { fontSize: 24, fontWeight: '900', color: '#111418', letterSpacing: -0.4, ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
 
   segmentRow: { flexDirection: 'row-reverse', gap: 10, marginTop: 6 },
   segmentBtn: {
@@ -383,14 +521,27 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(17,24,39,0.10)',
     backgroundColor: '#fff',
+    flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 10,
   },
   segmentBtnActive: {
     borderColor: 'rgba(43,140,238,0.45)',
     backgroundColor: 'rgba(43,140,238,0.10)',
   },
-  segmentText: { fontWeight: '900', color: 'rgba(17,24,39,0.70)' },
+  segmentIcon: {
+    borderRadius: 999,
+  },
+  segmentIconRow: {
+    width: 22,
+    height: 3,
+  },
+  segmentIconCol: {
+    width: 3,
+    height: 22,
+  },
+  segmentText: { fontWeight: '900', color: 'rgba(17,24,39,0.70)', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
   segmentTextActive: { color: '#2b8cee' },
 
   input: {
@@ -403,6 +554,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#111418',
     textAlign: 'right',
+    ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null),
   },
 
   primaryBtn: {
@@ -413,7 +565,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  primaryBtnText: { fontWeight: '900', color: '#fff' },
+  primaryBtnText: { fontWeight: '900', color: '#fff', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
 
   footer: { marginTop: 14, gap: 10 },
   saveBtn: {
@@ -425,7 +577,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
   },
-  saveBtnText: { color: '#fff', fontWeight: '900' },
+  saveBtnText: { color: '#fff', fontWeight: '900', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
   deleteBtn: {
     height: 46,
     borderRadius: 14,
@@ -437,6 +589,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
   },
-  deleteBtnText: { color: '#B91C1C', fontWeight: '900' },
+  deleteBtnText: { color: '#B91C1C', fontWeight: '900', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
 });
 

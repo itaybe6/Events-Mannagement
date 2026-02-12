@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated, Pressable, ActivityIndicator, Modal, SectionList, TextInput, FlatList, Dimensions, Alert, PanResponder, Platform, StatusBar } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { useUserStore } from '@/store/userStore';
@@ -10,6 +10,8 @@ import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { colors } from '@/constants/colors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { EventSwitcher } from '@/components/EventSwitcher';
+import { SeatingGridReadonly } from '../seating/web/SeatingGridReadonly';
+import { DEFAULT_GRID_COLS, DEFAULT_GRID_ROWS, tableCellSize, type Orientation, type TableType } from '../seating/web/types';
 
 const { width, height } = Dimensions.get('window');
 
@@ -44,6 +46,7 @@ export default function BrideGroomSeating() {
   const [isPositionsReady, setIsPositionsReady] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [textAreas, setTextAreas] = useState<any[]>([]);
+  const [webSketch, setWebSketch] = useState<null | { gridCols: number; gridRows: number; tables: any[]; zones: any[]; labels: any[] }>(null);
   const [pressedTable, setPressedTable] = useState<string | null>(null);
   const positions = useRef<{ [id: string]: Animated.ValueXY }>({}).current;
   const scrollViewRef = useRef<ScrollView>(null);
@@ -486,19 +489,114 @@ export default function BrideGroomSeating() {
     }
   };
 
-  // משיכת הערות (annotations) מה-DB
+  function getWebV2FromAnnotations(annotations: any) {
+    if (!annotations) return null;
+    if (Array.isArray(annotations)) {
+      const found = annotations.find((x) => x && typeof x === 'object' && x.type === 'web_v2' && x.version === 2);
+      return found ?? null;
+    }
+    if (typeof annotations === 'object') {
+      const w = (annotations as any).web_v2;
+      return w && typeof w === 'object' ? w : null;
+    }
+    return null;
+  }
+
+  // משיכת הערות (annotations) + סקיצה מה-DB
   const fetchTextAreas = async () => {
     if (!resolvedEventId) return;
     
     const { data, error } = await supabase
       .from('seating_maps')
-      .select('annotations')
+      .select('annotations,tables')
       .eq('event_id', resolvedEventId)
-      .single();
-    if (!error && data && Array.isArray(data.annotations)) {
-      setTextAreas(data.annotations);
+      .maybeSingle();
+
+    const annotations = (data as any)?.annotations;
+    if (!error && data && Array.isArray(annotations)) {
+      setTextAreas(annotations);
     } else {
       setTextAreas([]);
+    }
+
+    // Web sketch (readonly viewer): prefer web_v2, else fallback to legacy seating_maps.tables (or public.tables)
+    try {
+      const webV2 = getWebV2FromAnnotations(annotations);
+      if (webV2) {
+        const cols = typeof webV2?.grid?.cols === 'number' ? Math.round(webV2.grid.cols) : DEFAULT_GRID_COLS;
+        const rows = typeof webV2?.grid?.rows === 'number' ? Math.round(webV2.grid.rows) : DEFAULT_GRID_ROWS;
+        setWebSketch({
+          gridCols: cols,
+          gridRows: rows,
+          tables: Array.isArray(webV2.tables) ? webV2.tables : [],
+          zones: Array.isArray(webV2.zones) ? webV2.zones : [],
+          labels: Array.isArray(webV2.labels) ? webV2.labels : [],
+        });
+        return;
+      }
+
+      const legacy = Array.isArray((data as any)?.tables) ? ((data as any).tables as any[]) : null;
+      if (legacy && legacy.length) {
+        const mapped = legacy.filter(Boolean).map((t: any, idx: number) => {
+          const type: TableType = t.isReserve ? 'reserve' : t.isKnight ? 'knight' : 'regular';
+          const num = typeof t.id === 'number' ? t.id : idx + 1;
+          const gridX = Math.round((Number(t.x) || 0) / 40);
+          const gridY = Math.round((Number(t.y) || 0) / 40);
+          return {
+            id: `table-legacy-${num}`,
+            type,
+            seats: Number(t.seats) || (type === 'knight' ? 20 : 12),
+            orientation: 'row' as Orientation,
+            gridX,
+            gridY,
+            number: num,
+          };
+        });
+
+        const maxX = mapped.reduce((m: number, t: any) => Math.max(m, t.gridX + tableCellSize(t.type, t.seats, t.orientation).w), 0);
+        const maxY = mapped.reduce((m: number, t: any) => Math.max(m, t.gridY + tableCellSize(t.type, t.seats, t.orientation).h), 0);
+        setWebSketch({
+          gridCols: Math.max(DEFAULT_GRID_COLS, maxX + 6),
+          gridRows: Math.max(DEFAULT_GRID_ROWS, maxY + 6),
+          tables: mapped,
+          zones: [],
+          labels: [],
+        });
+        return;
+      }
+
+      // Last fallback: derive from public.tables x/y (written by the editor as grid*40)
+      if (tables.length) {
+        const mapped = tables.map((t) => {
+          const type: TableType = t.shape === 'reserve' ? 'reserve' : t.shape === 'rectangle' ? 'knight' : 'regular';
+          const gridX = Math.round((Number(t.x) || 0) / 40);
+          const gridY = Math.round((Number(t.y) || 0) / 40);
+          return {
+            id: `table-public-${t.id}`,
+            type,
+            seats: Number(t.capacity) || (type === 'knight' ? 20 : 12),
+            orientation: 'row' as Orientation,
+            gridX,
+            gridY,
+            number: (t as any).number ?? undefined,
+          };
+        });
+
+        const maxX = mapped.reduce((m: number, t: any) => Math.max(m, t.gridX + tableCellSize(t.type, t.seats, t.orientation).w), 0);
+        const maxY = mapped.reduce((m: number, t: any) => Math.max(m, t.gridY + tableCellSize(t.type, t.seats, t.orientation).h), 0);
+        setWebSketch({
+          gridCols: Math.max(DEFAULT_GRID_COLS, maxX + 6),
+          gridRows: Math.max(DEFAULT_GRID_ROWS, maxY + 6),
+          tables: mapped,
+          zones: [],
+          labels: [],
+        });
+        return;
+      }
+
+      setWebSketch(null);
+    } catch {
+      setWebSketch(null);
     }
   };
   
@@ -544,6 +642,23 @@ export default function BrideGroomSeating() {
       }, 300);
     }
   };
+
+  // IMPORTANT: hooks must run on every render (before any early returns).
+  const seatedByNumber = useMemo(() => {
+    const numberById = new Map<string, number>(
+      (tables || []).filter(Boolean).map((t: any) => [String(t.id), Number(t.number)])
+    );
+    const map = new Map<number, number>();
+    for (const g of guests || []) {
+      const tid = g?.table_id ? String(g.table_id) : null;
+      if (!tid) continue;
+      const num = numberById.get(tid);
+      if (!num) continue;
+      const ppl = Number(g?.numberOfPeople ?? g?.number_of_people ?? 1) || 1;
+      map.set(num, (map.get(num) ?? 0) + ppl);
+    }
+    return map;
+  }, [guests, tables]);
 
   if (loading) {
     return <View style={styles.centered}><ActivityIndicator size="large" /></View>;
@@ -619,19 +734,11 @@ export default function BrideGroomSeating() {
       <View style={styles.statsContainer}>
         <TouchableOpacity 
           style={styles.statBox}
-          onPress={() => openModalWithGuests('אישרו הגעה', confirmedGuestsList)}
+          onPress={() => openModalWithGuests('טרם הושבו', unseatedGuestsList)}
         >
-          <Ionicons name="checkmark-circle-outline" size={28} color={colors.primary} />
-          <Text style={styles.statValue}>{confirmedGuestsCount}</Text>
-          <Text style={styles.statLabel}>אישרו הגעה</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.statBox}
-          onPress={() => openModalWithGuests('הושבו', seatedGuestsList)}
-        >
-          <Ionicons name="body" size={28} color={colors.primary} />
-          <Text style={styles.statValue}>{seatedGuestsCount}</Text>
-          <Text style={styles.statLabel}>הושבו</Text>
+          <Ionicons name="walk" size={28} color={colors.primary} />
+          <Text style={styles.statValue}>{unseatedGuestsCount}</Text>
+          <Text style={styles.statLabel}>טרם הושבו</Text>
         </TouchableOpacity>
         <TouchableOpacity 
           style={styles.statBox}
@@ -648,11 +755,19 @@ export default function BrideGroomSeating() {
         </TouchableOpacity>
         <TouchableOpacity 
           style={styles.statBox}
-          onPress={() => openModalWithGuests('טרם הושבו', unseatedGuestsList)}
+          onPress={() => openModalWithGuests('הושבו', seatedGuestsList)}
         >
-          <Ionicons name="walk" size={28} color={colors.primary} />
-          <Text style={styles.statValue}>{unseatedGuestsCount}</Text>
-          <Text style={styles.statLabel}>טרם הושבו</Text>
+          <Ionicons name="body" size={28} color={colors.primary} />
+          <Text style={styles.statValue}>{seatedGuestsCount}</Text>
+          <Text style={styles.statLabel}>הושבו</Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={styles.statBox}
+          onPress={() => openModalWithGuests('אישרו הגעה', confirmedGuestsList)}
+        >
+          <Ionicons name="checkmark-circle-outline" size={28} color={colors.primary} />
+          <Text style={styles.statValue}>{confirmedGuestsCount}</Text>
+          <Text style={styles.statLabel}>אישרו הגעה</Text>
         </TouchableOpacity>
       </View>
       
@@ -906,122 +1021,149 @@ export default function BrideGroomSeating() {
       </Modal>
 
       {/* Canvas */}
-      <ScrollView
-        ref={scrollViewRef}
-        style={styles.canvasScroll}
-        contentContainerStyle={{ 
-          width: canvasWidth,
-          height: height * 2,
-        }}
-        maximumZoomScale={3}
-        minimumZoomScale={0.5}
-        bounces={false}
-        bouncesZoom={false}
-        horizontal
-        scrollEnabled={!dragMode}
-        showsHorizontalScrollIndicator={false}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={[styles.canvas, { width: canvasWidth, height: height * 2 }]}> 
-            {/* Grid */}
-            {[...Array(Math.ceil((height * 2) / 50))].map((_, i) => (
-              <View key={i} style={[styles.gridLine, { top: i * 50 }]} />
-            ))}
-            {[...Array(Math.ceil(canvasWidth / 80))].map((_, i) => (
-              <View key={i} style={[styles.gridLineV, { left: i * 80 }]} />
-            ))}
-            
-            {/* Tables */}
-            {tables.map(table => {
-              // מיקום מתוקן לפי minX ו-padding
-              const adjustedX = (table.x ?? 0) - minX + padding;
-              if (!positions[table.id]) {
-                positions[table.id] = new Animated.ValueXY({
-                  x: adjustedX,
-                  y: typeof table.y === 'number' ? table.y : 60
-                });
-              }
-              // Calculate total people seated at this table
-              const guestsAtTable = guests.filter(g => g.table_id === table.id);
-              const totalPeopleSeated = guestsAtTable.reduce((sum, guest) => sum + (guest.numberOfPeople || 1), 0);
-              const isTableFull = totalPeopleSeated >= table.capacity;
-              const isReserveTable = table.shape === 'reserve';
-              return (
-                <Animated.View
-                  key={table.id}
-                  style={[
-                    styles.table,
-                    table.shape === 'rectangle' ? styles.tableRect : styles.tableSquare,
-                    isTableFull && styles.tableFullStyle,
-                    isReserveTable && styles.reserveTableStyle,
-                    selectedTableForDrag === table.id && styles.tableSelected,
-                    {
-                      transform: [
-                        ...(positions[table.id]
-                          ? positions[table.id].getTranslateTransform()
-                          : [{ translateX: adjustedX }, { translateY: table.y ?? 60 }]),
-                        {
-                          rotate: dragMode
-                            ? wobbleAnim.interpolate({
-                                inputRange: [-1, 1],
-                                outputRange: ['-2deg', '2deg'],
-                              })
-                            : '0deg',
-                        },
-                      ],
-                    },
-                  ]}
-                  {...getPanResponderForTable(table.id).panHandlers}
-                >
-                  <Pressable
-                    onPressIn={() => setPressedTable(table.id)}
-                    onPressOut={() => setPressedTable(null)}
-                    onLongPress={() => {
-                      // Long press enters drag mode (like iOS home screen)
-                      dragModeRef.current = true;
-                      setDragMode(true);
-                      setSelectedTableForDrag(table.id);
-                    }}
-                    delayLongPress={320}
-                    onPress={() => {
-                      // Tap opens modal only when not in drag mode
-                      if (draggingTableIdRef.current === table.id) return;
-                      if (!dragMode) {
-                        handleTablePress(table);
-                      }
-                    }}
-                    style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
-                  >
-                    <Text style={[
-                      styles.tableName,
-                      isTableFull && styles.tableFullText,
-                      isReserveTable && styles.reserveTableText,
-                      pressedTable === table.id && { color: isTableFull ? colors.white : colors.textLight }
-                    ]}>{table.number}</Text>
-                    <Text style={[
-                      styles.tableCap,
-                      isTableFull && styles.tableFullCapText,
-                      isReserveTable && styles.reserveTableCapText,
-                      pressedTable === table.id && { color: isTableFull ? colors.white : colors.gray[500] }
-                    ]}>
-                      {totalPeopleSeated} / {table.capacity}
-                    </Text>
-                  </Pressable>
-                </Animated.View>
-              );
-            })}
-            
-            {/* Text Areas */}
-            {textAreas.map((t, idx) => (
-              <View
-                key={t.id}
-                style={[styles.textArea, { top: t.y ?? 200 + idx * 40, left: t.x ?? 200 }]}
-              >
-                <Text style={styles.textAreaText}>{t.text}</Text>
-              </View>
-            ))}
+      {Platform.OS === 'web' && webSketch ? (
+        <View style={styles.canvasScroll}>
+          {/*
+            Tooltip on hover: show seated guests count for this table number.
+            We compute counts from the current guests list.
+          */}
+          <SeatingGridReadonly
+            gridCols={webSketch.gridCols}
+            gridRows={webSketch.gridRows}
+            tables={webSketch.tables}
+            zones={webSketch.zones}
+            labels={webSketch.labels}
+            getTableTooltip={(t: any) => {
+              const num = t?.number;
+              if (!num) return null;
+              const seated = seatedByNumber.get(Number(num)) ?? 0;
+              return `יושבים בשולחן: ${seated}`;
+            }}
+            onPressTableNumber={(num) => {
+              if (!num) return;
+              const t = tables.find((x) => x.number === num);
+              if (t) handleTablePress(t);
+            }}
+          />
         </View>
-      </ScrollView>
+      ) : (
+        <ScrollView
+          ref={scrollViewRef}
+          style={styles.canvasScroll}
+          contentContainerStyle={{ 
+            width: canvasWidth,
+            height: height * 2,
+          }}
+          maximumZoomScale={3}
+          minimumZoomScale={0.5}
+          bounces={false}
+          bouncesZoom={false}
+          horizontal
+          scrollEnabled={!dragMode}
+          showsHorizontalScrollIndicator={false}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={[styles.canvas, { width: canvasWidth, height: height * 2 }]}> 
+              {/* Grid */}
+              {[...Array(Math.ceil((height * 2) / 50))].map((_, i) => (
+                <View key={i} style={[styles.gridLine, { top: i * 50 }]} />
+              ))}
+              {[...Array(Math.ceil(canvasWidth / 80))].map((_, i) => (
+                <View key={i} style={[styles.gridLineV, { left: i * 80 }]} />
+              ))}
+              
+              {/* Tables */}
+              {tables.map(table => {
+                // מיקום מתוקן לפי minX ו-padding
+                const adjustedX = (table.x ?? 0) - minX + padding;
+                if (!positions[table.id]) {
+                  positions[table.id] = new Animated.ValueXY({
+                    x: adjustedX,
+                    y: typeof table.y === 'number' ? table.y : 60
+                  });
+                }
+                // Calculate total people seated at this table
+                const guestsAtTable = guests.filter(g => g.table_id === table.id);
+                const totalPeopleSeated = guestsAtTable.reduce((sum, guest) => sum + (guest.numberOfPeople || 1), 0);
+                const isTableFull = totalPeopleSeated >= table.capacity;
+                const isReserveTable = table.shape === 'reserve';
+                return (
+                  <Animated.View
+                    key={table.id}
+                    style={[
+                      styles.table,
+                      table.shape === 'rectangle' ? styles.tableRect : styles.tableSquare,
+                      isTableFull && styles.tableFullStyle,
+                      isReserveTable && styles.reserveTableStyle,
+                      selectedTableForDrag === table.id && styles.tableSelected,
+                      {
+                        transform: [
+                          ...(positions[table.id]
+                            ? positions[table.id].getTranslateTransform()
+                            : [{ translateX: adjustedX }, { translateY: table.y ?? 60 }]),
+                          {
+                            rotate: dragMode
+                              ? wobbleAnim.interpolate({
+                                  inputRange: [-1, 1],
+                                  outputRange: ['-2deg', '2deg'],
+                                })
+                              : '0deg',
+                          },
+                        ],
+                      },
+                    ]}
+                    {...getPanResponderForTable(table.id).panHandlers}
+                  >
+                    <Pressable
+                      onPressIn={() => setPressedTable(table.id)}
+                      onPressOut={() => setPressedTable(null)}
+                      onLongPress={() => {
+                        // Long press enters drag mode (like iOS home screen)
+                        dragModeRef.current = true;
+                        setDragMode(true);
+                        setSelectedTableForDrag(table.id);
+                      }}
+                      delayLongPress={320}
+                      onPress={() => {
+                        // Tap opens modal only when not in drag mode
+                        if (draggingTableIdRef.current === table.id) return;
+                        if (!dragMode) {
+                          handleTablePress(table);
+                        }
+                      }}
+                      style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
+                    >
+                      <Text style={[
+                        styles.tableName,
+                        isTableFull && styles.tableFullText,
+                        isReserveTable && styles.reserveTableText,
+                        pressedTable === table.id && { color: isTableFull ? colors.white : colors.textLight }
+                      ]}>{table.number}</Text>
+                      <Text style={[
+                        styles.tableCap,
+                        isTableFull && styles.tableFullCapText,
+                        isReserveTable && styles.reserveTableCapText,
+                        pressedTable === table.id && { color: isTableFull ? colors.white : colors.gray[500] }
+                      ]}>
+                        {totalPeopleSeated} / {table.capacity}
+                      </Text>
+                    </Pressable>
+                  </Animated.View>
+                );
+              })}
+              
+              {/* Text Areas */}
+              {textAreas.map((t, idx) => (
+                <View
+                  key={t.id}
+                  style={[styles.textArea, { top: t.y ?? 200 + idx * 40, left: t.x ?? 200 }]}
+                >
+                  <Text style={styles.textAreaText}>{t.text}</Text>
+                </View>
+              ))}
+          </View>
+        </ScrollView>
+      )}
     </View>
   );
 }

@@ -7,6 +7,7 @@ body,
 #root {
   direction: rtl;
   text-align: right;
+  font-family: Rubik, system-ui, -apple-system, "Segoe UI", Arial, "Noto Sans Hebrew", "Noto Sans", sans-serif;
 }
 
 /* Strengthen RTL inheritance for web (incl. 3rd-party components) */

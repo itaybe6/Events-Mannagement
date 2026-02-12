@@ -4,7 +4,7 @@ export type Orientation = 'row' | 'column';
 export const FIXED_SEATS: Record<TableType, number> = {
   regular: 12,
   knight: 20,
-  reserve: 8,
+  reserve: 12,
 };
 
 export const TABLE_LABELS: Record<TableType, string> = {
@@ -53,9 +53,12 @@ export type SeatingItem =
   | ({ kind: 'zone' } & Zone)
   | ({ kind: 'label' } & TextLabel);
 
-export const CELL_SIZE = 24;
-export const GRID_COLS = 50;
-export const GRID_ROWS = 35;
+// Visual density of the web seating grid (px per cell).
+// Smaller value => smaller tables on screen => easier to fit many tables in the viewport.
+export const CELL_SIZE = 18;
+
+export const DEFAULT_GRID_COLS = 50;
+export const DEFAULT_GRID_ROWS = 35;
 
 export type GridRect = {
   x: number;

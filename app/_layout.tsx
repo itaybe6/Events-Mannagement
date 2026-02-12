@@ -19,6 +19,7 @@ I18nManager.allowRTL(true);
 I18nManager.forceRTL(true);
 
 const rtlTextStyle = { textAlign: 'right' as const, writingDirection: 'rtl' as const };
+const webRubikStyle = Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as const) : null;
 const RTL_MARK = '\u200F';
 
 const toRtlAlertText = (value?: string) => {
@@ -78,10 +79,10 @@ patchAlertsForRTL();
 patchGlobalAlertForRTL();
 
 Text.defaultProps = Text.defaultProps || {};
-Text.defaultProps.style = [rtlTextStyle, Text.defaultProps.style];
+Text.defaultProps.style = [webRubikStyle, rtlTextStyle, Text.defaultProps.style].filter(Boolean);
 
 TextInput.defaultProps = TextInput.defaultProps || {};
-TextInput.defaultProps.style = [rtlTextStyle, TextInput.defaultProps.style];
+TextInput.defaultProps.style = [webRubikStyle, rtlTextStyle, TextInput.defaultProps.style].filter(Boolean);
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -107,6 +108,33 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    // Load Google Font (Rubik) once for Hebrew-friendly UI on web.
+    // We inject <link> tags to keep it simple and avoid extra deps.
+    try {
+      const head = document.head;
+      const ensureLink = (id: string, rel: string, href: string, extra?: Record<string, string>) => {
+        if (document.getElementById(id)) return;
+        const link = document.createElement('link');
+        link.id = id;
+        link.rel = rel;
+        link.href = href;
+        if (extra) {
+          for (const [k, v] of Object.entries(extra)) link.setAttribute(k, v);
+        }
+        head.appendChild(link);
+      };
+
+      ensureLink('gf-preconnect-1', 'preconnect', 'https://fonts.googleapis.com');
+      ensureLink('gf-preconnect-2', 'preconnect', 'https://fonts.gstatic.com', { crossorigin: '' });
+      ensureLink(
+        'gf-rubik',
+        'stylesheet',
+        'https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800;900&display=swap&subset=hebrew'
+      );
+    } catch {
+      // ignore
+    }
+
     // Ensure real RTL at the DOM level (some web libs read `body.dir`)
     document.documentElement.setAttribute('dir', 'rtl');
     document.documentElement.setAttribute('lang', 'he');
@@ -114,6 +142,9 @@ export default function RootLayout() {
     if (document.body) {
       document.body.style.direction = 'rtl';
       document.body.style.textAlign = 'right';
+      // Prefer Rubik on web (falls back safely if font not loaded yet)
+      document.body.style.fontFamily =
+        'Rubik, system-ui, -apple-system, "Segoe UI", Arial, "Noto Sans Hebrew", "Noto Sans", sans-serif';
     }
   }, []);
 
@@ -302,6 +333,7 @@ function RootLayoutNav() {
       
       <Stack.Screen name="rsvp/invite" options={{ title: "הזמנת אורחים" }} />
       <Stack.Screen name="seating/templates" options={{ headerShown: false }} />
+      <Stack.Screen name="seating/templatesWeb" options={{ headerShown: false }} />
        
     </Stack>
   );
