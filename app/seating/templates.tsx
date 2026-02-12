@@ -55,6 +55,23 @@ const PREVIEW_MAP_HEIGHT = 560;
 const PREVIEW_MAP_Y_RANGE = 800;
 const PREVIEW_TABLE_CARD_WIDTH = 44;
 
+// Seating map table sizing (world-space, not screen-space).
+// Smaller values make it easier to fit many tables in the map.
+const MAP_TABLE_SIZE = {
+  regular: { w: 64, h: 64 },
+  knight: { w: 56, h: 110 },
+} as const;
+
+const MAP_TABLE_GAP = 18;
+
+function getMapTableSizeByFlags(isKnight: boolean) {
+  return isKnight ? MAP_TABLE_SIZE.knight : MAP_TABLE_SIZE.regular;
+}
+
+function getMapTableSizeByKind(kind: 'regular' | 'knight' | 'reserve' | 'square') {
+  return kind === 'knight' ? MAP_TABLE_SIZE.knight : MAP_TABLE_SIZE.regular;
+}
+
 type SeatingTemplatesScreenProps = {
   startMode?: 'builder' | 'map';
   eventId?: string;
@@ -775,21 +792,52 @@ export default function SeatingTemplatesScreen(props: SeatingTemplatesScreenProp
   };
 
   const updateTablePosition = useCallback((tableId: number, x: number, y: number) => {
+    // Keep tables inside the map area when mapSize is defined (desktop map mode).
+    if (mapSize?.cols && mapSize?.rows) {
+      const mapW = mapSize.cols * 200;
+      const mapH = mapSize.rows * 200;
+      const table = tablesForEdit.find(t => t.id === tableId);
+      const sz = getMapTableSizeByFlags(!!table?.isKnight);
+      const w = sz.w;
+      const h = sz.h;
+      const clampedX = clamp(x, 0, Math.max(0, mapW - w));
+      const clampedY = clamp(y, 0, Math.max(0, mapH - h));
+      x = Math.round(clampedX / 10) * 10;
+      y = Math.round(clampedY / 10) * 10;
+    }
     setBaseTables(prev =>
       prev.some(t => t.id === tableId) ? prev.map(t => (t.id === tableId ? { ...t, x, y } : t)) : prev
     );
     setManualTables(prev =>
       prev.some(t => t.id === tableId) ? prev.map(t => (t.id === tableId ? { ...t, x, y } : t)) : prev
     );
-  }, []);
+  }, [mapSize?.cols, mapSize?.rows, tablesForEdit]);
 
   const addManualTableAt = useCallback(
     (kind: 'regular' | 'knight' | 'reserve', x: number, y: number) => {
-      const maxId = tablesForEdit.reduce((m, t) => Math.max(m, t.id), 0);
-      const nextId = maxId + 1;
+      // IMPORTANT: avoid reusing IDs that are still present in `hiddenTableIds`.
+      // Otherwise a newly added table can be immediately filtered out (appears as "nothing happened").
+      const maxVisibleId = tablesForEdit.reduce((m, t) => Math.max(m, t.id), 0);
+      const maxHiddenId =
+        hiddenTableIds.size > 0 ? Math.max(...Array.from(hiddenTableIds.values())) : 0;
+      let nextId = Math.max(maxVisibleId, maxHiddenId) + 1;
+      while (hiddenTableIds.has(nextId)) nextId += 1;
       const isKnight = kind === 'knight';
       const isReserve = kind === 'reserve';
-      const seats = isKnight ? 20 : isReserve ? 8 : 12;
+      const seats = isKnight ? 20 : 12;
+
+      // Always clamp new tables into the white map area when mapSize exists.
+      if (mapSize?.cols && mapSize?.rows) {
+        const mapW = mapSize.cols * 200;
+        const mapH = mapSize.rows * 200;
+        const sz = getMapTableSizeByFlags(isKnight);
+        const w = sz.w;
+        const h = sz.h;
+        const clampedX = clamp(x, 0, Math.max(0, mapW - w));
+        const clampedY = clamp(y, 0, Math.max(0, mapH - h));
+        x = Math.round(clampedX / 10) * 10;
+        y = Math.round(clampedY / 10) * 10;
+      }
 
       const newTable: BuiltTable = {
         id: nextId,
@@ -802,9 +850,21 @@ export default function SeatingTemplatesScreen(props: SeatingTemplatesScreenProp
         seated_guests: 0,
       };
 
+      if (__DEV__) {
+        console.log('[SeatingMap:addTable]', {
+          kind,
+          id: nextId,
+          x,
+          y,
+          isKnight,
+          isReserve,
+          mapSize: mapSize?.cols && mapSize?.rows ? { cols: mapSize.cols, rows: mapSize.rows } : null,
+        });
+      }
+
       setManualTables(prev => [...prev, newTable]);
     },
-    [tablesForEdit]
+    [hiddenTableIds, mapSize?.cols, mapSize?.rows, tablesForEdit]
   );
 
   const addManualTablesBatchAt = useCallback(
@@ -818,22 +878,44 @@ export default function SeatingTemplatesScreen(props: SeatingTemplatesScreenProp
       const safeCount = Math.max(1, Math.min(200, Math.floor(count || 1)));
       const isKnight = kind === 'knight';
       const isReserve = kind === 'reserve';
-      const seats = isKnight ? 20 : isReserve ? 8 : 12;
+      const seats = isKnight ? 20 : 12;
 
       // spacing in world units (snapped feel)
-      const w = isKnight ? 68 : 78;
-      const h = isKnight ? 130 : 78;
-      const gap = 26;
+      const sz = getMapTableSizeByFlags(isKnight);
+      const w = sz.w;
+      const h = sz.h;
+      const gap = MAP_TABLE_GAP;
       const stepX = layout === 'row' ? w + gap : 0;
       const stepY = layout === 'column' ? h + gap : 0;
+
+      // Clamp the batch start so the whole group fits inside the white map area.
+      if (mapSize?.cols && mapSize?.rows) {
+        const mapW = mapSize.cols * 200;
+        const mapH = mapSize.rows * 200;
+        const groupW = w + (safeCount - 1) * stepX;
+        const groupH = h + (safeCount - 1) * stepY;
+        x = clamp(x, 0, Math.max(0, mapW - groupW));
+        y = clamp(y, 0, Math.max(0, mapH - groupH));
+        x = Math.round(x / 10) * 10;
+        y = Math.round(y / 10) * 10;
+      }
 
       setManualTables(prev => {
         const maxBase = baseTables.reduce((m, t) => Math.max(m, t.id), 0);
         const maxManual = prev.reduce((m, t) => Math.max(m, t.id), 0);
-        const startId = Math.max(maxBase, maxManual) + 1;
+        const maxHiddenId =
+          hiddenTableIds.size > 0 ? Math.max(...Array.from(hiddenTableIds.values())) : 0;
+        let cursor = Math.max(maxBase, maxManual, maxHiddenId) + 1;
+
+        // Allocate IDs without colliding with hidden ones.
+        const ids: number[] = [];
+        while (ids.length < safeCount) {
+          if (!hiddenTableIds.has(cursor)) ids.push(cursor);
+          cursor += 1;
+        }
 
         const newTables: BuiltTable[] = Array.from({ length: safeCount }).map((_, i) => ({
-          id: startId + i,
+          id: ids[i],
           x: x + i * stepX,
           y: y + i * stepY,
           isKnight,
@@ -843,11 +925,46 @@ export default function SeatingTemplatesScreen(props: SeatingTemplatesScreenProp
           seated_guests: 0,
         }));
 
+        if (__DEV__) {
+          console.log('[SeatingMap:addTablesBatch]', {
+            kind,
+            count: safeCount,
+            layout,
+            start: { x, y },
+            step: { stepX, stepY },
+            ids,
+            mapSize: mapSize?.cols && mapSize?.rows ? { cols: mapSize.cols, rows: mapSize.rows } : null,
+          });
+        }
+
         return [...prev, ...newTables];
       });
     },
-    [baseTables]
+    [baseTables, hiddenTableIds, mapSize?.cols, mapSize?.rows]
   );
+
+  // If a map size is defined, ensure all existing tables are inside the white map area.
+  // This fixes old data where tables were placed in the "gray" outside area.
+  useEffect(() => {
+    if (mode !== 'map') return;
+    if (!mapSize?.cols || !mapSize?.rows) return;
+
+    const mapW = mapSize.cols * 200;
+    const mapH = mapSize.rows * 200;
+
+    const clampTable = (t: BuiltTable) => {
+      const sz = getMapTableSizeByFlags(t.isKnight);
+      const w = sz.w;
+      const h = sz.h;
+      const nx = Math.round(clamp(t.x, 0, Math.max(0, mapW - w)) / 10) * 10;
+      const ny = Math.round(clamp(t.y, 0, Math.max(0, mapH - h)) / 10) * 10;
+      if (nx === t.x && ny === t.y) return t;
+      return { ...t, x: nx, y: ny };
+    };
+
+    setBaseTables(prev => prev.map(clampTable));
+    setManualTables(prev => prev.map(clampTable));
+  }, [mapSize?.cols, mapSize?.rows, mode]);
 
   const handleTableTypePress = useCallback(
     (tableId: number) => {
@@ -1591,10 +1708,11 @@ function SeatingFreeformMap({
   const [sidebarW, setSidebarW] = useState<number>(320);
   const [viewportSize, setViewportSize] = useState<{ w: number; h: number } | null>(null);
   // For all camera/screen math we want the map viewport size (excluding the sidebar).
-  // On web, rely on measured layout sizes (more stable across environments and RTL).
-  // NOTE: On wide desktop screens some browsers can report a "flex child" width that still includes
-  // the sidebar due to layout/RTL quirks. Root width minus the measured sidebar is the most stable.
-  const viewportW = isWeb ? Math.max(320, (rootSize?.w ?? screenW) - (sidebarW || 320)) : screenW;
+  // On web, prefer the measured viewport width (the gray area that contains the stage).
+  // Fallback to (root - sidebar) only until the viewport gets measured.
+  const viewportW = isWeb
+    ? Math.max(320, viewportSize?.w ?? (rootSize?.w ?? screenW) - (sidebarW || 320))
+    : screenW;
   const viewportH = isWeb ? (viewportSize?.h ?? rootSize?.h ?? screenH) : screenH;
   const GRID_MINOR = 40;
   const GRID_MAJOR = 200;
@@ -1720,8 +1838,7 @@ function SeatingFreeformMap({
   const sizeById = useMemo(() => {
     const map = new Map<number, { w: number; h: number }>();
     for (const t of tables) {
-      if (t.isKnight) map.set(t.id, { w: 68, h: 130 });
-      else map.set(t.id, { w: 78, h: 78 });
+      map.set(t.id, getMapTableSizeByFlags(t.isKnight));
     }
     return map;
   }, [tables]);
@@ -1729,7 +1846,7 @@ function SeatingFreeformMap({
   const clampTableToMap = useCallback(
     (id: number, x: number, y: number) => {
       if (!mapSize?.cols || !mapSize?.rows) return { x, y };
-      const sz = sizeById.get(id) ?? { w: 78, h: 78 };
+      const sz = sizeById.get(id) ?? MAP_TABLE_SIZE.regular;
       const mapW = mapSize.cols * GRID_MAJOR;
       const mapH = mapSize.rows * GRID_MAJOR;
       const clampedX = clamp(x, 0, Math.max(0, mapW - sz.w));
@@ -1827,6 +1944,47 @@ function SeatingFreeformMap({
     };
   }, [bounds.minX, bounds.minY, mapSize?.cols, mapSize?.rows, worldSize.pad]);
 
+  // Debug: log where new tables actually land (world + predicted screen coords).
+  // NOTE: Must appear after `origin` is initialized (avoid TDZ on dependency array).
+  const prevTableIdsRef = useRef<Set<number>>(new Set());
+  useEffect(() => {
+    if (!__DEV__) return;
+    const prev = prevTableIdsRef.current;
+    const nextIds = new Set<number>(tables.map(t => t.id));
+    const added = tables.filter(t => !prev.has(t.id));
+    if (added.length) {
+      const s = cameraScale.value || 1;
+      const tx = cameraX.value || 0;
+      const ty = cameraY.value || 0;
+      const stageW = worldSize.w;
+      const stageH = worldSize.h;
+      for (const t of added) {
+        const sz = sizeById.get(t.id) ?? MAP_TABLE_SIZE.regular;
+        const screenX = (t.x + origin.x) * s + tx;
+        const screenY = (t.y + origin.y) * s + ty;
+        const screenCx = (t.x + origin.x + sz.w / 2) * s + tx;
+        const screenCy = (t.y + origin.y + sz.h / 2) * s + ty;
+        console.log('[SeatingMap:tableAdded]', {
+          id: t.id,
+          kind: t.isReserve ? 'reserve' : t.isKnight ? 'knight' : 'regular',
+          world: { x: t.x, y: t.y, w: sz.w, h: sz.h },
+          stage: { w: stageW, h: stageH },
+          camera: { x: tx, y: ty, scale: s },
+          viewport: { w: viewportW, h: viewportH },
+          origin,
+          screenTopLeft: { x: screenX, y: screenY },
+          screenCenter: { x: screenCx, y: screenCy },
+          isOnScreen:
+            screenCx >= 0 &&
+            screenCy >= 0 &&
+            screenCx <= viewportW &&
+            screenCy <= viewportH,
+        });
+      }
+    }
+    prevTableIdsRef.current = nextIds;
+  }, [cameraScale, cameraX, cameraY, origin, sizeById, tables, viewportH, viewportW, worldSize.h, worldSize.w]);
+
   const cancelLasso = useCallback(() => {
     lassoRef.current = null;
     setLasso(null);
@@ -1882,7 +2040,7 @@ function SeatingFreeformMap({
         const pos = posByIdRef.current.get(t.id);
         const tx = pos?.x.value ?? t.x;
         const ty = pos?.y.value ?? t.y;
-        const sz = sizeById.get(t.id) ?? { w: 78, h: 78 };
+        const sz = sizeById.get(t.id) ?? MAP_TABLE_SIZE.regular;
 
         const tMinX = tx;
         const tMaxX = tx + sz.w;
@@ -2010,7 +2168,7 @@ function SeatingFreeformMap({
   const updateGuides = useCallback(
     (dragId: number, x: number, y: number) => {
       const TOL = 8; // alignment tolerance in world-units
-      const dragSize = sizeById.get(dragId) ?? { w: 78, h: 78 };
+      const dragSize = sizeById.get(dragId) ?? MAP_TABLE_SIZE.regular;
 
       const dragLeft = x;
       const dragRight = x + dragSize.w;
@@ -2028,7 +2186,7 @@ function SeatingFreeformMap({
         const pos = posByIdRef.current.get(t.id);
         const ox = pos?.x.value ?? t.x ?? 0;
         const oy = pos?.y.value ?? t.y ?? 0;
-        const sz = sizeById.get(t.id) ?? { w: 78, h: 78 };
+        const sz = sizeById.get(t.id) ?? MAP_TABLE_SIZE.regular;
 
         const left = ox;
         const right = ox + sz.w;
@@ -2319,23 +2477,50 @@ function SeatingFreeformMap({
 
   const confirmAddFlow = useCallback(() => {
     const count = Math.max(1, Math.min(200, addCount || 1));
-    // Use JS camera snapshot so we don't accidentally add to (0,0) if shared values are stale on JS thread.
-    const { x: cx, y: cy, scale: cs } = cameraJsRef.current;
+    // Prefer live shared values (pan updates don't always sync the JS snapshot on every frame).
+    // Fall back to the JS snapshot if needed.
+    const snap = cameraJsRef.current;
+    const cx = typeof cameraX.value === 'number' ? cameraX.value : snap.x;
+    const cy = typeof cameraY.value === 'number' ? cameraY.value : snap.y;
+    const csRaw = typeof cameraScale.value === 'number' ? cameraScale.value : snap.scale;
+    const cs = Number.isFinite(csRaw) && csRaw > 0 ? csRaw : 1;
     // Convert screen-center -> world, then remove origin shift. Snap to 10 world-units.
     let baseX = Math.round((((viewportW / 2 - cx) / cs - origin.x) / 10)) * 10;
     let baseY = Math.round((((viewportH / 2 - cy) / cs - origin.y) / 10)) * 10;
 
     if (count <= 1) {
-      // Clamp inside the white map area (if mapSize is set)
-      const kindW = addKind === 'knight' ? 68 : 78;
-      const kindH = addKind === 'knight' ? 130 : 78;
+      const kindSz = getMapTableSizeByKind(addKind);
+      const kindW = kindSz.w;
+      const kindH = kindSz.h;
       if (mapSize?.cols && mapSize?.rows) {
         const mapW = mapSize.cols * GRID_MAJOR;
         const mapH = mapSize.rows * GRID_MAJOR;
-        baseX = clamp(baseX, 0, Math.max(0, mapW - kindW));
-        baseY = clamp(baseY, 0, Math.max(0, mapH - kindH));
+        const maxX = Math.max(0, mapW - kindW);
+        const maxY = Math.max(0, mapH - kindH);
+        const isInside = baseX >= 0 && baseY >= 0 && baseX <= maxX && baseY <= maxY;
+        if (!isInside) {
+          Alert.alert(
+            'לא ניתן להוסיף כאן',
+            'אפשר להוסיף שולחן רק בתוך המפה הלבנה. הזז/מרכז את המפה ואז נסה שוב.'
+          );
+          return;
+        }
+      }
+      if (__DEV__) {
+        console.log('[SeatingMap:confirmAddFlow:single]', {
+          kind: addKind,
+          baseX,
+          baseY,
+          camera: { x: cx, y: cy, scale: cs },
+          viewport: { w: viewportW, h: viewportH },
+          origin,
+          mapSize: mapSize?.cols && mapSize?.rows ? { cols: mapSize.cols, rows: mapSize.rows } : null,
+        });
       }
       onAddTable(addKind, baseX, baseY);
+      // Immediately focus so the new table is guaranteed visible.
+      // (Relying only on the deferred pendingFocus effect can be flaky on web.)
+      focusWorldPoint(baseX + kindW / 2, baseY + kindH / 2);
       pendingFocusRef.current = { x: baseX, y: baseY };
       setAddOpen(false);
       return;
@@ -2347,29 +2532,57 @@ function SeatingFreeformMap({
       return;
     }
 
-    onAddTablesBatch(addKind, count, addLayout, baseX, baseY);
     // Focus on center of the new group so it's obvious where it was added
     const isKnight = addKind === 'knight';
-    const w = isKnight ? 68 : 78;
-    const h = isKnight ? 130 : 78;
-    const gap = 26;
+    const sz = getMapTableSizeByFlags(isKnight);
+    const w = sz.w;
+    const h = sz.h;
+    const gap = MAP_TABLE_GAP;
     const stepX = addLayout === 'row' ? w + gap : 0;
     const stepY = addLayout === 'column' ? h + gap : 0;
+    const groupW = w + (count - 1) * stepX;
+    const groupH = h + (count - 1) * stepY;
 
     if (mapSize?.cols && mapSize?.rows) {
       const mapW = mapSize.cols * GRID_MAJOR;
       const mapH = mapSize.rows * GRID_MAJOR;
-      const groupW = w + (count - 1) * stepX;
-      const groupH = h + (count - 1) * stepY;
-      baseX = clamp(baseX, 0, Math.max(0, mapW - groupW));
-      baseY = clamp(baseY, 0, Math.max(0, mapH - groupH));
+      const maxX = Math.max(0, mapW - groupW);
+      const maxY = Math.max(0, mapH - groupH);
+      const isInside = baseX >= 0 && baseY >= 0 && baseX <= maxX && baseY <= maxY;
+      if (!isInside) {
+        Alert.alert(
+          'לא ניתן להוסיף כאן',
+          'אפשר להוסיף שולחנות רק בתוך המפה הלבנה. הזז/מרכז את המפה ואז נסה שוב.'
+        );
+        return;
+      }
     }
+
+    // Only add after we verified the location is inside the white map area.
+    if (__DEV__) {
+      console.log('[SeatingMap:confirmAddFlow:batch]', {
+        kind: addKind,
+        count,
+        layout: addLayout,
+        baseX,
+        baseY,
+        group: { w: groupW, h: groupH },
+        step: { stepX, stepY },
+        camera: { x: cx, y: cy, scale: cs },
+        viewport: { w: viewportW, h: viewportH },
+        origin,
+        mapSize: mapSize?.cols && mapSize?.rows ? { cols: mapSize.cols, rows: mapSize.rows } : null,
+      });
+    }
+    onAddTablesBatch(addKind, count, addLayout, baseX, baseY);
+    // Immediately focus the group center so it is visible.
+    focusWorldPoint(baseX + groupW / 2, baseY + groupH / 2);
     pendingFocusRef.current = {
       x: baseX + ((count - 1) * stepX) / 2,
       y: baseY + ((count - 1) * stepY) / 2,
     };
     setAddOpen(false);
-  }, [GRID_MAJOR, addCount, addKind, addLayout, addStep, mapSize?.cols, mapSize?.rows, onAddTable, onAddTablesBatch, origin.x, origin.y, viewportH, viewportW]);
+  }, [GRID_MAJOR, addCount, addKind, addLayout, addStep, focusWorldPoint, mapSize?.cols, mapSize?.rows, onAddTable, onAddTablesBatch, origin.x, origin.y, viewportH, viewportW]);
 
   const cancelAddFlow = useCallback(() => {
     if (addStep === 'layout') {
@@ -2848,6 +3061,9 @@ function SeatingFreeformMap({
                 top: 0,
               } as any)
             : null),
+          // CRITICAL: Tables must never render outside the white map area.
+          // Clip anything that goes beyond the stage bounds (web only).
+          ...(Platform.OS === 'web' ? ({ overflow: 'hidden' } as any) : null),
           // Keep stage transparent on web so the gray "outside map" is fixed (viewport background),
           // and only the map area itself moves.
           backgroundColor: isWeb ? 'transparent' : ui.canvas,
@@ -3635,8 +3851,7 @@ function DraggableTableNode({
   const lastGuideY = useSharedValue(0);
 
   const tableSize = useMemo(() => {
-    if (kind === 'knight') return { w: 68, h: 130 };
-    return { w: 78, h: 78 };
+    return getMapTableSizeByKind(kind);
   }, [kind]);
 
   const dragGesture = useMemo(
