@@ -17,25 +17,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { colors } from "@/constants/colors";
-import { supabase } from "@/lib/supabase";
 import BackSwipe from "@/components/BackSwipe";
-
-type TableRow = {
-  id: string;
-  number: number | null;
-  name: string | null;
-  capacity: number;
-  shape: "square" | "rectangle" | "reserve" | null;
-  x: number | null;
-  y: number | null;
-};
-
-type GuestRow = {
-  id: string;
-  name: string;
-  table_id: string | null;
-  number_of_people: number | null;
-};
+import { useSeatingMapModel, type SeatingGuestRow, type SeatingTableRow } from "@/features/seating/useSeatingMapModel";
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
 
@@ -53,85 +36,24 @@ export default function EmployeeSeatingMapScreen() {
     [resolvedEventId]
   );
 
-  const [loading, setLoading] = useState(true);
-  const [eventTitle, setEventTitle] = useState<string>("");
-  const [tables, setTables] = useState<TableRow[]>([]);
-  const [guests, setGuests] = useState<GuestRow[]>([]);
-  const [annotations, setAnnotations] = useState<Array<{ id?: string; x?: number; y?: number; text?: string }>>(
-    []
+  const { loading, eventTitle, tables, guests, annotations, sumPeople, refresh } = useSeatingMapModel(
+    resolvedEventId ? resolvedEventId : null
   );
 
   const [tableModalOpen, setTableModalOpen] = useState(false);
   const [activeTableId, setActiveTableId] = useState<string | null>(null);
 
   useEffect(() => {
-    let active = true;
+    void refresh();
+  }, [refresh]);
 
-    const load = async () => {
-      if (!resolvedEventId) {
-        if (!active) return;
-        setTables([]);
-        setGuests([]);
-        setAnnotations([]);
-        setEventTitle("");
-        setLoading(false);
-        return;
-      }
-
-      setLoading(true);
-      try {
-        const [evRes, tablesRes, guestsRes, mapRes] = await Promise.all([
-          supabase.from("events").select("title").eq("id", resolvedEventId).maybeSingle(),
-          supabase
-            .from("tables")
-            .select("id,number,name,capacity,shape,x,y")
-            .eq("event_id", resolvedEventId)
-            .order("number"),
-          supabase
-            .from("guests")
-            .select("id,name,table_id,number_of_people")
-            .eq("event_id", resolvedEventId)
-            .order("name"),
-          supabase.from("seating_maps").select("annotations").eq("event_id", resolvedEventId).maybeSingle(),
-        ]);
-
-        if (!active) return;
-
-        if (evRes.error) throw evRes.error;
-        if (tablesRes.error) throw tablesRes.error;
-        if (guestsRes.error) throw guestsRes.error;
-        // mapRes may be null (no map yet) — that's ok.
-
-        setEventTitle(String((evRes.data as any)?.title || ""));
-        setTables((tablesRes.data as any[]) || []);
-        setGuests((guestsRes.data as any[]) || []);
-        setAnnotations(Array.isArray((mapRes.data as any)?.annotations) ? (mapRes.data as any).annotations : []);
-      } catch (e) {
-        console.error("Employee seating map load error:", e);
-        setTables([]);
-        setGuests([]);
-        setAnnotations([]);
-      } finally {
-        if (active) setLoading(false);
-      }
-    };
-
-    void load();
-    return () => {
-      active = false;
-    };
-  }, [resolvedEventId]);
-
-  const tableById = useMemo(() => new Map(tables.map((t) => [t.id, t])), [tables]);
+  const tableById = useMemo(() => new Map((tables as SeatingTableRow[]).map((t) => [t.id, t])), [tables]);
   const activeTable = activeTableId ? tableById.get(activeTableId) : undefined;
 
   const guestsForActiveTable = useMemo(() => {
     if (!activeTableId) return [];
-    return guests.filter((g) => g.table_id === activeTableId);
+    return (guests as SeatingGuestRow[]).filter((g) => g.table_id === activeTableId);
   }, [activeTableId, guests]);
-
-  const sumPeople = (rows: Array<{ number_of_people: number | null }>) =>
-    rows.reduce((sum, r) => sum + (Number(r.number_of_people) || 1), 0);
 
   const minX = tables.length > 0 ? Math.min(...tables.map((t) => (typeof t.x === "number" ? t.x : 0))) : 0;
   const maxX = tables.length > 0 ? Math.max(...tables.map((t) => (typeof t.x === "number" ? t.x : screenWidth))) : screenWidth;
@@ -203,7 +125,15 @@ export default function EmployeeSeatingMapScreen() {
             </Text>
           </View>
 
-          <View style={{ width: 44 }} />
+          <TouchableOpacity
+            onPress={() => void refresh()}
+            style={styles.topIconBtn}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="רענון"
+          >
+            <Ionicons name="refresh" size={20} color={colors.primary} />
+          </TouchableOpacity>
         </View>
 
         {/* Map */}

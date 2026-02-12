@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -17,20 +17,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { colors } from "@/constants/colors";
-import { guestService } from "@/lib/services/guestService";
-import { supabase } from "@/lib/supabase";
-import { Guest, GuestCategory } from "@/types";
 import BackSwipe from "@/components/BackSwipe";
-
-type CheckInFilter = "all" | "checked_in" | "not_checked_in";
-type CategoryKey = string; // category_id or a stable sentinel for uncategorized
-type Section = {
-  key: CategoryKey;
-  name: string;
-  data: Guest[];
-  checkedIn: number;
-  total: number;
-};
+import { useGuestCheckInModel } from "@/features/guests/useGuestCheckInModel";
 
 export default function EmployeeGuestCheckInScreen() {
   const router = useRouter();
@@ -46,200 +34,28 @@ export default function EmployeeGuestCheckInScreen() {
     [resolvedEventId]
   );
 
-  const [loading, setLoading] = useState(true);
-  const [guests, setGuests] = useState<Guest[]>([]);
-  const [categories, setCategories] = useState<GuestCategory[]>([]);
-  const [query, setQuery] = useState("");
-  const [savingId, setSavingId] = useState<string | null>(null);
-  const [filter, setFilter] = useState<CheckInFilter>("all");
-  const [collapsed, setCollapsed] = useState<Set<CategoryKey>>(new Set());
-
-  const normalizeCategoryId = (raw: unknown) => {
-    const s = String(raw ?? "").trim();
-    return s ? s.toLowerCase() : null;
-  };
-
-  const load = async () => {
-    if (!resolvedEventId) {
-      setGuests([]);
-      setCategories([]);
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const [data, cats] = await Promise.all([
-        guestService.getGuests(resolvedEventId),
-        guestService.getGuestCategories(resolvedEventId),
-      ]);
-
-      const nextGuests = Array.isArray(data) ? data : [];
-      let nextCats = Array.isArray(cats) ? (cats as GuestCategory[]) : [];
-
-      // Fallback: if the category list comes back empty (or isn't visible to this user),
-      // try loading category names by the IDs referenced by guests.
-      if (nextGuests.length > 0) {
-        const idsFromGuests = Array.from(
-          new Set(
-            nextGuests
-              .map((g) => (g as any)?.category_id)
-              .filter(Boolean)
-              .map((id) => String(id).trim())
-              .filter(Boolean)
-          )
-        );
-
-        const known = new Set(nextCats.map((c) => normalizeCategoryId(c?.id)).filter(Boolean) as string[]);
-        const missing = idsFromGuests.filter((id) => {
-          const norm = normalizeCategoryId(id);
-          return norm ? !known.has(norm) : false;
-        });
-
-        // If categories came back empty OR we are missing some referenced categories, try fetching by IDs.
-        if ((nextCats.length === 0 || missing.length > 0) && idsFromGuests.length > 0) {
-          const idsToFetch = nextCats.length === 0 ? idsFromGuests : missing;
-          const { data: catRows, error } = await supabase
-            .from("guest_categories")
-            .select("id,name,event_id,side")
-            .in("id", idsToFetch);
-
-          if (!error && Array.isArray(catRows)) {
-            const fetched = catRows
-              .map((c: any) => ({
-                id: String(c?.id ?? ""),
-                name: String(c?.name ?? "").trim() || "ללא קטגוריה",
-                event_id: String(c?.event_id ?? resolvedEventId),
-                side: (c?.side ?? "groom") as any,
-              }))
-              .filter((c) => Boolean(c.id));
-
-            if (nextCats.length === 0) nextCats = fetched;
-            else {
-              const byNorm = new Map<string, GuestCategory>();
-              nextCats.forEach((c) => {
-                const norm = normalizeCategoryId(c?.id);
-                if (norm) byNorm.set(norm, c);
-              });
-              fetched.forEach((c) => {
-                const norm = normalizeCategoryId(c?.id);
-                if (norm && !byNorm.has(norm)) {
-                  nextCats.push(c);
-                  byNorm.set(norm, c);
-                }
-              });
-            }
-          }
-        }
-      }
-
-      setGuests(nextGuests);
-      setCategories(nextCats);
-    } catch (e) {
-      console.error("Employee check-in load error:", e);
-      Alert.alert("שגיאה", "לא ניתן לטעון את רשימת האורחים");
-      setGuests([]);
-      setCategories([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const {
+    loading,
+    query,
+    setQuery,
+    filter,
+    setFilter,
+    collapsed,
+    toggleCollapsed,
+    counts,
+    sections,
+    refresh,
+    toggleCheckIn,
+    savingId,
+  } = useGuestCheckInModel({
+    eventId: resolvedEventId ? resolvedEventId : null,
+    errorTitle: "שגיאה",
+    errorMessage: "לא ניתן לטעון את רשימת האורחים",
+  });
 
   useEffect(() => {
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resolvedEventId]);
-
-  const filteredGuests = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const base = guests.filter((g) => {
-      if (filter === "checked_in") return Boolean(g.checkedIn);
-      if (filter === "not_checked_in") return !Boolean(g.checkedIn);
-      return true;
-    });
-    if (!q) return base;
-    return base.filter((g) => `${g.name} ${g.phone} ${g.status}`.toLowerCase().includes(q));
-  }, [guests, query, filter]);
-
-  const counts = useMemo(() => {
-    const checkedIn = guests.filter((g) => Boolean(g.checkedIn)).length;
-    return {
-      total: guests.length,
-      checkedIn,
-    };
-  }, [guests]);
-
-  const categoryNameById = useMemo(() => {
-    const m = new Map<string, string>();
-    categories.forEach((c) => {
-      const norm = normalizeCategoryId(c?.id);
-      if (!norm) return;
-      m.set(norm, String(c.name || "").trim() || "ללא קטגוריה");
-    });
-    return m;
-  }, [categories]);
-
-  const UNCATEGORIZED_KEY = "__uncategorized__" as const;
-
-  const sections = useMemo<Section[]>(() => {
-    // Group by stable category_id (NOT by name) to avoid collapsing everything
-    // into a single "ללא קטגוריה" section when names can't be resolved.
-    const grouped = new Map<CategoryKey, Guest[]>();
-    filteredGuests.forEach((g) => {
-      const rawId = (g as any)?.category_id;
-      const norm = normalizeCategoryId(rawId);
-      const key: CategoryKey = norm ? norm : UNCATEGORIZED_KEY;
-      const prev = grouped.get(key) || [];
-      prev.push(g);
-      grouped.set(key, prev);
-    });
-
-    const labelForKey = (key: CategoryKey) => {
-      if (key === UNCATEGORIZED_KEY) return "ללא קטגוריה";
-      return categoryNameById.get(String(key)) || "קטגוריה";
-    };
-
-    // Order: category creation order (as loaded), then uncategorized, then extras.
-    const orderKeys = categories
-      .map((c) => normalizeCategoryId(c?.id))
-      .filter(Boolean) as string[];
-    const hasUncategorized = grouped.has(UNCATEGORIZED_KEY) && !orderKeys.includes(UNCATEGORIZED_KEY);
-    const finalOrderKeys = hasUncategorized ? [...orderKeys, UNCATEGORIZED_KEY] : orderKeys;
-    const inOrder = new Set(finalOrderKeys);
-    const extraKeys = Array.from(grouped.keys())
-      .filter((k) => !inOrder.has(k))
-      .sort((a, b) => labelForKey(a).localeCompare(labelForKey(b), "he"));
-
-    const keys = [...finalOrderKeys, ...extraKeys].filter((k) => grouped.has(k));
-    return keys.map((key) => {
-      const data = grouped.get(key) || [];
-      const checkedIn = data.filter((g) => Boolean(g.checkedIn)).length;
-      return { key, name: labelForKey(key), data, checkedIn, total: data.length };
-    });
-  }, [categories, categoryNameById, filteredGuests]);
-
-  const toggleCollapsed = (key: CategoryKey) => {
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
-
-  const toggleCheckIn = async (guest: Guest) => {
-    const next = !Boolean(guest.checkedIn);
-    setSavingId(guest.id);
-    try {
-      const updated = await guestService.setGuestCheckedIn(guest.id, next);
-      setGuests((prev) => prev.map((g) => (g.id === guest.id ? { ...g, ...updated } : g)));
-    } catch (e) {
-      console.error("Check-in update error:", e);
-      Alert.alert("שגיאה", "לא ניתן לעדכן הגעה");
-    } finally {
-      setSavingId(null);
-    }
-  };
+    void refresh();
+  }, [refresh]);
 
   const phoneToTel = (raw: string) => {
     const cleaned = String(raw || "").replace(/[^\d+]/g, "").trim();
@@ -323,7 +139,7 @@ export default function EmployeeGuestCheckInScreen() {
           </View>
 
           <TouchableOpacity
-            onPress={load}
+            onPress={() => void refresh()}
             style={styles.topIconBtn}
             activeOpacity={0.85}
             accessibilityRole="button"
