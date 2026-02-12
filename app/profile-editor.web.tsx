@@ -3,8 +3,8 @@ import { StyleSheet, View } from 'react-native';
 import DesktopShell from '@/components/desktop/DesktopShell';
 import DesktopTopBar from '@/components/desktop/DesktopTopBar';
 import { useUserStore } from '@/store/userStore';
-import { getDesktopNavForUserType } from '@/components/desktop/desktopNav';
-import ProfileEditor from './profile-editor.tsx';
+import { getDesktopNavForUserType } from '../components/desktop/desktopNav';
+import ProfileEditor from './profile-editor';
 
 export default function ProfileEditorWebPage() {
   const { userType } = useUserStore();

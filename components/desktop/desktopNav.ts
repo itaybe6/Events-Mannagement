@@ -1,7 +1,12 @@
-import type { DesktopNavItem } from './DesktopSidebar';
 import type { UserType } from '@/store/userStore';
+import type { DesktopNavItem } from '@/components/desktop/DesktopSidebar';
 
-export function getDesktopNavForUserType(userType: UserType | null): { title: string; navItems: DesktopNavItem[] } {
+export type DesktopNavConfig = {
+  title: string;
+  navItems: DesktopNavItem[];
+};
+
+export function getDesktopNavForUserType(userType: UserType | null | undefined): DesktopNavConfig {
   if (userType === 'admin') {
     return {
       title: 'ניהול אירועים',
@@ -23,7 +28,7 @@ export function getDesktopNavForUserType(userType: UserType | null): { title: st
     };
   }
 
-  // Couple / default
+  // event_owner (couple) is the default for logged-in users
   return {
     title: 'ניהול אירוע',
     navItems: [

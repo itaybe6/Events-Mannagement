@@ -140,7 +140,7 @@ export default function LoginWebScreen() {
         <View style={styles.card}>
           <View style={styles.logoContainer}>
             <Image
-              source={require('../assets/images/logo-moon.png')}
+              source={require('../assets/images/logoMoon.png')}
               style={styles.logo}
               resizeMode="contain"
             />

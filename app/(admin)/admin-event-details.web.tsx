@@ -8,15 +8,16 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
+import { LinearGradient } from 'expo-linear-gradient';
 
 import { colors } from '@/constants/colors';
-import DesktopTopBar, { TopBarIconButton } from '@/components/desktop/DesktopTopBar';
 import { useAdminEventDetailsModel } from '@/features/events/useAdminEventDetailsModel';
 import { eventService } from '@/lib/services/eventService';
 import { supabase } from '@/lib/supabase';
@@ -49,9 +50,21 @@ function getEventTypeLabel(rawTitle: string) {
   return parts[0] || raw;
 }
 
+function getEventStatusMeta(date: Date | string | null | undefined) {
+  const today = new Date();
+  const d = date ? new Date(date) : new Date('invalid');
+  if (!Number.isFinite(d.getTime())) return { label: 'טיוטה', tone: 'draft' as const };
+  const diff = Math.ceil((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  if (diff < 0) return { label: 'הסתיים', tone: 'past' as const };
+  if (diff <= 7) return { label: 'אירוע פעיל', tone: 'active' as const };
+  if (diff <= 30) return { label: 'בתכנון', tone: 'planning' as const };
+  return { label: 'טיוטה', tone: 'draft' as const };
+}
+
 export default function AdminEventDetailsWebScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
+  const { width } = useWindowDimensions();
   const eventId = useMemo(() => (typeof id === 'string' ? id : Array.isArray(id) ? id[0] : ''), [id]);
 
   const { loading, error, event, setEvent, guests, userName, userAvatarUrl, stats, refresh } =
@@ -71,6 +84,18 @@ export default function AdminEventDetailsWebScreen() {
 
   const eventType = getEventTypeLabel(String(event?.title ?? ''));
   const isWedding = eventType === 'חתונה' || String(event?.title ?? '').includes('חתונה');
+  const isNarrow = width < 1024;
+  const seatedPeople = useMemo(
+    () =>
+      guests
+        .filter((g) => Boolean(g.tableId))
+        .reduce((sum, g) => sum + (Number((g as any).numberOfPeople) || 1), 0),
+    [guests]
+  );
+  const totalPeople = useMemo(
+    () => guests.reduce((sum, g) => sum + (Number((g as any).numberOfPeople) || 1), 0),
+    [guests]
+  );
 
   const openEditEvent = () => {
     if (!event) return;
@@ -167,218 +192,307 @@ export default function AdminEventDetailsWebScreen() {
     ? dateObj.toLocaleDateString('he-IL', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })
     : '';
 
+  const status = getEventStatusMeta(event.date);
+
   return (
     <View style={styles.page}>
-      <DesktopTopBar
-        title={eventType}
-        subtitle={userName ? `לקוח: ${userName}` : undefined}
-        leftActions={<TopBarIconButton icon="refresh" label="רענון" onPress={() => void refresh()} />}
-        rightActions={
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="עריכת אירוע"
-            onPress={openEditEvent}
-            style={({ hovered, pressed }: any) => [
-              styles.primaryBtn,
-              Platform.OS === 'web' && hovered ? styles.primaryBtnHover : null,
-              pressed ? { opacity: 0.92 } : null,
-            ]}
-          >
-            <Ionicons name="create-outline" size={18} color={colors.white} />
-            <Text style={styles.primaryBtnText}>עריכת אירוע</Text>
-          </Pressable>
-        }
-      />
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <View style={styles.container}>
+          <View style={[styles.grid, isNarrow ? styles.gridNarrow : null]}>
+            {/* Sidebar */}
+            <View style={[styles.side, isNarrow ? styles.sideNarrow : null]}>
+              <View style={styles.heroCard}>
+                <Image source={getHeroImageSource(String(event.title ?? ''))} style={styles.heroImg} contentFit="cover" />
+                <LinearGradient
+                  colors={['rgba(6,23,62,0.92)', 'rgba(6,23,62,0.35)', 'rgba(6,23,62,0)']}
+                  start={{ x: 0.5, y: 1 }}
+                  end={{ x: 0.5, y: 0 }}
+                  style={styles.heroGradient}
+                />
 
-      <View style={styles.grid}>
-        {/* Side summary */}
-        <View style={styles.side}>
-          <View style={styles.heroCard}>
-            <Image source={getHeroImageSource(String(event.title ?? ''))} style={styles.heroImg} contentFit="cover" />
-            <View style={styles.heroOverlay} />
+                <View style={styles.heroBottom}>
+                  <View style={styles.heroTopRow}>
+                    <View
+                      style={[
+                        styles.statusPill,
+                        status.tone === 'active'
+                          ? styles.statusPillActive
+                          : status.tone === 'planning'
+                            ? styles.statusPillPlanning
+                            : status.tone === 'past'
+                              ? styles.statusPillPast
+                              : styles.statusPillDraft,
+                      ]}
+                    >
+                      {status.tone === 'active' ? <View style={styles.statusDot} /> : null}
+                      <Text style={styles.statusPillText}>{status.label}</Text>
+                    </View>
 
-            <View style={styles.ownerRow}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="הגדלת תמונת פרופיל"
-                onPress={() => setAvatarPreviewOpen(true)}
-                style={({ hovered, pressed }: any) => [
-                  styles.avatarRing,
-                  Platform.OS === 'web' && hovered ? { opacity: 0.96 } : null,
-                  pressed ? { opacity: 0.92 } : null,
-                ]}
-              >
-                {userAvatarUrl ? (
-                  <Image source={{ uri: userAvatarUrl }} style={styles.avatarImg} contentFit="cover" transition={0} />
-                ) : (
-                  <View style={styles.avatarFallback}>
-                    <Ionicons name="person" size={18} color={'rgba(13,17,28,0.65)'} />
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="עריכת אירוע"
+                      onPress={openEditEvent}
+                      style={({ hovered, pressed }: any) => [
+                        styles.heroEditBtn,
+                        Platform.OS === 'web' && hovered ? styles.heroEditBtnHover : null,
+                        pressed ? { opacity: 0.92 } : null,
+                      ]}
+                    >
+                      <Ionicons name="create-outline" size={16} color={colors.white} />
+                      <Text style={styles.heroEditBtnText}>עריכת אירוע</Text>
+                    </Pressable>
                   </View>
-                )}
-              </Pressable>
 
-              <View style={styles.ownerText}>
-                <Text style={styles.ownerName} numberOfLines={1}>
-                  {userName || 'לקוח'}
-                </Text>
-                <Text style={styles.ownerMeta} numberOfLines={2}>
-                  {dateLabel}
-                </Text>
-                <Text style={styles.ownerMeta} numberOfLines={2}>
-                  {String(event.location ?? '')}
-                  {event.city ? `, ${event.city}` : ''}
-                </Text>
+                  <Text style={styles.heroTitle} numberOfLines={2}>
+                    {String(event.title ?? '')}
+                  </Text>
+
+                  <View style={styles.heroMetaCol}>
+                    <View style={styles.heroMetaRow}>
+                      <Text style={styles.heroMetaText}>{dateLabel}</Text>
+                      <Ionicons name="calendar-outline" size={16} color={'rgba(255,255,255,0.86)'} />
+                    </View>
+                    <View style={styles.heroMetaRow}>
+                      <Text style={styles.heroMetaText}>
+                        {String(event.location ?? '')}
+                        {event.city ? `, ${event.city}` : ''}
+                      </Text>
+                      <Ionicons name="location-outline" size={16} color={'rgba(255,255,255,0.86)'} />
+                    </View>
+                  </View>
+                </View>
+
+                <View style={styles.heroOwner}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="הגדלת תמונת פרופיל"
+                    onPress={() => setAvatarPreviewOpen(true)}
+                    style={({ hovered, pressed }: any) => [
+                      styles.avatarRing,
+                      Platform.OS === 'web' && hovered ? { opacity: 0.96 } : null,
+                      pressed ? { opacity: 0.92 } : null,
+                    ]}
+                  >
+                    {userAvatarUrl ? (
+                      <Image source={{ uri: userAvatarUrl }} style={styles.avatarImg} contentFit="cover" transition={0} />
+                    ) : (
+                      <View style={styles.avatarFallback}>
+                        <Ionicons name="person" size={18} color={'rgba(13,17,28,0.65)'} />
+                      </View>
+                    )}
+                  </Pressable>
+                </View>
+              </View>
+
+              <View style={styles.quickActionsCard}>
+                <View style={styles.quickActionsHeader}>
+                  <Ionicons name="flash-outline" size={18} color={'rgba(0,29,61,0.55)'} />
+                  <Text style={styles.cardTitle}>פעולות מהירות</Text>
+                </View>
+
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="אישורי הגעה"
+                  onPress={() => router.push(`/(admin)/admin-rsvp-approvals?eventId=${event.id}`)}
+                  style={({ hovered, pressed }: any) => [
+                    styles.quickActionBtn,
+                    Platform.OS === 'web' && hovered ? styles.quickActionBtnHover : null,
+                    pressed ? { opacity: 0.92 } : null,
+                  ]}
+                >
+                  <View style={styles.quickActionLeft}>
+                    <View style={[styles.quickActionIcon, { backgroundColor: 'rgba(59,130,246,0.14)' }]}>
+                      <Ionicons name="people-outline" size={18} color={'#3B82F6'} />
+                    </View>
+                    <Text style={styles.quickActionText}>אישורי הגעה</Text>
+                  </View>
+                  <Ionicons name="chevron-back" size={18} color={colors.gray[500]} style={styles.quickActionChevron} />
+                </Pressable>
+
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="עריכת סקיצה"
+                  onPress={() => router.push(`/(admin)/seating-templates?eventId=${event.id}`)}
+                  style={({ hovered, pressed }: any) => [
+                    styles.quickActionBtn,
+                    Platform.OS === 'web' && hovered ? styles.quickActionBtnHover : null,
+                    pressed ? { opacity: 0.92 } : null,
+                  ]}
+                >
+                  <View style={styles.quickActionLeft}>
+                    <View style={[styles.quickActionIcon, { backgroundColor: 'rgba(168,85,247,0.14)' }]}>
+                      <Ionicons name="create-outline" size={18} color={'#A855F7'} />
+                    </View>
+                    <Text style={styles.quickActionText}>עריכת סקיצה</Text>
+                  </View>
+                  <Ionicons name="chevron-back" size={18} color={colors.gray[500]} style={styles.quickActionChevron} />
+                </Pressable>
+
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="מפת הושבה"
+                  onPress={handleSeatingMap}
+                  style={({ hovered, pressed }: any) => [
+                    styles.quickActionBtn,
+                    Platform.OS === 'web' && hovered ? styles.quickActionBtnHover : null,
+                    pressed ? { opacity: 0.92 } : null,
+                  ]}
+                >
+                  <View style={styles.quickActionLeft}>
+                    <View style={[styles.quickActionIcon, { backgroundColor: 'rgba(16,185,129,0.16)' }]}>
+                      <Ionicons name="grid-outline" size={18} color={'#10B981'} />
+                    </View>
+                    <Text style={styles.quickActionText}>מפת הושבה</Text>
+                  </View>
+                  <Ionicons name="chevron-back" size={18} color={colors.gray[500]} style={styles.quickActionChevron} />
+                </Pressable>
               </View>
             </View>
 
-            {isWedding ? (
-              <View style={styles.weddingRow}>
-                <Ionicons name="heart-outline" size={16} color={'rgba(255,255,255,0.92)'} />
-                <Text style={styles.weddingText} numberOfLines={1}>
-                  {`חתן: ${(event as any).groomName || 'לא הוזן'} | כלה: ${(event as any).brideName || 'לא הוזן'}`}
-                </Text>
+            {/* Main */}
+            <View style={styles.main}>
+              <View style={[styles.statsGrid, !isNarrow ? styles.statsGridWide : null]}>
+                <View style={[styles.statCard, !isNarrow ? styles.statCardQuarter : null, { borderBottomColor: '#10B981' }]}>
+                  <View style={styles.statCardTop}>
+                    <Text style={styles.statLabel}>מאושרים</Text>
+                    <View style={[styles.statIconCircle, { backgroundColor: 'rgba(16,185,129,0.16)' }]}>
+                      <Ionicons name="checkmark-circle-outline" size={18} color={'#10B981'} />
+                    </View>
+                  </View>
+                  <View style={styles.statCardBottom}>
+                    <Text style={styles.statValue}>{stats.confirmedPeople}</Text>
+                  </View>
+                </View>
+
+                <View style={[styles.statCard, !isNarrow ? styles.statCardQuarter : null, { borderBottomColor: '#3B82F6' }]}>
+                  <View style={styles.statCardTop}>
+                    <Text style={styles.statLabel}>מוזמנים</Text>
+                    <View style={[styles.statIconCircle, { backgroundColor: 'rgba(59,130,246,0.16)' }]}>
+                      <Ionicons name="mail-outline" size={18} color={'#3B82F6'} />
+                    </View>
+                  </View>
+                  <View style={styles.statCardBottom}>
+                    <Text style={styles.statValue}>{stats.invitedPeople}</Text>
+                  </View>
+                </View>
+
+                <View style={[styles.statCard, !isNarrow ? styles.statCardQuarter : null, { borderBottomColor: '#F59E0B' }]}>
+                  <View style={styles.statCardTop}>
+                    <Text style={styles.statLabel}>ממתינים</Text>
+                    <View style={[styles.statIconCircle, { backgroundColor: 'rgba(245,158,11,0.16)' }]}>
+                      <Ionicons name="hourglass-outline" size={18} color={'#F59E0B'} />
+                    </View>
+                  </View>
+                  <View style={styles.statCardBottom}>
+                    <Text style={styles.statValue}>{stats.pendingPeople}</Text>
+                  </View>
+                </View>
+
+                <View style={[styles.statCard, !isNarrow ? styles.statCardQuarter : null, { borderBottomColor: '#EF4444' }]}>
+                  <View style={styles.statCardTop}>
+                    <Text style={styles.statLabel}>לא מגיעים</Text>
+                    <View style={[styles.statIconCircle, { backgroundColor: 'rgba(239,68,68,0.16)' }]}>
+                      <Ionicons name="close-circle-outline" size={18} color={'#EF4444'} />
+                    </View>
+                  </View>
+                  <View style={styles.statCardBottom}>
+                    <Text style={styles.statValue}>{stats.declinedPeople}</Text>
+                  </View>
+                </View>
               </View>
-            ) : null}
-          </View>
 
-          <View style={styles.sideCard}>
-            <Text style={styles.cardTitle}>פעולות מהירות</Text>
+              <View style={styles.panel}>
+                <View style={styles.panelHeader}>
+                  <Text style={styles.panelTitle}>סיכום הושבה</Text>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="פרטים נוספים"
+                    onPress={() => router.push(`/(admin)/seating-templates?eventId=${event.id}`)}
+                  >
+                    <Text style={styles.panelLink}>פרטים נוספים</Text>
+                  </Pressable>
+                </View>
 
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="פתיחת אישורי הגעה"
-              onPress={() => router.push(`/(admin)/admin-rsvp-approvals?eventId=${event.id}`)}
-              style={({ hovered, pressed }: any) => [
-                styles.actionBtn,
-                Platform.OS === 'web' && hovered ? styles.actionBtnHover : null,
-                pressed ? { opacity: 0.92 } : null,
-              ]}
-            >
-              <Ionicons name="people-outline" size={18} color={colors.primary} />
-              <Text style={styles.actionBtnText}>אישורי הגעה</Text>
-            </Pressable>
+                <View style={styles.progressCard}>
+                  <View style={styles.progressHeader}>
+                    <View style={styles.progressHeaderRight}>
+                      <Text style={styles.progressLabel}>התקדמות הושבה</Text>
+                      <Text style={styles.progressValue}>
+                        {stats.seatedPercent}% <Text style={styles.progressValueSub}>הושבו</Text>
+                      </Text>
+                    </View>
+                    <View style={styles.progressChip}>
+                      <Text style={styles.progressChipText}>
+                        {seatedPeople} / {Math.max(stats.confirmedPeople, totalPeople)} אורחים
+                      </Text>
+                    </View>
+                  </View>
 
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="עריכת סקיצה"
-              onPress={() => router.push(`/(admin)/seating-templates?eventId=${event.id}`)}
-              style={({ hovered, pressed }: any) => [
-                styles.actionBtn,
-                Platform.OS === 'web' && hovered ? styles.actionBtnHover : null,
-                pressed ? { opacity: 0.92 } : null,
-              ]}
-            >
-              <Ionicons name="create-outline" size={18} color={'#F97316'} />
-              <Text style={styles.actionBtnText}>עריכת סקיצה</Text>
-            </Pressable>
+                  <View style={styles.progressTrack}>
+                    <View style={[styles.progressFill, { width: `${Math.max(0, Math.min(100, stats.seatedPercent))}%` }]} />
+                  <View style={styles.progressKnob} />
+                  </View>
+                </View>
 
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="מפת הושבה"
-              onPress={handleSeatingMap}
-              style={({ hovered, pressed }: any) => [
-                styles.actionBtn,
-                Platform.OS === 'web' && hovered ? styles.actionBtnHover : null,
-                pressed ? { opacity: 0.92 } : null,
-              ]}
-            >
-              <Ionicons name="grid-outline" size={18} color={'#A855F7'} />
-              <Text style={styles.actionBtnText}>מפת הושבה</Text>
-            </Pressable>
+                <View style={styles.compactCardsRow}>
+                  <View style={styles.compactCard}>
+                    <Text style={styles.compactNumber}>{Math.max(0, Math.round(stats.seated / 10))}</Text>
+                    <Text style={styles.compactLabel}>שולחנות מלאים</Text>
+                  </View>
+                  <View style={styles.compactCard}>
+                    <Text style={styles.compactNumber}>{Math.max(0, Math.round((stats.totalGuests - stats.seated) / 10))}</Text>
+                    <Text style={styles.compactLabel}>שולחנות פנויים</Text>
+                  </View>
+                  <View style={styles.compactCard}>
+                    <Text style={styles.compactNumber}>{Math.max(0, totalPeople - seatedPeople)}</Text>
+                    <Text style={styles.compactLabel}>כיסאות פנויים</Text>
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.bigActionsRow}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="עריכת סקיצה"
+                  onPress={() => router.push(`/(admin)/seating-templates?eventId=${event.id}`)}
+                  style={({ hovered, pressed }: any) => [
+                    styles.bigActionSecondary,
+                    Platform.OS === 'web' && hovered ? styles.bigActionSecondaryHover : null,
+                    pressed ? { opacity: 0.94 } : null,
+                  ]}
+                >
+                  <View style={styles.bigActionIconWrapSecondary}>
+                  <Ionicons name="color-palette-outline" size={26} color={colors.primary} />
+                  </View>
+                  <Text style={styles.bigActionTitleSecondary}>עריכת סקיצה</Text>
+                  <Text style={styles.bigActionSubtitleSecondary}>סידור שולחנות ועיצוב אולם</Text>
+                </Pressable>
+
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="מפת הושבה"
+                  onPress={handleSeatingMap}
+                  style={({ hovered, pressed }: any) => [
+                    styles.bigActionPrimary,
+                    Platform.OS === 'web' && hovered ? styles.bigActionPrimaryHover : null,
+                    pressed ? { opacity: 0.94 } : null,
+                  ]}
+                >
+                  <View style={styles.bigActionBgBlob1} />
+                  <View style={styles.bigActionBgBlob2} />
+                  <View style={styles.bigActionIconWrapPrimary}>
+                    <Ionicons name="grid-outline" size={26} color={colors.white} />
+                  </View>
+                  <Text style={styles.bigActionTitlePrimary}>מפת הושבה</Text>
+                  <Text style={styles.bigActionSubtitlePrimary}>שיבוץ אורחים בשולחנות</Text>
+                </Pressable>
+              </View>
+
+              <Text style={styles.footer}>© 2026 כל הזכויות שמורות למערכת אירועים</Text>
+            </View>
           </View>
         </View>
-
-        {/* Main column */}
-        <ScrollView style={styles.main} contentContainerStyle={styles.mainContent} showsVerticalScrollIndicator={false}>
-          <View style={styles.cardsRow}>
-            <View style={styles.statCard}>
-              <Text style={styles.statLabel}>מוזמנים</Text>
-              <Text style={styles.statValue}>{stats.invitedPeople}</Text>
-              <Text style={styles.statHint}>{`${guests.length} רשומות`}</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Text style={styles.statLabel}>אישרו</Text>
-              <Text style={[styles.statValue, { color: colors.success }]}>{stats.confirmedPeople}</Text>
-              <Text style={styles.statHint}>אנשים</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Text style={styles.statLabel}>ממתינים</Text>
-              <Text style={[styles.statValue, { color: colors.warning }]}>{stats.pendingPeople}</Text>
-              <Text style={styles.statHint}>אנשים</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Text style={styles.statLabel}>לא מגיעים</Text>
-              <Text style={[styles.statValue, { color: colors.error }]}>{stats.declinedPeople}</Text>
-              <Text style={styles.statHint}>אנשים</Text>
-            </View>
-          </View>
-
-          <View style={styles.panel}>
-            <View style={styles.panelHeader}>
-              <Text style={styles.cardTitle}>סטטוס אורחים</Text>
-              <View style={styles.totalChip}>
-                <Text style={styles.totalChipText}>{`${stats.totalGuests} סה״כ`}</Text>
-              </View>
-            </View>
-
-            <View style={styles.progressRow}>
-              <View style={styles.progressItem}>
-                <Text style={styles.progressLabel}>אישרו</Text>
-                <Text style={styles.progressValue}>{stats.confirmed}</Text>
-              </View>
-              <View style={styles.progressItem}>
-                <Text style={styles.progressLabel}>ממתינים</Text>
-                <Text style={styles.progressValue}>{stats.pending}</Text>
-              </View>
-              <View style={styles.progressItem}>
-                <Text style={styles.progressLabel}>לא</Text>
-                <Text style={styles.progressValue}>{stats.declined}</Text>
-              </View>
-            </View>
-          </View>
-
-          <View style={styles.panel}>
-            <View style={styles.panelHeader}>
-              <Text style={styles.cardTitle}>הושבה</Text>
-              <Text style={styles.panelSubtitle}>{`${stats.seatedPercent}% הושבו`}</Text>
-            </View>
-
-            <View style={styles.barTrack}>
-              <View style={[styles.barFill, { width: `${Math.max(0, Math.min(100, stats.seatedPercent))}%` }]} />
-            </View>
-
-            <View style={styles.panelActionsRow}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="פתיחת עריכת סקיצה"
-                onPress={() => router.push(`/(admin)/seating-templates?eventId=${event.id}`)}
-                style={({ hovered, pressed }: any) => [
-                  styles.secondaryBtn,
-                  Platform.OS === 'web' && hovered ? styles.secondaryBtnHover : null,
-                  pressed ? { opacity: 0.92 } : null,
-                ]}
-              >
-                <Ionicons name="create-outline" size={16} color={colors.text} />
-                <Text style={styles.secondaryBtnText}>עריכת סקיצה</Text>
-              </Pressable>
-
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="פתיחת מפת הושבה"
-                onPress={handleSeatingMap}
-                style={({ hovered, pressed }: any) => [
-                  styles.secondaryBtn,
-                  Platform.OS === 'web' && hovered ? styles.secondaryBtnHover : null,
-                  pressed ? { opacity: 0.92 } : null,
-                ]}
-              >
-                <Ionicons name="grid-outline" size={16} color={colors.text} />
-                <Text style={styles.secondaryBtnText}>מפת הושבה</Text>
-              </Pressable>
-            </View>
-          </View>
-        </ScrollView>
-      </View>
+      </ScrollView>
 
       {/* Avatar preview */}
       <Modal transparent visible={avatarPreviewOpen} animationType="fade" onRequestClose={() => setAvatarPreviewOpen(false)}>
@@ -546,19 +660,26 @@ export default function AdminEventDetailsWebScreen() {
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1 },
+  page: { flex: 1, backgroundColor: '#f6f6f8' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 24 },
   centerText: { fontSize: 14, fontWeight: '800', color: colors.gray[600] },
   errorTitle: { fontSize: 16, fontWeight: '900', color: colors.text, textAlign: 'center' },
+
+  scroll: { flex: 1 },
+  // Extra bottom padding so the floating tab-bar won't cover content
+  scrollContent: { paddingTop: 18, paddingBottom: 130 },
+  container: { width: '100%', maxWidth: 1280, alignSelf: 'center', paddingHorizontal: 20 },
   grid: {
-    flex: 1,
+    // RTL desktop layout: right column (side) + left column (main)
     flexDirection: 'row-reverse',
-    gap: 16,
-    paddingTop: 16,
+    gap: 18,
     alignItems: 'stretch',
   },
-  side: { width: 380, gap: 16 },
-  main: { flex: 1, minWidth: 0 },
+  // On narrow screens show the side section first (top).
+  gridNarrow: { flexDirection: 'column' as any },
+  side: { width: 380, gap: 14 },
+  sideNarrow: { width: '100%' as any },
+  main: { flex: 1, minWidth: 0, gap: 14 },
   mainContent: { paddingBottom: 24, gap: 16 },
 
   primaryBtn: {
@@ -566,8 +687,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 14,
+    paddingHorizontal: 14,
+    borderRadius: 999,
     backgroundColor: colors.primary,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.16)',
@@ -576,16 +697,71 @@ const styles = StyleSheet.create({
   primaryBtnText: { color: colors.white, fontSize: 13, fontWeight: '900', textAlign: 'right' },
 
   heroCard: {
-    height: 260,
-    borderRadius: 18,
+    height: 320,
+    borderRadius: 22,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.08)',
     backgroundColor: colors.white,
     position: 'relative',
+    shadowColor: '#0b1c41',
+    shadowOpacity: 0.06,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
   },
   heroImg: { ...StyleSheet.absoluteFillObject },
-  heroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.30)' },
+  heroGradient: { ...StyleSheet.absoluteFillObject },
+  heroBottom: { position: 'absolute', left: 14, right: 14, bottom: 14 },
+  // Match screenshot: status on left, edit button on right
+  heroTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  heroTitle: { marginTop: 8, fontSize: 24, fontWeight: '900', color: colors.white, textAlign: 'right' },
+  heroMetaCol: { marginTop: 10, gap: 6 },
+  heroMetaRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'flex-end', gap: 8 },
+  heroMetaText: { fontSize: 12, fontWeight: '700', color: 'rgba(255,255,255,0.88)', textAlign: 'right', flex: 1 },
+
+  heroOwner: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+  },
+  heroOwnerText: { flex: 1, minWidth: 0, alignItems: 'flex-end' },
+  heroOwnerName: { fontSize: 14, fontWeight: '900', color: colors.white, textAlign: 'right' },
+  heroOwnerSub: { marginTop: 4, fontSize: 12, fontWeight: '700', color: 'rgba(255,255,255,0.82)', textAlign: 'right' },
+
+  statusPill: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
+  statusPillText: { fontSize: 12, fontWeight: '900', color: colors.white, textAlign: 'right' },
+  statusDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#4ade80' },
+  statusPillActive: {},
+  statusPillPlanning: { backgroundColor: 'rgba(245,158,11,0.18)', borderColor: 'rgba(245,158,11,0.35)' },
+  statusPillPast: { backgroundColor: 'rgba(148,163,184,0.18)', borderColor: 'rgba(148,163,184,0.35)' },
+  statusPillDraft: { backgroundColor: 'rgba(148,163,184,0.18)', borderColor: 'rgba(148,163,184,0.35)' },
+
+  heroEditBtn: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: 'rgba(6,23,62,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+  heroEditBtnHover: { opacity: 0.96 },
+  heroEditBtnText: { fontSize: 12, fontWeight: '900', color: colors.white, textAlign: 'right' },
   ownerRow: {
     position: 'absolute',
     left: 14,
@@ -596,8 +772,8 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   avatarRing: {
-    width: 58,
-    height: 58,
+    width: 40,
+    height: 40,
     borderRadius: 999,
     backgroundColor: 'rgba(255,255,255,0.92)',
     borderWidth: 1,
@@ -628,7 +804,7 @@ const styles = StyleSheet.create({
     padding: 14,
     gap: 10,
   },
-  cardTitle: { fontSize: 14, fontWeight: '900', color: colors.text, textAlign: 'right' },
+  cardTitle: { fontSize: 16, fontWeight: '900', color: colors.text, textAlign: 'right' },
   actionBtn: {
     height: 44,
     borderRadius: 14,
@@ -643,37 +819,129 @@ const styles = StyleSheet.create({
   actionBtnHover: { backgroundColor: 'rgba(15,23,42,0.06)' },
   actionBtnText: { fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'right' },
 
-  cardsRow: { flexDirection: 'row-reverse', gap: 12, flexWrap: 'wrap' },
-  statCard: {
-    flexGrow: 1,
-    flexBasis: 240,
-    minWidth: 220,
+  quickActionsCard: {
     backgroundColor: 'rgba(255,255,255,0.92)',
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.08)',
-    padding: 14,
-  },
-  statLabel: { fontSize: 12, fontWeight: '900', color: colors.gray[700], textAlign: 'right' },
-  statValue: { marginTop: 8, fontSize: 28, fontWeight: '900', color: colors.text, textAlign: 'right' },
-  statHint: { marginTop: 4, fontSize: 12, fontWeight: '700', color: colors.gray[600], textAlign: 'right' },
-
-  panel: {
-    backgroundColor: 'rgba(255,255,255,0.92)',
-    borderRadius: 18,
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.08)',
     padding: 14,
     gap: 12,
+    shadowColor: '#0b1c41',
+    shadowOpacity: 0.06,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+  },
+  quickActionsHeader: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
+  quickActionBtn: {
+    height: 50,
+    borderRadius: 16,
+    backgroundColor: 'rgba(15,23,42,0.03)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.06)',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+  },
+  quickActionBtnHover: { backgroundColor: 'rgba(15,69,230,0.06)', borderColor: 'rgba(15,69,230,0.14)' },
+  quickActionLeft: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 },
+  quickActionIcon: { width: 32, height: 32, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
+  quickActionText: { fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'right', flex: 1 },
+  quickActionChevron: { transform: [{ rotate: '180deg' }] },
+
+  statsGrid: {
+    flexDirection: 'row-reverse',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  // Force 4 cards in a single row on wide screens (matches design)
+  statsGridWide: {
+    flexWrap: 'nowrap',
+  },
+  cardsRow: { flexDirection: 'row-reverse', gap: 12, flexWrap: 'wrap' },
+  statCard: {
+    flexGrow: 1,
+    flexBasis: 240,
+    minWidth: 210,
+    height: 120,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+    borderBottomWidth: 4,
+    padding: 14,
+    justifyContent: 'space-between',
+    shadowColor: '#0b1c41',
+    shadowOpacity: 0.06,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+  },
+  statCardQuarter: {
+    flexBasis: 0,
+    flexGrow: 1,
+    minWidth: 0,
+  },
+  statCardTop: { flexDirection: 'row-reverse', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
+  statLabel: { fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'right' },
+  statIconCircle: { width: 32, height: 32, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
+  statCardBottom: { flexDirection: 'row-reverse', alignItems: 'baseline', gap: 10 },
+  statValue: { fontSize: 30, fontWeight: '900', color: colors.text, textAlign: 'right' },
+  statHint: { marginTop: 4, fontSize: 12, fontWeight: '700', color: colors.gray[600], textAlign: 'right' },
+
+  panel: {
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+    padding: 16,
+    gap: 14,
+    shadowColor: '#0b1c41',
+    shadowOpacity: 0.06,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
   },
   panelHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  panelSubtitle: { fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'left' },
+  panelTitle: { fontSize: 16, fontWeight: '900', color: colors.text, textAlign: 'right' },
+  panelLink: { fontSize: 12, fontWeight: '900', color: '#3B82F6', textAlign: 'left' },
   totalChip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(15,69,230,0.06)' },
   totalChipText: { fontSize: 12, fontWeight: '900', color: colors.primary },
   progressRow: { flexDirection: 'row-reverse', gap: 12 },
   progressItem: { flex: 1, borderRadius: 14, padding: 12, backgroundColor: 'rgba(15,23,42,0.04)', borderWidth: 1, borderColor: 'rgba(15,23,42,0.06)' },
-  progressLabel: { fontSize: 12, fontWeight: '900', color: colors.gray[700], textAlign: 'right' },
-  progressValue: { marginTop: 6, fontSize: 22, fontWeight: '900', color: colors.text, textAlign: 'right' },
+  progressCard: {
+    borderRadius: 20,
+    padding: 14,
+    backgroundColor: 'rgba(15,23,42,0.03)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.06)',
+    gap: 12,
+  },
+  progressHeader: { flexDirection: 'row-reverse', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 },
+  progressHeaderRight: { alignItems: 'flex-end', gap: 4, flex: 1, minWidth: 0 },
+  progressLabel: { fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'right' },
+  progressValue: { fontSize: 22, fontWeight: '900', color: colors.text, textAlign: 'right' },
+  progressValueSub: { fontSize: 12, fontWeight: '700', color: colors.gray[500] },
+  progressChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: 'rgba(6,23,62,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.12)',
+  },
+  progressChipText: { fontSize: 12, fontWeight: '900', color: colors.primary, textAlign: 'right' },
+  progressTrack: { height: 12, borderRadius: 999, backgroundColor: 'rgba(15,23,42,0.10)', overflow: 'hidden' },
+  progressFill: { height: 12, borderRadius: 999, backgroundColor: colors.primary },
+  progressKnob: {
+    position: 'absolute',
+    right: 4,
+    top: '50%',
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#0f172a',
+    transform: [{ translateY: -5 }],
+    opacity: 0.9,
+  },
 
   barTrack: { height: 8, borderRadius: 999, backgroundColor: 'rgba(15,23,42,0.06)', overflow: 'hidden' },
   barFill: { height: 8, borderRadius: 999, backgroundColor: colors.primary },
@@ -692,6 +960,104 @@ const styles = StyleSheet.create({
   },
   secondaryBtnHover: { backgroundColor: 'rgba(15,23,42,0.06)' },
   secondaryBtnText: { fontSize: 12, fontWeight: '900', color: colors.text },
+
+  compactCardsRow: { flexDirection: 'row-reverse', gap: 12, flexWrap: 'wrap' },
+  compactCard: {
+    flexGrow: 1,
+    flexBasis: 160,
+    borderRadius: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    backgroundColor: 'rgba(255,255,255,0.55)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  compactNumber: { fontSize: 20, fontWeight: '900', color: colors.text, textAlign: 'center' },
+  compactLabel: { fontSize: 12, fontWeight: '700', color: colors.gray[600], textAlign: 'center' },
+
+  bigActionsRow: { flexDirection: 'row-reverse', gap: 14, flexWrap: 'wrap' },
+  bigActionSecondary: {
+    flexGrow: 1,
+    flexBasis: 300,
+    minHeight: 150,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderWidth: 2,
+    borderColor: 'rgba(6,23,62,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 14,
+    gap: 7,
+    overflow: 'hidden',
+    shadowColor: '#0b1c41',
+    shadowOpacity: 0.06,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+  },
+  bigActionSecondaryHover: { borderColor: 'rgba(6,23,62,0.20)', backgroundColor: 'rgba(6,23,62,0.04)' },
+  bigActionIconWrapSecondary: {
+    width: 48,
+    height: 48,
+    borderRadius: 999,
+    backgroundColor: 'rgba(6,23,62,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bigActionTitleSecondary: { fontSize: 16, fontWeight: '900', color: colors.text, textAlign: 'center' },
+  bigActionSubtitleSecondary: { fontSize: 12, fontWeight: '700', color: colors.gray[600], textAlign: 'center' },
+
+  bigActionPrimary: {
+    flexGrow: 1,
+    flexBasis: 300,
+    minHeight: 150,
+    borderRadius: 24,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 14,
+    gap: 7,
+    overflow: 'hidden',
+    shadowColor: '#0b1c41',
+    shadowOpacity: 0.12,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 10 },
+  },
+  bigActionPrimaryHover: { opacity: 0.96 },
+  bigActionBgBlob1: {
+    position: 'absolute',
+    top: -22,
+    right: -22,
+    width: 104,
+    height: 104,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  bigActionBgBlob2: {
+    position: 'absolute',
+    bottom: -20,
+    left: -20,
+    width: 86,
+    height: 86,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  bigActionIconWrapPrimary: {
+    width: 48,
+    height: 48,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.20)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bigActionTitlePrimary: { fontSize: 16, fontWeight: '900', color: colors.white, textAlign: 'center' },
+  bigActionSubtitlePrimary: { fontSize: 12, fontWeight: '700', color: 'rgba(255,255,255,0.70)', textAlign: 'center' },
+
+  footer: { marginTop: 10, fontSize: 12, fontWeight: '700', color: colors.gray[500], textAlign: 'center' },
 
   previewOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.78)', justifyContent: 'center', alignItems: 'center', padding: 18 },
   previewContent: { alignItems: 'center', justifyContent: 'center' },

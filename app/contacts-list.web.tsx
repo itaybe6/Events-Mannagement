@@ -4,7 +4,7 @@ import DesktopShell from '@/components/desktop/DesktopShell';
 import DesktopTopBar from '@/components/desktop/DesktopTopBar';
 import { useUserStore } from '@/store/userStore';
 import { getDesktopNavForUserType } from '@/components/desktop/desktopNav';
-import ContactsListScreen from './contacts-list.tsx';
+import ContactsListScreen from './contacts-list';
 
 export default function ContactsListWebPage() {
   const { userType } = useUserStore();

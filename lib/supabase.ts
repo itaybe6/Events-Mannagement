@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 
 
 
@@ -25,11 +26,21 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Missing Supabase environment variables. Please check your .env file and make sure EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY are set.');
 }
 
+// On web, Supabase auth can hang indefinitely due to its internal lock mechanism
+// (Web Locks API) + async storage adapters. We avoid passing AsyncStorage on web,
+// and additionally bypass the lock on web to prevent "infinite loading" on login.
+const webNoopLock = async <T,>(
+  _name: string,
+  _acquireTimeout: number,
+  fn: () => Promise<T>
+): Promise<T> => fn();
+
 
 // Regular client for normal operations
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    storage: AsyncStorage,
+    ...(Platform.OS !== 'web' ? { storage: AsyncStorage } : {}),
+    ...(Platform.OS === 'web' ? { lock: webNoopLock } : {}),
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,

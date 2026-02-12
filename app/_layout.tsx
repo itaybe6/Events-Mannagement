@@ -19,7 +19,7 @@ I18nManager.allowRTL(true);
 I18nManager.forceRTL(true);
 
 const rtlTextStyle = { textAlign: 'right' as const, writingDirection: 'rtl' as const };
-const webRubikStyle = Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as const) : null;
+const webFontStyle = Platform.OS === 'web' ? ({ fontFamily: 'Heebo' } as const) : null;
 const RTL_MARK = '\u200F';
 
 const toRtlAlertText = (value?: string) => {
@@ -79,10 +79,10 @@ patchAlertsForRTL();
 patchGlobalAlertForRTL();
 
 Text.defaultProps = Text.defaultProps || {};
-Text.defaultProps.style = [webRubikStyle, rtlTextStyle, Text.defaultProps.style].filter(Boolean);
+Text.defaultProps.style = [webFontStyle, rtlTextStyle, Text.defaultProps.style].filter(Boolean);
 
 TextInput.defaultProps = TextInput.defaultProps || {};
-TextInput.defaultProps.style = [webRubikStyle, rtlTextStyle, TextInput.defaultProps.style].filter(Boolean);
+TextInput.defaultProps.style = [webFontStyle, rtlTextStyle, TextInput.defaultProps.style].filter(Boolean);
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -127,9 +127,9 @@ export default function RootLayout() {
       ensureLink('gf-preconnect-1', 'preconnect', 'https://fonts.googleapis.com');
       ensureLink('gf-preconnect-2', 'preconnect', 'https://fonts.gstatic.com', { crossorigin: '' });
       ensureLink(
-        'gf-rubik',
+        'gf-heebo-inter',
         'stylesheet',
-        'https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800;900&display=swap&subset=hebrew'
+        'https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700;800;900&display=swap&subset=hebrew'
       );
     } catch {
       // ignore
@@ -144,7 +144,7 @@ export default function RootLayout() {
       document.body.style.textAlign = 'right';
       // Prefer Rubik on web (falls back safely if font not loaded yet)
       document.body.style.fontFamily =
-        'Rubik, system-ui, -apple-system, "Segoe UI", Arial, "Noto Sans Hebrew", "Noto Sans", sans-serif';
+        'Heebo, Inter, system-ui, -apple-system, "Segoe UI", Arial, "Noto Sans Hebrew", "Noto Sans", sans-serif';
     }
   }, []);
 

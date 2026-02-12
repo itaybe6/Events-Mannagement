@@ -4,7 +4,7 @@ import DesktopShell from '@/components/desktop/DesktopShell';
 import DesktopTopBar from '@/components/desktop/DesktopTopBar';
 import { useUserStore } from '@/store/userStore';
 import { getDesktopNavForUserType } from '@/components/desktop/desktopNav';
-import InviteScreen from './invite.tsx';
+import InviteScreen from './invite';
 
 export default function InviteWebPage() {
   const { userType } = useUserStore();

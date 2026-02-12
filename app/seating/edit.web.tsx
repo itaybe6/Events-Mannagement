@@ -4,7 +4,7 @@ import DesktopShell from '@/components/desktop/DesktopShell';
 import DesktopTopBar from '@/components/desktop/DesktopTopBar';
 import { useUserStore } from '@/store/userStore';
 import { getDesktopNavForUserType } from '@/components/desktop/desktopNav';
-import SeatingEditScreen from './edit.tsx';
+import SeatingEditScreen from './edit';
 
 export default function SeatingEditWebPage() {
   const { userType } = useUserStore();

@@ -41,7 +41,7 @@ export default function AppHeader(props: Props) {
 
       <View style={styles.center}>
         <Image
-          source={require('../assets/images/logo-moon.png')}
+          source={require('../assets/images/logoMoon.png')}
           style={styles.logo}
           resizeMode="contain"
         />
