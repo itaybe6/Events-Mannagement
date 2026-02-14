@@ -249,15 +249,15 @@ export default function AdminEventDetailsWebScreen() {
 
                   <View style={styles.heroMetaCol}>
                     <View style={styles.heroMetaRow}>
-                      <Text style={styles.heroMetaText}>{dateLabel}</Text>
                       <Ionicons name="calendar-outline" size={16} color={'rgba(255,255,255,0.86)'} />
+                      <Text style={styles.heroMetaText}>{dateLabel}</Text>
                     </View>
                     <View style={styles.heroMetaRow}>
+                      <Ionicons name="location-outline" size={16} color={'rgba(255,255,255,0.86)'} />
                       <Text style={styles.heroMetaText}>
                         {String(event.location ?? '')}
                         {event.city ? `, ${event.city}` : ''}
                       </Text>
-                      <Ionicons name="location-outline" size={16} color={'rgba(255,255,255,0.86)'} />
                     </View>
                   </View>
                 </View>
@@ -670,8 +670,9 @@ const styles = StyleSheet.create({
   scrollContent: { paddingTop: 18, paddingBottom: 130 },
   container: { width: '100%', maxWidth: 1280, alignSelf: 'center', paddingHorizontal: 20 },
   grid: {
-    // RTL desktop layout: right column (side) + left column (main)
-    flexDirection: 'row-reverse',
+    // IMPORTANT: In React Native RTL, `row` lays out children right-to-left.
+    // Side (first child) should sit next to the right sidebar menu.
+    flexDirection: 'row',
     gap: 18,
     alignItems: 'stretch',
   },
@@ -683,7 +684,7 @@ const styles = StyleSheet.create({
   mainContent: { paddingBottom: 24, gap: 16 },
 
   primaryBtn: {
-    flexDirection: 'row-reverse',
+    flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     paddingVertical: 10,
@@ -716,7 +717,7 @@ const styles = StyleSheet.create({
   heroTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   heroTitle: { marginTop: 8, fontSize: 24, fontWeight: '900', color: colors.white, textAlign: 'right' },
   heroMetaCol: { marginTop: 10, gap: 6 },
-  heroMetaRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'flex-end', gap: 8 },
+  heroMetaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', gap: 8 },
   heroMetaText: { fontSize: 12, fontWeight: '700', color: 'rgba(255,255,255,0.88)', textAlign: 'right', flex: 1 },
 
   heroOwner: {
@@ -732,7 +733,7 @@ const styles = StyleSheet.create({
 
   statusPill: {
     alignSelf: 'flex-start',
-    flexDirection: 'row-reverse',
+    flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     paddingHorizontal: 12,
@@ -750,7 +751,7 @@ const styles = StyleSheet.create({
   statusPillDraft: { backgroundColor: 'rgba(148,163,184,0.18)', borderColor: 'rgba(148,163,184,0.35)' },
 
   heroEditBtn: {
-    flexDirection: 'row-reverse',
+    flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     paddingHorizontal: 12,
@@ -831,23 +832,23 @@ const styles = StyleSheet.create({
     shadowRadius: 20,
     shadowOffset: { width: 0, height: 8 },
   },
-  quickActionsHeader: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
+  quickActionsHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   quickActionBtn: {
     height: 50,
     borderRadius: 16,
     backgroundColor: 'rgba(15,23,42,0.03)',
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.06)',
-    flexDirection: 'row-reverse',
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 14,
   },
   quickActionBtnHover: { backgroundColor: 'rgba(15,69,230,0.06)', borderColor: 'rgba(15,69,230,0.14)' },
-  quickActionLeft: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 },
+  quickActionLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 },
   quickActionIcon: { width: 32, height: 32, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
   quickActionText: { fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'right', flex: 1 },
-  quickActionChevron: { transform: [{ rotate: '180deg' }] },
+  quickActionChevron: {},
 
   statsGrid: {
     flexDirection: 'row-reverse',
@@ -881,10 +882,10 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     minWidth: 0,
   },
-  statCardTop: { flexDirection: 'row-reverse', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
+  statCardTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
   statLabel: { fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'right' },
   statIconCircle: { width: 32, height: 32, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
-  statCardBottom: { flexDirection: 'row-reverse', alignItems: 'baseline', gap: 10 },
+  statCardBottom: { flexDirection: 'row', alignItems: 'baseline', gap: 10 },
   statValue: { fontSize: 30, fontWeight: '900', color: colors.text, textAlign: 'right' },
   statHint: { marginTop: 4, fontSize: 12, fontWeight: '700', color: colors.gray[600], textAlign: 'right' },
 
@@ -900,12 +901,12 @@ const styles = StyleSheet.create({
     shadowRadius: 20,
     shadowOffset: { width: 0, height: 8 },
   },
-  panelHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  panelHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   panelTitle: { fontSize: 16, fontWeight: '900', color: colors.text, textAlign: 'right' },
   panelLink: { fontSize: 12, fontWeight: '900', color: '#3B82F6', textAlign: 'left' },
   totalChip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(15,69,230,0.06)' },
   totalChipText: { fontSize: 12, fontWeight: '900', color: colors.primary },
-  progressRow: { flexDirection: 'row-reverse', gap: 12 },
+  progressRow: { flexDirection: 'row', gap: 12 },
   progressItem: { flex: 1, borderRadius: 14, padding: 12, backgroundColor: 'rgba(15,23,42,0.04)', borderWidth: 1, borderColor: 'rgba(15,23,42,0.06)' },
   progressCard: {
     borderRadius: 20,
@@ -915,7 +916,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(15,23,42,0.06)',
     gap: 12,
   },
-  progressHeader: { flexDirection: 'row-reverse', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 },
+  progressHeader: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 },
   progressHeaderRight: { alignItems: 'flex-end', gap: 4, flex: 1, minWidth: 0 },
   progressLabel: { fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'right' },
   progressValue: { fontSize: 22, fontWeight: '900', color: colors.text, textAlign: 'right' },
@@ -945,7 +946,7 @@ const styles = StyleSheet.create({
 
   barTrack: { height: 8, borderRadius: 999, backgroundColor: 'rgba(15,23,42,0.06)', overflow: 'hidden' },
   barFill: { height: 8, borderRadius: 999, backgroundColor: colors.primary },
-  panelActionsRow: { flexDirection: 'row-reverse', gap: 10 },
+  panelActionsRow: { flexDirection: 'row', gap: 10 },
   secondaryBtn: {
     flex: 1,
     height: 44,
@@ -953,7 +954,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(15,23,42,0.04)',
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.06)',
-    flexDirection: 'row-reverse',
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
@@ -961,7 +962,7 @@ const styles = StyleSheet.create({
   secondaryBtnHover: { backgroundColor: 'rgba(15,23,42,0.06)' },
   secondaryBtnText: { fontSize: 12, fontWeight: '900', color: colors.text },
 
-  compactCardsRow: { flexDirection: 'row-reverse', gap: 12, flexWrap: 'wrap' },
+  compactCardsRow: { flexDirection: 'row', gap: 12, flexWrap: 'wrap' },
   compactCard: {
     flexGrow: 1,
     flexBasis: 160,
@@ -978,7 +979,7 @@ const styles = StyleSheet.create({
   compactNumber: { fontSize: 20, fontWeight: '900', color: colors.text, textAlign: 'center' },
   compactLabel: { fontSize: 12, fontWeight: '700', color: colors.gray[600], textAlign: 'center' },
 
-  bigActionsRow: { flexDirection: 'row-reverse', gap: 14, flexWrap: 'wrap' },
+  bigActionsRow: { flexDirection: 'row', gap: 14, flexWrap: 'wrap' },
   bigActionSecondary: {
     flexGrow: 1,
     flexBasis: 300,
@@ -1067,22 +1068,22 @@ const styles = StyleSheet.create({
 
   editOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 18 },
   editCard: { width: '100%', maxWidth: 720, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.98)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.7)', overflow: 'hidden', maxHeight: '88%' },
-  editHeader: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 12, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
+  editHeader: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   iconCircle: { width: 40, height: 40, borderRadius: 999, backgroundColor: 'rgba(17,24,39,0.06)', justifyContent: 'center', alignItems: 'center' },
   editTitle: { fontSize: 18, fontWeight: '900', color: '#111827', textAlign: 'center' },
   editSubtitle: { marginTop: 4, fontSize: 12, fontWeight: '800', color: 'rgba(17,24,39,0.55)', textAlign: 'center' },
   editDivider: { height: 1, backgroundColor: 'rgba(17,24,39,0.08)', marginHorizontal: 16 },
   editBody: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 14 },
   editLabel: { fontSize: 13, fontWeight: '900', color: '#111827', textAlign: 'right' },
-  inputLike: { marginTop: 8, height: 52, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(17,24,39,0.10)', backgroundColor: 'rgba(17,24,39,0.04)', paddingHorizontal: 14, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
+  inputLike: { marginTop: 8, height: 52, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(17,24,39,0.10)', backgroundColor: 'rgba(17,24,39,0.04)', paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   inputLikeHover: { backgroundColor: 'rgba(17,24,39,0.06)' },
   inputLikeText: { fontSize: 15, fontWeight: '900', color: '#111827' },
   textInput: { marginTop: 8, height: 48, borderRadius: 14, paddingHorizontal: 14, borderWidth: 1, borderColor: 'rgba(17,24,39,0.10)', backgroundColor: 'rgba(17,24,39,0.04)', color: '#111827', fontSize: 14, fontWeight: '700' },
-  editFooter: { padding: 14, borderTopWidth: 1, borderTopColor: 'rgba(17,24,39,0.08)', flexDirection: 'row-reverse', gap: 10, backgroundColor: 'rgba(255,255,255,0.98)' },
+  editFooter: { padding: 14, borderTopWidth: 1, borderTopColor: 'rgba(17,24,39,0.08)', flexDirection: 'row', gap: 10, backgroundColor: 'rgba(255,255,255,0.98)' },
   footerBtnSecondary: { flex: 1, height: 50, borderRadius: 14, backgroundColor: 'rgba(17,24,39,0.06)', justifyContent: 'center', alignItems: 'center' },
   footerBtnSecondaryHover: { backgroundColor: 'rgba(17,24,39,0.08)' },
   footerBtnSecondaryText: { fontSize: 14, fontWeight: '900', color: '#111827' },
-  footerBtnPrimary: { flex: 2, height: 50, borderRadius: 14, backgroundColor: '#1d4ed8', justifyContent: 'center', alignItems: 'center', flexDirection: 'row-reverse', gap: 8 },
+  footerBtnPrimary: { flex: 2, height: 50, borderRadius: 14, backgroundColor: '#1d4ed8', justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 8 },
   footerBtnPrimaryHover: { opacity: 0.95 },
   footerBtnPrimaryText: { fontSize: 14, fontWeight: '900', color: '#fff' },
 });
