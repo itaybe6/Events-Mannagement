@@ -69,6 +69,14 @@ export default function CoupleGuestsWebScreen() {
   const [editStatus, setEditStatus] = useState<GuestStatus>('ממתין');
   const [editPeopleCount, setEditPeopleCount] = useState('1');
 
+  const [addOpen, setAddOpen] = useState(false);
+  const [addStep, setAddStep] = useState<'category' | 'guest'>('category');
+  const [addSelectedCategoryId, setAddSelectedCategoryId] = useState<string>('__uncategorized__');
+  const [addNewCategoryName, setAddNewCategoryName] = useState('');
+  const [addGuestName, setAddGuestName] = useState('');
+  const [addGuestPhone, setAddGuestPhone] = useState('');
+  const [addSaving, setAddSaving] = useState(false);
+
   useEffect(() => {
     if (!isLoggedIn) {
       router.replace('/login');
@@ -281,6 +289,115 @@ export default function CoupleGuestsWebScreen() {
     router.push({ pathname: '/contacts-list', params: { eventId: resolvedEventId, autoOpenCategory: '1' } });
   };
 
+  const openAdd = () => {
+    if (!resolvedEventId) {
+      Alert.alert('שגיאה', 'לא נמצא אירוע פעיל.');
+      return;
+    }
+    setAddOpen(true);
+    setAddStep('category');
+    setAddNewCategoryName('');
+    setAddGuestName('');
+    setAddGuestPhone('');
+    setAddSaving(false);
+    const firstCatId = String(categories?.[0]?.id || '').trim();
+    setAddSelectedCategoryId(firstCatId || '__uncategorized__');
+  };
+
+  const closeAdd = () => {
+    setAddOpen(false);
+    setAddStep('category');
+    setAddSaving(false);
+    setAddNewCategoryName('');
+    setAddGuestName('');
+    setAddGuestPhone('');
+  };
+
+  const handleAddCategoryInline = async () => {
+    if (!resolvedEventId) return;
+    const name = (addNewCategoryName || '').trim();
+    if (!name) {
+      Alert.alert('שגיאה', 'יש להזין שם קטגוריה');
+      return;
+    }
+    if (addSaving) return;
+    setAddSaving(true);
+    try {
+      const created = (await guestService.addGuestCategory(resolvedEventId, name, 'groom')) as any;
+      setCategories((prev) => [...prev, created]);
+      setExpandedByCategoryId((prev) => ({ ...prev, [String(created.id)]: true }));
+      setAddSelectedCategoryId(String(created.id));
+      setAddNewCategoryName('');
+      setAddStep('guest');
+    } catch (e: any) {
+      console.error('Add category inline error:', e);
+      const msg =
+        e?.message ||
+        e?.details ||
+        e?.hint ||
+        (typeof e === 'string' ? e : '') ||
+        'לא ניתן להוסיף קטגוריה';
+      Alert.alert('שגיאה', msg);
+    } finally {
+      setAddSaving(false);
+    }
+  };
+
+  const handleAddGuestInline = async () => {
+    if (!resolvedEventId) return;
+    const name = (addGuestName || '').trim();
+    const phone = (addGuestPhone || '').trim();
+    if (!name) {
+      Alert.alert('שגיאה', 'יש להזין שם מוזמן');
+      return;
+    }
+    if (!phone) {
+      Alert.alert('שגיאה', 'יש להזין מספר פלאפון');
+      return;
+    }
+    if (addSaving) return;
+    setAddSaving(true);
+    try {
+      const categoryId =
+        addSelectedCategoryId === '__uncategorized__' ? null : String(addSelectedCategoryId || '').trim() || null;
+      const created = await guestService.addGuest(resolvedEventId, {
+        name,
+        phone,
+        status: 'ממתין' as any,
+        tableId: null,
+        gift: 0,
+        message: '',
+        category_id: categoryId,
+        numberOfPeople: 1,
+      } as any);
+
+      setGuests((prev) => {
+        const next: GuestRow[] = [
+          ...prev,
+          {
+            id: String(created.id),
+            name: String(created.name || ''),
+            phone: String(created.phone || ''),
+            status: (created.status || 'ממתין') as GuestStatus,
+            category_id: (created as any).category_id ?? null,
+            numberOfPeople: (created as any).numberOfPeople ?? 1,
+          },
+        ];
+        next.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'he', { sensitivity: 'base' }));
+        return next;
+      });
+
+      setAddGuestName('');
+      setAddGuestPhone('');
+      Alert.alert('נוסף', 'המוזמן נוסף בהצלחה');
+    } catch (e) {
+      console.error('Add guest inline error:', e);
+      Alert.alert('שגיאה', 'לא ניתן להוסיף את המוזמן.');
+    } finally {
+      setAddSaving(false);
+    }
+  };
+
   void categoryNameById;
 
   const statusChipOptions: Array<{ key: GuestStatus | null; label: string; count: number; tone: 'primary' | 'success' | 'warning' | 'danger' }> =
@@ -350,7 +467,7 @@ export default function CoupleGuestsWebScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="הוסף מוזמנים"
-            onPress={importContacts}
+            onPress={openAdd}
             style={({ hovered, pressed }: any) => [
               styles.addGuestsBtn,
               isNarrow ? styles.addGuestsBtnNarrow : null,
@@ -403,8 +520,8 @@ export default function CoupleGuestsWebScreen() {
           </View>
         ) : (
           <View style={styles.groups}>
-            {categories.length === 0 ? (
-              <EmptyState onAdd={importContacts} />
+            {groupItems.length === 0 ? (
+              <EmptyState onAdd={openAdd} />
             ) : (
               groupItems.map((cat) => {
                 const list = cat.list;
@@ -477,6 +594,209 @@ export default function CoupleGuestsWebScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* Add guest modal */}
+      <Modal visible={addOpen} transparent animationType="fade" onRequestClose={closeAdd}>
+        <Pressable style={styles.modalOverlay} onPress={closeAdd}>
+          <Pressable style={[styles.modalCard, { maxHeight: Math.min(0.92 * windowHeight, 720) }]} onPress={() => {}}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>{addStep === 'category' ? 'הוספת מוזמן' : 'פרטי מוזמן'}</Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="סגירה"
+                onPress={closeAdd}
+                style={({ hovered, pressed }: any) => [
+                  styles.modalCloseBtn,
+                  Platform.OS === 'web' && hovered ? styles.modalCloseBtnHover : null,
+                  pressed ? styles.btnPressed : null,
+                ]}
+              >
+                <Ionicons name="close" size={18} color={colors.gray[700]} />
+              </Pressable>
+            </View>
+
+            <ScrollView contentContainerStyle={styles.modalBody} showsVerticalScrollIndicator={false}>
+              {addStep === 'category' ? (
+                <>
+                  <Text style={styles.addHint}>בחר קטגוריה כדי לתייג את המוזמן, או הוסף קטגוריה חדשה.</Text>
+
+                  <View style={styles.categoryPickList}>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="ללא קטגוריה"
+                      onPress={() => setAddSelectedCategoryId('__uncategorized__')}
+                      style={({ hovered, pressed }: any) => [
+                        styles.categoryPickItem,
+                        addSelectedCategoryId === '__uncategorized__' ? styles.categoryPickItemActive : null,
+                        Platform.OS === 'web' && hovered && addSelectedCategoryId !== '__uncategorized__'
+                          ? styles.categoryPickItemHover
+                          : null,
+                        pressed ? styles.btnPressed : null,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.categoryPickText,
+                          addSelectedCategoryId === '__uncategorized__' ? styles.categoryPickTextActive : null,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        ללא קטגוריה
+                      </Text>
+                      {addSelectedCategoryId === '__uncategorized__' ? (
+                        <Ionicons name="checkmark" size={18} color={colors.white} />
+                      ) : null}
+                    </Pressable>
+
+                    {categories.map((c) => {
+                      const id = String(c.id);
+                      const active = addSelectedCategoryId === id;
+                      return (
+                        <Pressable
+                          key={id}
+                          accessibilityRole="button"
+                          accessibilityLabel={`קטגוריה ${c.name}`}
+                          onPress={() => setAddSelectedCategoryId(id)}
+                          style={({ hovered, pressed }: any) => [
+                            styles.categoryPickItem,
+                            active ? styles.categoryPickItemActive : null,
+                            Platform.OS === 'web' && hovered && !active ? styles.categoryPickItemHover : null,
+                            pressed ? styles.btnPressed : null,
+                          ]}
+                        >
+                          <Text style={[styles.categoryPickText, active ? styles.categoryPickTextActive : null]} numberOfLines={1}>
+                            {c.name}
+                          </Text>
+                          {active ? <Ionicons name="checkmark" size={18} color={colors.white} /> : null}
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+
+                  <View style={{ height: 6 }} />
+
+                  <Field label="קטגוריה חדשה">
+                    <View style={styles.inlineRow}>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="הוסף קטגוריה"
+                        onPress={handleAddCategoryInline}
+                        style={({ hovered, pressed }: any) => [
+                          styles.inlineAddBtn,
+                          Platform.OS === 'web' && hovered ? styles.inlineAddBtnHover : null,
+                          pressed ? styles.btnPressed : null,
+                          addSaving ? styles.inlineAddBtnDisabled : null,
+                        ]}
+                        disabled={addSaving}
+                      >
+                        <Ionicons name="add" size={18} color={colors.white} />
+                        <Text style={styles.inlineAddBtnText}>{addSaving ? 'מוסיף...' : 'הוסף'}</Text>
+                      </Pressable>
+                      <TextInput
+                        value={addNewCategoryName}
+                        onChangeText={setAddNewCategoryName}
+                        placeholder="למשל: משפחה / חברים"
+                        placeholderTextColor={colors.gray[500]}
+                        style={[styles.modalInput, { flex: 1 }]}
+                      />
+                    </View>
+                  </Field>
+                </>
+              ) : (
+                <>
+                  <View style={styles.selectedCategoryLine}>
+                    <Text style={styles.selectedCategoryLabel}>קטגוריה:</Text>
+                    <Text style={styles.selectedCategoryValue} numberOfLines={1}>
+                      {addSelectedCategoryId === '__uncategorized__'
+                        ? 'ללא קטגוריה'
+                        : String(categories.find((c) => String(c.id) === String(addSelectedCategoryId))?.name || '—')}
+                    </Text>
+                  </View>
+
+                  <Field label="שם">
+                    <TextInput
+                      value={addGuestName}
+                      onChangeText={setAddGuestName}
+                      placeholder="שם מלא"
+                      placeholderTextColor={colors.gray[500]}
+                      style={styles.modalInput}
+                    />
+                  </Field>
+
+                  <Field label="מספר פלאפון">
+                    <TextInput
+                      value={addGuestPhone}
+                      onChangeText={setAddGuestPhone}
+                      placeholder="050-0000000"
+                      placeholderTextColor={colors.gray[500]}
+                      style={[styles.modalInput, styles.inputLtr]}
+                      keyboardType="phone-pad"
+                    />
+                  </Field>
+                </>
+              )}
+
+              <View style={{ height: 10 }} />
+            </ScrollView>
+
+            <View style={styles.modalActions}>
+              {addStep === 'guest' ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="חזרה"
+                  onPress={() => setAddStep('category')}
+                  style={({ hovered, pressed }: any) => [
+                    styles.modalSecondaryBtn,
+                    Platform.OS === 'web' && hovered ? styles.modalSecondaryBtnHover : null,
+                    pressed ? styles.btnPressed : null,
+                  ]}
+                >
+                  <Ionicons name="arrow-forward" size={18} color={colors.gray[800]} />
+                  <Text style={styles.modalSecondaryBtnText}>חזרה</Text>
+                </Pressable>
+              ) : (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="ייבוא מאנשי קשר"
+                  onPress={() => {
+                    closeAdd();
+                    importContacts();
+                  }}
+                  style={({ hovered, pressed }: any) => [
+                    styles.modalSecondaryBtn,
+                    Platform.OS === 'web' && hovered ? styles.modalSecondaryBtnHover : null,
+                    pressed ? styles.btnPressed : null,
+                  ]}
+                >
+                  <Ionicons name="people-outline" size={18} color={colors.gray[800]} />
+                  <Text style={styles.modalSecondaryBtnText}>ייבוא מאנשי קשר</Text>
+                </Pressable>
+              )}
+
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={addStep === 'category' ? 'המשך' : 'הוסף'}
+                onPress={() => {
+                  if (addStep === 'category') setAddStep('guest');
+                  else void handleAddGuestInline();
+                }}
+                style={({ hovered, pressed }: any) => [
+                  styles.modalPrimaryBtn,
+                  Platform.OS === 'web' && hovered ? styles.modalPrimaryBtnHover : null,
+                  pressed ? styles.btnPressed : null,
+                  addSaving ? styles.modalPrimaryBtnDisabled : null,
+                ]}
+                disabled={addSaving}
+              >
+                <Ionicons name={addStep === 'category' ? 'arrow-back' : 'person-add'} size={18} color={colors.white} />
+                <Text style={styles.modalPrimaryBtnText}>
+                  {addSaving ? (addStep === 'category' ? 'טוען...' : 'מוסיף...') : addStep === 'category' ? 'המשך' : 'הוסף מוזמן'}
+                </Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* Edit modal */}
       <Modal visible={editOpen} transparent animationType="fade" onRequestClose={closeEdit}>
@@ -1277,6 +1597,68 @@ const styles = StyleSheet.create({
   },
   modalPrimaryBtnHover: { opacity: 0.95 },
   modalPrimaryBtnText: { color: colors.white, fontSize: 13, fontWeight: '900', textAlign: 'right' },
+  modalPrimaryBtnDisabled: { opacity: 0.75 },
+
+  modalSecondaryBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: colors.gray[100],
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  modalSecondaryBtnHover: { backgroundColor: colors.gray[200] },
+  modalSecondaryBtnText: { color: colors.gray[800], fontSize: 13, fontWeight: '900', textAlign: 'right' },
+
+  addHint: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.gray[600],
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  categoryPickList: { gap: 10, marginTop: 10 },
+  categoryPickItem: {
+    height: 44,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    backgroundColor: colors.gray[50],
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.10)',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  categoryPickItemHover: { backgroundColor: colors.gray[100] },
+  categoryPickItemActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  categoryPickText: { fontSize: 13, fontWeight: '900', color: colors.gray[800], textAlign: 'right', flex: 1, minWidth: 0 },
+  categoryPickTextActive: { color: colors.white },
+
+  inlineRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
+  inlineAddBtn: {
+    height: 44,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    backgroundColor: colors.primary,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  inlineAddBtnHover: { opacity: 0.95 },
+  inlineAddBtnDisabled: { opacity: 0.75 },
+  inlineAddBtnText: { fontSize: 12, fontWeight: '900', color: colors.white, textAlign: 'right' },
+
+  selectedCategoryLine: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
+  selectedCategoryLabel: { fontSize: 12, fontWeight: '900', color: colors.gray[700], textAlign: 'right' },
+  selectedCategoryValue: { fontSize: 12, fontWeight: '900', color: colors.primary, textAlign: 'right', flex: 1, minWidth: 0 },
 
   empty: {
     padding: 26,

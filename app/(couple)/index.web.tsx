@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -8,9 +8,7 @@ import { eventService } from '@/lib/services/eventService';
 import { guestService } from '@/lib/services/guestService';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import { useUserStore } from '@/store/userStore';
-import type { Guest, GuestCategory } from '@/types';
-
-type DashboardCategory = Pick<GuestCategory, 'id' | 'name' | 'side'>;
+import type { Guest } from '@/types';
 
 export default function CoupleHomeWebScreen() {
   const router = useRouter();
@@ -23,9 +21,7 @@ export default function CoupleHomeWebScreen() {
 
   const [currentEvent, setCurrentEvent] = useState<any>(null);
   const [guests, setGuests] = useState<Guest[]>([]);
-  const [categories, setCategories] = useState<DashboardCategory[]>([]);
   const [loading, setLoading] = useState(true);
-  const [guestQuery, setGuestQuery] = useState('');
   const [now, setNow] = useState(() => new Date());
 
   const resolvedEventId =
@@ -53,26 +49,22 @@ export default function CoupleHomeWebScreen() {
         if (!eventId) {
           setCurrentEvent(null);
           setGuests([]);
-          setCategories([]);
           setLoading(false);
           return;
         }
 
         if (userData?.id) setActiveEvent(userData.id, eventId);
 
-        const [event, guestsData, categoriesData] = await Promise.all([
+        const [event, guestsData] = await Promise.all([
           eventService.getEvent(eventId),
           guestService.getGuests(eventId),
-          guestService.getGuestCategories(eventId),
         ]);
 
         setCurrentEvent(event);
         setGuests(guestsData as any);
-        setCategories((categoriesData || []) as any);
       } catch (e) {
         setCurrentEvent(null);
         setGuests([]);
-        setCategories([]);
       } finally {
         setLoading(false);
       }
@@ -80,12 +72,6 @@ export default function CoupleHomeWebScreen() {
 
     loadData();
   }, [isLoggedIn, router, userData?.id, resolvedEventId, initializeAuth, setActiveEvent]);
-
-  const categoryById = useMemo(() => {
-    const m = new Map<string, DashboardCategory>();
-    for (const c of categories) m.set(String(c.id), c);
-    return m;
-  }, [categories]);
 
   const stats = useMemo(() => {
     const confirmed = guests.filter((g) => g.status === 'מגיע').length;
@@ -127,19 +113,6 @@ export default function CoupleHomeWebScreen() {
     if (bride) return bride;
     return String(currentEvent?.title || '').trim();
   }, [currentEvent?.brideName, currentEvent?.groomName, currentEvent?.title]);
-
-  const filteredGuests = useMemo(() => {
-    const q = guestQuery.trim().toLowerCase();
-    if (!q) return guests;
-    return guests.filter((g) => {
-      const name = String(g.name || '').toLowerCase();
-      const phone = String(g.phone || '').replace(/\s+/g, '');
-      const qPhone = q.replace(/\s+/g, '');
-      return name.includes(q) || (qPhone && phone.includes(qPhone));
-    });
-  }, [guests, guestQuery]);
-
-  const guestsPreview = useMemo(() => filteredGuests.slice(0, 3), [filteredGuests]);
 
   if (!isLoggedIn) {
     return (
@@ -227,79 +200,54 @@ export default function CoupleHomeWebScreen() {
         </View>
 
         {/* Mini windows (bottom) */}
-        <View style={styles.miniGrid}>
-          <HoverableSurface style={styles.miniCard} hoverStyle={styles.miniCardHover}>
-            <View style={styles.miniHeader}>
-              <Text style={styles.miniTitle} numberOfLines={1}>
-                <Ionicons name="list" size={16} color={stylesVars.accentBlue} /> {'  '}רשימת מוזמנים
-              </Text>
-              <Pressable
-                onPress={() =>
-                  router.push({
-                    pathname: '/(couple)/guests',
-                    params: resolvedEventId ? { eventId: resolvedEventId } : {},
-                  })
-                }
-                style={({ hovered, pressed }: any) => [
-                  styles.miniLinkBtn,
-                  Platform.OS === 'web' && hovered ? styles.miniLinkBtnHover : null,
-                  pressed ? styles.btnPressed : null,
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel="ניהול מוזמנים"
-              >
-                <Text style={styles.miniLinkBtnText}>ניהול</Text>
-              </Pressable>
+        <View style={styles.bigActionsRow}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="מוזמנים"
+            onPress={() =>
+              router.push({
+                pathname: '/(couple)/guests',
+                params: resolvedEventId ? { eventId: resolvedEventId } : {},
+              })
+            }
+            style={({ hovered, pressed }: any) => [
+              styles.bigActionSecondary,
+              Platform.OS === 'web' && hovered ? styles.bigActionSecondaryHover : null,
+              pressed ? { opacity: 0.94 } : null,
+            ]}
+          >
+            <View style={styles.bigActionIconWrapSecondary}>
+              <Ionicons name="people-outline" size={26} color={stylesVars.accentBlue} />
             </View>
-
-            <View style={styles.miniBody}>
-              <View style={styles.searchWrap}>
-                <Ionicons name="search" size={18} color={colors.gray[400]} style={styles.searchIcon} />
-                <TextInput
-                  value={guestQuery}
-                  onChangeText={setGuestQuery}
-                  placeholder="חיפוש אורח..."
-                  placeholderTextColor={colors.gray[400]}
-                  style={styles.searchInput}
-                />
-              </View>
-
-              <View style={styles.guestList}>
-                {guestsPreview.length === 0 ? (
-                  <View style={{ paddingVertical: 20, alignItems: 'center' }}>
-                    <Text style={{ fontSize: 11, fontWeight: '800', color: colors.gray[500], textAlign: 'center' }}>
-                      אין אורחים להצגה
-                    </Text>
-                  </View>
-                ) : (
-                  guestsPreview.map((g) => (
-                    <GuestRow key={g.id} guest={g} category={categoryById.get(String(g.category_id || '')) || null} />
-                  ))
-                )}
-              </View>
-
-              <Pressable
-                onPress={() =>
-                  router.push({
-                    pathname: '/(couple)/guests',
-                    params: resolvedEventId ? { eventId: resolvedEventId } : {},
-                  })
-                }
-                style={({ hovered, pressed }: any) => [
-                  styles.miniCtaRow,
-                  Platform.OS === 'web' && hovered ? styles.miniCtaRowHover : null,
-                  pressed ? styles.btnPressed : null,
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel="מעבר לניהול מוזמנים"
-              >
-                <Ionicons name="arrow-back" size={16} color={colors.gray[500]} />
-                <Text style={styles.miniCtaText}>נהל מוזמנים</Text>
-              </Pressable>
-            </View>
-          </HoverableSurface>
+            <Text style={styles.bigActionTitleSecondary}>מוזמנים</Text>
+            <Text style={styles.bigActionSubtitleSecondary}>ניהול אורחים, סטטוסים ומתנות</Text>
+          </Pressable>
 
           <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="הודעות אוטומטיות"
+            onPress={() =>
+              router.push({
+                pathname: '/(couple)/automatic-notifications',
+                params: resolvedEventId ? { eventId: resolvedEventId } : {},
+              })
+            }
+            style={({ hovered, pressed }: any) => [
+              styles.bigActionSecondary,
+              Platform.OS === 'web' && hovered ? styles.bigActionSecondaryHover : null,
+              pressed ? { opacity: 0.94 } : null,
+            ]}
+          >
+            <View style={styles.bigActionIconWrapSecondary}>
+              <Ionicons name="chatbubble-ellipses-outline" size={26} color={stylesVars.primary} />
+            </View>
+            <Text style={styles.bigActionTitleSecondary}>הודעות אוטומטיות</Text>
+            <Text style={styles.bigActionSubtitleSecondary}>עריכה והפעלה של תזכורות והודעות וואטסאפ</Text>
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="מפת הושבה"
             onPress={() =>
               router.push({
                 pathname: '/(couple)/BrideGroomSeating',
@@ -307,41 +255,18 @@ export default function CoupleHomeWebScreen() {
               })
             }
             style={({ hovered, pressed }: any) => [
-              styles.miniCard,
-              styles.miniCardPressable,
-              Platform.OS === 'web' && hovered ? styles.miniCardHover : null,
-              pressed ? styles.btnPressed : null,
+              styles.bigActionPrimary,
+              Platform.OS === 'web' && hovered ? styles.bigActionPrimaryHover : null,
+              pressed ? { opacity: 0.94 } : null,
             ]}
-            accessibilityRole="button"
-            accessibilityLabel="פתח מפת הושבה"
           >
-            <View pointerEvents="none" style={styles.dotPattern} />
-            <View pointerEvents="none" style={styles.seatingGlowMini} />
-
-            <View style={styles.miniHeader}>
-              <Text style={styles.miniTitle} numberOfLines={1}>
-                <Ionicons name="grid" size={16} color={stylesVars.accentPurple} /> {'  '}מפת הושבה
-              </Text>
-              <View style={styles.miniBadge}>
-                <Ionicons name="alert-circle" size={14} color={stylesVars.accentBlue} />
-                <Text style={styles.miniBadgeText}>{stats.needSeat} להושבה</Text>
-              </View>
+            <View style={styles.bigActionBgBlob1} />
+            <View style={styles.bigActionBgBlob2} />
+            <View style={styles.bigActionIconWrapPrimary}>
+              <Ionicons name="grid-outline" size={26} color={colors.white} />
             </View>
-
-            <View style={[styles.miniBody, styles.miniBodyCenter]}>
-              <View style={styles.seatingIconBoxMini}>
-                <Ionicons name="restaurant" size={28} color={stylesVars.accentBlue} />
-              </View>
-              <Text style={styles.seatingTitleMini}>ניהול סידורי הושבה</Text>
-              <Text style={styles.seatingSubtitleMini} numberOfLines={3}>
-                גררו שולחנות, מקמו אורחים, וקבלו תמונת מצב מלאה — הכל במקום אחד.
-              </Text>
-
-              <View style={styles.seatingCtaMini}>
-                <Ionicons name="open-outline" size={16} color={colors.white} />
-                <Text style={styles.seatingCtaTextMini}>פתח מפה</Text>
-              </View>
-            </View>
+            <Text style={styles.bigActionTitlePrimary}>מפת הושבה</Text>
+            <Text style={styles.bigActionSubtitlePrimary}>שיבוץ אורחים בשולחנות</Text>
           </Pressable>
         </View>
 
@@ -452,46 +377,6 @@ function InfoCard({
         {value}
       </Text>
     </HoverableSurface>
-  );
-}
-
-function GuestRow({ guest, category }: { guest: Guest; category: DashboardCategory | null }) {
-  const initials = String(guest.name || '')
-    .trim()
-    .split(/\s+/g)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((p) => p[0])
-    .join('');
-
-  const statusColor =
-    guest.status === 'מגיע'
-      ? stylesVars.accentGreen
-      : guest.status === 'לא מגיע'
-        ? stylesVars.accentRed
-        : stylesVars.accentYellow;
-
-  const categoryLabel = category?.name ? category.name : 'קטגוריה';
-  const sideLabel = category?.side === 'bride' ? 'צד כלה' : category?.side === 'groom' ? 'צד חתן' : '';
-  const meta = [sideLabel, categoryLabel].filter(Boolean).join(' • ');
-
-  return (
-    <View style={styles.guestRow}>
-      <View style={styles.guestRowLeft}>
-        <View style={styles.guestAvatar}>
-          <Text style={styles.guestAvatarText}>{initials || 'א'}</Text>
-        </View>
-        <View style={styles.guestText}>
-          <Text style={styles.guestName} numberOfLines={1}>
-            {guest.name}
-          </Text>
-          <Text style={styles.guestMeta} numberOfLines={1}>
-            {meta}
-          </Text>
-        </View>
-      </View>
-      <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
-    </View>
   );
 }
 
@@ -713,227 +598,86 @@ const styles = StyleSheet.create({
   statValue: { fontSize: 26, fontWeight: '900', color: stylesVars.primary, textAlign: 'right' },
   statLabel: { marginTop: 3, fontSize: 11, fontWeight: '800', color: colors.gray[600], textAlign: 'right' },
 
-  miniGrid: {
-    marginTop: 14,
-    flexDirection: 'row-reverse',
-    flexWrap: 'wrap',
-    gap: 10,
-    alignItems: 'stretch',
-    justifyContent: 'space-between',
-  },
-  miniCard: {
+  bigActionsRow: { marginTop: 14, flexDirection: 'row', gap: 14, flexWrap: 'wrap' },
+  bigActionSecondary: {
     flexGrow: 1,
-    flexBasis: 380,
-    minWidth: 320,
-    borderRadius: 18,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.70)',
-    backgroundColor: 'rgba(255,255,255,0.68)',
-    ...(Platform.OS === 'web'
-      ? ({
-          backdropFilter: 'blur(10px)',
-          WebkitBackdropFilter: 'blur(10px)',
-          boxShadow: '0 2px 16px rgba(13,28,43,0.04)',
-          direction: 'rtl',
-        } as any)
-      : null),
-  },
-  miniCardPressable: {
+    flexBasis: 300,
+    minHeight: 150,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderWidth: 2,
+    borderColor: 'rgba(6,23,62,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 14,
+    gap: 7,
+    overflow: 'hidden',
+    shadowColor: '#0b1c41',
+    shadowOpacity: 0.06,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
-  miniCardHover: {
-    borderColor: 'rgba(59,130,246,0.20)',
-    // @ts-expect-error - react-native-web supports boxShadow
-    boxShadow: '0 0 14px rgba(59,130,246,0.10), 0 6px 24px rgba(13,28,43,0.05)',
-  },
-  miniHeader: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-    marginBottom: 8,
-  },
-  miniTitle: {
-    flex: 1,
-    minWidth: 0,
-    fontSize: 14,
-    fontWeight: '900',
-    color: stylesVars.primary,
-    textAlign: 'right',
-  },
-  miniLinkBtn: {
-    height: 30,
-    paddingHorizontal: 10,
+  bigActionSecondaryHover: { borderColor: 'rgba(6,23,62,0.20)', backgroundColor: 'rgba(6,23,62,0.04)' },
+  bigActionIconWrapSecondary: {
+    width: 48,
+    height: 48,
     borderRadius: 999,
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: 'rgba(59,130,246,0.16)',
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+    backgroundColor: 'rgba(6,23,62,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  miniLinkBtnHover: { backgroundColor: 'rgba(59,130,246,0.05)' },
-  miniLinkBtnText: { fontSize: 11, fontWeight: '900', color: stylesVars.accentBlue, textAlign: 'right' },
-  miniBody: {
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.05)',
-    backgroundColor: 'rgba(255,255,255,0.50)',
-    padding: 10,
-    height: 200,
-    overflow: 'hidden',
-    ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
-  },
-  miniBodyCenter: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  miniBadge: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: 999,
-    backgroundColor: 'rgba(59,130,246,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(59,130,246,0.14)',
-  },
-  miniBadgeText: { fontSize: 10, fontWeight: '900', color: stylesVars.accentBlue, textAlign: 'right' },
-  searchWrap: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.90)',
-    borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.05)',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    gap: 8,
-  },
-  searchIcon: { marginTop: 1 },
-  searchInput: {
-    flex: 1,
-    height: 30,
-    fontSize: 12,
-    fontWeight: '800',
-    color: stylesVars.primary,
-    textAlign: 'right',
-    paddingVertical: 0,
-  },
-  guestList: {
-    marginTop: 8,
-    gap: 6,
-    flex: 1,
-    minHeight: 0,
-    ...(Platform.OS === 'web'
-      ? ({
-          overflowY: 'auto',
-          overscrollBehavior: 'contain',
-          paddingRight: 2,
-          scrollbarWidth: 'thin',
-        } as any)
-      : null),
-  },
-  guestRow: {
-    padding: 8,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'transparent',
-    backgroundColor: 'rgba(255,255,255,0.60)',
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-    ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
-  },
-  guestRowLeft: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 },
-  guestAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 999,
-    backgroundColor: 'rgba(13,28,43,0.06)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  guestAvatarText: { fontSize: 11, fontWeight: '900', color: stylesVars.primary, textAlign: 'center' },
-  guestText: { flex: 1, minWidth: 0, alignItems: 'flex-end' },
-  guestName: { fontSize: 12, fontWeight: '900', color: stylesVars.primary, textAlign: 'right' },
-  guestMeta: { marginTop: 1, fontSize: 10, fontWeight: '800', color: colors.gray[600], textAlign: 'right' },
-  statusDot: { width: 8, height: 8, borderRadius: 999 },
+  bigActionTitleSecondary: { fontSize: 16, fontWeight: '900', color: stylesVars.primary, textAlign: 'center' },
+  bigActionSubtitleSecondary: { fontSize: 12, fontWeight: '700', color: colors.gray[600], textAlign: 'center' },
 
-  miniCtaRow: {
-    marginTop: 8,
-    height: 36,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.08)',
-    backgroundColor: 'rgba(255,255,255,0.75)',
-    flexDirection: 'row-reverse',
+  bigActionPrimary: {
+    flexGrow: 1,
+    flexBasis: 300,
+    minHeight: 150,
+    borderRadius: 24,
+    backgroundColor: stylesVars.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    padding: 14,
+    gap: 7,
+    overflow: 'hidden',
+    shadowColor: '#0b1c41',
+    shadowOpacity: 0.12,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 10 },
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
-  miniCtaRowHover: { backgroundColor: 'rgba(255,255,255,0.92)' },
-  miniCtaText: { fontSize: 11, fontWeight: '900', color: colors.gray[700], textAlign: 'right' },
-  dotPattern: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.35,
-    ...(Platform.OS === 'web'
-      ? ({
-          backgroundImage: 'radial-gradient(#cbd5e1 1.5px, transparent 1.5px)',
-          backgroundSize: '24px 24px',
-        } as any)
-      : null),
-  },
-  seatingGlowMini: {
+  bigActionPrimaryHover: { opacity: 0.96 },
+  bigActionBgBlob1: {
     position: 'absolute',
-    top: '50%',
-    left: '50%',
-    width: 180,
-    height: 180,
-    borderRadius: 9999,
-    transform: [{ translateX: -90 }, { translateY: -90 }],
-    backgroundColor: 'rgba(59,130,246,0.05)',
-    ...(Platform.OS === 'web' ? ({ filter: 'blur(32px)' } as any) : null),
+    top: -22,
+    right: -22,
+    width: 104,
+    height: 104,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.06)',
   },
-  seatingIconBoxMini: {
-    width: 52,
-    height: 52,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.85)',
+  bigActionBgBlob2: {
+    position: 'absolute',
+    bottom: -20,
+    left: -20,
+    width: 86,
+    height: 86,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  bigActionIconWrapPrimary: {
+    width: 48,
+    height: 48,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.12)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.65)',
+    borderColor: 'rgba(255,255,255,0.20)',
     alignItems: 'center',
     justifyContent: 'center',
-    // @ts-expect-error - react-native-web supports boxShadow
-    boxShadow: '0 8px 20px rgba(15,23,42,0.08)',
   },
-  seatingTitleMini: { fontSize: 16, fontWeight: '900', color: stylesVars.primary, textAlign: 'center' },
-  seatingSubtitleMini: {
-    maxWidth: 420,
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.gray[600],
-    textAlign: 'center',
-    lineHeight: 16,
-  },
-  seatingCtaMini: {
-    height: 36,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-    backgroundColor: stylesVars.primary,
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: 8,
-    // @ts-expect-error - react-native-web supports boxShadow
-    boxShadow: '0 8px 18px rgba(13,28,43,0.14)',
-  },
-  seatingCtaTextMini: { fontSize: 12, fontWeight: '900', color: colors.white, textAlign: 'right' },
+  bigActionTitlePrimary: { fontSize: 16, fontWeight: '900', color: colors.white, textAlign: 'center' },
+  bigActionSubtitlePrimary: { fontSize: 12, fontWeight: '700', color: 'rgba(255,255,255,0.70)', textAlign: 'center' },
 
 });
 

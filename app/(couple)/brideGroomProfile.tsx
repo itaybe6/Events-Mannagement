@@ -341,104 +341,106 @@ export default function BrideGroomSettings() {
         </View>
 
         {/* Message settings (from mobile profile screen) */}
-        <View style={styles.notificationsSection}>
-          <Text style={styles.sectionTitle}>הגדרות הודעות</Text>
+        {Platform.OS === 'web' ? null : (
+          <View style={styles.notificationsSection}>
+            <Text style={styles.sectionTitle}>הגדרות הודעות</Text>
 
-          <View style={styles.noteWrap}>
-            <Text style={styles.noteText}>
-              כאן אפשר לנהל הודעות אוטומטיות (SMS / וואטסאפ) שקשורות לאירוע. אם אין תצוגה כאן — ייתכן שהפיצ׳ר לא זמין בסביבת השרת הנוכחית.
-            </Text>
-          </View>
-
-          {!settingsSupported ? (
-            <View style={[styles.notificationCard, { borderColor: 'rgba(15,23,42,0.08)', backgroundColor: 'rgba(255,255,255,0.85)' }]}>
-              <View style={styles.cardMain}>
-                <Text style={[styles.cardTitle, { color: colors.gray[800] }]}>הגדרות הודעות לא זמינות</Text>
-                <View style={styles.cardMetaRow}>
-                  <Text style={[styles.metaText, { color: colors.gray[600] }]}>אין טבלת ״notification_settings״ בשרת המחובר.</Text>
-                </View>
-              </View>
+            <View style={styles.noteWrap}>
+              <Text style={styles.noteText}>
+                כאן אפשר לנהל הודעות אוטומטיות (SMS / וואטסאפ) שקשורות לאירוע. אם אין תצוגה כאן — ייתכן שהפיצ׳ר לא זמין בסביבת השרת הנוכחית.
+              </Text>
             </View>
-          ) : settingsLoading ? (
-            <View style={[styles.notificationCard, { borderColor: 'rgba(15,23,42,0.08)', backgroundColor: 'rgba(255,255,255,0.85)' }]}>
-              <View style={styles.cardMain}>
-                <Text style={[styles.cardTitle, { color: colors.gray[800] }]}>טוען...</Text>
-                <View style={styles.cardMetaRow}>
-                  <Text style={[styles.metaText, { color: colors.gray[600] }]}>טוען הגדרות הודעות לאירוע</Text>
-                </View>
-              </View>
-            </View>
-          ) : settings.length === 0 ? (
-            <View style={[styles.notificationCard, { borderColor: 'rgba(15,23,42,0.08)', backgroundColor: 'rgba(255,255,255,0.85)' }]}>
-              <View style={styles.cardMain}>
-                <Text style={[styles.cardTitle, { color: colors.gray[800] }]}>אין הודעות מוגדרות</Text>
-                <View style={styles.cardMetaRow}>
-                  <Text style={[styles.metaText, { color: colors.gray[600] }]}>אפשר להגדיר הודעות דרך ניהול האירוע.</Text>
-                </View>
-              </View>
-            </View>
-          ) : (
-            <View style={styles.cardsStack}>
-              {settings.map((s) => {
-                const channel = s.channel === 'SMS' ? 'SMS' : 'WHATSAPP';
-                const isWhatsapp = channel === 'WHATSAPP';
-                const accent = isWhatsapp ? 'rgba(37,211,102,0.95)' : 'rgba(59,130,246,0.95)';
-                const border = isWhatsapp ? 'rgba(37,211,102,0.18)' : 'rgba(59,130,246,0.18)';
-                const days = typeof s.days_from_wedding === 'number' ? s.days_from_wedding : 0;
-                const whenLabel = days === 0 ? 'ביום האירוע' : days > 0 ? `${days}+ ימים אחרי האירוע` : `${Math.abs(days)} ימים לפני האירוע`;
-                return (
-                  <View
-                    key={s.id}
-                    style={[
-                      styles.notificationCard,
-                      { borderColor: border, backgroundColor: 'rgba(255,255,255,0.92)' },
-                      isWhatsapp ? styles.notificationCardWhatsapp : null,
-                    ]}
-                  >
-                    <View style={[styles.whatsappAccent, { backgroundColor: accent }]} />
 
-                    <View style={styles.cardMain}>
-                      <Text style={[styles.cardTitle, { color: colors.gray[900] }]} numberOfLines={1}>
-                        {s.title || 'הודעה'}
-                      </Text>
-                      <View style={styles.cardMetaRow}>
-                        <TouchableOpacity style={styles.statusBtn} onPress={() => toggleSettingEnabled(s)} activeOpacity={0.9}>
-                          <Text style={[styles.statusText, { color: s.enabled ? accent : colors.gray[400] }]}>
-                            {s.enabled ? 'פעיל' : 'כבוי'}
-                          </Text>
-                        </TouchableOpacity>
-                        <Text style={[styles.metaBullet, { color: colors.gray[400] }]}>•</Text>
-                        <Text style={[styles.metaText, { color: colors.gray[700] }]}>{isWhatsapp ? 'וואטסאפ' : 'SMS'}</Text>
-                        <Text style={[styles.metaBullet, { color: colors.gray[400] }]}>•</Text>
-                        <Text style={[styles.metaText, { color: colors.gray[700] }]}>{whenLabel}</Text>
-                      </View>
-                    </View>
-
-                    <TouchableOpacity style={styles.cardChevron} onPress={() => openEditSetting(s)} activeOpacity={0.9}>
-                      <Ionicons name="chevron-back" size={20} color={colors.gray[500]} />
-                    </TouchableOpacity>
+            {!settingsSupported ? (
+              <View style={[styles.notificationCard, { borderColor: 'rgba(15,23,42,0.08)', backgroundColor: 'rgba(255,255,255,0.85)' }]}>
+                <View style={styles.cardMain}>
+                  <Text style={[styles.cardTitle, { color: colors.gray[800] }]}>הגדרות הודעות לא זמינות</Text>
+                  <View style={styles.cardMetaRow}>
+                    <Text style={[styles.metaText, { color: colors.gray[600] }]}>אין טבלת ״notification_settings״ בשרת המחובר.</Text>
                   </View>
-                );
-              })}
-            </View>
-          )}
+                </View>
+              </View>
+            ) : settingsLoading ? (
+              <View style={[styles.notificationCard, { borderColor: 'rgba(15,23,42,0.08)', backgroundColor: 'rgba(255,255,255,0.85)' }]}>
+                <View style={styles.cardMain}>
+                  <Text style={[styles.cardTitle, { color: colors.gray[800] }]}>טוען...</Text>
+                  <View style={styles.cardMetaRow}>
+                    <Text style={[styles.metaText, { color: colors.gray[600] }]}>טוען הגדרות הודעות לאירוע</Text>
+                  </View>
+                </View>
+              </View>
+            ) : settings.length === 0 ? (
+              <View style={[styles.notificationCard, { borderColor: 'rgba(15,23,42,0.08)', backgroundColor: 'rgba(255,255,255,0.85)' }]}>
+                <View style={styles.cardMain}>
+                  <Text style={[styles.cardTitle, { color: colors.gray[800] }]}>אין הודעות מוגדרות</Text>
+                  <View style={styles.cardMetaRow}>
+                    <Text style={[styles.metaText, { color: colors.gray[600] }]}>אפשר להגדיר הודעות דרך ניהול האירוע.</Text>
+                  </View>
+                </View>
+              </View>
+            ) : (
+              <View style={styles.cardsStack}>
+                {settings.map((s) => {
+                  const channel = s.channel === 'SMS' ? 'SMS' : 'WHATSAPP';
+                  const isWhatsapp = channel === 'WHATSAPP';
+                  const accent = isWhatsapp ? 'rgba(37,211,102,0.95)' : 'rgba(59,130,246,0.95)';
+                  const border = isWhatsapp ? 'rgba(37,211,102,0.18)' : 'rgba(59,130,246,0.18)';
+                  const days = typeof s.days_from_wedding === 'number' ? s.days_from_wedding : 0;
+                  const whenLabel = days === 0 ? 'ביום האירוע' : days > 0 ? `${days}+ ימים אחרי האירוע` : `${Math.abs(days)} ימים לפני האירוע`;
+                  return (
+                    <View
+                      key={s.id}
+                      style={[
+                        styles.notificationCard,
+                        { borderColor: border, backgroundColor: 'rgba(255,255,255,0.92)' },
+                        isWhatsapp ? styles.notificationCardWhatsapp : null,
+                      ]}
+                    >
+                      <View style={[styles.whatsappAccent, { backgroundColor: accent }]} />
 
-          <TouchableOpacity
-            style={[styles.editMessagesButton, !settingsSupported ? { opacity: 0.5 } : null]}
-            onPress={() => {
-              if (!resolvedEventId) return;
-              router.push({
-                pathname: '/(couple)/automatic-notifications',
-                params: { eventId: resolvedEventId },
-              } as any);
-            }}
-            disabled={!settingsSupported}
-            activeOpacity={0.9}
-          >
-            <Ionicons name="chatbubble-ellipses-outline" size={18} color={colors.white} />
-            <Text style={styles.editMessagesText}>הודעות אוטומטיות</Text>
-          </TouchableOpacity>
-        </View>
+                      <View style={styles.cardMain}>
+                        <Text style={[styles.cardTitle, { color: colors.gray[900] }]} numberOfLines={1}>
+                          {s.title || 'הודעה'}
+                        </Text>
+                        <View style={styles.cardMetaRow}>
+                          <TouchableOpacity style={styles.statusBtn} onPress={() => toggleSettingEnabled(s)} activeOpacity={0.9}>
+                            <Text style={[styles.statusText, { color: s.enabled ? accent : colors.gray[400] }]}>
+                              {s.enabled ? 'פעיל' : 'כבוי'}
+                            </Text>
+                          </TouchableOpacity>
+                          <Text style={[styles.metaBullet, { color: colors.gray[400] }]}>•</Text>
+                          <Text style={[styles.metaText, { color: colors.gray[700] }]}>{isWhatsapp ? 'וואטסאפ' : 'SMS'}</Text>
+                          <Text style={[styles.metaBullet, { color: colors.gray[400] }]}>•</Text>
+                          <Text style={[styles.metaText, { color: colors.gray[700] }]}>{whenLabel}</Text>
+                        </View>
+                      </View>
+
+                      <TouchableOpacity style={styles.cardChevron} onPress={() => openEditSetting(s)} activeOpacity={0.9}>
+                        <Ionicons name="chevron-back" size={20} color={colors.gray[500]} />
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+
+            <TouchableOpacity
+              style={[styles.editMessagesButton, !settingsSupported ? { opacity: 0.5 } : null]}
+              onPress={() => {
+                if (!resolvedEventId) return;
+                router.push({
+                  pathname: '/(couple)/automatic-notifications',
+                  params: { eventId: resolvedEventId },
+                } as any);
+              }}
+              disabled={!settingsSupported}
+              activeOpacity={0.9}
+            >
+              <Ionicons name="chatbubble-ellipses-outline" size={18} color={colors.white} />
+              <Text style={styles.editMessagesText}>הודעות אוטומטיות</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Logout Button */}
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
@@ -447,162 +449,164 @@ export default function BrideGroomSettings() {
       </ScrollView>
 
       {/* Settings editor modal */}
-      <Modal visible={settingsEditorOpen} transparent animationType="fade" onRequestClose={closeSettingsEditor}>
-        <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.35)' }]}>
-          <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} showsVerticalScrollIndicator={false}>
-            <Pressable style={styles.modalOverlayTouchable} onPress={closeSettingsEditor} />
+      {Platform.OS === 'web' ? null : (
+        <Modal visible={settingsEditorOpen} transparent animationType="fade" onRequestClose={closeSettingsEditor}>
+          <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.35)' }]}>
+            <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} showsVerticalScrollIndicator={false}>
+              <Pressable style={styles.modalOverlayTouchable} onPress={closeSettingsEditor} />
 
-            <View style={styles.modalCard}>
-              <View style={styles.modalHeader}>
-                <Pressable onPress={closeSettingsEditor} style={styles.modalCloseBtn} accessibilityRole="button" accessibilityLabel="סגור">
-                  <Ionicons name="close" size={18} color={colors.gray[700]} />
-                </Pressable>
-                <View style={styles.modalHeaderTitles}>
-                  <Text style={styles.modalTitle}>עריכת הודעה</Text>
-                  <Text style={styles.modalSubtitle} numberOfLines={2}>
-                    {editingSetting?.title ? editingSetting.title : 'בחר הודעה מהרשימה כדי לערוך'}
-                  </Text>
-                </View>
-                <View style={{ width: 40 }} />
-              </View>
-
-              <View style={styles.modalDivider} />
-
-              <View style={styles.modalBody}>
-                {/* Channel */}
-                <View style={styles.block}>
-                  <Text style={styles.blockLabel}>ערוץ</Text>
-                  <View style={styles.segmentWrap}>
-                    <Pressable
-                      onPress={() => setDraftChannel('WHATSAPP')}
-                      style={[styles.segmentBtn, draftChannel === 'WHATSAPP' ? styles.segmentBtnActive : null]}
-                      accessibilityRole="button"
-                      accessibilityLabel="וואטסאפ"
-                    >
-                      <Text style={[styles.segmentText, draftChannel === 'WHATSAPP' ? styles.segmentTextActive : null]}>וואטסאפ</Text>
-                    </Pressable>
-                    <Pressable
-                      onPress={() => setDraftChannel('SMS')}
-                      style={[styles.segmentBtn, draftChannel === 'SMS' ? styles.segmentBtnActive : null]}
-                      accessibilityRole="button"
-                      accessibilityLabel="SMS"
-                    >
-                      <Text style={[styles.segmentText, draftChannel === 'SMS' ? styles.segmentTextActive : null]}>SMS</Text>
-                    </Pressable>
+              <View style={styles.modalCard}>
+                <View style={styles.modalHeader}>
+                  <Pressable onPress={closeSettingsEditor} style={styles.modalCloseBtn} accessibilityRole="button" accessibilityLabel="סגור">
+                    <Ionicons name="close" size={18} color={colors.gray[700]} />
+                  </Pressable>
+                  <View style={styles.modalHeaderTitles}>
+                    <Text style={styles.modalTitle}>עריכת הודעה</Text>
+                    <Text style={styles.modalSubtitle} numberOfLines={2}>
+                      {editingSetting?.title ? editingSetting.title : 'בחר הודעה מהרשימה כדי לערוך'}
+                    </Text>
                   </View>
+                  <View style={{ width: 40 }} />
                 </View>
 
-                {/* Timing */}
-                <View style={styles.block}>
-                  <Text style={styles.blockLabel}>מתי לשלוח</Text>
-                  <View style={styles.timingRow}>
-                    <View style={styles.daysInputWrap}>
-                      <View style={styles.daysIcon}>
-                        <Ionicons name="time-outline" size={18} color="#6B7280" />
-                      </View>
-                      <TextInput
-                        value={draftDays}
-                        onChangeText={setDraftDays}
-                        keyboardType={Platform.OS === 'web' ? ('default' as any) : 'numeric'}
-                        style={styles.daysInput}
-                        placeholder="0"
-                        placeholderTextColor="#9CA3AF"
-                      />
-                      <Text style={styles.daysSuffix}>ימים</Text>
-                    </View>
-                    {computedSendDateLabel ? (
-                      <View style={styles.computedPill}>
-                        <Text style={styles.computedLabel}>תאריך משוער</Text>
-                        <Text style={styles.computedValue}>{computedSendDateLabel}</Text>
-                      </View>
-                    ) : null}
-                  </View>
-                </View>
+                <View style={styles.modalDivider} />
 
-                {/* Enabled */}
-                <View style={styles.block}>
-                  <Text style={styles.blockLabel}>סטטוס</Text>
-                  <View style={styles.segmentWrap}>
-                    <Pressable
-                      onPress={() => setDraftEnabled(true)}
-                      style={[styles.segmentBtn, draftEnabled ? styles.segmentBtnActive : null]}
-                      accessibilityRole="button"
-                      accessibilityLabel="פעיל"
-                    >
-                      <Text style={[styles.segmentText, draftEnabled ? styles.segmentTextActive : null]}>פעיל</Text>
-                    </Pressable>
-                    <Pressable
-                      onPress={() => setDraftEnabled(false)}
-                      style={[styles.segmentBtn, !draftEnabled ? styles.segmentBtnActive : null]}
-                      accessibilityRole="button"
-                      accessibilityLabel="כבוי"
-                    >
-                      <Text style={[styles.segmentText, !draftEnabled ? styles.segmentTextActive : null]}>כבוי</Text>
-                    </Pressable>
-                  </View>
-                </View>
-
-                {/* Message */}
-                <View style={styles.block}>
-                  <View style={styles.messageHeaderRow}>
-                    <Text style={styles.blockLabel}>תוכן ההודעה</Text>
-                    <View style={styles.messageTools}>
+                <View style={styles.modalBody}>
+                  {/* Channel */}
+                  <View style={styles.block}>
+                    <Text style={styles.blockLabel}>ערוץ</Text>
+                    <View style={styles.segmentWrap}>
                       <Pressable
-                        style={styles.toolBtn}
+                        onPress={() => setDraftChannel('WHATSAPP')}
+                        style={[styles.segmentBtn, draftChannel === 'WHATSAPP' ? styles.segmentBtnActive : null]}
                         accessibilityRole="button"
-                        accessibilityLabel="הכנס קישור אישור הגעה"
-                        onPress={() => {
-                          const link = String(eventMeta?.rsvpLink || '').trim();
-                          if (!link) return;
-                          setDraftMessage((prev) => `${prev}${prev ? '\n' : ''}${link}`);
-                        }}
+                        accessibilityLabel="וואטסאפ"
                       >
-                        <Ionicons name="link-outline" size={16} color={colors.gray[700]} />
+                        <Text style={[styles.segmentText, draftChannel === 'WHATSAPP' ? styles.segmentTextActive : null]}>וואטסאפ</Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => setDraftChannel('SMS')}
+                        style={[styles.segmentBtn, draftChannel === 'SMS' ? styles.segmentBtnActive : null]}
+                        accessibilityRole="button"
+                        accessibilityLabel="SMS"
+                      >
+                        <Text style={[styles.segmentText, draftChannel === 'SMS' ? styles.segmentTextActive : null]}>SMS</Text>
                       </Pressable>
                     </View>
                   </View>
 
-                  <View style={styles.textareaWrap}>
-                    <TextInput
-                      value={draftMessage}
-                      onChangeText={setDraftMessage}
-                      placeholder="הקלידו כאן את תוכן ההודעה..."
-                      placeholderTextColor="#9CA3AF"
-                      style={styles.textarea}
-                      multiline
-                      textAlignVertical="top"
-                    />
-                    <View style={styles.charCountPill}>
-                      <Text style={styles.charCountText}>{String(draftMessage || '').length} תווים</Text>
+                  {/* Timing */}
+                  <View style={styles.block}>
+                    <Text style={styles.blockLabel}>מתי לשלוח</Text>
+                    <View style={styles.timingRow}>
+                      <View style={styles.daysInputWrap}>
+                        <View style={styles.daysIcon}>
+                          <Ionicons name="time-outline" size={18} color="#6B7280" />
+                        </View>
+                        <TextInput
+                          value={draftDays}
+                          onChangeText={setDraftDays}
+                          keyboardType={Platform.OS === 'web' ? ('default' as any) : 'numeric'}
+                          style={styles.daysInput}
+                          placeholder="0"
+                          placeholderTextColor="#9CA3AF"
+                        />
+                        <Text style={styles.daysSuffix}>ימים</Text>
+                      </View>
+                      {computedSendDateLabel ? (
+                        <View style={styles.computedPill}>
+                          <Text style={styles.computedLabel}>תאריך משוער</Text>
+                          <Text style={styles.computedValue}>{computedSendDateLabel}</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  </View>
+
+                  {/* Enabled */}
+                  <View style={styles.block}>
+                    <Text style={styles.blockLabel}>סטטוס</Text>
+                    <View style={styles.segmentWrap}>
+                      <Pressable
+                        onPress={() => setDraftEnabled(true)}
+                        style={[styles.segmentBtn, draftEnabled ? styles.segmentBtnActive : null]}
+                        accessibilityRole="button"
+                        accessibilityLabel="פעיל"
+                      >
+                        <Text style={[styles.segmentText, draftEnabled ? styles.segmentTextActive : null]}>פעיל</Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => setDraftEnabled(false)}
+                        style={[styles.segmentBtn, !draftEnabled ? styles.segmentBtnActive : null]}
+                        accessibilityRole="button"
+                        accessibilityLabel="כבוי"
+                      >
+                        <Text style={[styles.segmentText, !draftEnabled ? styles.segmentTextActive : null]}>כבוי</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+
+                  {/* Message */}
+                  <View style={styles.block}>
+                    <View style={styles.messageHeaderRow}>
+                      <Text style={styles.blockLabel}>תוכן ההודעה</Text>
+                      <View style={styles.messageTools}>
+                        <Pressable
+                          style={styles.toolBtn}
+                          accessibilityRole="button"
+                          accessibilityLabel="הכנס קישור אישור הגעה"
+                          onPress={() => {
+                            const link = String(eventMeta?.rsvpLink || '').trim();
+                            if (!link) return;
+                            setDraftMessage((prev) => `${prev}${prev ? '\n' : ''}${link}`);
+                          }}
+                        >
+                          <Ionicons name="link-outline" size={16} color={colors.gray[700]} />
+                        </Pressable>
+                      </View>
+                    </View>
+
+                    <View style={styles.textareaWrap}>
+                      <TextInput
+                        value={draftMessage}
+                        onChangeText={setDraftMessage}
+                        placeholder="הקלידו כאן את תוכן ההודעה..."
+                        placeholderTextColor="#9CA3AF"
+                        style={styles.textarea}
+                        multiline
+                        textAlignVertical="top"
+                      />
+                      <View style={styles.charCountPill}>
+                        <Text style={styles.charCountText}>{String(draftMessage || '').length} תווים</Text>
+                      </View>
                     </View>
                   </View>
                 </View>
-              </View>
 
-              <View style={styles.modalFooter}>
-                <Pressable
-                  style={styles.footerBtnSecondary}
-                  onPress={closeSettingsEditor}
-                  accessibilityRole="button"
-                  accessibilityLabel="ביטול"
-                >
-                  <Text style={styles.footerBtnSecondaryText}>ביטול</Text>
-                </Pressable>
-                <Pressable
-                  style={[styles.footerBtnPrimary, !editingSetting ? { opacity: 0.6 } : null]}
-                  onPress={saveSettingDraft}
-                  disabled={!editingSetting}
-                  accessibilityRole="button"
-                  accessibilityLabel="שמור"
-                >
-                  <Ionicons name="checkmark" size={18} color="#fff" />
-                  <Text style={styles.footerBtnPrimaryText}>שמור</Text>
-                </Pressable>
+                <View style={styles.modalFooter}>
+                  <Pressable
+                    style={styles.footerBtnSecondary}
+                    onPress={closeSettingsEditor}
+                    accessibilityRole="button"
+                    accessibilityLabel="ביטול"
+                  >
+                    <Text style={styles.footerBtnSecondaryText}>ביטול</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.footerBtnPrimary, !editingSetting ? { opacity: 0.6 } : null]}
+                    onPress={saveSettingDraft}
+                    disabled={!editingSetting}
+                    accessibilityRole="button"
+                    accessibilityLabel="שמור"
+                  >
+                    <Ionicons name="checkmark" size={18} color="#fff" />
+                    <Text style={styles.footerBtnPrimaryText}>שמור</Text>
+                  </Pressable>
+                </View>
               </View>
-            </View>
-          </ScrollView>
-        </View>
-      </Modal>
+            </ScrollView>
+          </View>
+        </Modal>
+      )}
     </View>
   );
 }

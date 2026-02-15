@@ -19,7 +19,7 @@ I18nManager.allowRTL(true);
 I18nManager.forceRTL(true);
 
 const rtlTextStyle = { textAlign: 'right' as const, writingDirection: 'rtl' as const };
-const webFontStyle = Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as const) : null;
+const webFontStyle = Platform.OS === 'web' ? ({ fontFamily: 'Heebo' } as const) : null;
 const RTL_MARK = '\u200F';
 
 const toRtlAlertText = (value?: string) => {
@@ -137,9 +137,9 @@ export default function RootLayout() {
     if (document.body) {
       document.body.style.direction = 'rtl';
       document.body.style.textAlign = 'right';
-      // Prefer Rubik on web (falls back safely if font not loaded yet)
+      // Prefer Heebo on web (falls back safely if font not loaded yet)
       document.body.style.fontFamily =
-        'Rubik, system-ui, -apple-system, "Segoe UI", Arial, "Noto Sans Hebrew", "Noto Sans", sans-serif';
+        'Heebo, system-ui, -apple-system, "Segoe UI", Arial, "Noto Sans Hebrew", "Noto Sans", sans-serif';
     }
   }, []);
 
