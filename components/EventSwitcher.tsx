@@ -26,9 +26,10 @@ type Props = {
   selectedEventId?: string | null;
   onSelectEventId: (eventId: string) => void;
   label?: string;
+  onHasMultipleChange?: (hasMultiple: boolean) => void;
 };
 
-export function EventSwitcher({ userId, selectedEventId, onSelectEventId, label = 'אירוע' }: Props) {
+export function EventSwitcher({ userId, selectedEventId, onSelectEventId, label = 'אירוע', onHasMultipleChange }: Props) {
   const [events, setEvents] = useState<MinimalEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
@@ -58,6 +59,10 @@ export function EventSwitcher({ userId, selectedEventId, onSelectEventId, label 
     () => events.find((e) => e.id === selectedEventId) ?? null,
     [events, selectedEventId]
   );
+
+  useEffect(() => {
+    onHasMultipleChange?.(hasMultiple);
+  }, [hasMultiple, onHasMultipleChange]);
 
   if (!hasMultiple) return null;
 

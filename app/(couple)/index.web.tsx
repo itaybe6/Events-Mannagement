@@ -2,10 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
 
-import { CountdownTimer } from '@/components/CountdownTimer';
-import { EventSwitcher } from '@/components/EventSwitcher';
 import { colors } from '@/constants/colors';
 import { eventService } from '@/lib/services/eventService';
 import { guestService } from '@/lib/services/guestService';
@@ -29,6 +26,7 @@ export default function CoupleHomeWebScreen() {
   const [categories, setCategories] = useState<DashboardCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [guestQuery, setGuestQuery] = useState('');
+  const [now, setNow] = useState(() => new Date());
 
   const resolvedEventId =
     String(
@@ -37,11 +35,6 @@ export default function CoupleHomeWebScreen() {
         userData?.event_id ||
         ''
     ).trim() || null;
-
-  const handleSelectEventId = (nextEventId: string) => {
-    if (userData?.id) setActiveEvent(userData.id, nextEventId);
-    router.replace({ pathname: './', params: { eventId: nextEventId } });
-  };
 
   useEffect(() => {
     if (!isLoggedIn) {
@@ -105,24 +98,35 @@ export default function CoupleHomeWebScreen() {
     return { confirmed, declined, pending, giftsSum, giftsCount, seated, needSeat, total: guests.length };
   }, [guests]);
 
-  const formatDateTime = (date: Date) =>
+  const formatDateOnly = (date: Date) =>
     new Date(date).toLocaleDateString('he-IL', {
       year: 'numeric',
       month: 'long',
       day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
     });
 
-  const avatarUrl = String(userData?.avatar_url || '').trim();
-  const userName = String(userData?.name || userData?.email || 'משתמש').trim();
-  const initials = userName
-    .split(/\s+/g)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((p) => p[0])
-    .join('')
-    .toUpperCase();
+  useEffect(() => {
+    // Update occasionally so "days left" stays correct without a full countdown UI
+    const t = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(t);
+  }, []);
+
+  const daysToWedding = useMemo(() => {
+    const target = currentEvent?.date ? new Date(currentEvent.date).getTime() : NaN;
+    const diffMs = target - now.getTime();
+    if (!Number.isFinite(diffMs)) return null;
+    const msPerDay = 1000 * 60 * 60 * 24;
+    return Math.max(0, Math.ceil(diffMs / msPerDay));
+  }, [currentEvent?.date, now]);
+
+  const coupleOrTitle = useMemo(() => {
+    const groom = String(currentEvent?.groomName || '').trim();
+    const bride = String(currentEvent?.brideName || '').trim();
+    if (groom && bride) return `${groom} & ${bride}`;
+    if (groom) return groom;
+    if (bride) return bride;
+    return String(currentEvent?.title || '').trim();
+  }, [currentEvent?.brideName, currentEvent?.groomName, currentEvent?.title]);
 
   const filteredGuests = useMemo(() => {
     const q = guestQuery.trim().toLowerCase();
@@ -168,42 +172,23 @@ export default function CoupleHomeWebScreen() {
         <View style={styles.shapeBottomLeft} />
       </View>
 
-      <View pointerEvents="box-none" style={styles.floatingEventSwitcher}>
-        <EventSwitcher userId={userData?.id} selectedEventId={resolvedEventId} onSelectEventId={handleSelectEventId} label="אירוע פעיל" />
-      </View>
-
       <ScrollView style={styles.scroll} contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-        {/* Header */}
-        <View style={styles.hero}>
-          <View style={styles.avatarGroup}>
-            <View style={styles.avatarGlow} />
-            <View style={styles.avatarRing}>
-              {avatarUrl ? (
-                <Image source={{ uri: avatarUrl }} style={styles.avatarImg} contentFit="cover" transition={0} />
-              ) : (
-                <View style={styles.avatarFallback}>
-                  <Text style={styles.avatarInitials}>{initials || 'U'}</Text>
-                </View>
-              )}
-            </View>
-
-            <View style={styles.locationChip}>
-              <Ionicons name="location" size={14} color={stylesVars.accentRed} />
-              <Text style={styles.locationText} numberOfLines={1}>
-                {currentEvent.location}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.dateRow}>
-            <Ionicons name="calendar-outline" size={14} color={colors.gray[500]} />
-            <Text style={styles.dateText}>{formatDateTime(currentEvent.date)}</Text>
-          </View>
-
-          <View style={styles.countdownWrap}>
-            <Text style={styles.countdownLabel}>עד החתונה</Text>
-            <CountdownTimer targetDate={currentEvent.date} />
-          </View>
+        {/* Event details row (replaces the old top image/hero) */}
+        <View style={styles.eventInfoRow}>
+          <InfoCard icon="heart" tone="purple" label="זוג / אירוע" value={coupleOrTitle || '—'} />
+          <InfoCard icon="calendar-outline" tone="blue" label="תאריך החתונה" value={formatDateOnly(currentEvent.date)} />
+          <InfoCard
+            icon="location"
+            tone="red"
+            label="מיקום החתונה"
+            value={[String(currentEvent.location || '').trim(), String(currentEvent.city || '').trim()].filter(Boolean).join(' · ') || '—'}
+          />
+          <InfoCard
+            icon="time-outline"
+            tone="green"
+            label="עד האירוע"
+            value={daysToWedding === null ? '—' : daysToWedding === 0 ? 'היום' : `${daysToWedding} ימים`}
+          />
         </View>
 
         {/* Stats cards */}
@@ -241,17 +226,9 @@ export default function CoupleHomeWebScreen() {
           />
         </View>
 
-        {/* Bottom pills */}
-        <View style={styles.pillsRow}>
-          <Pill icon="time-outline" color={stylesVars.accentYellow} label="אורחים בהמתנה" value={stats.pending} pulse />
-          <Pill icon="alert-circle-outline" color={stylesVars.accentBlue} label="צריך להושיב" value={stats.needSeat} />
-          <Pill icon="gift-outline" color={stylesVars.accentPurple} label="מתנות" value={stats.giftsCount} />
-          <Pill icon="checkmark-done-outline" color={stylesVars.accentGreen} label="מאושרים סופית" value={stats.confirmed} />
-        </View>
-
         {/* Mini windows (bottom) */}
         <View style={styles.miniGrid}>
-          <View style={styles.miniCard}>
+          <HoverableSurface style={styles.miniCard} hoverStyle={styles.miniCardHover}>
             <View style={styles.miniHeader}>
               <Text style={styles.miniTitle} numberOfLines={1}>
                 <Ionicons name="list" size={16} color={stylesVars.accentBlue} /> {'  '}רשימת מוזמנים
@@ -320,7 +297,7 @@ export default function CoupleHomeWebScreen() {
                 <Text style={styles.miniCtaText}>נהל מוזמנים</Text>
               </Pressable>
             </View>
-          </View>
+          </HoverableSurface>
 
           <Pressable
             onPress={() =>
@@ -396,7 +373,7 @@ function StatCard({
   hint?: string;
 }) {
   return (
-    <View style={styles.statCard}>
+    <HoverableSurface style={styles.statCard} hoverStyle={styles.cardHover}>
       <View style={styles.statCardTop}>
         <View style={[styles.statIconBox, { backgroundColor: iconBg }]}>
           <Ionicons name={icon} size={18} color={iconColor} />
@@ -411,7 +388,70 @@ function StatCard({
       </View>
       <Text style={styles.statValue}>{value}</Text>
       <Text style={styles.statLabel}>{title}</Text>
+    </HoverableSurface>
+  );
+}
+
+function HoverableSurface({
+  style,
+  hoverStyle,
+  children,
+}: {
+  style: any;
+  hoverStyle: any;
+  children: React.ReactNode;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const webHandlers =
+    Platform.OS === 'web'
+      ? ({
+          // @ts-expect-error - RN web mouse events
+          onMouseEnter: () => setHovered(true),
+          // @ts-expect-error - RN web mouse events
+          onMouseLeave: () => setHovered(false),
+        } as any)
+      : null;
+
+  return (
+    <View {...(webHandlers as any)} style={[style, hovered ? hoverStyle : null]}>
+      {children}
     </View>
+  );
+}
+
+function InfoCard({
+  icon,
+  tone,
+  label,
+  value,
+}: {
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+  tone: 'blue' | 'green' | 'red' | 'purple';
+  label: string;
+  value: string;
+}) {
+  const tones = {
+    blue: { main: stylesVars.accentBlue, soft: 'rgba(59,130,246,0.10)' },
+    green: { main: stylesVars.accentGreen, soft: 'rgba(16,185,129,0.10)' },
+    red: { main: stylesVars.accentRed, soft: 'rgba(239,68,68,0.10)' },
+    purple: { main: stylesVars.accentPurple, soft: 'rgba(139,92,246,0.10)' },
+  } as const;
+
+  const c = tones[tone];
+  return (
+    <HoverableSurface style={styles.infoCard} hoverStyle={styles.cardHover}>
+      <View style={styles.infoCardTop}>
+        <View style={[styles.infoIconBox, { backgroundColor: c.soft }]}>
+          <Ionicons name={icon} size={18} color={c.main} />
+        </View>
+        <Text style={styles.infoLabel} numberOfLines={1}>
+          {label}
+        </Text>
+      </View>
+      <Text style={styles.infoValue} numberOfLines={2}>
+        {value}
+      </Text>
+    </HoverableSurface>
   );
 }
 
@@ -451,32 +491,6 @@ function GuestRow({ guest, category }: { guest: Guest; category: DashboardCatego
         </View>
       </View>
       <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
-    </View>
-  );
-}
-
-function Pill({
-  icon,
-  color,
-  label,
-  value,
-  pulse,
-}: {
-  icon: React.ComponentProps<typeof Ionicons>['name'];
-  color: string;
-  label: string;
-  value: number;
-  pulse?: boolean;
-}) {
-  return (
-    <View style={styles.pill}>
-      <View style={styles.pillLeft}>
-        {pulse ? <View style={[styles.pulseDot, { backgroundColor: color }]} /> : <Ionicons name={icon} size={16} color={color} />}
-      </View>
-      <Text style={styles.pillLabel}>{label}</Text>
-      <View style={styles.pillValuePill}>
-        <Text style={styles.pillValueText}>{value}</Text>
-      </View>
     </View>
   );
 }
@@ -585,108 +599,69 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   btnPressed: { opacity: 0.92, transform: [{ scale: 0.99 }] },
-
-  hero: {
-    alignItems: 'center',
-    paddingTop: 8,
-    paddingBottom: 14,
-    gap: 8,
-  },
-  floatingEventSwitcher: {
+  cardHover: {
+    borderColor: 'rgba(59,130,246,0.22)',
     ...(Platform.OS === 'web'
       ? ({
-          position: 'fixed',
-          right: 18,
-          bottom: 18,
-          zIndex: 80,
+          transform: [{ translateY: -1 }],
+          boxShadow: '0 0 0 1px rgba(59,130,246,0.08), 0 14px 34px rgba(13,28,43,0.08)',
         } as any)
       : null),
   },
-  avatarGroup: {
+
+  eventInfoRow: {
+    flexDirection: 'row-reverse',
+    flexWrap: 'wrap',
+    gap: 10,
+    justifyContent: 'space-between',
+    alignItems: 'stretch',
+    marginBottom: 12,
+  },
+  infoCard: {
+    flexGrow: 1,
+    flexBasis: 220,
+    minWidth: 220,
+    padding: 12,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.70)',
+    backgroundColor: 'rgba(255,255,255,0.68)',
+    ...(Platform.OS === 'web'
+      ? ({
+          backdropFilter: 'blur(10px)',
+          WebkitBackdropFilter: 'blur(10px)',
+          boxShadow: '0 2px 16px rgba(13,28,43,0.04)',
+        } as any)
+      : null),
+  },
+  infoCardTop: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginBottom: 8,
+  },
+  infoIconBox: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 2,
   },
-  avatarGlow: {
-    position: 'absolute',
-    width: 140,
-    height: 140,
-    borderRadius: 9999,
-    backgroundColor: 'rgba(59,130,246,0.10)',
-    ...(Platform.OS === 'web'
-      ? ({
-          filter: 'blur(10px)',
-          opacity: 0.6,
-        } as any)
-      : null),
-  },
-  avatarRing: {
-    width: 110,
-    height: 110,
-    borderRadius: 9999,
-    padding: 5,
-    backgroundColor: colors.white,
-    borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.08)',
-    overflow: 'hidden',
-    // @ts-expect-error - react-native-web supports boxShadow
-    boxShadow: '0 16px 42px rgba(15,23,42,0.08)',
-  },
-  avatarImg: { width: '100%', height: '100%', borderRadius: 9999 },
-  avatarFallback: {
+  infoLabel: {
     flex: 1,
-    borderRadius: 9999,
-    backgroundColor: 'rgba(59,130,246,0.10)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarInitials: { fontSize: 28, fontWeight: '900', color: stylesVars.primary, textAlign: 'center' },
-
-  locationChip: {
-    position: 'absolute',
-    bottom: -10,
-    left: '50%',
-    transform: [{ translateX: -55 }],
-    minWidth: 110,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.92)',
-    borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.08)',
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: 6,
-    // @ts-expect-error - react-native-web supports boxShadow
-    boxShadow: '0 8px 18px rgba(15,23,42,0.06)',
-  },
-  locationText: { fontSize: 11, fontWeight: '900', color: stylesVars.primary, textAlign: 'right' },
-
-  dateRow: {
-    marginTop: 10,
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: 6,
-  },
-  dateText: {
-    fontSize: 12,
-    fontWeight: '800',
+    minWidth: 0,
+    fontSize: 11,
+    fontWeight: '900',
     color: colors.gray[600],
     textAlign: 'right',
   },
-
-  countdownWrap: {
-    marginTop: 6,
-    alignItems: 'center',
-    gap: 5,
-  },
-  countdownLabel: {
-    fontSize: 10,
+  infoValue: {
+    fontSize: 16,
     fontWeight: '900',
-    color: stylesVars.accentBlue,
-    letterSpacing: 1.8,
-    textTransform: 'uppercase',
-    textAlign: 'center',
+    color: stylesVars.primary,
+    textAlign: 'right',
+    lineHeight: 22,
   },
 
   statsGrid: {
@@ -760,6 +735,7 @@ const styles = StyleSheet.create({
           backdropFilter: 'blur(10px)',
           WebkitBackdropFilter: 'blur(10px)',
           boxShadow: '0 2px 16px rgba(13,28,43,0.04)',
+          direction: 'rtl',
         } as any)
       : null),
   },
@@ -805,9 +781,9 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(15,23,42,0.05)',
     backgroundColor: 'rgba(255,255,255,0.50)',
     padding: 10,
-    minHeight: 180,
-    maxHeight: 200,
+    height: 200,
     overflow: 'hidden',
+    ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
   },
   miniBodyCenter: {
     alignItems: 'center',
@@ -847,7 +823,20 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     paddingVertical: 0,
   },
-  guestList: { marginTop: 8, gap: 6 },
+  guestList: {
+    marginTop: 8,
+    gap: 6,
+    flex: 1,
+    minHeight: 0,
+    ...(Platform.OS === 'web'
+      ? ({
+          overflowY: 'auto',
+          overscrollBehavior: 'contain',
+          paddingRight: 2,
+          scrollbarWidth: 'thin',
+        } as any)
+      : null),
+  },
   guestRow: {
     padding: 8,
     borderRadius: 12,
@@ -858,6 +847,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 8,
+    ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
   },
   guestRowLeft: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 },
   guestAvatar: {
@@ -945,40 +935,5 @@ const styles = StyleSheet.create({
   },
   seatingCtaTextMini: { fontSize: 12, fontWeight: '900', color: colors.white, textAlign: 'right' },
 
-  pillsRow: {
-    marginTop: 14,
-    flexDirection: 'row-reverse',
-    flexWrap: 'wrap',
-    gap: 8,
-    justifyContent: 'center',
-  },
-  pill: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.85)',
-    borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.05)',
-    // @ts-expect-error - react-native-web supports boxShadow
-    boxShadow: '0 2px 8px rgba(13,28,43,0.03)',
-  },
-  pillLeft: { width: 16, alignItems: 'center', justifyContent: 'center' },
-  pillLabel: { fontSize: 11, fontWeight: '900', color: colors.gray[700], textAlign: 'right' },
-  pillValuePill: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-    backgroundColor: 'rgba(15,23,42,0.05)',
-  },
-  pillValueText: { fontSize: 11, fontWeight: '900', color: stylesVars.primary, textAlign: 'right' },
-  pulseDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 999,
-    ...(Platform.OS === 'web' ? ({ animation: 'pulse 1.4s ease-in-out infinite' } as any) : null),
-  },
 });
 

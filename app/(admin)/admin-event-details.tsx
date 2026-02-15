@@ -644,6 +644,15 @@ export default function AdminEventDetailsScreen() {
               accessibilityLabel="עריכת סקיצה"
             />
             <ActionRow
+              title="הודעות אוטומטיות"
+              subtitle="עריכה והפעלה של תזכורות והודעות וואטסאפ"
+              iconName="chatbubble-ellipses-outline"
+              iconBg="rgba(14,165,233,0.14)"
+              iconColor="#0EA5E9"
+              onPress={() => router.push(`/(admin)/admin-event-messages?eventId=${event.id}`)}
+              accessibilityLabel="עריכת הודעות"
+            />
+            <ActionRow
               title="מפת הושבה"
               subtitle="צפייה וניהול מפת האולם"
               iconName="grid-outline"

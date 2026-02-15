@@ -150,6 +150,8 @@ export default function AdminTabsLayout() {
           },
         }}
       />
+      <Tabs.Screen name="admin-event-messages" options={{ href: null }} />
+      <Tabs.Screen name="notification-editor" options={{ href: null }} />
       <Tabs.Screen name="admin-rsvp-approvals" options={{ href: null }} />
       {/* Hidden admin wrappers for seating screens (keep admin tab bar) */}
       <Tabs.Screen name="BrideGroomSeating" options={{ href: null }} />

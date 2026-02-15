@@ -311,8 +311,8 @@ export default function AdminEventDetailsWebScreen() {
 
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel="עריכת סקיצה"
-                  onPress={() => router.push(`/(admin)/seating-templates?eventId=${event.id}`)}
+                  accessibilityLabel="עריכת הודעות"
+                  onPress={() => router.push(`/(admin)/admin-event-messages?eventId=${event.id}`)}
                   style={({ hovered, pressed }: any) => [
                     styles.quickActionBtn,
                     Platform.OS === 'web' && hovered ? styles.quickActionBtnHover : null,
@@ -320,10 +320,10 @@ export default function AdminEventDetailsWebScreen() {
                   ]}
                 >
                   <View style={styles.quickActionLeft}>
-                    <View style={[styles.quickActionIcon, { backgroundColor: 'rgba(168,85,247,0.14)' }]}>
-                      <Ionicons name="create-outline" size={18} color={'#A855F7'} />
+                    <View style={[styles.quickActionIcon, { backgroundColor: 'rgba(14,165,233,0.14)' }]}>
+                      <Ionicons name="chatbubble-ellipses-outline" size={18} color={'#0EA5E9'} />
                     </View>
-                    <Text style={styles.quickActionText}>עריכת סקיצה</Text>
+                    <Text style={styles.quickActionText}>עריכת הודעות</Text>
                   </View>
                   <Ionicons name="chevron-back" size={18} color={colors.gray[500]} style={styles.quickActionChevron} />
                 </Pressable>
@@ -453,8 +453,8 @@ export default function AdminEventDetailsWebScreen() {
               <View style={styles.bigActionsRow}>
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel="עריכת סקיצה"
-                  onPress={() => router.push(`/(admin)/seating-templates?eventId=${event.id}`)}
+                  accessibilityLabel="עריכת הודעות"
+                  onPress={() => router.push(`/(admin)/admin-event-messages?eventId=${event.id}`)}
                   style={({ hovered, pressed }: any) => [
                     styles.bigActionSecondary,
                     Platform.OS === 'web' && hovered ? styles.bigActionSecondaryHover : null,
@@ -462,10 +462,10 @@ export default function AdminEventDetailsWebScreen() {
                   ]}
                 >
                   <View style={styles.bigActionIconWrapSecondary}>
-                  <Ionicons name="color-palette-outline" size={26} color={colors.primary} />
+                  <Ionicons name="chatbubble-ellipses-outline" size={26} color={colors.primary} />
                   </View>
-                  <Text style={styles.bigActionTitleSecondary}>עריכת סקיצה</Text>
-                  <Text style={styles.bigActionSubtitleSecondary}>סידור שולחנות ועיצוב אולם</Text>
+                  <Text style={styles.bigActionTitleSecondary}>הודעות אוטומטיות</Text>
+                  <Text style={styles.bigActionSubtitleSecondary}>עריכה והפעלה של תזכורות והודעות וואטסאפ</Text>
                 </Pressable>
 
                 <Pressable

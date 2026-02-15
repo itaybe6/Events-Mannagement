@@ -1,13 +1,13 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Slot, useGlobalSearchParams, usePathname, useRouter } from 'expo-router';
 import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import DesktopSidebar from '@/components/desktop/DesktopSidebar';
+import { EventSwitcher } from '@/components/EventSwitcher';
 import { useUserStore } from '@/store/userStore';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import { colors } from '@/constants/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import { LinearGradient } from 'expo-linear-gradient';
 
 export default function CoupleWebLayout() {
   const router = useRouter();
@@ -16,6 +16,8 @@ export default function CoupleWebLayout() {
   const { userType, isLoggedIn, loading, logout, userData } = useUserStore();
   const activeUserId = useEventSelectionStore((s) => s.activeUserId);
   const activeEventId = useEventSelectionStore((s) => s.activeEventId);
+  const setActiveEvent = useEventSelectionStore((s) => s.setActiveEvent);
+  const [hasMultipleEvents, setHasMultipleEvents] = useState(false);
 
   useEffect(() => {
     if (loading) return;
@@ -53,13 +55,25 @@ export default function CoupleWebLayout() {
     );
   }, [activeEventId, activeUserId, queryEventId, userData?.event_id, userData?.id]);
 
-  const showAddGuestFab = pathname === '/(couple)/guests' || pathname?.startsWith('/(couple)/guests/');
-  const addGuestDisabled = !resolvedEventId;
+  const handleSelectEventId = (nextEventId: string) => {
+    if (userData?.id) setActiveEvent(userData.id, nextEventId);
 
-  const handleAddGuest = () => {
-    if (!resolvedEventId) return;
-    router.push({ pathname: '/contacts-list', params: { eventId: resolvedEventId, autoOpenCategory: '1' } });
+    const cleanedParams: Record<string, string> = {};
+    for (const [k, v] of Object.entries(globalParams || {})) {
+      if (typeof v === 'string') cleanedParams[k] = v;
+    }
+    cleanedParams.eventId = nextEventId;
+
+    router.replace({
+      // expo-router web usually exposes pathname without group segments
+      pathname: (pathname || '/(couple)') as any,
+      params: cleanedParams as any,
+    });
   };
+
+  const handleHasMultipleChange = useCallback((value: boolean) => {
+    setHasMultipleEvents(value);
+  }, []);
 
   if (loading) {
     return (
@@ -94,41 +108,15 @@ export default function CoupleWebLayout() {
           ]}
           footer={
             <View style={styles.sidebarFooter}>
-              {showAddGuestFab ? (
-                <Pressable
-                  onPress={handleAddGuest}
-                  disabled={addGuestDisabled}
-                  accessibilityRole="button"
-                  accessibilityLabel="הוסף מוזמן"
-                  style={({ hovered, pressed }: any) => [
-                    styles.addGuestFab,
-                    Platform.OS === 'web' && hovered && !addGuestDisabled ? styles.addGuestFabHover : null,
-                    pressed ? styles.addGuestFabPressed : null,
-                    addGuestDisabled ? styles.addGuestFabDisabled : null,
-                  ]}
-                >
-                  <LinearGradient
-                    pointerEvents="none"
-                    colors={['rgba(59,130,246,0.95)', 'rgba(13,28,43,0.96)']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={StyleSheet.absoluteFillObject as any}
-                  />
-                  <View style={styles.addGuestFabShine} pointerEvents="none" />
-
-                  <View style={styles.addGuestFabContent}>
-                    <View style={styles.addGuestFabIcon}>
-                      <Ionicons name="add" size={18} color="#fff" />
-                    </View>
-                    <View style={styles.addGuestFabTextWrap}>
-                      <Text style={styles.addGuestFabTitle}>הוסף מוזמן</Text>
-                      <Text style={styles.addGuestFabSubtitle} numberOfLines={1}>
-                        מאנשי קשר
-                      </Text>
-                    </View>
-                  </View>
-                </Pressable>
-              ) : null}
+              <View style={[styles.sidebarEventSwitcherWrap, !hasMultipleEvents ? styles.sidebarEventSwitcherWrapHidden : null]}>
+                <EventSwitcher
+                  userId={userData?.id}
+                  selectedEventId={resolvedEventId}
+                  onSelectEventId={handleSelectEventId}
+                  label="אירוע פעיל"
+                  onHasMultipleChange={handleHasMultipleChange}
+                />
+              </View>
 
               <View style={styles.userCard}>
                 <View style={styles.userMeta}>
@@ -203,65 +191,19 @@ const styles = StyleSheet.create({
     gap: 10,
     position: 'relative',
   },
-  addGuestFab: {
+  sidebarEventSwitcherWrap: {
     width: '100%',
-    borderRadius: 18,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
+    paddingHorizontal: 2,
+    paddingTop: 2,
+    paddingBottom: 4,
+  },
+  sidebarEventSwitcherWrapHidden: {
+    height: 0,
+    paddingTop: 0,
+    paddingBottom: 0,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.25)',
-    // Float above user card / footer border
-    marginTop: -30,
-    marginBottom: 10,
-    // @ts-expect-error - react-native-web supports boxShadow
-    boxShadow: '0 18px 46px rgba(13,28,43,0.22)',
-    shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 12 },
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+    pointerEvents: 'none',
   },
-  addGuestFabHover: {
-    borderColor: 'rgba(198,168,91,0.40)',
-    transform: [{ translateY: -1 }],
-    // @ts-expect-error - react-native-web supports boxShadow
-    boxShadow: '0 22px 60px rgba(13,28,43,0.26)',
-  },
-  addGuestFabPressed: { opacity: 0.94, transform: [{ scale: 0.99 }] },
-  addGuestFabDisabled: {
-    opacity: 0.55,
-    ...(Platform.OS === 'web' ? ({ cursor: 'not-allowed' } as any) : null),
-  },
-  addGuestFabShine: {
-    position: 'absolute',
-    top: -40,
-    right: -60,
-    width: 180,
-    height: 140,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    // @ts-expect-error - react-native-web supports filter
-    ...(Platform.OS === 'web' ? ({ filter: 'blur(20px)' } as any) : null),
-  },
-  addGuestFabContent: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: 10,
-  },
-  addGuestFabIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.14)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addGuestFabTextWrap: { flex: 1, minWidth: 0, alignItems: 'flex-end' },
-  addGuestFabTitle: { fontSize: 13, fontWeight: '900', color: '#fff', textAlign: 'right' },
-  addGuestFabSubtitle: { marginTop: 1, fontSize: 10, fontWeight: '800', color: 'rgba(255,255,255,0.82)', textAlign: 'right' },
   userCard: {
     // Force deterministic layout (avatar on the right)
     flexDirection: 'row-reverse',

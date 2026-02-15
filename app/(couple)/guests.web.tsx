@@ -297,6 +297,12 @@ export default function CoupleGuestsWebScreen() {
     return '23.5%';
   }, [windowWidth]);
 
+  const guestItemWidth = useMemo(() => {
+    // Requested UI: two guests per row (on narrow screens keep single column)
+    if (windowWidth < 720) return '100%';
+    return '49%';
+  }, [windowWidth]);
+
   return (
     <View style={styles.page}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -340,6 +346,21 @@ export default function CoupleGuestsWebScreen() {
               />
             ))}
           </View>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="הוסף מוזמנים"
+            onPress={importContacts}
+            style={({ hovered, pressed }: any) => [
+              styles.addGuestsBtn,
+              isNarrow ? styles.addGuestsBtnNarrow : null,
+              Platform.OS === 'web' && hovered ? styles.addGuestsBtnHover : null,
+              pressed ? styles.btnPressed : null,
+            ]}
+          >
+            <Ionicons name="add" size={18} color={colors.white} />
+            <Text style={styles.addGuestsBtnText}>הוסף מוזמנים</Text>
+          </Pressable>
 
           {selectedGuestIds.size > 0 ? (
             <View style={styles.bulkRow}>
@@ -434,6 +455,7 @@ export default function CoupleGuestsWebScreen() {
                             <GuestListRow
                               key={g.id}
                               guest={g}
+                              width={guestItemWidth}
                               checked={selectedGuestIds.has(g.id)}
                               onToggleCheck={() => toggleSelectGuest(g.id)}
                               onEdit={() => openEdit(g)}
@@ -640,6 +662,7 @@ function MiniStatDot({ label, tone }: { label: string; tone: 'success' | 'warnin
 
 function GuestListRow({
   guest,
+  width,
   checked,
   onToggleCheck,
   onEdit,
@@ -647,6 +670,7 @@ function GuestListRow({
   onDelete,
 }: {
   guest: GuestRow;
+  width?: any;
   checked: boolean;
   onToggleCheck: () => void;
   onEdit: () => void;
@@ -664,8 +688,14 @@ function GuestListRow({
   const sc = toneColor(statusTone);
 
   return (
-    <Pressable style={({ hovered }: any) => [styles.guestRow, Platform.OS === 'web' && hovered ? styles.guestRowHover : null]}>
-      {({ hovered }: any) => (
+    <Pressable
+      style={({ hovered }: any) => [
+        styles.guestRow,
+        width ? { width } : null,
+        Platform.OS === 'web' && hovered ? styles.guestRowHover : null,
+      ]}
+    >
+      {() => (
         <>
           <View style={styles.guestLeft}>
             <Pressable
@@ -680,7 +710,7 @@ function GuestListRow({
                 pressed ? styles.btnPressed : null,
               ]}
             >
-              {checked ? <Ionicons name="checkmark" size={16} color={colors.white} /> : null}
+              {checked ? <Ionicons name="checkmark" size={14} color={colors.white} /> : null}
             </Pressable>
 
             <View style={styles.avatar}>
@@ -698,21 +728,14 @@ function GuestListRow({
           </View>
 
           <View style={styles.guestRight}>
-            <View style={styles.statusBox}>
-              <View style={[styles.statusPill, { backgroundColor: sc.soft, borderColor: 'rgba(0,0,0,0.06)' }]}>
-                <View style={[styles.statusDot, { backgroundColor: sc.main }]} />
-                <Text style={[styles.statusText, { color: sc.text }]}>{guest.status}</Text>
-              </View>
+            <View style={[styles.statusPill, { backgroundColor: sc.soft, borderColor: 'rgba(0,0,0,0.06)' }]}>
+              <View style={[styles.statusDot, { backgroundColor: sc.main }]} />
+              <Text style={[styles.statusText, { color: sc.text }]}>{guest.status}</Text>
             </View>
 
-            <View style={styles.metaBox}>
-              <Text style={styles.metaText}>{guest.numberOfPeople || 1} מבוגרים</Text>
-            </View>
+            <Text style={styles.metaText}>{guest.numberOfPeople || 1} מבוגרים</Text>
 
-            <View
-              style={[styles.actions, Platform.OS === 'web' && !hovered ? styles.actionsHidden : null]}
-              pointerEvents={Platform.OS === 'web' && !hovered ? 'none' : 'auto'}
-            >
+            <View style={styles.actions}>
               <IconCircleBtn icon="create-outline" label="עריכה" onPress={onEdit} />
               <IconCircleBtn icon="call-outline" label="התקשר" onPress={onCall} />
               <IconCircleBtn icon="trash-outline" label="מחק" danger onPress={onDelete} />
@@ -914,6 +937,21 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
+  addGuestsBtn: {
+    height: 44,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+    backgroundColor: colors.primary,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+    flexShrink: 0,
+  },
+  addGuestsBtnNarrow: { width: '100%' },
+  addGuestsBtnHover: { opacity: 0.95 },
+  addGuestsBtnText: { fontSize: 13, fontWeight: '900', color: colors.white, textAlign: 'right' },
   chip: {
     paddingHorizontal: 14,
     paddingVertical: 10,
@@ -1008,28 +1046,58 @@ const styles = StyleSheet.create({
   miniDot: { width: 8, height: 8, borderRadius: 999 },
   miniStatText: { fontSize: 11, fontWeight: '800', color: colors.gray[600], textAlign: 'right', writingDirection: 'rtl' },
 
-  groupBody: { paddingHorizontal: 10, paddingVertical: 4 },
-  groupEmpty: { padding: 14, fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'right', writingDirection: 'rtl' },
+  groupBody: {
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    flexDirection: 'row-reverse',
+    flexWrap: 'wrap',
+    gap: 10,
+    alignItems: 'stretch',
+  },
+  groupEmpty: {
+    width: '100%',
+    padding: 14,
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.gray[600],
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
   groupCollapsedBar: { height: 6, backgroundColor: colors.gray[50] },
 
   guestRow: {
     paddingHorizontal: 10,
-    paddingVertical: 12,
+    paddingVertical: 6,
     flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(15,23,42,0.04)',
+    // Ensure RTL layout inside the guest card on web
+    // @ts-expect-error - react-native-web supports direction
+    direction: 'rtl',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.06)',
+    borderRadius: 14,
+    backgroundColor: 'rgba(248,250,252,0.88)',
+    minHeight: 44,
   },
   guestRowHover: {
-    backgroundColor: 'rgba(6,23,62,0.015)',
+    backgroundColor: 'rgba(255,255,255,0.98)',
+    borderColor: 'rgba(59,130,246,0.22)',
   },
-  guestLeft: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 },
+  guestLeft: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+    minWidth: 0,
+    // @ts-expect-error - react-native-web supports direction
+    direction: 'rtl',
+  },
   checkbox: {
-    width: 20,
-    height: 20,
-    borderRadius: 6,
+    width: 18,
+    height: 18,
+    borderRadius: 5,
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.18)',
     backgroundColor: colors.white,
@@ -1040,8 +1108,8 @@ const styles = StyleSheet.create({
   checkboxHover: { borderColor: 'rgba(6,23,62,0.35)' },
   checkboxChecked: { backgroundColor: colors.primary, borderColor: colors.primary },
   avatar: {
-    width: 38,
-    height: 38,
+    width: 32,
+    height: 32,
     borderRadius: 999,
     backgroundColor: 'rgba(0,53,102,0.08)',
     borderWidth: 1,
@@ -1049,42 +1117,48 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarText: { fontSize: 12, fontWeight: '900', color: colors.primary, textAlign: 'right' },
-  guestText: { flex: 1, minWidth: 0, alignItems: 'flex-end' },
-  guestName: { fontSize: 14, fontWeight: '900', color: colors.text, textAlign: 'right', writingDirection: 'rtl' },
+  avatarText: { fontSize: 11, fontWeight: '900', color: colors.primary, textAlign: 'right' },
+  guestText: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+  },
+  guestName: { fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'right', writingDirection: 'rtl' },
   guestPhone: {
-    marginTop: 2,
-    fontSize: 12,
+    marginTop: 0,
+    fontSize: 11,
     fontWeight: '700',
     color: colors.gray[600],
     // @ts-expect-error - react-native-web supports direction
     direction: 'ltr',
     textAlign: 'left',
   },
-  guestRight: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12 },
-  statusBox: { width: 110, alignItems: 'center' },
+  guestRight: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 10,
+    flexShrink: 0,
+    // @ts-expect-error - react-native-web supports direction
+    direction: 'rtl',
+  },
   statusPill: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
     borderRadius: 999,
     borderWidth: 1,
     flexDirection: 'row-reverse',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   statusDot: { width: 7, height: 7, borderRadius: 999 },
   statusText: { fontSize: 11, fontWeight: '900', textAlign: 'right' },
-  metaBox: { width: 90, alignItems: 'center' },
   metaText: { fontSize: 11, fontWeight: '800', color: colors.gray[600], textAlign: 'right', writingDirection: 'rtl' },
   actions: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
-  actionsHidden: {
-    opacity: 0,
-    // @ts-expect-error - react-native-web supports transform strings, but arrays work too; keep subtle shift
-    transform: [{ translateY: 2 }],
-  },
   iconBtn: {
-    width: 34,
-    height: 34,
+    width: 30,
+    height: 30,
     borderRadius: 999,
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.10)',
