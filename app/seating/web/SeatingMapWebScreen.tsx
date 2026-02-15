@@ -448,7 +448,7 @@ export default function SeatingMapWebScreen() {
           </View>
         </View>
       ) : null}
-      <View style={styles.row}>
+      <View style={Platform.OS === 'web' ? styles.col : styles.row}>
         <TableSidebar
           onBack={onBack}
           onAddTable={onAddTable}
@@ -461,6 +461,7 @@ export default function SeatingMapWebScreen() {
           gridCols={api.gridCols}
           gridRows={api.gridRows}
           onSetGrid={(cols, rows) => api.setGrid(cols, rows)}
+          variant={Platform.OS === 'web' ? 'top' : 'side'}
         />
 
         <View style={styles.canvas}>
@@ -475,7 +476,16 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#e5e7eb' },
   // In RTL, `row` already lays out right-to-left. Using `row-reverse` would put the sidebar on the left.
   row: { flex: 1, flexDirection: 'row' },
-  canvas: { flex: 1 },
+  col: { 
+    flex: 1, 
+    flexDirection: 'column', 
+    gap: 14, 
+    padding: 14,
+    ...(Platform.OS === 'web' ? ({ 
+      background: 'linear-gradient(135deg, #e5e7eb 0%, #f3f4f6 100%)',
+    } as any) : null),
+  },
+  canvas: { flex: 1, borderRadius: 16, overflow: 'hidden' },
 
   leaveOverlay: {
     ...(StyleSheet.absoluteFill as any),

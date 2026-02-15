@@ -120,6 +120,7 @@ export default function LoginScreen() {
         email: userRow.email,
         name: userRow.name,
         phone: userRow.phone || undefined,
+        avatar_url: userRow.avatar_url || undefined,
         event_id: userRow.event_id,
         userType: userRow.user_type,
       });
@@ -197,13 +198,11 @@ export default function LoginScreen() {
       <View style={styles.whiteContent}>
         <View style={styles.logoContainer}>
           <Image
-            source={require('../assets/images/logoMoon.png')}
+            source={require('../assets/images/logo-moon.png')}
             style={styles.logo}
             resizeMode="contain"
           />
         </View>
-        <Text style={styles.title}>התחבר למערכת ניהול האירוע</Text>
-        <Text style={styles.subtitle}>הזן את פרטי ההתחברות שלך</Text>
         
         {/* שדות התחברות */}
         <View style={styles.loginForm}>
@@ -351,24 +350,11 @@ const styles = StyleSheet.create({
   },
   logoContainer: {
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 24,
   },
   logo: {
     width: 330,
     height: 100,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: colors.text,
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: colors.textLight,
-    textAlign: 'center',
-    marginBottom: 32,
   },
   loginForm: {
     marginBottom: 32,

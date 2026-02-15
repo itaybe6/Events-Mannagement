@@ -88,13 +88,15 @@ export default function AdminWebLayout() {
 
               <Pressable
                 onPress={handleLogout}
+                accessibilityRole="button"
+                accessibilityLabel="התנתקות"
                 style={({ hovered, pressed }: any) => [
                   styles.logoutBtn,
                   Platform.OS === 'web' && hovered ? styles.logoutBtnHover : null,
                   pressed ? styles.logoutBtnPressed : null,
                 ]}
               >
-                <Ionicons name="log-out-outline" size={18} color={colors.gray[500]} />
+                <Ionicons name="log-out-outline" size={18} color="#fff" />
                 <Text style={styles.logoutText}>התנתקות</Text>
               </Pressable>
             </View>
@@ -141,19 +143,22 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'transparent',
+    borderColor: colors.primary,
+    backgroundColor: colors.primary,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
   logoutBtnHover: {
-    backgroundColor: 'rgba(239,68,68,0.06)',
-    borderColor: 'rgba(239,68,68,0.1)',
+    backgroundColor: colors.oxfordBlue,
+    borderColor: colors.oxfordBlue,
   },
   logoutBtnPressed: {
-    opacity: 0.7,
+    opacity: 0.9,
+    transform: [{ scale: 0.99 }],
   },
   logoutText: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.gray[500],
+    color: '#fff',
   },
   sidebarFooter: {
     gap: 10,
