@@ -16,7 +16,6 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
 import { colors } from '@/constants/colors';
-import { EventSwitcher } from '@/components/EventSwitcher';
 import { useUserStore } from '@/store/userStore';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import { eventService } from '@/lib/services/eventService';
@@ -52,12 +51,6 @@ export default function CoupleGuestsWebScreen() {
         ''
     ).trim() || null;
 
-  const handleSelectEventId = (nextEventId: string) => {
-    if (userData?.id) setActiveEvent(userData.id, nextEventId);
-    router.replace({ pathname: './', params: { eventId: nextEventId } });
-  };
-
-  const [eventTitle, setEventTitle] = useState<string>('');
   const [loading, setLoading] = useState(false);
 
   const [categories, setCategories] = useState<GuestCategoryRow[]>([]);
@@ -84,7 +77,6 @@ export default function CoupleGuestsWebScreen() {
 
   const load = async () => {
     if (!resolvedEventId) {
-      setEventTitle('');
       setCategories([]);
       setGuests([]);
       return;
@@ -98,7 +90,7 @@ export default function CoupleGuestsWebScreen() {
         guestService.getGuestCategories(resolvedEventId),
         guestService.getGuests(resolvedEventId),
       ]);
-      setEventTitle(evt?.title || '');
+      void evt;
       setCategories(cats as any);
       setGuests(g as any);
       setExpandedByCategoryId((prev) => {
@@ -289,33 +281,7 @@ export default function CoupleGuestsWebScreen() {
     router.push({ pathname: '/contacts-list', params: { eventId: resolvedEventId, autoOpenCategory: '1' } });
   };
 
-  const handleExportCsv = () => {
-    try {
-      if (Platform.OS !== 'web') return;
-      const rows = filteredGuests.map((g) => ({
-        name: g.name || '',
-        phone: g.phone || '',
-        status: g.status || '',
-        numberOfPeople: String(g.numberOfPeople || 1),
-        category: g.category_id ? categoryNameById.get(String(g.category_id)) || '' : '',
-      }));
-
-      const header = ['שם', 'טלפון', 'סטטוס', 'מספר אנשים', 'קטגוריה'];
-      const escape = (v: string) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-      const csv = [header.map(escape).join(','), ...rows.map((r) => [r.name, r.phone, r.status, r.numberOfPeople, r.category].map(escape).join(','))].join('\n');
-
-      const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `guests-${eventTitle || 'event'}-${new Date().toISOString().slice(0, 10)}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      console.error('Export csv error:', e);
-      Alert.alert('שגיאה', 'לא ניתן לייצא כרגע.');
-    }
-  };
+  void categoryNameById;
 
   const statusChipOptions: Array<{ key: GuestStatus | null; label: string; count: number; tone: 'primary' | 'success' | 'warning' | 'danger' }> =
     [
@@ -333,55 +299,6 @@ export default function CoupleGuestsWebScreen() {
 
   return (
     <View style={styles.page}>
-      {/* Top navbar (sticky) */}
-      <View style={styles.navbar}>
-        <View style={styles.navbarInner}>
-          <View style={styles.navLeft}>
-            <View style={styles.navIconBox}>
-              <Ionicons name="people-circle" size={20} color={colors.white} />
-            </View>
-            <View style={styles.navTitleWrap}>
-              <Text style={styles.navTitle} numberOfLines={1}>
-                ניהול מוזמנים
-              </Text>
-              <Text style={styles.navBreadcrumb} numberOfLines={1}>
-                אירועים שלי · {eventTitle || 'בחר אירוע'}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.navRight}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="ייצוא"
-              onPress={handleExportCsv}
-              style={({ hovered, pressed }: any) => [
-                styles.navSecondaryBtn,
-                Platform.OS === 'web' && hovered ? styles.navSecondaryBtnHover : null,
-                pressed ? styles.btnPressed : null,
-              ]}
-            >
-              <Ionicons name="download-outline" size={18} color={colors.gray[700]} />
-              <Text style={styles.navSecondaryBtnText}>ייצוא</Text>
-            </Pressable>
-
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="הוסף מוזמן"
-              onPress={importContacts}
-              style={({ hovered, pressed }: any) => [
-                styles.navPrimaryBtn,
-                Platform.OS === 'web' && hovered ? styles.navPrimaryBtnHover : null,
-                pressed ? styles.btnPressed : null,
-              ]}
-            >
-              <Ionicons name="add" size={18} color={colors.white} />
-              <Text style={styles.navPrimaryBtnText}>הוסף מוזמן</Text>
-            </Pressable>
-          </View>
-        </View>
-      </View>
-
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {/* Metrics */}
         <View style={styles.metricsRow}>
@@ -397,7 +314,7 @@ export default function CoupleGuestsWebScreen() {
         </View>
 
         {/* Filter Bar */}
-        <View style={[styles.filterBar, isNarrow ? styles.filterBarNarrow : null]}>
+        <View style={[styles.filterBar, isNarrow ? styles.filterBarNarrow : styles.filterBarWide]}>
           <View style={[styles.searchWrap, isNarrow ? { width: '100%' } : { width: 420 }]}>
             <View style={styles.searchIconRight}>
               <Ionicons name="search" size={18} color={colors.gray[500]} />
@@ -424,41 +341,37 @@ export default function CoupleGuestsWebScreen() {
             ))}
           </View>
 
-          <View style={styles.bulkRow}>
-            {selectedGuestIds.size > 0 ? (
-              <>
-                <Text style={styles.bulkText}>{selectedGuestIds.size} נבחרו</Text>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="נקה בחירה"
-                  onPress={clearSelection}
-                  style={({ hovered, pressed }: any) => [
-                    styles.bulkBtn,
-                    Platform.OS === 'web' && hovered ? styles.bulkBtnHover : null,
-                    pressed ? styles.btnPressed : null,
-                  ]}
-                >
-                  <Ionicons name="close" size={16} color={colors.gray[700]} />
-                  <Text style={styles.bulkBtnText}>נקה</Text>
-                </Pressable>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="מחק נבחרים"
-                  onPress={bulkDeleteSelected}
-                  style={({ hovered, pressed }: any) => [
-                    styles.bulkDangerBtn,
-                    Platform.OS === 'web' && hovered ? styles.bulkDangerBtnHover : null,
-                    pressed ? styles.btnPressed : null,
-                  ]}
-                >
-                  <Ionicons name="trash-outline" size={16} color={colors.white} />
-                  <Text style={styles.bulkDangerBtnText}>מחק</Text>
-                </Pressable>
-              </>
-            ) : (
-              <EventSwitcher userId={userData?.id} selectedEventId={resolvedEventId} onSelectEventId={handleSelectEventId} />
-            )}
-          </View>
+          {selectedGuestIds.size > 0 ? (
+            <View style={styles.bulkRow}>
+              <Text style={styles.bulkText}>{selectedGuestIds.size} נבחרו</Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="נקה בחירה"
+                onPress={clearSelection}
+                style={({ hovered, pressed }: any) => [
+                  styles.bulkBtn,
+                  Platform.OS === 'web' && hovered ? styles.bulkBtnHover : null,
+                  pressed ? styles.btnPressed : null,
+                ]}
+              >
+                <Ionicons name="close" size={16} color={colors.gray[700]} />
+                <Text style={styles.bulkBtnText}>נקה</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="מחק נבחרים"
+                onPress={bulkDeleteSelected}
+                style={({ hovered, pressed }: any) => [
+                  styles.bulkDangerBtn,
+                  Platform.OS === 'web' && hovered ? styles.bulkDangerBtnHover : null,
+                  pressed ? styles.btnPressed : null,
+                ]}
+              >
+                <Ionicons name="trash-outline" size={16} color={colors.white} />
+                <Text style={styles.bulkDangerBtnText}>מחק</Text>
+              </Pressable>
+            </View>
+          ) : null}
         </View>
 
         {/* Groups */}
@@ -908,90 +821,6 @@ const styles = StyleSheet.create({
     direction: 'rtl',
   },
 
-  navbar: {
-    backgroundColor: colors.white,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(15,23,42,0.08)',
-    ...(Platform.OS === 'web'
-      ? ({
-          position: 'sticky',
-          top: 0,
-          zIndex: 60,
-          backdropFilter: 'blur(10px)',
-        } as any)
-      : null),
-  },
-  navbarInner: {
-    width: '100%',
-    maxWidth: 1200,
-    alignSelf: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    minHeight: 64,
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  navLeft: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: 12,
-    flex: 1,
-    minWidth: 0,
-  },
-  navIconBox: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  navTitleWrap: { flex: 1, minWidth: 0, alignItems: 'flex-end' },
-  navTitle: { fontSize: 18, fontWeight: '900', color: colors.primary, textAlign: 'right' },
-  navBreadcrumb: {
-    marginTop: 2,
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.gray[600],
-    textAlign: 'right',
-    writingDirection: 'rtl',
-  },
-  navRight: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
-  navSecondaryBtn: {
-    height: 40,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-    backgroundColor: colors.gray[100],
-    borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.06)',
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: 8,
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
-  },
-  navSecondaryBtnHover: { backgroundColor: colors.gray[200] },
-  navSecondaryBtnText: { fontSize: 12, fontWeight: '900', color: colors.gray[700], textAlign: 'right' },
-  navPrimaryBtn: {
-    height: 40,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-    backgroundColor: colors.primary,
-    borderWidth: 1,
-    borderColor: 'rgba(6,23,62,0.18)',
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: 8,
-    shadowColor: colors.primary,
-    shadowOpacity: 0.18,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 10 },
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
-  },
-  navPrimaryBtnHover: { opacity: 0.95 },
-  navPrimaryBtnText: { fontSize: 12, fontWeight: '900', color: colors.white, textAlign: 'right' },
-
   content: {
     padding: 16,
     paddingBottom: 28,
@@ -1036,7 +865,7 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web'
       ? ({
           position: 'sticky',
-          top: 76,
+          top: 12,
           zIndex: 50,
         } as any)
       : null),
@@ -1044,9 +873,16 @@ const styles = StyleSheet.create({
   filterBarNarrow: {
     padding: 12,
   },
+  filterBarWide: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    flexWrap: 'nowrap',
+  },
   searchWrap: {
     position: 'relative',
-    alignSelf: 'flex-end',
+    alignSelf: 'auto',
   },
   searchIconRight: {
     position: 'absolute',
@@ -1070,11 +906,13 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   chipsRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     flexWrap: 'wrap',
     justifyContent: 'flex-start',
+    flex: 1,
+    minWidth: 0,
   },
   chip: {
     paddingHorizontal: 14,
@@ -1083,7 +921,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.10)',
-    flexDirection: 'row-reverse',
+    flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
@@ -1096,12 +934,13 @@ const styles = StyleSheet.create({
   chipCountText: { fontSize: 11, fontWeight: '900', textAlign: 'right', writingDirection: 'rtl' },
 
   bulkRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 10,
     paddingHorizontal: 4,
     paddingTop: 2,
+    flexShrink: 0,
   },
   bulkText: { fontSize: 12, fontWeight: '900', color: colors.gray[700], textAlign: 'right' },
   bulkBtn: {
@@ -1111,7 +950,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.gray[100],
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.06)',
-    flexDirection: 'row-reverse',
+    flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
@@ -1125,7 +964,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F43F5E',
     borderWidth: 1,
     borderColor: 'rgba(244,63,94,0.25)',
-    flexDirection: 'row-reverse',
+    flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),

@@ -4,7 +4,6 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 
-import DesktopTopBar from '@/components/desktop/DesktopTopBar';
 import { CountdownTimer } from '@/components/CountdownTimer';
 import { EventSwitcher } from '@/components/EventSwitcher';
 import { colors } from '@/constants/colors';
@@ -169,46 +168,9 @@ export default function CoupleHomeWebScreen() {
         <View style={styles.shapeBottomLeft} />
       </View>
 
-      <DesktopTopBar
-        title="דשבורד"
-        subtitle={currentEvent?.title ? `אירוע: ${currentEvent.title}` : 'תצוגת אירוע בממשק דסקטופי'}
-        leftActions={
-          <View style={styles.topBarActions}>
-            <Pressable
-              onPress={() => router.push({ pathname: '/(couple)/guests', params: resolvedEventId ? { eventId: resolvedEventId } : {} })}
-              style={({ hovered, pressed }: any) => [
-                styles.topBarBtn,
-                Platform.OS === 'web' && hovered ? styles.topBarBtnHover : null,
-                pressed ? styles.btnPressed : null,
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel="ניהול מוזמנים"
-            >
-              <Ionicons name="people-outline" size={16} color={stylesVars.accentBlue} />
-              <Text style={styles.topBarBtnText}>מוזמנים</Text>
-            </Pressable>
-
-            <Pressable
-              onPress={() => router.push({ pathname: '/(couple)/BrideGroomSeating', params: resolvedEventId ? { eventId: resolvedEventId } : {} })}
-              style={({ hovered, pressed }: any) => [
-                styles.topBarBtn,
-                Platform.OS === 'web' && hovered ? styles.topBarBtnHover : null,
-                pressed ? styles.btnPressed : null,
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel="מפת הושבה"
-            >
-              <Ionicons name="grid-outline" size={16} color={stylesVars.accentPurple} />
-              <Text style={styles.topBarBtnText}>הושבה</Text>
-            </Pressable>
-          </View>
-        }
-        rightActions={
-          <View style={styles.topBarRight}>
-            <EventSwitcher userId={userData?.id} selectedEventId={resolvedEventId} onSelectEventId={handleSelectEventId} label="אירוע פעיל" />
-          </View>
-        }
-      />
+      <View pointerEvents="box-none" style={styles.floatingEventSwitcher}>
+        <EventSwitcher userId={userData?.id} selectedEventId={resolvedEventId} onSelectEventId={handleSelectEventId} label="אירוע פעיל" />
+      </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         {/* Header */}
@@ -539,7 +501,7 @@ const styles = StyleSheet.create({
   scroll: { flex: 1, backgroundColor: 'transparent' },
   container: {
     paddingHorizontal: 18,
-    paddingTop: 22,
+    paddingTop: 12,
     paddingBottom: 28,
     width: '100%',
     maxWidth: 1240,
@@ -629,6 +591,16 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     paddingBottom: 14,
     gap: 8,
+  },
+  floatingEventSwitcher: {
+    ...(Platform.OS === 'web'
+      ? ({
+          position: 'fixed',
+          right: 18,
+          bottom: 18,
+          zIndex: 80,
+        } as any)
+      : null),
   },
   avatarGroup: {
     alignItems: 'center',

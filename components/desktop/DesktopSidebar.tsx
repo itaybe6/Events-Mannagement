@@ -153,7 +153,8 @@ const styles = StyleSheet.create({
       ? ({
           position: 'sticky',
           top: 0,
-          height: '100dvh',
+          height: '100vh',
+          maxHeight: '100vh',
           minHeight: '100vh',
           alignSelf: 'flex-start',
           zIndex: 20,
@@ -337,6 +338,11 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: 'rgba(15,23,42,0.06)',
     backgroundColor: 'rgba(248,250,252,0.75)',
+    ...(Platform.OS === 'web'
+      ? ({
+          paddingBottom: 'calc(16px + env(safe-area-inset-bottom))',
+        } as any)
+      : null),
   },
 });
 
