@@ -95,6 +95,40 @@ export default function AutomaticNotificationsWebScreen() {
   const [editDraft, setEditDraft] = useState<{ message: string; days: number } | null>(null);
   const [saving, setSaving] = useState(false);
 
+  const groomName = useMemo(
+    () => String((event as any)?.groomName ?? (event as any)?.groom_name ?? '').trim(),
+    [event]
+  );
+  const brideName = useMemo(
+    () => String((event as any)?.brideName ?? (event as any)?.bride_name ?? '').trim(),
+    [event]
+  );
+  const coupleNames = useMemo(() => {
+    if (groomName && brideName) return `${groomName} ו${brideName}`;
+    return groomName || brideName || '';
+  }, [brideName, groomName]);
+
+  const previewVars = useMemo(() => {
+    const vars: Record<string, string> = {
+      '{{שם_פרטי}}': 'ישראל',
+      '{{שם_אירוע}}': subtitleFromEvent(event),
+      '{{תאריך}}': '15.10.2024',
+      '{{מיקום}}': 'מרכז הכנסים TLV',
+    };
+    if (groomName) vars['{{שם_חתן}}'] = groomName;
+    if (brideName) vars['{{שם_כלה}}'] = brideName;
+    if (coupleNames) vars['{{שמות_חתן_כלה}}'] = coupleNames;
+    return vars;
+  }, [brideName, coupleNames, event, groomName]);
+
+  const renderPreviewText = (raw: string) => {
+    let out = raw;
+    for (const [token, value] of Object.entries(previewVars)) {
+      out = out.split(token).join(value);
+    }
+    return out;
+  };
+
   const getDefaultMessageContent = (name?: string) => {
     const displayName = name && name.trim().length > 0 ? name.trim() : 'בעל/ת האירוע';
     return `הנכם מוזמנים לאירוע של ${displayName}\nפרטי האירוע ואישור הגעתכם בקישור\nנשמח לראותכם בין אורחינו.`;
@@ -427,6 +461,21 @@ export default function AutomaticNotificationsWebScreen() {
                 <Pressable onPress={() => insertVariable('{{שם_אירוע}}')} style={({ pressed }: any) => [styles.chip, pressed ? { opacity: 0.85 } : null]}>
                   <Text style={[styles.chipText, { color: ui.primary }]}>{'{{שם_אירוע}}'}</Text>
                 </Pressable>
+                {groomName ? (
+                  <Pressable onPress={() => insertVariable('{{שם_חתן}}')} style={({ pressed }: any) => [styles.chip, pressed ? { opacity: 0.85 } : null]}>
+                    <Text style={[styles.chipText, { color: ui.primary }]}>{'{{שם_חתן}}'}</Text>
+                  </Pressable>
+                ) : null}
+                {brideName ? (
+                  <Pressable onPress={() => insertVariable('{{שם_כלה}}')} style={({ pressed }: any) => [styles.chip, pressed ? { opacity: 0.85 } : null]}>
+                    <Text style={[styles.chipText, { color: ui.primary }]}>{'{{שם_כלה}}'}</Text>
+                  </Pressable>
+                ) : null}
+                {coupleNames ? (
+                  <Pressable onPress={() => insertVariable('{{שמות_חתן_כלה}}')} style={({ pressed }: any) => [styles.chip, pressed ? { opacity: 0.85 } : null]}>
+                    <Text style={[styles.chipText, { color: ui.primary }]}>{'{{שמות_חתן_כלה}}'}</Text>
+                  </Pressable>
+                ) : null}
                 <Pressable onPress={() => insertVariable('{{תאריך}}')} style={({ pressed }: any) => [styles.chip, pressed ? { opacity: 0.85 } : null]}>
                   <Text style={[styles.chipText, { color: ui.primary }]}>{'{{תאריך}}'}</Text>
                 </Pressable>
@@ -473,7 +522,7 @@ export default function AutomaticNotificationsWebScreen() {
                   </View>
                   <View style={styles.bubble}>
                     <Text style={styles.bubbleText}>
-                      {(editDraft?.message || getDefaultMessageContent(ownerTitle)).replace(/\n/g, '\n')}
+                      {renderPreviewText(editDraft?.message || getDefaultMessageContent(ownerTitle)).replace(/\n/g, '\n')}
                     </Text>
                     <Text style={styles.bubbleTime}>09:42 PM</Text>
                   </View>

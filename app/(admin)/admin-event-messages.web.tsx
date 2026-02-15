@@ -72,12 +72,42 @@ export default function AdminEventMessagesWebScreen() {
   );
 
   const [eventTitle, setEventTitle] = useState<string>('');
+  const [groomName, setGroomName] = useState<string>('');
+  const [brideName, setBrideName] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [settingsSupported, setSettingsSupported] = useState(true);
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettingRow[]>([]);
   const [selectedType, setSelectedType] = useState<string>('reminder_2');
   const [editDraft, setEditDraft] = useState<{ message: string; days: number } | null>(null);
   const [saving, setSaving] = useState(false);
+
+  const coupleNames = useMemo(() => {
+    const g = String(groomName || '').trim();
+    const b = String(brideName || '').trim();
+    if (g && b) return `${g} ו${b}`;
+    return g || b || '';
+  }, [brideName, groomName]);
+
+  const previewVars = useMemo(() => {
+    const vars: Record<string, string> = {
+      '{{שם_פרטי}}': 'ישראל',
+      '{{שם_אירוע}}': eventTitle || 'האירוע',
+      '{{תאריך}}': '15.10.2024',
+      '{{מיקום}}': 'מרכז הכנסים TLV',
+    };
+    if (String(groomName || '').trim()) vars['{{שם_חתן}}'] = String(groomName || '').trim();
+    if (String(brideName || '').trim()) vars['{{שם_כלה}}'] = String(brideName || '').trim();
+    if (coupleNames) vars['{{שמות_חתן_כלה}}'] = coupleNames;
+    return vars;
+  }, [brideName, coupleNames, eventTitle, groomName]);
+
+  const renderPreviewText = (raw: string) => {
+    let out = raw;
+    for (const [token, value] of Object.entries(previewVars)) {
+      out = out.split(token).join(value);
+    }
+    return out;
+  };
 
   const fetchSettings = async (evtId: string) => {
     const { data: rows, error } = await supabase
@@ -137,14 +167,20 @@ export default function AdminEventMessagesWebScreen() {
       }
       setLoading(true);
       try {
-        const { data, error } = await supabase.from('events').select('id, title').eq('id', eventId).maybeSingle();
+        const { data, error } = await supabase.from('events').select('id, title, groom_name, bride_name').eq('id', eventId).maybeSingle();
         if (error) throw error;
-        if (!cancelled) setEventTitle(String((data as any)?.title || '').trim());
+        if (!cancelled) {
+          setEventTitle(String((data as any)?.title || '').trim());
+          setGroomName(String((data as any)?.groom_name || '').trim());
+          setBrideName(String((data as any)?.bride_name || '').trim());
+        }
         await fetchSettings(eventId);
       } catch (e) {
         console.warn('Failed to load admin web automatic notifications:', e);
         if (!cancelled) {
           setEventTitle('');
+          setGroomName('');
+          setBrideName('');
           setNotificationSettings([]);
         }
       } finally {
@@ -368,6 +404,21 @@ export default function AdminEventMessagesWebScreen() {
                   <Pressable onPress={() => insertVariable('{{שם_אירוע}}')} style={({ pressed }: any) => [styles.chip, pressed ? { opacity: 0.85 } : null]}>
                     <Text style={[styles.chipText, { color: ui.primary }]}>{'{{שם_אירוע}}'}</Text>
                   </Pressable>
+                  {groomName ? (
+                    <Pressable onPress={() => insertVariable('{{שם_חתן}}')} style={({ pressed }: any) => [styles.chip, pressed ? { opacity: 0.85 } : null]}>
+                      <Text style={[styles.chipText, { color: ui.primary }]}>{'{{שם_חתן}}'}</Text>
+                    </Pressable>
+                  ) : null}
+                  {brideName ? (
+                    <Pressable onPress={() => insertVariable('{{שם_כלה}}')} style={({ pressed }: any) => [styles.chip, pressed ? { opacity: 0.85 } : null]}>
+                      <Text style={[styles.chipText, { color: ui.primary }]}>{'{{שם_כלה}}'}</Text>
+                    </Pressable>
+                  ) : null}
+                  {coupleNames ? (
+                    <Pressable onPress={() => insertVariable('{{שמות_חתן_כלה}}')} style={({ pressed }: any) => [styles.chip, pressed ? { opacity: 0.85 } : null]}>
+                      <Text style={[styles.chipText, { color: ui.primary }]}>{'{{שמות_חתן_כלה}}'}</Text>
+                    </Pressable>
+                  ) : null}
                   <Pressable onPress={() => insertVariable('{{תאריך}}')} style={({ pressed }: any) => [styles.chip, pressed ? { opacity: 0.85 } : null]}>
                     <Text style={[styles.chipText, { color: ui.primary }]}>{'{{תאריך}}'}</Text>
                   </Pressable>
@@ -414,7 +465,7 @@ export default function AdminEventMessagesWebScreen() {
                     </View>
                     <View style={styles.bubble}>
                       <Text style={styles.bubbleText}>
-                        {(editDraft?.message || 'היי {{שם_פרטי}},\nאנחנו מתרגשים לקראת האירוע!').replace(/\n/g, '\n')}
+                        {renderPreviewText(editDraft?.message || 'היי {{שם_פרטי}},\nאנחנו מתרגשים לקראת האירוע!').replace(/\n/g, '\n')}
                       </Text>
                       <Text style={styles.bubbleTime}>09:42 PM</Text>
                     </View>
