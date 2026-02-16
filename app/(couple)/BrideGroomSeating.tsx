@@ -15,6 +15,119 @@ import { DEFAULT_GRID_COLS, DEFAULT_GRID_ROWS, tableCellSize, type Orientation, 
 
 const { width, height } = Dimensions.get('window');
 
+function rgba(hex: string, alpha: number) {
+  const raw = hex.replace('#', '').trim();
+  const full = raw.length === 3 ? raw.split('').map((c) => c + c).join('') : raw;
+  const n = parseInt(full, 16);
+  // If parsing fails, fall back to a safe color.
+  if (Number.isNaN(n) || full.length !== 6) return `rgba(0,0,0,${alpha})`;
+  const r = (n >> 16) & 255;
+  const g = (n >> 8) & 255;
+  const b = n & 255;
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+type StatButtonProps = {
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+  value: number | string;
+  label: string;
+  accentColor: string;
+  onPress: () => void;
+};
+
+function StatButton({ icon, value, label, accentColor, onPress }: StatButtonProps) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${label}: ${value}`}
+      onPress={onPress}
+      hitSlop={8}
+      style={({ pressed, hovered, focused }) => {
+        const isWeb = Platform.OS === 'web';
+        const border = isWeb && (hovered || focused) ? rgba(accentColor, 0.38) : colors.gray[200];
+        const bg = pressed ? colors.gray[50] : colors.white;
+
+        // RN Web extra props (types don't include these).
+        const webFx: any =
+          isWeb
+            ? {
+                cursor: 'pointer',
+                userSelect: 'none',
+                outlineStyle: 'none',
+                overflow: 'hidden',
+                transitionProperty: 'transform, box-shadow, border-color, background-color',
+                transitionDuration: '180ms',
+                transitionTimingFunction: 'cubic-bezier(0.2, 0.8, 0.2, 1)',
+                transform: [
+                  { translateY: hovered && !pressed ? -2 : 0 },
+                  { scale: pressed ? 0.985 : 1 },
+                ],
+                boxShadow: focused
+                  ? `0 0 0 4px ${rgba(accentColor, 0.18)}, 0 14px 34px ${rgba('#000000', 0.12)}`
+                  : hovered && !pressed
+                    ? `0 14px 34px ${rgba('#000000', 0.12)}`
+                    : `0 8px 22px ${rgba('#000000', 0.08)}`,
+              }
+            : null;
+
+        return [
+          styles.statButton,
+          { borderColor: border, backgroundColor: bg },
+          webFx,
+        ];
+      }}
+    >
+      {({ pressed, hovered, focused }) => (
+        <>
+          {/* Subtle “shine” blobs (web delight). */}
+          {Platform.OS === 'web' && (
+            <>
+              <View
+                pointerEvents="none"
+                style={[
+                  styles.statShineBlob,
+                  {
+                    top: -34,
+                    left: -34,
+                    backgroundColor: rgba(accentColor, focused ? 0.16 : hovered ? 0.14 : 0.10),
+                    opacity: pressed ? 0.55 : 1,
+                  },
+                ]}
+              />
+              <View
+                pointerEvents="none"
+                style={[
+                  styles.statShineBlob,
+                  {
+                    bottom: -40,
+                    right: -40,
+                    backgroundColor: rgba(accentColor, focused ? 0.12 : hovered ? 0.10 : 0.08),
+                    opacity: pressed ? 0.5 : 1,
+                  },
+                ]}
+              />
+            </>
+          )}
+
+          <View
+            style={[
+              styles.statIconWrap,
+              {
+                backgroundColor: rgba(accentColor, pressed ? 0.06 : 0.08),
+                borderColor: rgba(accentColor, hovered || focused ? 0.26 : 0.18),
+              },
+            ]}
+          >
+            <Ionicons name={icon} size={22} color={accentColor} />
+          </View>
+          <Text style={styles.statValue}>{value}</Text>
+          <Text style={styles.statLabel}>{label}</Text>
+        </>
+      )}
+    </Pressable>
+  );
+}
+
 export default function BrideGroomSeating() {
   const { userData } = useUserStore();
   const { eventId: queryEventId } = useLocalSearchParams<{ eventId?: string }>();
@@ -785,43 +898,39 @@ export default function BrideGroomSeating() {
 
       {/* Stats */}
       <View style={styles.statsContainer}>
-        <TouchableOpacity 
-          style={styles.statBox}
+        <StatButton
+          icon="walk"
+          value={unseatedGuestsCount}
+          label="טרם הושבו"
+          accentColor={colors.secondary}
           onPress={() => openModalWithGuests('טרם הושבו', unseatedGuestsList)}
-        >
-          <Ionicons name="walk" size={28} color={colors.primary} />
-          <Text style={styles.statValue}>{unseatedGuestsCount}</Text>
-          <Text style={styles.statLabel}>טרם הושבו</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.statBox}
+        />
+        <StatButton
+          icon="grid"
+          value={tables.length}
+          label="שולחנות"
+          accentColor={colors.primary}
           onPress={() =>
             router.push({
               pathname: '/(couple)/TablesList',
               params: resolvedEventId ? { eventId: resolvedEventId } : {},
             })
           }
-        >
-          <Ionicons name="grid" size={28} color={colors.primary} />
-          <Text style={styles.statValue}>{tables.length}</Text>
-          <Text style={styles.statLabel}>שולחנות</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.statBox}
+        />
+        <StatButton
+          icon="body"
+          value={seatedGuestsCount}
+          label="הושבו"
+          accentColor={colors.success}
           onPress={() => openModalWithGuests('הושבו', seatedGuestsList)}
-        >
-          <Ionicons name="body" size={28} color={colors.primary} />
-          <Text style={styles.statValue}>{seatedGuestsCount}</Text>
-          <Text style={styles.statLabel}>הושבו</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.statBox}
+        />
+        <StatButton
+          icon="checkmark-circle-outline"
+          value={confirmedGuestsCount}
+          label="אישרו הגעה"
+          accentColor={colors.info}
           onPress={() => openModalWithGuests('אישרו הגעה', confirmedGuestsList)}
-        >
-          <Ionicons name="checkmark-circle-outline" size={28} color={colors.primary} />
-          <Text style={styles.statValue}>{confirmedGuestsCount}</Text>
-          <Text style={styles.statLabel}>אישרו הגעה</Text>
-        </TouchableOpacity>
+        />
       </View>
       
       {/* Guest List Modal */}
@@ -1226,25 +1335,59 @@ const styles = StyleSheet.create({
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   statsContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingVertical: 16,
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    gap: 12,
+    paddingVertical: 14,
     paddingTop: 12,
+    paddingHorizontal: 16,
     backgroundColor: colors.white,
     borderBottomWidth: 1,
     borderBottomColor: colors.gray[200],
   },
-  statBox: {
+  statBox: { alignItems: 'center' }, // legacy (not used)
+  statButton: {
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: 18,
+    borderWidth: 1,
+    backgroundColor: colors.white,
+    minWidth: 128,
+    maxWidth: 180,
+    flexGrow: 1,
+    flexBasis: 140,
+    shadowColor: colors.richBlack,
+    shadowOpacity: 0.06,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3,
+  },
+  statIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    marginBottom: 8,
+  },
+  statShineBlob: {
+    position: 'absolute',
+    width: 110,
+    height: 110,
+    borderRadius: 110,
   },
   statValue: {
-    fontSize: 22,
-    fontWeight: '600',
+    fontSize: 24,
+    fontWeight: '800',
     color: colors.text,
-    marginTop: 4,
+    letterSpacing: -0.3,
   },
   statLabel: {
     fontSize: 13,
-    fontWeight: '400',
+    fontWeight: '600',
     color: colors.textLight,
     marginTop: 2,
   },

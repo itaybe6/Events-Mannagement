@@ -78,7 +78,9 @@ export function makeId(prefix: 'table' | 'zone' | 'label') {
 export function tableCellSize(type: TableType, seats: number, orientation: Orientation): { w: number; h: number } {
   if (type === 'knight') {
     const long = Math.max(Math.ceil((seats || 20) / 2), 3);
-    return orientation === 'row' ? { w: long, h: 2 } : { w: 2, h: long };
+    // Make the "knight" table slightly thicker so labels fit better on web.
+    const thick = 3;
+    return orientation === 'row' ? { w: long, h: thick } : { w: thick, h: long };
   }
   // regular + reserve
   return { w: 3, h: 3 };

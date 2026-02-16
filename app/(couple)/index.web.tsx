@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -13,6 +13,7 @@ import type { Guest } from '@/types';
 export default function CoupleHomeWebScreen() {
   const router = useRouter();
   const { eventId: queryEventId } = useLocalSearchParams<{ eventId?: string }>();
+  const { width: windowWidth } = useWindowDimensions();
 
   const { isLoggedIn, userData, initializeAuth } = useUserStore();
   const activeUserId = useEventSelectionStore((s) => s.activeUserId);
@@ -77,11 +78,9 @@ export default function CoupleHomeWebScreen() {
     const confirmed = guests.filter((g) => g.status === 'מגיע').length;
     const declined = guests.filter((g) => g.status === 'לא מגיע').length;
     const pending = guests.filter((g) => g.status === 'ממתין').length;
-    const giftsSum = guests.reduce((sum, g) => sum + Number(g?.gift ?? 0), 0);
-    const giftsCount = guests.filter((g) => Number(g?.gift ?? 0) > 0).length;
     const seated = guests.filter((g) => g.status === 'מגיע' && g.tableId).length;
     const needSeat = Math.max(0, confirmed - seated);
-    return { confirmed, declined, pending, giftsSum, giftsCount, seated, needSeat, total: guests.length };
+    return { confirmed, declined, pending, seated, needSeat, total: guests.length };
   }, [guests]);
 
   const formatDateOnly = (date: Date) =>
@@ -138,6 +137,10 @@ export default function CoupleHomeWebScreen() {
     );
   }
 
+  const contentMaxWidth =
+    windowWidth >= 1800 ? 1560 : windowWidth >= 1500 ? 1400 : windowWidth >= 1280 ? 1240 : undefined;
+  const contentPaddingH = windowWidth >= 1024 ? 24 : 18;
+
   return (
     <View style={styles.page}>
       <View pointerEvents="none" style={styles.bgShapes}>
@@ -145,7 +148,17 @@ export default function CoupleHomeWebScreen() {
         <View style={styles.shapeBottomLeft} />
       </View>
 
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={[
+          styles.container,
+          {
+            paddingHorizontal: contentPaddingH,
+            ...(contentMaxWidth ? { maxWidth: contentMaxWidth } : null),
+          },
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Event details row (replaces the old top image/hero) */}
         <View style={styles.eventInfoRow}>
           <InfoCard icon="heart" tone="purple" label="זוג / אירוע" value={coupleOrTitle || '—'} />
@@ -168,34 +181,25 @@ export default function CoupleHomeWebScreen() {
         <View style={styles.statsGrid}>
           <StatCard
             icon="checkmark-circle"
-            iconBg="rgba(16,185,129,0.10)"
             iconColor={stylesVars.accentGreen}
+            tone="success"
             title="מאשרים"
             value={stats.confirmed}
-            hint={stats.total ? `${Math.round((stats.confirmed / stats.total) * 100)}%` : undefined}
           />
           <StatCard
             icon="close-circle"
-            iconBg="rgba(239,68,68,0.10)"
             iconColor={stylesVars.accentRed}
+            tone="danger"
             title="לא מגיעים"
             value={stats.declined}
           />
           <StatCard
             icon="hourglass-outline"
-            iconBg="rgba(245,158,11,0.12)"
             iconColor={stylesVars.accentYellow}
+            tone="warning"
             title="ממתינים"
             value={stats.pending}
-            hint={stats.pending > 0 ? 'דחוף' : undefined}
-          />
-          <StatCard
-            icon="gift"
-            iconBg="rgba(139,92,246,0.10)"
-            iconColor={stylesVars.accentPurple}
-            title="מתנות שהתקבלו"
-            value={`₪${formatCurrency(stats.giftsSum)}`}
-            hint={stats.giftsCount ? `${stats.giftsCount} מתנות` : undefined}
+            badge={stats.pending > 0 ? 'דחוף' : undefined}
           />
         </View>
 
@@ -282,37 +286,57 @@ function formatCurrency(value: number) {
   return n.toLocaleString('he-IL');
 }
 
+function withAlpha(hex: string, alpha: number) {
+  const h = String(hex || '').trim().replace('#', '');
+  const a = Math.max(0, Math.min(1, alpha));
+  if (h.length !== 6) return `rgba(0,0,0,${a})`;
+  const r = Number.parseInt(h.slice(0, 2), 16);
+  const g = Number.parseInt(h.slice(2, 4), 16);
+  const b = Number.parseInt(h.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${a})`;
+}
+
 function StatCard({
   icon,
-  iconBg,
   iconColor,
+  tone,
   title,
   value,
-  hint,
+  badge,
 }: {
   icon: React.ComponentProps<typeof Ionicons>['name'];
-  iconBg: string;
   iconColor: string;
+  tone: 'success' | 'danger' | 'warning';
   title: string;
   value: string | number;
-  hint?: string;
+  badge?: string;
 }) {
+  const tones = {
+    success: { bg: 'rgba(16,185,129,0.10)' },
+    danger: { bg: 'rgba(239,68,68,0.08)' },
+    warning: { bg: 'rgba(245,158,11,0.10)' },
+  } as const;
+
   return (
-    <HoverableSurface style={styles.statCard} hoverStyle={styles.cardHover}>
-      <View style={styles.statCardTop}>
-        <View style={[styles.statIconBox, { backgroundColor: iconBg }]}>
-          <Ionicons name={icon} size={18} color={iconColor} />
+    <HoverableSurface
+      style={[
+        styles.statCardLikeImage,
+        { backgroundColor: tones[tone].bg, borderColor: withAlpha(iconColor, 0.30) },
+      ]}
+      hoverStyle={styles.statCardLikeImageHover}
+    >
+      {badge ? (
+        <View style={[styles.statBadge, { backgroundColor: withAlpha(iconColor, 0.10), borderColor: withAlpha(iconColor, 0.20) }]}>
+          <Text style={[styles.statBadgeText, { color: iconColor }]}>{badge}</Text>
         </View>
-        {hint ? (
-          <View style={styles.statHintPill}>
-            <Text style={styles.statHintText}>{hint}</Text>
-          </View>
-        ) : (
-          <View />
-        )}
+      ) : null}
+
+      <View style={[styles.statIconCircle, { borderColor: withAlpha(iconColor, 0.18) }]}>
+        <Ionicons name={icon} size={22} color={iconColor} />
       </View>
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statLabel}>{title}</Text>
+
+      <Text style={styles.statBigValue}>{value}</Text>
+      <Text style={styles.statBigLabel}>{title}</Text>
     </HoverableSurface>
   );
 }
@@ -498,7 +522,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row-reverse',
     flexWrap: 'wrap',
     gap: 10,
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
     alignItems: 'stretch',
     marginBottom: 12,
   },
@@ -554,49 +578,77 @@ const styles = StyleSheet.create({
     flexDirection: 'row-reverse',
     flexWrap: 'wrap',
     gap: 12,
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
   },
-  statCard: {
+  // Stat cards styled like the reference screenshot (pastel bg, top badges, centered icon + value)
+  statCardLikeImage: {
     flexGrow: 1,
-    flexBasis: 220,
-    minWidth: 200,
-    padding: 14,
+    flexBasis: 300,
+    minWidth: 260,
+    minHeight: 150,
     borderRadius: 18,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.70)',
-    backgroundColor: 'rgba(255,255,255,0.68)',
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 18,
+    overflow: 'hidden',
     ...(Platform.OS === 'web'
       ? ({
-          backdropFilter: 'blur(10px)',
-          WebkitBackdropFilter: 'blur(10px)',
-          boxShadow: '0 4px 20px rgba(13,28,43,0.04)',
+          boxShadow: '0 10px 26px rgba(13,28,43,0.08)',
+        } as any)
+      : null),
+    ...(Platform.OS === 'web' ? ({ cursor: 'default' } as any) : null),
+  },
+  statCardLikeImageHover: {
+    ...(Platform.OS === 'web'
+      ? ({
+          transform: [{ translateY: -1 }],
+          boxShadow: '0 14px 34px rgba(13,28,43,0.10)',
         } as any)
       : null),
   },
-  statCardTop: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
+  statBadge: {
+    position: 'absolute',
+    top: 10,
+    right: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
   },
-  statIconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
+  statBadgeText: {
+    fontSize: 11,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  statIconCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    ...(Platform.OS === 'web'
+      ? ({
+          boxShadow: '0 10px 20px rgba(13,28,43,0.10)',
+        } as any)
+      : null),
   },
-  statHintPill: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.80)',
-    borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.05)',
+  statBigValue: {
+    marginTop: 12,
+    fontSize: 34,
+    fontWeight: '900',
+    color: stylesVars.primary,
+    textAlign: 'center',
   },
-  statHintText: { fontSize: 10, fontWeight: '900', color: colors.gray[600], textAlign: 'right' },
-  statValue: { fontSize: 26, fontWeight: '900', color: stylesVars.primary, textAlign: 'right' },
-  statLabel: { marginTop: 3, fontSize: 11, fontWeight: '800', color: colors.gray[600], textAlign: 'right' },
+  statBigLabel: {
+    marginTop: 4,
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.gray[700],
+    textAlign: 'center',
+  },
 
   bigActionsRow: { marginTop: 14, flexDirection: 'row', gap: 14, flexWrap: 'wrap' },
   bigActionSecondary: {

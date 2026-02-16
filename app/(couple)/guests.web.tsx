@@ -415,10 +415,19 @@ export default function CoupleGuestsWebScreen() {
   }, [windowWidth]);
 
   const guestItemWidth = useMemo(() => {
-    // Requested UI: two guests per row (on narrow screens keep single column)
+    // Responsive:
+    // - narrow: 1 col
+    // - laptop: 2 cols
+    // - desktop+: compact fixed widths (cleaner, narrower cards)
     if (windowWidth < 720) return '100%';
-    return '49%';
+    if (windowWidth < 1100) return '48%';
+    if (windowWidth < 1480) return 260;
+    if (windowWidth < 1720) return 240;
+    return 220;
   }, [windowWidth]);
+
+  // Compact cards look cleaner than large square tiles for guests lists.
+  const useSquareGuestCards = false;
 
   return (
     <View style={styles.page}>
@@ -573,13 +582,11 @@ export default function CoupleGuestsWebScreen() {
                               key={g.id}
                               guest={g}
                               width={guestItemWidth}
+                              square={useSquareGuestCards}
                               checked={selectedGuestIds.has(g.id)}
                               onToggleCheck={() => toggleSelectGuest(g.id)}
                               onEdit={() => openEdit(g)}
                               onDelete={() => handleDeleteGuest(g.id)}
-                              onCall={() => {
-                                if (Platform.OS === 'web' && g.phone?.trim()) window.open(`tel:${g.phone.trim()}`);
-                              }}
                             />
                           ))
                         )}
@@ -983,83 +990,90 @@ function MiniStatDot({ label, tone }: { label: string; tone: 'success' | 'warnin
 function GuestListRow({
   guest,
   width,
+  square,
   checked,
   onToggleCheck,
   onEdit,
-  onCall,
   onDelete,
 }: {
   guest: GuestRow;
   width?: any;
+  square?: boolean;
   checked: boolean;
   onToggleCheck: () => void;
   onEdit: () => void;
-  onCall: () => void;
   onDelete: () => void;
 }) {
-  const initials = String(guest.name || '')
-    .trim()
-    .split(/\s+/g)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((p) => p[0])
-    .join('');
   const statusTone = guest.status === 'מגיע' ? 'success' : guest.status === 'לא מגיע' ? 'danger' : 'warning';
   const sc = toneColor(statusTone);
 
   return (
     <Pressable
       style={({ hovered }: any) => [
-        styles.guestRow,
+        styles.guestCard,
         width ? { width } : null,
+        square ? styles.guestCardSquare : null,
         Platform.OS === 'web' && hovered ? styles.guestRowHover : null,
       ]}
     >
       {() => (
         <>
-          <View style={styles.guestLeft}>
-            <Pressable
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked }}
-              accessibilityLabel={checked ? 'הסר בחירה' : 'בחר אורח'}
-              onPress={onToggleCheck}
-              style={({ hovered, pressed }: any) => [
-                styles.checkbox,
-                checked ? styles.checkboxChecked : null,
-                Platform.OS === 'web' && hovered ? styles.checkboxHover : null,
-                pressed ? styles.btnPressed : null,
-              ]}
-            >
-              {checked ? <Ionicons name="checkmark" size={14} color={colors.white} /> : null}
-            </Pressable>
+          {/* Checkbox (top-left), like the provided design */}
+          <Pressable
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked }}
+            accessibilityLabel={checked ? 'הסר בחירה' : 'בחר אורח'}
+            onPress={onToggleCheck}
+            style={({ hovered, pressed }: any) => [
+              styles.checkbox,
+              styles.guestCheckboxAbs,
+              checked ? styles.checkboxChecked : null,
+              Platform.OS === 'web' && hovered ? styles.checkboxHover : null,
+              pressed ? styles.btnPressed : null,
+            ]}
+          >
+            {checked ? <Ionicons name="checkmark" size={14} color={colors.white} /> : null}
+          </Pressable>
 
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{initials || 'א'}</Text>
-            </View>
-
-            <View style={styles.guestText}>
-              <Text style={styles.guestName} numberOfLines={1}>
-                {guest.name}
-              </Text>
-              <Text style={styles.guestPhone} numberOfLines={1}>
-                {guest.phone}
-              </Text>
+          <View style={styles.guestCardHeader}>
+            {/* Left side: name + phone (left-aligned) */}
+            <View style={styles.guestHeaderLeft}>
+              <View style={styles.guestCardTitleWrap}>
+                <Text style={styles.guestCardName} numberOfLines={1}>
+                  {guest.name}
+                </Text>
+                <Text style={styles.guestCardPhone} numberOfLines={1}>
+                  {guest.phone}
+                </Text>
+              </View>
             </View>
           </View>
 
-          <View style={styles.guestRight}>
-            <View style={[styles.statusPill, { backgroundColor: sc.soft, borderColor: 'rgba(0,0,0,0.06)' }]}>
+          {/* Bottom-left: qty + actions, then status under them */}
+          <View style={styles.guestBottom}>
+            <View style={styles.guestBottomTopRow}>
+              <View style={styles.guestCardMetaPill}>
+                <Ionicons name="people-outline" size={14} color={colors.gray[600]} />
+                <Text style={styles.guestCardMetaText}>כמות: {guest.numberOfPeople || 1}</Text>
+              </View>
+            </View>
+
+            <View
+              style={[
+                styles.statusPill,
+                styles.statusPillBottom,
+                { backgroundColor: sc.soft, borderColor: 'rgba(0,0,0,0.06)' },
+              ]}
+            >
               <View style={[styles.statusDot, { backgroundColor: sc.main }]} />
               <Text style={[styles.statusText, { color: sc.text }]}>{guest.status}</Text>
             </View>
+          </View>
 
-            <Text style={styles.metaText}>{guest.numberOfPeople || 1} מבוגרים</Text>
-
-            <View style={styles.actions}>
-              <IconCircleBtn icon="create-outline" label="עריכה" onPress={onEdit} />
-              <IconCircleBtn icon="call-outline" label="התקשר" onPress={onCall} />
-              <IconCircleBtn icon="trash-outline" label="מחק" danger onPress={onDelete} />
-            </View>
+          {/* Actions pinned to the bottom-left of the card */}
+          <View style={styles.guestCardActionsAbs}>
+            <IconCircleBtn icon="create-outline" label="עריכה" onPress={onEdit} />
+            <IconCircleBtn icon="trash-outline" label="מחק" danger onPress={onDelete} />
           </View>
         </>
       )}
@@ -1168,7 +1182,8 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 28,
     width: '100%',
-    maxWidth: 1200,
+    // wider maxWidth for desktop screens
+    maxWidth: 1600,
     alignSelf: 'center',
     gap: 16,
     // @ts-expect-error - react-native-web supports direction
@@ -1336,43 +1351,62 @@ const styles = StyleSheet.create({
   groups: { gap: 14 },
   groupCard: {
     backgroundColor: colors.white,
-    borderRadius: 22,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.06)',
+    borderColor: 'rgba(15,23,42,0.07)',
     overflow: 'hidden',
     // @ts-expect-error - react-native-web supports boxShadow
-    boxShadow: '0 0 0 1px rgba(11,48,65,0.02), 0 10px 28px rgba(11,48,65,0.06)',
+    boxShadow: '0 1px 2px rgba(16,24,40,0.04), 0 14px 28px rgba(16,24,40,0.06)',
   },
   groupHeader: {
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(15,23,42,0.06)',
     flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
+    backgroundColor: colors.white,
   },
-  groupHeaderHover: { backgroundColor: 'rgba(6,23,62,0.02)' },
+  groupHeaderHover: { backgroundColor: 'rgba(15,23,42,0.02)' },
   groupHeaderLeft: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 },
+  groupToggleBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(15,23,42,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.06)',
+  },
   chevronCollapsed: {
     transform: [{ rotate: '-90deg' }],
   },
-  groupTitle: { fontSize: 16, fontWeight: '900', color: colors.primary, textAlign: 'right', flex: 1, minWidth: 0 },
-  groupPill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: 'rgba(6,23,62,0.10)' },
-  groupPillText: { fontSize: 11, fontWeight: '900', color: colors.primary, textAlign: 'right', writingDirection: 'rtl' },
+  groupTitle: { fontSize: 18, fontWeight: '900', color: colors.primary, textAlign: 'right', flex: 1, minWidth: 0 },
+  groupPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(15,23,42,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.06)',
+  },
+  groupPillText: { fontSize: 11, fontWeight: '900', color: colors.gray[700], textAlign: 'right', writingDirection: 'rtl' },
   groupHeaderRight: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12 },
   miniStat: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6 },
   miniDot: { width: 8, height: 8, borderRadius: 999 },
-  miniStatText: { fontSize: 11, fontWeight: '800', color: colors.gray[600], textAlign: 'right', writingDirection: 'rtl' },
+  miniStatText: { fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'right', writingDirection: 'rtl' },
 
   groupBody: {
-    paddingHorizontal: 10,
-    paddingVertical: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
     flexDirection: 'row-reverse',
     flexWrap: 'wrap',
-    gap: 10,
+    gap: 12,
     alignItems: 'stretch',
+    backgroundColor: 'rgba(248,250,252,0.92)',
   },
   groupEmpty: {
     width: '100%',
@@ -1392,6 +1426,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 10,
+    flexWrap: 'wrap',
     // Ensure RTL layout inside the guest card on web
     // @ts-expect-error - react-native-web supports direction
     direction: 'rtl',
@@ -1403,16 +1438,9 @@ const styles = StyleSheet.create({
   },
   guestRowHover: {
     backgroundColor: 'rgba(255,255,255,0.98)',
-    borderColor: 'rgba(59,130,246,0.22)',
-  },
-  guestLeft: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: 10,
-    flex: 1,
-    minWidth: 0,
-    // @ts-expect-error - react-native-web supports direction
-    direction: 'rtl',
+    borderColor: 'rgba(30,58,138,0.18)',
+    // @ts-expect-error - react-native-web supports boxShadow
+    boxShadow: '0 0 0 1px rgba(30,58,138,0.06), 0 14px 26px rgba(16,24,40,0.08)',
   },
   checkbox: {
     width: 18,
@@ -1427,58 +1455,133 @@ const styles = StyleSheet.create({
   },
   checkboxHover: { borderColor: 'rgba(6,23,62,0.35)' },
   checkboxChecked: { backgroundColor: colors.primary, borderColor: colors.primary },
-  avatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 999,
-    backgroundColor: 'rgba(0,53,102,0.08)',
+  guestCard: {
+    padding: 10,
+    paddingBottom: 92,
     borderWidth: 1,
-    borderColor: 'rgba(0,53,102,0.12)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderColor: 'rgba(15,23,42,0.06)',
+    borderRadius: 18,
+    backgroundColor: colors.white,
+    gap: 8,
+    // @ts-expect-error - react-native-web supports direction
+    direction: 'rtl',
+    // @ts-expect-error - react-native-web supports boxShadow
+    boxShadow: '0 0 0 1px rgba(11,48,65,0.02), 0 10px 22px rgba(16,24,40,0.06)',
+    minHeight: 86,
+    position: 'relative',
   },
-  avatarText: { fontSize: 11, fontWeight: '900', color: colors.primary, textAlign: 'right' },
-  guestText: {
+  guestCardSquare: {
+    aspectRatio: 1,
+  },
+  guestCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    minWidth: 0,
+    ...(Platform.OS === 'web' ? ({ direction: 'ltr' } as any) : null),
+  },
+  // Left side cluster: checkbox + name/phone, pinned to the left edge.
+  guestHeaderLeft: {
     flex: 1,
     minWidth: 0,
-    flexDirection: 'row-reverse',
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'flex-start',
+    gap: 10,
+    ...(Platform.OS === 'web' ? ({ direction: 'ltr' } as any) : null),
   },
-  guestName: { fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'right', writingDirection: 'rtl' },
-  guestPhone: {
-    marginTop: 0,
+  guestCardTitleWrap: { flex: 1, minWidth: 0, alignItems: 'flex-start', gap: 3, paddingLeft: 22 },
+  guestCardName: { fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'left' },
+  guestCardPhone: {
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: '800',
     color: colors.gray[600],
+    // Keep phone numbers readable (LTR) but anchor them to the RTL layout.
     // @ts-expect-error - react-native-web supports direction
     direction: 'ltr',
     textAlign: 'left',
+    alignSelf: 'flex-start',
   },
-  guestRight: {
+  // Quantity row pinned to the left.
+  guestCardMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    ...(Platform.OS === 'web' ? ({ direction: 'ltr' } as any) : null),
+  },
+  guestCardMetaPill: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
-    gap: 10,
+    gap: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: 'rgba(243,244,246,0.9)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.06)',
+    alignSelf: 'flex-end',
+  },
+  guestCardMetaText: { fontSize: 11, fontWeight: '900', color: colors.gray[700], textAlign: 'left' },
+  guestBottom: {
+    position: 'absolute',
+    bottom: 10,
+    right: 10,
+    // Anchor the info cluster to the physical right edge.
+    alignItems: 'flex-end',
+    justifyContent: 'flex-start',
+    gap: 8,
+    maxWidth: '100%',
+    // Keep the bottom cluster stable regardless of RTL flipping.
+    ...(Platform.OS === 'web' ? ({ direction: 'ltr' } as any) : null),
+  },
+  guestBottomTopRow: {
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    ...(Platform.OS === 'web' ? ({ direction: 'ltr' } as any) : null),
+  },
+  guestBottomActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     flexShrink: 0,
-    // @ts-expect-error - react-native-web supports direction
-    direction: 'rtl',
+    ...(Platform.OS === 'web' ? ({ direction: 'ltr' } as any) : null),
+  },
+  guestCardActionsAbs: {
+    position: 'absolute',
+    left: 10,
+    bottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    zIndex: 3,
+    ...(Platform.OS === 'web' ? ({ direction: 'ltr' } as any) : null),
+  },
+  guestCardFooter: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    gap: 6,
+    marginTop: 'auto',
   },
   statusPill: {
-    paddingHorizontal: 9,
-    paddingVertical: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     borderRadius: 999,
     borderWidth: 1,
     flexDirection: 'row-reverse',
     alignItems: 'center',
     gap: 6,
   },
-  statusDot: { width: 7, height: 7, borderRadius: 999 },
-  statusText: { fontSize: 11, fontWeight: '900', textAlign: 'right' },
-  metaText: { fontSize: 11, fontWeight: '800', color: colors.gray[600], textAlign: 'right', writingDirection: 'rtl' },
+  statusPillBottom: {
+    alignSelf: 'flex-end',
+  },
+  statusDot: { width: 6, height: 6, borderRadius: 999 },
+  statusText: { fontSize: 10.5, fontWeight: '900', textAlign: 'right' },
   actions: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
   iconBtn: {
-    width: 30,
-    height: 30,
+    width: 26,
+    height: 26,
     borderRadius: 999,
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.10)',
@@ -1487,6 +1590,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
     opacity: 0.95,
+  },
+  guestCheckboxAbs: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    zIndex: 2,
   },
   iconBtnHover: { borderColor: 'rgba(6,23,62,0.20)', backgroundColor: 'rgba(6,23,62,0.03)' },
   iconBtnDangerHover: { borderColor: 'rgba(244,63,94,0.22)', backgroundColor: 'rgba(244,63,94,0.06)' },

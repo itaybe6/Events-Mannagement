@@ -135,9 +135,15 @@ function StatCard({
 export default function AdminProfileWebScreen() {
   const router = useRouter();
   const { width } = useWindowDimensions();
-  const isWide = width >= 1100;
+  // On web we render inside the admin sidebar layout (sticky 270px sidebar).
+  // Use "content width" so breakpoints reflect available space, not full viewport.
+  const sidebarWidth = Platform.OS === 'web' ? 270 : 0;
+  const contentWidth = Math.max(0, width - sidebarWidth);
+  const isWide = contentWidth >= 1100;
+  const isTightBars = contentWidth < 980;
+  const maxContentWidth = contentWidth >= 1900 ? 1600 : contentWidth >= 1600 ? 1480 : 1120;
   const [heroWidth, setHeroWidth] = useState(0);
-  const isHeroStack = heroWidth > 0 ? heroWidth < 520 : width < 520;
+  const isHeroStack = heroWidth > 0 ? heroWidth < 520 : contentWidth < 520;
 
   const { userData } = useUserStore();
 
@@ -361,7 +367,7 @@ export default function AdminProfileWebScreen() {
   return (
     <View style={styles.page}>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <View style={styles.container}>
+        <View style={[styles.container, { maxWidth: maxContentWidth }]}>
           {/* HERO */}
           <View
             style={styles.heroCard}
@@ -552,7 +558,7 @@ export default function AdminProfileWebScreen() {
                     <ActivityIndicator color={ui.accentDark} />
                   </View>
                 ) : (
-                  <View style={styles.barsWrap}>
+                  <View style={[styles.barsWrap, isTightBars ? styles.barsWrapTight : null]}>
                     {bars12.map((b) => {
                       const isCurrentMonth = isCurrentYear && b.monthIndex === now.getMonth();
                       const pct = b.value === 0 ? 0 : Math.max(0.06, b.value / maxBar);
@@ -564,13 +570,20 @@ export default function AdminProfileWebScreen() {
                           onPress={() => null}
                           style={({ hovered, pressed }: any) => [
                             styles.barCol,
+                            isTightBars ? styles.barColTight : null,
                             pressed ? { opacity: 0.96 } : null,
                             Platform.OS === 'web' && hovered ? styles.barColHover : null,
                           ]}
                         >
                           {({ hovered }: any) => (
                             <>
-                              <View style={[styles.barTrack, Platform.OS === 'web' && hovered ? styles.barTrackHover : null]}>
+                              <View
+                                style={[
+                                  styles.barTrack,
+                                  isTightBars ? styles.barTrackTight : null,
+                                  Platform.OS === 'web' && hovered ? styles.barTrackHover : null,
+                                ]}
+                              >
                                 <View style={styles.barBg} />
                                 <LinearGradient
                                   colors={
@@ -804,8 +817,18 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
   scroll: { flex: 1 },
-  scrollContent: { paddingVertical: 18, paddingHorizontal: 18, paddingBottom: 28 },
-  container: { width: '100%', maxWidth: 1120, alignSelf: 'center', gap: 18 },
+  // Align the page content to the right (RTL) on wide desktop.
+  // We keep a small right padding so cards won't touch the edge.
+  scrollContent: { paddingVertical: 18, paddingBottom: 28, paddingLeft: 18, paddingRight: 8, alignItems: 'flex-end' },
+  // On web we want the content to hug the right sidebar (RTL) instead of being centered,
+  // while still keeping a max width on large displays.
+  container: {
+    width: '100%',
+    alignSelf: 'flex-end',
+    // Force right pinning in react-native-web (more reliable than alignSelf alone).
+    ...(Platform.OS === 'web' ? ({ marginLeft: 'auto', marginRight: 0 } as any) : null),
+    gap: 18,
+  },
 
   card: {
     backgroundColor: ui.card,
@@ -1108,7 +1131,10 @@ const styles = StyleSheet.create({
 
   loadingBox: { height: 240, alignItems: 'center', justifyContent: 'center' },
   barsWrap: { height: 260, flexDirection: 'row-reverse', alignItems: 'flex-end', justifyContent: 'space-between', gap: 10, paddingTop: 10 },
+  // Make the bars denser on narrower content widths (prevents horizontal overflow).
+  barsWrapTight: { gap: 6 },
   barCol: { flex: 1, minWidth: 42, alignItems: 'center', gap: 10 },
+  barColTight: { minWidth: 28, gap: 8 },
   barColHover: {},
   barTrack: {
     width: '100%',
@@ -1122,6 +1148,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     position: 'relative',
   },
+  barTrackTight: { maxWidth: 44, height: 170 },
   barTrackHover: { borderColor: 'rgba(59,130,246,0.22)', backgroundColor: 'rgba(59,130,246,0.05)' },
   barBg: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(11,27,61,0.03)' },
   barFill: { width: '100%', borderRadius: 14 },

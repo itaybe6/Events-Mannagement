@@ -126,7 +126,6 @@ export default function HomeScreen() {
   };
 
   // חישוב נתונים אמיתיים
-  const totalGifts = guests.reduce((sum, guest) => sum + Number(guest?.gift ?? 0), 0);
   const confirmedGuests = guests.filter(guest => guest.status === 'מגיע').length;
   const pendingGuests = guests.filter(guest => guest.status === 'ממתין').length;
   const totalGuests = guests.length;
@@ -254,13 +253,6 @@ export default function HomeScreen() {
             iconBg="rgba(19, 91, 236, 0.12)"
           />
           <StatPill
-            title="מתנות שהתקבלו"
-            value={`₪${totalGifts}`}
-            iconName="gift"
-            tintColor={stylesVars.purple}
-            iconBg="rgba(124, 58, 237, 0.12)"
-          />
-          <StatPill
             title="אורחים שצריך להושיב"
             value={Math.max(0, confirmedGuests - seatedGuests)}
             iconName="alert-circle"
@@ -312,7 +304,6 @@ export default function HomeScreen() {
 
 const stylesVars = {
   primaryBlue: '#135bec',
-  purple: '#7c3aed',
   red: '#ef4444',
   amber: '#f59e0b',
 };

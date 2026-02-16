@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useWindowDimensions } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -28,13 +29,30 @@ type NotificationSettingRow = {
   channel?: 'SMS' | 'WHATSAPP';
 };
 
+const normalizeMessage = (s: string) => String(s || '').replace(/\r\n/g, '\n').trim();
+
 const NOTIFICATION_TEMPLATES: NotificationTemplate[] = [
-  { notification_type: 'reminder_1', title: 'הודעה ראשונה', days_from_wedding: -30, channel: 'SMS', defaultMessage: 'שלום! רצינו להזכיר לכם על האירוע הקרוב שלנו.' },
+  {
+    notification_type: 'reminder_1',
+    title: 'הודעה ראשונה',
+    days_from_wedding: -30,
+    channel: 'SMS',
+    defaultMessage:
+      'אורחים יקרים,\n' +
+      'בתאריך {{תאריך}} תיערך החתונה של {{שמות_חתן_כלה}} ב{{מיקום}}.\n' +
+      'למתנה באשראי: [הדביקו כאן קישור]\n' +
+      'להנחיות הגעה: [הדביקו כאן קישור]\n' +
+      'נשמח לראותכם :)',
+  },
   { notification_type: 'reminder_2', title: 'הודעה שנייה', days_from_wedding: -14, channel: 'SMS', defaultMessage: 'היי! האירוע בעוד שבועיים, מחכים לראות אתכם!' },
   { notification_type: 'reminder_3', title: 'הודעה שלישית', days_from_wedding: -7, channel: 'SMS', defaultMessage: 'תזכורת אחרונה: האירוע בעוד שבוע. נשמח לראותכם!' },
   { notification_type: 'whatsapp_event_day', title: 'וואטסאפ ביום האירוע', days_from_wedding: 0, channel: 'WHATSAPP', defaultMessage: 'היום האירוע! נתראה שם' },
   { notification_type: 'after_1', title: 'הודעה רגילה אחרי האירוע', days_from_wedding: 1, channel: 'SMS', defaultMessage: 'תודה שבאתם! היה לנו כיף גדול איתכם.' },
 ];
+
+const LEGACY_DEFAULT_MESSAGES: Record<string, Set<string>> = {
+  reminder_1: new Set([normalizeMessage('שלום! רצינו להזכיר לכם על האירוע הקרוב שלנו.')]),
+};
 
 const TITLE_OVERRIDES: Record<string, string> = {
   reminder_1: 'הודעה ראשונה',
@@ -52,11 +70,18 @@ function formatOffsetLabel(days: number) {
   return days < 0 ? `${abs} ימים לפני האירוע` : `${abs} ימים אחרי האירוע`;
 }
 
+function formatHeDate(value: unknown) {
+  const d = value instanceof Date ? value : new Date(String(value ?? ''));
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
 const isMissingColumn = (err: any, column: string) =>
   String(err?.code) === '42703' && String(err?.message || '').toLowerCase().includes(column.toLowerCase());
 
 export default function AutomaticNotificationsWebScreen() {
   const router = useRouter();
+  const { width: viewportWidth } = useWindowDimensions();
   const { userData } = useUserStore();
   const params = useLocalSearchParams<{ eventId?: string | string[] }>();
   const activeUserId = useEventSelectionStore((s) => s.activeUserId);
@@ -95,6 +120,16 @@ export default function AutomaticNotificationsWebScreen() {
   const [editDraft, setEditDraft] = useState<{ message: string; days: number } | null>(null);
   const [saving, setSaving] = useState(false);
 
+  const sidebarWidth = useMemo(() => {
+    // Slightly wider editor on desktop, but keep reasonable bounds.
+    // Examples:
+    // - 1200px viewport -> 420px
+    // - 900px viewport  -> ~350px
+    // - small viewports -> 320px
+    const desired = Math.round(viewportWidth * 0.35);
+    return Math.min(440, Math.max(320, desired));
+  }, [viewportWidth]);
+
   const groomName = useMemo(
     () => String((event as any)?.groomName ?? (event as any)?.groom_name ?? '').trim(),
     [event]
@@ -109,11 +144,18 @@ export default function AutomaticNotificationsWebScreen() {
   }, [brideName, groomName]);
 
   const previewVars = useMemo(() => {
+    const eventTitle = subtitleFromEvent(event);
+    const eventDateText = formatHeDate((event as any)?.date) || '—';
+    const loc = String((event as any)?.location ?? '').trim();
+    const city = String((event as any)?.city ?? '').trim();
+    const eventLocationText = [loc, city].filter(Boolean).join(', ') || '—';
+
     const vars: Record<string, string> = {
-      '{{שם_פרטי}}': 'ישראל',
-      '{{שם_אירוע}}': subtitleFromEvent(event),
-      '{{תאריך}}': '15.10.2024',
-      '{{מיקום}}': 'מרכז הכנסים TLV',
+      // שם האורח הוא דוגמה בלבד (אין לנו אורח ספציפי בתצוגה הזאת)
+      '{{שם_פרטי}}': 'אורח/ת',
+      '{{שם_אירוע}}': eventTitle,
+      '{{תאריך}}': eventDateText,
+      '{{מיקום}}': eventLocationText,
     };
     if (groomName) vars['{{שם_חתן}}'] = groomName;
     if (brideName) vars['{{שם_כלה}}'] = brideName;
@@ -165,13 +207,19 @@ export default function AutomaticNotificationsWebScreen() {
     const merged: NotificationSettingRow[] = NOTIFICATION_TEMPLATES.map((tpl) => {
       const existing = existingMap.get(tpl.notification_type);
       if (existing) {
+        const existingMsg = normalizeMessage(String(existing.message_content ?? ''));
+        const shouldUpgradeMessage =
+          tpl.notification_type in LEGACY_DEFAULT_MESSAGES
+            ? existingMsg.length === 0 || LEGACY_DEFAULT_MESSAGES[tpl.notification_type]?.has(existingMsg)
+            : existingMsg.length === 0;
+
         return {
           id: existing.id,
           event_id: existing.event_id,
           notification_type: existing.notification_type,
           title: TITLE_OVERRIDES[tpl.notification_type] ?? existing.title ?? tpl.title,
           enabled: Boolean(existing.enabled),
-          message_content: String(existing.message_content ?? ''),
+          message_content: shouldUpgradeMessage ? String(tpl.defaultMessage ?? getDefaultMessageContent(defaultOwner)) : String(existing.message_content ?? ''),
           days_from_wedding: typeof existing.days_from_wedding === 'number' ? existing.days_from_wedding : tpl.days_from_wedding,
           channel: (existing.channel as any) || tpl.channel,
         };
@@ -400,7 +448,7 @@ export default function AutomaticNotificationsWebScreen() {
 
       <View style={styles.body}>
         {/* Sidebar שמאלי */}
-        <View style={styles.sidebar}>
+        <View style={[styles.sidebar, { width: sidebarWidth }]}>
           <View style={styles.sidebarHeader}>
             <View style={styles.sidebarHeaderRow}>
               <Text style={styles.sidebarTitle}>עריכת הודעה</Text>
@@ -743,7 +791,6 @@ const styles = StyleSheet.create({
 
   // Sidebar (שמאלי)
   sidebar: {
-    width: 320,
     backgroundColor: '#fff',
     borderLeftWidth: 1,
     borderLeftColor: '#E5E7EB',
@@ -812,7 +859,7 @@ const styles = StyleSheet.create({
 
   textareaWrap: { position: 'relative' },
   textarea: {
-    height: 100,
+    height: 160,
     borderRadius: 8,
     backgroundColor: '#F9FAFB',
     borderWidth: 1,
@@ -832,8 +879,8 @@ const styles = StyleSheet.create({
   previewBlock: { marginTop: 6, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#F3F4F6', gap: 10 },
   phoneFrame: {
     alignSelf: 'center',
-    width: 190,
-    height: 300,
+    width: 260,
+    height: 350,
     borderRadius: 28,
     backgroundColor: '#1E293B',
     borderWidth: 4,
@@ -841,14 +888,14 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     ...(Platform.OS === 'web' ? ({ boxShadow: '0 16px 36px rgba(0,0,0,0.2)' } as any) : null),
   },
-  phoneNotch: { position: 'absolute', top: 0, left: '50%', transform: [{ translateX: -40 }], width: 80, height: 18, backgroundColor: '#334155', borderBottomLeftRadius: 12, borderBottomRightRadius: 12, zIndex: 5 },
-  phoneScreen: { flex: 1, paddingTop: 24, paddingBottom: 8, paddingHorizontal: 8, backgroundColor: '#E5DDD5' },
-  phoneTime: { position: 'absolute', top: 6, right: 12, fontSize: 9, fontWeight: '900', color: '#fff' },
+  phoneNotch: { position: 'absolute', top: 0, left: '50%', transform: [{ translateX: -54 }], width: 108, height: 18, backgroundColor: '#334155', borderBottomLeftRadius: 12, borderBottomRightRadius: 12, zIndex: 5 },
+  phoneScreen: { flex: 1, paddingTop: 26, paddingBottom: 10, paddingHorizontal: 12, backgroundColor: '#E5DDD5' },
+  phoneTime: { position: 'absolute', top: 6, right: 12, fontSize: 10, fontWeight: '900', color: '#fff' },
   phoneStatusLeft: { position: 'absolute', top: 6, left: 12, flexDirection: 'row-reverse', gap: 4 },
   phoneStatusDot: { width: 8, height: 8, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.85)' },
   phoneHeader: { position: 'absolute', top: 0, left: 0, right: 0, height: 44, backgroundColor: '#075E54', flexDirection: 'row-reverse', alignItems: 'center', paddingHorizontal: 8, paddingTop: 8 },
   phoneAvatar: { width: 20, height: 20, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.2)', marginLeft: 6 },
-  phoneHeaderTitle: { fontSize: 10, fontWeight: '900', color: '#fff', textAlign: 'right', flexShrink: 1 },
+  phoneHeaderTitle: { fontSize: 11, fontWeight: '900', color: '#fff', textAlign: 'right', flexShrink: 1 },
 
   bubble: {
     marginTop: 34,
@@ -861,10 +908,10 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     ...(Platform.OS === 'web' ? ({ boxShadow: '0 4px 12px rgba(0,0,0,0.08)' } as any) : null),
   },
-  bubbleText: { fontSize: 9, lineHeight: 13, fontWeight: '800', color: '#111827', textAlign: 'right' },
+  bubbleText: { fontSize: 10, lineHeight: 14, fontWeight: '800', color: '#111827', textAlign: 'right' },
   bubbleTime: { position: 'absolute', left: 8, bottom: 4, fontSize: 7, fontWeight: '900', color: '#9CA3AF' },
   datePill: { alignSelf: 'center', marginTop: 12, backgroundColor: '#DCF8C6', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
-  datePillText: { fontSize: 8, fontWeight: '900', color: '#475569' },
+  datePillText: { fontSize: 9, fontWeight: '900', color: '#475569' },
 
   sidebarFooter: {
     padding: 14,

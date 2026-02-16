@@ -84,7 +84,12 @@ export default function AdminEventDetailsWebScreen() {
 
   const eventType = getEventTypeLabel(String(event?.title ?? ''));
   const isWedding = eventType === 'חתונה' || String(event?.title ?? '').includes('חתונה');
-  const isNarrow = width < 1024;
+  // On web we render inside the admin sidebar layout (sticky 270px sidebar).
+  // Use "content width" so breakpoints reflect available space, not full viewport.
+  const sidebarWidth = Platform.OS === 'web' ? 270 : 0;
+  const contentWidth = Math.max(0, width - sidebarWidth);
+  const isNarrow = contentWidth < 1024;
+  const maxContentWidth = contentWidth >= 1900 ? 1600 : contentWidth >= 1600 ? 1480 : 1280;
   const seatedPeople = useMemo(
     () =>
       guests
@@ -197,7 +202,7 @@ export default function AdminEventDetailsWebScreen() {
   return (
     <View style={styles.page}>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <View style={styles.container}>
+        <View style={[styles.container, { maxWidth: maxContentWidth }]}>
           <View style={[styles.grid, isNarrow ? styles.gridNarrow : null]}>
             {/* Sidebar */}
             <View style={[styles.side, isNarrow ? styles.sideNarrow : null]}>
@@ -667,8 +672,10 @@ const styles = StyleSheet.create({
 
   scroll: { flex: 1 },
   // Extra bottom padding so the floating tab-bar won't cover content
-  scrollContent: { paddingTop: 18, paddingBottom: 130 },
-  container: { width: '100%', maxWidth: 1280, alignSelf: 'center', paddingHorizontal: 20 },
+  scrollContent: { paddingTop: 18, paddingBottom: Platform.OS === 'web' ? 40 : 130 },
+  // On web we want the content to hug the right sidebar (RTL) instead of being centered,
+  // while still keeping a max width on large displays.
+  container: { width: '100%', alignSelf: 'flex-start', paddingHorizontal: 20 },
   grid: {
     // IMPORTANT: In React Native RTL, `row` lays out children right-to-left.
     // Side (first child) should sit next to the right sidebar menu.

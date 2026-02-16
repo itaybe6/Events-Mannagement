@@ -5,6 +5,15 @@ import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, I18nManager, Platform, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import {
+  Rubik_300Light,
+  Rubik_400Regular,
+  Rubik_500Medium,
+  Rubik_600SemiBold,
+  Rubik_700Bold,
+  Rubik_800ExtraBold,
+  Rubik_900Black,
+} from '@expo-google-fonts/rubik';
 import { useUserStore } from '@/store/userStore';
 import { supabase } from '@/lib/supabase';
 import { colors } from '@/constants/colors';
@@ -24,6 +33,39 @@ if (Platform.OS === 'web') {
     __rubikWebFontPatched?: boolean;
   };
 
+  const getFontWeight = (style: unknown): number | null => {
+    if (!style) return null;
+    if (Array.isArray(style)) {
+      // last one wins in RN style arrays
+      let weight: number | null = null;
+      for (const s of style) {
+        const w = getFontWeight(s);
+        if (typeof w === 'number') weight = w;
+      }
+      return weight;
+    }
+    if (typeof style === 'object') {
+      const fw = (style as any).fontWeight;
+      if (typeof fw === 'number') return fw;
+      if (typeof fw === 'string') {
+        const parsed = Number.parseInt(fw, 10);
+        return Number.isFinite(parsed) ? parsed : null;
+      }
+    }
+    return null;
+  };
+
+  const pickRubikFamily = (weight?: number | null) => {
+    const w = typeof weight === 'number' ? weight : 400;
+    if (w >= 900) return 'Rubik_900Black';
+    if (w >= 800) return 'Rubik_800ExtraBold';
+    if (w >= 700) return 'Rubik_700Bold';
+    if (w >= 600) return 'Rubik_600SemiBold';
+    if (w >= 500) return 'Rubik_500Medium';
+    if (w <= 300) return 'Rubik_300Light';
+    return 'Rubik_400Regular';
+  };
+
   const hasFontFamily = (style: unknown): boolean => {
     if (!style) return false;
     if (Array.isArray(style)) return style.some(hasFontFamily);
@@ -37,7 +79,7 @@ if (Platform.OS === 'web') {
       if (type === Text || type === TextInput) {
         const p = props ?? {};
         if (!hasFontFamily(p.style)) {
-          const injected = { fontFamily: 'Rubik' as const };
+          const injected = { fontFamily: pickRubikFamily(getFontWeight(p.style)) as any };
           const nextStyle = p.style ? [injected, p.style] : injected;
           return originalCreateElement(type, { ...p, style: nextStyle }, ...children);
         }
@@ -54,7 +96,7 @@ I18nManager.allowRTL(true);
 I18nManager.forceRTL(true);
 
 const rtlTextStyle = { textAlign: 'right' as const, writingDirection: 'rtl' as const };
-const webFontStyle = Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as const) : null;
+const baseFontStyle = { fontFamily: 'Rubik_400Regular' as const };
 const RTL_MARK = '\u200F';
 
 const toRtlAlertText = (value?: string) => {
@@ -114,10 +156,10 @@ patchAlertsForRTL();
 patchGlobalAlertForRTL();
 
 Text.defaultProps = Text.defaultProps || {};
-Text.defaultProps.style = [webFontStyle, rtlTextStyle, Text.defaultProps.style].filter(Boolean);
+Text.defaultProps.style = [baseFontStyle, rtlTextStyle, Text.defaultProps.style].filter(Boolean);
 
 TextInput.defaultProps = TextInput.defaultProps || {};
-TextInput.defaultProps.style = [webFontStyle, rtlTextStyle, TextInput.defaultProps.style].filter(Boolean);
+TextInput.defaultProps.style = [baseFontStyle, rtlTextStyle, TextInput.defaultProps.style].filter(Boolean);
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -126,6 +168,13 @@ export default function RootLayout() {
   const [loaded, error] = useFonts({
     ...FontAwesome.font,
     ...Ionicons.font,
+    Rubik_300Light,
+    Rubik_400Regular,
+    Rubik_500Medium,
+    Rubik_600SemiBold,
+    Rubik_700Bold,
+    Rubik_800ExtraBold,
+    Rubik_900Black,
   });
 
   // Silence console logs only in production to keep console clean.

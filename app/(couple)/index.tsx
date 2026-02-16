@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ScrollView, View, Text, StyleSheet, Platform, Pressable, Image } from 'react-native';
+import { ScrollView, View, Text, StyleSheet, Platform, Pressable, Image, useWindowDimensions } from 'react-native';
 import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useUserStore } from '@/store/userStore';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
@@ -14,6 +14,7 @@ import { EventSwitcher } from '@/components/EventSwitcher';
 export default function HomeScreen() {
   const { isLoggedIn, userData, initializeAuth } = useUserStore();
   const router = useRouter();
+  const { width: windowWidth } = useWindowDimensions();
   const { eventId: queryEventId } = useLocalSearchParams<{ eventId?: string }>();
   const activeUserId = useEventSelectionStore((s) => s.activeUserId);
   const activeEventId = useEventSelectionStore((s) => s.activeEventId);
@@ -21,6 +22,8 @@ export default function HomeScreen() {
   const [currentEvent, setCurrentEvent] = useState<any>(null);
   const [guests, setGuests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const isWeb = Platform.OS === 'web';
+  const isDesktopWeb = isWeb && windowWidth >= 1024;
 
   const resolvedEventId =
     String(
@@ -134,7 +137,6 @@ export default function HomeScreen() {
     });
   };
 
-  const totalGifts = guests.reduce((sum, guest) => sum + Number(guest?.gift ?? 0), 0);
   const confirmedGuests = guests.filter(guest => guest.status === 'מגיע').length;
   const pendingGuests = guests.filter(guest => guest.status === 'ממתין').length;
   const totalGuests = guests.length;
@@ -217,7 +219,10 @@ export default function HomeScreen() {
         <View style={styles.blobBottomLeft} />
       </View>
 
-      <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={[styles.contentContainer, isWeb && styles.contentContainerWeb]}
+      >
         <View style={styles.hero}>
           <View style={styles.heroAvatar}>
             {userData?.avatar_url ? (
@@ -260,7 +265,7 @@ export default function HomeScreen() {
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.statsRow}
+          contentContainerStyle={[styles.statsRow, isDesktopWeb && styles.statsRowDesktop]}
           style={styles.statsScroll}
         >
           <StatPill
@@ -269,13 +274,6 @@ export default function HomeScreen() {
             iconName="people"
             tintColor={stylesVars.primaryBlue}
             iconBg="rgba(19, 91, 236, 0.12)"
-          />
-          <StatPill
-            title="מתנות שהתקבלו"
-            value={`₪${totalGifts}`}
-            iconName="gift"
-            tintColor={stylesVars.purple}
-            iconBg="rgba(124, 58, 237, 0.12)"
           />
           <StatPill
             title="אורחים שצריך להושיב"
@@ -293,8 +291,8 @@ export default function HomeScreen() {
           />
         </ScrollView>
 
-        <View style={styles.actionsGrid}>
-          <View style={styles.actionTileWrapper}>
+        <View style={[styles.actionsGrid, isDesktopWeb && styles.actionsGridDesktop]}>
+          <View style={[styles.actionTileWrapper, isDesktopWeb && styles.actionTileWrapperWeb]}>
             <ActionTile
               title={'רשימת\nמוזמנים'}
               subtitle="נהל אישורי הגעה"
@@ -308,7 +306,7 @@ export default function HomeScreen() {
             />
           </View>
 
-          <View style={styles.actionTileWrapper}>
+          <View style={[styles.actionTileWrapper, isDesktopWeb && styles.actionTileWrapperWeb]}>
             <ActionTile
               title={'סידור\nהושבה'}
               subtitle="גרור ושחרר אורחים"
@@ -329,7 +327,6 @@ export default function HomeScreen() {
 
 const stylesVars = {
   primaryBlue: '#135bec',
-  purple: '#7c3aed',
   red: '#ef4444',
   amber: '#f59e0b',
 };
@@ -378,9 +375,14 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
   contentContainer: {
     paddingHorizontal: 24,
-    // header is transparent (76px), keep content below it
-    paddingTop: 18 + 76,
-    paddingBottom: 130,
+    // Mobile uses AppHeader (transparent ~76px). Web layout doesn't.
+    paddingTop: Platform.OS === 'web' ? 22 : 18 + 76,
+    paddingBottom: Platform.OS === 'web' ? 56 : 130,
+  },
+  contentContainerWeb: {
+    width: '100%',
+    maxWidth: 1180,
+    alignSelf: 'center',
   },
 
   hero: {
@@ -470,6 +472,10 @@ const styles = StyleSheet.create({
   statsRow: {
     paddingHorizontal: 2,
     gap: 12,
+    ...(Platform.OS === 'web' ? ({ flexGrow: 1 } as any) : null),
+  },
+  statsRowDesktop: {
+    justifyContent: 'center',
   },
   statPill: {
     minWidth: 170,
@@ -524,8 +530,17 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 12,
   },
+  actionsGridDesktop: {
+    justifyContent: 'center',
+  },
   actionTileWrapper: {
     width: '48%',
+  },
+  actionTileWrapperWeb: {
+    width: 'auto',
+    flexBasis: 320,
+    flexGrow: 0,
+    maxWidth: 340,
   },
   actionTileWrapperWide: {
     width: '100%',

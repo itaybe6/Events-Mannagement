@@ -48,6 +48,7 @@ export function SeatingGridReadonly({
   labels,
   onPressTableNumber,
   getTableTooltip,
+  getTableSubLabel,
 }: {
   gridCols: number;
   gridRows: number;
@@ -56,6 +57,7 @@ export function SeatingGridReadonly({
   labels: LabelItem[];
   onPressTableNumber?: (num: number | undefined) => void;
   getTableTooltip?: (t: TableItem) => string | null;
+  getTableSubLabel?: (t: TableItem) => string | null;
 }) {
   const isWeb = Platform.OS === 'web';
 
@@ -113,14 +115,19 @@ export function SeatingGridReadonly({
     const pad = isWeb ? 44 : 18;
     const sx = (vw - pad * 2) / Math.max(1, baseW);
     const sy = (vh - pad * 2) / Math.max(1, baseH);
-    // Initial view should be "max zoom-out": fit to viewport (no upscaling).
-    const maxFit = 1;
+    // Initial view should fit to viewport.
+    // On web/desktop we allow a *controlled* upscale so the map doesn't look tiny
+    // on large screens (while still clamping to a sensible max).
+    // Note: content can be very small (few tables), so we allow more upscale on web.
+    // The scroll container still prevents layout overflow, and users can wheel/pinch.
+    const maxFit = isWeb ? 5.0 : 1;
     return clamp(Math.min(maxFit, sx, sy), 0.2, maxFit);
   }, [baseH, baseW, isWeb, viewport?.h, viewport?.w]);
 
   const [zoom, setZoom] = useState(1);
   const zoomRef = useRef(1);
   const fitZoomRef = useRef(1);
+  const userAdjustedZoomRef = useRef(false);
   const lastAutoFitTokenRef = useRef<string>('');
   const minZoomRef = useRef(0.2);
   const maxZoomRef = useRef(3);
@@ -130,7 +137,8 @@ export function SeatingGridReadonly({
     fitZoomRef.current = fitZoom;
     // Don't allow zoom-out smaller than initial fit.
     minZoomRef.current = fitZoom;
-    maxZoomRef.current = Math.min(3, Math.max(fitZoom, fitZoom * 3));
+    // Allow higher zoom ceilings on web, otherwise "fit" can exceed maxZoom.
+    maxZoomRef.current = isWeb ? clamp(fitZoom * 2.2, Math.max(3, fitZoom), 10) : Math.min(3, Math.max(fitZoom, fitZoom * 3));
   }, [fitZoom]);
 
   // Auto-fit only when the CONTENT changes (not on every viewport/layout change),
@@ -154,6 +162,8 @@ export function SeatingGridReadonly({
     if (lastAutoFitTokenRef.current === autoFitToken) return;
     lastAutoFitTokenRef.current = autoFitToken;
 
+    // Content changed => reset to "fit" and consider this as a fresh view.
+    userAdjustedZoomRef.current = false;
     setZoom(fitZoom);
     zoomRef.current = fitZoom;
 
@@ -171,6 +181,20 @@ export function SeatingGridReadonly({
     }
   }, [autoFitToken, fitZoom, isWeb, viewport?.h, viewport?.w]);
 
+  // Responsive behavior:
+  // When only the viewport changes (window resize / layout), re-fit *only if*
+  // the user has not manually zoomed since the last auto-fit.
+  useEffect(() => {
+    if (!isWeb) return;
+    if (!viewport?.w || !viewport?.h) return;
+    if (userAdjustedZoomRef.current) return;
+    const next = fitZoom;
+    const cur = zoomRef.current || 1;
+    if (Math.abs(cur - next) < 0.001) return;
+    setZoom(next);
+    zoomRef.current = next;
+  }, [fitZoom, isWeb, viewport?.h, viewport?.w]);
+
   const stageW = baseW * zoom;
   const stageH = baseH * zoom;
 
@@ -187,6 +211,7 @@ export function SeatingGridReadonly({
     const min = minZoomRef.current || 0.2;
     const max = maxZoomRef.current || 3;
     const next = clamp((pinchStartZoomRef.current || 1) * scale, min, max);
+    userAdjustedZoomRef.current = true;
     zoomRef.current = next;
     setZoom(next);
   }, []);
@@ -226,8 +251,9 @@ export function SeatingGridReadonly({
       const factor = dy < 0 ? 1.06 : 1 / 1.06;
       // Limit zoom-in so users can't zoom excessively.
       const minZoom = fitZoomRef.current || 0.2;
-      const maxZoom = Math.min(2, Math.max(minZoom, minZoom * 1.7));
+      const maxZoom = isWeb ? clamp(minZoom * 2.2, Math.max(3, minZoom), 10) : Math.min(3, Math.max(minZoom, minZoom * 1.7));
       const next = clamp(cur * factor, minZoom, maxZoom);
+      userAdjustedZoomRef.current = true;
       zoomRef.current = next;
       setZoom(next);
     },
@@ -341,6 +367,7 @@ export function SeatingGridReadonly({
                     const color = t.type === 'reserve' ? '#F59E0B' : t.type === 'knight' ? '#7C3AED' : '#2563EB';
                     const bg = hexToRgba(color, 0.13);
                     const border = hexToRgba(color, 0.35);
+                    const sub = getTableSubLabel?.(t) ?? null;
                     return (
                       <Pressable
                         key={t.id}
@@ -358,6 +385,7 @@ export function SeatingGridReadonly({
                         ]}
                       >
                         <Text style={[styles.tableNum, { color }]}>{t.number ?? ''}</Text>
+                        {sub ? <Text style={styles.tableSub}>{sub}</Text> : null}
                         <Text style={styles.tableType}>{TABLE_LABELS[t.type]}</Text>
                       </Pressable>
                     );
@@ -418,6 +446,7 @@ export function SeatingGridReadonly({
               const sz = tableCellSize(t.type, t.seats, t.orientation);
               const color = t.type === 'reserve' ? '#F59E0B' : t.type === 'knight' ? '#7C3AED' : '#2563EB';
               const tip = getTableTooltip?.(t) ?? null;
+              const sub = getTableSubLabel?.(t) ?? null;
               // Use rgba (instead of 8-digit hex) for consistent native rendering.
               const bg = hexToRgba(color, 0.13);
               const border = hexToRgba(color, 0.35);
@@ -463,6 +492,7 @@ export function SeatingGridReadonly({
                   ]}
                 >
                   <Text style={[styles.tableNum, { color }]}>{t.number ?? ''}</Text>
+                  {sub ? <Text style={styles.tableSub}>{sub}</Text> : null}
                   <Text style={styles.tableType}>{TABLE_LABELS[t.type]}</Text>
                 </Pressable>
               );
@@ -509,7 +539,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 12,
     fontWeight: '800',
-    ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null),
   },
   gridWrap: {
     backgroundColor: '#fff',
@@ -541,8 +570,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
-  tableNum: { fontSize: 16, fontWeight: '900', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
-  tableType: { marginTop: 2, fontSize: 11, fontWeight: '800', color: 'rgba(17,24,39,0.60)', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
+  tableNum: { fontSize: 16, fontWeight: '900' },
+  tableSub: {
+    marginTop: 2,
+    fontSize: 11,
+    fontWeight: '900',
+    color: 'rgba(17,24,39,0.70)',
+  },
+  tableType: { marginTop: 2, fontSize: 11, fontWeight: '800', color: 'rgba(17,24,39,0.60)' },
 
   zone: {
     position: 'absolute',
@@ -554,7 +589,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  zoneText: { fontWeight: '900', color: 'rgba(17,24,39,0.65)', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
+  zoneText: { fontWeight: '900', color: 'rgba(17,24,39,0.65)' },
 
   labelWrap: {
     position: 'absolute',
@@ -563,6 +598,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: 'rgba(17,24,39,0.02)',
   },
-  labelText: { fontWeight: '800', color: 'rgba(17,24,39,0.62)', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
+  labelText: { fontWeight: '800', color: 'rgba(17,24,39,0.62)' },
 });
 

@@ -8,6 +8,7 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -35,6 +36,7 @@ export function EventSwitcher({ userId, selectedEventId, onSelectEventId, label 
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const isNative = Platform.OS !== 'web';
+  const { width: viewportWidth, height: viewportHeight } = useWindowDimensions();
 
   useEffect(() => {
     let cancelled = false;
@@ -65,6 +67,20 @@ export function EventSwitcher({ userId, selectedEventId, onSelectEventId, label 
   useEffect(() => {
     onHasMultipleChange?.(hasMultiple);
   }, [hasMultiple, onHasMultipleChange]);
+
+  const modalCardStyle = useMemo(() => {
+    // On web, the overlay defaults to "stretch" alignment which makes the card span the full width.
+    // Constrain width for desktop while keeping it responsive on smaller screens.
+    const overlayPadding = 18;
+    const availableWidth = Math.max(0, viewportWidth - overlayPadding * 2);
+    const preferredMaxWidth = Platform.OS === 'web' ? 640 : availableWidth;
+    const maxWidth = Math.min(preferredMaxWidth, availableWidth || preferredMaxWidth);
+
+    // Keep the modal usable on small viewports while allowing more space on desktop.
+    const maxHeight = Math.min(720, Math.max(320, viewportHeight - 140));
+
+    return { width: '100%', maxWidth, maxHeight };
+  }, [viewportWidth, viewportHeight]);
 
   if (!hasMultiple) return null;
 
@@ -130,7 +146,7 @@ export function EventSwitcher({ userId, selectedEventId, onSelectEventId, label 
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setOpen(false)}>
-          <Pressable style={styles.modalCard} onPress={() => { /* swallow */ }}>
+          <Pressable style={[styles.modalCard, modalCardStyle]} onPress={() => { /* swallow */ }}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>בחר אירוע</Text>
               <TouchableOpacity
@@ -243,6 +259,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.35)',
     padding: 18,
     justifyContent: 'center',
+    alignItems: 'center',
   },
   modalCard: {
     backgroundColor: colors.white,

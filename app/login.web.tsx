@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -27,14 +28,31 @@ export default function LoginWebScreen() {
   const { login } = useUserStore();
   const { width } = useWindowDimensions();
 
-  const isDesktop = width >= 900;
+  // Match the provided desktop-first HTML design:
+  // - lg: 2-column full-height layout (like Tailwind's `lg:grid-cols-2 lg:h-screen`)
+  // - below lg: stacked layout (hero on top, form below)
+  // Consider 900px+ as "desktop" for this screen (browser windows often aren't full-width).
+  const isLg = width >= 900;
+  const isWide = width >= 1280;
+  const isCompact = width < 480;
+  // Full-bleed on web so the hero can reach the viewport edge (no outer padding).
+  const pagePadding = Platform.OS === 'web' ? 0 : isCompact ? 12 : isLg ? 0 : 16;
+  const shellHeightWeb = isLg ? '100vh' : undefined;
+  const formSidePadding = isCompact ? 20 : isLg ? (isWide ? 56 : 40) : 24;
+  // Reduce hero padding on "regular" desktops so the form column doesn't get squeezed.
+  const heroPadding = isCompact ? 24 : isLg ? (isWide ? 80 : 48) : 32;
+  const heroHeadlineSize = isLg ? 52 : width >= 900 ? 44 : 36;
+  const heroHeadlineLineHeight = isLg ? 58 : width >= 900 ? 52 : 44;
+  const cardPadding = isCompact ? 24 : isLg ? (isWide ? 44 : 36) : 32;
+  const cardMaxWidth = isLg ? (isWide ? 560 : 520) : 448; // wider on desktop
+  const heroContentMaxWidth = 520; // ~ max-w-lg
 
   const theme = useMemo(
     () => ({
-      primary: '#0b1c41',
-      primaryLight: '#1a2f5c',
+      primary: '#11224D',
+      primaryLight: '#0B1630',
       accent: '#C6A85B',
-      bgLight: '#f6f6f8',
+      bgLight: '#F0F4F8',
       bgDark: '#121620',
       cardShadow: 'rgba(11, 28, 65, 0.08)',
     }),
@@ -140,213 +158,239 @@ export default function LoginWebScreen() {
 
   const isDisabled = !username.trim() || !password.trim() || loading;
 
+  const FormPanel = (
+    <View
+      style={[
+        styles.formSide,
+        {
+          padding: formSidePadding,
+          backgroundColor: theme.bgLight,
+          alignSelf: 'stretch',
+          // Keep the form usable on desktop; prevent the hero from squeezing it too much.
+          minWidth: isLg ? (isWide ? 560 : 520) : undefined,
+        },
+      ]}
+    >
+      <View style={styles.formBgBlob} />
+
+      <View
+        style={[
+          styles.card,
+          {
+            padding: cardPadding,
+            maxWidth: cardMaxWidth,
+            // @ts-ignore - react-native-web supports boxShadow
+            boxShadow: `0 10px 40px -10px rgba(0,0,0,0.08)`,
+          },
+        ]}
+      >
+        <View style={styles.cardLogoWrap}>
+          <Image
+            source={require('../assets/images/logo-moon.png')}
+            style={styles.cardLogo}
+            resizeMode="contain"
+          />
+        </View>
+
+        <View style={styles.form}>
+          <Text style={styles.label}>כתובת אימייל</Text>
+          <View style={styles.inputWrap}>
+            <View style={styles.inputIconRight}>
+              <MaterialIcons name="email" size={20} color={colors.gray[500]} />
+            </View>
+            <TextInput
+              style={[styles.input, styles.inputLtr]}
+              value={username}
+              onChangeText={setUsername}
+              placeholder="name@example.com"
+              placeholderTextColor={colors.gray[500]}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="email-address"
+            />
+          </View>
+
+          <View style={styles.passwordRow}>
+            <Text style={styles.label}>סיסמה</Text>
+          </View>
+          <View style={styles.inputWrap}>
+            <View style={styles.inputIconRight}>
+              <MaterialIcons name="lock" size={20} color={colors.gray[500]} />
+            </View>
+            <TextInput
+              style={[styles.input, styles.inputWithLeftButton]}
+              value={password}
+              onChangeText={setPassword}
+              placeholder="••••••"
+              placeholderTextColor={colors.gray[500]}
+              secureTextEntry={!showPassword}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setShowPassword((v) => !v)}
+              style={({ hovered, pressed }) => [
+                styles.leftIconButton,
+                (hovered || pressed) && styles.leftIconButtonHover,
+              ]}
+            >
+              <MaterialIcons
+                name={showPassword ? 'visibility' : 'visibility-off'}
+                size={20}
+                color={colors.gray[600]}
+              />
+            </Pressable>
+          </View>
+
+          <View style={styles.rowBetween}>
+            <Pressable
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: rememberMe }}
+              onPress={() => setRememberMe((v) => !v)}
+              style={styles.rememberRow}
+            >
+              <View style={[styles.checkbox, rememberMe && { borderColor: theme.primary }]}>
+                {rememberMe ? <MaterialIcons name="check" size={16} color={theme.primary} /> : null}
+              </View>
+              <Text style={styles.rememberText}>זכור אותי</Text>
+            </Pressable>
+
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => Alert.alert('איפוס סיסמה', 'לאיפוס סיסמה יש לפנות למנהל המערכת.')}
+            >
+              <Text style={[styles.forgotLink, { color: theme.primary }]}>שכחת סיסמה?</Text>
+            </Pressable>
+          </View>
+
+          <Pressable
+            disabled={isDisabled}
+            onPress={handleLogin}
+            style={({ hovered, pressed }) => [
+              styles.button,
+              { backgroundColor: theme.primary },
+              isDisabled && styles.buttonDisabled,
+              (hovered || pressed) && !isDisabled && styles.buttonHover,
+            ]}
+          >
+            {loading ? <ActivityIndicator color={colors.white} /> : <Text style={styles.buttonText}>התחבר</Text>}
+          </Pressable>
+        </View>
+      </View>
+    </View>
+  );
+
+  const HeroPanel = (
+    <View
+      style={[
+        styles.hero,
+        {
+          padding: heroPadding,
+          backgroundColor: theme.primary,
+          alignSelf: 'stretch',
+          minWidth: isLg ? (isWide ? 680 : 600) : undefined,
+          ...(isLg
+            ? {
+                // Desktop: hero is on the RIGHT (RTL row-reverse).
+                // Full-bleed on the OUTER-right edge: keep it square.
+                borderTopRightRadius: 0,
+                borderBottomRightRadius: 0,
+                // Round the inner edge (between hero and form).
+                borderTopLeftRadius: 40,
+                borderBottomLeftRadius: 40,
+              }
+            : {
+                borderTopLeftRadius: 0,
+                borderTopRightRadius: 0,
+                borderBottomLeftRadius: 40,
+                borderBottomRightRadius: 40,
+              }),
+        } as any,
+      ]}
+    >
+      {/* Background gradient */}
+      <View
+        style={[
+          styles.heroGradient,
+          {
+            // @ts-ignore - react-native-web supports backgroundImage
+            backgroundImage: `linear-gradient(135deg, ${theme.primary} 0%, ${theme.primary} 55%, ${theme.primaryLight} 100%)`,
+          },
+        ]}
+      />
+
+      <View style={[styles.heroContent, { maxWidth: heroContentMaxWidth }]}>
+        <View style={styles.heroTextBlock}>
+          <Text style={[styles.heroHeadline, { fontSize: heroHeadlineSize, lineHeight: heroHeadlineLineHeight }]}>
+            מערכת ניהול{'\n'}
+            <Text style={[styles.heroHeadlineAccent, { color: theme.accent }]}>אירועים מתקדמת</Text>
+          </Text>
+          <Text style={styles.heroDescription}>
+            הפלטפורמה המובילה לניהול אירועים יוקרתיים. כל הכלים שאתם צריכים במקום אחד, בעיצוב מוקפד וחוויית משתמש בלתי
+            מתפשרת.
+          </Text>
+        </View>
+
+        <View style={styles.features}>
+          <FeatureRow
+            icon="people"
+            title="ניהול מוזמנים חכם"
+            subtitle="ארגון רשימות, קבוצות ותיוגים בקלות"
+            accent={theme.accent}
+            variant="glass"
+          />
+          <FeatureRow
+            icon="event-available"
+            title="מעקב אישורי הגעה"
+            subtitle="עדכונים בזמן אמת וסטטיסטיקות מדויקות"
+            accent={theme.accent}
+            variant="glass"
+          />
+          <FeatureRow
+            icon="dashboard"
+            title="שליטה מלאה באירוע"
+            subtitle="דוחות מתקדמים וניהול ספקים"
+            accent={theme.accent}
+            variant="glass"
+          />
+        </View>
+      </View>
+
+      {isLg ? (
+        <Text style={styles.heroFooter}>© MOON Event Systems 2026. כל הזכויות שמורות.</Text>
+      ) : null}
+    </View>
+  );
+
   return (
-    <View style={[styles.page, { backgroundColor: theme.bgLight }]}>
+    <View style={[styles.page, { backgroundColor: theme.bgLight, padding: pagePadding }]}>
       <View
         style={[
           styles.shell,
           {
-            flexDirection: isDesktop ? 'row' : 'column',
+            // RTL desktop layout: hero on the right, form on the left.
+            flexDirection: isLg ? 'row-reverse' : 'column',
+            width: '100%',
+            alignSelf: 'stretch',
+            // @ts-ignore - react-native-web supports height: '100vh'
+            height: Platform.OS === 'web' ? (shellHeightWeb as any) : undefined,
+            overflow: 'hidden',
           },
         ]}
       >
-        {/* LEFT: Visual Branding */}
-        <View
-          style={[
-            styles.hero,
-            {
-              width: isDesktop ? '50%' : '100%',
-              minHeight: isDesktop ? '100%' : 360,
-              backgroundColor: theme.primary,
-            },
-          ]}
-        >
-          {/* Abstract background (web-only style props are fine here) */}
-          <View
-            style={[
-              styles.moonPattern,
-              {
-                // @ts-expect-error - react-native-web supports backgroundImage
-                backgroundImage: `radial-gradient(circle at 10% 20%, rgba(255, 255, 255, 0.03) 0%, transparent 20%),
-                  radial-gradient(circle at 90% 80%, rgba(255, 255, 255, 0.03) 0%, transparent 25%),
-                  radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.02) 0%, transparent 40%)`,
-              },
-            ]}
-          />
-          <View
-            style={[
-              styles.heroGlowTop,
-              {
-                // @ts-expect-error - react-native-web supports backgroundColor alpha
-                backgroundColor: 'rgba(26, 47, 92, 0.30)',
-              },
-            ]}
-          />
-          <View style={styles.heroBottomFade} />
-
-          <View style={styles.heroContent}>
-            <View style={styles.heroTextBlock}>
-              <Text style={styles.heroHeadline}>
-                מערכת ניהול{'\n'}
-                <Text style={[styles.heroHeadlineAccent, { color: theme.accent }]}>
-                  אירועים מתקדמת
-                </Text>
-              </Text>
-              <Text style={styles.heroDescription}>
-                הפלטפורמה המובילה לניהול אירועים יוקרתיים. כל הכלים שאתם צריכים במקום אחד, בעיצוב
-                מוקפד וחוויית משתמש בלתי מתפשרת.
-              </Text>
-            </View>
-
-            <View style={styles.features}>
-              <FeatureRow
-                icon="people"
-                title="ניהול מוזמנים חכם"
-                subtitle="ארגון רשימות, קבוצות ותיוגים בקלות"
-                accent={theme.accent}
-              />
-              <FeatureRow
-                icon="event-available"
-                title="מעקב אישורי הגעה"
-                subtitle="עדכונים בזמן אמת וסטטיסטיקות מדויקות"
-                accent={theme.accent}
-              />
-              <FeatureRow
-                icon="dashboard"
-                title="שליטה מלאה באירוע"
-                subtitle="דוחות מתקדמים וניהול ספקים"
-                accent={theme.accent}
-              />
-            </View>
-          </View>
-
-          <Text style={styles.heroFooter}>© 2026 MOON Event Systems. כל הזכויות שמורות.</Text>
-        </View>
-
-        {/* RIGHT: Login Form */}
-        <View
-          style={[
-            styles.formSide,
-            {
-              width: isDesktop ? '50%' : '100%',
-              backgroundColor: theme.bgLight,
-            },
-          ]}
-        >
-          <View style={styles.formBgBlob} />
-
-          <View
-            style={[
-              styles.card,
-              {
-                // @ts-expect-error - react-native-web supports boxShadow
-                boxShadow: `0 20px 40px -10px ${theme.cardShadow}`,
-              },
-            ]}
-          >
-          <View style={styles.cardLogoWrap}>
-            <Image
-              source={require('../assets/images/logo-moon.png')}
-              style={styles.cardLogo}
-              resizeMode="contain"
-            />
-          </View>
-
-            <View style={styles.form}>
-              <Text style={styles.label}>כתובת אימייל</Text>
-              <View style={styles.inputWrap}>
-                <View style={styles.inputIconRight}>
-                  <MaterialIcons name="email" size={20} color={colors.gray[500]} />
-                </View>
-                <TextInput
-                  style={[styles.input, styles.inputLtr]}
-                  value={username}
-                  onChangeText={setUsername}
-                  placeholder="your@email.com"
-                  placeholderTextColor={colors.gray[500]}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  keyboardType="email-address"
-                />
-              </View>
-
-              <Text style={styles.label}>סיסמה</Text>
-              <View style={styles.inputWrap}>
-                <View style={styles.inputIconRight}>
-                  <MaterialIcons name="lock" size={20} color={colors.gray[500]} />
-                </View>
-                <TextInput
-                  style={[styles.input, styles.inputWithLeftButton]}
-                  value={password}
-                  onChangeText={setPassword}
-                  placeholder="••••••••"
-                  placeholderTextColor={colors.gray[500]}
-                  secureTextEntry={!showPassword}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() => setShowPassword((v) => !v)}
-                  style={({ hovered, pressed }) => [
-                    styles.leftIconButton,
-                    (hovered || pressed) && styles.leftIconButtonHover,
-                  ]}
-                >
-                  <MaterialIcons
-                    name={showPassword ? 'visibility' : 'visibility-off'}
-                    size={20}
-                    color={colors.gray[600]}
-                  />
-                </Pressable>
-              </View>
-
-              <View style={styles.rowBetween}>
-                <Pressable
-                  accessibilityRole="checkbox"
-                  accessibilityState={{ checked: rememberMe }}
-                  onPress={() => setRememberMe((v) => !v)}
-                  style={styles.rememberRow}
-                >
-                  <View style={[styles.checkbox, rememberMe && { borderColor: theme.primary }]}>
-                    {rememberMe ? (
-                      <MaterialIcons name="check" size={16} color={theme.primary} />
-                    ) : null}
-                  </View>
-                  <Text style={styles.rememberText}>זכור אותי</Text>
-                </Pressable>
-
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() =>
-                    Alert.alert('איפוס סיסמה', 'לאיפוס סיסמה יש לפנות למנהל המערכת.')
-                  }
-                >
-                  <Text style={[styles.forgotLink, { color: theme.primary }]}>שכחת סיסמה?</Text>
-                </Pressable>
-              </View>
-
-              <Pressable
-                disabled={isDisabled}
-                onPress={handleLogin}
-                style={({ hovered, pressed }) => [
-                  styles.button,
-                  { backgroundColor: theme.primary },
-                  isDisabled && styles.buttonDisabled,
-                  (hovered || pressed) && !isDisabled && styles.buttonHover,
-                ]}
-              >
-                {loading ? (
-                  <ActivityIndicator color={colors.white} />
-                ) : (
-                  <Text style={styles.buttonText}>התחבר</Text>
-                )}
-              </Pressable>
-
-              {/* אין כפתור הרשמה — רק מנהל מוסיף משתמשים */}
-            </View>
-          </View>
-        </View>
+        {/* Keep JSX order stable; desktop uses row-reverse for sides */}
+        {isLg ? (
+          <>
+            {FormPanel}
+            {HeroPanel}
+          </>
+        ) : (
+          <>
+            {HeroPanel}
+            {FormPanel}
+          </>
+        )}
       </View>
     </View>
   );
@@ -357,15 +401,17 @@ function FeatureRow({
   title,
   subtitle,
   accent,
+  variant,
 }: {
   icon: React.ComponentProps<typeof MaterialIcons>['name'];
   title: string;
   subtitle: string;
   accent: string;
+  variant?: 'default' | 'glass';
 }) {
   return (
-    <View style={styles.featureRow}>
-      <View style={styles.featureIconBox}>
+    <View style={[styles.featureRow, variant === 'glass' && styles.featureRowGlass]}>
+      <View style={[styles.featureIconBox, variant === 'glass' && { backgroundColor: 'rgba(198, 168, 104, 0.20)' }]}>
         <MaterialIcons name={icon} size={22} color={accent} />
       </View>
       <View style={styles.featureText}>
@@ -380,66 +426,56 @@ const styles = StyleSheet.create({
   page: {
     flex: 1,
     padding: 24,
+    ...(Platform.OS === 'web' ? ({ minHeight: '100vh' } as any) : null),
+    ...(Platform.OS === 'web'
+      ? ({
+          alignItems: 'stretch',
+          justifyContent: 'flex-start',
+        } as any)
+      : null),
   },
   shell: {
     flex: 1,
     width: '100%',
-    maxWidth: 1180,
-    alignSelf: 'center',
-    gap: 20,
+    alignSelf: 'stretch',
+    backgroundColor: 'transparent',
   },
 
   // Hero (left)
   hero: {
-    borderRadius: 20,
+    flex: 1,
     overflow: 'hidden',
     position: 'relative',
-    padding: 28,
-    justifyContent: 'space-between',
-    // @ts-expect-error - react-native-web supports direction
+    justifyContent: 'center',
+    // Allow flex children to shrink properly on web (avoid min-content sizing squeezing the form)
+    minWidth: 0,
+    // keep RTL text layout
+    // @ts-ignore - react-native-web supports direction
     direction: 'rtl',
+    // @ts-ignore - react-native-web supports boxShadow
+    boxShadow: '0 25px 50px -12px rgba(0,0,0,0.35)',
   },
-  moonPattern: {
+  heroGradient: {
     ...StyleSheet.absoluteFillObject,
-    opacity: 1,
-    pointerEvents: 'none',
-  },
-  heroGlowTop: {
-    position: 'absolute',
-    top: -120,
-    right: -120,
-    width: 380,
-    height: 380,
-    borderRadius: 999,
-    // @ts-expect-error - react-native-web supports blur via filter
-    filter: 'blur(50px)',
-    pointerEvents: 'none',
-  },
-  heroBottomFade: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: '50%',
-    // @ts-expect-error - react-native-web supports backgroundImage
-    backgroundImage: 'linear-gradient(to top, rgba(0,0,0,0.20), rgba(0,0,0,0))',
     pointerEvents: 'none',
   },
   heroContent: {
-    gap: 28,
     zIndex: 1,
-    alignItems: 'flex-end',
+    width: '100%',
+    gap: 32,
+    // Center the whole text block within the blue hero.
+    alignSelf: 'center',
+    minWidth: 0,
+    ...(Platform.OS === 'web' ? ({ marginLeft: 'auto', marginRight: 'auto' } as any) : null),
   },
   heroTextBlock: {
-    maxWidth: 520,
     gap: 14,
-    alignSelf: 'flex-end',
   },
   heroHeadline: {
     color: colors.white,
-    fontSize: 44,
+    fontSize: 52,
     fontWeight: '900',
-    lineHeight: 52,
+    lineHeight: 58,
     textAlign: 'right',
   },
   heroHeadlineAccent: {
@@ -447,36 +483,36 @@ const styles = StyleSheet.create({
   },
   heroDescription: {
     color: 'rgba(226, 232, 240, 0.85)',
-    fontSize: 16,
-    lineHeight: 26,
+    fontSize: 18,
+    lineHeight: 30,
     fontWeight: '300',
     textAlign: 'right',
   },
   features: {
-    gap: 14,
-    paddingTop: 4,
-    width: '100%',
-    maxWidth: 520,
-    alignSelf: 'flex-end',
-    alignItems: 'stretch',
+    gap: 16,
   },
   featureRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 12,
     width: '100%',
-    // @ts-expect-error - react-native-web supports direction
-    direction: 'rtl',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 16,
+  },
+  featureRowGlass: {
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    // @ts-ignore - react-native-web supports blur via filter
+    backdropFilter: 'blur(8px)',
   },
   featureIconBox: {
     width: 48,
     height: 48,
-    borderRadius: 14,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.10)',
   },
   featureText: {
     gap: 2,
@@ -486,29 +522,34 @@ const styles = StyleSheet.create({
   },
   featureTitle: {
     color: colors.white,
-    fontSize: 16,
-    fontWeight: '800',
+    fontSize: 18,
+    fontWeight: '900',
     textAlign: 'right',
   },
   featureSubtitle: {
     color: 'rgba(148, 163, 184, 0.85)',
-    fontSize: 12,
+    fontSize: 13,
     textAlign: 'right',
   },
   heroFooter: {
-    marginTop: 20,
+    position: 'absolute',
+    bottom: 24,
+    left: 32,
     zIndex: 1,
-    color: 'rgba(100, 116, 139, 0.9)',
+    color: 'rgba(148, 163, 184, 0.85)',
     fontSize: 12,
-    textAlign: 'right',
+    // @ts-ignore - react-native-web supports direction
+    direction: 'ltr',
+    textAlign: 'left',
   },
 
   // Form side (right)
   formSide: {
+    flex: 1,
     position: 'relative',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 16,
+    minWidth: 0,
   },
   formBgBlob: {
     position: 'absolute',
@@ -517,39 +558,44 @@ const styles = StyleSheet.create({
     width: 360,
     height: 360,
     borderRadius: 999,
-    backgroundColor: 'rgba(219, 234, 254, 0.55)',
-    // @ts-expect-error - react-native-web supports blur via filter
+    backgroundColor: 'rgba(59, 130, 246, 0.12)',
+    // @ts-ignore - react-native-web supports blur via filter
     filter: 'blur(55px)',
     pointerEvents: 'none',
   },
   card: {
     width: '100%',
-    maxWidth: 480,
+    maxWidth: 448,
     backgroundColor: colors.white,
     borderRadius: 20,
-    padding: 28,
+    padding: 32,
     borderWidth: 1,
     borderColor: 'rgba(226, 232, 240, 0.9)',
-    // @ts-expect-error - react-native-web supports direction
+    // @ts-ignore - react-native-web supports direction
     direction: 'rtl',
   },
   cardLogoWrap: {
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 28,
   },
   cardLogo: {
-    width: 440,
-    height: 150,
+    width: 360,
+    height: 120,
     maxWidth: '100%',
   },
   form: {
-    gap: 10,
+    gap: 12,
   },
   label: {
     fontSize: 12,
     fontWeight: '800',
     color: colors.gray[700],
     textAlign: 'right',
+  },
+  passwordRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   inputWrap: {
     position: 'relative',
@@ -564,8 +610,8 @@ const styles = StyleSheet.create({
   },
   input: {
     borderWidth: 1,
-    borderColor: colors.gray[200],
-    backgroundColor: colors.gray[50],
+    borderColor: 'transparent',
+    backgroundColor: 'rgba(232, 239, 249, 1)',
     borderRadius: 12,
     paddingRight: 40,
     paddingLeft: 12,
@@ -578,7 +624,7 @@ const styles = StyleSheet.create({
     paddingLeft: 42,
   },
   inputLtr: {
-    // @ts-expect-error - react-native-web supports direction
+    // @ts-ignore - react-native-web supports direction
     direction: 'ltr',
     textAlign: 'left',
   },
@@ -594,7 +640,7 @@ const styles = StyleSheet.create({
     opacity: 0.85,
   },
   rowBetween: {
-    marginTop: 2,
+    marginTop: 4,
     flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -626,15 +672,15 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   button: {
-    marginTop: 10,
+    marginTop: 12,
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: 'center',
-    // @ts-expect-error - react-native-web supports transform
+    // @ts-ignore - react-native-web supports transform
     transition: 'transform 200ms ease, opacity 200ms ease',
   },
   buttonHover: {
-    // @ts-expect-error - react-native-web supports transform
+    // @ts-ignore - react-native-web supports transform
     transform: 'translateY(-2px)',
   },
   buttonDisabled: {
