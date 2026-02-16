@@ -15,9 +15,8 @@ if (Platform.OS === 'web') {
   require('../global.css');
 }
 
-// We load Rubik differently per-platform:
-// - web: `global.css` Google Fonts (no JS font bundle)
-// - native: `@expo-google-fonts/rubik` via `expo-font` (see `lib/fonts.native.ts`)
+// We load Rubik via `expo-font` on all platforms (see `lib/fonts.*.ts`).
+// `global.css` still sets a sensible CSS fallback stack for the DOM.
 
 // Force RTL layout for Hebrew
 I18nManager.allowRTL(true);
