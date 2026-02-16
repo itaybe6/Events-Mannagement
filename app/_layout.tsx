@@ -5,15 +5,7 @@ import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, I18nManager, Platform, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import {
-  Rubik_300Light,
-  Rubik_400Regular,
-  Rubik_500Medium,
-  Rubik_600SemiBold,
-  Rubik_700Bold,
-  Rubik_800ExtraBold,
-  Rubik_900Black,
-} from '@expo-google-fonts/rubik';
+import { rubikBaseFontFamily, rubikFonts } from "@/lib/fonts";
 import { useUserStore } from '@/store/userStore';
 import { supabase } from '@/lib/supabase';
 import { colors } from '@/constants/colors';
@@ -23,15 +15,30 @@ if (Platform.OS === 'web') {
   require('../global.css');
 }
 
-// React 19 removed `defaultProps` support for function components.
-// `react-native-web` renders many Text/TextInput elements with a default font that may not inherit from `body`,
-// so on web we patch element creation to inject Rubik unless a component explicitly sets a `fontFamily`
-// (icons do, and must not be overridden).
-if (Platform.OS === 'web') {
+// We load Rubik differently per-platform:
+// - web: `global.css` Google Fonts (no JS font bundle)
+// - native: `@expo-google-fonts/rubik` via `expo-font` (see `lib/fonts.native.ts`)
+
+// Force RTL layout for Hebrew
+I18nManager.allowRTL(true);
+I18nManager.forceRTL(true);
+
+const rtlTextStyle = { textAlign: 'right' as const, writingDirection: 'rtl' as const };
+const baseFontStyle = { fontFamily: rubikBaseFontFamily as any };
+const RTL_MARK = '\u200F';
+
+// React 19 + RNW/RN can ignore `defaultProps`-based global styling in some cases.
+// To ensure Rubik is applied consistently, we patch `React.createElement` and inject
+// a default `fontFamily` for Text/TextInput unless a component already set one.
+(() => {
   const reactAny = React as unknown as {
     createElement: typeof React.createElement;
-    __rubikWebFontPatched?: boolean;
+    __rubikFontPatched?: boolean;
   };
+
+  if (reactAny.__rubikFontPatched) return;
+
+  const rubikKeys = new Set(Object.keys(rubikFonts ?? {}));
 
   const getFontWeight = (style: unknown): number | null => {
     if (!style) return null;
@@ -55,17 +62,6 @@ if (Platform.OS === 'web') {
     return null;
   };
 
-  const pickRubikFamily = (weight?: number | null) => {
-    const w = typeof weight === 'number' ? weight : 400;
-    if (w >= 900) return 'Rubik_900Black';
-    if (w >= 800) return 'Rubik_800ExtraBold';
-    if (w >= 700) return 'Rubik_700Bold';
-    if (w >= 600) return 'Rubik_600SemiBold';
-    if (w >= 500) return 'Rubik_500Medium';
-    if (w <= 300) return 'Rubik_300Light';
-    return 'Rubik_400Regular';
-  };
-
   const hasFontFamily = (style: unknown): boolean => {
     if (!style) return false;
     if (Array.isArray(style)) return style.some(hasFontFamily);
@@ -73,31 +69,37 @@ if (Platform.OS === 'web') {
     return false;
   };
 
-  if (!reactAny.__rubikWebFontPatched) {
-    const originalCreateElement = reactAny.createElement.bind(React);
-    reactAny.createElement = ((type: any, props: any, ...children: any[]) => {
-      if (type === Text || type === TextInput) {
-        const p = props ?? {};
-        if (!hasFontFamily(p.style)) {
-          const injected = { fontFamily: pickRubikFamily(getFontWeight(p.style)) as any };
-          const nextStyle = p.style ? [injected, p.style] : injected;
-          return originalCreateElement(type, { ...p, style: nextStyle }, ...children);
-        }
+  const pickRubikFamily = (weight?: number | null) => {
+    // On web we only have "Rubik"; on native we may have weight-specific family names.
+    const w = typeof weight === 'number' ? weight : null;
+    const pick =
+      w != null && w >= 900 ? 'Rubik_900Black'
+      : w != null && w >= 800 ? 'Rubik_800ExtraBold'
+      : w != null && w >= 700 ? 'Rubik_700Bold'
+      : w != null && w >= 600 ? 'Rubik_600SemiBold'
+      : w != null && w >= 500 ? 'Rubik_500Medium'
+      : w != null && w <= 300 ? 'Rubik_300Light'
+      : 'Rubik_400Regular';
+
+    if (rubikKeys.size === 0) return rubikBaseFontFamily; // web
+    return rubikKeys.has(pick) ? pick : rubikBaseFontFamily;
+  };
+
+  const originalCreateElement = reactAny.createElement.bind(React);
+  reactAny.createElement = ((type: any, props: any, ...children: any[]) => {
+    if (type === Text || type === TextInput) {
+      const p = props ?? {};
+      if (!hasFontFamily(p.style)) {
+        const injected = { fontFamily: pickRubikFamily(getFontWeight(p.style)) as any };
+        const nextStyle = p.style ? [injected, p.style] : injected;
+        return originalCreateElement(type, { ...p, style: nextStyle }, ...children);
       }
-      return originalCreateElement(type, props, ...children);
-    }) as typeof React.createElement;
+    }
+    return originalCreateElement(type, props, ...children);
+  }) as typeof React.createElement;
 
-    reactAny.__rubikWebFontPatched = true;
-  }
-}
-
-// Force RTL layout for Hebrew
-I18nManager.allowRTL(true);
-I18nManager.forceRTL(true);
-
-const rtlTextStyle = { textAlign: 'right' as const, writingDirection: 'rtl' as const };
-const baseFontStyle = { fontFamily: 'Rubik_400Regular' as const };
-const RTL_MARK = '\u200F';
+  reactAny.__rubikFontPatched = true;
+})();
 
 const toRtlAlertText = (value?: string) => {
   if (typeof value !== 'string' || value.length === 0) return value;
@@ -168,13 +170,7 @@ export default function RootLayout() {
   const [loaded, error] = useFonts({
     ...FontAwesome.font,
     ...Ionicons.font,
-    Rubik_300Light,
-    Rubik_400Regular,
-    Rubik_500Medium,
-    Rubik_600SemiBold,
-    Rubik_700Bold,
-    Rubik_800ExtraBold,
-    Rubik_900Black,
+    ...(rubikFonts as any),
   });
 
   // Silence console logs only in production to keep console clean.

@@ -90,82 +90,6 @@ export default function EmployeeSeatingMapWebScreen() {
         </View>
       ) : (
         <View style={styles.contentRow}>
-          <View style={styles.main}>
-            <View style={styles.mapCard}>
-              {loading ? (
-                <View style={styles.loadingRow}>
-                  <ActivityIndicator size="large" color={colors.primary} />
-                  <Text style={styles.loadingText}>טוען מפת הושבה...</Text>
-                </View>
-              ) : (
-                <ScrollView
-                  style={{ flex: 1 }}
-                  contentContainerStyle={{ minHeight: 720 }}
-                  maximumZoomScale={3}
-                  minimumZoomScale={0.5}
-                  bounces={false}
-                  bouncesZoom={false}
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  showsVerticalScrollIndicator={false}
-                >
-                  <View style={styles.canvas}>
-                    {tables.map((t) => {
-                      const x = typeof t.x === 'number' ? t.x : 40;
-                      const y = typeof t.y === 'number' ? t.y : 60;
-                      const guestsAtTable = guests.filter((g) => g.table_id === t.id);
-                      const totalPeople = sumPeople(guestsAtTable);
-                      const isFull = totalPeople >= (Number(t.capacity) || 0);
-                      const isReserve = t.shape === 'reserve';
-                      const active = activeTableId === t.id;
-
-                      return (
-                        <Pressable
-                          key={t.id}
-                          accessibilityRole="button"
-                          accessibilityLabel={`שולחן ${t.number ?? ''}`}
-                          onPress={() => setActiveTableId(t.id)}
-                          style={({ hovered, pressed }: any) => [
-                            styles.table,
-                            t.shape === 'rectangle' ? styles.tableRect : styles.tableSquare,
-                            isFull ? styles.tableFull : null,
-                            isReserve ? styles.tableReserve : null,
-                            active ? styles.tableActive : null,
-                            Platform.OS === 'web' && hovered ? styles.tableHover : null,
-                            pressed ? { opacity: 0.92 } : null,
-                            { left: x, top: y },
-                          ]}
-                        >
-                          <Text style={[styles.tableNumber, (isFull || isReserve) ? { color: colors.white } : null]}>
-                            {t.number ?? '?'}
-                          </Text>
-                          <Text style={[styles.tableCap, (isFull || isReserve) ? { color: 'rgba(255,255,255,0.88)' } : null]}>
-                            {totalPeople} / {t.capacity}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-
-                    {annotations.map((a, idx) => (
-                      <View
-                        key={String(a.id || idx)}
-                        style={[
-                          styles.textArea,
-                          {
-                            left: typeof a.x === 'number' ? a.x : 200,
-                            top: typeof a.y === 'number' ? a.y : 200 + idx * 40,
-                          },
-                        ]}
-                      >
-                        <Text style={styles.textAreaText}>{String(a.text || '').trim()}</Text>
-                      </View>
-                    ))}
-                  </View>
-                </ScrollView>
-              )}
-            </View>
-          </View>
-
           <View style={styles.side}>
             <View style={styles.filterCard}>
               <Text style={styles.cardTitle}>חיפוש וטבלאות</Text>
@@ -285,6 +209,82 @@ export default function EmployeeSeatingMapWebScreen() {
               )}
             </View>
           </View>
+
+          <View style={styles.main}>
+            <View style={styles.mapCard}>
+              {loading ? (
+                <View style={styles.loadingRow}>
+                  <ActivityIndicator size="large" color={colors.primary} />
+                  <Text style={styles.loadingText}>טוען מפת הושבה...</Text>
+                </View>
+              ) : (
+                <ScrollView
+                  style={{ flex: 1 }}
+                  contentContainerStyle={{ minHeight: 720 }}
+                  maximumZoomScale={3}
+                  minimumZoomScale={0.5}
+                  bounces={false}
+                  bouncesZoom={false}
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  showsVerticalScrollIndicator={false}
+                >
+                  <View style={styles.canvas}>
+                    {tables.map((t) => {
+                      const x = typeof t.x === 'number' ? t.x : 40;
+                      const y = typeof t.y === 'number' ? t.y : 60;
+                      const guestsAtTable = guests.filter((g) => g.table_id === t.id);
+                      const totalPeople = sumPeople(guestsAtTable);
+                      const isFull = totalPeople >= (Number(t.capacity) || 0);
+                      const isReserve = t.shape === 'reserve';
+                      const active = activeTableId === t.id;
+
+                      return (
+                        <Pressable
+                          key={t.id}
+                          accessibilityRole="button"
+                          accessibilityLabel={`שולחן ${t.number ?? ''}`}
+                          onPress={() => setActiveTableId(t.id)}
+                          style={({ hovered, pressed }: any) => [
+                            styles.table,
+                            t.shape === 'rectangle' ? styles.tableRect : styles.tableSquare,
+                            isFull ? styles.tableFull : null,
+                            isReserve ? styles.tableReserve : null,
+                            active ? styles.tableActive : null,
+                            Platform.OS === 'web' && hovered ? styles.tableHover : null,
+                            pressed ? { opacity: 0.92 } : null,
+                            { left: x, top: y },
+                          ]}
+                        >
+                          <Text style={[styles.tableNumber, (isFull || isReserve) ? { color: colors.white } : null]}>
+                            {t.number ?? '?'}
+                          </Text>
+                          <Text style={[styles.tableCap, (isFull || isReserve) ? { color: 'rgba(255,255,255,0.88)' } : null]}>
+                            {totalPeople} / {t.capacity}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+
+                    {annotations.map((a, idx) => (
+                      <View
+                        key={String(a.id || idx)}
+                        style={[
+                          styles.textArea,
+                          {
+                            left: typeof a.x === 'number' ? a.x : 200,
+                            top: typeof a.y === 'number' ? a.y : 200 + idx * 40,
+                          },
+                        ]}
+                      >
+                        <Text style={styles.textAreaText}>{String(a.text || '').trim()}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </ScrollView>
+              )}
+            </View>
+          </View>
         </View>
       )}
     </View>
@@ -296,7 +296,8 @@ const styles = StyleSheet.create({
 
   contentRow: {
     flex: 1,
-    flexDirection: 'row-reverse',
+    // Map on the left, side panels on the right
+    flexDirection: 'row',
     gap: 16,
     paddingTop: 16,
     alignItems: 'flex-start',

@@ -21,7 +21,6 @@ import { supabase } from '@/lib/supabase';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import { useLayoutStore } from '@/store/layoutStore';
 import { useUserStore } from '@/store/userStore';
-import { EventSwitcher } from '@/components/EventSwitcher';
 
 import { SeatingGridReadonly } from '../seating/web/SeatingGridReadonly';
 import { DEFAULT_GRID_COLS, DEFAULT_GRID_ROWS, tableCellSize, type Orientation, type TableType } from '../seating/web/types';
@@ -217,9 +216,10 @@ export default function BrideGroomSeatingWebScreen() {
 
   const isNarrow = windowWidth < 980;
   const leftColWidth = useMemo(() => {
-    if (windowWidth < 1100) return 380;
-    if (windowWidth < 1400) return 420;
-    return 460;
+    // Side column (Guests + Tables). Keep it a bit narrower.
+    if (windowWidth < 1100) return 340;
+    if (windowWidth < 1400) return 380;
+    return 410;
   }, [windowWidth]);
 
   const mapCardHeight = useMemo(() => {
@@ -254,6 +254,10 @@ export default function BrideGroomSeatingWebScreen() {
   const [categoriesForTable, setCategoriesForTable] = useState<string[]>([]);
 
   const [tableListSearch, setTableListSearch] = useState('');
+  const [quickAddSelectedGuestIds, setQuickAddSelectedGuestIds] = useState<Set<string>>(new Set());
+  const [quickAddGuestSearch, setQuickAddGuestSearch] = useState<string>('');
+  const [seatConfirmOpen, setSeatConfirmOpen] = useState(false);
+  const [seatConfirmTable, setSeatConfirmTable] = useState<Table | null>(null);
 
   useEffect(() => {
     if (!isLoggedIn) router.replace('/login');
@@ -484,6 +488,12 @@ export default function BrideGroomSeatingWebScreen() {
     void loadAll();
   }, [loadAll]);
 
+  // When switching event, reset quick-add selection/context.
+  useEffect(() => {
+    setQuickAddSelectedGuestIds(new Set());
+    setQuickAddGuestSearch('');
+  }, [resolvedEventId]);
+
   useFocusEffect(
     useCallback(() => {
       void loadAll();
@@ -559,6 +569,127 @@ export default function BrideGroomSeatingWebScreen() {
     },
     [guests, setTabBarVisible]
   );
+
+  const selectedGuestsForQuickAdd = useMemo(() => {
+    const ids = quickAddSelectedGuestIds;
+    if (!ids.size) return [];
+    return (guests || []).filter((g: any) => ids.has(String(g?.id)));
+  }, [guests, quickAddSelectedGuestIds]);
+
+  const quickAddSections = useMemo(() => {
+    const q = quickAddGuestSearch.trim().toLowerCase();
+    const rows = (guests || [])
+      .filter(Boolean)
+      .filter((g) => (q ? String(g.name || '').toLowerCase().includes(q) : true));
+
+    const grouped = rows.reduce((acc: Record<string, any[]>, g: any) => {
+      const cat = String(g?.guest_categories?.name || 'ללא קטגוריה');
+      if (!acc[cat]) acc[cat] = [];
+      acc[cat].push(g);
+      return acc;
+    }, {});
+
+    const sections = Object.keys(grouped)
+      .sort((a, b) => a.localeCompare(b, 'he'))
+      .map((title) => {
+        const data = grouped[title] || [];
+        // Sort: available-to-add first, then by name.
+        data.sort((a: any, b: any) => {
+          const aAvail = a?.status === 'מגיע' && !a?.table_id ? 0 : 1;
+          const bAvail = b?.status === 'מגיע' && !b?.table_id ? 0 : 1;
+          if (aAvail !== bAvail) return aAvail - bAvail;
+          return String(a?.name || '').localeCompare(String(b?.name || ''), 'he');
+        });
+        return { id: title, title, data };
+      });
+
+    return sections;
+  }, [guests, quickAddGuestSearch]);
+
+  const toggleQuickAddGuest = useCallback((guestId: string) => {
+    setQuickAddSelectedGuestIds((prev) => {
+      const next = new Set(prev);
+      const id = String(guestId);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const openSeatConfirm = useCallback(
+    (table: Table) => {
+      setSeatConfirmTable(table);
+      setSeatConfirmOpen(true);
+      setTabBarVisible(false);
+    },
+    [setTabBarVisible]
+  );
+
+  const closeSeatConfirm = useCallback(() => {
+    setSeatConfirmOpen(false);
+    setSeatConfirmTable(null);
+    setTabBarVisible(true);
+  }, [setTabBarVisible]);
+
+  const confirmSeatSelectedGuests = useCallback(async () => {
+    const tableId = seatConfirmTable?.id;
+    if (!tableId) return;
+
+    const rawIds = Array.from(quickAddSelectedGuestIds).map(String);
+    if (!rawIds.length) {
+      closeSeatConfirm();
+      return;
+    }
+
+    const isSeatableGuest = (g: any) => {
+      if (!g) return false;
+      if (g.table_id) return false; // already seated
+      const status = String(g.status || '').trim();
+      // Be tolerant: allow seating when status is missing/unknown, but block explicit "not coming".
+      if (status === 'לא מגיע') return false;
+      return true;
+    };
+
+    // Only seat guests that are currently eligible (not already seated, and not explicitly declined).
+    const byId = new Map<string, any>((guests || []).map((g: any) => [String(g?.id), g]));
+    const eligibleIds = rawIds.filter((id) => {
+      const g = byId.get(id);
+      return isSeatableGuest(g);
+    });
+
+    if (!eligibleIds.length) {
+      Alert.alert('שים לב', 'אין מוזמנים זמינים להושבה (אולי כבר הושבו או סומנו כ"לא מגיע").');
+      setQuickAddSelectedGuestIds(new Set());
+      closeSeatConfirm();
+      return;
+    }
+
+    try {
+      const guestsToAdd = eligibleIds.map((id) => byId.get(id)).filter(Boolean);
+      const totalPeopleToAdd = guestsToAdd.reduce((sum: number, g: any) => sum + (Number(g.numberOfPeople) || 1), 0);
+
+      const { error: guestUpdateError } = await supabase.from('guests').update({ table_id: tableId }).in('id', eligibleIds);
+      if (guestUpdateError) {
+        console.error('Seat guests error:', guestUpdateError);
+        Alert.alert('שגיאה', 'לא ניתן להושיב את המוזמנים בשולחן.');
+        return;
+      }
+
+      // Update seated_guests (best-effort)
+      const currentGuestsAtTable = (guests || []).filter((g: any) => String(g.table_id) === String(tableId));
+      const currentTotalPeople = currentGuestsAtTable.reduce((sum: number, g: any) => sum + (Number(g.numberOfPeople) || 1), 0);
+      const newTotalPeople = currentTotalPeople + totalPeopleToAdd;
+      const { error: tableUpdateError } = await supabase.from('tables').update({ seated_guests: newTotalPeople }).eq('id', tableId);
+      if (tableUpdateError) console.error('Seat guests table count error:', tableUpdateError);
+
+      await Promise.all([fetchGuests(), fetchTables()]);
+      setQuickAddSelectedGuestIds(new Set());
+      closeSeatConfirm();
+    } catch (e) {
+      console.error('Seat guests error:', e);
+      Alert.alert('שגיאה', 'אירעה שגיאה בהושבה.');
+    }
+  }, [closeSeatConfirm, fetchGuests, fetchTables, guests, quickAddSelectedGuestIds, seatConfirmTable?.id]);
 
   const handleToggleGuestSelection = (guestId: string) => {
     setSelectedGuestsToAdd((prev) => {
@@ -752,43 +883,6 @@ export default function BrideGroomSeatingWebScreen() {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.topBar}>
-          <View style={styles.topBarRight}>
-            <Text style={styles.title}>מפת הושבה</Text>
-            <Text style={styles.subtitle}>לחיצה על שולחן במפה תפתח ניהול אורחים לשולחן</Text>
-          </View>
-
-          <View style={styles.topBarLeft}>
-            <View style={styles.topBarActions}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="רשימת שולחנות"
-                onPress={() =>
-                  router.push({
-                    pathname: '/(couple)/TablesList',
-                    params: resolvedEventId ? { eventId: resolvedEventId } : {},
-                  })
-                }
-                style={({ hovered, pressed }: any) => [
-                  styles.topBtn,
-                  Platform.OS === 'web' && hovered ? styles.topBtnHover : null,
-                  pressed ? styles.btnPressed : null,
-                ]}
-              >
-                <Ionicons name="list" size={18} color={colors.primary} />
-                <Text style={styles.topBtnText}>רשימת שולחנות</Text>
-              </Pressable>
-
-              <EventSwitcher
-                userId={userData?.id}
-                selectedEventId={resolvedEventId}
-                onSelectEventId={handleSelectEventId}
-                label="אירוע פעיל"
-              />
-            </View>
-          </View>
-        </View>
-
         <View style={styles.statsRow}>
           <StatButton
             icon="walk"
@@ -827,6 +921,126 @@ export default function BrideGroomSeatingWebScreen() {
 
         <View style={[styles.mainRow, isNarrow ? styles.mainRowNarrow : null]}>
           <View style={[styles.leftCol, !isNarrow ? { width: leftColWidth } : null]}>
+            {/* Quick add guests */}
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Text style={styles.cardTitle}>מוזמנים</Text>
+                {quickAddSelectedGuestIds.size > 0 ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="נקה בחירה"
+                    onPress={() => setQuickAddSelectedGuestIds(new Set())}
+                    style={({ hovered, pressed }: any) => [
+                      styles.quickClearBtn,
+                      Platform.OS === 'web' && hovered ? styles.quickClearBtnHover : null,
+                      pressed ? styles.btnPressed : null,
+                    ]}
+                  >
+                    <Ionicons name="close" size={14} color={colors.gray[700]} />
+                    <Text style={styles.quickClearBtnText}>נקה ({quickAddSelectedGuestIds.size})</Text>
+                  </Pressable>
+                ) : null}
+                <View style={styles.searchWrap}>
+                  <Ionicons name="search" size={16} color={colors.gray[500]} />
+                  <TextInput
+                    value={quickAddGuestSearch}
+                    onChangeText={setQuickAddGuestSearch}
+                    placeholder="חיפוש אורח..."
+                    placeholderTextColor={colors.gray[500]}
+                    style={styles.searchInput}
+                  />
+                </View>
+              </View>
+
+              <Text style={styles.quickAddHint}>
+                {quickAddSelectedGuestIds.size > 0
+                  ? 'בחרת מוזמנים. עכשיו לחץ על שולחן במפה כדי להושיב אותם.'
+                  : 'בחר מוזמנים מהרשימה, ואז לחץ על שולחן במפה כדי להושיב אותם.'}
+              </Text>
+
+              <View style={{ height: 10 }} />
+
+              <View style={{ maxHeight: Math.min(420, Math.max(240, windowHeight * 0.40)) }}>
+                <ScrollView showsVerticalScrollIndicator={false}>
+                  <View style={styles.quickGuestList}>
+                    {quickAddSections.length === 0 ? (
+                      <Text style={styles.muted}>אין מוזמנים להצגה</Text>
+                    ) : (
+                      quickAddSections.map((section) => (
+                        <View key={section.id} style={styles.quickSection}>
+                          <View style={styles.quickSectionHeader}>
+                            <Text style={styles.quickSectionTitle}>{section.title}</Text>
+                            <View style={styles.quickSectionPill}>
+                              <Text style={styles.quickSectionPillText}>{section.data.length}</Text>
+                            </View>
+                          </View>
+
+                          <View style={styles.quickSectionBody}>
+                            {section.data.map((g: any) => {
+                              const id = String(g.id);
+                              const selected = quickAddSelectedGuestIds.has(id);
+                              const ppl = Number(g.numberOfPeople ?? g.number_of_people ?? 1) || 1;
+                              const status = String(g.status || '').trim();
+                              const isAvailable = !g.table_id && status !== 'לא מגיע';
+                              const seatedTable = g.tables?.number ? `שולחן ${g.tables.number}` : g.table_id ? 'משובץ' : null;
+                              const badge = isAvailable
+                                ? 'זמין'
+                                : seatedTable
+                                  ? seatedTable
+                                  : status
+                                    ? status
+                                    : 'לא זמין';
+
+                              return (
+                                <Pressable
+                                  key={id}
+                                  accessibilityRole="button"
+                                  accessibilityLabel={selected ? 'בטל בחירה' : 'בחר מוזמן'}
+                                  disabled={!isAvailable}
+                                  onPress={() => (isAvailable ? toggleQuickAddGuest(id) : null)}
+                                  style={({ hovered, pressed }: any) => [
+                                    styles.quickGuestRow,
+                                    selected ? styles.quickGuestRowSelected : null,
+                                    !isAvailable ? styles.quickGuestRowDisabled : null,
+                                    Platform.OS === 'web' && hovered && isAvailable ? styles.quickGuestRowHover : null,
+                                    pressed ? styles.btnPressed : null,
+                                  ]}
+                                >
+                                  <View style={styles.quickGuestRowTop}>
+                                    <View style={styles.quickGuestRightGroup}>
+                                      <Ionicons
+                                        name={selected ? 'checkbox' : 'square-outline'}
+                                        size={20}
+                                        color={!isAvailable ? colors.gray[300] : selected ? colors.primary : colors.gray[300]}
+                                      />
+                                      <View style={styles.quickGuestTextWrap}>
+                                        <Text style={styles.quickGuestName} numberOfLines={1}>
+                                          {String(g.name || '').trim()}
+                                        </Text>
+                                        <Text style={styles.quickGuestSub} numberOfLines={1}>
+                                          {ppl} אנשים
+                                        </Text>
+                                      </View>
+                                    </View>
+
+                                    <View style={[styles.quickGuestBadge, isAvailable ? styles.quickGuestBadgeOk : styles.quickGuestBadgeMuted]}>
+                                      <Text style={[styles.quickGuestBadgeText, isAvailable ? styles.quickGuestBadgeTextOk : styles.quickGuestBadgeTextMuted]}>
+                                        {badge}
+                                      </Text>
+                                    </View>
+                                  </View>
+                                </Pressable>
+                              );
+                            })}
+                          </View>
+                        </View>
+                      ))
+                    )}
+                  </View>
+                </ScrollView>
+              </View>
+            </View>
+
             <View style={styles.card}>
               <View style={styles.cardHeader}>
                 <Text style={styles.cardTitle}>שולחנות</Text>
@@ -868,23 +1082,29 @@ export default function BrideGroomSeatingWebScreen() {
                             ]}
                           >
                             <View style={styles.tableRowTop}>
-                              <View style={styles.tableNumPill}>
-                                <Text style={styles.tableNumPillText}>#{t.number ?? '—'}</Text>
+                              {/* Right side: table number + name + seated/cap */}
+                              <View style={styles.tableRowRight}>
+                                <View style={styles.tableNumPill}>
+                                  <Text style={styles.tableNumPillText}>#{t.number ?? '—'}</Text>
+                                </View>
+                                <View style={styles.tableRowText}>
+                                  <Text style={styles.tableRowTitle} numberOfLines={1}>
+                                    {name ? name : 'ללא שם'}
+                                  </Text>
+                                  <Text style={styles.tableRowSub} numberOfLines={1}>
+                                    {cap ? `${seatedPeople} / ${cap}` : `${seatedPeople} יושבים`}
+                                  </Text>
+                                </View>
                               </View>
-                              <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-end' }}>
-                                <Text style={styles.tableRowTitle} numberOfLines={1}>
-                                  {name ? name : 'ללא שם'}
-                                </Text>
-                                <Text style={styles.tableRowSub} numberOfLines={1}>
-                                  {cap ? `${seatedPeople} / ${cap}` : `${seatedPeople} יושבים`}
-                                </Text>
-                              </View>
+
+                              {/* Left side: status */}
                               <View style={[styles.tableStatusPill, full ? styles.tableStatusFull : styles.tableStatusOk]}>
                                 <Text style={[styles.tableStatusText, full ? styles.tableStatusTextFull : styles.tableStatusTextOk]}>
                                   {full ? 'מלא' : 'זמין'}
                                 </Text>
                               </View>
                             </View>
+
                           </Pressable>
                         );
                       })
@@ -939,7 +1159,12 @@ export default function BrideGroomSeatingWebScreen() {
                     onPressTableNumber={(num) => {
                       if (!num) return;
                       const t = tables.find((x: any) => Number(x.number) === Number(num));
-                      if (t) openTableModal(t);
+                      if (!t) return;
+                      if (quickAddSelectedGuestIds.size > 0) {
+                        openSeatConfirm(t);
+                        return;
+                      }
+                      openTableModal(t);
                     }}
                   />
                 ) : (
@@ -1043,6 +1268,72 @@ export default function BrideGroomSeatingWebScreen() {
                 ))
               )}
             </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Seat selected guests confirmation */}
+      <Modal visible={seatConfirmOpen} transparent animationType="fade" onRequestClose={closeSeatConfirm}>
+        <Pressable style={styles.modalOverlay} onPress={closeSeatConfirm}>
+          <Pressable style={styles.confirmCard} onPress={() => {}}>
+            <Text style={styles.confirmTitle}>להושיב מוזמנים בשולחן?</Text>
+            <Text style={styles.confirmSub} numberOfLines={2}>
+              {seatConfirmTable ? `שולחן ${seatConfirmTable.number ?? '—'}` : ''}
+            </Text>
+
+            <View style={{ height: 10 }} />
+
+            <Text style={styles.confirmMeta}>
+              {selectedGuestsForQuickAdd.length
+                ? `נבחרו ${selectedGuestsForQuickAdd.length} מוזמנים`
+                : 'לא נבחרו מוזמנים'}
+            </Text>
+
+            {selectedGuestsForQuickAdd.length ? (
+              <View style={styles.confirmNames}>
+                {selectedGuestsForQuickAdd.slice(0, 6).map((g: any) => (
+                  <Text key={String(g.id)} style={styles.confirmName} numberOfLines={1}>
+                    {String(g.name || '').trim()}
+                  </Text>
+                ))}
+                {selectedGuestsForQuickAdd.length > 6 ? (
+                  <Text style={styles.confirmMore} numberOfLines={1}>
+                    + עוד {selectedGuestsForQuickAdd.length - 6}
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
+
+            <View style={styles.confirmActions}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="ביטול"
+                onPress={closeSeatConfirm}
+                style={({ hovered, pressed }: any) => [
+                  styles.confirmBtn,
+                  styles.confirmBtnGhost,
+                  Platform.OS === 'web' && hovered ? styles.confirmBtnGhostHover : null,
+                  pressed ? styles.btnPressed : null,
+                ]}
+              >
+                <Text style={styles.confirmGhostText}>ביטול</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="אישור הושבה"
+                onPress={() => void confirmSeatSelectedGuests()}
+                disabled={!seatConfirmTable || quickAddSelectedGuestIds.size === 0}
+                style={({ hovered, pressed }: any) => [
+                  styles.confirmBtn,
+                  styles.confirmBtnPrimary,
+                  (!seatConfirmTable || quickAddSelectedGuestIds.size === 0) ? styles.confirmBtnDisabled : null,
+                  Platform.OS === 'web' && hovered && seatConfirmTable && quickAddSelectedGuestIds.size > 0 ? styles.confirmBtnPrimaryHover : null,
+                  pressed ? styles.btnPressed : null,
+                ]}
+              >
+                <Text style={styles.confirmPrimaryText}>אישור</Text>
+              </Pressable>
+            </View>
           </Pressable>
         </Pressable>
       </Modal>
@@ -1376,7 +1667,9 @@ const styles = StyleSheet.create({
   statValue: { fontSize: 26, fontWeight: '900', color: colors.text, letterSpacing: -0.3, textAlign: 'center' },
   statLabel: { fontSize: 13, fontWeight: '700', color: colors.gray[700], marginTop: 2, textAlign: 'center', writingDirection: 'rtl' },
 
-  mainRow: { marginTop: 14, flexDirection: 'row-reverse', alignItems: 'stretch', gap: 14 },
+  // RTL layout: with `direction: 'rtl'`, `row` places the first column on the RIGHT.
+  // We render the tables column first, so it becomes the right side panel, and the map stays on the left.
+  mainRow: { marginTop: 14, flexDirection: 'row', alignItems: 'stretch', gap: 14 },
   mainRowNarrow: { flexDirection: 'column-reverse' },
   leftCol: { gap: 14 },
   rightCol: { flex: 1, minWidth: 0 },
@@ -1411,12 +1704,42 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(15,23,42,0.07)',
     backgroundColor: 'rgba(255,255,255,0.92)',
   },
+  tableRowActive: {
+    borderColor: 'rgba(59,130,246,0.35)',
+    backgroundColor: 'rgba(59,130,246,0.05)',
+  },
   tableRowHover: {
     borderColor: 'rgba(59,130,246,0.20)',
     backgroundColor: 'rgba(59,130,246,0.04)',
     ...(Platform.OS === 'web' ? ({ boxShadow: '0 0 0 1px rgba(59,130,246,0.08), 0 14px 28px rgba(13,28,43,0.10)' } as any) : null),
   },
-  tableRowTop: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
+  tableRowTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  tableRowRight: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 },
+  tableRowText: { flex: 1, minWidth: 0, alignItems: 'flex-end' },
+  tableRowActions: { marginTop: 10, alignItems: 'flex-start' },
+  tableManageBtn: {
+    height: 36,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    backgroundColor: 'rgba(15,23,42,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  tableManageBtnHover: {
+    backgroundColor: 'rgba(15,23,42,0.06)',
+    borderColor: 'rgba(59,130,246,0.22)',
+  },
+  tableManageBtnText: { fontSize: 12, fontWeight: '900', color: colors.gray[700], textAlign: 'right', writingDirection: 'rtl' },
   tableNumPill: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(6,23,62,0.08)', borderWidth: 1, borderColor: 'rgba(6,23,62,0.10)' },
   tableNumPillText: { fontSize: 12, fontWeight: '900', color: '#0d1c2b', textAlign: 'right' },
   tableRowTitle: { fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'right' },
@@ -1446,7 +1769,8 @@ const styles = StyleSheet.create({
   legendItem: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6 },
   legendDot: { width: 10, height: 10, borderRadius: 999 },
   legendText: { fontSize: 12, fontWeight: '800', color: colors.gray[700], textAlign: 'right', writingDirection: 'rtl' },
-  mapBody: { flex: 1, padding: 12 },
+  // Reduce padding so the map uses more of the card area (feels more "zoomed").
+  mapBody: { flex: 1, padding: 6 },
   emptyMap: { flex: 1, borderRadius: 18, borderWidth: 1, borderColor: 'rgba(15,23,42,0.06)', backgroundColor: 'rgba(248,250,252,0.92)', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 18 },
   emptyMapTitle: { fontSize: 14, fontWeight: '900', color: colors.text, textAlign: 'center', writingDirection: 'rtl' },
   emptyMapSub: { fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'center', writingDirection: 'rtl', maxWidth: 460 },
@@ -1523,6 +1847,104 @@ const styles = StyleSheet.create({
   primaryBtnHover: { opacity: 0.96 },
   primaryBtnDisabled: { opacity: 0.75 },
   primaryBtnText: { fontSize: 13, fontWeight: '900', color: colors.white, textAlign: 'right', writingDirection: 'rtl' },
+
+  quickClearBtn: {
+    height: 34,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    backgroundColor: 'rgba(15,23,42,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  quickClearBtnHover: { backgroundColor: 'rgba(15,23,42,0.06)', borderColor: 'rgba(59,130,246,0.22)' },
+  quickClearBtnText: { fontSize: 12, fontWeight: '900', color: colors.gray[700], textAlign: 'right', writingDirection: 'rtl' },
+
+  quickAddHint: { marginTop: 10, fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'right', writingDirection: 'rtl' },
+  quickGuestList: { gap: 10, paddingBottom: 4 },
+  quickSection: { gap: 10 },
+  quickSectionHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
+  quickSectionTitle: { fontSize: 13, fontWeight: '900', color: colors.gray[800], textAlign: 'right', writingDirection: 'rtl' },
+  quickSectionPill: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(15,23,42,0.05)', borderWidth: 1, borderColor: 'rgba(15,23,42,0.07)' },
+  quickSectionPillText: { fontSize: 12, fontWeight: '900', color: colors.gray[800], textAlign: 'center' },
+  quickSectionBody: { gap: 10 },
+  quickGuestRow: {
+    padding: 12,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.07)',
+    backgroundColor: 'rgba(255,255,255,0.92)',
+  },
+  quickGuestRowHover: {
+    borderColor: 'rgba(59,130,246,0.20)',
+    backgroundColor: 'rgba(59,130,246,0.04)',
+  },
+  quickGuestRowSelected: {
+    borderColor: 'rgba(59,130,246,0.35)',
+    backgroundColor: 'rgba(59,130,246,0.06)',
+  },
+  quickGuestRowDisabled: {
+    opacity: 0.75,
+    backgroundColor: 'rgba(248,250,252,0.92)',
+  },
+  // RTL row: right side (checkbox + name), left side (status)
+  quickGuestRowTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  // In RTL, `row` places first child on the RIGHT.
+  // We render checkbox first, then text => checkbox is right of the name.
+  quickGuestRightGroup: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 },
+  quickGuestTextWrap: { flex: 1, minWidth: 0, alignItems: 'flex-end', justifyContent: 'center' },
+  quickGuestName: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+    alignSelf: 'stretch',
+  },
+  quickGuestSub: {
+    marginTop: 2,
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.gray[600],
+    textAlign: 'right',
+    writingDirection: 'rtl',
+    alignSelf: 'stretch',
+  },
+  quickGuestBadge: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: 1 },
+  quickGuestBadgeOk: { backgroundColor: 'rgba(16,185,129,0.10)', borderColor: 'rgba(16,185,129,0.24)' },
+  quickGuestBadgeMuted: { backgroundColor: 'rgba(15,23,42,0.04)', borderColor: 'rgba(15,23,42,0.10)' },
+  quickGuestBadgeText: { fontSize: 11, fontWeight: '900', textAlign: 'right', writingDirection: 'rtl' },
+  quickGuestBadgeTextOk: { color: '#065F46' },
+  quickGuestBadgeTextMuted: { color: colors.gray[700] },
+
+  confirmCard: {
+    width: 420,
+    maxWidth: '92%',
+    borderRadius: 18,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.10)',
+    padding: 14,
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 30px 80px rgba(0,0,0,0.20)' } as any) : null),
+  },
+  confirmTitle: { fontSize: 16, fontWeight: '900', color: colors.text, textAlign: 'center', writingDirection: 'rtl' },
+  confirmSub: { marginTop: 6, fontSize: 13, fontWeight: '800', color: colors.gray[700], textAlign: 'center', writingDirection: 'rtl' },
+  confirmMeta: { fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'center', writingDirection: 'rtl' },
+  confirmNames: { marginTop: 10, gap: 6 },
+  confirmName: { fontSize: 12, fontWeight: '900', color: colors.text, textAlign: 'right', writingDirection: 'rtl' },
+  confirmMore: { fontSize: 12, fontWeight: '900', color: colors.gray[700], textAlign: 'right', writingDirection: 'rtl' },
+  confirmActions: { marginTop: 12, flexDirection: 'row-reverse', gap: 10 },
+  confirmBtn: { flex: 1, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  confirmBtnPrimary: { backgroundColor: colors.primary },
+  confirmBtnPrimaryHover: { opacity: 0.96 },
+  confirmBtnGhost: { backgroundColor: 'rgba(15,23,42,0.04)', borderWidth: 1, borderColor: 'rgba(15,23,42,0.10)' },
+  confirmBtnGhostHover: { backgroundColor: 'rgba(15,23,42,0.06)' },
+  confirmBtnDisabled: { opacity: 0.7 },
+  confirmPrimaryText: { color: colors.white, fontSize: 13, fontWeight: '900', writingDirection: 'rtl' },
+  confirmGhostText: { color: colors.gray[800], fontSize: 13, fontWeight: '900', writingDirection: 'rtl' },
 });
 
 

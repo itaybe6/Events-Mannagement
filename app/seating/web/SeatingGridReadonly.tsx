@@ -112,7 +112,8 @@ export function SeatingGridReadonly({
     const vw = viewport?.w ?? 0;
     const vh = viewport?.h ?? 0;
     if (!vw || !vh) return 1;
-    const pad = isWeb ? 44 : 18;
+    // Smaller padding on web so the initial view feels more "zoomed in".
+    const pad = isWeb ? 28 : 18;
     const sx = (vw - pad * 2) / Math.max(1, baseW);
     const sy = (vh - pad * 2) / Math.max(1, baseH);
     // Initial view should fit to viewport.
@@ -120,8 +121,11 @@ export function SeatingGridReadonly({
     // on large screens (while still clamping to a sensible max).
     // Note: content can be very small (few tables), so we allow more upscale on web.
     // The scroll container still prevents layout overflow, and users can wheel/pinch.
-    const maxFit = isWeb ? 5.0 : 1;
-    return clamp(Math.min(maxFit, sx, sy), 0.2, maxFit);
+    const maxFit = isWeb ? 8.0 : 1;
+    const fit = Math.min(maxFit, sx, sy);
+    // Web default: start slightly closer than "perfect fit".
+    const boost = isWeb ? 1.085 : 1;
+    return clamp(fit * boost, 0.2, maxFit);
   }, [baseH, baseW, isWeb, viewport?.h, viewport?.w]);
 
   const [zoom, setZoom] = useState(1);
@@ -135,8 +139,8 @@ export function SeatingGridReadonly({
 
   useEffect(() => {
     fitZoomRef.current = fitZoom;
-    // Don't allow zoom-out smaller than initial fit.
-    minZoomRef.current = fitZoom;
+    // Allow zoom-out smaller than the initial fit.
+    minZoomRef.current = 0.2;
     // Allow higher zoom ceilings on web, otherwise "fit" can exceed maxZoom.
     maxZoomRef.current = isWeb ? clamp(fitZoom * 2.2, Math.max(3, fitZoom), 10) : Math.min(3, Math.max(fitZoom, fitZoom * 3));
   }, [fitZoom]);
@@ -250,8 +254,9 @@ export function SeatingGridReadonly({
       const cur = zoomRef.current || 1;
       const factor = dy < 0 ? 1.06 : 1 / 1.06;
       // Limit zoom-in so users can't zoom excessively.
-      const minZoom = fitZoomRef.current || 0.2;
-      const maxZoom = isWeb ? clamp(minZoom * 2.2, Math.max(3, minZoom), 10) : Math.min(3, Math.max(minZoom, minZoom * 1.7));
+      const minZoom = 0.2;
+      const base = Math.max(1, fitZoomRef.current || 1);
+      const maxZoom = isWeb ? clamp(base * 2.2, Math.max(3, base), 10) : Math.min(3, Math.max(base, base * 1.7));
       const next = clamp(cur * factor, minZoom, maxZoom);
       userAdjustedZoomRef.current = true;
       zoomRef.current = next;
@@ -450,6 +455,7 @@ export function SeatingGridReadonly({
               // Use rgba (instead of 8-digit hex) for consistent native rendering.
               const bg = hexToRgba(color, 0.13);
               const border = hexToRgba(color, 0.35);
+              const glow = hexToRgba(color, 0.28);
               return (
                 <Pressable
                   key={t.id}
@@ -478,7 +484,7 @@ export function SeatingGridReadonly({
                         onHoverOut: () => setTooltip(null),
                       } as any)
                     : null)}
-                  style={({ pressed }) => [
+                  style={({ hovered, pressed }: any) => [
                     styles.table,
                     {
                       left: (t.gridX - contentRect.originX) * CELL_SIZE,
@@ -488,12 +494,48 @@ export function SeatingGridReadonly({
                       backgroundColor: bg,
                       borderColor: border,
                       opacity: pressed ? 0.9 : 1,
+                      ...(Platform.OS === 'web'
+                        ? ({
+                            transform: [
+                              { translateY: pressed ? 0 : hovered ? -2 : 0 },
+                              { scale: pressed ? 0.985 : hovered ? 1.06 : 1 },
+                              { rotate: hovered && !pressed ? '-0.4deg' : '0deg' },
+                            ],
+                            transitionProperty: 'transform, box-shadow, filter, background-color',
+                            transitionDuration: '860ms',
+                            transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)',
+                            boxShadow: hovered
+                              ? `0 0 0 2px ${glow}, 0 18px 44px rgba(15,23,42,0.18)`
+                              : '0 10px 22px rgba(15,23,42,0.10)',
+                            filter: hovered ? 'saturate(1.12) brightness(1.03)' : 'none',
+                          } as any)
+                        : null),
                     },
                   ]}
                 >
-                  <Text style={[styles.tableNum, { color }]}>{t.number ?? ''}</Text>
-                  {sub ? <Text style={styles.tableSub}>{sub}</Text> : null}
-                  <Text style={styles.tableType}>{TABLE_LABELS[t.type]}</Text>
+                  {({ hovered, pressed }: any) => (
+                    <>
+                      {/* Web-only shine layer */}
+                      {Platform.OS === 'web' ? (
+                        <View
+                          pointerEvents="none"
+                          style={[
+                            styles.tableShine,
+                            hovered && !pressed ? styles.tableShineOn : null,
+                            ({
+                              // A subtle highlight that feels "glassy"
+                              backgroundImage:
+                                'linear-gradient(135deg, rgba(255,255,255,0.46) 0%, rgba(255,255,255,0.0) 45%), radial-gradient(circle at 18% 22%, rgba(255,255,255,0.42) 0%, rgba(255,255,255,0.0) 55%)',
+                            } as any),
+                          ]}
+                        />
+                      ) : null}
+
+                      <Text style={[styles.tableNum, { color }]}>{t.number ?? ''}</Text>
+                      {sub ? <Text style={styles.tableSub}>{sub}</Text> : null}
+                      <Text style={styles.tableType}>{TABLE_LABELS[t.type]}</Text>
+                    </>
+                  )}
                 </Pressable>
               );
             })}
@@ -539,6 +581,7 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 12,
     fontWeight: '800',
+    ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null),
   },
   gridWrap: {
     backgroundColor: '#fff',
@@ -565,19 +608,39 @@ const styles = StyleSheet.create({
   table: {
     position: 'absolute',
     borderRadius: 14,
-    borderWidth: 1,
+    borderWidth: 0,
     alignItems: 'center',
     justifyContent: 'center',
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
-  tableNum: { fontSize: 16, fontWeight: '900' },
+  tableShine: {
+    ...(StyleSheet.absoluteFill as any),
+    borderRadius: 14,
+    opacity: 0,
+    ...(Platform.OS === 'web'
+      ? ({
+          transitionProperty: 'opacity',
+          transitionDuration: '420ms',
+          transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)',
+        } as any)
+      : null),
+  },
+  tableShineOn: { opacity: 1 },
+  tableNum: { fontSize: 16, fontWeight: '900', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
   tableSub: {
     marginTop: 2,
     fontSize: 11,
     fontWeight: '900',
     color: 'rgba(17,24,39,0.70)',
+    ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null),
   },
-  tableType: { marginTop: 2, fontSize: 11, fontWeight: '800', color: 'rgba(17,24,39,0.60)' },
+  tableType: {
+    marginTop: 2,
+    fontSize: 11,
+    fontWeight: '800',
+    color: 'rgba(17,24,39,0.60)',
+    ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null),
+  },
 
   zone: {
     position: 'absolute',
@@ -589,7 +652,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  zoneText: { fontWeight: '900', color: 'rgba(17,24,39,0.65)' },
+  zoneText: { fontWeight: '900', color: 'rgba(17,24,39,0.65)', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
 
   labelWrap: {
     position: 'absolute',
@@ -598,6 +661,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: 'rgba(17,24,39,0.02)',
   },
-  labelText: { fontWeight: '800', color: 'rgba(17,24,39,0.62)' },
+  labelText: { fontWeight: '800', color: 'rgba(17,24,39,0.62)', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
 });
 

@@ -50,42 +50,134 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
   const workAreaRef = useRef<any>(null);
   const [viewport, setViewport] = useState<{ w: number; h: number } | null>(null);
 
+  // Compute content bounds so we can "fit" to what's actually placed (tables/zones/labels),
+  // instead of zooming out to an oversized empty grid.
+  const contentRect = useMemo(() => {
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = 0;
+    let maxY = 0;
+
+    const include = (x0: number, y0: number, x1: number, y1: number) => {
+      minX = Math.min(minX, x0);
+      minY = Math.min(minY, y0);
+      maxX = Math.max(maxX, x1);
+      maxY = Math.max(maxY, y1);
+    };
+
+    for (const t of api.tables) {
+      const sz = tableCellSize(t.type, t.seats, t.orientation);
+      include(t.gridX, t.gridY, t.gridX + sz.w, t.gridY + sz.h);
+    }
+    for (const z of api.zones) {
+      include(z.gridX, z.gridY, z.gridX + z.widthCells, z.gridY + z.heightCells);
+    }
+    for (const l of api.labels) {
+      include(l.gridX, l.gridY, l.gridX + 1, l.gridY + 1);
+    }
+
+    const hasAny = Number.isFinite(minX) && Number.isFinite(minY);
+    if (!hasAny) {
+      return { originX: 0, originY: 0, cols: Math.max(1, api.gridCols), rows: Math.max(1, api.gridRows) };
+    }
+
+    const padCells = 4;
+    const ox = clamp(Math.floor(minX) - padCells, 0, Math.max(0, api.gridCols - 1));
+    const oy = clamp(Math.floor(minY) - padCells, 0, Math.max(0, api.gridRows - 1));
+    const ex = clamp(Math.ceil(maxX) + padCells, 1, Math.max(1, api.gridCols));
+    const ey = clamp(Math.ceil(maxY) + padCells, 1, Math.max(1, api.gridRows));
+    const cols = Math.max(1, ex - ox);
+    const rows = Math.max(1, ey - oy);
+    return { originX: ox, originY: oy, cols, rows };
+  }, [api.gridCols, api.gridRows, api.labels, api.tables, api.zones]);
+
+  const fitBaseW = contentRect.cols * CELL_SIZE;
+  const fitBaseH = contentRect.rows * CELL_SIZE;
+
   const fitZoom = useMemo(() => {
     const vw = viewport?.w ?? 0;
     const vh = viewport?.h ?? 0;
     if (!vw || !vh) return 1;
-    const pad = 44;
-    const sx = (vw - pad * 2) / Math.max(1, baseW);
-    const sy = (vh - pad * 2) / Math.max(1, baseH);
-    return clamp(Math.min(1, sx, sy), 0.2, 1);
-  }, [baseH, baseW, viewport?.h, viewport?.w]);
+    const pad = isWeb ? 44 : 18;
+    const sx = (vw - pad * 2) / Math.max(1, fitBaseW);
+    const sy = (vh - pad * 2) / Math.max(1, fitBaseH);
+    // Fit to CONTENT bounds (not full grid). On web allow controlled upscale.
+    const maxFit = isWeb ? 6.0 : 1;
+    return clamp(Math.min(maxFit, sx, sy), 0.2, maxFit);
+  }, [fitBaseH, fitBaseW, isWeb, viewport?.h, viewport?.w]);
 
   const [zoom, setZoom] = useState(1);
   const zoomRef = useRef(1);
   const fitZoomRef = useRef(1);
+  const userAdjustedZoomRef = useRef(false);
+  const lastAutoFitTokenRef = useRef<string>('');
   useEffect(() => {
     fitZoomRef.current = fitZoom;
   }, [fitZoom]);
 
-  // When the map size changes, auto "zoom out" to fit the whole map.
-  useEffect(() => {
-    setZoom(fitZoom);
-    zoomRef.current = fitZoom;
+  const autoFitToken = useMemo(
+    () =>
+      [
+        contentRect.originX,
+        contentRect.originY,
+        contentRect.cols,
+        contentRect.rows,
+        api.tables.length,
+        api.zones.length,
+        api.labels.length,
+      ].join('|'),
+    [api.labels.length, api.tables.length, api.zones.length, contentRect.cols, contentRect.originX, contentRect.originY, contentRect.rows]
+  );
 
-    // Also snap scroll to top-left so the map never hides under the top.
-    if (isWeb) {
+  const scrollToContentCenter = useCallback(
+    (z: number) => {
+      if (!isWeb) return;
       const el = workAreaRef.current as any;
+      if (!el) return;
+      const cx = (contentRect.originX + contentRect.cols / 2) * CELL_SIZE * z;
+      const cy = (contentRect.originY + contentRect.rows / 2) * CELL_SIZE * z;
+      const vw = Number(el.clientWidth) || viewport?.w || 0;
+      const vh = Number(el.clientHeight) || viewport?.h || 0;
+      if (!vw || !vh) return;
+      const left = Math.max(0, cx - vw / 2);
+      const top = Math.max(0, cy - vh / 2);
       try {
-        if (el?.scrollTo) el.scrollTo({ left: 0, top: 0, behavior: 'auto' });
+        if (el?.scrollTo) el.scrollTo({ left, top, behavior: 'auto' });
         else {
-          if (typeof el?.scrollLeft === 'number') el.scrollLeft = 0;
-          if (typeof el?.scrollTop === 'number') el.scrollTop = 0;
+          if (typeof el?.scrollLeft === 'number') el.scrollLeft = left;
+          if (typeof el?.scrollTop === 'number') el.scrollTop = top;
         }
       } catch {
         // ignore
       }
-    }
-  }, [baseH, baseW, fitZoom, isWeb]);
+    },
+    [contentRect.cols, contentRect.originX, contentRect.originY, contentRect.rows, isWeb, viewport?.h, viewport?.w]
+  );
+
+  // Auto-fit when CONTENT changes (or first mount), then center the content.
+  useEffect(() => {
+    if (!viewport?.w || !viewport?.h) return;
+    if (lastAutoFitTokenRef.current === autoFitToken) return;
+    lastAutoFitTokenRef.current = autoFitToken;
+
+    userAdjustedZoomRef.current = false;
+    setZoom(fitZoom);
+    zoomRef.current = fitZoom;
+    scrollToContentCenter(fitZoom);
+  }, [autoFitToken, fitZoom, scrollToContentCenter, viewport?.h, viewport?.w]);
+
+  // Responsive: on web, if user hasn't manually zoomed, keep fitting on viewport changes.
+  useEffect(() => {
+    if (!isWeb) return;
+    if (!viewport?.w || !viewport?.h) return;
+    if (userAdjustedZoomRef.current) return;
+    const next = fitZoom;
+    const cur = zoomRef.current || 1;
+    if (Math.abs(cur - next) < 0.001) return;
+    setZoom(next);
+    zoomRef.current = next;
+    scrollToContentCenter(next);
+  }, [fitZoom, isWeb, scrollToContentCenter, viewport?.h, viewport?.w]);
 
   const stageW = baseW * zoom;
   const stageH = baseH * zoom;
@@ -660,7 +752,12 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
       const cur = zoomRef.current || 1;
       // dy < 0 (wheel up) -> zoom in, dy > 0 (wheel down) -> zoom out
       const factor = dy < 0 ? 1.06 : 1 / 1.06;
-      const next = clamp(cur * factor, fitZoomRef.current || 0.2, 2);
+      // Allow zooming out below "fit", so users can always zoom-out if they want.
+      const minZoom = 0.2;
+      const base = Math.max(1, fitZoomRef.current || 1);
+      const maxZoom = clamp(base * 2.2, Math.max(3, base), 10);
+      const next = clamp(cur * factor, minZoom, maxZoom);
+      userAdjustedZoomRef.current = true;
       zoomRef.current = next;
       setZoom(next);
     },
@@ -676,6 +773,14 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
     el.addEventListener('wheel', listener, { passive: false });
     return () => el.removeEventListener('wheel', listener as any);
   }, [handleWheel, isWeb]);
+
+  const shouldCenterInViewport = useMemo(() => {
+    if (!isWeb) return false;
+    if (!viewport?.w || !viewport?.h) return false;
+    // Only center when the (scaled) stage is smaller than the viewport.
+    // This keeps the initial "fit" view feeling like it fills the map panel.
+    return stageW + 12 < viewport.w && stageH + 12 < viewport.h;
+  }, [isWeb, stageH, stageW, viewport?.h, viewport?.w]);
 
   return (
     <View style={styles.root}>
@@ -729,7 +834,10 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
         // focusable for Delete key
         {...(isWeb ? ({ tabIndex: 0, onKeyDown } as any) : {})}
         ref={workAreaRef}
-        style={styles.workArea}
+        style={[
+          styles.workArea,
+          shouldCenterInViewport ? ({ alignItems: 'center', justifyContent: 'center' } as any) : null,
+        ]}
         onLayout={(e) => {
           const w = e?.nativeEvent?.layout?.width;
           const h = e?.nativeEvent?.layout?.height;
@@ -1053,7 +1161,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(148,163,184,0.70)',
     overflow: 'hidden',
-    alignSelf: 'center',
+    // On web we control centering via the scroll container (see `shouldCenterInViewport`).
+    // Keeping the stage anchored to the top-left makes scroll math predictable.
+    alignSelf: Platform.OS === 'web' ? ('flex-start' as any) : 'center',
     ...(Platform.OS === 'web' ? ({ userSelect: 'none', WebkitUserSelect: 'none' } as any) : null),
   },
   gridInner: {
