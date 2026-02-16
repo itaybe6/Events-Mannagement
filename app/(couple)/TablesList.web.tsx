@@ -1,21 +1,1393 @@
-import React from 'react';
-import { StyleSheet, View } from 'react-native';
-import DesktopTopBar from '@/components/desktop/DesktopTopBar';
-import TablesList from './TablesList.tsx';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  useWindowDimensions,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+
+import DesktopTopBar, { TopBarIconButton } from '@/components/desktop/DesktopTopBar';
+import { EventSwitcher } from '@/components/EventSwitcher';
+import { colors } from '@/constants/colors';
+import { supabase } from '@/lib/supabase';
+import { useEventSelectionStore } from '@/store/eventSelectionStore';
+import { useLayoutStore } from '@/store/layoutStore';
+import { useUserStore } from '@/store/userStore';
+import type { Table } from '@/types';
+
+type GuestRow = {
+  id: string;
+  name: string;
+  status?: string | null;
+  table_id?: string | null;
+  category_id?: string | null;
+  number_of_people?: number | null;
+  numberOfPeople?: number | null;
+  guest_categories?: { name?: string | null } | null;
+};
+
+type TableFilterKey = 'all' | 'full' | 'not_full' | 'empty';
 
 export default function TablesListWebScreen() {
+  const router = useRouter();
+  const { eventId: queryEventId } = useLocalSearchParams<{ eventId?: string }>();
+  const { userData } = useUserStore();
+  const activeUserId = useEventSelectionStore((s) => s.activeUserId);
+  const activeEventId = useEventSelectionStore((s) => s.activeEventId);
+  const setActiveEvent = useEventSelectionStore((s) => s.setActiveEvent);
+  const { setTabBarVisible } = useLayoutStore();
+
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const isNarrow = windowWidth < 980;
+
+  const resolvedEventId =
+    String(
+      queryEventId ||
+        (userData?.id && activeUserId === userData.id ? activeEventId : null) ||
+        userData?.event_id ||
+        ''
+    ).trim() || null;
+
+  const [loading, setLoading] = useState(true);
+  const [tables, setTables] = useState<Table[]>([]);
+  const [guests, setGuests] = useState<GuestRow[]>([]);
+
+  const [tableQuery, setTableQuery] = useState('');
+  const [tableFilter, setTableFilter] = useState<TableFilterKey>('all');
+  const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
+
+  const [editMode, setEditMode] = useState(false);
+  const [selectedGuestIdsToRemove, setSelectedGuestIdsToRemove] = useState<Set<string>>(new Set());
+
+  const [addOpen, setAddOpen] = useState(false);
+  const [addSelectedGuestIds, setAddSelectedGuestIds] = useState<Set<string>>(new Set());
+  const [addSearch, setAddSearch] = useState('');
+  const [addCategoryFilter, setAddCategoryFilter] = useState('הכל');
+  const [addCategories, setAddCategories] = useState<string[]>([]);
+
+  const fetchTables = async () => {
+    if (!resolvedEventId) return;
+    const { data, error } = await supabase.from('tables').select('*').eq('event_id', resolvedEventId).order('number');
+    if (error) {
+      console.error('Fetch tables error:', error);
+      return;
+    }
+    setTables((data || []) as any);
+  };
+
+  const fetchGuests = async () => {
+    if (!resolvedEventId) return;
+    try {
+      // Avoid PostgREST relationship joins (PGRST200) by fetching separately and joining client-side.
+      const [
+        { data: guestsData, error: guestsError },
+        { data: categoriesData, error: categoriesError },
+      ] = await Promise.all([
+        supabase.from('guests').select('*').eq('event_id', resolvedEventId).eq('status', 'מגיע'),
+        supabase.from('guest_categories').select('id,name').eq('event_id', resolvedEventId),
+      ]);
+
+      if (guestsError) throw guestsError;
+      if (categoriesError) throw categoriesError;
+
+      const categoryNameById = new Map<string, string>((categoriesData || []).map((c: any) => [String(c.id), String(c.name)]));
+      const mappedGuests: GuestRow[] = (guestsData || []).map((g: any) => ({
+        ...g,
+        id: String(g.id),
+        name: String(g.name || ''),
+        numberOfPeople: Number(g.numberOfPeople ?? g.number_of_people ?? 1) || 1,
+        guest_categories: g.category_id ? { name: categoryNameById.get(String(g.category_id)) } : null,
+      }));
+
+      setGuests(mappedGuests);
+    } catch (e) {
+      console.error('Fetch guests error:', e);
+    }
+  };
+
+  const load = async () => {
+    if (!resolvedEventId) {
+      setTables([]);
+      setGuests([]);
+      setLoading(false);
+      return;
+    }
+
+    if (userData?.id) setActiveEvent(userData.id, resolvedEventId);
+    setLoading(true);
+    try {
+      await Promise.all([fetchTables(), fetchGuests()]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resolvedEventId]);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      load();
+      return () => {};
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [resolvedEventId])
+  );
+
+  // Derived data
+  const guestsByTableId = useMemo(() => {
+    const m = new Map<string, GuestRow[]>();
+    for (const g of guests) {
+      const tid = String(g.table_id || '').trim();
+      if (!tid) continue;
+      const list = m.get(tid) || [];
+      list.push(g);
+      m.set(tid, list);
+    }
+    for (const [, list] of m) {
+      list.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'he', { sensitivity: 'base' }));
+    }
+    return m;
+  }, [guests]);
+
+  const peopleCountAtTable = (tableId: string) => {
+    const list = guestsByTableId.get(tableId) || [];
+    return list.reduce((sum, g) => sum + (Number(g.numberOfPeople ?? g.number_of_people ?? 1) || 1), 0);
+  };
+
+  const unseatedGuests = useMemo(
+    () => guests.filter((g) => String(g.status || '').trim() === 'מגיע' && !String(g.table_id || '').trim()),
+    [guests]
+  );
+
+  const fullTablesCount = useMemo(() => {
+    return tables.filter((t) => {
+      const cap = Number(t.capacity || 0) || 0;
+      const seated = peopleCountAtTable(String(t.id));
+      return cap > 0 && seated >= cap;
+    }).length;
+  }, [tables, guestsByTableId]);
+
+  const selectedTable = useMemo(() => {
+    if (!selectedTableId) return null;
+    return tables.find((t) => String(t.id) === String(selectedTableId)) || null;
+  }, [tables, selectedTableId]);
+
+  // Auto-select first table when data loads
+  useEffect(() => {
+    if (selectedTableId) return;
+    if (tables.length === 0) return;
+    setSelectedTableId(String(tables[0].id));
+  }, [tables, selectedTableId]);
+
+  const filteredTables = useMemo(() => {
+    const q = tableQuery.trim().toLowerCase();
+    const list = [...tables].sort((a: any, b: any) => (Number(a.number || 0) || 0) - (Number(b.number || 0) || 0));
+    return list.filter((t) => {
+      const name = String(t.name || '').toLowerCase();
+      const num = String((t as any).number ?? t.number ?? '').toLowerCase();
+      const matchesSearch = !q || name.includes(q) || num.includes(q);
+
+      const cap = Number(t.capacity || 0) || 0;
+      const seated = peopleCountAtTable(String(t.id));
+      const isFull = cap > 0 && seated >= cap;
+      const isEmpty = seated <= 0;
+
+      const matchesFilter =
+        tableFilter === 'all'
+          ? true
+          : tableFilter === 'full'
+            ? isFull
+            : tableFilter === 'empty'
+              ? isEmpty
+              : !isFull;
+
+      return matchesSearch && matchesFilter;
+    });
+  }, [tables, tableQuery, tableFilter, guestsByTableId]);
+
+  const selectTable = (tableId: string) => {
+    setSelectedTableId(tableId);
+    setEditMode(false);
+    setSelectedGuestIdsToRemove(new Set());
+  };
+
+  const toggleRemoveSelection = (guestId: string) => {
+    setSelectedGuestIdsToRemove((prev) => {
+      const next = new Set(prev);
+      if (next.has(guestId)) next.delete(guestId);
+      else next.add(guestId);
+      return next;
+    });
+  };
+
+  const openAddModal = (tableId?: string) => {
+    const tid = tableId ? String(tableId) : selectedTable ? String(selectedTable.id) : null;
+    if (!tid) return;
+    setSelectedTableId(tid);
+
+    const categories = ['הכל', ...Array.from(new Set(unseatedGuests.map((g) => g.guest_categories?.name || 'ללא קטגוריה')))];
+    setAddCategories(categories);
+    setAddCategoryFilter('הכל');
+    setAddSearch('');
+    setAddSelectedGuestIds(new Set());
+
+    setAddOpen(true);
+    setTabBarVisible(false);
+  };
+
+  const closeAddModal = () => {
+    setAddOpen(false);
+    setTabBarVisible(true);
+  };
+
+  const toggleAddSelection = (guestId: string) => {
+    setAddSelectedGuestIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(guestId)) next.delete(guestId);
+      else next.add(guestId);
+      return next;
+    });
+  };
+
+  const filteredUnseatedGuests = useMemo(() => {
+    const q = addSearch.trim().toLowerCase();
+    return unseatedGuests.filter((g) => {
+      const cat = g.guest_categories?.name || 'ללא קטגוריה';
+      const matchesCategory = addCategoryFilter === 'הכל' || cat === addCategoryFilter;
+      const matchesSearch = !q || String(g.name || '').toLowerCase().includes(q);
+      return matchesCategory && matchesSearch;
+    });
+  }, [unseatedGuests, addSearch, addCategoryFilter]);
+
+  const addSelectedPeopleCount = useMemo(() => {
+    const ids = addSelectedGuestIds;
+    if (ids.size === 0) return 0;
+    return unseatedGuests
+      .filter((g) => ids.has(String(g.id)))
+      .reduce((sum, g) => sum + (Number(g.numberOfPeople ?? g.number_of_people ?? 1) || 1), 0);
+  }, [addSelectedGuestIds, unseatedGuests]);
+
+  const handleAddGuestsToTable = async () => {
+    const tid = selectedTable ? String(selectedTable.id) : null;
+    if (!tid) return;
+    if (addSelectedGuestIds.size === 0) return;
+
+    const ids = Array.from(addSelectedGuestIds);
+    const { error: guestUpdateError } = await supabase.from('guests').update({ table_id: tid }).in('id', ids);
+    if (guestUpdateError) {
+      console.error('Error updating guests:', guestUpdateError);
+      Alert.alert('שגיאה', 'לא ניתן להושיב את המוזמנים שנבחרו.');
+      return;
+    }
+
+    // Recompute total seated people at that table and update tables.seated_guests (legacy field).
+    const updatedGuests = guests.map((g) => (ids.includes(String(g.id)) ? { ...g, table_id: tid } : g));
+    const totalPeopleAtTable = updatedGuests
+      .filter((g) => String(g.table_id || '') === tid)
+      .reduce((sum, g) => sum + (Number(g.numberOfPeople ?? g.number_of_people ?? 1) || 1), 0);
+
+    const { error: tableUpdateError } = await supabase.from('tables').update({ seated_guests: totalPeopleAtTable }).eq('id', tid);
+    if (tableUpdateError) {
+      console.error('Error updating table count:', tableUpdateError);
+      // Non-fatal, proceed with UI refresh.
+    }
+
+    await Promise.all([fetchGuests(), fetchTables()]);
+    closeAddModal();
+  };
+
+  const handleRemoveGuestsFromTable = async () => {
+    if (!selectedTable) return;
+    const tid = String(selectedTable.id);
+    if (selectedGuestIdsToRemove.size === 0) return;
+
+    const ids = Array.from(selectedGuestIdsToRemove);
+    const { error: guestUpdateError } = await supabase.from('guests').update({ table_id: null }).in('id', ids);
+    if (guestUpdateError) {
+      console.error('Error removing guests from table:', guestUpdateError);
+      Alert.alert('שגיאה', 'לא ניתן להסיר את המוזמנים מהשולחן.');
+      return;
+    }
+
+    const updatedGuests = guests
+      .map((g) => (ids.includes(String(g.id)) ? { ...g, table_id: null } : g))
+      .filter((g) => String(g.table_id || '') === tid);
+    const totalPeopleAtTable = updatedGuests.reduce((sum, g) => sum + (Number(g.numberOfPeople ?? g.number_of_people ?? 1) || 1), 0);
+
+    const { error: tableUpdateError } = await supabase.from('tables').update({ seated_guests: totalPeopleAtTable }).eq('id', tid);
+    if (tableUpdateError) {
+      console.error('Error updating table count:', tableUpdateError);
+    }
+
+    await Promise.all([fetchGuests(), fetchTables()]);
+    setEditMode(false);
+    setSelectedGuestIdsToRemove(new Set());
+  };
+
+  const goToSeatingMap = () => {
+    router.push({ pathname: '/(couple)/BrideGroomSeating', params: resolvedEventId ? { eventId: resolvedEventId } : {} });
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={styles.centerSub}>טוען שולחנות...</Text>
+      </View>
+    );
+  }
+
+  if (!resolvedEventId) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.centerTitle}>אין אירוע זמין</Text>
+      </View>
+    );
+  }
+
+  const contentMaxWidth =
+    windowWidth >= 1900 ? 1720 : windowWidth >= 1600 ? 1520 : windowWidth >= 1400 ? 1320 : undefined;
+  const contentPaddingH = windowWidth >= 1100 ? 20 : 16;
+
+  const selectedGuestsAtTable = selectedTable ? guestsByTableId.get(String(selectedTable.id)) || [] : [];
+  const selectedTableSeated = selectedTable ? peopleCountAtTable(String(selectedTable.id)) : 0;
+  const selectedTableCapacity = selectedTable ? Number(selectedTable.capacity || 0) || 0 : 0;
+  const selectedTableRemaining = Math.max(0, selectedTableCapacity - selectedTableSeated);
+  const selectedTableWillExceed = selectedTableCapacity > 0 && selectedTableSeated + addSelectedPeopleCount > selectedTableCapacity;
+
+  const tableChips: Array<{ key: TableFilterKey; label: string; count: number; tone: 'primary' | 'success' | 'warning' | 'danger' }> =
+    [
+      { key: 'all', label: 'הכל', count: tables.length, tone: 'primary' },
+      { key: 'full', label: 'מלאים', count: fullTablesCount, tone: 'success' },
+      { key: 'not_full', label: 'לא מלאים', count: Math.max(0, tables.length - fullTablesCount), tone: 'warning' },
+      { key: 'empty', label: 'ריקים', count: tables.filter((t) => peopleCountAtTable(String(t.id)) <= 0).length, tone: 'danger' },
+    ];
+
+  const sideWidth = windowWidth < 1240 ? 420 : 480;
+  const guestCardWidth = isNarrow ? '100%' : windowWidth < 1320 ? '48%' : windowWidth < 1600 ? '31.5%' : 290;
+
   return (
     <View style={styles.page}>
-      <DesktopTopBar title="שולחנות" subtitle="ניהול רשימת שולחנות" />
-      <View style={styles.content}>
-        <TablesList />
+      <View pointerEvents="none" style={styles.bgShapes}>
+        <View style={styles.shapeTopRight} />
+        <View style={styles.shapeBottomLeft} />
+      </View>
+
+      <DesktopTopBar
+        title="שולחנות"
+        subtitle="ניהול הושבה לפי שולחן"
+        leftActions={
+          <View style={styles.topBarLeftRow}>
+            <TopBarIconButton icon="map-outline" label="מפת הושבה" onPress={goToSeatingMap} />
+            <TopBarIconButton icon="refresh" label="רענן" onPress={load} />
+          </View>
+        }
+        rightActions={
+          <View style={styles.topBarRightRow}>
+            <StatPill icon="grid-outline" label="שולחנות" value={tables.length} tone="primary" />
+            <StatPill icon="checkmark-circle-outline" label="מלאים" value={fullTablesCount} tone="success" />
+            <StatPill icon="walk-outline" label="טרם הושבו" value={unseatedGuests.length} tone="warning" />
+          </View>
+        }
+      />
+
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={[
+          styles.container,
+          { paddingHorizontal: contentPaddingH, ...(contentMaxWidth ? { maxWidth: contentMaxWidth } : null) },
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.heroRow}>
+          <View style={styles.heroCard}>
+            <View style={styles.heroCardTop}>
+              <View style={styles.heroTitleWrap}>
+                <Text style={styles.heroTitle}>אירוע פעיל</Text>
+                <Text style={styles.heroSubtitle}>בחר אירוע כדי לנהל את הטבלאות והמושבים שלו</Text>
+              </View>
+              <EventSwitcher userId={userData?.id} selectedEventId={resolvedEventId} onSelectEventId={(id) => {
+                if (userData?.id) setActiveEvent(userData.id, id);
+                router.replace({ pathname: './', params: { eventId: id } });
+              }} label="אירוע" />
+            </View>
+          </View>
+        </View>
+
+        <View style={[styles.mainRow, isNarrow ? styles.mainRowNarrow : null]}>
+          {/* Tables list */}
+          <View style={[styles.sideCol, !isNarrow ? { width: sideWidth } : null]}>
+            <View style={styles.card}>
+              <View style={styles.cardHeaderRow}>
+                <View style={styles.cardTitleWrap}>
+                  <Text style={styles.cardTitle}>רשימת שולחנות</Text>
+                  <Text style={styles.cardHint} numberOfLines={1}>
+                    לחץ על שולחן כדי לראות פרטים ולהושיב מוזמנים
+                  </Text>
+                </View>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="הוסף מוזמנים לשולחן"
+                  onPress={() => openAddModal()}
+                  disabled={!selectedTable}
+                  style={({ hovered, pressed }: any) => [
+                    styles.primaryBtn,
+                    !selectedTable ? styles.btnDisabled : null,
+                    Platform.OS === 'web' && hovered && selectedTable ? styles.primaryBtnHover : null,
+                    pressed && selectedTable ? styles.btnPressed : null,
+                  ]}
+                >
+                  <Ionicons name="person-add-outline" size={16} color={colors.white} />
+                  <Text style={styles.primaryBtnText}>הושבה מהירה</Text>
+                </Pressable>
+              </View>
+
+              <View style={styles.searchWrap}>
+                <View style={styles.searchIconRight}>
+                  <Ionicons name="search" size={18} color={colors.gray[500]} />
+                </View>
+                <TextInput
+                  value={tableQuery}
+                  onChangeText={setTableQuery}
+                  placeholder="חיפוש לפי מספר / שם שולחן..."
+                  placeholderTextColor={colors.gray[500]}
+                  style={styles.searchInput}
+                />
+              </View>
+
+              <View style={styles.chipsRow}>
+                {tableChips.map((c) => (
+                  <Chip
+                    key={c.key}
+                    active={tableFilter === c.key}
+                    label={c.label}
+                    count={c.count}
+                    tone={c.tone}
+                    onPress={() => setTableFilter(c.key)}
+                  />
+                ))}
+              </View>
+
+              <View style={{ height: 8 }} />
+
+              {filteredTables.length === 0 ? (
+                <View style={styles.emptyBox}>
+                  <Ionicons name="grid-outline" size={26} color={colors.gray[400]} />
+                  <Text style={styles.emptyTitle}>אין שולחנות להצגה</Text>
+                  <Text style={styles.emptySubtitle}>נסה לשנות חיפוש/פילטר, או עבור למפת ההושבה.</Text>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="מעבר למפת הושבה"
+                    onPress={goToSeatingMap}
+                    style={({ hovered, pressed }: any) => [
+                      styles.secondaryBtn,
+                      Platform.OS === 'web' && hovered ? styles.secondaryBtnHover : null,
+                      pressed ? styles.btnPressed : null,
+                    ]}
+                  >
+                    <Ionicons name="map-outline" size={18} color={colors.gray[800]} />
+                    <Text style={styles.secondaryBtnText}>מפת הושבה</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <View style={[styles.tableList, isNarrow ? { maxHeight: Math.min(520, windowHeight * 0.55) } : { maxHeight: Math.min(720, windowHeight * 0.72) }]}>
+                  <ScrollView showsVerticalScrollIndicator={false}>
+                    <View style={styles.tableListInner}>
+                      {filteredTables.map((t) => {
+                        const tid = String(t.id);
+                        const seated = peopleCountAtTable(tid);
+                        const cap = Number(t.capacity || 0) || 0;
+                        const isFull = cap > 0 && seated >= cap;
+                        const selected = selectedTableId === tid;
+                        const pct = cap > 0 ? Math.min(1, seated / cap) : 0;
+
+                        return (
+                          <Pressable
+                            key={tid}
+                            accessibilityRole="button"
+                            accessibilityLabel={`שולחן ${(t as any).number ?? t.number ?? ''}`}
+                            onPress={() => selectTable(tid)}
+                            style={({ hovered, pressed }: any) => [
+                              styles.tableRow,
+                              selected ? styles.tableRowSelected : null,
+                              isFull ? styles.tableRowFull : null,
+                              Platform.OS === 'web' && hovered && !selected ? styles.tableRowHover : null,
+                              pressed ? styles.btnPressed : null,
+                            ]}
+                          >
+                            <View style={styles.tableRowTop}>
+                              <View style={styles.tableRowTitleWrap}>
+                                <Text style={styles.tableRowTitle} numberOfLines={1}>
+                                  שולחן {String((t as any).number ?? t.number ?? '—')}
+                                  {t.name ? ` · ${t.name}` : ''}
+                                </Text>
+                                <Text style={styles.tableRowSub} numberOfLines={1}>
+                                  {seated} / {cap || '—'} יושבים
+                                </Text>
+                              </View>
+
+                              <View style={[styles.badge, isFull ? styles.badgeFull : styles.badgeSoft]}>
+                                <Text style={[styles.badgeText, isFull ? styles.badgeTextFull : styles.badgeTextSoft]}>
+                                  {isFull ? 'מלא' : seated > 0 ? 'פעיל' : 'ריק'}
+                                </Text>
+                              </View>
+                            </View>
+
+                            <View style={styles.progressTrack}>
+                              <View style={[styles.progressFill, { width: `${Math.round(pct * 100)}%` }, isFull ? styles.progressFillFull : null]} />
+                            </View>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </ScrollView>
+                </View>
+              )}
+            </View>
+          </View>
+
+          {/* Details */}
+          <View style={styles.detailCol}>
+            <View style={styles.card}>
+              {!selectedTable ? (
+                <View style={styles.emptyBox}>
+                  <Ionicons name="information-circle-outline" size={26} color={colors.gray[400]} />
+                  <Text style={styles.emptyTitle}>בחר שולחן</Text>
+                  <Text style={styles.emptySubtitle}>בחר שולחן מהרשימה כדי לראות מי יושב בו ולבצע פעולות.</Text>
+                </View>
+              ) : (
+                <>
+                  <View style={styles.detailHeader}>
+                    <View style={styles.detailTitleWrap}>
+                      <Text style={styles.detailTitle} numberOfLines={1}>
+                        שולחן {String((selectedTable as any).number ?? selectedTable.number ?? '—')}
+                        {selectedTable.name ? ` · ${selectedTable.name}` : ''}
+                      </Text>
+                      <View style={styles.detailStatsRow}>
+                        <InfoPill icon="people-outline" label="יושבים" value={selectedTableSeated} tone="primary" />
+                        <InfoPill icon="albums-outline" label="קיבולת" value={selectedTableCapacity || '—'} tone="success" />
+                        <InfoPill icon="sparkles-outline" label="פנויים" value={selectedTableCapacity ? selectedTableRemaining : '—'} tone="warning" />
+                      </View>
+                    </View>
+
+                    <View style={styles.detailActions}>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="הוסף מוזמנים"
+                        onPress={() => openAddModal(String(selectedTable.id))}
+                        style={({ hovered, pressed }: any) => [
+                          styles.primaryBtn,
+                          Platform.OS === 'web' && hovered ? styles.primaryBtnHover : null,
+                          pressed ? styles.btnPressed : null,
+                        ]}
+                      >
+                        <Ionicons name="add" size={18} color={colors.white} />
+                        <Text style={styles.primaryBtnText}>הוסף</Text>
+                      </Pressable>
+
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={editMode ? 'צא מעריכה' : 'עריכה'}
+                        onPress={() => {
+                          setEditMode((prev) => !prev);
+                          setSelectedGuestIdsToRemove(new Set());
+                        }}
+                        style={({ hovered, pressed }: any) => [
+                          styles.secondaryBtn,
+                          editMode ? styles.secondaryBtnActive : null,
+                          Platform.OS === 'web' && hovered ? styles.secondaryBtnHover : null,
+                          pressed ? styles.btnPressed : null,
+                        ]}
+                      >
+                        <Ionicons name={editMode ? 'close' : 'create-outline'} size={18} color={colors.gray[800]} />
+                        <Text style={styles.secondaryBtnText}>{editMode ? 'סגור' : 'עריכה'}</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+
+                  <View style={styles.detailBody}>
+                    {selectedGuestsAtTable.length === 0 ? (
+                      <View style={styles.emptyTableBox}>
+                        <Ionicons name="people-outline" size={28} color={colors.gray[400]} />
+                        <Text style={styles.emptyTitle}>אין מוזמנים בשולחן הזה</Text>
+                        <Text style={styles.emptySubtitle}>התחל להושיב מוזמנים באמצעות הכפתור “הוסף”.</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.guestsGrid}>
+                        {selectedGuestsAtTable.map((g) => {
+                          const gid = String(g.id);
+                          const selected = selectedGuestIdsToRemove.has(gid);
+                          const ppl = Number(g.numberOfPeople ?? g.number_of_people ?? 1) || 1;
+                          const cat = g.guest_categories?.name || 'ללא קטגוריה';
+                          return (
+                            <Pressable
+                              key={gid}
+                              accessibilityRole="button"
+                              accessibilityLabel={editMode ? 'בחירת מוזמן להסרה' : 'מוזמן'}
+                              onPress={() => (editMode ? toggleRemoveSelection(gid) : null)}
+                              style={({ hovered, pressed }: any) => [
+                                styles.guestCard,
+                                { width: guestCardWidth },
+                                editMode ? styles.guestCardEditable : null,
+                                selected ? styles.guestCardSelected : null,
+                                Platform.OS === 'web' && hovered ? styles.guestCardHover : null,
+                                pressed ? styles.btnPressed : null,
+                              ]}
+                            >
+                              {editMode ? (
+                                <View style={[styles.checkbox, selected ? styles.checkboxChecked : null]}>
+                                  {selected ? <Ionicons name="checkmark" size={14} color={colors.white} /> : null}
+                                </View>
+                              ) : (
+                                <View style={styles.peopleBadge}>
+                                  <Ionicons name="person" size={12} color={colors.gray[700]} />
+                                  <Text style={styles.peopleBadgeText}>{ppl}</Text>
+                                </View>
+                              )}
+
+                              <Text style={styles.guestName} numberOfLines={1}>
+                                {String(g.name || '').trim()}
+                              </Text>
+                              <Text style={styles.guestMeta} numberOfLines={1}>
+                                {ppl} אנשים · {cat}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    )}
+
+                    {editMode ? (
+                      <View style={styles.editBar}>
+                        <Text style={styles.editBarText}>
+                          {selectedGuestIdsToRemove.size > 0
+                            ? `${selectedGuestIdsToRemove.size} נבחרו להסרה`
+                            : 'בחר מוזמנים להסרה מהשולחן'}
+                        </Text>
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel="הסר נבחרים"
+                          onPress={handleRemoveGuestsFromTable}
+                          disabled={selectedGuestIdsToRemove.size === 0}
+                          style={({ hovered, pressed }: any) => [
+                            styles.dangerBtn,
+                            selectedGuestIdsToRemove.size === 0 ? styles.btnDisabled : null,
+                            Platform.OS === 'web' && hovered && selectedGuestIdsToRemove.size > 0 ? styles.dangerBtnHover : null,
+                            pressed && selectedGuestIdsToRemove.size > 0 ? styles.btnPressed : null,
+                          ]}
+                        >
+                          <Ionicons name="trash-outline" size={18} color={colors.white} />
+                          <Text style={styles.dangerBtnText}>הסר</Text>
+                        </Pressable>
+                      </View>
+                    ) : null}
+                  </View>
+                </>
+              )}
+            </View>
+          </View>
+        </View>
+      </ScrollView>
+
+      {/* Add guests modal */}
+      <Modal visible={addOpen} transparent animationType="fade" onRequestClose={closeAddModal}>
+        <Pressable style={styles.modalOverlay} onPress={closeAddModal}>
+          <Pressable
+            style={[styles.modalCard, { maxHeight: Math.min(windowHeight * 0.92, 760), width: '100%', maxWidth: 860 }]}
+            onPress={() => {
+              /* swallow */
+            }}
+          >
+            <View style={styles.modalHeader}>
+              <View style={styles.modalTitleWrap}>
+                <Text style={styles.modalTitle} numberOfLines={1}>
+                  הוספת מוזמנים · שולחן {String((selectedTable as any)?.number ?? selectedTable?.number ?? '—')}
+                  {(selectedTable as any)?.name ? ` · ${(selectedTable as any).name}` : ''}
+                </Text>
+                <Text style={styles.modalSubtitle} numberOfLines={1}>
+                  פנויים: {selectedTableCapacity ? selectedTableRemaining : '—'} · נבחרו: {addSelectedGuestIds.size} ({addSelectedPeopleCount} אנשים)
+                </Text>
+                {selectedTableWillExceed ? (
+                  <Text style={styles.modalWarning} numberOfLines={2}>
+                    שים לב: הבחירה חורגת מהקיבולת של השולחן.
+                  </Text>
+                ) : null}
+              </View>
+
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="סגירה"
+                onPress={closeAddModal}
+                style={({ hovered, pressed }: any) => [
+                  styles.modalCloseBtn,
+                  Platform.OS === 'web' && hovered ? styles.modalCloseBtnHover : null,
+                  pressed ? styles.btnPressed : null,
+                ]}
+              >
+                <Ionicons name="close" size={18} color={colors.gray[700]} />
+              </Pressable>
+            </View>
+
+            <View style={styles.modalBody}>
+              <View style={styles.modalFilters}>
+                <View style={styles.searchWrap}>
+                  <View style={styles.searchIconRight}>
+                    <Ionicons name="search" size={18} color={colors.gray[500]} />
+                  </View>
+                  <TextInput
+                    value={addSearch}
+                    onChangeText={setAddSearch}
+                    placeholder="חיפוש מוזמנים לפי שם..."
+                    placeholderTextColor={colors.gray[500]}
+                    style={styles.searchInput}
+                  />
+                </View>
+
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryRow}>
+                  {addCategories.map((c) => (
+                    <Pressable
+                      key={c}
+                      accessibilityRole="button"
+                      accessibilityLabel={`סינון קטגוריה: ${c}`}
+                      onPress={() => setAddCategoryFilter(c)}
+                      style={({ hovered, pressed }: any) => [
+                        styles.categoryChip,
+                        addCategoryFilter === c ? styles.categoryChipActive : null,
+                        Platform.OS === 'web' && hovered && addCategoryFilter !== c ? styles.categoryChipHover : null,
+                        pressed ? styles.btnPressed : null,
+                      ]}
+                    >
+                      <Text style={[styles.categoryChipText, addCategoryFilter === c ? styles.categoryChipTextActive : null]} numberOfLines={1}>
+                        {c}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </View>
+
+              <View style={[styles.modalList, { maxHeight: Math.min(windowHeight * 0.55, 420) }]}>
+                <ScrollView showsVerticalScrollIndicator={false}>
+                  {filteredUnseatedGuests.length === 0 ? (
+                    <View style={styles.modalEmpty}>
+                      <Ionicons name="checkmark-done-outline" size={26} color={colors.gray[400]} />
+                      <Text style={styles.emptyTitle}>אין מוזמנים זמינים</Text>
+                      <Text style={styles.emptySubtitle}>כל המוזמנים שהגיעו כבר הושבו, או שאין התאמה לחיפוש/פילטר.</Text>
+                    </View>
+                  ) : (
+                    <View style={styles.modalGrid}>
+                      {filteredUnseatedGuests.map((g) => {
+                        const id = String(g.id);
+                        const selected = addSelectedGuestIds.has(id);
+                        const ppl = Number(g.numberOfPeople ?? g.number_of_people ?? 1) || 1;
+                        const cat = g.guest_categories?.name || 'ללא קטגוריה';
+                        return (
+                          <Pressable
+                            key={id}
+                            accessibilityRole="button"
+                            accessibilityLabel={selected ? 'בטל בחירה' : 'בחר מוזמן'}
+                            onPress={() => toggleAddSelection(id)}
+                            style={({ hovered, pressed }: any) => [
+                              styles.modalGuestCard,
+                              selected ? styles.modalGuestCardSelected : null,
+                              Platform.OS === 'web' && hovered ? styles.modalGuestCardHover : null,
+                              pressed ? styles.btnPressed : null,
+                            ]}
+                          >
+                            <View style={styles.modalGuestTop}>
+                              <View style={styles.modalGuestNameWrap}>
+                                <Text style={styles.modalGuestName} numberOfLines={1}>
+                                  {String(g.name || '').trim()}
+                                </Text>
+                                <Text style={styles.modalGuestMeta} numberOfLines={1}>
+                                  {ppl} אנשים · {cat}
+                                </Text>
+                              </View>
+                              <Ionicons
+                                name={selected ? 'checkbox' : 'square-outline'}
+                                size={22}
+                                color={selected ? colors.primary : colors.gray[300]}
+                              />
+                            </View>
+                            <View style={styles.modalGuestBadge}>
+                              <Ionicons name="person" size={12} color={colors.gray[700]} />
+                              <Text style={styles.modalGuestBadgeText}>{ppl}</Text>
+                            </View>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  )}
+                </ScrollView>
+              </View>
+            </View>
+
+            <View style={styles.modalActions}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="נקה בחירה"
+                onPress={() => setAddSelectedGuestIds(new Set())}
+                disabled={addSelectedGuestIds.size === 0}
+                style={({ hovered, pressed }: any) => [
+                  styles.secondaryBtn,
+                  addSelectedGuestIds.size === 0 ? styles.btnDisabled : null,
+                  Platform.OS === 'web' && hovered && addSelectedGuestIds.size > 0 ? styles.secondaryBtnHover : null,
+                  pressed && addSelectedGuestIds.size > 0 ? styles.btnPressed : null,
+                ]}
+              >
+                <Ionicons name="close" size={18} color={colors.gray[800]} />
+                <Text style={styles.secondaryBtnText}>נקה</Text>
+              </Pressable>
+
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="הוסף לשולחן"
+                onPress={handleAddGuestsToTable}
+                disabled={addSelectedGuestIds.size === 0}
+                style={({ hovered, pressed }: any) => [
+                  styles.primaryBtn,
+                  addSelectedGuestIds.size === 0 ? styles.btnDisabled : null,
+                  Platform.OS === 'web' && hovered && addSelectedGuestIds.size > 0 ? styles.primaryBtnHover : null,
+                  pressed && addSelectedGuestIds.size > 0 ? styles.btnPressed : null,
+                ]}
+              >
+                <Ionicons name="checkmark" size={18} color={colors.white} />
+                <Text style={styles.primaryBtnText}>
+                  {addSelectedGuestIds.size > 0 ? `הוסף (${addSelectedGuestIds.size})` : 'בחר מוזמנים'}
+                </Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </View>
+  );
+}
+
+function toneColor(tone: 'primary' | 'success' | 'warning' | 'danger') {
+  if (tone === 'success') return { main: '#10B981', soft: 'rgba(16,185,129,0.12)', text: '#065F46' };
+  if (tone === 'warning') return { main: '#F59E0B', soft: 'rgba(245,158,11,0.12)', text: '#92400E' };
+  if (tone === 'danger') return { main: '#F43F5E', soft: 'rgba(244,63,94,0.12)', text: '#9F1239' };
+  return { main: colors.primary, soft: 'rgba(6,23,62,0.10)', text: colors.primary };
+}
+
+function Chip({
+  label,
+  count,
+  active,
+  tone,
+  onPress,
+}: {
+  label: string;
+  count: number;
+  active: boolean;
+  tone: 'primary' | 'success' | 'warning' | 'danger';
+  onPress: () => void;
+}) {
+  const c = toneColor(tone);
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`פילטר: ${label}`}
+      onPress={onPress}
+      style={({ hovered, pressed }: any) => [
+        styles.chip,
+        active ? { backgroundColor: c.main, borderColor: c.main } : null,
+        Platform.OS === 'web' && hovered && !active ? styles.chipHover : null,
+        pressed ? styles.btnPressed : null,
+      ]}
+    >
+      <Text style={[styles.chipText, active ? { color: colors.white } : null]}>{label}</Text>
+      <View style={[styles.chipCount, active ? { backgroundColor: 'rgba(255,255,255,0.20)' } : { backgroundColor: c.soft }]}>
+        <Text style={[styles.chipCountText, active ? { color: colors.white } : { color: c.text }]}>{count}</Text>
+      </View>
+    </Pressable>
+  );
+}
+
+function StatPill({
+  icon,
+  label,
+  value,
+  tone,
+}: {
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+  label: string;
+  value: number;
+  tone: 'primary' | 'success' | 'warning' | 'danger';
+}) {
+  const c = toneColor(tone);
+  return (
+    <View style={[styles.statPill, { borderColor: 'rgba(15,23,42,0.08)' }]}>
+      <View style={[styles.statDot, { backgroundColor: c.main }]} />
+      <Ionicons name={icon as any} size={15} color={c.main} />
+      <Text style={styles.statLabel} numberOfLines={1}>
+        {label}
+      </Text>
+      <View style={[styles.statValuePill, { backgroundColor: c.soft }]}>
+        <Text style={[styles.statValueText, { color: c.text }]}>{value}</Text>
       </View>
     </View>
   );
 }
 
+function InfoPill({
+  icon,
+  label,
+  value,
+  tone,
+}: {
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+  label: string;
+  value: any;
+  tone: 'primary' | 'success' | 'warning' | 'danger';
+}) {
+  const c = toneColor(tone);
+  return (
+    <View style={[styles.infoPill, { backgroundColor: c.soft, borderColor: 'rgba(15,23,42,0.06)' }]}>
+      <Ionicons name={icon as any} size={15} color={c.main} />
+      <Text style={styles.infoPillLabel}>{label}</Text>
+      <Text style={[styles.infoPillValue, { color: c.text }]}>{String(value)}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  page: { flex: 1 },
-  content: { flex: 1 },
+  page: {
+    flex: 1,
+    backgroundColor: colors.gray[50],
+    direction: 'rtl',
+  },
+  scroll: { flex: 1 },
+  container: {
+    paddingTop: 16,
+    paddingBottom: 28,
+    width: '100%',
+    alignSelf: 'center',
+    gap: 16,
+    direction: 'rtl',
+  },
+
+  bgShapes: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    overflow: 'hidden',
+  },
+  shapeTopRight: {
+    position: 'absolute',
+    top: -140,
+    right: -140,
+    width: 380,
+    height: 380,
+    borderRadius: 9999,
+    backgroundColor: 'rgba(240,203,70,0.12)',
+  },
+  shapeBottomLeft: {
+    position: 'absolute',
+    bottom: -180,
+    left: -160,
+    width: 460,
+    height: 460,
+    borderRadius: 9999,
+    backgroundColor: 'rgba(6,23,62,0.08)',
+  },
+
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 },
+  centerTitle: { fontSize: 18, fontWeight: '900', color: colors.text, textAlign: 'right', writingDirection: 'rtl' },
+  centerSub: { fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'right', writingDirection: 'rtl' },
+
+  topBarLeftRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
+  topBarRightRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
+
+  heroRow: { flexDirection: 'row-reverse', alignItems: 'stretch', justifyContent: 'space-between' },
+  heroCard: {
+    width: '100%',
+    backgroundColor: colors.white,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.06)',
+    padding: 14,
+    boxShadow: '0 12px 34px rgba(11,48,65,0.06)',
+  },
+  heroCardTop: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' },
+  heroTitleWrap: { alignItems: 'flex-end', gap: 2, flex: 1, minWidth: 240 },
+  heroTitle: { fontSize: 14, fontWeight: '900', color: colors.text, textAlign: 'right', writingDirection: 'rtl' },
+  heroSubtitle: { fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'right', writingDirection: 'rtl' },
+
+  mainRow: { flexDirection: 'row-reverse', alignItems: 'flex-start', gap: 16 },
+  mainRowNarrow: { flexDirection: 'column', alignItems: 'stretch' },
+  sideCol: { width: '100%' },
+  detailCol: { flex: 1, minWidth: 0 },
+
+  card: {
+    backgroundColor: colors.white,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.07)',
+    padding: 14,
+    overflow: 'hidden',
+    boxShadow: '0 1px 2px rgba(16,24,40,0.04), 0 18px 36px rgba(16,24,40,0.06)',
+  },
+
+  cardHeaderRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' },
+  cardTitleWrap: { alignItems: 'flex-end', gap: 2, flex: 1, minWidth: 240 },
+  cardTitle: { fontSize: 16, fontWeight: '900', color: colors.text, textAlign: 'right', writingDirection: 'rtl' },
+  cardHint: { fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'right', writingDirection: 'rtl' },
+
+  searchWrap: { position: 'relative', width: '100%', marginTop: 12 },
+  searchIconRight: { position: 'absolute', right: 12, top: 0, bottom: 0, justifyContent: 'center', pointerEvents: 'none' },
+  searchInput: {
+    height: 44,
+    borderRadius: 16,
+    backgroundColor: colors.gray[50],
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.06)',
+    paddingRight: 40,
+    paddingLeft: 12,
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.text,
+    textAlign: 'right',
+  },
+
+  chipsRow: { marginTop: 12, flexDirection: 'row-reverse', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  chip: {
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 999,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.12)',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  chipHover: { backgroundColor: colors.gray[50] },
+  chipText: { fontSize: 12, fontWeight: '900', color: colors.gray[700], textAlign: 'right' },
+  chipCount: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, minWidth: 26, alignItems: 'center' },
+  chipCountText: { fontSize: 11, fontWeight: '900', textAlign: 'right', writingDirection: 'rtl' },
+
+  tableList: { marginTop: 6, borderRadius: 18, borderWidth: 1, borderColor: 'rgba(15,23,42,0.06)', backgroundColor: 'rgba(248,250,252,0.70)' },
+  tableListInner: { padding: 10, gap: 10 },
+  tableRow: {
+    padding: 12,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+    backgroundColor: colors.white,
+    gap: 10,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  tableRowHover: {
+    borderColor: 'rgba(6,23,62,0.20)',
+    boxShadow: '0 0 0 1px rgba(6,23,62,0.06), 0 14px 26px rgba(16,24,40,0.08)',
+    transform: [{ translateY: -1 }],
+  },
+  tableRowSelected: { borderColor: 'rgba(6,23,62,0.35)', backgroundColor: 'rgba(6,23,62,0.04)' },
+  tableRowFull: { borderColor: 'rgba(16,185,129,0.35)', backgroundColor: 'rgba(16,185,129,0.06)' },
+  tableRowTop: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  tableRowTitleWrap: { flex: 1, minWidth: 0, alignItems: 'flex-end', gap: 2 },
+  tableRowTitle: { fontSize: 14, fontWeight: '900', color: colors.text, textAlign: 'right', writingDirection: 'rtl' },
+  tableRowSub: { fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'right', writingDirection: 'rtl' },
+
+  progressTrack: { height: 8, borderRadius: 999, backgroundColor: 'rgba(15,23,42,0.06)', overflow: 'hidden' },
+  progressFill: { height: '100%', borderRadius: 999, backgroundColor: 'rgba(6,23,62,0.35)' },
+  progressFillFull: { backgroundColor: 'rgba(16,185,129,0.85)' },
+
+  badge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, borderWidth: 1 },
+  badgeSoft: { backgroundColor: 'rgba(6,23,62,0.06)', borderColor: 'rgba(6,23,62,0.10)' },
+  badgeFull: { backgroundColor: 'rgba(16,185,129,0.12)', borderColor: 'rgba(16,185,129,0.22)' },
+  badgeText: { fontSize: 11, fontWeight: '900', textAlign: 'right', writingDirection: 'rtl' },
+  badgeTextSoft: { color: colors.primary },
+  badgeTextFull: { color: '#065F46' },
+
+  detailHeader: { flexDirection: 'row-reverse', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' },
+  detailTitleWrap: { flex: 1, minWidth: 280, alignItems: 'flex-end', gap: 10 },
+  detailTitle: { fontSize: 18, fontWeight: '900', color: colors.text, textAlign: 'right', writingDirection: 'rtl' },
+  detailStatsRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  detailActions: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
+
+  infoPill: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  infoPillLabel: { fontSize: 11, fontWeight: '900', color: colors.gray[700], textAlign: 'right', writingDirection: 'rtl' },
+  infoPillValue: { fontSize: 11, fontWeight: '900', textAlign: 'right', writingDirection: 'rtl' },
+
+  detailBody: { marginTop: 14, gap: 14 },
+
+  guestsGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 12, alignItems: 'stretch' },
+  guestCard: {
+    padding: 12,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+    backgroundColor: 'rgba(248,250,252,0.92)',
+    gap: 6,
+    position: 'relative',
+    ...(Platform.OS === 'web' ? ({ cursor: 'default' } as any) : null),
+  },
+  guestCardEditable: { ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
+  guestCardHover: {
+    borderColor: 'rgba(6,23,62,0.18)',
+    backgroundColor: colors.white,
+    transform: [{ translateY: -1 }],
+    boxShadow: '0 18px 40px rgba(16,24,40,0.12)',
+  },
+  guestCardSelected: { borderColor: 'rgba(6,23,62,0.35)', backgroundColor: 'rgba(6,23,62,0.06)' },
+  guestName: { fontSize: 14, fontWeight: '900', color: colors.text, textAlign: 'right', writingDirection: 'rtl' },
+  guestMeta: { fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'right', writingDirection: 'rtl' },
+
+  checkbox: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    width: 20,
+    height: 20,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.18)',
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxChecked: { backgroundColor: colors.primary, borderColor: colors.primary },
+  peopleBadge: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+  },
+  peopleBadgeText: { fontSize: 11, fontWeight: '900', color: colors.gray[700], textAlign: 'right', writingDirection: 'rtl' },
+
+  editBar: {
+    marginTop: 6,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(15,23,42,0.06)',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    flexWrap: 'wrap',
+  },
+  editBarText: { fontSize: 12, fontWeight: '900', color: colors.gray[700], textAlign: 'right', writingDirection: 'rtl' },
+
+  emptyBox: { padding: 20, alignItems: 'flex-end', justifyContent: 'center', gap: 10 },
+  emptyTableBox: { padding: 22, alignItems: 'flex-end', justifyContent: 'center', gap: 10, backgroundColor: 'rgba(248,250,252,0.85)', borderRadius: 18, borderWidth: 1, borderColor: 'rgba(15,23,42,0.06)' },
+  emptyTitle: { fontSize: 16, fontWeight: '900', color: colors.text, textAlign: 'right', writingDirection: 'rtl' },
+  emptySubtitle: { fontSize: 13, fontWeight: '800', color: colors.gray[600], textAlign: 'right', writingDirection: 'rtl', maxWidth: 560 },
+
+  primaryBtn: {
+    height: 40,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    backgroundColor: colors.primary,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  primaryBtnHover: {
+    opacity: 0.96,
+    transform: [{ translateY: -1 }],
+    boxShadow: '0 14px 30px rgba(6,23,62,0.22)',
+  },
+  primaryBtnText: { fontSize: 12, fontWeight: '900', color: colors.white, textAlign: 'right', writingDirection: 'rtl' },
+  secondaryBtn: {
+    height: 40,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    backgroundColor: colors.gray[100],
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  secondaryBtnActive: { backgroundColor: 'rgba(6,23,62,0.06)', borderColor: 'rgba(6,23,62,0.18)' },
+  secondaryBtnHover: {
+    backgroundColor: colors.gray[200],
+    borderColor: 'rgba(6,23,62,0.16)',
+    transform: [{ translateY: -1 }],
+    boxShadow: '0 14px 26px rgba(16,24,40,0.10)',
+  },
+  secondaryBtnText: { fontSize: 12, fontWeight: '900', color: colors.gray[800], textAlign: 'right', writingDirection: 'rtl' },
+
+  dangerBtn: {
+    height: 40,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    backgroundColor: '#F43F5E',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  dangerBtnHover: {
+    opacity: 0.96,
+    transform: [{ translateY: -1 }],
+    boxShadow: '0 14px 30px rgba(244,63,94,0.22)',
+  },
+  dangerBtnText: { fontSize: 12, fontWeight: '900', color: colors.white, textAlign: 'right', writingDirection: 'rtl' },
+
+  btnDisabled: { opacity: 0.6 },
+  btnPressed: { opacity: 0.92, transform: [{ scale: 0.99 }] },
+
+  statPill: {
+    height: 38,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+  },
+  statDot: { width: 8, height: 8, borderRadius: 999 },
+  statLabel: { fontSize: 12, fontWeight: '900', color: colors.gray[700], textAlign: 'right', writingDirection: 'rtl' },
+  statValuePill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, minWidth: 26, alignItems: 'center' },
+  statValueText: { fontSize: 11, fontWeight: '900', textAlign: 'right', writingDirection: 'rtl' },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    padding: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalCard: {
+    backgroundColor: colors.white,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.10)',
+    overflow: 'hidden',
+    boxShadow: '0 30px 80px rgba(0,0,0,0.20)',
+  },
+  modalHeader: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(15,23,42,0.06)',
+    flexDirection: 'row-reverse',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  modalTitleWrap: { flex: 1, minWidth: 0, alignItems: 'flex-end', gap: 4 },
+  modalTitle: { fontSize: 16, fontWeight: '900', color: colors.text, textAlign: 'right', writingDirection: 'rtl' },
+  modalSubtitle: { fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'right', writingDirection: 'rtl' },
+  modalWarning: { fontSize: 12, fontWeight: '900', color: '#9F1239', textAlign: 'right', writingDirection: 'rtl' },
+  modalCloseBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    backgroundColor: colors.gray[100],
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  modalCloseBtnHover: { backgroundColor: colors.gray[200] },
+
+  modalBody: { padding: 16, gap: 12 },
+  modalFilters: { gap: 10 },
+  categoryRow: { flexDirection: 'row-reverse', gap: 8, paddingVertical: 2 },
+  categoryChip: {
+    height: 36,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: colors.gray[100],
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  categoryChipHover: { backgroundColor: colors.gray[200], borderColor: 'rgba(6,23,62,0.16)', transform: [{ translateY: -1 }] },
+  categoryChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  categoryChipText: { fontSize: 12, fontWeight: '900', color: colors.gray[800], textAlign: 'right', writingDirection: 'rtl', maxWidth: 220 },
+  categoryChipTextActive: { color: colors.white },
+
+  modalList: { borderRadius: 18, borderWidth: 1, borderColor: 'rgba(15,23,42,0.06)', backgroundColor: 'rgba(248,250,252,0.70)' },
+  modalGrid: { padding: 10, flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 10 },
+  modalEmpty: { padding: 20, alignItems: 'flex-end', justifyContent: 'center', gap: 10 },
+  modalGuestCard: {
+    width: '48%',
+    minWidth: 260,
+    flexGrow: 1,
+    padding: 12,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+    backgroundColor: colors.white,
+    position: 'relative',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  modalGuestCardHover: {
+    borderColor: 'rgba(6,23,62,0.18)',
+    transform: [{ translateY: -1 }],
+    boxShadow: '0 18px 40px rgba(16,24,40,0.12)',
+  },
+  modalGuestCardSelected: { borderColor: 'rgba(6,23,62,0.35)', backgroundColor: 'rgba(6,23,62,0.06)' },
+  modalGuestTop: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  modalGuestNameWrap: { flex: 1, minWidth: 0, alignItems: 'flex-end', gap: 3 },
+  modalGuestName: { fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'right', writingDirection: 'rtl' },
+  modalGuestMeta: { fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'right', writingDirection: 'rtl' },
+  modalGuestBadge: {
+    position: 'absolute',
+    bottom: 10,
+    right: 10,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+  },
+  modalGuestBadgeText: { fontSize: 11, fontWeight: '900', color: colors.gray[700], textAlign: 'right', writingDirection: 'rtl' },
+
+  modalActions: {
+    padding: 14,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(15,23,42,0.06)',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
 });
 

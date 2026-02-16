@@ -3,6 +3,7 @@ import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-n
 import Svg, { Defs, Line, Pattern, Rect } from 'react-native-svg';
 import { GestureHandlerRootView, PinchGestureHandler, State as GHState } from 'react-native-gesture-handler';
 import { CELL_SIZE, TABLE_LABELS, clamp, tableCellSize, type Orientation, type TableType } from './types';
+import { colors } from '@/constants/colors';
 
 function hexToRgba(hex: string, alpha: number) {
   const h = String(hex || '').replace('#', '').trim();
@@ -369,9 +370,10 @@ export function SeatingGridReadonly({
                   {/* Tables */}
                   {tables.map(t => {
                     const sz = tableCellSize(t.type, t.seats, t.orientation);
-                    const color = t.type === 'reserve' ? '#F59E0B' : t.type === 'knight' ? '#7C3AED' : '#2563EB';
-                    const bg = hexToRgba(color, 0.13);
-                    const border = hexToRgba(color, 0.35);
+                    // Dark-blue translucent (but visibly blue, not gray).
+                    const color = t.type === 'reserve' ? '#F59E0B' : colors.yaleBlue;
+                    const bg = hexToRgba(color, t.type === 'reserve' ? 0.13 : 0.40);
+                    const border = hexToRgba(color, t.type === 'reserve' ? 0.35 : 0.46);
                     const sub = getTableSubLabel?.(t) ?? null;
                     return (
                       <Pressable
@@ -449,13 +451,18 @@ export function SeatingGridReadonly({
             {/* Tables */}
             {tables.map(t => {
               const sz = tableCellSize(t.type, t.seats, t.orientation);
-              const color = t.type === 'reserve' ? '#F59E0B' : t.type === 'knight' ? '#7C3AED' : '#2563EB';
+              const isReserve = t.type === 'reserve';
+              // Use a visible brand blue for fills (primary is very dark and looks gray when translucent)
+              const fillColor = isReserve ? '#F59E0B' : colors.yaleBlue;
+              const textColor = isReserve ? '#F59E0B' : colors.primary;
               const tip = getTableTooltip?.(t) ?? null;
               const sub = getTableSubLabel?.(t) ?? null;
               // Use rgba (instead of 8-digit hex) for consistent native rendering.
-              const bg = hexToRgba(color, 0.13);
-              const border = hexToRgba(color, 0.35);
-              const glow = hexToRgba(color, 0.28);
+              // Make non-reserve tables visibly "brand blue" (not gray).
+              // Dark-blue translucent: keep it transparent but push saturation so it doesn't read as gray.
+              const bg = hexToRgba(fillColor, isReserve ? 0.16 : 0.40);
+              const border = hexToRgba(fillColor, isReserve ? 0.35 : 0.46);
+              const glow = hexToRgba(fillColor, isReserve ? 0.28 : 0.26);
               return (
                 <Pressable
                   key={t.id}
@@ -497,17 +504,16 @@ export function SeatingGridReadonly({
                       ...(Platform.OS === 'web'
                         ? ({
                             transform: [
-                              { translateY: pressed ? 0 : hovered ? -2 : 0 },
-                              { scale: pressed ? 0.985 : hovered ? 1.06 : 1 },
-                              { rotate: hovered && !pressed ? '-0.4deg' : '0deg' },
+                              { translateY: pressed ? 0 : hovered ? -1 : 0 },
+                              { scale: pressed ? 0.99 : hovered ? 1.03 : 1 },
                             ],
                             transitionProperty: 'transform, box-shadow, filter, background-color',
-                            transitionDuration: '860ms',
+                            transitionDuration: '520ms',
                             transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)',
                             boxShadow: hovered
-                              ? `0 0 0 2px ${glow}, 0 18px 44px rgba(15,23,42,0.18)`
-                              : '0 10px 22px rgba(15,23,42,0.10)',
-                            filter: hovered ? 'saturate(1.12) brightness(1.03)' : 'none',
+                              ? `0 0 0 1px ${glow}, 0 14px 30px ${hexToRgba(fillColor, 0.16)}`
+                              : `0 10px 22px ${hexToRgba(fillColor, 0.10)}`,
+                            filter: hovered ? 'saturate(1.42) brightness(1.03)' : 'saturate(1.35) brightness(1.01)',
                           } as any)
                         : null),
                     },
@@ -531,9 +537,8 @@ export function SeatingGridReadonly({
                         />
                       ) : null}
 
-                      <Text style={[styles.tableNum, { color }]}>{t.number ?? ''}</Text>
+                      <Text style={[styles.tableNum, { color: textColor }]}>{t.number ?? ''}</Text>
                       {sub ? <Text style={styles.tableSub}>{sub}</Text> : null}
-                      <Text style={styles.tableType}>{TABLE_LABELS[t.type]}</Text>
                     </>
                   )}
                 </Pressable>
@@ -581,7 +586,7 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 12,
     fontWeight: '800',
-    ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null),
+    fontFamily: 'Rubik_800ExtraBold' as any,
   },
   gridWrap: {
     backgroundColor: '#fff',
@@ -625,21 +630,21 @@ const styles = StyleSheet.create({
         } as any)
       : null),
   },
-  tableShineOn: { opacity: 1 },
-  tableNum: { fontSize: 16, fontWeight: '900', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
+  tableShineOn: { opacity: 0.55 },
+  tableNum: { fontSize: 16, fontWeight: '700', fontFamily: 'Rubik_500Medium' as any },
   tableSub: {
     marginTop: 2,
     fontSize: 11,
     fontWeight: '900',
     color: 'rgba(17,24,39,0.70)',
-    ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null),
+    fontFamily: 'Rubik_900Black' as any,
   },
   tableType: {
     marginTop: 2,
     fontSize: 11,
     fontWeight: '800',
     color: 'rgba(17,24,39,0.60)',
-    ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null),
+    fontFamily: 'Rubik_800ExtraBold' as any,
   },
 
   zone: {
@@ -652,7 +657,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  zoneText: { fontWeight: '900', color: 'rgba(17,24,39,0.65)', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
+  zoneText: { fontWeight: '900', color: 'rgba(17,24,39,0.65)', fontFamily: 'Rubik_900Black' as any },
 
   labelWrap: {
     position: 'absolute',
@@ -661,6 +666,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: 'rgba(17,24,39,0.02)',
   },
-  labelText: { fontWeight: '800', color: 'rgba(17,24,39,0.62)', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
+  labelText: { fontWeight: '800', color: 'rgba(17,24,39,0.62)', fontFamily: 'Rubik_800ExtraBold' as any },
 });
 

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import Svg, { Defs, Line, Pattern, Rect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
+import { colors } from '@/constants/colors';
 import {
   CELL_SIZE,
   TABLE_LABELS,
@@ -949,8 +950,9 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
           {api.tables.map(t => {
             const sz = tableCellSize(t.type, t.seats, t.orientation);
             const isSelected = selected.has(t.id);
-            const color =
-              t.type === 'reserve' ? '#F59E0B' : t.type === 'knight' ? '#7C3AED' : '#2563EB';
+            const isReserve = t.type === 'reserve';
+            const fillColor = isReserve ? '#F59E0B' : colors.yaleBlue;
+            const textColor = isReserve ? '#F59E0B' : colors.primary;
             return (
               <View
                 key={t.id}
@@ -962,8 +964,11 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
                     top: t.gridY * CELL_SIZE,
                     width: sz.w * CELL_SIZE,
                     height: sz.h * CELL_SIZE,
-                    backgroundColor: `${color}22`,
-                    borderColor: `${color}55`,
+                    // Use rgba for consistent rendering (avoid 8-digit hex quirks).
+                    // Dark-blue translucent (but visibly blue, not gray).
+                    backgroundColor: isReserve ? 'rgba(245,158,11,0.18)' : 'rgba(0,53,102,0.40)',
+                    borderColor: isReserve ? 'rgba(245,158,11,0.35)' : 'rgba(0,53,102,0.46)',
+                    ...(Platform.OS === 'web' && !isReserve ? ({ filter: 'saturate(1.35) brightness(1.02)' } as any) : null),
                   },
                   isSelected ? styles.selectedRing : null,
                 ]}
@@ -973,8 +978,7 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
                     } as any)
                   : null)}
               >
-                <Text style={[styles.tableNum, { color }]}>{t.number ?? ''}</Text>
-                <Text style={styles.tableType}>{TABLE_LABELS[t.type]}</Text>
+                <Text style={[styles.tableNum, { color: textColor }]}>{t.number ?? ''}</Text>
               </View>
             );
           })}
@@ -1187,8 +1191,8 @@ const styles = StyleSheet.create({
     elevation: 4,
     ...(Platform.OS === 'web' ? ({ userSelect: 'none', WebkitUserSelect: 'none', cursor: 'grab' } as any) : null),
   },
-  tableNum: { fontSize: 16, fontWeight: '900', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
-  tableType: { marginTop: 2, fontSize: 11, fontWeight: '800', color: 'rgba(17,24,39,0.60)', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
+  tableNum: { fontSize: 16, fontWeight: '500', fontFamily: 'Rubik_500Medium' as any },
+  tableType: { marginTop: 2, fontSize: 11, fontWeight: '800', color: 'rgba(17,24,39,0.60)', fontFamily: 'Rubik_800ExtraBold' as any },
 
   zone: {
     position: 'absolute',
@@ -1200,7 +1204,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     ...(Platform.OS === 'web' ? ({ userSelect: 'none', WebkitUserSelect: 'none', cursor: 'grab' } as any) : null),
   },
-  zoneText: { fontWeight: '900', color: 'rgba(17,24,39,0.65)', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
+  zoneText: { fontWeight: '900', color: 'rgba(17,24,39,0.65)', fontFamily: 'Rubik_900Black' as any },
 
   labelWrap: {
     position: 'absolute',
@@ -1210,7 +1214,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(17,24,39,0.02)',
     ...(Platform.OS === 'web' ? ({ userSelect: 'none', WebkitUserSelect: 'none', cursor: 'grab' } as any) : null),
   },
-  labelText: { fontWeight: '800', color: 'rgba(17,24,39,0.62)', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
+  labelText: { fontWeight: '800', color: 'rgba(17,24,39,0.62)', fontFamily: 'Rubik_800ExtraBold' as any },
 
   selectedRing: {
     borderWidth: 2,

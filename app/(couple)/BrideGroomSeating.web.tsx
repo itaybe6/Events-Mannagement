@@ -217,16 +217,22 @@ export default function BrideGroomSeatingWebScreen() {
   const isNarrow = windowWidth < 980;
   const leftColWidth = useMemo(() => {
     // Side column (Guests + Tables). Keep it a bit narrower.
-    if (windowWidth < 1100) return 340;
-    if (windowWidth < 1400) return 380;
-    return 410;
+    if (windowWidth < 1100) return 260;
+    if (windowWidth < 1400) return 300;
+    return 330;
   }, [windowWidth]);
 
   const mapCardHeight = useMemo(() => {
-    // Make the map slightly shorter so the page layout breathes.
-    // Clamp keeps it usable on small screens while preventing it from becoming too tall on desktop.
-    const ratio = isNarrow ? 0.56 : 0.60;
-    return Math.round(Math.min(620, Math.max(460, windowHeight * ratio)));
+    // Fill most of the viewport height on desktop so the side panel + map
+    // feel "full height" (not cut short).
+    if (isNarrow) {
+      // On narrow layouts we keep it reasonable to avoid huge vertical scroll.
+      return Math.round(Math.min(680, Math.max(460, windowHeight * 0.62)));
+    }
+    // Approximate available viewport space after the stats row + paddings.
+    const approxTopUi = 220;
+    const available = windowHeight - approxTopUi;
+    return Math.round(Math.min(900, Math.max(620, available)));
   }, [isNarrow, windowHeight]);
 
   const [loading, setLoading] = useState(true);
@@ -256,6 +262,7 @@ export default function BrideGroomSeatingWebScreen() {
   const [tableListSearch, setTableListSearch] = useState('');
   const [quickAddSelectedGuestIds, setQuickAddSelectedGuestIds] = useState<Set<string>>(new Set());
   const [quickAddGuestSearch, setQuickAddGuestSearch] = useState<string>('');
+  const [sidePanelTab, setSidePanelTab] = useState<'guests' | 'tables'>('guests');
   const [seatConfirmOpen, setSeatConfirmOpen] = useState(false);
   const [seatConfirmTable, setSeatConfirmTable] = useState<Table | null>(null);
 
@@ -921,11 +928,39 @@ export default function BrideGroomSeatingWebScreen() {
 
         <View style={[styles.mainRow, isNarrow ? styles.mainRowNarrow : null]}>
           <View style={[styles.leftCol, !isNarrow ? { width: leftColWidth } : null]}>
-            {/* Quick add guests */}
-            <View style={styles.card}>
+            <View style={[styles.card, !isNarrow ? { height: mapCardHeight } : null]}>
+              <View style={styles.sidePanelToggleRow}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="הצג מוזמנים"
+                  onPress={() => setSidePanelTab('guests')}
+                  style={({ hovered, pressed }: any) => [
+                    styles.toggleBtn,
+                    sidePanelTab === 'guests' ? styles.toggleBtnActive : null,
+                    Platform.OS === 'web' && hovered && sidePanelTab !== 'guests' ? styles.toggleBtnHover : null,
+                    pressed ? styles.btnPressed : null,
+                  ]}
+                >
+                  <Text style={[styles.toggleText, sidePanelTab === 'guests' ? styles.toggleTextActive : null]}>מוזמנים</Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="הצג שולחנות"
+                  onPress={() => setSidePanelTab('tables')}
+                  style={({ hovered, pressed }: any) => [
+                    styles.toggleBtn,
+                    sidePanelTab === 'tables' ? styles.toggleBtnActive : null,
+                    Platform.OS === 'web' && hovered && sidePanelTab !== 'tables' ? styles.toggleBtnHover : null,
+                    pressed ? styles.btnPressed : null,
+                  ]}
+                >
+                  <Text style={[styles.toggleText, sidePanelTab === 'tables' ? styles.toggleTextActive : null]}>שולחנות</Text>
+                </Pressable>
+              </View>
+
               <View style={styles.cardHeader}>
-                <Text style={styles.cardTitle}>מוזמנים</Text>
-                {quickAddSelectedGuestIds.size > 0 ? (
+                <Text style={styles.cardTitle}>{sidePanelTab === 'guests' ? 'מוזמנים' : 'שולחנות'}</Text>
+                {sidePanelTab === 'guests' && quickAddSelectedGuestIds.size > 0 ? (
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel="נקה בחירה"
@@ -943,175 +978,173 @@ export default function BrideGroomSeatingWebScreen() {
                 <View style={styles.searchWrap}>
                   <Ionicons name="search" size={16} color={colors.gray[500]} />
                   <TextInput
-                    value={quickAddGuestSearch}
-                    onChangeText={setQuickAddGuestSearch}
-                    placeholder="חיפוש אורח..."
+                    value={sidePanelTab === 'guests' ? quickAddGuestSearch : tableListSearch}
+                    onChangeText={sidePanelTab === 'guests' ? setQuickAddGuestSearch : setTableListSearch}
+                    placeholder={sidePanelTab === 'guests' ? 'חיפוש אורח...' : 'חיפוש לפי מספר / שם...'}
                     placeholderTextColor={colors.gray[500]}
                     style={styles.searchInput}
                   />
                 </View>
               </View>
 
-              <Text style={styles.quickAddHint}>
-                {quickAddSelectedGuestIds.size > 0
-                  ? 'בחרת מוזמנים. עכשיו לחץ על שולחן במפה כדי להושיב אותם.'
-                  : 'בחר מוזמנים מהרשימה, ואז לחץ על שולחן במפה כדי להושיב אותם.'}
-              </Text>
+              {sidePanelTab === 'guests' ? (
+                <>
+                  <Text style={styles.quickAddHint}>
+                    {quickAddSelectedGuestIds.size > 0
+                      ? 'בחרת מוזמנים. עכשיו לחץ על שולחן במפה כדי להושיב אותם.'
+                      : 'בחר מוזמנים מהרשימה, ואז לחץ על שולחן במפה כדי להושיב אותם.'}
+                  </Text>
 
-              <View style={{ height: 10 }} />
+                  <View style={{ height: 10 }} />
 
-              <View style={{ maxHeight: Math.min(420, Math.max(240, windowHeight * 0.40)) }}>
-                <ScrollView showsVerticalScrollIndicator={false}>
-                  <View style={styles.quickGuestList}>
-                    {quickAddSections.length === 0 ? (
-                      <Text style={styles.muted}>אין מוזמנים להצגה</Text>
-                    ) : (
-                      quickAddSections.map((section) => (
-                        <View key={section.id} style={styles.quickSection}>
-                          <View style={styles.quickSectionHeader}>
-                            <Text style={styles.quickSectionTitle}>{section.title}</Text>
-                            <View style={styles.quickSectionPill}>
-                              <Text style={styles.quickSectionPillText}>{section.data.length}</Text>
-                            </View>
-                          </View>
+                  <View style={styles.sidePanelBody}>
+                    <ScrollView showsVerticalScrollIndicator={false}>
+                      <View style={styles.quickGuestList}>
+                        {quickAddSections.length === 0 ? (
+                          <Text style={styles.muted}>אין מוזמנים להצגה</Text>
+                        ) : (
+                          quickAddSections.map((section) => (
+                            <View key={section.id} style={styles.quickSectionCard}>
+                              <View style={styles.quickSectionHeader}>
+                                <View style={styles.quickSectionTitleWrap}>
+                                  <Text style={styles.quickSectionTitle} numberOfLines={1}>
+                                    {section.title}
+                                  </Text>
+                                </View>
+                                <View style={styles.quickSectionPill}>
+                                  <Text style={styles.quickSectionPillText}>{section.data.length}</Text>
+                                </View>
+                              </View>
 
-                          <View style={styles.quickSectionBody}>
-                            {section.data.map((g: any) => {
-                              const id = String(g.id);
-                              const selected = quickAddSelectedGuestIds.has(id);
-                              const ppl = Number(g.numberOfPeople ?? g.number_of_people ?? 1) || 1;
-                              const status = String(g.status || '').trim();
-                              const isAvailable = !g.table_id && status !== 'לא מגיע';
-                              const seatedTable = g.tables?.number ? `שולחן ${g.tables.number}` : g.table_id ? 'משובץ' : null;
-                              const badge = isAvailable
-                                ? 'זמין'
-                                : seatedTable
-                                  ? seatedTable
-                                  : status
-                                    ? status
-                                    : 'לא זמין';
+                              <View style={styles.quickSectionBody}>
+                                {section.data.map((g: any) => {
+                                  const id = String(g.id);
+                                  const selected = quickAddSelectedGuestIds.has(id);
+                                  const ppl = Number(g.numberOfPeople ?? g.number_of_people ?? 1) || 1;
+                                  const status = String(g.status || '').trim();
+                                  const isAvailable = !g.table_id && status !== 'לא מגיע';
+                                  const seatedTable = g.tables?.number ? `שולחן ${g.tables.number}` : g.table_id ? 'משובץ' : null;
+                                  const badge = isAvailable
+                                    ? 'זמין'
+                                    : seatedTable
+                                      ? seatedTable
+                                      : status
+                                        ? status
+                                        : 'לא זמין';
 
-                              return (
-                                <Pressable
-                                  key={id}
-                                  accessibilityRole="button"
-                                  accessibilityLabel={selected ? 'בטל בחירה' : 'בחר מוזמן'}
-                                  disabled={!isAvailable}
-                                  onPress={() => (isAvailable ? toggleQuickAddGuest(id) : null)}
-                                  style={({ hovered, pressed }: any) => [
-                                    styles.quickGuestRow,
-                                    selected ? styles.quickGuestRowSelected : null,
-                                    !isAvailable ? styles.quickGuestRowDisabled : null,
-                                    Platform.OS === 'web' && hovered && isAvailable ? styles.quickGuestRowHover : null,
-                                    pressed ? styles.btnPressed : null,
-                                  ]}
-                                >
-                                  <View style={styles.quickGuestRowTop}>
-                                    <View style={styles.quickGuestRightGroup}>
-                                      <Ionicons
-                                        name={selected ? 'checkbox' : 'square-outline'}
-                                        size={20}
-                                        color={!isAvailable ? colors.gray[300] : selected ? colors.primary : colors.gray[300]}
-                                      />
-                                      <View style={styles.quickGuestTextWrap}>
-                                        <Text style={styles.quickGuestName} numberOfLines={1}>
-                                          {String(g.name || '').trim()}
-                                        </Text>
-                                        <Text style={styles.quickGuestSub} numberOfLines={1}>
-                                          {ppl} אנשים
-                                        </Text>
+                                  return (
+                                    <Pressable
+                                      key={id}
+                                      accessibilityRole="button"
+                                      accessibilityLabel={selected ? 'בטל בחירה' : 'בחר מוזמן'}
+                                      disabled={!isAvailable}
+                                      onPress={() => (isAvailable ? toggleQuickAddGuest(id) : null)}
+                                      style={({ hovered, pressed }: any) => [
+                                        styles.quickGuestRow,
+                                        selected ? styles.quickGuestRowSelected : null,
+                                        !isAvailable ? styles.quickGuestRowDisabled : null,
+                                        Platform.OS === 'web' && hovered && isAvailable ? styles.quickGuestRowHover : null,
+                                        pressed ? styles.btnPressed : null,
+                                      ]}
+                                    >
+                                      <View style={styles.quickGuestRowTop}>
+                                        <View style={styles.quickGuestRightGroup}>
+                                          <Ionicons
+                                            name={selected ? 'checkbox' : 'square-outline'}
+                                            size={20}
+                                            color={!isAvailable ? colors.gray[300] : selected ? colors.primary : colors.gray[300]}
+                                          />
+                                          <View style={styles.quickGuestTextWrap}>
+                                            <Text style={styles.quickGuestName} numberOfLines={1}>
+                                              {String(g.name || '').trim()}
+                                            </Text>
+                                            <Text style={styles.quickGuestSub} numberOfLines={1}>
+                                              {ppl} אנשים
+                                            </Text>
+                                          </View>
+                                        </View>
+
+                                        <View style={[styles.quickGuestBadge, isAvailable ? styles.quickGuestBadgeOk : styles.quickGuestBadgeMuted]}>
+                                          <Text
+                                            style={[
+                                              styles.quickGuestBadgeText,
+                                              isAvailable ? styles.quickGuestBadgeTextOk : styles.quickGuestBadgeTextMuted,
+                                            ]}
+                                          >
+                                            {badge}
+                                          </Text>
+                                        </View>
                                       </View>
-                                    </View>
+                                    </Pressable>
+                                  );
+                                })}
+                              </View>
+                            </View>
+                          ))
+                        )}
+                      </View>
+                    </ScrollView>
+                  </View>
+                </>
+              ) : (
+                <>
+                  <View style={{ height: 10 }} />
 
-                                    <View style={[styles.quickGuestBadge, isAvailable ? styles.quickGuestBadgeOk : styles.quickGuestBadgeMuted]}>
-                                      <Text style={[styles.quickGuestBadgeText, isAvailable ? styles.quickGuestBadgeTextOk : styles.quickGuestBadgeTextMuted]}>
-                                        {badge}
+                  <View style={styles.sidePanelBody}>
+                    <ScrollView showsVerticalScrollIndicator={false}>
+                      <View style={styles.tableList}>
+                        {tablesForList.length === 0 ? (
+                          <Text style={styles.muted}>אין שולחנות להצגה</Text>
+                        ) : (
+                          tablesForList.map((t: any) => {
+                            const seatedPeople = Number(t._seatedPeople ?? 0) || 0;
+                            const cap = Number(t.capacity ?? 0) || 0;
+                            const full = cap > 0 ? seatedPeople >= cap : false;
+                            const name = String(t.name || '').trim();
+                            return (
+                              <Pressable
+                                key={String(t.id)}
+                                accessibilityRole="button"
+                                accessibilityLabel={`שולחן ${t.number}`}
+                                onPress={() => openTableModal(t)}
+                                style={({ hovered, pressed }: any) => [
+                                  styles.tableRow,
+                                  Platform.OS === 'web' && hovered ? styles.tableRowHover : null,
+                                  pressed ? styles.btnPressed : null,
+                                ]}
+                              >
+                                <View style={styles.tableRowTop}>
+                                  {/* Right side: table number + name + seated/cap */}
+                                  <View style={styles.tableRowRight}>
+                                    <View style={styles.tableNumPill}>
+                                      <Text style={styles.tableNumPillText}>#{t.number ?? '—'}</Text>
+                                    </View>
+                                    <View style={styles.tableRowText}>
+                                      <Text style={styles.tableRowTitle} numberOfLines={1}>
+                                        {name ? name : 'ללא שם'}
+                                      </Text>
+                                      <Text style={styles.tableRowSub} numberOfLines={1}>
+                                        {cap ? `${seatedPeople} / ${cap}` : `${seatedPeople} יושבים`}
                                       </Text>
                                     </View>
                                   </View>
-                                </Pressable>
-                              );
-                            })}
-                          </View>
-                        </View>
-                      ))
-                    )}
-                  </View>
-                </ScrollView>
-              </View>
-            </View>
 
-            <View style={styles.card}>
-              <View style={styles.cardHeader}>
-                <Text style={styles.cardTitle}>שולחנות</Text>
-                <View style={styles.searchWrap}>
-                  <Ionicons name="search" size={16} color={colors.gray[500]} />
-                  <TextInput
-                    value={tableListSearch}
-                    onChangeText={setTableListSearch}
-                    placeholder="חיפוש לפי מספר / שם..."
-                    placeholderTextColor={colors.gray[500]}
-                    style={styles.searchInput}
-                  />
-                </View>
-              </View>
-
-              <View style={{ height: 10 }} />
-
-              <View style={{ maxHeight: Math.min(520, Math.max(280, windowHeight * 0.55)) }}>
-                <ScrollView showsVerticalScrollIndicator={false}>
-                  <View style={styles.tableList}>
-                    {tablesForList.length === 0 ? (
-                      <Text style={styles.muted}>אין שולחנות להצגה</Text>
-                    ) : (
-                      tablesForList.map((t: any) => {
-                        const seatedPeople = Number(t._seatedPeople ?? 0) || 0;
-                        const cap = Number(t.capacity ?? 0) || 0;
-                        const full = cap > 0 ? seatedPeople >= cap : false;
-                        const name = String(t.name || '').trim();
-                        return (
-                          <Pressable
-                            key={String(t.id)}
-                            accessibilityRole="button"
-                            accessibilityLabel={`שולחן ${t.number}`}
-                            onPress={() => openTableModal(t)}
-                            style={({ hovered, pressed }: any) => [
-                              styles.tableRow,
-                              Platform.OS === 'web' && hovered ? styles.tableRowHover : null,
-                              pressed ? styles.btnPressed : null,
-                            ]}
-                          >
-                            <View style={styles.tableRowTop}>
-                              {/* Right side: table number + name + seated/cap */}
-                              <View style={styles.tableRowRight}>
-                                <View style={styles.tableNumPill}>
-                                  <Text style={styles.tableNumPillText}>#{t.number ?? '—'}</Text>
+                                  {/* Left side: status */}
+                                  <View style={[styles.tableStatusPill, full ? styles.tableStatusFull : styles.tableStatusOk]}>
+                                    <Text style={[styles.tableStatusText, full ? styles.tableStatusTextFull : styles.tableStatusTextOk]}>
+                                      {full ? 'מלא' : 'זמין'}
+                                    </Text>
+                                  </View>
                                 </View>
-                                <View style={styles.tableRowText}>
-                                  <Text style={styles.tableRowTitle} numberOfLines={1}>
-                                    {name ? name : 'ללא שם'}
-                                  </Text>
-                                  <Text style={styles.tableRowSub} numberOfLines={1}>
-                                    {cap ? `${seatedPeople} / ${cap}` : `${seatedPeople} יושבים`}
-                                  </Text>
-                                </View>
-                              </View>
-
-                              {/* Left side: status */}
-                              <View style={[styles.tableStatusPill, full ? styles.tableStatusFull : styles.tableStatusOk]}>
-                                <Text style={[styles.tableStatusText, full ? styles.tableStatusTextFull : styles.tableStatusTextOk]}>
-                                  {full ? 'מלא' : 'זמין'}
-                                </Text>
-                              </View>
-                            </View>
-
-                          </Pressable>
-                        );
-                      })
-                    )}
+                              </Pressable>
+                            );
+                          })
+                        )}
+                      </View>
+                    </ScrollView>
                   </View>
-                </ScrollView>
-              </View>
+                </>
+              )}
             </View>
           </View>
 
@@ -1121,11 +1154,11 @@ export default function BrideGroomSeatingWebScreen() {
                 <Text style={styles.mapTitle}>מפה</Text>
                 <View style={styles.legend}>
                   <View style={styles.legendItem}>
-                    <View style={[styles.legendDot, { backgroundColor: '#2563EB' }]} />
+                    <View style={[styles.legendDot, { backgroundColor: colors.yaleBlue }]} />
                     <Text style={styles.legendText}>רגיל</Text>
                   </View>
                   <View style={styles.legendItem}>
-                    <View style={[styles.legendDot, { backgroundColor: '#7C3AED' }]} />
+                    <View style={[styles.legendDot, { backgroundColor: colors.yaleBlue }]} />
                     <Text style={styles.legendText}>אביר</Text>
                   </View>
                   <View style={styles.legendItem}>
@@ -1341,19 +1374,22 @@ export default function BrideGroomSeatingWebScreen() {
       {/* Table modal */}
       <Modal visible={tableModalOpen} transparent animationType="fade" onRequestClose={closeTableModal}>
         <Pressable style={styles.modalOverlay} onPress={closeTableModal}>
-          <Pressable style={[styles.modalCard, { maxHeight: Math.min(0.92 * windowHeight, 840), maxWidth: 860 }]} onPress={() => {}}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>
-                שולחן {selectedTableForModal?.number ?? '—'}
-                {selectedTableForModal?.name ? ` · ${selectedTableForModal.name}` : ''}
-              </Text>
+          <Pressable style={[styles.tableModalCard, { maxHeight: Math.min(0.92 * windowHeight, 840), maxWidth: 440 }]} onPress={() => {}}>
+            <View style={styles.tableModalHeader}>
+              <View style={styles.tableModalHeaderText}>
+                <Text style={styles.tableModalTitle}>
+                  שולחן {selectedTableForModal?.number ?? '—'}
+                  {selectedTableForModal?.name ? ` • ${selectedTableForModal.name}` : ''}
+                </Text>
+                <Text style={styles.tableModalSubtitle}>ניהול פרטי שולחן וסידור הושבה</Text>
+              </View>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="סגירה"
                 onPress={closeTableModal}
                 style={({ hovered, pressed }: any) => [
-                  styles.modalCloseBtn,
-                  Platform.OS === 'web' && hovered ? styles.modalCloseBtnHover : null,
+                  styles.tableModalCloseBtn,
+                  Platform.OS === 'web' && hovered ? styles.tableModalCloseBtnHover : null,
                   pressed ? styles.btnPressed : null,
                 ]}
               >
@@ -1361,121 +1397,195 @@ export default function BrideGroomSeatingWebScreen() {
               </Pressable>
             </View>
 
-            <View style={styles.tableNameRow}>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={styles.fieldLabel}>שם שולחן (אופציונלי)</Text>
-                <TextInput
-                  value={tableName}
-                  onChangeText={setTableName}
-                  placeholder="לדוגמה: משפחה / חברים / VIP"
-                  placeholderTextColor={colors.gray[500]}
-                  style={styles.fieldInput}
-                  onBlur={() => void handleSaveTableName()}
-                  onSubmitEditing={() => void handleSaveTableName()}
-                  returnKeyType="done"
-                />
+            <ScrollView contentContainerStyle={styles.tableModalBody} showsVerticalScrollIndicator={false}>
+              {/* Settings */}
+              <View style={styles.tableSettingsCard}>
+                <View style={styles.tableSectionHeader}>
+                  <View style={styles.tableSectionHeaderRight}>
+                    <Ionicons name="settings-outline" size={18} color={colors.text} />
+                    <Text style={styles.tableSectionTitle}>הגדרות שולחן</Text>
+                  </View>
+                </View>
+
+                <View style={styles.tableSettingsGrid}>
+                  <View style={styles.tableSettingsField}>
+                    <Text style={styles.fieldLabelModern}>שם שולחן (אופציונלי)</Text>
+                    <View style={styles.tableNameInputWrap}>
+                      <TextInput
+                        value={tableName}
+                        onChangeText={setTableName}
+                        placeholder="לדוגמה: משפחה / חברים / VIP"
+                        placeholderTextColor={colors.gray[500]}
+                        style={styles.fieldInputModern}
+                        onBlur={() => void handleSaveTableName()}
+                        onSubmitEditing={() => void handleSaveTableName()}
+                        returnKeyType="done"
+                      />
+                      <Ionicons
+                        name="checkmark-circle"
+                        size={18}
+                        color={String((selectedTableForModal?.name || '').trim()) === String((tableName || '').trim()) ? '#16A34A' : 'rgba(148,163,184,0.9)'}
+                        style={styles.tableNameCheckIcon as any}
+                      />
+                    </View>
+                  </View>
+
+                  <View style={styles.tableSettingsActions}>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="שמור שינויים"
+                      onPress={() => void handleSaveTableName()}
+                      style={({ hovered, pressed }: any) => [
+                        styles.tableActionBtn,
+                        Platform.OS === 'web' && hovered ? styles.tableActionBtnHover : null,
+                        pressed ? styles.btnPressed : null,
+                      ]}
+                    >
+                      <Ionicons name="checkmark" size={18} color="#16A34A" />
+                    </Pressable>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="מחק שולחן"
+                      onPress={() => void handleDeleteTable()}
+                      style={({ hovered, pressed }: any) => [
+                        styles.tableActionBtnDanger,
+                        Platform.OS === 'web' && hovered ? styles.tableActionBtnDangerHover : null,
+                        pressed ? styles.btnPressed : null,
+                      ]}
+                    >
+                      <Ionicons name="trash-outline" size={18} color="#E11D48" />
+                    </Pressable>
+                  </View>
+                </View>
               </View>
 
-              <View style={styles.tableNameActions}>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="שמור שם"
-                  onPress={() => void handleSaveTableName()}
-                  style={({ hovered, pressed }: any) => [
-                    styles.iconBtn,
-                    Platform.OS === 'web' && hovered ? styles.iconBtnHover : null,
-                    pressed ? styles.btnPressed : null,
-                  ]}
-                >
-                  <Ionicons name="checkmark" size={18} color={colors.primary} />
-                </Pressable>
+              {/* Guests */}
+              <View style={styles.tableGuestsHeaderRow}>
+                <View style={styles.tableGuestsHeaderText}>
+                  <View style={styles.tableGuestsTitleRow}>
+                    <Ionicons name="people-outline" size={18} color={colors.text} />
+                    <Text style={styles.tableSectionTitle}>רשימת אורחים</Text>
+                  </View>
+                  <Text style={styles.tableGuestsSubtitle}>נהל את האורחים היושבים בשולחן זה</Text>
+                </View>
 
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="מחק שולחן"
-                  onPress={() => void handleDeleteTable()}
-                  style={({ hovered, pressed }: any) => [
-                    styles.iconBtnDanger,
-                    Platform.OS === 'web' && hovered ? styles.iconBtnDangerHover : null,
-                    pressed ? styles.btnPressed : null,
-                  ]}
-                >
-                  <Ionicons name="trash-outline" size={18} color="#BE123C" />
-                </Pressable>
+                <View style={styles.occupancyCard}>
+                  <View style={styles.occupancyTopRow}>
+                    <Text style={styles.occupancyLabel}>תפוסה</Text>
+                    <Text style={styles.occupancyValue}>
+                      {(() => {
+                        const cap = Number(selectedTableForModal?.capacity ?? 0) || 0;
+                        const seated = seatedGuestsForTable.reduce((sum, g) => sum + (Number((g as any).numberOfPeople) || 1), 0);
+                        return cap ? `${seated}/${cap}` : String(seated);
+                      })()}
+                    </Text>
+                  </View>
+                  <View style={styles.occupancyBar}>
+                    <View
+                      style={[
+                        styles.occupancyFill,
+                        {
+                          width: (() => {
+                            const cap = Number(selectedTableForModal?.capacity ?? 0) || 0;
+                            const seated = seatedGuestsForTable.reduce((sum, g) => sum + (Number((g as any).numberOfPeople) || 1), 0);
+                            if (!cap) return '0%';
+                            return `${Math.max(0, Math.min(100, Math.round((seated / cap) * 100)))}%`;
+                          })(),
+                        },
+                      ]}
+                    />
+                  </View>
+                </View>
               </View>
-            </View>
-
-            <View style={styles.toggleRow}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="אורחים יושבים"
-                onPress={() => setTableModalView('seated')}
-                style={({ hovered, pressed }: any) => [
-                  styles.toggleBtn,
-                  tableModalView === 'seated' ? styles.toggleBtnActive : null,
-                  Platform.OS === 'web' && hovered && tableModalView !== 'seated' ? styles.toggleBtnHover : null,
-                  pressed ? styles.btnPressed : null,
-                ]}
-              >
-                <Text style={[styles.toggleText, tableModalView === 'seated' ? styles.toggleTextActive : null]}>
-                  אורחים ({seatedGuestsForTable.length})
-                </Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="הוספת אורחים"
-                onPress={() => setTableModalView('add')}
-                style={({ hovered, pressed }: any) => [
-                  styles.toggleBtn,
-                  tableModalView === 'add' ? styles.toggleBtnActive : null,
-                  Platform.OS === 'web' && hovered && tableModalView !== 'add' ? styles.toggleBtnHover : null,
-                  pressed ? styles.btnPressed : null,
-                ]}
-              >
-                <Text style={[styles.toggleText, tableModalView === 'add' ? styles.toggleTextActive : null]}>הוספת אורחים</Text>
-              </Pressable>
-            </View>
 
             {tableModalView === 'seated' ? (
-              <ScrollView contentContainerStyle={styles.modalBody} showsVerticalScrollIndicator={false}>
+              <View style={styles.tableGuestsCard}>
+                <View style={styles.tableGuestsCardTop}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="הוספת אורחים"
+                    onPress={() => setTableModalView('add')}
+                    style={({ hovered, pressed }: any) => [
+                      styles.addGuestsPrimaryBtn,
+                      Platform.OS === 'web' && hovered ? styles.addGuestsPrimaryBtnHover : null,
+                      pressed ? styles.btnPressed : null,
+                    ]}
+                  >
+                    <Ionicons name="person-add" size={18} color={colors.white} />
+                    <Text style={styles.addGuestsPrimaryBtnText}>הוספת אורחים</Text>
+                  </Pressable>
+                </View>
+
                 {seatedGuestsForTable.length === 0 ? (
                   <Text style={styles.muted}>אין אורחים יושבים בשולחן זה</Text>
                 ) : (
-                  <View style={styles.seatedGrid}>
-                    {seatedGuestsForTable.map((g) => (
-                      <View key={g.id} style={styles.seatedCard}>
-                        <View style={{ flex: 1, minWidth: 0 }}>
-                          <Text style={styles.seatedName} numberOfLines={1}>
-                            {g.name}
-                          </Text>
-                          <View style={styles.seatedMetaRow}>
-                            <View style={styles.miniPill}>
-                              <Ionicons name="person" size={12} color={colors.gray[700]} />
-                              <Text style={styles.miniPillText}>{Number(g.numberOfPeople) || 1}</Text>
-                            </View>
-                          </View>
-                        </View>
-
+                  <View style={styles.tableGuestsList}>
+                    {seatedGuestsForTable.map((g: any) => {
+                      const name = String(g?.name || '').trim();
+                      const initial = name ? name[0] : '?';
+                      const ppl = Number(g?.numberOfPeople ?? 1) || 1;
+                      const cat = g?.guest_categories?.name || 'ללא קטגוריה';
+                      return (
                         <Pressable
-                          accessibilityRole="button"
-                          accessibilityLabel="הסר מהשולחן"
-                          onPress={() => void handleRemoveGuestFromTable(g.id)}
-                          style={({ hovered, pressed }: any) => [
-                            styles.iconBtnDanger,
-                            Platform.OS === 'web' && hovered ? styles.iconBtnDangerHover : null,
-                            pressed ? styles.btnPressed : null,
+                          key={String(g.id)}
+                          style={({ hovered }: any) => [
+                            styles.tableGuestRow,
+                            Platform.OS === 'web' && hovered ? styles.tableGuestRowHover : null,
                           ]}
                         >
-                          <Ionicons name="trash-outline" size={16} color="#BE123C" />
+                          <View style={styles.tableGuestRight}>
+                            <View style={styles.tableGuestAvatar}>
+                              <Text style={styles.tableGuestAvatarText}>{initial}</Text>
+                            </View>
+                            <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-start' }}>
+                              <Text style={styles.tableGuestName} numberOfLines={1}>
+                                {name}
+                              </Text>
+                              <Text style={styles.tableGuestSub} numberOfLines={1}>
+                                {cat}
+                              </Text>
+                            </View>
+                          </View>
+
+                          <View style={styles.tableGuestLeft}>
+                            <View style={styles.tableGuestSeatsPill}>
+                              <Ionicons name="person" size={12} color={colors.gray[700]} />
+                              <Text style={styles.tableGuestSeatsText}>{ppl} מושב</Text>
+                            </View>
+                            <Pressable
+                              accessibilityRole="button"
+                              accessibilityLabel="הסר אורח"
+                              onPress={() => void handleRemoveGuestFromTable(g.id)}
+                              style={({ hovered }: any) => [
+                                styles.tableGuestDeleteBtn,
+                                Platform.OS === 'web' && hovered ? styles.tableGuestDeleteBtnHover : null,
+                              ]}
+                            >
+                              <Ionicons name="trash-outline" size={16} color="#E11D48" />
+                            </Pressable>
+                          </View>
                         </Pressable>
-                      </View>
-                    ))}
+                      );
+                    })}
                   </View>
                 )}
-              </ScrollView>
+              </View>
             ) : (
               <>
                 <View style={styles.modalFilterBar}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="חזרה לרשימת אורחים"
+                    onPress={() => setTableModalView('seated')}
+                    style={({ hovered, pressed }: any) => [
+                      styles.backToGuestsBtn,
+                      Platform.OS === 'web' && hovered ? styles.backToGuestsBtnHover : null,
+                      pressed ? styles.btnPressed : null,
+                    ]}
+                  >
+                    <Ionicons name="arrow-forward" size={16} color={colors.gray[700]} />
+                    <Text style={styles.backToGuestsBtnText}>חזרה</Text>
+                  </Pressable>
                   <View style={[styles.modalSearchWrap, { flex: 1 }]}>
                     <Ionicons name="search" size={16} color={colors.gray[500]} />
                     <TextInput
@@ -1573,6 +1683,37 @@ export default function BrideGroomSeatingWebScreen() {
                 </View>
               </>
             )}
+            </ScrollView>
+
+            <View style={styles.tableModalFooter}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="ביטול"
+                onPress={closeTableModal}
+                style={({ hovered, pressed }: any) => [
+                  styles.footerBtn,
+                  Platform.OS === 'web' && hovered ? styles.footerBtnHover : null,
+                  pressed ? styles.btnPressed : null,
+                ]}
+              >
+                <Text style={styles.footerBtnText}>ביטול</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="שמור שינויים"
+                onPress={async () => {
+                  await handleSaveTableName();
+                  closeTableModal();
+                }}
+                style={({ hovered, pressed }: any) => [
+                  styles.footerBtnPrimary,
+                  Platform.OS === 'web' && hovered ? styles.footerBtnPrimaryHover : null,
+                  pressed ? styles.btnPressed : null,
+                ]}
+              >
+                <Text style={styles.footerBtnPrimaryText}>שמור שינויים</Text>
+              </Pressable>
+            </View>
           </Pressable>
         </Pressable>
       </Modal>
@@ -1682,6 +1823,8 @@ const styles = StyleSheet.create({
     padding: 14,
     ...(Platform.OS === 'web' ? ({ backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)', boxShadow: '0 12px 30px rgba(13,28,43,0.06)' } as any) : null),
   },
+  sidePanelToggleRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, marginBottom: 10 },
+  sidePanelBody: { flex: 1, minHeight: 0 },
   cardHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   cardTitle: { fontSize: 14, fontWeight: '900', color: '#0d1c2b', textAlign: 'right' },
   searchWrap: {
@@ -1791,28 +1934,287 @@ const styles = StyleSheet.create({
   modalCloseBtn: { width: 34, height: 34, borderRadius: 12, backgroundColor: colors.gray[100], alignItems: 'center', justifyContent: 'center', ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
   modalCloseBtnHover: { backgroundColor: colors.gray[200] },
 
+  // Table modal (modern)
+  tableModalCard: {
+    width: '100%',
+    maxWidth: 640,
+    backgroundColor: colors.gray[50],
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.55)',
+    overflow: 'hidden',
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 6px 26px rgba(0,0,0,0.10)', direction: 'rtl' } as any) : null),
+  },
+  tableModalHeader: {
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(226,232,240,0.9)',
+    backgroundColor: colors.white,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  tableModalHeaderText: { flex: 1, minWidth: 0, alignItems: 'flex-end', gap: 4 },
+  tableModalTitle: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  tableModalSubtitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.gray[600],
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  tableModalCloseBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 999,
+    backgroundColor: 'rgba(15,23,42,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  tableModalCloseBtnHover: { backgroundColor: 'rgba(15,23,42,0.06)' },
+  tableModalBody: { padding: 18, gap: 16 },
+
+  tableSettingsCard: {
+    backgroundColor: colors.white,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(226,232,240,0.9)',
+    padding: 14,
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 2px 14px rgba(0,0,0,0.04)' } as any) : null),
+  },
+  tableSectionHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  tableSectionHeaderRight: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
+  tableSectionTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  tableSettingsGrid: { flexDirection: 'row-reverse', alignItems: 'flex-end', gap: 10, flexWrap: 'wrap' },
+  tableSettingsField: { flex: 1, minWidth: 240 },
+  fieldLabelModern: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: colors.gray[700],
+    textAlign: 'right',
+    marginBottom: 8,
+    writingDirection: 'rtl',
+  },
+  tableNameInputWrap: { position: 'relative' },
+  fieldInputModern: {
+    height: 46,
+    borderRadius: 14,
+    backgroundColor: 'rgba(248,250,252,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(226,232,240,0.95)',
+    paddingRight: 12,
+    paddingLeft: 42,
+    fontSize: 14,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : null),
+  },
+  tableNameCheckIcon: { position: 'absolute', left: 12, top: 14 },
+  tableSettingsActions: { flexDirection: 'row-reverse', gap: 10, minWidth: 120 },
+  tableActionBtn: {
+    flex: 1,
+    height: 46,
+    borderRadius: 14,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: 'rgba(226,232,240,0.95)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  tableActionBtnHover: { backgroundColor: 'rgba(248,250,252,0.92)' },
+  tableActionBtnDanger: {
+    flex: 1,
+    height: 46,
+    borderRadius: 14,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: 'rgba(244,63,94,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  tableActionBtnDangerHover: { backgroundColor: 'rgba(244,63,94,0.06)' },
+
+  tableGuestsHeaderRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' },
+  tableGuestsHeaderText: { flex: 1, minWidth: 240, alignItems: 'flex-end' },
+  tableGuestsTitleRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
+  tableGuestsSubtitle: {
+    marginTop: 4,
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.gray[600],
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  occupancyCard: {
+    backgroundColor: colors.white,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(226,232,240,0.9)',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    minWidth: 240,
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 2px 14px rgba(0,0,0,0.04)' } as any) : null),
+  },
+  occupancyTopRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
+  occupancyLabel: { fontSize: 11, fontWeight: '900', color: colors.gray[600], writingDirection: 'rtl' },
+  occupancyValue: { fontSize: 11, fontWeight: '900', color: colors.text, writingDirection: 'rtl' },
+  occupancyBar: { marginTop: 8, height: 8, borderRadius: 999, backgroundColor: 'rgba(226,232,240,0.7)', overflow: 'hidden' },
+  occupancyFill: { height: 8, borderRadius: 999, backgroundColor: colors.primary },
+
+  tableGuestsCard: {
+    backgroundColor: colors.white,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(226,232,240,0.9)',
+    overflow: 'hidden',
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 2px 14px rgba(0,0,0,0.04)' } as any) : null),
+  },
+  tableGuestsCardTop: { padding: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(226,232,240,0.8)', backgroundColor: 'rgba(248,250,252,0.75)' },
+  addGuestsPrimaryBtn: { height: 44, borderRadius: 14, backgroundColor: colors.primary, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 10, ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
+  addGuestsPrimaryBtnHover: { opacity: 0.95 },
+  addGuestsPrimaryBtnText: { color: colors.white, fontSize: 13, fontWeight: '900', writingDirection: 'rtl' },
+  tableGuestsList: { paddingVertical: 6 },
+  tableGuestRow: { paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: 'rgba(226,232,240,0.65)' },
+  tableGuestRowHover: { backgroundColor: 'rgba(248,250,252,0.92)' },
+  tableGuestRight: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 },
+  tableGuestAvatar: { width: 36, height: 36, borderRadius: 999, backgroundColor: 'rgba(59,130,246,0.10)', alignItems: 'center', justifyContent: 'center' },
+  tableGuestAvatarText: { fontSize: 16, fontWeight: '900', color: colors.yaleBlue, writingDirection: 'rtl' },
+  tableGuestName: { fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'right', alignSelf: 'stretch', writingDirection: 'rtl' },
+  tableGuestSub: { marginTop: 2, fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'right', alignSelf: 'stretch', writingDirection: 'rtl' },
+  tableGuestLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  tableGuestSeatsPill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(15,23,42,0.04)', borderWidth: 1, borderColor: 'rgba(15,23,42,0.06)' },
+  tableGuestSeatsText: { fontSize: 11, fontWeight: '900', color: colors.gray[700], writingDirection: 'rtl' },
+  tableGuestDeleteBtn: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent' },
+  tableGuestDeleteBtnHover: { backgroundColor: 'rgba(244,63,94,0.08)' },
+
+  backToGuestsBtn: {
+    height: 42,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.10)',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  backToGuestsBtnHover: { backgroundColor: 'rgba(248,250,252,0.92)' },
+  backToGuestsBtnText: { fontSize: 12, fontWeight: '900', color: colors.gray[700], writingDirection: 'rtl' },
+
+  tableModalFooter: {
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(226,232,240,0.9)',
+    backgroundColor: 'rgba(248,250,252,0.75)',
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+  },
+  footerBtn: {
+    paddingHorizontal: 16,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  footerBtnHover: { backgroundColor: 'rgba(248,250,252,0.92)' },
+  footerBtnText: { fontSize: 13, fontWeight: '900', color: colors.gray[800], writingDirection: 'rtl' },
+  footerBtnPrimary: {
+    paddingHorizontal: 16,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  footerBtnPrimaryHover: { opacity: 0.95 },
+  footerBtnPrimaryText: { fontSize: 13, fontWeight: '900', color: colors.white, writingDirection: 'rtl' },
+
   modalFilterBar: { padding: 12, gap: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(15,23,42,0.06)' },
   modalSearchWrap: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, height: 42, paddingHorizontal: 12, borderRadius: 14, backgroundColor: colors.gray[50], borderWidth: 1, borderColor: 'rgba(15,23,42,0.10)' },
-  modalSearchInput: { flex: 1, minWidth: 140, fontSize: 13, fontWeight: '800', color: colors.text, textAlign: 'right' },
+  modalSearchInput: {
+    flex: 1,
+    minWidth: 140,
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.text,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : null),
+  },
 
   chipsRow: { flexDirection: 'row-reverse', gap: 8 },
   chip: { paddingHorizontal: 12, paddingVertical: 9, borderRadius: 999, backgroundColor: colors.white, borderWidth: 1, borderColor: 'rgba(15,23,42,0.12)', ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
   chipHover: { backgroundColor: colors.gray[50] },
   chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  chipText: { fontSize: 12, fontWeight: '900', color: colors.gray[700], textAlign: 'right', writingDirection: 'rtl' },
+  chipText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: colors.gray[700],
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
   chipTextActive: { color: colors.white },
 
   modalBody: { padding: 14, gap: 12 },
   sectionCard: { backgroundColor: 'rgba(248,250,252,0.92)', borderRadius: 18, borderWidth: 1, borderColor: 'rgba(15,23,42,0.06)', padding: 12 },
-  sectionTitle: { fontSize: 14, fontWeight: '900', color: colors.primary, textAlign: 'right', marginBottom: 10 },
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: colors.primary,
+    textAlign: 'right',
+    marginBottom: 10,
+    writingDirection: 'rtl',
+  },
   sectionGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 10 },
   guestMiniCard: { flexBasis: 220, flexGrow: 1, minWidth: 220, borderRadius: 16, backgroundColor: colors.white, borderWidth: 1, borderColor: 'rgba(15,23,42,0.06)', padding: 10 },
-  guestMiniName: { fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'right' },
+  guestMiniName: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
   guestMiniMetaRow: { marginTop: 8, flexDirection: 'row-reverse', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   miniPill: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(15,23,42,0.04)', borderWidth: 1, borderColor: 'rgba(15,23,42,0.06)' },
   miniPillText: { fontSize: 11, fontWeight: '900', color: colors.gray[700], textAlign: 'right', writingDirection: 'rtl' },
 
-  muted: { fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'center', writingDirection: 'rtl', paddingVertical: 10 },
+  muted: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.gray[600],
+    textAlign: 'center',
+    writingDirection: 'rtl',
+    paddingVertical: 10,
+  },
 
   tableNameRow: { padding: 14, paddingBottom: 10, flexDirection: 'row-reverse', alignItems: 'flex-end', gap: 10 },
   fieldLabel: { fontSize: 12, fontWeight: '900', color: colors.gray[700], textAlign: 'right', marginBottom: 8 },
@@ -1827,26 +2229,57 @@ const styles = StyleSheet.create({
   toggleBtn: { flex: 1, height: 40, borderRadius: 14, backgroundColor: colors.gray[100], borderWidth: 1, borderColor: 'rgba(15,23,42,0.08)', alignItems: 'center', justifyContent: 'center', ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
   toggleBtnHover: { backgroundColor: colors.gray[200] },
   toggleBtnActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  toggleText: { fontSize: 12, fontWeight: '900', color: colors.gray[800], textAlign: 'center', writingDirection: 'rtl' },
+  toggleText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: colors.gray[800],
+    textAlign: 'center',
+    writingDirection: 'rtl',
+  },
   toggleTextActive: { color: colors.white },
 
   seatedGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 10 },
   seatedCard: { flexBasis: 260, flexGrow: 1, minWidth: 240, padding: 12, borderRadius: 18, backgroundColor: 'rgba(248,250,252,0.92)', borderWidth: 1, borderColor: 'rgba(15,23,42,0.06)', flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
-  seatedName: { fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'right' },
+  seatedName: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
   seatedMetaRow: { marginTop: 8, flexDirection: 'row-reverse', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
 
   addList: { padding: 14, gap: 10 },
   addRow: { padding: 12, borderRadius: 18, backgroundColor: 'rgba(248,250,252,0.92)', borderWidth: 1, borderColor: 'rgba(15,23,42,0.06)', flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   addRowHover: { borderColor: 'rgba(59,130,246,0.20)', backgroundColor: 'rgba(59,130,246,0.04)' },
   addRowSelected: { borderColor: 'rgba(0,53,102,0.35)', backgroundColor: 'rgba(0,53,102,0.06)' },
-  addName: { fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'right' },
-  addSub: { marginTop: 4, fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'right', writingDirection: 'rtl' },
+  addName: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  addSub: {
+    marginTop: 4,
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.gray[600],
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
 
   modalActions: { padding: 14, paddingTop: 0, borderTopWidth: 1, borderTopColor: 'rgba(15,23,42,0.06)' },
   primaryBtn: { height: 46, borderRadius: 16, backgroundColor: colors.primary, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 10, ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
   primaryBtnHover: { opacity: 0.96 },
   primaryBtnDisabled: { opacity: 0.75 },
-  primaryBtnText: { fontSize: 13, fontWeight: '900', color: colors.white, textAlign: 'right', writingDirection: 'rtl' },
+  primaryBtnText: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: colors.white,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
 
   quickClearBtn: {
     height: 34,
@@ -1865,10 +2298,26 @@ const styles = StyleSheet.create({
 
   quickAddHint: { marginTop: 10, fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'right', writingDirection: 'rtl' },
   quickGuestList: { gap: 10, paddingBottom: 4 },
-  quickSection: { gap: 10 },
-  quickSectionHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
-  quickSectionTitle: { fontSize: 13, fontWeight: '900', color: colors.gray[800], textAlign: 'right', writingDirection: 'rtl' },
-  quickSectionPill: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(15,23,42,0.05)', borderWidth: 1, borderColor: 'rgba(15,23,42,0.07)' },
+  quickSectionCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+    backgroundColor: 'rgba(248,250,252,0.92)',
+    padding: 10,
+  },
+  // RTL: `row` places first child on the RIGHT.
+  quickSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(15,23,42,0.06)',
+    marginBottom: 10,
+  },
+  quickSectionTitleWrap: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 },
+  quickSectionTitle: { fontSize: 13, fontWeight: '900', color: colors.gray[800], textAlign: 'right', writingDirection: 'rtl', flex: 1, minWidth: 0 },
+  quickSectionPill: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(15,23,42,0.04)', borderWidth: 1, borderColor: 'rgba(15,23,42,0.08)' },
   quickSectionPillText: { fontSize: 12, fontWeight: '900', color: colors.gray[800], textAlign: 'center' },
   quickSectionBody: { gap: 10 },
   quickGuestRow: {
