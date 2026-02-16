@@ -165,6 +165,18 @@ export default function CoupleTabsLayout() {
           href: null,
         }}
       />
+      <Tabs.Screen
+        name="automatic-notifications"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="notification-editor"
+        options={{
+          href: null,
+        }}
+      />
     </Tabs>
   );
 }

@@ -3,7 +3,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useFonts } from "expo-font";
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, I18nManager, Platform, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useUserStore } from '@/store/userStore';
 import { supabase } from '@/lib/supabase';
@@ -14,12 +14,47 @@ if (Platform.OS === 'web') {
   require('../global.css');
 }
 
+// React 19 removed `defaultProps` support for function components.
+// `react-native-web` renders many Text/TextInput elements with a default font that may not inherit from `body`,
+// so on web we patch element creation to inject Rubik unless a component explicitly sets a `fontFamily`
+// (icons do, and must not be overridden).
+if (Platform.OS === 'web') {
+  const reactAny = React as unknown as {
+    createElement: typeof React.createElement;
+    __rubikWebFontPatched?: boolean;
+  };
+
+  const hasFontFamily = (style: unknown): boolean => {
+    if (!style) return false;
+    if (Array.isArray(style)) return style.some(hasFontFamily);
+    if (typeof style === 'object') return 'fontFamily' in (style as any) && Boolean((style as any).fontFamily);
+    return false;
+  };
+
+  if (!reactAny.__rubikWebFontPatched) {
+    const originalCreateElement = reactAny.createElement.bind(React);
+    reactAny.createElement = ((type: any, props: any, ...children: any[]) => {
+      if (type === Text || type === TextInput) {
+        const p = props ?? {};
+        if (!hasFontFamily(p.style)) {
+          const injected = { fontFamily: 'Rubik' as const };
+          const nextStyle = p.style ? [injected, p.style] : injected;
+          return originalCreateElement(type, { ...p, style: nextStyle }, ...children);
+        }
+      }
+      return originalCreateElement(type, props, ...children);
+    }) as typeof React.createElement;
+
+    reactAny.__rubikWebFontPatched = true;
+  }
+}
+
 // Force RTL layout for Hebrew
 I18nManager.allowRTL(true);
 I18nManager.forceRTL(true);
 
 const rtlTextStyle = { textAlign: 'right' as const, writingDirection: 'rtl' as const };
-const webFontStyle = Platform.OS === 'web' ? ({ fontFamily: 'Heebo' } as const) : null;
+const webFontStyle = Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as const) : null;
 const RTL_MARK = '\u200F';
 
 const toRtlAlertText = (value?: string) => {
@@ -108,8 +143,8 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof document === 'undefined') return;
-    // Load Google Font (Rubik) once for Hebrew-friendly UI on web.
-    // We inject <link> tags to keep it simple and avoid extra deps.
+    // Ensure RTL + global font on web.
+    // Note: the Rubik font is loaded via `global.css` (Google Fonts @import).
     try {
       const head = document.head;
       const ensureLink = (id: string, rel: string, href: string, extra?: Record<string, string>) => {
@@ -126,11 +161,6 @@ export default function RootLayout() {
 
       ensureLink('gf-preconnect-1', 'preconnect', 'https://fonts.googleapis.com');
       ensureLink('gf-preconnect-2', 'preconnect', 'https://fonts.gstatic.com', { crossorigin: '' });
-      ensureLink(
-        'gf-heebo-inter',
-        'stylesheet',
-        'https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700;800;900&display=swap&subset=hebrew'
-      );
     } catch {
       // ignore
     }
@@ -144,7 +174,7 @@ export default function RootLayout() {
       document.body.style.textAlign = 'right';
       // Prefer Rubik on web (falls back safely if font not loaded yet)
       document.body.style.fontFamily =
-        'Heebo, Inter, system-ui, -apple-system, "Segoe UI", Arial, "Noto Sans Hebrew", "Noto Sans", sans-serif';
+        'Rubik, system-ui, -apple-system, "Segoe UI", Arial, "Noto Sans Hebrew", "Noto Sans", sans-serif';
     }
   }, []);
 

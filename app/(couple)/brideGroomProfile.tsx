@@ -1,15 +1,19 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Modal, Pressable, TextInput, Platform } from 'react-native';
 import { useUserStore } from '@/store/userStore';
-import { useRouter } from 'expo-router';
+import { useGlobalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
 import { Image } from 'expo-image';
+import { useEventSelectionStore } from '@/store/eventSelectionStore';
 
 export default function BrideGroomSettings() {
   const { userData, logout } = useUserStore();
   const router = useRouter();
+  const globalParams = useGlobalSearchParams<{ eventId?: string | string[] }>();
+  const activeUserId = useEventSelectionStore((s) => s.activeUserId);
+  const activeEventId = useEventSelectionStore((s) => s.activeEventId);
   const [eventMeta, setEventMeta] = useState<{
     id: string;
     title: string;
@@ -22,6 +26,42 @@ export default function BrideGroomSettings() {
 
   const AVATAR_SIZE = 104;
   const avatarUri = userData?.avatar_url?.trim() || '';
+
+  const queryEventId = Array.isArray(globalParams.eventId) ? globalParams.eventId[0] : globalParams.eventId;
+  const resolvedEventId = useMemo(() => {
+    return (
+      String(
+        queryEventId ||
+          (userData?.id && activeUserId === userData.id ? activeEventId : null) ||
+          userData?.event_id ||
+          ''
+      ).trim() || null
+    );
+  }, [activeEventId, activeUserId, queryEventId, userData?.event_id, userData?.id]);
+
+  // =============================
+  // Message / notification settings (SMS / WhatsApp templates)
+  // =============================
+  type NotificationSettingRow = {
+    id: string;
+    event_id: string;
+    notification_type: string;
+    title: string;
+    days_from_wedding?: number | null;
+    channel?: 'SMS' | 'WHATSAPP' | null;
+    enabled: boolean;
+    message_content?: string | null;
+  };
+
+  const [settingsSupported, setSettingsSupported] = useState(true);
+  const [settingsLoading, setSettingsLoading] = useState(false);
+  const [settings, setSettings] = useState<NotificationSettingRow[]>([]);
+  const [settingsEditorOpen, setSettingsEditorOpen] = useState(false);
+  const [editingSetting, setEditingSetting] = useState<NotificationSettingRow | null>(null);
+  const [draftChannel, setDraftChannel] = useState<'WHATSAPP' | 'SMS'>('WHATSAPP');
+  const [draftDays, setDraftDays] = useState('0');
+  const [draftEnabled, setDraftEnabled] = useState(true);
+  const [draftMessage, setDraftMessage] = useState('');
 
   useEffect(() => {
     let active = true;
@@ -48,7 +88,7 @@ export default function BrideGroomSettings() {
           }));
         }
 
-        if (!userData.event_id) {
+        if (!resolvedEventId) {
           setEventMeta(null);
           return;
         }
@@ -56,7 +96,7 @@ export default function BrideGroomSettings() {
         const { data: eventRow, error } = await supabase
           .from('events')
           .select('id, title, date, groom_name, bride_name, rsvp_link')
-          .eq('id', userData.event_id)
+          .eq('id', resolvedEventId)
           .maybeSingle();
 
         if (error) {
@@ -91,7 +131,53 @@ export default function BrideGroomSettings() {
     return () => {
       active = false;
     };
-  }, [userData?.id, userData?.event_id]);
+  }, [userData?.id, resolvedEventId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadSettings = async () => {
+      const eventId = String(resolvedEventId || '').trim();
+      if (!eventId) {
+        setSettings([]);
+        return;
+      }
+
+      setSettingsLoading(true);
+      try {
+        const { data, error } = await supabase
+          .from('notification_settings')
+          .select('id,event_id,notification_type,title,days_from_wedding,channel,enabled,message_content')
+          .eq('event_id', eventId)
+          .order('days_from_wedding', { ascending: true });
+
+        if (error) {
+          const msg = String((error as any)?.message || '');
+          // If the table/feature isn't available in the connected Supabase env, fail gracefully.
+          if (msg.toLowerCase().includes('does not exist') || String((error as any)?.code || '') === '42P01') {
+            if (!cancelled) setSettingsSupported(false);
+            return;
+          }
+          throw error;
+        }
+
+        if (!cancelled) {
+          setSettingsSupported(true);
+          setSettings(((data as any) || []) as NotificationSettingRow[]);
+        }
+      } catch (e) {
+        console.warn('Failed to load notification settings:', e);
+        if (!cancelled) setSettings([]);
+      } finally {
+        if (!cancelled) setSettingsLoading(false);
+      }
+    };
+
+    void loadSettings();
+    return () => {
+      cancelled = true;
+    };
+  }, [resolvedEventId]);
 
   const handleLogout = async () => {
     await logout();
@@ -101,6 +187,85 @@ export default function BrideGroomSettings() {
   const groomName = String(eventMeta?.groomName ?? '').trim();
   const brideName = String(eventMeta?.brideName ?? '').trim();
   const weddingNames = groomName && brideName ? `${groomName} ו${brideName}` : '';
+
+  const openSettingsEditor = () => {
+    setEditingSetting(null);
+    setDraftChannel('WHATSAPP');
+    setDraftDays('0');
+    setDraftEnabled(true);
+    setDraftMessage('');
+    setSettingsEditorOpen(true);
+  };
+
+  const openEditSetting = (s: NotificationSettingRow) => {
+    setEditingSetting(s);
+    setDraftChannel((s.channel === 'SMS' ? 'SMS' : 'WHATSAPP') as any);
+    setDraftDays(String(s.days_from_wedding ?? 0));
+    setDraftEnabled(Boolean(s.enabled));
+    setDraftMessage(String(s.message_content ?? ''));
+    setSettingsEditorOpen(true);
+  };
+
+  const closeSettingsEditor = () => {
+    setSettingsEditorOpen(false);
+    setEditingSetting(null);
+  };
+
+  const toggleSettingEnabled = async (s: NotificationSettingRow) => {
+    const nextEnabled = !s.enabled;
+    setSettings((prev) => prev.map((x) => (x.id === s.id ? { ...x, enabled: nextEnabled } : x)));
+    try {
+      const { error } = await supabase.from('notification_settings').update({ enabled: nextEnabled }).eq('id', s.id);
+      if (error) throw error;
+    } catch (e) {
+      // rollback
+      setSettings((prev) => prev.map((x) => (x.id === s.id ? { ...x, enabled: s.enabled } : x)));
+      Alert.alert('שגיאה', 'לא ניתן לעדכן את מצב ההודעה כרגע.');
+    }
+  };
+
+  const saveSettingDraft = async () => {
+    if (!editingSetting) {
+      Alert.alert('שימו לב', 'בחרו הודעה לעריכה מהרשימה.');
+      return;
+    }
+
+    const days = Number.parseInt(draftDays || '0', 10);
+    const safeDays = Number.isFinite(days) ? days : 0;
+    const msg = String(draftMessage || '').trim();
+
+    try {
+      const updates: any = {
+        channel: draftChannel,
+        days_from_wedding: safeDays,
+        enabled: Boolean(draftEnabled),
+        message_content: msg,
+      };
+
+      const { data, error } = await supabase
+        .from('notification_settings')
+        .update(updates)
+        .eq('id', editingSetting.id)
+        .select('id,event_id,notification_type,title,days_from_wedding,channel,enabled,message_content')
+        .single();
+
+      if (error) throw error;
+
+      setSettings((prev) => prev.map((x) => (x.id === editingSetting.id ? ((data as any) as NotificationSettingRow) : x)));
+      closeSettingsEditor();
+    } catch (e) {
+      console.error('Save notification setting error:', e);
+      Alert.alert('שגיאה', 'לא ניתן לשמור את ההגדרות כרגע.');
+    }
+  };
+
+  const computedSendDateLabel = (() => {
+    const base = eventMeta?.date ? new Date(eventMeta.date) : null;
+    const days = Number.parseInt(draftDays || '0', 10);
+    if (!base || !Number.isFinite(base.getTime()) || !Number.isFinite(days)) return null;
+    const d = new Date(base.getTime() + days * 24 * 60 * 60 * 1000);
+    return d.toLocaleDateString('he-IL', { year: 'numeric', month: 'long', day: 'numeric' });
+  })();
 
   const getEventCoverSource = () => {
     const title = String(eventMeta?.title ?? '').toLowerCase();
@@ -175,11 +340,273 @@ export default function BrideGroomSettings() {
           </View>
         </View>
 
+        {/* Message settings (from mobile profile screen) */}
+        {Platform.OS === 'web' ? null : (
+          <View style={styles.notificationsSection}>
+            <Text style={styles.sectionTitle}>הגדרות הודעות</Text>
+
+            <View style={styles.noteWrap}>
+              <Text style={styles.noteText}>
+                כאן אפשר לנהל הודעות אוטומטיות (SMS / וואטסאפ) שקשורות לאירוע. אם אין תצוגה כאן — ייתכן שהפיצ׳ר לא זמין בסביבת השרת הנוכחית.
+              </Text>
+            </View>
+
+            {!settingsSupported ? (
+              <View style={[styles.notificationCard, { borderColor: 'rgba(15,23,42,0.08)', backgroundColor: 'rgba(255,255,255,0.85)' }]}>
+                <View style={styles.cardMain}>
+                  <Text style={[styles.cardTitle, { color: colors.gray[800] }]}>הגדרות הודעות לא זמינות</Text>
+                  <View style={styles.cardMetaRow}>
+                    <Text style={[styles.metaText, { color: colors.gray[600] }]}>אין טבלת ״notification_settings״ בשרת המחובר.</Text>
+                  </View>
+                </View>
+              </View>
+            ) : settingsLoading ? (
+              <View style={[styles.notificationCard, { borderColor: 'rgba(15,23,42,0.08)', backgroundColor: 'rgba(255,255,255,0.85)' }]}>
+                <View style={styles.cardMain}>
+                  <Text style={[styles.cardTitle, { color: colors.gray[800] }]}>טוען...</Text>
+                  <View style={styles.cardMetaRow}>
+                    <Text style={[styles.metaText, { color: colors.gray[600] }]}>טוען הגדרות הודעות לאירוע</Text>
+                  </View>
+                </View>
+              </View>
+            ) : settings.length === 0 ? (
+              <View style={[styles.notificationCard, { borderColor: 'rgba(15,23,42,0.08)', backgroundColor: 'rgba(255,255,255,0.85)' }]}>
+                <View style={styles.cardMain}>
+                  <Text style={[styles.cardTitle, { color: colors.gray[800] }]}>אין הודעות מוגדרות</Text>
+                  <View style={styles.cardMetaRow}>
+                    <Text style={[styles.metaText, { color: colors.gray[600] }]}>אפשר להגדיר הודעות דרך ניהול האירוע.</Text>
+                  </View>
+                </View>
+              </View>
+            ) : (
+              <View style={styles.cardsStack}>
+                {settings.map((s) => {
+                  const channel = s.channel === 'SMS' ? 'SMS' : 'WHATSAPP';
+                  const isWhatsapp = channel === 'WHATSAPP';
+                  const accent = isWhatsapp ? 'rgba(37,211,102,0.95)' : 'rgba(59,130,246,0.95)';
+                  const border = isWhatsapp ? 'rgba(37,211,102,0.18)' : 'rgba(59,130,246,0.18)';
+                  const days = typeof s.days_from_wedding === 'number' ? s.days_from_wedding : 0;
+                  const whenLabel = days === 0 ? 'ביום האירוע' : days > 0 ? `${days}+ ימים אחרי האירוע` : `${Math.abs(days)} ימים לפני האירוע`;
+                  return (
+                    <View
+                      key={s.id}
+                      style={[
+                        styles.notificationCard,
+                        { borderColor: border, backgroundColor: 'rgba(255,255,255,0.92)' },
+                        isWhatsapp ? styles.notificationCardWhatsapp : null,
+                      ]}
+                    >
+                      <View style={[styles.whatsappAccent, { backgroundColor: accent }]} />
+
+                      <View style={styles.cardMain}>
+                        <Text style={[styles.cardTitle, { color: colors.gray[900] }]} numberOfLines={1}>
+                          {s.title || 'הודעה'}
+                        </Text>
+                        <View style={styles.cardMetaRow}>
+                          <TouchableOpacity style={styles.statusBtn} onPress={() => toggleSettingEnabled(s)} activeOpacity={0.9}>
+                            <Text style={[styles.statusText, { color: s.enabled ? accent : colors.gray[400] }]}>
+                              {s.enabled ? 'פעיל' : 'כבוי'}
+                            </Text>
+                          </TouchableOpacity>
+                          <Text style={[styles.metaBullet, { color: colors.gray[400] }]}>•</Text>
+                          <Text style={[styles.metaText, { color: colors.gray[700] }]}>{isWhatsapp ? 'וואטסאפ' : 'SMS'}</Text>
+                          <Text style={[styles.metaBullet, { color: colors.gray[400] }]}>•</Text>
+                          <Text style={[styles.metaText, { color: colors.gray[700] }]}>{whenLabel}</Text>
+                        </View>
+                      </View>
+
+                      <TouchableOpacity style={styles.cardChevron} onPress={() => openEditSetting(s)} activeOpacity={0.9}>
+                        <Ionicons name="chevron-back" size={20} color={colors.gray[500]} />
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+
+            <TouchableOpacity
+              style={[styles.editMessagesButton, !settingsSupported ? { opacity: 0.5 } : null]}
+              onPress={() => {
+                if (!resolvedEventId) return;
+                router.push({
+                  pathname: '/(couple)/automatic-notifications',
+                  params: { eventId: resolvedEventId },
+                } as any);
+              }}
+              disabled={!settingsSupported}
+              activeOpacity={0.9}
+            >
+              <Ionicons name="chatbubble-ellipses-outline" size={18} color={colors.white} />
+              <Text style={styles.editMessagesText}>הודעות אוטומטיות</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* Logout Button */}
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
           <Text style={styles.logoutButtonText}>התנתק</Text>
         </TouchableOpacity>
       </ScrollView>
+
+      {/* Settings editor modal */}
+      {Platform.OS === 'web' ? null : (
+        <Modal visible={settingsEditorOpen} transparent animationType="fade" onRequestClose={closeSettingsEditor}>
+          <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.35)' }]}>
+            <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} showsVerticalScrollIndicator={false}>
+              <Pressable style={styles.modalOverlayTouchable} onPress={closeSettingsEditor} />
+
+              <View style={styles.modalCard}>
+                <View style={styles.modalHeader}>
+                  <Pressable onPress={closeSettingsEditor} style={styles.modalCloseBtn} accessibilityRole="button" accessibilityLabel="סגור">
+                    <Ionicons name="close" size={18} color={colors.gray[700]} />
+                  </Pressable>
+                  <View style={styles.modalHeaderTitles}>
+                    <Text style={styles.modalTitle}>עריכת הודעה</Text>
+                    <Text style={styles.modalSubtitle} numberOfLines={2}>
+                      {editingSetting?.title ? editingSetting.title : 'בחר הודעה מהרשימה כדי לערוך'}
+                    </Text>
+                  </View>
+                  <View style={{ width: 40 }} />
+                </View>
+
+                <View style={styles.modalDivider} />
+
+                <View style={styles.modalBody}>
+                  {/* Channel */}
+                  <View style={styles.block}>
+                    <Text style={styles.blockLabel}>ערוץ</Text>
+                    <View style={styles.segmentWrap}>
+                      <Pressable
+                        onPress={() => setDraftChannel('WHATSAPP')}
+                        style={[styles.segmentBtn, draftChannel === 'WHATSAPP' ? styles.segmentBtnActive : null]}
+                        accessibilityRole="button"
+                        accessibilityLabel="וואטסאפ"
+                      >
+                        <Text style={[styles.segmentText, draftChannel === 'WHATSAPP' ? styles.segmentTextActive : null]}>וואטסאפ</Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => setDraftChannel('SMS')}
+                        style={[styles.segmentBtn, draftChannel === 'SMS' ? styles.segmentBtnActive : null]}
+                        accessibilityRole="button"
+                        accessibilityLabel="SMS"
+                      >
+                        <Text style={[styles.segmentText, draftChannel === 'SMS' ? styles.segmentTextActive : null]}>SMS</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+
+                  {/* Timing */}
+                  <View style={styles.block}>
+                    <Text style={styles.blockLabel}>מתי לשלוח</Text>
+                    <View style={styles.timingRow}>
+                      <View style={styles.daysInputWrap}>
+                        <View style={styles.daysIcon}>
+                          <Ionicons name="time-outline" size={18} color="#6B7280" />
+                        </View>
+                        <TextInput
+                          value={draftDays}
+                          onChangeText={setDraftDays}
+                          keyboardType={Platform.OS === 'web' ? ('default' as any) : 'numeric'}
+                          style={styles.daysInput}
+                          placeholder="0"
+                          placeholderTextColor="#9CA3AF"
+                        />
+                        <Text style={styles.daysSuffix}>ימים</Text>
+                      </View>
+                      {computedSendDateLabel ? (
+                        <View style={styles.computedPill}>
+                          <Text style={styles.computedLabel}>תאריך משוער</Text>
+                          <Text style={styles.computedValue}>{computedSendDateLabel}</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  </View>
+
+                  {/* Enabled */}
+                  <View style={styles.block}>
+                    <Text style={styles.blockLabel}>סטטוס</Text>
+                    <View style={styles.segmentWrap}>
+                      <Pressable
+                        onPress={() => setDraftEnabled(true)}
+                        style={[styles.segmentBtn, draftEnabled ? styles.segmentBtnActive : null]}
+                        accessibilityRole="button"
+                        accessibilityLabel="פעיל"
+                      >
+                        <Text style={[styles.segmentText, draftEnabled ? styles.segmentTextActive : null]}>פעיל</Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => setDraftEnabled(false)}
+                        style={[styles.segmentBtn, !draftEnabled ? styles.segmentBtnActive : null]}
+                        accessibilityRole="button"
+                        accessibilityLabel="כבוי"
+                      >
+                        <Text style={[styles.segmentText, !draftEnabled ? styles.segmentTextActive : null]}>כבוי</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+
+                  {/* Message */}
+                  <View style={styles.block}>
+                    <View style={styles.messageHeaderRow}>
+                      <Text style={styles.blockLabel}>תוכן ההודעה</Text>
+                      <View style={styles.messageTools}>
+                        <Pressable
+                          style={styles.toolBtn}
+                          accessibilityRole="button"
+                          accessibilityLabel="הכנס קישור אישור הגעה"
+                          onPress={() => {
+                            const link = String(eventMeta?.rsvpLink || '').trim();
+                            if (!link) return;
+                            setDraftMessage((prev) => `${prev}${prev ? '\n' : ''}${link}`);
+                          }}
+                        >
+                          <Ionicons name="link-outline" size={16} color={colors.gray[700]} />
+                        </Pressable>
+                      </View>
+                    </View>
+
+                    <View style={styles.textareaWrap}>
+                      <TextInput
+                        value={draftMessage}
+                        onChangeText={setDraftMessage}
+                        placeholder="הקלידו כאן את תוכן ההודעה..."
+                        placeholderTextColor="#9CA3AF"
+                        style={styles.textarea}
+                        multiline
+                        textAlignVertical="top"
+                      />
+                      <View style={styles.charCountPill}>
+                        <Text style={styles.charCountText}>{String(draftMessage || '').length} תווים</Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+
+                <View style={styles.modalFooter}>
+                  <Pressable
+                    style={styles.footerBtnSecondary}
+                    onPress={closeSettingsEditor}
+                    accessibilityRole="button"
+                    accessibilityLabel="ביטול"
+                  >
+                    <Text style={styles.footerBtnSecondaryText}>ביטול</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.footerBtnPrimary, !editingSetting ? { opacity: 0.6 } : null]}
+                    onPress={saveSettingDraft}
+                    disabled={!editingSetting}
+                    accessibilityRole="button"
+                    accessibilityLabel="שמור"
+                  >
+                    <Ionicons name="checkmark" size={18} color="#fff" />
+                    <Text style={styles.footerBtnPrimaryText}>שמור</Text>
+                  </Pressable>
+                </View>
+              </View>
+            </ScrollView>
+          </View>
+        </Modal>
+      )}
     </View>
   );
 }

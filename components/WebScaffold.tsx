@@ -1,9 +1,10 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { usePathname, useRouter } from 'expo-router';
 import { colors } from '@/constants/colors';
 import { useUserStore } from '@/store/userStore';
+import { Image } from 'expo-image';
 
 export type WebNavItem = {
   href: string;
@@ -30,6 +31,17 @@ export function WebScaffold({ title = 'ניהול אירועים', navItems, chi
   const router = useRouter();
   const { userData, userType, logout } = useUserStore();
 
+  const userName = userData?.name || userData?.email || 'משתמש';
+  const avatarUrl = String(userData?.avatar_url || '').trim();
+  const initials = String(userName)
+    .trim()
+    .split(/\s+/g)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0])
+    .join('')
+    .toUpperCase();
+
   const onLogout = async () => {
     await logout();
     router.replace('/login');
@@ -39,10 +51,25 @@ export function WebScaffold({ title = 'ניהול אירועים', navItems, chi
     <View style={styles.root}>
       <View style={styles.sidebar}>
         <View style={styles.brand}>
-          <Text style={styles.brandTitle}>{title}</Text>
-          <Text style={styles.brandSubtitle}>
-            {userData?.name ? userData.name : userData?.email || 'משתמש'} · {userType || ''}
-          </Text>
+          <View style={styles.brandRow}>
+            <View style={styles.userAvatarRing}>
+              {avatarUrl ? (
+                <Image source={{ uri: avatarUrl }} style={styles.userAvatarImg} contentFit="cover" transition={0} />
+              ) : (
+                <View style={styles.userAvatarFallback}>
+                  <Text style={styles.userAvatarInitials}>{initials || 'U'}</Text>
+                </View>
+              )}
+            </View>
+            <View style={styles.brandText}>
+              <Text style={styles.brandTitle} numberOfLines={1}>
+                {title}
+              </Text>
+              <Text style={styles.brandSubtitle} numberOfLines={1}>
+                {userName} · {userType || ''}
+              </Text>
+            </View>
+          </View>
         </View>
 
         <View style={styles.nav}>
@@ -111,6 +138,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     marginBottom: 12,
   },
+  brandRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 10,
+  },
+  brandText: {
+    flex: 1,
+    minWidth: 0,
+  },
   brandTitle: {
     fontSize: 18,
     fontWeight: '800',
@@ -122,6 +158,30 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.gray[600],
     textAlign: 'right',
+  },
+  userAvatarRing: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.10)',
+    backgroundColor: 'rgba(15,23,42,0.05)',
+    ...(Platform.OS === 'web' ? ({ flexShrink: 0 } as any) : null),
+  },
+  userAvatarImg: {
+    width: '100%',
+    height: '100%',
+  },
+  userAvatarFallback: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  userAvatarInitials: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: colors.primary,
   },
   nav: {
     gap: 8,
@@ -135,6 +195,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 12,
     backgroundColor: 'transparent',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
   navItemHover: {
     backgroundColor: colors.gray[100],
@@ -163,6 +224,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row-reverse',
     alignItems: 'center',
     gap: 10,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
   logoutHover: {
     opacity: 0.92,

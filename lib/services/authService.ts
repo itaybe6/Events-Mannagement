@@ -354,12 +354,31 @@ export const authService = {
 
   // Sign out
   signOut: async () => {
+    const SIGN_OUT_TIMEOUT_MS = 6_000;
+
+    // Prefer global signOut (revokes refresh token), but never let signOut hang or block UI.
+    // If it fails (network/CORS/invalid refresh token), fall back to local signOut which clears client session.
     try {
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
+      const result = await Promise.race([
+        supabase.auth.signOut(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Sign out timeout')), SIGN_OUT_TIMEOUT_MS)
+        ),
+      ]);
+
+      if ((result as any)?.error) {
+        throw (result as any).error;
+      }
     } catch (error) {
-      console.error('Sign out error:', error);
-      throw error;
+      console.warn('Sign out (global) failed, falling back to local signOut:', error);
+      try {
+        const { error: localError } = await supabase.auth.signOut({ scope: 'local' });
+        if (localError) {
+          console.warn('Sign out (local) error:', localError);
+        }
+      } catch (localException) {
+        console.warn('Sign out (local) exception:', localException);
+      }
     }
   },
 
