@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   FlatList,
   Modal,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -32,6 +33,7 @@ export function EventSwitcher({ userId, selectedEventId, onSelectEventId, label 
   const [events, setEvents] = useState<MinimalEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
+  const isNative = Platform.OS !== 'web';
 
   useEffect(() => {
     let cancelled = false;
@@ -72,25 +74,53 @@ export function EventSwitcher({ userId, selectedEventId, onSelectEventId, label 
         accessibilityRole="button"
         accessibilityLabel="בחירת אירוע"
       >
-        <View style={styles.pillLeft}>
-          {loading ? (
-            <ActivityIndicator size="small" color={colors.primary} />
-          ) : (
-            <Ionicons name="chevron-down" size={18} color={colors.primary} />
-          )}
-        </View>
+        {isNative ? (
+          <>
+            {/* Mobile: swap calendar + chevron positions */}
+            <View style={styles.pillIconWrap}>
+              <Ionicons name="calendar-outline" size={18} color={colors.primary} />
+            </View>
 
-        <View style={styles.pillTextWrap}>
-          <Text style={styles.pillLabel}>{label}</Text>
-          <Text style={styles.pillValue} numberOfLines={1}>
-            {selectedEvent?.title ? selectedEvent.title : 'בחר אירוע'}
-            {selectedEvent?.date ? ` · ${formatDate(selectedEvent.date)}` : ''}
-          </Text>
-        </View>
+            <View style={styles.pillTextWrap}>
+              <Text style={styles.pillLabel}>{label}</Text>
+              <Text style={styles.pillValue} numberOfLines={1}>
+                {selectedEvent?.title ? selectedEvent.title : 'בחר אירוע'}
+                {selectedEvent?.date ? ` · ${formatDate(selectedEvent.date)}` : ''}
+              </Text>
+            </View>
 
-        <View style={styles.pillIconWrap}>
-          <Ionicons name="calendar-outline" size={18} color={colors.primary} />
-        </View>
+            <View style={styles.pillLeft}>
+              {loading ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <Ionicons name="chevron-down" size={18} color={colors.primary} />
+              )}
+            </View>
+          </>
+        ) : (
+          <>
+            {/* Web: keep current order */}
+            <View style={styles.pillLeft}>
+              {loading ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <Ionicons name="chevron-down" size={18} color={colors.primary} />
+              )}
+            </View>
+
+            <View style={styles.pillTextWrap}>
+              <Text style={styles.pillLabel}>{label}</Text>
+              <Text style={styles.pillValue} numberOfLines={1}>
+                {selectedEvent?.title ? selectedEvent.title : 'בחר אירוע'}
+                {selectedEvent?.date ? ` · ${formatDate(selectedEvent.date)}` : ''}
+              </Text>
+            </View>
+
+            <View style={styles.pillIconWrap}>
+              <Ionicons name="calendar-outline" size={18} color={colors.primary} />
+            </View>
+          </>
+        )}
       </TouchableOpacity>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>

@@ -7,7 +7,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 // Base header height (excluding safe-area top inset)
 export const APP_HEADER_HEIGHT = 90;
 
-export const getAppHeaderTotalHeight = (topInset: number) => APP_HEADER_HEIGHT + Math.max(0, topInset || 0);
+export const getAppHeaderTotalHeight = (topInset: number) =>
+  APP_HEADER_HEIGHT + Math.max(0, topInset || 0);
 
 type Props = {
   onPressNotifications?: () => void;

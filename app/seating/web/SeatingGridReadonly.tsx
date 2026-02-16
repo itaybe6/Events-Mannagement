@@ -287,13 +287,26 @@ export function SeatingGridReadonly({
         {!isWeb ? (
           <ScrollView
             style={{ flex: 1, alignSelf: 'stretch' }}
-            contentContainerStyle={{ flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 18 }}
+            // Mobile UX: keep the map centered within the available space,
+            // but reduce padding so it doesn't feel "pushed down".
+            contentContainerStyle={{
+              flexGrow: 1,
+              alignItems: 'center',
+              justifyContent: 'center',
+              paddingHorizontal: 12,
+              paddingVertical: 10,
+            }}
             showsVerticalScrollIndicator={false}
           >
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ flexGrow: 1, alignItems: 'center', justifyContent: 'center' }}
+              contentContainerStyle={{
+                flexGrow: 1,
+                alignItems: 'center',
+                justifyContent: 'center',
+                paddingHorizontal: 8,
+              }}
             >
               <PinchGestureHandler onGestureEvent={onPinchGestureEvent} onHandlerStateChange={onPinchStateChange}>
                 <View collapsable={false} style={[styles.gridWrap, styles.gridWrapNative, { width: stageW, height: stageH }]}>

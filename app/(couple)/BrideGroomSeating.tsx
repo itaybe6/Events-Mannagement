@@ -766,7 +766,15 @@ export default function BrideGroomSeating() {
         </TouchableOpacity>
       )}
 
-      <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
+      <View
+        style={{
+          paddingHorizontal: 16,
+          paddingBottom: 0,
+          // Reduce the perceived gap between the header logo and the "active event" pill
+          // on native (this screen only), without shrinking the global header/logo.
+          marginTop: Platform.OS === 'web' ? 0 : -50,
+        }}
+      >
         <EventSwitcher
           userId={userData?.id}
           selectedEventId={resolvedEventId}
