@@ -1195,6 +1195,11 @@ export default function BrideGroomSeating() {
             tables={webSketch.tables}
             zones={webSketch.zones}
             labels={webSketch.labels}
+            getTableSeatedCount={(t: any) => {
+              const num = t?.number;
+              if (!num) return null;
+              return seatedByNumber.get(Number(num)) ?? 0;
+            }}
             getTableTooltip={(t: any) => {
               const num = t?.number;
               if (!num) return null;

@@ -1412,6 +1412,11 @@ export default function BrideGroomSeatingWebScreen() {
                     tables={webSketch.tables}
                     zones={webSketch.zones}
                     labels={webSketch.labels}
+                    getTableSeatedCount={(t: any) => {
+                      const num = t?.number;
+                      if (!num) return null;
+                      return seatedByNumber.get(Number(num)) ?? 0;
+                    }}
                     getTableTooltip={(t: any) => {
                       const num = t?.number;
                       if (!num) return null;
@@ -1882,22 +1887,6 @@ export default function BrideGroomSeatingWebScreen() {
 
             {tableModalView === 'seated' ? (
               <View style={styles.tableGuestsCard}>
-                <View style={styles.tableGuestsCardTop}>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="הוספת אורחים"
-                    onPress={() => setTableModalView('add')}
-                    style={({ hovered, pressed }: any) => [
-                      styles.addGuestsPrimaryBtn,
-                      Platform.OS === 'web' && hovered ? styles.addGuestsPrimaryBtnHover : null,
-                      pressed ? styles.btnPressed : null,
-                    ]}
-                  >
-                    <Ionicons name="person-add" size={18} color={colors.white} />
-                    <Text style={styles.addGuestsPrimaryBtnText}>הוספת אורחים</Text>
-                  </Pressable>
-                </View>
-
                 {seatedGuestsForTable.length === 0 ? (
                   <Text style={styles.muted}>אין אורחים יושבים בשולחן זה</Text>
                 ) : (

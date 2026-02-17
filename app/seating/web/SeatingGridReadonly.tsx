@@ -50,6 +50,7 @@ export function SeatingGridReadonly({
   onPressTableNumber,
   getTableTooltip,
   getTableSubLabel,
+  getTableSeatedCount,
 }: {
   gridCols: number;
   gridRows: number;
@@ -59,6 +60,7 @@ export function SeatingGridReadonly({
   onPressTableNumber?: (num: number | undefined) => void;
   getTableTooltip?: (t: TableItem) => string | null;
   getTableSubLabel?: (t: TableItem) => string | null;
+  getTableSeatedCount?: (t: TableItem) => number | null;
 }) {
   const isWeb = Platform.OS === 'web';
 
@@ -370,10 +372,14 @@ export function SeatingGridReadonly({
                   {/* Tables */}
                   {tables.map(t => {
                     const sz = tableCellSize(t.type, t.seats, t.orientation);
-                    // Dark-blue translucent (but visibly blue, not gray).
-                    const color = t.type === 'reserve' ? '#F59E0B' : colors.yaleBlue;
-                    const bg = hexToRgba(color, t.type === 'reserve' ? 0.13 : 0.40);
-                    const border = hexToRgba(color, t.type === 'reserve' ? 0.35 : 0.46);
+                    const isReserve = t.type === 'reserve';
+                    const seated = getTableSeatedCount?.(t);
+                    const cap = Number(t.seats ?? 0) || 0;
+                    const isFull = !isReserve && seated != null && cap > 0 && seated >= cap;
+                    // Dark-blue translucent by default, turn FULL tables to translucent green.
+                    const color = isReserve ? '#F59E0B' : isFull ? '#16A34A' : colors.yaleBlue;
+                    const bg = hexToRgba(color, isReserve ? 0.13 : isFull ? 0.24 : 0.30);
+                    const border = hexToRgba(color, isReserve ? 0.35 : isFull ? 0.44 : 0.40);
                     const sub = getTableSubLabel?.(t) ?? null;
                     return (
                       <Pressable
@@ -452,17 +458,21 @@ export function SeatingGridReadonly({
             {tables.map(t => {
               const sz = tableCellSize(t.type, t.seats, t.orientation);
               const isReserve = t.type === 'reserve';
+              const seated = getTableSeatedCount?.(t);
+              const cap = Number(t.seats ?? 0) || 0;
+              const isFull = !isReserve && seated != null && cap > 0 && seated >= cap;
               // Use a visible brand blue for fills (primary is very dark and looks gray when translucent)
-              const fillColor = isReserve ? '#F59E0B' : colors.yaleBlue;
-              const textColor = isReserve ? '#F59E0B' : colors.primary;
+              // FULL tables become translucent green.
+              const fillColor = isReserve ? '#F59E0B' : isFull ? '#16A34A' : colors.yaleBlue;
+              const textColor = isReserve ? '#F59E0B' : isFull ? '#166534' : colors.primary;
               const tip = getTableTooltip?.(t) ?? null;
               const sub = getTableSubLabel?.(t) ?? null;
               // Use rgba (instead of 8-digit hex) for consistent native rendering.
               // Make non-reserve tables visibly "brand blue" (not gray).
               // Dark-blue translucent: keep it transparent but push saturation so it doesn't read as gray.
-              const bg = hexToRgba(fillColor, isReserve ? 0.16 : 0.40);
-              const border = hexToRgba(fillColor, isReserve ? 0.35 : 0.46);
-              const glow = hexToRgba(fillColor, isReserve ? 0.28 : 0.26);
+              const bg = hexToRgba(fillColor, isReserve ? 0.16 : isFull ? 0.24 : 0.30);
+              const border = hexToRgba(fillColor, isReserve ? 0.35 : isFull ? 0.44 : 0.40);
+              const glow = hexToRgba(fillColor, isReserve ? 0.28 : isFull ? 0.24 : 0.26);
               return (
                 <Pressable
                   key={t.id}
@@ -513,7 +523,13 @@ export function SeatingGridReadonly({
                             boxShadow: hovered
                               ? `0 0 0 1px ${glow}, 0 14px 30px ${hexToRgba(fillColor, 0.16)}`
                               : `0 10px 22px ${hexToRgba(fillColor, 0.10)}`,
-                            filter: hovered ? 'saturate(1.42) brightness(1.03)' : 'saturate(1.35) brightness(1.01)',
+                            filter: isFull
+                              ? hovered
+                                ? 'saturate(1.25) brightness(1.03)'
+                                : 'saturate(1.18) brightness(1.01)'
+                              : hovered
+                                ? 'saturate(1.42) brightness(1.03)'
+                                : 'saturate(1.35) brightness(1.01)',
                           } as any)
                         : null),
                     },

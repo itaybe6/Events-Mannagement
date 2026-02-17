@@ -35,6 +35,7 @@ export function getDesktopNavForUserType(userType: UserType | null | undefined):
       { href: '/(couple)', label: 'בית', icon: 'home' },
       { href: '/(couple)/guests', label: 'אורחים', icon: 'people' },
       { href: '/(couple)/BrideGroomSeating', label: 'הושבה', icon: 'grid' },
+      { href: '/(couple)/TablesList', label: 'שולחנות', icon: 'list' },
       { href: '/(couple)/brideGroomProfile', label: 'פרופיל', icon: 'person-circle' },
     ],
   };

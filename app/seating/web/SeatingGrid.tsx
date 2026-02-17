@@ -966,8 +966,8 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
                     height: sz.h * CELL_SIZE,
                     // Use rgba for consistent rendering (avoid 8-digit hex quirks).
                     // Dark-blue translucent (but visibly blue, not gray).
-                    backgroundColor: isReserve ? 'rgba(245,158,11,0.18)' : 'rgba(0,53,102,0.40)',
-                    borderColor: isReserve ? 'rgba(245,158,11,0.35)' : 'rgba(0,53,102,0.46)',
+                    backgroundColor: isReserve ? 'rgba(245,158,11,0.18)' : 'rgba(0,53,102,0.30)',
+                    borderColor: isReserve ? 'rgba(245,158,11,0.35)' : 'rgba(0,53,102,0.40)',
                     ...(Platform.OS === 'web' && !isReserve ? ({ filter: 'saturate(1.35) brightness(1.02)' } as any) : null),
                   },
                   isSelected ? styles.selectedRing : null,
