@@ -2323,11 +2323,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(248,250,252,0.95)',
   },
   moveHeaderRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-start',
     gap: 10,
     width: '100%',
+    ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
   },
   moveHeaderIcon: {
     width: 36,
@@ -2340,7 +2341,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   moveHeaderTextWrap: { flex: 1, minWidth: 0, alignItems: 'flex-end' },
-  moveMetaRow: { marginTop: 6, flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-start' },
+  moveMetaRow: {
+    marginTop: 6,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    justifyContent: 'flex-start',
+    ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
+  },
   moveMetaPill: {
     paddingHorizontal: 10,
     paddingVertical: 8,
@@ -2397,13 +2405,14 @@ const styles = StyleSheet.create({
   moveTableItemActive: { borderColor: 'rgba(6,23,62,0.35)', backgroundColor: 'rgba(6,23,62,0.06)' },
   moveTableItemWarn: { borderColor: 'rgba(245,158,11,0.35)', backgroundColor: 'rgba(245,158,11,0.06)' },
   // Stable physical layout on web: keep radio on the right and text close to it.
+  // Use `row` + `direction: rtl` to avoid row-reverse + direction interactions.
   moveTableTop: {
-    flexDirection: 'row-reverse',
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-start',
     gap: 10,
     width: '100%',
-    ...(Platform.OS === 'web' ? ({ direction: 'ltr' } as any) : null),
+    ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
   },
   moveTableTitleWrap: {
     flex: 1,
