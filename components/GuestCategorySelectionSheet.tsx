@@ -331,6 +331,19 @@ export function GuestCategorySelectionSheet({
                         placeholderTextColor="rgba(15,23,42,0.45)"
                         style={styles.input}
                         returnKeyType="done"
+                        // Don't auto-create on Enter/Done; require explicit confirmation button.
+                        blurOnSubmit={false}
+                        onSubmitEditing={() => {
+                          // Intentionally no-op.
+                        }}
+                        onKeyPress={(e) => {
+                          if (Platform.OS !== 'web') return;
+                          const key = (e as any)?.nativeEvent?.key;
+                          if (key === 'Enter') {
+                            (e as any)?.preventDefault?.();
+                            (e as any)?.stopPropagation?.();
+                          }
+                        }}
                       />
                     </View>
 
@@ -442,42 +455,80 @@ export function GuestCategorySelectionSheet({
 
               {/* Bottom action */}
               <View pointerEvents="box-none" style={styles.bottomArea}>
-                <LinearGradient
-                  colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.92)', 'rgba(255,255,255,1)']}
-                  style={[styles.bottomGradient, { paddingBottom: bottomPadding }]}
-                >
-                  <Pressable
-                    onPress={handleConfirm}
-                    disabled={
-                      creating ||
-                      (mode === 'existing' && !selectedCategory) ||
-                      (mode === 'new' && !newName.trim())
-                    }
-                    style={({ pressed }) => [
-                      styles.primaryBtn,
-                      {
-                        backgroundColor:
-                          creating ||
-                          (mode === 'existing' && !selectedCategory) ||
-                          (mode === 'new' && !newName.trim())
-                            ? 'rgba(19,91,236,0.45)'
-                            : sheetPrimary,
-                        transform: [{ scale: pressed ? 0.99 : 1 }],
-                      },
-                    ]}
+                {Platform.OS === 'web' ? (
+                  // On web, LinearGradient inside Modal can fail to render on some setups.
+                  // Use a plain surface so the confirm button is always visible.
+                  <View style={[styles.bottomGradient, styles.bottomGradientWeb, { paddingBottom: bottomPadding }]}>
+                    <Pressable
+                      onPress={handleConfirm}
+                      disabled={
+                        creating ||
+                        (mode === 'existing' && !selectedCategory) ||
+                        (mode === 'new' && !newName.trim())
+                      }
+                      style={({ pressed }) => [
+                        styles.primaryBtn,
+                        {
+                          backgroundColor:
+                            creating ||
+                            (mode === 'existing' && !selectedCategory) ||
+                            (mode === 'new' && !newName.trim())
+                              ? 'rgba(19,91,236,0.45)'
+                              : sheetPrimary,
+                          transform: [{ scale: pressed ? 0.99 : 1 }],
+                        },
+                      ]}
+                    >
+                      <Ionicons name="checkmark" size={20} color="#fff" style={{ marginLeft: 8 }} />
+                      <Text style={styles.primaryBtnText}>
+                        {mode === 'new'
+                          ? creating
+                            ? 'מוסיף...'
+                            : enableSides
+                              ? 'הוסף קטגוריה'
+                              : 'שמור קטגוריה'
+                          : 'בחירה'}
+                      </Text>
+                    </Pressable>
+                  </View>
+                ) : (
+                  <LinearGradient
+                    colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.92)', 'rgba(255,255,255,1)']}
+                    style={[styles.bottomGradient, { paddingBottom: bottomPadding }]}
                   >
-                    <Ionicons name="checkmark" size={20} color="#fff" style={{ marginLeft: 8 }} />
-                    <Text style={styles.primaryBtnText}>
-                      {mode === 'new'
-                        ? creating
-                          ? 'מוסיף...'
-                          : enableSides
-                            ? 'הוסף קטגוריה'
-                            : 'שמור קטגוריה'
-                        : 'בחירה'}
-                    </Text>
-                  </Pressable>
-                </LinearGradient>
+                    <Pressable
+                      onPress={handleConfirm}
+                      disabled={
+                        creating ||
+                        (mode === 'existing' && !selectedCategory) ||
+                        (mode === 'new' && !newName.trim())
+                      }
+                      style={({ pressed }) => [
+                        styles.primaryBtn,
+                        {
+                          backgroundColor:
+                            creating ||
+                            (mode === 'existing' && !selectedCategory) ||
+                            (mode === 'new' && !newName.trim())
+                              ? 'rgba(19,91,236,0.45)'
+                              : sheetPrimary,
+                          transform: [{ scale: pressed ? 0.99 : 1 }],
+                        },
+                      ]}
+                    >
+                      <Ionicons name="checkmark" size={20} color="#fff" style={{ marginLeft: 8 }} />
+                      <Text style={styles.primaryBtnText}>
+                        {mode === 'new'
+                          ? creating
+                            ? 'מוסיף...'
+                            : enableSides
+                              ? 'הוסף קטגוריה'
+                              : 'שמור קטגוריה'
+                          : 'בחירה'}
+                      </Text>
+                    </Pressable>
+                  </LinearGradient>
+                )}
               </View>
             </BlurView>
           </Animated.View>
@@ -655,10 +706,16 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
+    zIndex: 20,
   },
   bottomGradient: {
     paddingHorizontal: 20,
     paddingTop: 18,
+  },
+  bottomGradientWeb: {
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.06)',
   },
   primaryBtn: {
     height: 56,

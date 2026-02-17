@@ -1,14 +1,12 @@
-import { useCallback, useMemo, useReducer } from 'react';
+import { useMemo, useReducer } from 'react';
 import {
   clamp,
   FIXED_SEATS,
   DEFAULT_GRID_COLS,
   DEFAULT_GRID_ROWS,
   makeId,
-  type Orientation,
   type PlacedTable,
   type TableConfig,
-  type TableType,
   tableCellSize,
   type TextLabel,
   type Zone,
@@ -41,8 +39,7 @@ type Action =
   | { type: 'resizeZone'; id: string; widthCells: number; heightCells: number }
   | { type: 'renameZone'; id: string; name: string }
   | { type: 'renameLabel'; id: string; text: string }
-  | { type: 'renumberTable'; id: string; num: number | undefined }
-  ;
+  | { type: 'renumberTable'; id: string; num: number | undefined };
 
 const initialState: State = {
   gridCols: DEFAULT_GRID_COLS,
@@ -73,7 +70,8 @@ function reducer(state: State, action: Action): State {
       merged.tables = Array.isArray(action.state.tables) ? action.state.tables : state.tables;
       merged.zones = Array.isArray(action.state.zones) ? action.state.zones : state.zones;
       merged.labels = Array.isArray(action.state.labels) ? action.state.labels : state.labels;
-      merged.tableCounter = typeof action.state.tableCounter === 'number' ? action.state.tableCounter : state.tableCounter;
+      merged.tableCounter =
+        typeof action.state.tableCounter === 'number' ? action.state.tableCounter : state.tableCounter;
       merged.gridCols = typeof action.state.gridCols === 'number' ? action.state.gridCols : state.gridCols;
       merged.gridRows = typeof action.state.gridRows === 'number' ? action.state.gridRows : state.gridRows;
       return merged;
@@ -110,15 +108,15 @@ function reducer(state: State, action: Action): State {
       if (selected.size === 0) return state;
       return {
         ...state,
-        tables: state.tables.filter(t => !selected.has(t.id)),
-        zones: state.zones.filter(z => !selected.has(z.id)),
-        labels: state.labels.filter(l => !selected.has(l.id)),
+        tables: state.tables.filter((t) => !selected.has(t.id)),
+        zones: state.zones.filter((z) => !selected.has(z.id)),
+        labels: state.labels.filter((l) => !selected.has(l.id)),
         selectedIds: new Set(),
       };
     }
 
     case 'removeTable': {
-      const nextTables = state.tables.filter(t => t.id !== action.id);
+      const nextTables = state.tables.filter((t) => t.id !== action.id);
       const nextSelected = new Set(state.selectedIds);
       nextSelected.delete(action.id);
       return { ...state, tables: nextTables, selectedIds: nextSelected };
@@ -160,7 +158,7 @@ function reducer(state: State, action: Action): State {
         ...state,
         tables: [...state.tables, ...nextTables],
         tableCounter: counter,
-        selectedIds: new Set(nextTables.map(t => t.id)),
+        selectedIds: new Set(nextTables.map((t) => t.id)),
       };
     }
 
@@ -191,7 +189,7 @@ function reducer(state: State, action: Action): State {
     }
 
     case 'moveTable': {
-      const idx = state.tables.findIndex(t => t.id === action.id);
+      const idx = state.tables.findIndex((t) => t.id === action.id);
       if (idx < 0) return state;
       const moving = state.tables[idx];
       const { w, h } = tableCellSize(moving.type, moving.seats, moving.orientation);
@@ -206,15 +204,15 @@ function reducer(state: State, action: Action): State {
         return { ...state, tables: next };
       }
 
-      const selectedTables = state.tables.filter(t => selected.has(t.id));
-      const minX = Math.min(...selectedTables.map(t => t.gridX));
-      const minY = Math.min(...selectedTables.map(t => t.gridY));
+      const selectedTables = state.tables.filter((t) => selected.has(t.id));
+      const minX = Math.min(...selectedTables.map((t) => t.gridX));
+      const minY = Math.min(...selectedTables.map((t) => t.gridY));
 
       const maxX = Math.max(
-        ...selectedTables.map(t => t.gridX + tableCellSize(t.type, t.seats, t.orientation).w)
+        ...selectedTables.map((t) => t.gridX + tableCellSize(t.type, t.seats, t.orientation).w)
       );
       const maxY = Math.max(
-        ...selectedTables.map(t => t.gridY + tableCellSize(t.type, t.seats, t.orientation).h)
+        ...selectedTables.map((t) => t.gridY + tableCellSize(t.type, t.seats, t.orientation).h)
       );
 
       const bboxW = Math.max(1, maxX - minX);
@@ -227,7 +225,7 @@ function reducer(state: State, action: Action): State {
       const cdx = clampedBox.x - minX;
       const cdy = clampedBox.y - minY;
 
-      const next = state.tables.map(t => {
+      const next = state.tables.map((t) => {
         if (!selected.has(t.id)) return t;
         const sz = tableCellSize(t.type, t.seats, t.orientation);
         const p = clampRectToGrid(state.gridCols, state.gridRows, t.gridX + cdx, t.gridY + cdy, sz.w, sz.h);
@@ -238,7 +236,7 @@ function reducer(state: State, action: Action): State {
     }
 
     case 'moveZone': {
-      const idx = state.zones.findIndex(z => z.id === action.id);
+      const idx = state.zones.findIndex((z) => z.id === action.id);
       if (idx < 0) return state;
       const z = state.zones[idx];
       const p = clampRectToGrid(state.gridCols, state.gridRows, action.gridX, action.gridY, z.widthCells, z.heightCells);
@@ -248,7 +246,7 @@ function reducer(state: State, action: Action): State {
     }
 
     case 'moveLabel': {
-      const idx = state.labels.findIndex(l => l.id === action.id);
+      const idx = state.labels.findIndex((l) => l.id === action.id);
       if (idx < 0) return state;
       const l = state.labels[idx];
       const p = clampRectToGrid(state.gridCols, state.gridRows, action.gridX, action.gridY, 1, 1);
@@ -258,7 +256,7 @@ function reducer(state: State, action: Action): State {
     }
 
     case 'resizeZone': {
-      const idx = state.zones.findIndex(z => z.id === action.id);
+      const idx = state.zones.findIndex((z) => z.id === action.id);
       if (idx < 0) return state;
       const z = state.zones[idx];
       const w = clamp(Math.round(action.widthCells), 2, state.gridCols);
@@ -270,15 +268,24 @@ function reducer(state: State, action: Action): State {
     }
 
     case 'renameZone': {
-      return { ...state, zones: state.zones.map(z => (z.id === action.id ? { ...z, name: action.name } : z)) };
+      return {
+        ...state,
+        zones: state.zones.map((z) => (z.id === action.id ? { ...z, name: action.name } : z)),
+      };
     }
 
     case 'renameLabel': {
-      return { ...state, labels: state.labels.map(l => (l.id === action.id ? { ...l, text: action.text } : l)) };
+      return {
+        ...state,
+        labels: state.labels.map((l) => (l.id === action.id ? { ...l, text: action.text } : l)),
+      };
     }
 
     case 'renumberTable': {
-      return { ...state, tables: state.tables.map(t => (t.id === action.id ? { ...t, number: action.num } : t)) };
+      return {
+        ...state,
+        tables: state.tables.map((t) => (t.id === action.id ? { ...t, number: action.num } : t)),
+      };
     }
 
     default:

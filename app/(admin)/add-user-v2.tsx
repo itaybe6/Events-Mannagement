@@ -14,6 +14,8 @@ import {
   Image,
   ActivityIndicator,
   I18nManager,
+  Pressable,
+  useWindowDimensions,
 } from 'react-native';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
@@ -46,11 +48,22 @@ const baseShadow = {
 
 type UserType = 'event_owner' | 'admin' | 'employee';
 
-export default function AddUserScreenV2() {
+type AddUserScreenV2Props = {
+  /**
+   * `default`: mobile-first full-screen flow (existing).
+   * `webPremiumEmbedded`: intended to be rendered inside a centered web "card" wrapper.
+   */
+  variant?: 'default' | 'webPremiumEmbedded';
+};
+
+export default function AddUserScreenV2({ variant = 'default' }: AddUserScreenV2Props) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   // This screen is intentionally "light" (per design request), regardless of device theme.
   const isDark = false;
+  const { width } = useWindowDimensions();
+  const isSm = width >= 640;
+  const isWebPremium = variant === 'webPremiumEmbedded';
   const { isLoggedIn, userType } = useUserStore();
   const addDemoUser = useDemoUsersStore((state) => state.addUser);
   const setTabBarVisible = useLayoutStore((s) => s.setTabBarVisible);
@@ -288,271 +301,578 @@ export default function AddUserScreenV2() {
     );
   };
 
+  const WebRoleCard = ({
+    title,
+    subtitle,
+    value,
+    icon,
+  }: {
+    title: string;
+    subtitle: string;
+    value: UserType;
+    icon: keyof typeof MaterialIcons.glyphMap;
+  }) => {
+    const active = newUser.user_type === value;
+    return (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={title}
+        onPress={() => setNewUser((prev) => ({ ...prev, user_type: value }))}
+        style={({ hovered, pressed }: any) => [
+          styles.webRoleCard,
+          active ? styles.webRoleCardActive : styles.webRoleCardInactive,
+          Platform.OS === 'web' && hovered ? styles.webRoleCardHover : null,
+          pressed ? styles.webRoleCardPressed : null,
+        ]}
+      >
+        <View style={[styles.webRoleIconWrap, active ? styles.webRoleIconWrapActive : null]}>
+          <MaterialIcons name={icon} size={20} color={active ? '#ffffff' : '#475569'} />
+        </View>
+        <Text style={[styles.webRoleTitle, active ? styles.webRoleTitleActive : null]}>{title}</Text>
+        <Text style={styles.webRoleSubtitle}>{subtitle}</Text>
+      </Pressable>
+    );
+  };
+
+  const WebFloatingField = ({
+    id,
+    label,
+    value,
+    onChangeText,
+    icon,
+    keyboardType,
+    autoCapitalize,
+    autoCorrect,
+    secureTextEntry,
+    showToggle,
+    onPressToggle,
+    focusedKey,
+    textAlign,
+  }: {
+    id: string;
+    label: string;
+    value: string;
+    onChangeText: (t: string) => void;
+    icon: keyof typeof MaterialIcons.glyphMap;
+    keyboardType?: any;
+    autoCapitalize?: any;
+    autoCorrect?: boolean;
+    secureTextEntry?: boolean;
+    showToggle?: boolean;
+    onPressToggle?: () => void;
+    focusedKey: NonNullable<typeof focusedField>;
+    textAlign?: 'right' | 'left';
+  }) => {
+    const isFocused = focusedField === focusedKey;
+    const floated = isFocused || value.trim().length > 0;
+
+    return (
+      <View style={styles.webFloatingWrap}>
+        <TextInput
+          accessibilityLabel={label}
+          value={value}
+          onChangeText={onChangeText}
+          onFocus={() => setFocusedField(focusedKey)}
+          onBlur={() => setFocusedField((f) => (f === focusedKey ? null : f))}
+          placeholder=" "
+          placeholderTextColor="transparent"
+          keyboardType={keyboardType}
+          autoCapitalize={autoCapitalize}
+          autoCorrect={autoCorrect}
+          secureTextEntry={secureTextEntry}
+          style={[
+            styles.webFloatingInput,
+            isFocused ? styles.webFloatingInputFocused : null,
+            { textAlign: textAlign ?? rtlTextAlign },
+          ]}
+        />
+
+        <Text style={[styles.webFloatingLabel, floated ? styles.webFloatingLabelFloated : null]} numberOfLines={1}>
+          {label}
+        </Text>
+
+        <MaterialIcons
+          name={icon}
+          size={20}
+          color={isFocused ? ui.primary : '#94a3b8'}
+          style={styles.webFloatingLeftIcon}
+        />
+
+        {showToggle ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="הצג/הסתר"
+            onPress={onPressToggle}
+            style={({ pressed }: any) => [styles.webFloatingRightBtn, pressed ? { opacity: 0.85 } : null]}
+          >
+            <MaterialIcons
+              name={secureTextEntry ? 'visibility' : 'visibility-off'}
+              size={20}
+              color={isFocused ? ui.primary : '#94a3b8'}
+            />
+          </Pressable>
+        ) : null}
+      </View>
+    );
+  };
+
   return (
-    <View style={[styles.screen, { backgroundColor: theme.bg, paddingTop: insets.top }]}>
+    <View
+      style={[
+        styles.screen,
+        isWebPremium
+          ? ([
+              styles.webPremiumScreen,
+              Platform.OS === 'web'
+                ? ({
+                    // helps ensure inputs and layout behave properly in RTL on web
+                    direction: 'rtl',
+                  } as any)
+                : null,
+            ] as any)
+          : { backgroundColor: theme.bg, paddingTop: insets.top },
+      ]}
+    >
       <Stack.Screen options={{ headerShown: false }} />
 
       {/* Header (stable: no row-reverse tricks, use RTL-aware direction) */}
-      <View style={[styles.headerSurface, { backgroundColor: theme.headerBg, borderBottomColor: theme.border }]}>
-        <View style={styles.headerRow}>
-          <TouchableOpacity
-            accessibilityRole="button"
-            accessibilityLabel="חזרה"
-            onPress={() => router.back()}
-            activeOpacity={0.85}
-            style={styles.backButton}
+      {!isWebPremium ? (
+        <>
+          <View style={[styles.headerSurface, { backgroundColor: theme.headerBg, borderBottomColor: theme.border }]}>
+            <View style={styles.headerRow}>
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="חזרה"
+                onPress={() => router.back()}
+                activeOpacity={0.85}
+                style={styles.backButton}
+              >
+                <MaterialIcons name="arrow-back-ios" size={20} color={ui.primary} />
+              </TouchableOpacity>
+
+              <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>
+                הוספת משתמש חדש
+              </Text>
+            </View>
+          </View>
+
+          <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={Platform.OS === 'ios' ? 'height' : 'height'}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
           >
-            <MaterialIcons name="arrow-back-ios" size={20} color={ui.primary} />
-          </TouchableOpacity>
+            <ScrollView
+              style={{ flex: 1 }}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={[
+                styles.content,
+                {
+                  // When keyboard is open the footer is behind it; avoid leaving a big empty "gray" gap.
+                  paddingBottom: keyboardVisible ? 24 : 40 + 12 + 48 + Math.max(insets.bottom, 14),
+                },
+              ]}
+              keyboardShouldPersistTaps="handled"
+            >
+              {isDemoMode && (
+                <View
+                  style={[
+                    styles.demoNote,
+                    {
+                      borderColor: 'rgba(6, 23, 62, 0.18)',
+                      backgroundColor: 'rgba(6, 23, 62, 0.08)',
+                    },
+                  ]}
+                >
+                  <Ionicons name="information-circle" size={18} color={ui.primary} style={{ marginLeft: 8 }} />
+                  <Text style={[styles.demoNoteText, { color: theme.text }]}>
+                    מצב דמו: הנתונים נשמרים מקומית ולא בדאטאבייס.
+                  </Text>
+                </View>
+              )}
 
-          <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>
-            הוספת משתמש חדש
-          </Text>
-        </View>
-      </View>
+              {/* Avatar */}
+              <View style={styles.avatarSection}>
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel={avatar ? 'החלף תמונה' : 'הוסף תמונה'}
+                  onPress={handlePickAvatar}
+                  activeOpacity={0.85}
+                  style={styles.avatarPressable}
+                >
+                  <View style={[styles.avatarCircle, { backgroundColor: theme.inputBg, borderColor: theme.border }]}>
+                    {avatar?.uri ? (
+                      <Image source={{ uri: avatar.uri }} style={styles.avatarImage} />
+                    ) : (
+                      <MaterialIcons name="add-a-photo" size={30} color={isDark ? '#64748b' : '#94a3b8'} />
+                    )}
+                  </View>
+                  <Text style={[styles.avatarCta, { marginTop: 10 }]}>הוסף תמונה</Text>
+                </TouchableOpacity>
 
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'height' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-      >
+                {!!avatar && (
+                  <TouchableOpacity
+                    accessibilityRole="button"
+                    accessibilityLabel="הסר תמונה"
+                    onPress={() => setAvatar(null)}
+                    activeOpacity={0.85}
+                    style={styles.removeAvatarBtn}
+                  >
+                    <Ionicons name="trash-outline" size={16} color="#F44336" style={{ marginLeft: 6 }} />
+                    <Text style={styles.removeAvatarText}>הסר</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {/* Fields */}
+              <View style={styles.fields}>
+                <View style={styles.fieldGroup}>
+                  <Text style={[styles.label, { color: theme.muted }]}>שם מלא</Text>
+                  <TextInput
+                    style={[
+                      styles.input,
+                      styles.inputRtl,
+                      { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text },
+                      focusedField === 'name' && styles.inputFocused,
+                    ]}
+                    value={newUser.name}
+                    onChangeText={(text) => setNewUser((prev) => ({ ...prev, name: text }))}
+                    placeholder="ישראל ישראלי"
+                    placeholderTextColor={theme.faint}
+                    autoCapitalize="words"
+                    onFocus={() => setFocusedField('name')}
+                    onBlur={() => setFocusedField((f) => (f === 'name' ? null : f))}
+                  />
+                </View>
+
+                <View style={styles.fieldGroup}>
+                  <Text style={[styles.label, { color: theme.muted }]}>אימייל</Text>
+                  <TextInput
+                    style={[
+                      styles.input,
+                      styles.inputLtr,
+                      { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text },
+                      focusedField === 'email' && styles.inputFocused,
+                    ]}
+                    value={newUser.email}
+                    onChangeText={(text) => setNewUser((prev) => ({ ...prev, email: text }))}
+                    placeholder="email@example.com"
+                    placeholderTextColor={theme.faint}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    onFocus={() => setFocusedField('email')}
+                    onBlur={() => setFocusedField((f) => (f === 'email' ? null : f))}
+                  />
+                </View>
+
+                <View style={styles.fieldGroup}>
+                  <Text style={[styles.label, { color: theme.muted }]}>טלפון</Text>
+                  <TextInput
+                    style={[
+                      styles.input,
+                      styles.inputLtr,
+                      { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text },
+                      focusedField === 'phone' && styles.inputFocused,
+                    ]}
+                    value={newUser.phone}
+                    onChangeText={(text) => setNewUser((prev) => ({ ...prev, phone: text }))}
+                    placeholder="050-0000000"
+                    placeholderTextColor={theme.faint}
+                    keyboardType="phone-pad"
+                    onFocus={() => setFocusedField('phone')}
+                    onBlur={() => setFocusedField((f) => (f === 'phone' ? null : f))}
+                  />
+                </View>
+              </View>
+
+              <View style={[styles.divider, { backgroundColor: theme.divider }]} />
+
+              <View style={styles.fields}>
+                <View style={styles.fieldGroup}>
+                  <Text style={[styles.label, { color: theme.muted }]}>סיסמה</Text>
+                  <View style={styles.inputRow}>
+                    <TextInput
+                      style={[
+                        styles.input,
+                        styles.inputInRow,
+                        styles.inputRtl,
+                        { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text },
+                        focusedField === 'password' && styles.inputFocused,
+                      ]}
+                      value={newUser.password}
+                      onChangeText={(text) => setNewUser((prev) => ({ ...prev, password: text }))}
+                      placeholder="********"
+                      placeholderTextColor={theme.faint}
+                      secureTextEntry={!showPassword}
+                      onFocus={() => setFocusedField('password')}
+                      onBlur={() => setFocusedField((f) => (f === 'password' ? null : f))}
+                    />
+                    <TouchableOpacity
+                      accessibilityRole="button"
+                      accessibilityLabel={showPassword ? 'הסתר סיסמה' : 'הצג סיסמה'}
+                      onPress={() => setShowPassword((v) => !v)}
+                      activeOpacity={0.7}
+                      style={styles.eyeBtn}
+                    >
+                      <MaterialIcons
+                        name={showPassword ? 'visibility-off' : 'visibility'}
+                        size={20}
+                        color={isDark ? '#94a3b8' : '#64748b'}
+                      />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                <View style={styles.fieldGroup}>
+                  <Text style={[styles.label, { color: theme.muted }]}>אימות סיסמה</Text>
+                  <View style={styles.inputRow}>
+                    <TextInput
+                      style={[
+                        styles.input,
+                        styles.inputInRow,
+                        styles.inputRtl,
+                        { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text },
+                        focusedField === 'confirmPassword' && styles.inputFocused,
+                      ]}
+                      value={newUser.confirmPassword}
+                      onChangeText={(text) => setNewUser((prev) => ({ ...prev, confirmPassword: text }))}
+                      placeholder="********"
+                      placeholderTextColor={theme.faint}
+                      secureTextEntry={!showConfirmPassword}
+                      onFocus={() => setFocusedField('confirmPassword')}
+                      onBlur={() => setFocusedField((f) => (f === 'confirmPassword' ? null : f))}
+                    />
+                    <TouchableOpacity
+                      accessibilityRole="button"
+                      accessibilityLabel={showConfirmPassword ? 'הסתר אימות סיסמה' : 'הצג אימות סיסמה'}
+                      onPress={() => setShowConfirmPassword((v) => !v)}
+                      activeOpacity={0.7}
+                      style={styles.eyeBtn}
+                    >
+                      <MaterialIcons
+                        name={showConfirmPassword ? 'visibility-off' : 'visibility'}
+                        size={20}
+                        color={isDark ? '#94a3b8' : '#64748b'}
+                      />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+
+              {/* Role segmented control (existing) */}
+              <View style={styles.roleSection}>
+                <Text style={[styles.roleLabel, { color: theme.muted }]}>תפקיד</Text>
+                <View
+                  style={[
+                    styles.roleSegmentV3,
+                    {
+                      backgroundColor: '#E2E8F0', // slate-200 (opaque + visible)
+                      borderColor: '#CBD5E1', // slate-300
+                      flexDirection: isRTL ? 'row' : 'row-reverse',
+                    },
+                  ]}
+                >
+                  <RoleOption label="עובד" value="employee" />
+                  <RoleOption label="מנהל" value="admin" />
+                  <RoleOption label="בעל אירוע" value="event_owner" />
+                </View>
+              </View>
+            </ScrollView>
+          </KeyboardAvoidingView>
+
+          {/* Sticky bottom action (fixed: not affected by keyboard avoiding) */}
+          <View
+            style={[
+              styles.footerBar,
+              {
+                paddingBottom: Math.max(insets.bottom, 14),
+                backgroundColor: theme.bg,
+                borderTopColor: 'rgba(15, 23, 42, 0.06)',
+              },
+            ]}
+          >
+            <TouchableOpacity
+              onPress={handleAddUser}
+              disabled={loading}
+              activeOpacity={0.88}
+              style={[styles.primaryButtonV3, loading && { opacity: 0.75 }]}
+            >
+              {loading ? <ActivityIndicator color="white" /> : <Text style={styles.primaryButtonText}>שמור משתמש</Text>}
+            </TouchableOpacity>
+          </View>
+        </>
+      ) : (
         <ScrollView
           style={{ flex: 1 }}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={[
-            styles.content,
-            {
-              // When keyboard is open the footer is behind it; avoid leaving a big empty "gray" gap.
-              paddingBottom: keyboardVisible ? 24 : 40 + 12 + 48 + Math.max(insets.bottom, 14),
-            },
-          ]}
+          contentContainerStyle={styles.webPremiumContent}
           keyboardShouldPersistTaps="handled"
         >
-          {isDemoMode && (
-            <View
-              style={[
-                styles.demoNote,
-                {
-                  borderColor: 'rgba(6, 23, 62, 0.18)',
-                  backgroundColor: 'rgba(6, 23, 62, 0.08)',
-                },
-              ]}
-            >
+          {isDemoMode ? (
+            <View style={styles.webDemoNote}>
               <Ionicons name="information-circle" size={18} color={ui.primary} style={{ marginLeft: 8 }} />
-              <Text style={[styles.demoNoteText, { color: theme.text }]}>מצב דמו: הנתונים נשמרים מקומית ולא בדאטאבייס.</Text>
+              <Text style={styles.webDemoNoteText}>מצב דמו: הנתונים נשמרים מקומית ולא בדאטאבייס.</Text>
             </View>
-          )}
+          ) : null}
 
-          {/* Avatar */}
-          <View style={styles.avatarSection}>
-            <TouchableOpacity
-              accessibilityRole="button"
-              accessibilityLabel={avatar ? 'החלף תמונה' : 'הוסף תמונה'}
-              onPress={handlePickAvatar}
-              activeOpacity={0.85}
-              style={styles.avatarPressable}
-            >
-              <View style={[styles.avatarCircle, { backgroundColor: theme.inputBg, borderColor: theme.border }]}>
-                {avatar?.uri ? (
-                  <Image source={{ uri: avatar.uri }} style={styles.avatarImage} />
-                ) : (
-                  <MaterialIcons name="add-a-photo" size={30} color={isDark ? '#64748b' : '#94a3b8'} />
-                )}
-              </View>
-              <Text style={[styles.avatarCta, { marginTop: 10 }]}>הוסף תמונה</Text>
-            </TouchableOpacity>
-
-            {!!avatar && (
-              <TouchableOpacity
+          <View style={styles.webHeader}>
+            <View style={styles.webAvatarHeroWrap}>
+              <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="הסר תמונה"
-                onPress={() => setAvatar(null)}
-                activeOpacity={0.85}
-                style={styles.removeAvatarBtn}
+                accessibilityLabel={avatar ? 'החלף תמונה' : 'הוסף תמונה'}
+                onPress={handlePickAvatar}
+                style={({ hovered, pressed }: any) => [
+                  styles.webAvatarHeroCircle,
+                  Platform.OS === 'web' && hovered ? styles.webAvatarHeroCircleHover : null,
+                  pressed ? { opacity: 0.9 } : null,
+                ]}
               >
-                <Ionicons name="trash-outline" size={16} color="#F44336" style={{ marginLeft: 6 }} />
-                <Text style={styles.removeAvatarText}>הסר</Text>
-              </TouchableOpacity>
-            )}
+                {avatar?.uri ? (
+                  <Image source={{ uri: avatar.uri }} style={styles.webAvatarHeroImage} />
+                ) : (
+                  <MaterialIcons name="add-a-photo" size={36} color="#94a3b8" />
+                )}
+                <View style={styles.webAvatarHeroEditBadge}>
+                  <MaterialIcons name="edit" size={14} color={ui.primary} />
+                </View>
+              </Pressable>
+            </View>
+            <Text style={styles.webTitle}>הוספת משתמש חדש</Text>
+            <Text style={styles.webSubtitle}>מלא את פרטי המשתמש וקבע הרשאות גישה למערכת</Text>
           </View>
 
-          {/* Fields */}
-          <View style={styles.fields}>
-            <View style={styles.fieldGroup}>
-              <Text style={[styles.label, { color: theme.muted }]}>שם מלא</Text>
-              <TextInput
-                style={[
-                  styles.input,
-                  styles.inputRtl,
-                  { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text },
-                  focusedField === 'name' && styles.inputFocused,
-                ]}
-                value={newUser.name}
-                onChangeText={(text) => setNewUser((prev) => ({ ...prev, name: text }))}
-                placeholder="ישראל ישראלי"
-                placeholderTextColor={theme.faint}
-                autoCapitalize="words"
-                onFocus={() => setFocusedField('name')}
-                onBlur={() => setFocusedField((f) => (f === 'name' ? null : f))}
-              />
+          <View style={styles.webForm}>
+            <View style={[styles.webGridRow, { flexDirection: isSm ? 'row' : 'column' }]}>
+              <View style={styles.webGridCell}>
+                <WebFloatingField
+                  id="fullname"
+                  label="שם מלא"
+                  icon="person"
+                  value={newUser.name}
+                  onChangeText={(t) => setNewUser((p) => ({ ...p, name: t }))}
+                  autoCapitalize="words"
+                  autoCorrect={false}
+                  focusedKey="name"
+                  textAlign="right"
+                />
+              </View>
+              <View style={styles.webGridCell}>
+                <WebFloatingField
+                  id="email"
+                  label="כתובת אימייל"
+                  icon="mail"
+                  value={newUser.email}
+                  onChangeText={(t) => setNewUser((p) => ({ ...p, email: t }))}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  focusedKey="email"
+                  textAlign="left"
+                />
+              </View>
             </View>
 
-            <View style={styles.fieldGroup}>
-              <Text style={[styles.label, { color: theme.muted }]}>אימייל</Text>
-              <TextInput
-                style={[
-                  styles.input,
-                  styles.inputLtr,
-                  { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text },
-                  focusedField === 'email' && styles.inputFocused,
-                ]}
-                value={newUser.email}
-                onChangeText={(text) => setNewUser((prev) => ({ ...prev, email: text }))}
-                placeholder="email@example.com"
-                placeholderTextColor={theme.faint}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                onFocus={() => setFocusedField('email')}
-                onBlur={() => setFocusedField((f) => (f === 'email' ? null : f))}
-              />
-            </View>
+            <WebFloatingField
+              id="phone"
+              label="מספר טלפון"
+              icon="call"
+              value={newUser.phone}
+              onChangeText={(t) => setNewUser((p) => ({ ...p, phone: t }))}
+              keyboardType="phone-pad"
+              autoCapitalize="none"
+              autoCorrect={false}
+              focusedKey="phone"
+              textAlign="left"
+            />
 
-            <View style={styles.fieldGroup}>
-              <Text style={[styles.label, { color: theme.muted }]}>טלפון</Text>
-              <TextInput
-                style={[
-                  styles.input,
-                  styles.inputLtr,
-                  { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text },
-                  focusedField === 'phone' && styles.inputFocused,
-                ]}
-                value={newUser.phone}
-                onChangeText={(text) => setNewUser((prev) => ({ ...prev, phone: text }))}
-                placeholder="050-0000000"
-                placeholderTextColor={theme.faint}
-                keyboardType="phone-pad"
-                onFocus={() => setFocusedField('phone')}
-                onBlur={() => setFocusedField((f) => (f === 'phone' ? null : f))}
-              />
-            </View>
-          </View>
-
-          <View style={[styles.divider, { backgroundColor: theme.divider }]} />
-
-          <View style={styles.fields}>
-            <View style={styles.fieldGroup}>
-              <Text style={[styles.label, { color: theme.muted }]}>סיסמה</Text>
-              <View style={styles.inputRow}>
-                <TextInput
-                  style={[
-                    styles.input,
-                    styles.inputInRow,
-                    styles.inputRtl,
-                    { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text },
-                    focusedField === 'password' && styles.inputFocused,
-                  ]}
+            <View style={[styles.webGridRow, { flexDirection: isSm ? 'row' : 'column' }]}>
+              <View style={styles.webGridCell}>
+                <WebFloatingField
+                  id="password"
+                  label="סיסמה"
+                  icon="lock"
                   value={newUser.password}
-                  onChangeText={(text) => setNewUser((prev) => ({ ...prev, password: text }))}
-                  placeholder="********"
-                  placeholderTextColor={theme.faint}
+                  onChangeText={(t) => setNewUser((p) => ({ ...p, password: t }))}
+                  autoCapitalize="none"
+                  autoCorrect={false}
                   secureTextEntry={!showPassword}
-                  onFocus={() => setFocusedField('password')}
-                  onBlur={() => setFocusedField((f) => (f === 'password' ? null : f))}
+                  showToggle
+                  onPressToggle={() => setShowPassword((v) => !v)}
+                  focusedKey="password"
+                  textAlign="right"
                 />
-                <TouchableOpacity
-                  accessibilityRole="button"
-                  accessibilityLabel={showPassword ? 'הסתר סיסמה' : 'הצג סיסמה'}
-                  onPress={() => setShowPassword((v) => !v)}
-                  activeOpacity={0.7}
-                  style={styles.eyeBtn}
-                >
-                  <MaterialIcons
-                    name={showPassword ? 'visibility-off' : 'visibility'}
-                    size={20}
-                    color={isDark ? '#94a3b8' : '#64748b'}
-                  />
-                </TouchableOpacity>
               </View>
-            </View>
-
-            <View style={styles.fieldGroup}>
-              <Text style={[styles.label, { color: theme.muted }]}>אימות סיסמה</Text>
-              <View style={styles.inputRow}>
-                <TextInput
-                  style={[
-                    styles.input,
-                    styles.inputInRow,
-                    styles.inputRtl,
-                    { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text },
-                    focusedField === 'confirmPassword' && styles.inputFocused,
-                  ]}
+              <View style={styles.webGridCell}>
+                <WebFloatingField
+                  id="confirmPassword"
+                  label="אימות סיסמה"
+                  icon="lock"
                   value={newUser.confirmPassword}
-                  onChangeText={(text) => setNewUser((prev) => ({ ...prev, confirmPassword: text }))}
-                  placeholder="********"
-                  placeholderTextColor={theme.faint}
+                  onChangeText={(t) => setNewUser((p) => ({ ...p, confirmPassword: t }))}
+                  autoCapitalize="none"
+                  autoCorrect={false}
                   secureTextEntry={!showConfirmPassword}
-                  onFocus={() => setFocusedField('confirmPassword')}
-                  onBlur={() => setFocusedField((f) => (f === 'confirmPassword' ? null : f))}
+                  showToggle
+                  onPressToggle={() => setShowConfirmPassword((v) => !v)}
+                  focusedKey="confirmPassword"
+                  textAlign="right"
                 />
-                <TouchableOpacity
-                  accessibilityRole="button"
-                  accessibilityLabel={showConfirmPassword ? 'הסתר אימות סיסמה' : 'הצג אימות סיסמה'}
-                  onPress={() => setShowConfirmPassword((v) => !v)}
-                  activeOpacity={0.7}
-                  style={styles.eyeBtn}
-                >
-                  <MaterialIcons
-                    name={showConfirmPassword ? 'visibility-off' : 'visibility'}
-                    size={20}
-                    color={isDark ? '#94a3b8' : '#64748b'}
-                  />
-                </TouchableOpacity>
               </View>
             </View>
-          </View>
 
-          {/* Role segmented control (new stable style inspired by HTML) */}
-          <View style={styles.roleSection}>
-            <Text style={[styles.roleLabel, { color: theme.muted }]}>תפקיד</Text>
-            <View
-              style={[
-                styles.roleSegmentV3,
-                {
-                  backgroundColor: '#E2E8F0', // slate-200 (opaque + visible)
-                  borderColor: '#CBD5E1', // slate-300
-                  flexDirection: isRTL ? 'row' : 'row-reverse',
-                },
-              ]}
-            >
-              <RoleOption label="עובד" value="employee" />
-              <RoleOption label="מנהל" value="admin" />
-              <RoleOption label="בעל אירוע" value="event_owner" />
+            <View style={styles.webRoleDivider}>
+              <View style={styles.webRoleDividerLine} />
+              <Text style={styles.webRoleDividerLabel}>תפקיד במערכת</Text>
+              <View style={styles.webRoleDividerLine} />
+            </View>
+
+            <View style={[styles.webRoleGrid, { flexDirection: isSm ? 'row' : 'column' }]}>
+              <View style={[styles.webRoleGridCell, isSm ? { flex: 1 } : null]}>
+                <WebRoleCard
+                  value="employee"
+                  title="עובד"
+                  subtitle="גישה ליומן וניהול משימות בלבד"
+                  icon="badge"
+                />
+              </View>
+              <View style={[styles.webRoleGridCell, isSm ? { flex: 1 } : null]}>
+                <WebRoleCard value="admin" title="מנהל" subtitle="ניהול עובדים, דוחות ואירועים" icon="manage-accounts" />
+              </View>
+              <View style={[styles.webRoleGridCell, isSm ? { flex: 1 } : null]}>
+                <WebRoleCard
+                  value="event_owner"
+                  title="בעלים"
+                  subtitle="גישה מלאה לכל הגדרות המערכת"
+                  icon="verified-user"
+                />
+              </View>
+            </View>
+
+            <View style={{ paddingTop: 6 }}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="שמור משתמש חדש"
+                onPress={handleAddUser}
+                disabled={loading}
+                style={({ hovered, pressed }: any) => [
+                  styles.webSubmitBtn,
+                  loading ? { opacity: 0.75 } : null,
+                  Platform.OS === 'web' && hovered ? styles.webSubmitBtnHover : null,
+                  pressed ? styles.webSubmitBtnPressed : null,
+                ]}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#ffffff" />
+                ) : (
+                  <>
+                    <Text style={styles.webSubmitText}>שמור משתמש חדש</Text>
+                    <MaterialIcons name="arrow-forward" size={20} color="#ffffff" style={styles.webSubmitArrow} />
+                  </>
+                )}
+              </Pressable>
             </View>
           </View>
-
         </ScrollView>
-      </KeyboardAvoidingView>
-
-      {/* Sticky bottom action (fixed: not affected by keyboard avoiding) */}
-      <View
-        style={[
-          styles.footerBar,
-          {
-            paddingBottom: Math.max(insets.bottom, 14),
-            backgroundColor: theme.bg,
-            borderTopColor: 'rgba(15, 23, 42, 0.06)',
-          },
-        ]}
-      >
-        <TouchableOpacity
-          onPress={handleAddUser}
-          disabled={loading}
-          activeOpacity={0.88}
-          style={[styles.primaryButtonV3, loading && { opacity: 0.75 }]}
-        >
-          {loading ? <ActivityIndicator color="white" /> : <Text style={styles.primaryButtonText}>שמור משתמש</Text>}
-        </TouchableOpacity>
-      </View>
+      )}
 
       <Modal
         visible={showSuccessModal}
@@ -605,6 +925,268 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     width: '100%',
+  },
+
+  webPremiumScreen: {
+    backgroundColor: 'transparent',
+  },
+  webPremiumContent: {
+    paddingTop: 14,
+    paddingBottom: 24,
+  },
+  webDemoNote: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    flexDirection: isRTL ? 'row' : 'row-reverse',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(6, 23, 62, 0.18)',
+    backgroundColor: 'rgba(6, 23, 62, 0.08)',
+  },
+  webDemoNoteText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#0f172a',
+    textAlign: rtlTextAlign,
+  },
+
+  webHeader: {
+    alignItems: 'center',
+    textAlign: 'center' as any,
+    marginBottom: 18,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+  },
+  webAvatarHeroWrap: {
+    marginBottom: 10,
+  },
+  webAvatarHeroCircle: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    borderColor: '#cbd5e1',
+    backgroundColor: '#f8fafc',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    position: 'relative',
+  } as any,
+  webAvatarHeroCircleHover: {
+    borderColor: 'rgba(6, 23, 62, 0.35)',
+    backgroundColor: '#f1f5f9',
+  },
+  webAvatarHeroImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  webAvatarHeroEditBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: 'rgba(15, 23, 42, 0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...baseShadow,
+  },
+  webTitle: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: '#06173e',
+    letterSpacing: -0.4,
+    textAlign: 'center',
+    writingDirection: 'rtl',
+  },
+  webSubtitle: {
+    marginTop: 4,
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#64748b',
+    textAlign: 'center',
+    writingDirection: 'rtl',
+    maxWidth: 360,
+  },
+
+  webForm: {
+    paddingHorizontal: 16,
+    gap: 14,
+  } as any,
+  webGridRow: {
+    gap: 12,
+  } as any,
+  webGridCell: {
+    flex: 1,
+  },
+
+  webFloatingWrap: {
+    position: 'relative',
+    width: '100%',
+  },
+  webFloatingInput: {
+    height: 54,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E6EAF0',
+    backgroundColor: 'transparent',
+    paddingRight: 16,
+    paddingLeft: 44, // icon space (left)
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  webFloatingInputFocused: {
+    borderColor: ui.primary,
+  },
+  webFloatingLabel: {
+    position: 'absolute',
+    right: 14,
+    top: 18,
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#94a3b8',
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 8,
+    writingDirection: 'rtl',
+  },
+  webFloatingLabelFloated: {
+    top: 6,
+    transform: [{ translateY: -6 }, { scale: 0.9 }],
+    color: ui.primary,
+  },
+  webFloatingLeftIcon: {
+    position: 'absolute',
+    left: 14,
+    top: 17,
+  },
+  webFloatingRightBtn: {
+    position: 'absolute',
+    right: 10,
+    top: 9,
+    width: 40,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  webRoleDivider: {
+    marginTop: 6,
+    marginBottom: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  } as any,
+  webRoleDividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#f1f5f9',
+  },
+  webRoleDividerLabel: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#64748b',
+    writingDirection: 'rtl',
+  },
+
+  webRoleGrid: {
+    gap: 10,
+  } as any,
+  webRoleGridCell: {
+    width: '100%',
+  },
+  webRoleCard: {
+    width: '100%',
+    borderRadius: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: '#E6EAF0',
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    textAlign: 'center' as any,
+  },
+  webRoleCardHover: {
+    borderColor: '#cbd5e1',
+    backgroundColor: 'rgba(248, 250, 252, 0.6)',
+  },
+  webRoleCardPressed: {
+    transform: [{ scale: 0.995 }],
+    opacity: 0.98,
+  },
+  webRoleCardActive: {
+    borderWidth: 2,
+    borderColor: ui.primary,
+    backgroundColor: 'rgba(6, 23, 62, 0.05)',
+  },
+  webRoleCardInactive: {},
+  webRoleIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: 'rgba(15, 23, 42, 0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+  },
+  webRoleIconWrapActive: {
+    backgroundColor: ui.primary,
+    borderColor: 'rgba(6, 23, 62, 0.25)',
+  },
+  webRoleTitle: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: '#06173e',
+    marginBottom: 4,
+    writingDirection: 'rtl',
+  },
+  webRoleTitleActive: {
+    color: '#06173e',
+  },
+  webRoleSubtitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748b',
+    textAlign: 'center',
+    writingDirection: 'rtl',
+    lineHeight: 16,
+  },
+
+  webSubmitBtn: {
+    height: 56,
+    borderRadius: 22,
+    backgroundColor: ui.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 10,
+    ...baseShadow,
+  } as any,
+  webSubmitBtnHover: {
+    backgroundColor: '#1a2c3d',
+  },
+  webSubmitBtnPressed: {
+    transform: [{ translateY: -1 }],
+  },
+  webSubmitText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '900',
+    writingDirection: 'rtl',
+  },
+  webSubmitArrow: {
+    transform: [{ rotate: isRTL ? '180deg' : '0deg' }],
   },
 
   headerSurface: {

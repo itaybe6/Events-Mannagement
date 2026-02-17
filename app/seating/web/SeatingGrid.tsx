@@ -10,7 +10,7 @@ import {
   tableCellSize,
   type SeatingItemKind,
 } from './types';
-import type { UseSeatingStateApi } from './useSeatingState';
+import type { UseSeatingStateApi } from './_useSeatingState';
 
 type Guides = {
   v: number[]; // x in cells

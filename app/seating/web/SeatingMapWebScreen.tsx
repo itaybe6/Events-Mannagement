@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { useUserStore } from '@/store/userStore';
 import { SeatingGrid } from './SeatingGrid';
 import { TableSidebar } from './TableSidebar';
-import { useSeatingState } from './useSeatingState';
+import { useSeatingState } from './_useSeatingState';
 import { CELL_SIZE, DEFAULT_GRID_COLS, DEFAULT_GRID_ROWS, tableCellSize, type TableConfig, type PlacedTable, type Zone, type TextLabel } from './types';
 
 type SeatingMapsRow = {
@@ -338,26 +338,58 @@ export default function SeatingMapWebScreen() {
         );
       if (seatingMapError && (seatingMapError as any).code !== 'PGRST205') throw seatingMapError;
 
-      // Replace public.tables records (idempotent)
-      const { error: deleteError } = await supabase.from('tables').delete().eq('event_id', eventId);
-      if (deleteError) throw deleteError;
+      // Keep public.tables stable (do NOT delete+reinsert).
+      // Deleting tables breaks existing guests.table_id references and makes "TablesList" look empty.
+      // Instead, upsert by (event_id, number) and only update position/capacity/shape/name.
+      const { data: existingTables, error: existingTablesError } = await supabase
+        .from('tables')
+        .select('id,number')
+        .eq('event_id', eventId);
+      if (existingTablesError) throw existingTablesError;
 
-      const tableRecords = legacyTables.map((t) => {
-        const shape = t.isKnight ? 'rectangle' : t.isReserve ? 'reserve' : 'square';
-        return {
-          event_id: eventId,
-          number: t.id,
-          capacity: t.seats,
-          shape,
-          name: `שולחן ${t.id}`,
-          x: t.x,
-          y: t.y,
-          seated_guests: 0,
-        };
-      });
+      const desiredNumbers = new Set<number>(
+        legacyTables.map((t) => Number(t.id)).filter((n) => Number.isFinite(n))
+      );
+
+      const tableRecords = legacyTables
+        .map((t) => {
+          const n = Number(t.id);
+          if (!Number.isFinite(n)) return null;
+          const shape = t.isKnight ? 'rectangle' : t.isReserve ? 'reserve' : 'square';
+          return {
+            event_id: eventId,
+            number: n,
+            capacity: t.seats,
+            shape,
+            name: `שולחן ${n}`,
+            x: t.x,
+            y: t.y,
+          };
+        })
+        .filter(Boolean) as any[];
+
       if (tableRecords.length) {
-        const { error: insertError } = await supabase.from('tables').insert(tableRecords);
-        if (insertError) throw insertError;
+        const { error: upsertError } = await supabase
+          .from('tables')
+          .upsert(tableRecords, { onConflict: 'event_id,number' });
+        if (upsertError) throw upsertError;
+      }
+
+      // Remove tables that no longer exist in the sketch, and unseat their guests.
+      const removed = (existingTables || []).filter((t: any) => {
+        const num = Number(t.number);
+        return Number.isFinite(num) && !desiredNumbers.has(num);
+      });
+      const removedIds = removed.map((t: any) => t.id).filter(Boolean);
+      if (removedIds.length) {
+        const { error: clearGuestsError } = await supabase
+          .from('guests')
+          .update({ table_id: null })
+          .in('table_id', removedIds);
+        if (clearGuestsError) throw clearGuestsError;
+
+        const { error: deleteRemovedError } = await supabase.from('tables').delete().in('id', removedIds);
+        if (deleteRemovedError) throw deleteRemovedError;
       }
 
       Alert.alert('נשמר', 'מפת ההושבה נשמרה בהצלחה');

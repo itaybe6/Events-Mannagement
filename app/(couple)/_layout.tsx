@@ -145,6 +145,17 @@ export default function CoupleTabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="TablesList"
+        options={{
+          title: "שולחנות",
+          tabBarIcon: ({ focused }) => (
+            <View style={[styles.iconContainer, focused && styles.activeIconContainer] }>
+              <Ionicons name="list-outline" size={24} color={focused ? colors.white : colors.gray[500]} />
+            </View>
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="brideGroomProfile"
         options={{
           title: "פרופיל",
@@ -153,12 +164,6 @@ export default function CoupleTabsLayout() {
       />
 
       {/* Hidden couple internal routes */}
-      <Tabs.Screen
-        name="TablesList"
-        options={{
-          href: null,
-        }}
-      />
       <Tabs.Screen
         name="edit-category"
         options={{

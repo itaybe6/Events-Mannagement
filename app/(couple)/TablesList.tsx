@@ -1,17 +1,17 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, Modal, FlatList, TextInput } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { useUserStore } from '@/store/userStore';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import { Ionicons } from '@expo/vector-icons';
 import { Table } from '@/types';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useLayoutStore } from '@/store/layoutStore';
 import { colors } from '@/constants/colors';
 import { EventSwitcher } from '@/components/EventSwitcher';
 
 export default function TablesList() {
-  const { userData } = useUserStore();
+  const userData = useUserStore((s) => s.userData);
   const router = useRouter();
   const { eventId: queryEventId } = useLocalSearchParams<{ eventId?: string }>();
   const activeUserId = useEventSelectionStore((s) => s.activeUserId);
@@ -29,6 +29,9 @@ export default function TablesList() {
   const [categories, setCategories] = useState<string[]>([]);
   const [editingTableId, setEditingTableId] = useState<string | null>(null);
   const [selectedGuestsToDelete, setSelectedGuestsToDelete] = useState<Set<string>>(new Set());
+  const [moveGuestsOpen, setMoveGuestsOpen] = useState(false);
+  const [moveGuestsSaving, setMoveGuestsSaving] = useState(false);
+  const [moveTargetTableId, setMoveTargetTableId] = useState<string | null>(null);
 
   const resolvedEventId =
     String(
@@ -43,16 +46,26 @@ export default function TablesList() {
     router.replace({ pathname: './', params: { eventId: nextEventId } });
   };
 
-  useEffect(() => {
-    if (resolvedEventId) {
-      setLoading(true);
-      Promise.all([
-        fetchTables(),
-        fetchGuests(),
-      ]).finally(() => setLoading(false));
+  const refresh = useCallback(async () => {
+    if (!resolvedEventId) return;
+    setLoading(true);
+    try {
+      await Promise.all([fetchTables(), fetchGuests()]);
+    } finally {
+      setLoading(false);
     }
+  }, [resolvedEventId]);
+
+  useEffect(() => {
     if (userData?.id && resolvedEventId) setActiveEvent(userData.id, resolvedEventId);
-  }, [resolvedEventId, userData?.id, setActiveEvent]);
+  }, [resolvedEventId, setActiveEvent, userData?.id]);
+
+  // Refresh whenever you return to this screen (e.g. after seating changes elsewhere)
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh])
+  );
 
   const fetchTables = async () => {
     if (!resolvedEventId) return;
@@ -74,20 +87,25 @@ export default function TablesList() {
       const [
         { data: guestsData, error: guestsError },
         { data: categoriesData, error: categoriesError },
+        { data: tablesData, error: tablesError },
       ] = await Promise.all([
         supabase
           .from('guests')
           .select('*')
-          .eq('event_id', resolvedEventId)
-          .eq('status', 'מגיע'),
+          .eq('event_id', resolvedEventId),
         supabase.from('guest_categories').select('id,name').eq('event_id', resolvedEventId),
+        supabase.from('tables').select('id,number').eq('event_id', resolvedEventId),
       ]);
 
       if (guestsError) throw guestsError;
       if (categoriesError) throw categoriesError;
+      if (tablesError) throw tablesError;
 
       const categoryNameById = new Map<string, string>(
         (categoriesData || []).map((c: any) => [c.id, c.name])
+      );
+      const tableNumberById = new Map<string, number>(
+        (tablesData || []).map((t: any) => [t.id, t.number])
       );
 
       const mappedGuests = (guestsData || []).map((guest: any) => ({
@@ -95,6 +113,7 @@ export default function TablesList() {
         guest_categories: guest.category_id
           ? { name: categoryNameById.get(guest.category_id) }
           : null,
+        tables: guest.table_id ? { number: tableNumberById.get(guest.table_id) } : null,
         numberOfPeople: guest.number_of_people || 1,
       }));
 
@@ -103,6 +122,22 @@ export default function TablesList() {
       console.error('Error fetching guests:', error);
     }
   };
+
+  const orphanedGuests = useMemo(() => {
+    const tableIds = new Set((tables || []).map((t) => t.id));
+    return (guests || []).filter((g) => g?.table_id && !tableIds.has(g.table_id));
+  }, [guests, tables]);
+
+  const clearOrphanedSeating = useCallback(async () => {
+    const ids = orphanedGuests.map((g) => g.id).filter(Boolean);
+    if (!ids.length) return;
+    const { error } = await supabase.from('guests').update({ table_id: null }).in('id', ids);
+    if (error) {
+      console.error('Error clearing orphaned seating:', error);
+      return;
+    }
+    await refresh();
+  }, [orphanedGuests, refresh]);
 
   const getGuestsForTable = (tableId: string) => {
     return guests.filter(guest => guest.table_id === tableId);
@@ -250,6 +285,66 @@ export default function TablesList() {
     setSelectedGuestsToDelete(new Set());
   };
 
+  const openMoveGuests = () => {
+    setMoveTargetTableId(null);
+    setMoveGuestsOpen(true);
+    setTabBarVisible(false);
+  };
+
+  const closeMoveGuests = () => {
+    setMoveGuestsOpen(false);
+    setTabBarVisible(true);
+  };
+
+  const handleMoveGuestsToTable = async () => {
+    if (!editingTableId) return;
+    if (!moveTargetTableId) return;
+    if (selectedGuestsToDelete.size === 0) return;
+
+    const ids = Array.from(selectedGuestsToDelete);
+    const idsSet = new Set(ids.map((x) => String(x)));
+
+    setMoveGuestsSaving(true);
+    try {
+      const { error } = await supabase
+        .from('guests')
+        .update({ table_id: moveTargetTableId })
+        .in('id', ids);
+      if (error) throw error;
+
+      // Update seated counts (best-effort)
+      const movedGuests = (guests || []).filter((g: any) => idsSet.has(String(g?.id)));
+      const movedPeople = movedGuests.reduce((sum: number, g: any) => sum + (Number(g?.numberOfPeople) || 1), 0);
+
+      const remainingAtSource = (guests || []).filter(
+        (g: any) => String(g?.table_id || '') === String(editingTableId) && !idsSet.has(String(g?.id))
+      );
+      const currentAtTarget = (guests || []).filter(
+        (g: any) => String(g?.table_id || '') === String(moveTargetTableId)
+      );
+
+      const nextSourcePeople = remainingAtSource.reduce((sum: number, g: any) => sum + (Number(g?.numberOfPeople) || 1), 0);
+      const nextTargetPeople =
+        currentAtTarget.reduce((sum: number, g: any) => sum + (Number(g?.numberOfPeople) || 1), 0) + movedPeople;
+
+      await Promise.all([
+        supabase.from('tables').update({ seated_guests: nextSourcePeople }).eq('id', editingTableId),
+        supabase.from('tables').update({ seated_guests: nextTargetPeople }).eq('id', moveTargetTableId),
+      ]);
+
+      await fetchGuests();
+      await fetchTables();
+
+      setSelectedGuestsToDelete(new Set());
+      setMoveGuestsOpen(false);
+      setTabBarVisible(true);
+    } catch (e) {
+      console.error('Error moving guests to another table:', e);
+    } finally {
+      setMoveGuestsSaving(false);
+    }
+  };
+
   if (loading) {
     return (
       <View style={styles.centered}>
@@ -282,32 +377,49 @@ export default function TablesList() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={[styles.backButton, styles.backBtnAbs]}
-          onPress={() =>
-            router.push({
-              pathname: '/(couple)/BrideGroomSeating',
-              params: resolvedEventId ? { eventId: resolvedEventId } : {},
-            })
-          }
-        >
-          <Ionicons name="chevron-back" size={24} color={colors.primary} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>שולחנות</Text>
-        <View style={[styles.headerStats, styles.statsAbs]}>
-          <View style={styles.statItem}>
-            <Ionicons name="checkmark-circle" size={20} color={colors.success} />
-            <Text style={styles.statText}>{fullTables} מלאים</Text>
+      {/* Stats Bar */}
+      <View style={styles.statsBar}>
+        <View style={styles.statsGrid}>
+          <View style={styles.statCard}>
+            <View style={styles.statIconContainer}>
+              <Ionicons name="checkmark-circle" size={18} color="#10B981" />
+            </View>
+            <View style={styles.statContent}>
+              <Text style={styles.statValue}>{fullTables}</Text>
+              <Text style={styles.statLabel}>מלאים</Text>
+            </View>
           </View>
-          <View style={styles.statItem}>
-            <Ionicons name="sync-circle" size={20} color={colors.secondary} />
-            <Text style={styles.statText}>{totalTables} בהושבה</Text>
+          <View style={styles.statCard}>
+            <View style={styles.statIconContainer}>
+              <Ionicons name="grid-outline" size={18} color="#3B82F6" />
+            </View>
+            <View style={styles.statContent}>
+              <Text style={styles.statValue}>{totalTables}</Text>
+              <Text style={styles.statLabel}>שולחנות</Text>
+            </View>
           </View>
         </View>
       </View>
 
-      <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
+      {orphanedGuests.length > 0 && (
+        <View style={styles.orphanCard}>
+          <View style={styles.orphanContent}>
+            <Ionicons name="alert-circle" size={20} color="#F59E0B" />
+            <View style={styles.orphanTextWrap}>
+              <Text style={styles.orphanTitle}>אורחים ללא שולחן</Text>
+              <Text style={styles.orphanText}>
+                {`${orphanedGuests.length} אורחים משויכים לשולחנות שלא קיימים`}
+              </Text>
+            </View>
+          </View>
+          <TouchableOpacity style={styles.orphanBtn} onPress={clearOrphanedSeating}>
+            <Ionicons name="refresh" size={16} color="#1F2937" />
+            <Text style={styles.orphanBtnText}>אפס שיוך</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      <View style={styles.eventSwitcherWrap}>
         <EventSwitcher
           userId={userData?.id}
           selectedEventId={resolvedEventId}
@@ -326,93 +438,109 @@ export default function TablesList() {
           return (
             <View key={table.id} style={[styles.tableCard, isTableFull && styles.tableCardFull]}>
               <View style={styles.tableHeader}>
-                <View style={[styles.capacityInfo, isTableFull && styles.capacityInfoFull]}>
-                  <Ionicons 
-                    name="people" 
-                    size={16} 
-                    color={isTableFull ? colors.white : colors.gray[500]} 
-                    style={{ marginRight: 4 }}
-                  />
-                  <Text style={[styles.capacityText, isTableFull && styles.capacityTextFull]}>
-                    {totalPeopleSeated} / {table.capacity}
-                  </Text>
+                <View style={styles.tableLeft}>
+                  <View style={[styles.tableNumberBadge, isTableFull && styles.tableNumberBadgeFull]}>
+                    <Text style={[styles.tableNumberText, isTableFull && styles.tableNumberTextFull]}>
+                      {table.number}
+                    </Text>
+                  </View>
+                  <View style={styles.tableTitleWrap}>
+                    <Text style={[styles.tableTitle, isTableFull && styles.tableTitleFull]}>
+                      שולחן {table.number}
+                    </Text>
+                    {table.name && (
+                      <Text style={styles.tableSubtitle}>{table.name}</Text>
+                    )}
+                  </View>
                 </View>
-                <View style={styles.tableInfo}>
-                  <Text style={[styles.tableNumber, isTableFull && styles.tableNumberFull]}>
-                    שולחן {table.number}
-                    {table.name && ` - ${table.name}`}
-                  </Text>
-                </View>
-                <View style={styles.tableActions}>
+                <View style={styles.tableRight}>
+                  <View style={[styles.capacityBadge, isTableFull && styles.capacityBadgeFull]}>
+                    <Ionicons 
+                      name="person" 
+                      size={14} 
+                      color={isTableFull ? "#10B981" : "#6B7280"} 
+                    />
+                    <Text style={[styles.capacityText, isTableFull && styles.capacityTextFull]}>
+                      {totalPeopleSeated}/{table.capacity}
+                    </Text>
+                  </View>
                   <TouchableOpacity 
-                    style={styles.addButton} 
+                    style={styles.actionButton} 
                     onPress={() => openAddGuestsModal(table)}
                   >
-                    <Ionicons name="add" size={20} color={colors.primary} />
+                    <Ionicons name="add-circle-outline" size={22} color="#3B82F6" />
                   </TouchableOpacity>
                   <TouchableOpacity 
-                    style={styles.editButton} 
+                    style={styles.actionButton} 
                     onPress={() => handleEditPress(table.id)}
                   >
-                    <Ionicons name={isEditing ? "close" : "pencil"} size={20} color={colors.primary} />
+                    <Ionicons 
+                      name={isEditing ? "close-circle-outline" : "create-outline"} 
+                      size={22} 
+                      color={isEditing ? "#EF4444" : "#6B7280"} 
+                    />
                   </TouchableOpacity>
                 </View>
               </View>
 
-              <View style={[styles.guestsContainer, isTableFull && styles.guestsContainerFull]}>
+              <View style={styles.guestsContainer}>
                 {tableGuests.length > 0 ? (
                   <>
-                    <Text style={[styles.guestsTitle, isTableFull && styles.guestsTitleFull]}>אורחים יושבים:</Text>
-                    <ScrollView style={styles.guestsListScrollView} nestedScrollEnabled>
+                    <ScrollView style={styles.guestsListScrollView} nestedScrollEnabled showsVerticalScrollIndicator={false}>
                       <View style={styles.guestsList}>
-                        {tableGuests.map((guest, index) => {
+                        {tableGuests.map((guest) => {
                           const isSelected = selectedGuestsToDelete.has(guest.id);
                           return (
                             <TouchableOpacity 
                               key={guest.id} 
                               style={[
-                                styles.guestItem, 
-                                isEditing && styles.guestItemEditing, 
-                                isSelected && styles.guestItemSelected
+                                styles.guestChip, 
+                                isEditing && styles.guestChipEditing, 
+                                isSelected && styles.guestChipSelected
                               ]}
                               onPress={isEditing ? () => handleToggleGuestDeletionSelection(guest.id) : undefined}
                               disabled={!isEditing}
+                              activeOpacity={0.7}
                             >
-                              <View style={{flex: 1, position: 'relative'}}>
-                                <View style={styles.peopleCountBadgeTopLeft}>
-                                  <Ionicons name="person" size={10} color={colors.richBlack} />
-                                  <Text style={styles.peopleCountTextSmall}>{guest.numberOfPeople || 1}</Text>
-                                </View>
-                                <Text style={styles.guestName}>{guest.name}</Text>
-                                {guest.guest_categories?.name && !isEditing && (
-                                  <Text style={styles.guestCategory}>
-                                    {guest.guest_categories.name}
-                                  </Text>
+                              <View style={styles.guestChipContent}>
+                                {guest.numberOfPeople > 1 && (
+                                  <View style={styles.peopleCountMini}>
+                                    <Text style={styles.peopleCountMiniText}>{guest.numberOfPeople}</Text>
+                                  </View>
+                                )}
+                                <Text style={styles.guestChipName} numberOfLines={2}>
+                                  {guest.name}
+                                </Text>
+                                {isEditing && isSelected && (
+                                  <Ionicons name="checkmark-circle" size={18} color="#3B82F6" />
                                 )}
                               </View>
-                              {isEditing && (
-                                <Ionicons 
-                                  name={isSelected ? "checkmark-circle" : "ellipse-outline"} 
-                                  size={24} 
-                                  color={isSelected ? colors.primary : colors.gray[300]} 
-                                />
-                              )}
                             </TouchableOpacity>
                           )
                         })}
                       </View>
                     </ScrollView>
                     {isEditing && selectedGuestsToDelete.size > 0 && (
-                      <TouchableOpacity style={styles.deleteButton} onPress={handleRemoveGuestsFromTable}>
-                        <Ionicons name="trash-outline" size={20} color={colors.white} />
-                        <Text style={styles.deleteButtonText}>מחק {selectedGuestsToDelete.size} אורחים</Text>
-                      </TouchableOpacity>
+                      <View style={styles.editActionsRow}>
+                        <TouchableOpacity
+                          style={styles.secondaryActionBtn}
+                          onPress={openMoveGuests}
+                          activeOpacity={0.85}
+                        >
+                          <Ionicons name="swap-horizontal-outline" size={16} color="#111827" />
+                          <Text style={styles.secondaryActionBtnText}>העבר לשולחן</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.deleteButton} onPress={handleRemoveGuestsFromTable} activeOpacity={0.8}>
+                          <Ionicons name="trash-outline" size={18} color="#FFFFFF" />
+                          <Text style={styles.deleteButtonText}>הסר {selectedGuestsToDelete.size}</Text>
+                        </TouchableOpacity>
+                      </View>
                     )}
                   </>
                 ) : (
                   <View style={styles.emptyTable}>
-                    <Ionicons name="people-outline" size={24} color={colors.gray[300]} />
-                    <Text style={styles.emptyTableText}>אין אורחים יושבים בשולחן זה</Text>
+                    <Ionicons name="cafe-outline" size={28} color="#D1D5DB" />
+                    <Text style={styles.emptyTableText}>שולחן ריק</Text>
                   </View>
                 )}
               </View>
@@ -430,13 +558,13 @@ export default function TablesList() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
+            <View style={styles.modalHandle} />
             <TouchableOpacity style={styles.closeModalButton} onPress={closeModal}>
-              <Ionicons name="close-circle" size={30} color={colors.gray[200]} />
+              <Ionicons name="close" size={20} color="#6B7280" />
             </TouchableOpacity>
 
             <Text style={styles.modalTitle}>
               הוסף אורחים לשולחן {selectedTable?.number}
-              {selectedTable?.name && ` - ${selectedTable.name}`}
             </Text>
 
             <View style={styles.filterContainer}>
@@ -477,24 +605,30 @@ export default function TablesList() {
                 <TouchableOpacity
                   style={styles.selectableGuestItem}
                   onPress={() => handleToggleGuestSelection(item.id)}
+                  activeOpacity={0.7}
                 >
-                  <View style={[styles.guestInfo, {position: 'relative'}]}>
-                    <View style={styles.peopleCountBadgeTopLeft}>
-                      <Ionicons name="person" size={10} color={colors.richBlack} />
-                      <Text style={styles.peopleCountTextSmall}>{item.numberOfPeople || 1}</Text>
-                    </View>
-                    <Text style={styles.guestName}>{item.name}</Text>
+                  <View style={styles.guestInfo}>
+                    <Text style={styles.selectableGuestName} numberOfLines={2}>{item.name}</Text>
                     {item.guest_categories?.name && (
-                      <Text style={styles.guestCategory}>
+                      <Text style={styles.selectableGuestCategory} numberOfLines={1}>
                         {item.guest_categories.name}
                       </Text>
                     )}
+                    {item.numberOfPeople > 1 && (
+                      <View style={styles.peopleCountBadge}>
+                        <Ionicons name="people" size={12} color="#6B7280" />
+                        <Text style={styles.peopleCountText}>{item.numberOfPeople}</Text>
+                      </View>
+                    )}
                   </View>
-                  <Ionicons
-                    name={selectedGuestsToAdd.has(item.id) ? "checkbox" : "square-outline"}
-                    size={24}
-                    color={selectedGuestsToAdd.has(item.id) ? colors.primary : colors.gray[300]}
-                  />
+                  <View style={[
+                    styles.checkbox,
+                    selectedGuestsToAdd.has(item.id) && styles.checkboxChecked
+                  ]}>
+                    {selectedGuestsToAdd.has(item.id) && (
+                      <Ionicons name="checkmark" size={16} color="#FFFFFF" />
+                    )}
+                  </View>
                 </TouchableOpacity>
               )}
               style={{ flex: 1, marginTop: 16 }}
@@ -509,10 +643,74 @@ export default function TablesList() {
               style={[styles.finalAddButton, selectedGuestsToAdd.size === 0 && styles.disabledButton]}
               onPress={handleAddGuestsToTable}
               disabled={selectedGuestsToAdd.size === 0}
+              activeOpacity={0.8}
             >
+              <Ionicons 
+                name="add-circle" 
+                size={20} 
+                color={selectedGuestsToAdd.size === 0 ? '#9CA3AF' : '#FFFFFF'} 
+              />
               <Text style={styles.finalAddButtonText}>
-                {selectedGuestsToAdd.size > 0 ? `הוסף ${selectedGuestsToAdd.size} אורחים` : 'בחר אורחים להוספה'}
+                {selectedGuestsToAdd.size > 0 ? `הוסף ${selectedGuestsToAdd.size}` : 'בחר אורחים'}
               </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Move guests to another table (edit mode) */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={moveGuestsOpen}
+        onRequestClose={closeMoveGuests}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHandle} />
+            <TouchableOpacity style={styles.closeModalButton} onPress={closeMoveGuests}>
+              <Ionicons name="close" size={20} color="#6B7280" />
+            </TouchableOpacity>
+
+            <Text style={styles.modalTitle}>העברה לשולחן אחר</Text>
+
+            <Text style={styles.changeCategoryHint}>
+              {`נבחרו ${selectedGuestsToDelete.size} אורחים. בחר שולחן יעד:`}
+            </Text>
+
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 16 }} showsVerticalScrollIndicator={false}>
+              {tables
+                .filter((t) => String(t.id) !== String(editingTableId))
+                .map((t) => (
+                <TouchableOpacity
+                  key={String(t.id)}
+                  style={[styles.categoryPickRow, moveTargetTableId === String(t.id) && styles.categoryPickRowActive]}
+                  onPress={() => setMoveTargetTableId(String(t.id))}
+                  activeOpacity={0.85}
+                >
+                  <Text style={[styles.categoryPickText, moveTargetTableId === String(t.id) && styles.categoryPickTextActive]}>
+                    {`שולחן ${(t as any).number ?? t.number ?? ''}${t.name ? ` · ${t.name}` : ''}`}
+                  </Text>
+                  <Ionicons
+                    name={moveTargetTableId === String(t.id) ? 'checkmark-circle' : 'ellipse-outline'}
+                    size={22}
+                    color={moveTargetTableId === String(t.id) ? '#3B82F6' : '#D1D5DB'}
+                  />
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            <TouchableOpacity
+              style={[
+                styles.finalAddButton,
+                (!moveTargetTableId || moveGuestsSaving) ? styles.disabledButton : null
+              ]}
+              onPress={handleMoveGuestsToTable}
+              disabled={!moveTargetTableId || moveGuestsSaving || selectedGuestsToDelete.size === 0}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="swap-horizontal" size={20} color="#FFFFFF" />
+              <Text style={styles.finalAddButtonText}>{moveGuestsSaving ? 'מעביר...' : 'העבר לשולחן'}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -524,7 +722,7 @@ export default function TablesList() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.gray[50],
+    backgroundColor: '#F9FAFB',
   },
   centered: {
     flex: 1,
@@ -532,272 +730,357 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   errorText: {
-    fontSize: 18,
-    color: colors.textLight,
+    fontSize: 17,
+    color: '#6B7280',
     textAlign: 'center',
+    fontWeight: '500',
   },
-  header: {
-    position: 'relative',
-    backgroundColor: colors.white,
-    paddingTop: 20,
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-    flexDirection: 'row',
+  statsBar: {
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  statsGrid: {
+    flexDirection: 'row-reverse',
+    gap: 12,
+  },
+  statCard: {
+    flex: 1,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 12,
+    gap: 10,
+  },
+  statIconContainer: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: colors.richBlack,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
-  backButton: {
-    padding: 8,
-    borderRadius: 20,
-    backgroundColor: colors.gray[50],
+  statContent: {
+    flex: 1,
+    alignItems: 'flex-end',
   },
-  backBtnAbs: {
-    position: 'absolute',
-    left: 20,
-    top: 20,
-    zIndex: 10,
-  },
-  headerTitle: {
-    fontSize: 24,
+  statValue: {
+    fontSize: 20,
     fontWeight: '700',
-    color: colors.text,
-    textAlign: 'center',
+    color: '#111827',
+    lineHeight: 24,
   },
-  headerStats: {
-    flexDirection: 'row',
-    gap: 16,
+  statLabel: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#6B7280',
+    marginTop: 2,
   },
-  statsAbs: {
-    position: 'absolute',
-    right: 20,
-    top: 24,
-    zIndex: 10,
-  },
-  statItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.gray[100],
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
-  },
-  statText: {
-    marginLeft: 6,
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.text,
+  eventSwitcherWrap: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
   },
   scrollView: {
     flex: 1,
-    paddingHorizontal: 16,
-    paddingTop: 16,
   },
   scrollViewContent: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
     paddingBottom: 100,
   },
   tableCard: {
-    backgroundColor: colors.white,
+    backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    marginBottom: 16,
-    shadowColor: colors.richBlack,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 2,
     overflow: 'hidden',
   },
   tableCardFull: {
-    backgroundColor: 'rgba(76, 175, 80, 0.12)',
-    borderWidth: 2,
-    borderColor: colors.success,
-    shadowColor: colors.success,
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 6,
+    borderColor: '#D1FAE5',
+    backgroundColor: '#F0FDF4',
   },
   tableHeader: {
-    flexDirection: 'row',
+    flexDirection: 'row-reverse',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: colors.gray[200],
+    borderBottomColor: '#F3F4F6',
   },
-  tableInfo: {
-    flex: 1,
-  },
-  tableActions: {
-    flexDirection: 'row',
+  tableLeft: {
+    flexDirection: 'row-reverse',
     alignItems: 'center',
     gap: 12,
+    flex: 1,
   },
-  tableNumber: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: colors.text,
-    textAlign: 'right',
-    writingDirection: 'rtl',
-  },
-  tableNumberFull: {
-    color: colors.success,
-    fontWeight: '800',
-  },
-  capacityInfo: {
-    flexDirection: 'row',
+  tableNumberBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#F3F4F6',
     alignItems: 'center',
-    backgroundColor: colors.gray[100],
-    paddingHorizontal: 12,
+    justifyContent: 'center',
+  },
+  tableNumberBadgeFull: {
+    backgroundColor: '#D1FAE5',
+  },
+  tableNumberText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#374151',
+  },
+  tableNumberTextFull: {
+    color: '#10B981',
+  },
+  tableTitleWrap: {
+    flex: 1,
+    alignItems: 'flex-end',
+  },
+  tableTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  tableTitleFull: {
+    color: '#10B981',
+  },
+  tableSubtitle: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  tableRight: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+  },
+  capacityBadge: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#F9FAFB',
+    paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 20,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  capacityBadgeFull: {
+    backgroundColor: '#D1FAE5',
+    borderColor: '#A7F3D0',
   },
   capacityText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
-    color: colors.text,
-  },
-  capacityInfoFull: {
-    backgroundColor: colors.success,
-    borderColor: colors.success,
+    color: '#6B7280',
   },
   capacityTextFull: {
-    color: colors.white,
-    fontWeight: '700',
+    color: '#10B981',
+  },
+  actionButton: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+    backgroundColor: '#F9FAFB',
   },
   guestsContainer: {
-    padding: 20,
-  },
-  guestsContainerFull: {
-    backgroundColor: colors.gray[50],
-    borderTopWidth: 1,
-    borderTopColor: colors.success,
-  },
-  guestsTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 12,
-    textAlign: 'right',
-    writingDirection: 'rtl',
-  },
-  guestsTitleFull: {
-    color: colors.success,
-    fontWeight: '700',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
   guestsListScrollView: {
-    maxHeight: 250,
+    maxHeight: 240,
   },
   guestsList: {
-    flexDirection: 'row',
+    flexDirection: 'row-reverse',
     flexWrap: 'wrap',
     gap: 8,
   },
-  guestItem: {
-    backgroundColor: colors.gray[50],
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 12,
-    borderRightWidth: 3,
-    borderRightColor: colors.primary,
-    width: '48%',
+  guestChip: {
+    backgroundColor: '#F9FAFB',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    width: '49%',
+    minWidth: 140,
   },
-  guestItemEditing: {
-    borderRightColor: colors.gray[400],
+  guestChipEditing: {
+    borderColor: '#D1D5DB',
   },
-  guestItemSelected: {
-    borderRightColor: colors.primary,
-    backgroundColor: 'rgba(0, 53, 102, 0.08)',
+  guestChipSelected: {
+    backgroundColor: '#EFF6FF',
+    borderColor: '#3B82F6',
   },
-  guestName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
-    textAlign: 'right',
-    writingDirection: 'rtl',
+  guestChipContent: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
   },
-  guestCategory: {
+  guestChipName: {
     fontSize: 14,
-    color: colors.textLight,
-    marginTop: 2,
+    fontWeight: '500',
+    color: '#374151',
+    flex: 1,
     textAlign: 'right',
-    writingDirection: 'rtl',
+    lineHeight: 18,
+  },
+  peopleCountMini: {
+    width: 18,
+    height: 18,
+    borderRadius: 4,
+    backgroundColor: '#3B82F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  peopleCountMiniText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   emptyTable: {
     alignItems: 'center',
-    paddingVertical: 24,
+    justifyContent: 'center',
+    paddingVertical: 32,
   },
   emptyTableText: {
-    fontSize: 14,
-    color: colors.textLight,
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#9CA3AF',
     marginTop: 8,
-    textAlign: 'center',
-  },
-  addButton: {
-    backgroundColor: 'rgba(0, 53, 102, 0.08)',
-    borderRadius: 20,
-    width: 36,
-    height: 36,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.primary,
-  },
-  editButton: {
-    backgroundColor: 'rgba(0, 53, 102, 0.08)',
-    borderRadius: 20,
-    width: 36,
-    height: 36,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.primary,
   },
   deleteButton: {
-    flexDirection: 'row',
+    flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.error,
-    padding: 14,
-    borderRadius: 12,
-    marginTop: 16,
+    backgroundColor: '#EF4444',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+    flex: 1,
+    gap: 6,
   },
   deleteButtonText: {
-    color: colors.white,
-    fontSize: 16,
+    color: '#FFFFFF',
+    fontSize: 14,
     fontWeight: '600',
-    marginLeft: 8,
+  },
+  editActionsRow: {
+    flexDirection: 'row-reverse',
+    gap: 10,
+    marginTop: 12,
+  },
+  secondaryActionBtn: {
+    flex: 1,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  secondaryActionBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  changeCategoryHint: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#6B7280',
+    textAlign: 'right',
+    marginBottom: 12,
+  },
+  categoryPickRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    marginBottom: 10,
+  },
+  categoryPickRowActive: {
+    backgroundColor: '#EFF6FF',
+    borderColor: '#3B82F6',
+  },
+  categoryPickText: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#111827',
+    textAlign: 'right',
+  },
+  categoryPickTextActive: {
+    color: '#1D4ED8',
+    fontWeight: '700',
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: colors.white,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: 8,
+    paddingBottom: 20,
+    paddingHorizontal: 16,
     height: '80%',
     width: '100%',
   },
+  modalHandle: {
+    width: 36,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: '#E5E7EB',
+    alignSelf: 'center',
+    marginBottom: 8,
+  },
   closeModalButton: {
     position: 'absolute',
-    top: 15,
-    right: 15,
-    zIndex: 1,
+    top: 20,
+    right: 16,
+    zIndex: 10,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   modalTitle: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '700',
+    marginTop: 16,
     marginBottom: 20,
     textAlign: 'center',
-    color: colors.text,
-    writingDirection: 'rtl',
+    color: '#111827',
   },
   filterContainer: {
     marginBottom: 16,
@@ -805,15 +1088,17 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   searchInput: {
-    backgroundColor: colors.gray[100],
+    backgroundColor: '#F9FAFB',
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
     fontSize: 16,
     textAlign: 'right',
     marginBottom: 12,
     width: '100%',
-    writingDirection: 'rtl',
+    color: '#111827',
   },
   categoryScrollView: {
     width: '100%',
@@ -824,94 +1109,162 @@ const styles = StyleSheet.create({
     paddingRight: 4,
   },
   categoryButton: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: colors.gray[100],
+    borderRadius: 8,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
     marginLeft: 8,
   },
   categoryButtonActive: {
-    backgroundColor: colors.primary,
+    backgroundColor: '#3B82F6',
+    borderColor: '#3B82F6',
   },
   categoryButtonText: {
     fontSize: 14,
     fontWeight: '500',
-    color: colors.primary,
+    color: '#6B7280',
     textAlign: 'center',
   },
   categoryButtonTextActive: {
-    color: colors.white,
+    color: '#FFFFFF',
+    fontWeight: '600',
   },
   selectableGuestItem: {
-    flexDirection: 'row',
+    flexDirection: 'row-reverse',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    backgroundColor: colors.gray[100],
-    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 10,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: colors.gray[200],
+    borderColor: '#E5E7EB',
     width: '47%',
   },
   guestInfo: {
     flex: 1,
+    alignItems: 'flex-end',
+  },
+  selectableGuestName: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#111827',
+    textAlign: 'right',
+    lineHeight: 19,
+  },
+  selectableGuestCategory: {
+    fontSize: 13,
+    fontWeight: '400',
+    color: '#6B7280',
+    marginTop: 2,
+    textAlign: 'right',
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#D1D5DB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+  },
+  checkboxChecked: {
+    backgroundColor: '#3B82F6',
+    borderColor: '#3B82F6',
   },
   emptyText: {
     textAlign: 'center',
     marginTop: 40,
-    fontSize: 16,
-    color: colors.textLight,
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#9CA3AF',
   },
   finalAddButton: {
-    backgroundColor: colors.primary,
-    padding: 16,
+    backgroundColor: '#3B82F6',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
     borderRadius: 12,
     alignItems: 'center',
     marginTop: 20,
+    flexDirection: 'row-reverse',
+    justifyContent: 'center',
+    gap: 8,
   },
   finalAddButtonText: {
-    color: colors.white,
-    fontSize: 17,
+    color: '#FFFFFF',
+    fontSize: 16,
     fontWeight: '600',
   },
   disabledButton: {
-    backgroundColor: colors.gray[400],
+    backgroundColor: '#D1D5DB',
+    opacity: 0.6,
   },
   peopleCountBadge: {
-    flexDirection: 'row',
+    flexDirection: 'row-reverse',
     alignItems: 'center',
-    backgroundColor: colors.gray[300],
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    backgroundColor: '#E5E7EB',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
     marginTop: 4,
   },
   peopleCountText: {
     fontSize: 12,
     fontWeight: '600',
-    color: colors.richBlack,
-    marginLeft: 4,
+    color: '#374151',
+    marginRight: 4,
   },
-  peopleCountBadgeTopLeft: {
-    position: 'absolute',
-    top: -8,
-    left: -8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.gray[300],
-    borderRadius: 10,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    zIndex: 1,
+  orphanCard: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: '#FEF3C7',
     borderWidth: 1,
-    borderColor: colors.white,
+    borderColor: '#FCD34D',
   },
-  peopleCountTextSmall: {
-    fontSize: 10,
+  orphanContent: { 
+    flexDirection: 'row-reverse', 
+    alignItems: 'flex-start', 
+    gap: 10, 
+    marginBottom: 10 
+  },
+  orphanTextWrap: { 
+    flex: 1, 
+    alignItems: 'flex-end' 
+  },
+  orphanTitle: {
+    fontSize: 15,
     fontWeight: '600',
-    color: colors.richBlack,
-    marginLeft: 2,
+    color: '#92400E',
+    marginBottom: 2,
   },
-}); 
+  orphanText: { 
+    fontSize: 13, 
+    fontWeight: '500',
+    color: '#78350F', 
+    textAlign: 'right',
+  },
+  orphanBtn: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#FCD34D',
+  },
+  orphanBtnText: { 
+    color: '#1F2937', 
+    fontWeight: '600',
+    fontSize: 13,
+  },
+});
