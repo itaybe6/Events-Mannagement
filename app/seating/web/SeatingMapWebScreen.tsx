@@ -473,7 +473,7 @@ export default function SeatingMapWebScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#e5e7eb' },
+  root: { flex: 1, backgroundColor: '#f8fafc' },
   // In RTL, `row` already lays out right-to-left. Using `row-reverse` would put the sidebar on the left.
   row: { flex: 1, flexDirection: 'row' },
   col: { 
@@ -482,7 +482,7 @@ const styles = StyleSheet.create({
     gap: 14, 
     padding: 14,
     ...(Platform.OS === 'web' ? ({ 
-      background: 'linear-gradient(135deg, #e5e7eb 0%, #f3f4f6 100%)',
+      background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
     } as any) : null),
   },
   canvas: { flex: 1, borderRadius: 16, overflow: 'hidden' },

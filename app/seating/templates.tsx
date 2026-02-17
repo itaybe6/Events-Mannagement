@@ -1062,7 +1062,7 @@ export default function SeatingTemplatesScreen(props: SeatingTemplatesScreenProp
 
   if (mode === 'map') {
     return (
-      <GestureHandlerRootView style={{ flex: 1, backgroundColor: Platform.OS === 'web' ? '#e5e7eb' : ui.bg }}>
+      <GestureHandlerRootView style={{ flex: 1, backgroundColor: Platform.OS === 'web' ? '#f8fafc' : ui.bg }}>
         <SeatingFreeformMap
           ui={ui}
           tables={tablesForEdit}
@@ -3231,7 +3231,7 @@ function SeatingFreeformMap({
       style={{
         flex: 1,
         width: '100%',
-        backgroundColor: isWeb ? '#e5e7eb' : ui.bg,
+        backgroundColor: isWeb ? '#f8fafc' : ui.bg,
         // Make the layout deterministic on web: sidebar on the right, canvas on the left
         flexDirection: isWeb ? 'row-reverse' : 'column',
       }}
@@ -3563,7 +3563,7 @@ function SeatingFreeformMap({
             style={{
               flex: 1,
               overflow: 'hidden',
-              backgroundColor: isWeb ? '#e5e7eb' : ui.canvas,
+              backgroundColor: isWeb ? '#f8fafc' : ui.canvas,
               ...(isWeb ? { position: 'relative' as const } : null),
             }}
             {...(isWeb ? ({ onWheel: handleWheelZoom } as any) : {})}

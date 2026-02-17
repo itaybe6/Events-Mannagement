@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -37,6 +37,9 @@ type GuestRow = {
   guest_categories?: { name: string } | null;
   tables?: { number?: number } | null;
 };
+
+type QuickSeatFilterKey = 'seated' | 'unseated';
+type QuickStatusFilterKey = 'all' | 'arriving' | 'not_arriving' | 'pending';
 
 type WebSketch = {
   gridCols: number;
@@ -262,9 +265,19 @@ export default function BrideGroomSeatingWebScreen() {
   const [tableListSearch, setTableListSearch] = useState('');
   const [quickAddSelectedGuestIds, setQuickAddSelectedGuestIds] = useState<Set<string>>(new Set());
   const [quickAddGuestSearch, setQuickAddGuestSearch] = useState<string>('');
+  const [quickSeatFilter, setQuickSeatFilter] = useState<QuickSeatFilterKey>('unseated');
+  const [quickStatusFilter, setQuickStatusFilter] = useState<QuickStatusFilterKey>('all');
   const [sidePanelTab, setSidePanelTab] = useState<'guests' | 'tables'>('guests');
   const [seatConfirmOpen, setSeatConfirmOpen] = useState(false);
   const [seatConfirmTable, setSeatConfirmTable] = useState<Table | null>(null);
+
+  // Guest edit modal (edit people count + move table if seated)
+  const suppressQuickSelectRef = useRef(false);
+  const [guestEditOpen, setGuestEditOpen] = useState(false);
+  const [guestEditGuest, setGuestEditGuest] = useState<GuestRow | null>(null);
+  const [guestEditPeople, setGuestEditPeople] = useState('');
+  const [guestEditTableId, setGuestEditTableId] = useState<string | null>(null);
+  const [guestEditTableSearch, setGuestEditTableSearch] = useState('');
 
   useEffect(() => {
     if (!isLoggedIn) router.replace('/login');
@@ -587,7 +600,20 @@ export default function BrideGroomSeatingWebScreen() {
     const q = quickAddGuestSearch.trim().toLowerCase();
     const rows = (guests || [])
       .filter(Boolean)
-      .filter((g) => (q ? String(g.name || '').toLowerCase().includes(q) : true));
+      .filter((g: any) => (q ? String(g.name || '').toLowerCase().includes(q) : true))
+      .filter((g: any) => {
+        const status = String(g?.status || '').trim();
+        const seated = Boolean(String(g?.table_id || '').trim());
+        // Seat filter (toggle)
+        if (quickSeatFilter === 'seated' && !seated) return false;
+        if (quickSeatFilter === 'unseated' && seated) return false;
+        // Status filter (tags)
+        if (quickStatusFilter === 'all') return true;
+        if (quickStatusFilter === 'arriving') return status === 'מגיע';
+        if (quickStatusFilter === 'not_arriving') return status === 'לא מגיע';
+        if (quickStatusFilter === 'pending') return status === 'ממתין';
+        return true;
+      });
 
     const grouped = rows.reduce((acc: Record<string, any[]>, g: any) => {
       const cat = String(g?.guest_categories?.name || 'ללא קטגוריה');
@@ -611,7 +637,7 @@ export default function BrideGroomSeatingWebScreen() {
       });
 
     return sections;
-  }, [guests, quickAddGuestSearch]);
+  }, [guests, quickAddGuestSearch, quickSeatFilter, quickStatusFilter]);
 
   const toggleQuickAddGuest = useCallback((guestId: string) => {
     setQuickAddSelectedGuestIds((prev) => {
@@ -637,6 +663,96 @@ export default function BrideGroomSeatingWebScreen() {
     setSeatConfirmTable(null);
     setTabBarVisible(true);
   }, [setTabBarVisible]);
+
+  const openGuestEdit = useCallback(
+    (g: GuestRow) => {
+      setGuestEditGuest(g);
+      setGuestEditPeople(String(Number(g.numberOfPeople ?? 1) || 1));
+      setGuestEditTableId(g.table_id ? String(g.table_id) : null);
+      setGuestEditTableSearch('');
+      setGuestEditOpen(true);
+      setTabBarVisible(false);
+    },
+    [setTabBarVisible]
+  );
+
+  const closeGuestEdit = useCallback(() => {
+    setGuestEditOpen(false);
+    setGuestEditGuest(null);
+    setGuestEditPeople('');
+    setGuestEditTableId(null);
+    setGuestEditTableSearch('');
+    setTabBarVisible(true);
+  }, [setTabBarVisible]);
+
+  const saveGuestEdit = useCallback(async () => {
+    const g = guestEditGuest;
+    if (!g) return;
+
+    const parsed = Number.parseInt(String(guestEditPeople || '').trim(), 10);
+    const nextPeople = Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+    if (!nextPeople) {
+      Alert.alert('שגיאה', 'כמות אנשים חייבת להיות מספר גדול מ-0.');
+      return;
+    }
+
+    const prevTableId = g.table_id ? String(g.table_id) : null;
+    const canMove = Boolean(prevTableId);
+    const nextTableId = canMove ? (guestEditTableId ? String(guestEditTableId) : prevTableId) : null;
+
+    try {
+      const { error } = await supabase
+        .from('guests')
+        .update({ number_of_people: nextPeople, ...(canMove ? { table_id: nextTableId } : {}) })
+        .eq('id', String(g.id));
+      if (error) throw error;
+
+      // Update seated_guests for affected tables (legacy field).
+      const nextGuests = (guests || []).map((row) =>
+        String(row.id) === String(g.id)
+          ? ({
+              ...row,
+              numberOfPeople: nextPeople,
+              table_id: canMove ? nextTableId : row.table_id,
+            } as any)
+          : row
+      );
+      const affected = Array.from(new Set([prevTableId, canMove ? nextTableId : prevTableId].filter(Boolean) as string[]));
+      await Promise.all(
+        affected.map(async (tid) => {
+          const total = nextGuests
+            .filter((x: any) => String(x.table_id || '') === String(tid))
+            .reduce((sum: number, x: any) => sum + (Number(x.numberOfPeople) || 1), 0);
+          const { error: tErr } = await supabase.from('tables').update({ seated_guests: total }).eq('id', tid);
+          if (tErr) {
+            // non-fatal
+            console.warn('Update table seated_guests failed:', tErr);
+          }
+        })
+      );
+
+      await Promise.all([fetchGuests(), fetchTables()]);
+      closeGuestEdit();
+    } catch (e) {
+      console.error('Save guest edit error:', e);
+      Alert.alert('שגיאה', 'לא ניתן לעדכן את המוזמן.');
+    }
+  }, [closeGuestEdit, fetchGuests, fetchTables, guestEditGuest, guestEditPeople, guestEditTableId, guests]);
+
+  const moveTablesForEdit = useMemo(() => {
+    const g = guestEditGuest;
+    if (!g?.table_id) return [];
+    const q = guestEditTableSearch.trim().toLowerCase();
+    return (tables || [])
+      .filter(Boolean)
+      .filter((t: any) => {
+        if (!q) return true;
+        const num = String((t as any).number ?? '');
+        const name = String((t as any).name ?? '').toLowerCase();
+        return num.includes(q) || name.includes(q);
+      })
+      .sort((a: any, b: any) => Number(a.number || 0) - Number(b.number || 0));
+  }, [guestEditGuest, guestEditTableSearch, tables]);
 
   const confirmSeatSelectedGuests = useCallback(async () => {
     const tableId = seatConfirmTable?.id;
@@ -995,6 +1111,103 @@ export default function BrideGroomSeatingWebScreen() {
                       : 'בחר מוזמנים מהרשימה, ואז לחץ על שולחן במפה כדי להושיב אותם.'}
                   </Text>
 
+                  <View style={styles.quickGuestFiltersOuter}>
+                    <View style={styles.quickSeatToggleRow}>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="סינון: לא הושבו"
+                        onPress={() => setQuickSeatFilter('unseated')}
+                        style={({ hovered, pressed }: any) => [
+                          styles.toggleBtn,
+                          quickSeatFilter === 'unseated' ? styles.toggleBtnActive : null,
+                          Platform.OS === 'web' && hovered && quickSeatFilter !== 'unseated' ? styles.toggleBtnHover : null,
+                          pressed ? styles.btnPressed : null,
+                        ]}
+                      >
+                        <Text style={[styles.toggleText, quickSeatFilter === 'unseated' ? styles.toggleTextActive : null]}>לא הושבו</Text>
+                      </Pressable>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="סינון: הושבו"
+                        onPress={() => setQuickSeatFilter('seated')}
+                        style={({ hovered, pressed }: any) => [
+                          styles.toggleBtn,
+                          quickSeatFilter === 'seated' ? styles.toggleBtnActive : null,
+                          Platform.OS === 'web' && hovered && quickSeatFilter !== 'seated' ? styles.toggleBtnHover : null,
+                          pressed ? styles.btnPressed : null,
+                        ]}
+                      >
+                        <Text style={[styles.toggleText, quickSeatFilter === 'seated' ? styles.toggleTextActive : null]}>הושבו</Text>
+                      </Pressable>
+                    </View>
+
+                    <View style={styles.quickGuestFiltersRow}>
+                      {[
+                        { key: 'all' as const, label: 'הכל' },
+                        { key: 'pending' as const, label: 'ממתין' },
+                        { key: 'arriving' as const, label: 'מגיע' },
+                        { key: 'not_arriving' as const, label: 'לא מגיע' },
+                      ].map((f) => {
+                        const active = quickStatusFilter === f.key;
+                        const tone =
+                          f.key === 'arriving' ? 'green' : f.key === 'not_arriving' ? 'red' : f.key === 'pending' ? 'yellow' : 'neutral';
+                        const toneChip =
+                          tone === 'green'
+                            ? styles.quickFilterChipGreen
+                            : tone === 'red'
+                              ? styles.quickFilterChipRed
+                              : tone === 'yellow'
+                                ? styles.quickFilterChipYellow
+                                : null;
+                        const toneChipActive =
+                          tone === 'green'
+                            ? styles.quickFilterChipGreenActive
+                            : tone === 'red'
+                              ? styles.quickFilterChipRedActive
+                              : tone === 'yellow'
+                                ? styles.quickFilterChipYellowActive
+                                : null;
+                        const toneText =
+                          tone === 'green'
+                            ? styles.quickFilterChipTextGreen
+                            : tone === 'red'
+                              ? styles.quickFilterChipTextRed
+                              : tone === 'yellow'
+                                ? styles.quickFilterChipTextYellow
+                                : null;
+                        const toneTextActive =
+                          tone === 'yellow' ? styles.quickFilterChipTextActiveOnYellow : null;
+                        return (
+                          <Pressable
+                            key={f.key}
+                            accessibilityRole="button"
+                            accessibilityLabel={`סינון סטטוס: ${f.label}`}
+                            onPress={() => setQuickStatusFilter(f.key)}
+                            style={({ hovered, pressed }: any) => [
+                              styles.quickFilterChip,
+                              toneChip,
+                              active ? styles.quickFilterChipActive : null,
+                              active ? toneChipActive : null,
+                              Platform.OS === 'web' && hovered && !active ? styles.quickFilterChipHover : null,
+                              pressed ? styles.btnPressed : null,
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.quickFilterChipText,
+                                toneText,
+                                active ? styles.quickFilterChipTextActive : null,
+                                active ? toneTextActive : null,
+                              ]}
+                            >
+                              {f.label}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </View>
+
                   <View style={{ height: 10 }} />
 
                   <View style={styles.sidePanelBody}>
@@ -1037,8 +1250,13 @@ export default function BrideGroomSeatingWebScreen() {
                                       key={id}
                                       accessibilityRole="button"
                                       accessibilityLabel={selected ? 'בטל בחירה' : 'בחר מוזמן'}
-                                      disabled={!isAvailable}
-                                      onPress={() => (isAvailable ? toggleQuickAddGuest(id) : null)}
+                                      onPress={() => {
+                                        if (suppressQuickSelectRef.current) {
+                                          suppressQuickSelectRef.current = false;
+                                          return;
+                                        }
+                                        if (isAvailable) toggleQuickAddGuest(id);
+                                      }}
                                       style={({ hovered, pressed }: any) => [
                                         styles.quickGuestRow,
                                         selected ? styles.quickGuestRowSelected : null,
@@ -1064,15 +1282,33 @@ export default function BrideGroomSeatingWebScreen() {
                                           </View>
                                         </View>
 
-                                        <View style={[styles.quickGuestBadge, isAvailable ? styles.quickGuestBadgeOk : styles.quickGuestBadgeMuted]}>
-                                          <Text
-                                            style={[
-                                              styles.quickGuestBadgeText,
-                                              isAvailable ? styles.quickGuestBadgeTextOk : styles.quickGuestBadgeTextMuted,
+                                        <View style={styles.quickGuestLeftGroup}>
+                                          <Pressable
+                                            accessibilityRole="button"
+                                            accessibilityLabel="עריכת מוזמן"
+                                            onPressIn={() => {
+                                              suppressQuickSelectRef.current = true;
+                                            }}
+                                            onPress={() => openGuestEdit(g as any)}
+                                            style={({ hovered, pressed }: any) => [
+                                              styles.quickGuestEditBtn,
+                                              Platform.OS === 'web' && hovered ? styles.quickGuestEditBtnHover : null,
+                                              pressed ? styles.btnPressed : null,
                                             ]}
                                           >
-                                            {badge}
-                                          </Text>
+                                            <Ionicons name="create-outline" size={16} color={colors.gray[700]} />
+                                          </Pressable>
+
+                                          <View style={[styles.quickGuestBadge, isAvailable ? styles.quickGuestBadgeOk : styles.quickGuestBadgeMuted]}>
+                                            <Text
+                                              style={[
+                                                styles.quickGuestBadgeText,
+                                                isAvailable ? styles.quickGuestBadgeTextOk : styles.quickGuestBadgeTextMuted,
+                                              ]}
+                                            >
+                                              {badge}
+                                            </Text>
+                                          </View>
                                         </View>
                                       </View>
                                     </Pressable>
@@ -1365,6 +1601,152 @@ export default function BrideGroomSeatingWebScreen() {
                 ]}
               >
                 <Text style={styles.confirmPrimaryText}>אישור</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Guest edit modal */}
+      <Modal visible={guestEditOpen} transparent animationType="fade" onRequestClose={closeGuestEdit}>
+        <Pressable style={styles.modalOverlay} onPress={closeGuestEdit}>
+          <Pressable
+            style={[styles.guestEditCard, { maxHeight: Math.min(0.92 * windowHeight, 760), maxWidth: 620 }]}
+            onPress={() => {}}
+          >
+            <View style={styles.guestEditHeader}>
+              <View style={styles.guestEditHeaderText}>
+                <Text style={styles.guestEditTitle} numberOfLines={1}>
+                  עריכת מוזמן
+                </Text>
+                <Text style={styles.guestEditSubtitle} numberOfLines={1}>
+                  {guestEditGuest?.name ? String(guestEditGuest.name).trim() : ''}
+                </Text>
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="סגירה"
+                onPress={closeGuestEdit}
+                style={({ hovered, pressed }: any) => [
+                  styles.tableModalCloseBtn,
+                  Platform.OS === 'web' && hovered ? styles.tableModalCloseBtnHover : null,
+                  pressed ? styles.btnPressed : null,
+                ]}
+              >
+                <Ionicons name="close" size={18} color={colors.gray[700]} />
+              </Pressable>
+            </View>
+
+            <ScrollView contentContainerStyle={styles.guestEditBody} showsVerticalScrollIndicator={false}>
+              <View style={styles.guestEditInfoRow}>
+                <View style={styles.guestEditInfoPill}>
+                  <Ionicons name="information-circle-outline" size={14} color={colors.gray[700]} />
+                  <Text style={styles.guestEditInfoText}>
+                    סטטוס: {String(guestEditGuest?.status || '').trim() || '—'}
+                  </Text>
+                </View>
+                {guestEditGuest?.tables?.number ? (
+                  <View style={styles.guestEditInfoPill}>
+                    <Ionicons name="grid-outline" size={14} color={colors.gray[700]} />
+                    <Text style={styles.guestEditInfoText}>שולחן: {guestEditGuest.tables.number}</Text>
+                  </View>
+                ) : null}
+              </View>
+
+              <View style={styles.guestEditField}>
+                <Text style={styles.guestEditLabel}>כמות מגיעים</Text>
+                <TextInput
+                  value={guestEditPeople}
+                  onChangeText={setGuestEditPeople}
+                  placeholder="לדוגמה: 2"
+                  placeholderTextColor={colors.gray[500]}
+                  keyboardType="numeric"
+                  style={styles.guestEditInput}
+                />
+              </View>
+
+              {guestEditGuest?.table_id ? (
+                <View style={styles.guestEditMoveCard}>
+                  <View style={styles.guestEditMoveHeader}>
+                    <Ionicons name="swap-horizontal" size={16} color={colors.text} />
+                    <Text style={styles.guestEditMoveTitle}>העברה לשולחן אחר</Text>
+                  </View>
+
+                  <View style={styles.searchWrap}>
+                    <Ionicons name="search" size={16} color={colors.gray[500]} />
+                    <TextInput
+                      value={guestEditTableSearch}
+                      onChangeText={setGuestEditTableSearch}
+                      placeholder="חיפוש שולחן..."
+                      placeholderTextColor={colors.gray[500]}
+                      style={styles.searchInput}
+                    />
+                  </View>
+
+                  <View style={styles.guestEditTablesList}>
+                    <ScrollView showsVerticalScrollIndicator={false}>
+                      {moveTablesForEdit.map((t: any) => {
+                        const tid = String(t.id);
+                        const selected = String(guestEditTableId || '') === tid;
+                        const name = String(t.name || '').trim();
+                        return (
+                          <Pressable
+                            key={tid}
+                            accessibilityRole="button"
+                            accessibilityLabel={`בחר שולחן ${String(t.number ?? '')}`}
+                            onPress={() => setGuestEditTableId(tid)}
+                            style={({ hovered, pressed }: any) => [
+                              styles.guestEditTableOption,
+                              selected ? styles.guestEditTableOptionSelected : null,
+                              Platform.OS === 'web' && hovered && !selected ? styles.guestEditTableOptionHover : null,
+                              pressed ? styles.btnPressed : null,
+                            ]}
+                          >
+                            <View style={styles.guestEditTableOptionRight}>
+                              <View style={styles.guestEditTableNumPill}>
+                                <Text style={styles.guestEditTableNumText}>#{String(t.number ?? '—')}</Text>
+                              </View>
+                              <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-end' }}>
+                                <Text style={styles.guestEditTableName} numberOfLines={1}>
+                                  {name ? name : 'ללא שם'}
+                                </Text>
+                              </View>
+                            </View>
+                            {selected ? <Ionicons name="checkmark-circle" size={18} color="#16A34A" /> : null}
+                          </Pressable>
+                        );
+                      })}
+                      {moveTablesForEdit.length === 0 ? <Text style={styles.muted}>אין שולחנות להצגה</Text> : null}
+                    </ScrollView>
+                  </View>
+                </View>
+              ) : null}
+            </ScrollView>
+
+            <View style={styles.guestEditFooter}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="ביטול"
+                onPress={closeGuestEdit}
+                style={({ hovered, pressed }: any) => [
+                  styles.footerBtn,
+                  Platform.OS === 'web' && hovered ? styles.footerBtnHover : null,
+                  pressed ? styles.btnPressed : null,
+                ]}
+              >
+                <Text style={styles.footerBtnText}>ביטול</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="שמור"
+                onPress={() => void saveGuestEdit()}
+                style={({ hovered, pressed }: any) => [
+                  styles.footerBtnPrimary,
+                  Platform.OS === 'web' && hovered ? styles.footerBtnPrimaryHover : null,
+                  pressed ? styles.btnPressed : null,
+                ]}
+              >
+                <Text style={styles.footerBtnPrimaryText}>שמור</Text>
               </Pressable>
             </View>
           </Pressable>
@@ -2297,6 +2679,48 @@ const styles = StyleSheet.create({
   quickClearBtnText: { fontSize: 12, fontWeight: '900', color: colors.gray[700], textAlign: 'right', writingDirection: 'rtl' },
 
   quickAddHint: { marginTop: 10, fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'right', writingDirection: 'rtl' },
+  quickGuestFiltersOuter: { marginTop: 10, alignSelf: 'stretch', alignItems: 'flex-end' },
+  quickSeatToggleRow: { width: '100%', flexDirection: 'row-reverse', alignItems: 'center', gap: 10, marginBottom: 10 },
+  quickGuestFiltersRow: {
+    maxWidth: '100%',
+    flexDirection: 'row-reverse',
+    justifyContent: 'flex-start', // row-reverse => start is the RIGHT
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+    padding: 8,
+    borderRadius: 16,
+    backgroundColor: 'rgba(248,250,252,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+    ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
+  },
+  quickFilterChip: {
+    height: 34,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  quickFilterChipHover: { backgroundColor: 'rgba(248,250,252,0.92)', borderColor: 'rgba(6,23,62,0.18)' },
+  quickFilterChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  // Status tones (מגיע / לא מגיע / ממתין)
+  quickFilterChipGreen: { backgroundColor: 'rgba(22,163,74,0.10)', borderColor: 'rgba(22,163,74,0.22)' },
+  quickFilterChipGreenActive: { backgroundColor: '#16A34A', borderColor: '#16A34A' },
+  quickFilterChipRed: { backgroundColor: 'rgba(225,29,72,0.08)', borderColor: 'rgba(225,29,72,0.22)' },
+  quickFilterChipRedActive: { backgroundColor: '#E11D48', borderColor: '#E11D48' },
+  quickFilterChipYellow: { backgroundColor: 'rgba(245,158,11,0.10)', borderColor: 'rgba(245,158,11,0.28)' },
+  quickFilterChipYellowActive: { backgroundColor: '#F59E0B', borderColor: '#F59E0B' },
+  quickFilterChipText: { fontSize: 12, fontWeight: '900', color: colors.gray[800], textAlign: 'right', writingDirection: 'rtl' },
+  quickFilterChipTextActive: { color: colors.white },
+  quickFilterChipTextGreen: { color: '#166534' },
+  quickFilterChipTextRed: { color: '#9F1239' },
+  quickFilterChipTextYellow: { color: '#92400E' },
+  quickFilterChipTextActiveOnYellow: { color: '#111827' },
   quickGuestList: { gap: 10, paddingBottom: 4 },
   quickSectionCard: {
     borderRadius: 18,
@@ -2344,6 +2768,19 @@ const styles = StyleSheet.create({
   // In RTL, `row` places first child on the RIGHT.
   // We render checkbox first, then text => checkbox is right of the name.
   quickGuestRightGroup: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 },
+  quickGuestLeftGroup: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  quickGuestEditBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    backgroundColor: 'rgba(15,23,42,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  quickGuestEditBtnHover: { backgroundColor: 'rgba(15,23,42,0.06)' },
   quickGuestTextWrap: { flex: 1, minWidth: 0, alignItems: 'flex-end', justifyContent: 'center' },
   quickGuestName: {
     fontSize: 13,
@@ -2368,6 +2805,106 @@ const styles = StyleSheet.create({
   quickGuestBadgeText: { fontSize: 11, fontWeight: '900', textAlign: 'right', writingDirection: 'rtl' },
   quickGuestBadgeTextOk: { color: '#065F46' },
   quickGuestBadgeTextMuted: { color: colors.gray[700] },
+
+  // Guest edit modal
+  guestEditCard: {
+    width: '100%',
+    backgroundColor: colors.gray[50],
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.55)',
+    overflow: 'hidden',
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 6px 26px rgba(0,0,0,0.10)', direction: 'rtl' } as any) : null),
+  },
+  guestEditHeader: {
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(226,232,240,0.9)',
+    backgroundColor: colors.white,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  guestEditHeaderText: { flex: 1, minWidth: 0, alignItems: 'flex-end', gap: 4 },
+  guestEditTitle: { fontSize: 18, fontWeight: '900', color: colors.text, textAlign: 'right', writingDirection: 'rtl' },
+  guestEditSubtitle: { fontSize: 13, fontWeight: '800', color: colors.gray[600], textAlign: 'right', writingDirection: 'rtl' },
+  guestEditBody: { padding: 18, gap: 14 },
+  guestEditInfoRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
+  guestEditInfoPill: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+  },
+  guestEditInfoText: { fontSize: 12, fontWeight: '900', color: colors.gray[800], textAlign: 'right', writingDirection: 'rtl' },
+  guestEditField: { gap: 8 },
+  guestEditLabel: { fontSize: 12, fontWeight: '900', color: colors.gray[700], textAlign: 'right', writingDirection: 'rtl' },
+  guestEditInput: {
+    height: 46,
+    borderRadius: 14,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: 'rgba(226,232,240,0.95)',
+    paddingHorizontal: 12,
+    fontSize: 14,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : null),
+  },
+  guestEditMoveCard: {
+    backgroundColor: colors.white,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(226,232,240,0.9)',
+    padding: 14,
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 2px 14px rgba(0,0,0,0.04)' } as any) : null),
+  },
+  guestEditMoveHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 },
+  guestEditMoveTitle: { fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'right', writingDirection: 'rtl' },
+  guestEditTablesList: {
+    marginTop: 10,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.06)',
+    backgroundColor: 'rgba(248,250,252,0.70)',
+    maxHeight: 260,
+    overflow: 'hidden',
+  },
+  guestEditTableOption: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(226,232,240,0.65)',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  guestEditTableOptionHover: { backgroundColor: 'rgba(248,250,252,0.92)' },
+  guestEditTableOptionSelected: { backgroundColor: 'rgba(16,185,129,0.08)' },
+  guestEditTableOptionRight: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 },
+  guestEditTableNumPill: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(15,23,42,0.04)', borderWidth: 1, borderColor: 'rgba(15,23,42,0.06)' },
+  guestEditTableNumText: { fontSize: 12, fontWeight: '900', color: colors.gray[800], writingDirection: 'rtl' },
+  guestEditTableName: { fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'right', writingDirection: 'rtl' },
+  guestEditFooter: {
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(226,232,240,0.9)',
+    backgroundColor: 'rgba(248,250,252,0.75)',
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+  },
 
   confirmCard: {
     width: 420,

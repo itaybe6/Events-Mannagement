@@ -1099,7 +1099,7 @@ function InlineEditor({
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#e5e7eb' },
+  root: { flex: 1, backgroundColor: '#f8fafc' },
 
   dialogOverlay: {
     ...(StyleSheet.absoluteFill as any),

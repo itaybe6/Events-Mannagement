@@ -1521,24 +1521,24 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.06)',
     alignSelf: 'flex-end',
+    // Push to the physical right edge (stable in RTL/LTR).
+    marginLeft: 'auto',
   },
   guestCardMetaText: { fontSize: 11, fontWeight: '900', color: colors.gray[700], textAlign: 'left' },
   guestBottom: {
     position: 'absolute',
     bottom: 10,
     right: 10,
+    left: 10,
     // Anchor the info cluster to the physical right edge.
-    alignItems: 'flex-end',
+    alignItems: 'stretch',
     justifyContent: 'flex-start',
     gap: 8,
     maxWidth: '100%',
-    // Keep the bottom cluster stable regardless of RTL flipping.
-    ...(Platform.OS === 'web' ? ({ direction: 'ltr' } as any) : null),
   },
   guestBottomTopRow: {
     flexDirection: 'column',
     alignItems: 'flex-end',
-    ...(Platform.OS === 'web' ? ({ direction: 'ltr' } as any) : null),
   },
   guestBottomActions: {
     flexDirection: 'row',
@@ -1575,6 +1575,8 @@ const styles = StyleSheet.create({
   },
   statusPillBottom: {
     alignSelf: 'flex-end',
+    // Push to the physical right edge (stable in RTL/LTR).
+    marginLeft: 'auto',
   },
   statusDot: { width: 6, height: 6, borderRadius: 999 },
   statusText: { fontSize: 10.5, fontWeight: '900', textAlign: 'right' },
