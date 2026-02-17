@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, Modal, FlatList, TextInput } from 'react-native';
+import { Alert, View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, Modal, FlatList, TextInput } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { useUserStore } from '@/store/userStore';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
@@ -29,6 +29,8 @@ export default function TablesList() {
   const [categories, setCategories] = useState<string[]>([]);
   const [editingTableId, setEditingTableId] = useState<string | null>(null);
   const [selectedGuestsToDelete, setSelectedGuestsToDelete] = useState<Set<string>>(new Set());
+  const [editingTableName, setEditingTableName] = useState('');
+  const [savingTableName, setSavingTableName] = useState(false);
   const [moveGuestsOpen, setMoveGuestsOpen] = useState(false);
   const [moveGuestsSaving, setMoveGuestsSaving] = useState(false);
   const [moveTargetTableId, setMoveTargetTableId] = useState<string | null>(null);
@@ -226,9 +228,35 @@ export default function TablesList() {
     if (editingTableId === tableId) {
       setEditingTableId(null);
       setSelectedGuestsToDelete(new Set());
+      setEditingTableName('');
     } else {
       setEditingTableId(tableId);
       setSelectedGuestsToDelete(new Set());
+      const t = tables.find((x) => String(x.id) === String(tableId));
+      setEditingTableName(String((t as any)?.name ?? '').trim());
+    }
+  };
+
+  const handleSaveTableName = async (tableId: string) => {
+    const next = String(editingTableName ?? '').trim();
+    setSavingTableName(true);
+    try {
+      const { error } = await supabase
+        .from('tables')
+        .update({ name: next || null })
+        .eq('id', tableId);
+      if (error) throw error;
+      await fetchTables();
+      Alert.alert('נשמר', 'שם השולחן עודכן');
+      // Exit edit mode after saving (as requested)
+      setEditingTableId(null);
+      setSelectedGuestsToDelete(new Set());
+      setEditingTableName('');
+    } catch (e) {
+      console.error('Error updating table name:', e);
+      Alert.alert('שגיאה', 'לא ניתן לשמור את שם השולחן');
+    } finally {
+      setSavingTableName(false);
     }
   };
 
@@ -448,9 +476,39 @@ export default function TablesList() {
                     <Text style={[styles.tableTitle, isTableFull && styles.tableTitleFull]}>
                       שולחן {table.number}
                     </Text>
-                    {table.name && (
+                    {isEditing ? (
+                      <View style={styles.tableNameEditWrap}>
+                        <TextInput
+                          value={editingTableName}
+                          onChangeText={(t) => setEditingTableName(String(t || '').slice(0, 20))}
+                          placeholder="שם שולחן"
+                          placeholderTextColor="#9CA3AF"
+                          style={styles.tableNameInput}
+                          textAlign="right"
+                          maxLength={20}
+                        />
+                        {/* Bottom-left save button (absolute), bottom-right char count */}
+                        <Text style={styles.tableNameCharCountFloating}>
+                          {`${String(editingTableName || '').length}/20`}
+                        </Text>
+                        <TouchableOpacity
+                          style={[
+                            styles.saveNameBtn,
+                            styles.saveNameBtnFloating,
+                            savingTableName ? styles.disabledButton : null,
+                          ]}
+                          onPress={() => handleSaveTableName(String(table.id))}
+                          disabled={savingTableName}
+                          activeOpacity={0.85}
+                          accessibilityRole="button"
+                          accessibilityLabel="שמירת שם שולחן"
+                        >
+                          <Ionicons name="checkmark" size={18} color="#FFFFFF" />
+                        </TouchableOpacity>
+                      </View>
+                    ) : table.name ? (
                       <Text style={styles.tableSubtitle}>{table.name}</Text>
-                    )}
+                    ) : null}
                   </View>
                 </View>
                 <View style={styles.tableRight}>
@@ -681,23 +739,35 @@ export default function TablesList() {
             <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 16 }} showsVerticalScrollIndicator={false}>
               {tables
                 .filter((t) => String(t.id) !== String(editingTableId))
-                .map((t) => (
+                .map((t) => {
+                  const tid = String(t.id);
+                  const seatedPeople = (guests || [])
+                    .filter((g: any) => String(g?.table_id || '') === tid)
+                    .reduce((sum: number, g: any) => sum + (Number(g?.numberOfPeople) || 1), 0);
+                  const cap = Number((t as any)?.capacity ?? 0) || 0;
+                  const ratio = cap > 0 ? `${seatedPeople}/${cap}` : `${seatedPeople}`;
+                  const active = moveTargetTableId === tid;
+                  return (
                 <TouchableOpacity
                   key={String(t.id)}
-                  style={[styles.categoryPickRow, moveTargetTableId === String(t.id) && styles.categoryPickRowActive]}
-                  onPress={() => setMoveTargetTableId(String(t.id))}
+                  style={[styles.categoryPickRow, active && styles.categoryPickRowActive]}
+                  onPress={() => setMoveTargetTableId(tid)}
                   activeOpacity={0.85}
                 >
-                  <Text style={[styles.categoryPickText, moveTargetTableId === String(t.id) && styles.categoryPickTextActive]}>
-                    {`שולחן ${(t as any).number ?? t.number ?? ''}${t.name ? ` · ${t.name}` : ''}`}
-                  </Text>
+                  <View style={styles.tablePickTextWrap}>
+                    <Text style={[styles.categoryPickText, active && styles.categoryPickTextActive]}>
+                      {`שולחן ${(t as any).number ?? t.number ?? ''}${t.name ? ` · ${t.name}` : ''}`}
+                    </Text>
+                    <Text style={styles.tablePickMetaText}>{`יושבים: ${ratio}`}</Text>
+                  </View>
                   <Ionicons
-                    name={moveTargetTableId === String(t.id) ? 'checkmark-circle' : 'ellipse-outline'}
+                    name={active ? 'checkmark-circle' : 'ellipse-outline'}
                     size={22}
-                    color={moveTargetTableId === String(t.id) ? '#3B82F6' : '#D1D5DB'}
+                    color={active ? '#3B82F6' : '#D1D5DB'}
                   />
                 </TouchableOpacity>
-              ))}
+                  );
+                })}
             </ScrollView>
 
             <TouchableOpacity
@@ -864,6 +934,46 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#6B7280',
     marginTop: 2,
+  },
+  tableNameEditWrap: {
+    marginTop: 6,
+    width: '100%',
+    position: 'relative',
+    paddingBottom: 44,
+  },
+  tableNameInput: {
+    flex: 1,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    paddingHorizontal: 12,
+    color: '#111827',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  tableNameCharCountFloating: {
+    position: 'absolute',
+    right: 0,
+    bottom: 10,
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#9CA3AF',
+    textAlign: 'right',
+  },
+  saveNameBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#10B981',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  saveNameBtnFloating: {
+    position: 'absolute',
+    left: 0,
+    bottom: 0,
   },
   tableRight: {
     flexDirection: 'row-reverse',
@@ -1038,6 +1148,17 @@ const styles = StyleSheet.create({
   categoryPickTextActive: {
     color: '#1D4ED8',
     fontWeight: '700',
+  },
+  tablePickTextWrap: {
+    flex: 1,
+    alignItems: 'flex-end',
+  },
+  tablePickMetaText: {
+    marginTop: 4,
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#6B7280',
+    textAlign: 'right',
   },
   modalOverlay: {
     flex: 1,

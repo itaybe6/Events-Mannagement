@@ -195,9 +195,6 @@ export default function AdminEventsCreateWebScreen() {
             showsVerticalScrollIndicator={false}
           >
             <View style={styles.hero}>
-              <Text style={styles.h1}>יצירת אירוע חדש</Text>
-              <Text style={styles.subtitle}>הגדירו את פרטי האירוע, בחרו סוג אירוע ושייכו לקוח.</Text>
-
               <View style={styles.progressWrap}>
                 <View style={styles.progressRow}>
                   <Text style={styles.progressMeta}>{`שלב ${currentStep} מתוך 3`}</Text>
@@ -427,7 +424,7 @@ export default function AdminEventsCreateWebScreen() {
                   <View style={styles.summaryList}>
                     <View style={styles.summaryItem}>
                       <View style={styles.summaryIconCircle}>
-                        <Ionicons name="pricetag-outline" size={18} color={stylesTokens.primary} />
+                        <Ionicons name="pricetag-outline" size={18} color={stylesTokens.white} />
                       </View>
                       <View style={styles.summaryText}>
                         <Text style={styles.summaryLabel}>סוג אירוע</Text>
@@ -437,7 +434,7 @@ export default function AdminEventsCreateWebScreen() {
 
                     <View style={styles.summaryItem}>
                       <View style={styles.summaryIconCircle}>
-                        <Ionicons name="text-outline" size={18} color={stylesTokens.primary} />
+                        <Ionicons name="text-outline" size={18} color={stylesTokens.white} />
                       </View>
                       <View style={styles.summaryText}>
                         <Text style={styles.summaryLabel}>שם האירוע</Text>
@@ -447,7 +444,7 @@ export default function AdminEventsCreateWebScreen() {
 
                     <View style={styles.summaryItem}>
                       <View style={styles.summaryIconCircle}>
-                        <Ionicons name="calendar-outline" size={18} color={stylesTokens.primary} />
+                        <Ionicons name="calendar-outline" size={18} color={stylesTokens.white} />
                       </View>
                       <View style={styles.summaryText}>
                         <Text style={styles.summaryLabel}>תאריך</Text>
@@ -457,7 +454,7 @@ export default function AdminEventsCreateWebScreen() {
 
                     <View style={styles.summaryItem}>
                       <View style={styles.summaryIconCircle}>
-                        <Ionicons name="pin-outline" size={18} color={stylesTokens.primary} />
+                        <Ionicons name="pin-outline" size={18} color={stylesTokens.white} />
                       </View>
                       <View style={styles.summaryText}>
                         <Text style={styles.summaryLabel}>מיקום</Text>
@@ -469,7 +466,7 @@ export default function AdminEventsCreateWebScreen() {
 
                     <View style={styles.summaryItem}>
                       <View style={[styles.summaryIconCircle, styles.summaryIconCircleMuted]}>
-                        <Ionicons name="person-outline" size={18} color={stylesTokens.textMuted} />
+                        <Ionicons name="person-outline" size={18} color={'rgba(255,255,255,0.86)'} />
                       </View>
                       <View style={styles.summaryText}>
                         <Text style={styles.summaryLabel}>לקוח</Text>
@@ -494,7 +491,7 @@ export default function AdminEventsCreateWebScreen() {
                       disabled={!isFormValid || saving}
                       onPress={() => void handleAddEvent()}
                       style={({ hovered, pressed }: any) => [
-                        styles.primaryCTA,
+                        styles.summaryCTA,
                         (!isFormValid || saving) ? { opacity: 0.55 } : null,
                         Platform.OS === 'web' && hovered ? styles.primaryCTAHover : null,
                         pressed ? { opacity: 0.92 } : null,
@@ -504,18 +501,6 @@ export default function AdminEventsCreateWebScreen() {
                       <Text style={styles.primaryCTAText}>{saving ? 'שומר...' : 'צור אירוע'}</Text>
                       <Ionicons name="arrow-forward" size={18} color={stylesTokens.white} />
                     </Pressable>
-                  </View>
-                </View>
-
-                <View style={styles.tipCard}>
-                  <View style={styles.tipIconCircle}>
-                    <Ionicons name="bulb-outline" size={16} color={stylesTokens.white} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.tipTitle}>טיפ למקצוענים</Text>
-                    <Text style={styles.tipText}>
-                      ניתן לשכפל אירועים קודמים כדי לחסוך זמן בהגדרת ספקים ורשימות מוזמנים.
-                    </Text>
                   </View>
                 </View>
               </View>
@@ -824,8 +809,6 @@ const styles = StyleSheet.create({
   mainContentMobile: { paddingBottom: 96 },
 
   hero: { gap: 8 },
-  h1: { width: '100%', fontSize: 34, fontWeight: '900', color: stylesTokens.text, textAlign: 'right', letterSpacing: -0.3 as any },
-  subtitle: { width: '100%', fontSize: 16, fontWeight: '600', color: stylesTokens.textMuted, textAlign: 'right' },
 
   progressWrap: { marginTop: 10, gap: 10 },
   progressRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
@@ -839,7 +822,7 @@ const styles = StyleSheet.create({
   },
 
   section: { gap: 12 },
-  sectionTitleRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
+  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 10 },
   badge: {
     width: 32,
     height: 32,
@@ -849,7 +832,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   badgeText: { fontSize: 13, fontWeight: '900', color: stylesTokens.primary },
-  sectionTitle: { width: '100%', fontSize: 18, fontWeight: '900', color: stylesTokens.text, textAlign: 'right' },
+  sectionTitle: { fontSize: 18, fontWeight: '900', color: stylesTokens.text, textAlign: 'right', flexShrink: 1 },
 
   typeGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 12 },
   typeGridDesktop: { flexWrap: 'nowrap' },
@@ -981,41 +964,58 @@ const styles = StyleSheet.create({
   side: { width: 380, minWidth: 340, flexShrink: 0 },
   sideSticky: {
     gap: 14,
-    ...(Platform.OS === 'web' ? ({ position: 'sticky', top: 92 } as any) : null),
+    ...(Platform.OS === 'web' ? ({ position: 'sticky', top: 120 } as any) : null),
   },
 
   summaryCard: {
-    backgroundColor: stylesTokens.surface,
+    backgroundColor: '#0f1f6d',
     borderRadius: 18,
     padding: 18,
-    borderWidth: 1,
-    borderColor: 'rgba(17, 24, 39, 0.06)',
-    ...(Platform.OS === 'web' ? ({ boxShadow: '0 10px 30px -10px rgba(17,24,39,0.16)' } as any) : null),
+    borderWidth: 0,
+    ...(Platform.OS === 'web'
+      ? ({
+          backgroundImage: 'linear-gradient(135deg, #162d9c, #0f1f6d)',
+          boxShadow: '0 20px 60px rgba(17,24,39,0.18)',
+        } as any)
+      : null),
   },
-  summaryTitle: { width: '100%', fontSize: 16, fontWeight: '900', color: stylesTokens.text, textAlign: 'right', marginBottom: 12 },
+  summaryTitle: { width: '100%', fontSize: 16, fontWeight: '900', color: stylesTokens.white, textAlign: 'right', marginBottom: 12 },
   summaryList: { gap: 14 },
   summaryItem: { flexDirection: 'row-reverse', alignItems: 'flex-start', gap: 12 },
   summaryIconCircle: {
     width: 40,
     height: 40,
     borderRadius: 999,
-    backgroundColor: 'rgba(22,45,156,0.06)',
+    backgroundColor: 'rgba(255,255,255,0.18)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  summaryIconCircleMuted: { backgroundColor: 'rgba(17, 24, 39, 0.06)' },
+  summaryIconCircleMuted: { backgroundColor: 'rgba(255,255,255,0.12)' },
   summaryText: { flex: 1, minWidth: 0, alignItems: 'flex-end' },
-  summaryLabel: { fontSize: 10, fontWeight: '900', color: stylesTokens.textMuted, textAlign: 'right' },
-  summaryValue: { marginTop: 2, fontSize: 14, fontWeight: '900', color: stylesTokens.text, textAlign: 'right' },
-  summaryValueMuted: { color: stylesTokens.placeholder, fontStyle: 'italic' },
+  summaryLabel: { fontSize: 10, fontWeight: '900', color: 'rgba(255,255,255,0.75)', textAlign: 'right' },
+  summaryValue: { marginTop: 2, fontSize: 14, fontWeight: '900', color: stylesTokens.white, textAlign: 'right' },
+  summaryValueMuted: { color: 'rgba(255,255,255,0.62)', fontStyle: 'italic' },
 
-  summaryFooter: { marginTop: 16, paddingTop: 14, borderTopWidth: 1, borderTopColor: 'rgba(17, 24, 39, 0.06)', gap: 12 },
+  summaryFooter: { marginTop: 16, paddingTop: 14, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.14)', gap: 12 },
   statusRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
-  statusLabel: { fontSize: 12, fontWeight: '700', color: stylesTokens.textMuted, textAlign: 'right' },
-  statusChip: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: 'rgba(29, 78, 216, 0.08)' },
-  statusChipReady: { backgroundColor: 'rgba(16, 185, 129, 0.14)' },
-  statusChipText: { fontSize: 11, fontWeight: '900', color: '#1D4ED8', textAlign: 'right' },
-  statusChipTextReady: { color: '#047857' },
+  statusLabel: { fontSize: 12, fontWeight: '700', color: 'rgba(255,255,255,0.75)', textAlign: 'right' },
+  statusChip: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.16)' },
+  statusChipReady: { backgroundColor: 'rgba(16, 185, 129, 0.22)' },
+  statusChipText: { fontSize: 11, fontWeight: '900', color: 'rgba(255,255,255,0.90)', textAlign: 'right' },
+  statusChipTextReady: { color: '#A7F3D0' },
+
+  summaryCTA: {
+    height: 52,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.22)',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
 
   primaryCTA: {
     height: 52,
@@ -1039,28 +1039,6 @@ const styles = StyleSheet.create({
   },
   primaryCTAHover: { backgroundColor: stylesTokens.primaryHover },
   primaryCTAText: { fontSize: 16, fontWeight: '900', color: stylesTokens.white, textAlign: 'right' },
-
-  tipCard: {
-    borderRadius: 18,
-    padding: 16,
-    flexDirection: 'row-reverse',
-    alignItems: 'flex-start',
-    gap: 12,
-    backgroundColor: '#0f1f6d',
-    ...(Platform.OS === 'web'
-      ? ({ backgroundImage: 'linear-gradient(135deg, #162d9c, #0f1f6d)' } as any)
-      : null),
-  },
-  tipIconCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tipTitle: { fontSize: 12, fontWeight: '900', color: stylesTokens.white, textAlign: 'right' },
-  tipText: { marginTop: 4, fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.82)', textAlign: 'right', lineHeight: 17 },
 
   mobileBottomBar: {
     padding: 14,
