@@ -1956,14 +1956,6 @@ export default function BrideGroomSeatingWebScreen() {
 
               {/* Guests */}
               <View style={styles.tableGuestsHeaderRow}>
-                <View style={styles.tableGuestsHeaderText}>
-                  <View style={styles.tableGuestsTitleRow}>
-                    <Ionicons name="people-outline" size={18} color={colors.text} />
-                    <Text style={styles.tableSectionTitle}>רשימת אורחים</Text>
-                  </View>
-                  <Text style={styles.tableGuestsSubtitle}>נהל את האורחים היושבים בשולחן זה</Text>
-                </View>
-
                 <View style={styles.occupancyCard}>
                   <View style={styles.occupancyTopRow}>
                     <Text style={styles.occupancyLabel}>תפוסה</Text>
@@ -1991,6 +1983,14 @@ export default function BrideGroomSeatingWebScreen() {
                     />
                   </View>
                 </View>
+
+                <View style={styles.tableGuestsHeaderText}>
+                  <View style={styles.tableGuestsTitleRow}>
+                    <Ionicons name="people-outline" size={18} color={colors.text} />
+                    <Text style={styles.tableSectionTitle}>רשימת אורחים</Text>
+                  </View>
+                  <Text style={styles.tableGuestsSubtitle}>נהל את האורחים היושבים בשולחן זה</Text>
+                </View>
               </View>
 
             {tableModalView === 'seated' ? (
@@ -2016,7 +2016,7 @@ export default function BrideGroomSeatingWebScreen() {
                             <View style={styles.tableGuestAvatar}>
                               <Text style={styles.tableGuestAvatarText}>{initial}</Text>
                             </View>
-                            <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-start' }}>
+                            <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-end' }}>
                               <Text style={styles.tableGuestName} numberOfLines={1}>
                                 {name}
                               </Text>
@@ -2418,12 +2418,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.10)',
     overflow: 'hidden',
-    ...(Platform.OS === 'web'
-      ? ({
-          boxShadow: '0 30px 80px rgba(0,0,0,0.20)',
-          direction: 'rtl',
-        } as any)
-      : null),
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 30px 80px rgba(0,0,0,0.20)', direction: 'ltr' } as any) : null),
   },
   modalHeader: { paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: 'rgba(15,23,42,0.06)', flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   modalTitle: { fontSize: 16, fontWeight: '900', color: colors.text, textAlign: 'right', writingDirection: 'rtl' },
@@ -2439,7 +2434,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.55)',
     overflow: 'hidden',
-    ...(Platform.OS === 'web' ? ({ boxShadow: '0 6px 26px rgba(0,0,0,0.10)', direction: 'rtl' } as any) : null),
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 6px 26px rgba(0,0,0,0.10)', direction: 'ltr' } as any) : null),
   },
   tableModalHeader: {
     paddingHorizontal: 18,
@@ -2459,6 +2454,7 @@ const styles = StyleSheet.create({
     color: colors.text,
     textAlign: 'right',
     writingDirection: 'rtl',
+    width: '100%',
   },
   tableModalSubtitle: {
     fontSize: 12,
@@ -2466,6 +2462,7 @@ const styles = StyleSheet.create({
     color: colors.gray[600],
     textAlign: 'right',
     writingDirection: 'rtl',
+    width: '100%',
   },
   tableModalCloseBtn: {
     width: 40,
@@ -2489,14 +2486,17 @@ const styles = StyleSheet.create({
     padding: 14,
     ...(Platform.OS === 'web' ? ({ boxShadow: '0 2px 14px rgba(0,0,0,0.04)' } as any) : null),
   },
-  tableSectionHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
-  tableSectionHeaderRight: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
+  // Force the section header group (icon + title) to stick to the RIGHT edge.
+  // This avoids relying on inherited RTL/LTR direction behavior on web.
+  tableSectionHeader: { width: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginBottom: 10 },
+  tableSectionHeaderRight: { width: '100%', flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'flex-end', gap: 8 },
   tableSectionTitle: {
     fontSize: 14,
     fontWeight: '900',
     color: colors.text,
     textAlign: 'right',
     writingDirection: 'rtl',
+    alignSelf: 'stretch',
   },
   tableSettingsGrid: { flexDirection: 'row-reverse', alignItems: 'flex-end', gap: 10, flexWrap: 'wrap' },
   tableSettingsField: { flex: 1, minWidth: 240 },
@@ -2507,6 +2507,7 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     marginBottom: 8,
     writingDirection: 'rtl',
+    width: '100%',
   },
   tableNameInputWrap: { position: 'relative' },
   fieldInputModern: {
@@ -2551,9 +2552,13 @@ const styles = StyleSheet.create({
   },
   tableActionBtnDangerHover: { backgroundColor: 'rgba(244,63,94,0.06)' },
 
-  tableGuestsHeaderRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' },
-  tableGuestsHeaderText: { flex: 1, minWidth: 240, alignItems: 'flex-end' },
-  tableGuestsTitleRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
+  // With the table modal forced to LTR on web, keep a predictable order:
+  // occupancy on the left, header text on the right.
+  tableGuestsHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' },
+  // When wrapping onto a new line (small modal width), force the header block
+  // to take the full row so the Hebrew text can align to the RIGHT edge.
+  tableGuestsHeaderText: { flex: 1, minWidth: 240, width: '100%', alignItems: 'flex-end' },
+  tableGuestsTitleRow: { width: '100%', flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'flex-end', gap: 8 },
   tableGuestsSubtitle: {
     marginTop: 4,
     fontSize: 12,
@@ -2561,6 +2566,7 @@ const styles = StyleSheet.create({
     color: colors.gray[600],
     textAlign: 'right',
     writingDirection: 'rtl',
+    width: '100%',
   },
   occupancyCard: {
     backgroundColor: colors.white,
@@ -2573,8 +2579,8 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? ({ boxShadow: '0 2px 14px rgba(0,0,0,0.04)' } as any) : null),
   },
   occupancyTopRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
-  occupancyLabel: { fontSize: 11, fontWeight: '900', color: colors.gray[600], writingDirection: 'rtl' },
-  occupancyValue: { fontSize: 11, fontWeight: '900', color: colors.text, writingDirection: 'rtl' },
+  occupancyLabel: { fontSize: 11, fontWeight: '900', color: colors.gray[600], textAlign: 'right', writingDirection: 'rtl' },
+  occupancyValue: { fontSize: 11, fontWeight: '900', color: colors.text, textAlign: 'right', writingDirection: 'rtl' },
   occupancyBar: { marginTop: 8, height: 8, borderRadius: 999, backgroundColor: 'rgba(226,232,240,0.7)', overflow: 'hidden' },
   occupancyFill: { height: 8, borderRadius: 999, backgroundColor: colors.primary },
 
@@ -2600,7 +2606,7 @@ const styles = StyleSheet.create({
   tableGuestSub: { marginTop: 2, fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'right', alignSelf: 'stretch', writingDirection: 'rtl' },
   tableGuestLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   tableGuestSeatsPill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(15,23,42,0.04)', borderWidth: 1, borderColor: 'rgba(15,23,42,0.06)' },
-  tableGuestSeatsText: { fontSize: 11, fontWeight: '900', color: colors.gray[700], writingDirection: 'rtl' },
+  tableGuestSeatsText: { fontSize: 11, fontWeight: '900', color: colors.gray[700], textAlign: 'right', writingDirection: 'rtl' },
   tableGuestDeleteBtn: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent' },
   tableGuestDeleteBtnHover: { backgroundColor: 'rgba(244,63,94,0.08)' },
 
@@ -2617,7 +2623,7 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
   backToGuestsBtnHover: { backgroundColor: 'rgba(248,250,252,0.92)' },
-  backToGuestsBtnText: { fontSize: 12, fontWeight: '900', color: colors.gray[700], writingDirection: 'rtl' },
+  backToGuestsBtnText: { fontSize: 12, fontWeight: '900', color: colors.gray[700], textAlign: 'right', writingDirection: 'rtl' },
 
   tableModalFooter: {
     paddingHorizontal: 18,
@@ -2703,9 +2709,9 @@ const styles = StyleSheet.create({
 
   guestModalMain: { flex: 1, minWidth: 0, minHeight: 0 },
   guestModalTopBar: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
-  guestModalStatsWrap: { alignItems: 'flex-start', gap: 2, minWidth: 220 },
-  guestModalStatsText: { fontSize: 12, fontWeight: '900', color: colors.gray[800], textAlign: 'left' },
-  guestModalStatsSubText: { fontSize: 11, fontWeight: '900', color: colors.gray[600], textAlign: 'left' },
+  guestModalStatsWrap: { alignItems: 'flex-end', gap: 2, minWidth: 220 },
+  guestModalStatsText: { fontSize: 12, fontWeight: '900', color: colors.gray[800], textAlign: 'right', writingDirection: 'rtl' },
+  guestModalStatsSubText: { fontSize: 11, fontWeight: '900', color: colors.gray[600], textAlign: 'right', writingDirection: 'rtl' },
   guestModalListScroll: { flex: 1 },
 
   chipsRow: { flexDirection: 'row-reverse', gap: 8 },
@@ -2731,7 +2737,7 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     writingDirection: 'rtl',
   },
-  sectionCountText: { fontSize: 11, fontWeight: '900', color: colors.gray[600], textAlign: 'left' },
+  sectionCountText: { fontSize: 11, fontWeight: '900', color: colors.gray[600], textAlign: 'right', writingDirection: 'rtl' },
   sectionGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 10 },
   guestMiniCard: { flexBasis: 220, flexGrow: 1, minWidth: 220, borderRadius: 16, backgroundColor: colors.white, borderWidth: 1, borderColor: 'rgba(15,23,42,0.06)', padding: 10 },
   guestMiniName: {
@@ -2770,9 +2776,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '800',
     color: colors.gray[600],
-    textAlign: 'center',
+    textAlign: 'right',
     writingDirection: 'rtl',
     paddingVertical: 10,
+    width: '100%',
   },
 
   tableNameRow: { padding: 14, paddingBottom: 10, flexDirection: 'row-reverse', alignItems: 'flex-end', gap: 10 },

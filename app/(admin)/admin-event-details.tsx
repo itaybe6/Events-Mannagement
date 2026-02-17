@@ -640,7 +640,7 @@ export default function AdminEventDetailsScreen() {
               iconName="create-outline"
               iconBg="rgba(249, 115, 22, 0.14)"
               iconColor="#F97316"
-              onPress={() => router.push(`/(admin)/seating-templates?eventId=${event.id}`)}
+              onPress={() => Alert.alert('את הסקיצה ניתן לערוך רק מהאתר')}
               accessibilityLabel="עריכת סקיצה"
             />
             <ActionRow

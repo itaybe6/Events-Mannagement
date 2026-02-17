@@ -1,134 +1,21 @@
 import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated, Pressable, ActivityIndicator, Modal, SectionList, TextInput, FlatList, Dimensions, Alert, PanResponder, Platform, StatusBar } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated, Pressable, ActivityIndicator, Modal, TextInput, FlatList, useWindowDimensions, Alert, PanResponder, Platform, StatusBar } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { useUserStore } from '@/store/userStore';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import { Ionicons } from '@expo/vector-icons';
 import { useLayoutStore } from '@/store/layoutStore';
 import { Table } from '@/types';
-import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { Stack, useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { colors } from '@/constants/colors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { EventSwitcher } from '@/components/EventSwitcher';
 import { SeatingGridReadonly } from '../seating/web/SeatingGridReadonly';
 import { DEFAULT_GRID_COLS, DEFAULT_GRID_ROWS, tableCellSize, type Orientation, type TableType } from '../seating/web/types';
 
-const { width, height } = Dimensions.get('window');
-
-function rgba(hex: string, alpha: number) {
-  const raw = hex.replace('#', '').trim();
-  const full = raw.length === 3 ? raw.split('').map((c) => c + c).join('') : raw;
-  const n = parseInt(full, 16);
-  // If parsing fails, fall back to a safe color.
-  if (Number.isNaN(n) || full.length !== 6) return `rgba(0,0,0,${alpha})`;
-  const r = (n >> 16) & 255;
-  const g = (n >> 8) & 255;
-  const b = n & 255;
-  return `rgba(${r},${g},${b},${alpha})`;
-}
-
-type StatButtonProps = {
-  icon: React.ComponentProps<typeof Ionicons>['name'];
-  value: number | string;
-  label: string;
-  accentColor: string;
-  onPress: () => void;
-};
-
-function StatButton({ icon, value, label, accentColor, onPress }: StatButtonProps) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`${label}: ${value}`}
-      onPress={onPress}
-      hitSlop={8}
-      style={({ pressed, hovered, focused }) => {
-        const isWeb = Platform.OS === 'web';
-        const border = isWeb && (hovered || focused) ? rgba(accentColor, 0.38) : colors.gray[200];
-        const bg = pressed ? colors.gray[50] : colors.white;
-
-        // RN Web extra props (types don't include these).
-        const webFx: any =
-          isWeb
-            ? {
-                cursor: 'pointer',
-                userSelect: 'none',
-                outlineStyle: 'none',
-                overflow: 'hidden',
-                transitionProperty: 'transform, box-shadow, border-color, background-color',
-                transitionDuration: '180ms',
-                transitionTimingFunction: 'cubic-bezier(0.2, 0.8, 0.2, 1)',
-                transform: [
-                  { translateY: hovered && !pressed ? -2 : 0 },
-                  { scale: pressed ? 0.985 : 1 },
-                ],
-                boxShadow: focused
-                  ? `0 0 0 4px ${rgba(accentColor, 0.18)}, 0 14px 34px ${rgba('#000000', 0.12)}`
-                  : hovered && !pressed
-                    ? `0 14px 34px ${rgba('#000000', 0.12)}`
-                    : `0 8px 22px ${rgba('#000000', 0.08)}`,
-              }
-            : null;
-
-        return [
-          styles.statButton,
-          { borderColor: border, backgroundColor: bg },
-          webFx,
-        ];
-      }}
-    >
-      {({ pressed, hovered, focused }) => (
-        <>
-          {/* Subtle “shine” blobs (web delight). */}
-          {Platform.OS === 'web' && (
-            <>
-              <View
-                pointerEvents="none"
-                style={[
-                  styles.statShineBlob,
-                  {
-                    top: -34,
-                    left: -34,
-                    backgroundColor: rgba(accentColor, focused ? 0.16 : hovered ? 0.14 : 0.10),
-                    opacity: pressed ? 0.55 : 1,
-                  },
-                ]}
-              />
-              <View
-                pointerEvents="none"
-                style={[
-                  styles.statShineBlob,
-                  {
-                    bottom: -40,
-                    right: -40,
-                    backgroundColor: rgba(accentColor, focused ? 0.12 : hovered ? 0.10 : 0.08),
-                    opacity: pressed ? 0.5 : 1,
-                  },
-                ]}
-              />
-            </>
-          )}
-
-          <View
-            style={[
-              styles.statIconWrap,
-              {
-                backgroundColor: rgba(accentColor, pressed ? 0.06 : 0.08),
-                borderColor: rgba(accentColor, hovered || focused ? 0.26 : 0.18),
-              },
-            ]}
-          >
-            <Ionicons name={icon} size={22} color={accentColor} />
-          </View>
-          <Text style={styles.statValue}>{value}</Text>
-          <Text style={styles.statLabel}>{label}</Text>
-        </>
-      )}
-    </Pressable>
-  );
-}
-
 export default function BrideGroomSeating() {
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const isLandscape = windowWidth > windowHeight;
   const { userData } = useUserStore();
   const { eventId: queryEventId } = useLocalSearchParams<{ eventId?: string }>();
   const router = useRouter();
@@ -153,9 +40,6 @@ export default function BrideGroomSeating() {
   const [tables, setTables] = useState<Table[]>([]);
   const [guests, setGuests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [modalVisible, setModalVisible] = useState(false);
-  const [modalData, setModalData] = useState<any[]>([]);
-  const [modalTitle, setModalTitle] = useState('');
   const [isPositionsReady, setIsPositionsReady] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [textAreas, setTextAreas] = useState<any[]>([]);
@@ -190,11 +74,6 @@ export default function BrideGroomSeating() {
     }
   }, [dragMode, wobbleAnim]);
   
-  // State for filtering and searching
-  const [searchQuery, setSearchQuery] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState<string>('הכל');
-  const [allCategories, setAllCategories] = useState<string[]>([]);
-
   const [searchQueryTable, setSearchQueryTable] = useState('');
   const [categoryFilterTable, setCategoryFilterTable] = useState('הכל');
   const [categoriesForTable, setCategoriesForTable] = useState<string[]>([]);
@@ -293,6 +172,20 @@ export default function BrideGroomSeating() {
   };
 
   const { setTabBarVisible } = useLayoutStore();
+  const [landscapeGuestSearch, setLandscapeGuestSearch] = useState('');
+  const [landscapeGuestFilter, setLandscapeGuestFilter] = useState<'unseated' | 'seated' | 'all'>('unseated');
+
+  // In landscape we want a "map-only" full screen (no header, no tab bar).
+  useEffect(() => {
+    setTabBarVisible(!isLandscape && !tableModalVisible);
+    return () => setTabBarVisible(true);
+  }, [isLandscape, setTabBarVisible, tableModalVisible]);
+
+  // If user rotates while in drag mode, exit drag mode (map-only UX).
+  useEffect(() => {
+    if (isLandscape && dragMode) setDragMode(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLandscape]);
 
   const handleTablePress = (table: Table) => {
     setSelectedTableForModal(table);
@@ -315,7 +208,7 @@ export default function BrideGroomSeating() {
   const closeModalAndShowTabBar = async () => {
     await handleSaveTableName();
     setTableModalVisible(false);
-    setTabBarVisible(true);
+    setTabBarVisible(!isLandscape);
   };
 
   const handleRemoveGuestFromTable = async (guestId: string) => {
@@ -445,7 +338,7 @@ export default function BrideGroomSeating() {
         if (scrollViewRef.current) {
           scrollViewRef.current.scrollTo({ x: 0, y: 0, animated: false });
           scrollViewRef.current.setNativeProps({
-            zoomScale: 0.5,
+            zoomScale: 1,
             contentOffset: { x: 0, y: 0 }
           });
         }
@@ -480,7 +373,7 @@ export default function BrideGroomSeating() {
 
   // חישוב גבולות המפה לפי השולחנות (נדרש גם לשמירת מיקום אחרי גרירה)
   const minX = tables.length > 0 ? Math.min(...tables.map(t => t.x ?? 0)) : 0;
-  const maxX = tables.length > 0 ? Math.max(...tables.map(t => t.x ?? 0)) : width;
+  const maxX = tables.length > 0 ? Math.max(...tables.map(t => t.x ?? 0)) : windowWidth;
   const padding = 100;
   const canvasWidth = maxX - minX + padding * 2;
 
@@ -758,33 +651,6 @@ export default function BrideGroomSeating() {
     }
   };
   
-  const openModalWithGuests = (title: string, guestList: any[]) => {
-    setModalTitle(title);
-    setSearchQuery('');
-    setCategoryFilter('הכל');
-
-    const categories = ['הכל', ...Array.from(new Set(guestList.map(g => g.guest_categories?.name || 'ללא קטגוריה')))];
-    setAllCategories(categories);
-    
-    const groupedGuests = guestList.reduce((groups: any, guest: any) => {
-      const category = guest.guest_categories?.name || 'ללא קטגוריה';
-      if (!groups[category]) {
-        groups[category] = [];
-      }
-      groups[category].push(guest);
-      return groups;
-    }, {});
-    
-    const sectionsData = Object.keys(groupedGuests).map(category => ({
-      id: category,
-      title: category,
-      data: groupedGuests[category],
-    }));
-    
-    setModalData(sectionsData);
-    setModalVisible(true);
-  };
-
   const resetZoom = () => {
     if (scrollViewRef.current) {
       // איפוס מיקום
@@ -793,7 +659,7 @@ export default function BrideGroomSeating() {
       setTimeout(() => {
         if (scrollViewRef.current) {
           scrollViewRef.current.setNativeProps({
-            zoomScale: 0.5,
+            zoomScale: 1,
             contentOffset: { x: 0, y: 0 }
           });
         }
@@ -818,6 +684,195 @@ export default function BrideGroomSeating() {
     return map;
   }, [guests, tables]);
 
+  // Keep these hooks ABOVE early returns (loading / no event) to preserve hook order.
+  const unseatedGuestsList = guests.filter((g) => g.status === 'מגיע' && !g.table_id);
+
+  const landscapeGuests = useMemo(() => {
+    const q = landscapeGuestSearch.trim().toLowerCase();
+    let list = (guests || []).filter((g: any) => g?.status === 'מגיע');
+    if (landscapeGuestFilter === 'seated') list = list.filter((g: any) => Boolean(g?.table_id));
+    if (landscapeGuestFilter === 'unseated') list = list.filter((g: any) => !g?.table_id);
+    if (q) {
+      list = list.filter((g: any) => String(g?.name || '').toLowerCase().includes(q));
+    }
+    list.sort((a: any, b: any) => {
+      const aSeated = Boolean(a?.table_id);
+      const bSeated = Boolean(b?.table_id);
+      if (aSeated !== bSeated) return aSeated ? 1 : -1;
+      return String(a?.name || '').localeCompare(String(b?.name || ''), 'he');
+    });
+    return list;
+  }, [guests, landscapeGuestFilter, landscapeGuestSearch]);
+
+  const landscapeTotals = useMemo(() => {
+    const confirmed = (guests || []).filter((g: any) => g?.status === 'מגיע');
+    const seated = confirmed.filter((g: any) => Boolean(g?.table_id));
+    const unseated = confirmed.filter((g: any) => !g?.table_id);
+    const people = (list: any[]) => list.reduce((sum, g) => sum + (Number(g?.numberOfPeople) || 1), 0);
+    return {
+      guestsCount: confirmed.length,
+      peopleCount: people(confirmed),
+      seatedCount: seated.length,
+      unseatedCount: unseated.length,
+    };
+  }, [guests]);
+
+  const mapNode = webSketch ? (
+    <View style={styles.canvasScroll}>
+      <SeatingGridReadonly
+        gridCols={webSketch.gridCols}
+        gridRows={webSketch.gridRows}
+        tables={webSketch.tables}
+        zones={webSketch.zones}
+        labels={webSketch.labels}
+        getTableSeatedCount={(t: any) => {
+          const num = t?.number;
+          if (!num) return null;
+          return seatedByNumber.get(Number(num)) ?? 0;
+        }}
+        getTableTooltip={(t: any) => {
+          const num = t?.number;
+          if (!num) return null;
+          const seated = seatedByNumber.get(Number(num)) ?? 0;
+          const cap = Number(t?.seats ?? 0) || 0;
+          return cap ? `יושבים בשולחן: ${seated} / ${cap}` : `יושבים בשולחן: ${seated}`;
+        }}
+        getTableSubLabel={(t: any) => {
+          const num = t?.number;
+          if (!num) return null;
+          const seated = seatedByNumber.get(Number(num)) ?? 0;
+          const cap = Number(t?.seats ?? 0) || 0;
+          return cap ? `${seated} / ${cap}` : String(seated);
+        }}
+        onPressTableNumber={(num) => {
+          if (!num) return;
+          const t = tables.find((x) => x.number === num);
+          if (t) handleTablePress(t);
+        }}
+      />
+    </View>
+  ) : (
+    <ScrollView
+      ref={scrollViewRef}
+      style={styles.canvasScroll}
+      contentContainerStyle={{
+        width: canvasWidth,
+        height: windowHeight * 2,
+      }}
+      maximumZoomScale={3}
+      minimumZoomScale={0.5}
+      bounces={false}
+      bouncesZoom={false}
+      horizontal
+      scrollEnabled={!dragMode}
+      showsHorizontalScrollIndicator={false}
+      showsVerticalScrollIndicator={false}
+    >
+      <View style={[styles.canvas, { width: canvasWidth, height: windowHeight * 2 }]}>
+        {/* Grid */}
+        {[...Array(Math.ceil((windowHeight * 2) / 50))].map((_, i) => (
+          <View key={i} style={[styles.gridLine, { top: i * 50 }]} />
+        ))}
+        {[...Array(Math.ceil(canvasWidth / 80))].map((_, i) => (
+          <View key={i} style={[styles.gridLineV, { left: i * 80 }]} />
+        ))}
+
+        {/* Tables */}
+        {tables.map((table) => {
+          // מיקום מתוקן לפי minX ו-padding
+          const adjustedX = (table.x ?? 0) - minX + padding;
+          if (!positions[table.id]) {
+            positions[table.id] = new Animated.ValueXY({
+              x: adjustedX,
+              y: typeof table.y === 'number' ? table.y : 60,
+            });
+          }
+          // Calculate total people seated at this table
+          const guestsAtTable = guests.filter((g) => g.table_id === table.id);
+          const totalPeopleSeated = guestsAtTable.reduce((sum, guest) => sum + (guest.numberOfPeople || 1), 0);
+          const isTableFull = totalPeopleSeated >= table.capacity;
+          const isReserveTable = table.shape === 'reserve';
+          return (
+            <Animated.View
+              key={table.id}
+              style={[
+                styles.table,
+                table.shape === 'rectangle' ? styles.tableRect : styles.tableSquare,
+                isTableFull && styles.tableFullStyle,
+                isReserveTable && styles.reserveTableStyle,
+                selectedTableForDrag === table.id && styles.tableSelected,
+                {
+                  transform: [
+                    ...(positions[table.id]
+                      ? positions[table.id].getTranslateTransform()
+                      : [{ translateX: adjustedX }, { translateY: table.y ?? 60 }]),
+                    {
+                      rotate: dragMode
+                        ? wobbleAnim.interpolate({
+                            inputRange: [-1, 1],
+                            outputRange: ['-2deg', '2deg'],
+                          })
+                        : '0deg',
+                    },
+                  ],
+                },
+              ]}
+              {...getPanResponderForTable(table.id).panHandlers}
+            >
+              <Pressable
+                onPressIn={() => setPressedTable(table.id)}
+                onPressOut={() => setPressedTable(null)}
+                onLongPress={() => {
+                  // Long press enters drag mode (like iOS home screen)
+                  dragModeRef.current = true;
+                  setDragMode(true);
+                  setSelectedTableForDrag(table.id);
+                }}
+                delayLongPress={320}
+                onPress={() => {
+                  // Tap opens modal only when not in drag mode
+                  if (draggingTableIdRef.current === table.id) return;
+                  if (!dragMode) {
+                    handleTablePress(table);
+                  }
+                }}
+                style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Text
+                  style={[
+                    styles.tableName,
+                    isTableFull && styles.tableFullText,
+                    isReserveTable && styles.reserveTableText,
+                    pressedTable === table.id && { color: isTableFull ? colors.white : colors.textLight },
+                  ]}
+                >
+                  {table.number}
+                </Text>
+                <Text
+                  style={[
+                    styles.tableCap,
+                    isTableFull && styles.tableFullCapText,
+                    isReserveTable && styles.reserveTableCapText,
+                    pressedTable === table.id && { color: isTableFull ? colors.white : colors.gray[500] },
+                  ]}
+                >
+                  {totalPeopleSeated} / {table.capacity}
+                </Text>
+              </Pressable>
+            </Animated.View>
+          );
+        })}
+
+        {/* Text Areas */}
+        {textAreas.map((t, idx) => (
+          <View key={t.id} style={[styles.textArea, { top: (t.y ?? 200) + idx * 40, left: t.x ?? 200 }]}>
+            <Text style={styles.textAreaText}>{t.text}</Text>
+          </View>
+        ))}
+      </View>
+    </ScrollView>
+  );
+
   if (loading) {
     return <View style={styles.centered}><ActivityIndicator size="large" /></View>;
   }
@@ -830,46 +885,21 @@ export default function BrideGroomSeating() {
     );
   }
 
-  const confirmedGuestsList = guests.filter(g => g.status === 'מגיע');
-  const seatedGuestsList = confirmedGuestsList.filter(g => g.table_id);
-  const unseatedGuestsList = confirmedGuestsList.filter(g => !g.table_id);
-
-  const sumPeople = (guestList: any[]) => guestList.reduce((sum, guest) => sum + (guest.numberOfPeople || 1), 0);
-
-  const confirmedGuestsCount = sumPeople(confirmedGuestsList);
-  const seatedGuestsCount = sumPeople(seatedGuestsList);
-  const unseatedGuestsCount = sumPeople(unseatedGuestsList);
-
-  const filteredSections = modalData
-    .map(section => {
-      if (categoryFilter !== 'הכל' && section.title !== categoryFilter) {
-        return null;
-      }
-
-      const filteredGuests = section.data.filter((guest: any) =>
-        guest.name.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-
-      if (filteredGuests.length > 0) {
-        return { ...section, data: filteredGuests };
-      }
-      return null;
-    })
-    .filter(Boolean) as any[];
+  // (landscape hooks already computed above)
 
   return (
-    <View
-      style={[
-        styles.container,
-        {
-          // Add top padding so the header/status-bar won't cover the top UI.
-          // Use the larger of safe-area and status-bar, then add extra breathing room.
-          paddingTop:
-            Math.max(insets.top || 0, Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) : 0) + 28,
-        },
-      ]}
-    >
-      {dragMode && (
+    <View style={styles.container}>
+      <Stack.Screen options={{ headerShown: !isLandscape }} />
+
+      <View
+        style={{
+          paddingTop: isLandscape
+            ? Math.max(insets.top || 0, Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) : 0)
+            : Math.max(insets.top || 0, Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) : 0) + 28,
+        }}
+      />
+
+      {dragMode && !isLandscape && (
         <TouchableOpacity
           style={styles.dragModePill}
           onPress={() => setDragMode(false)}
@@ -879,136 +909,24 @@ export default function BrideGroomSeating() {
         </TouchableOpacity>
       )}
 
-      <View
-        style={{
-          paddingHorizontal: 16,
-          paddingBottom: 0,
-          // Reduce the perceived gap between the header logo and the "active event" pill
-          // on native (this screen only), without shrinking the global header/logo.
-          marginTop: Platform.OS === 'web' ? 0 : -50,
-        }}
-      >
-        <EventSwitcher
-          userId={userData?.id}
-          selectedEventId={resolvedEventId}
-          onSelectEventId={handleSelectEventId}
-          label="אירוע פעיל"
-        />
-      </View>
-
-      {/* Stats */}
-      <View style={styles.statsContainer}>
-        <StatButton
-          icon="walk"
-          value={unseatedGuestsCount}
-          label="טרם הושבו"
-          accentColor={colors.secondary}
-          onPress={() => openModalWithGuests('טרם הושבו', unseatedGuestsList)}
-        />
-        <StatButton
-          icon="grid"
-          value={tables.length}
-          label="שולחנות"
-          accentColor={colors.primary}
-          onPress={() =>
-            router.push({
-              pathname: '/(couple)/TablesList',
-              params: resolvedEventId ? { eventId: resolvedEventId } : {},
-            })
-          }
-        />
-        <StatButton
-          icon="body"
-          value={seatedGuestsCount}
-          label="הושבו"
-          accentColor={colors.success}
-          onPress={() => openModalWithGuests('הושבו', seatedGuestsList)}
-        />
-        <StatButton
-          icon="checkmark-circle-outline"
-          value={confirmedGuestsCount}
-          label="אישרו הגעה"
-          accentColor={colors.info}
-          onPress={() => openModalWithGuests('אישרו הגעה', confirmedGuestsList)}
-        />
-      </View>
-      
-      {/* Guest List Modal */}
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={modalVisible}
-        onRequestClose={() => setModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <TouchableOpacity style={styles.closeModalButton} onPress={() => setModalVisible(false)}>
-              <Ionicons name="close-circle" size={30} color={colors.gray[200]} />
-            </TouchableOpacity>
-
-            <Text style={styles.modalTitle}>{modalTitle}</Text>
-            
-            <View style={styles.filterContainer}>
-              <TextInput
-                  style={styles.searchInput}
-                  placeholder="חיפוש לפי שם..."
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                  placeholderTextColor={colors.gray[500]}
-              />
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScrollView}>
-                  <View style={styles.categoryContainer}>
-                      {allCategories.map(category => (
-                          <TouchableOpacity
-                              key={category}
-                              style={[
-                                  styles.categoryButton,
-                                  categoryFilter === category && styles.categoryButtonActive
-                              ]}
-                              onPress={() => setCategoryFilter(category)}
-                          >
-                              <Text style={[
-                                  styles.categoryButtonText,
-                                  categoryFilter === category && styles.categoryButtonTextActive
-                              ]}>{category}</Text>
-                          </TouchableOpacity>
-                      ))}
-                  </View>
-              </ScrollView>
-            </View>
-
-            <SectionList
-              sections={filteredSections}
-              keyExtractor={(item) => item.id.toString()}
-              renderSectionHeader={({ section: { title } }) => (
-                <Text style={styles.sectionHeader}>{title}</Text>
-              )}
-              renderItem={({ item }) => {
-                const tableNumber = item.tables?.number;
-                
-                return (
-                  <View style={styles.guestItem}>
-                    <View style={styles.guestMainInfo}>
-                      <Text style={styles.guestName}>{item.name}</Text>
-                      <View style={{flexDirection: 'row', alignItems: 'center'}}>
-                        {tableNumber && (
-                          <Text style={styles.tableNumber}>שולחן {tableNumber}</Text>
-                        )}
-                        <View style={styles.peopleCountBadge}>
-                            <Ionicons name="person" size={12} color={colors.richBlack} />
-                            <Text style={styles.peopleCountText}>{item.numberOfPeople || 1}</Text>
-                        </View>
-                      </View>
-                    </View>
-                  </View>
-                );
-              }}
-              showsVerticalScrollIndicator={false}
-              stickySectionHeadersEnabled={false}
-            />
-          </View>
+      {!isLandscape && (
+        <View
+          style={{
+            paddingHorizontal: 16,
+            paddingBottom: 0,
+            // Reduce the perceived gap between the header logo and the "active event" pill
+            // on native (this screen only), without shrinking the global header/logo.
+            marginTop: Platform.OS === 'web' ? 0 : -50,
+          }}
+        >
+          <EventSwitcher
+            userId={userData?.id}
+            selectedEventId={resolvedEventId}
+            onSelectEventId={handleSelectEventId}
+            label="אירוע פעיל"
+          />
         </View>
-      </Modal>
+      )}
 
       {/* Table Guests Modal */}
       <Modal
@@ -1182,154 +1100,104 @@ export default function BrideGroomSeating() {
         </View>
       </Modal>
 
-      {/* Canvas */}
-      {webSketch ? (
-        <View style={styles.canvasScroll}>
-          {/*
-            Tooltip on hover: show seated guests count for this table number.
-            We compute counts from the current guests list.
-          */}
-          <SeatingGridReadonly
-            gridCols={webSketch.gridCols}
-            gridRows={webSketch.gridRows}
-            tables={webSketch.tables}
-            zones={webSketch.zones}
-            labels={webSketch.labels}
-            getTableSeatedCount={(t: any) => {
-              const num = t?.number;
-              if (!num) return null;
-              return seatedByNumber.get(Number(num)) ?? 0;
-            }}
-            getTableTooltip={(t: any) => {
-              const num = t?.number;
-              if (!num) return null;
-              const seated = seatedByNumber.get(Number(num)) ?? 0;
-              return `יושבים בשולחן: ${seated}`;
-            }}
-            onPressTableNumber={(num) => {
-              if (!num) return;
-              const t = tables.find((x) => x.number === num);
-              if (t) handleTablePress(t);
-            }}
-          />
+      {/* Canvas + (landscape) guest panel */}
+      {isLandscape ? (
+        <View style={styles.landscapeRow}>
+          <View style={styles.landscapeMapPane}>{mapNode}</View>
+
+          <View style={styles.landscapeGuestPane}>
+            <View style={styles.guestPanelHeader}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.guestPanelTitle}>אנשי קשר</Text>
+                <Text style={styles.guestPanelSub} numberOfLines={1}>
+                  {landscapeTotals.guestsCount} מוזמנים • {landscapeTotals.peopleCount} אנשים
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.guestPanelSearchWrap}>
+              <Ionicons name="search" size={16} color={colors.gray[500]} />
+              <TextInput
+                value={landscapeGuestSearch}
+                onChangeText={setLandscapeGuestSearch}
+                placeholder="חיפוש..."
+                placeholderTextColor={colors.gray[500]}
+                style={styles.guestPanelSearchInput}
+              />
+            </View>
+
+            <View style={styles.guestPanelFilterRow}>
+              <Pressable
+                onPress={() => setLandscapeGuestFilter('unseated')}
+                style={[styles.guestFilterPill, landscapeGuestFilter === 'unseated' ? styles.guestFilterPillActive : null]}
+              >
+                <Text style={[styles.guestFilterText, landscapeGuestFilter === 'unseated' ? styles.guestFilterTextActive : null]}>
+                  טרם הושבו ({landscapeTotals.unseatedCount})
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setLandscapeGuestFilter('seated')}
+                style={[styles.guestFilterPill, landscapeGuestFilter === 'seated' ? styles.guestFilterPillActive : null]}
+              >
+                <Text style={[styles.guestFilterText, landscapeGuestFilter === 'seated' ? styles.guestFilterTextActive : null]}>
+                  הושבו ({landscapeTotals.seatedCount})
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setLandscapeGuestFilter('all')}
+                style={[styles.guestFilterPill, landscapeGuestFilter === 'all' ? styles.guestFilterPillActive : null]}
+              >
+                <Text style={[styles.guestFilterText, landscapeGuestFilter === 'all' ? styles.guestFilterTextActive : null]}>הכל</Text>
+              </Pressable>
+            </View>
+
+            <FlatList
+              data={landscapeGuests}
+              keyExtractor={(item) => String(item.id)}
+              contentContainerStyle={styles.guestPanelList}
+              showsVerticalScrollIndicator={false}
+              renderItem={({ item }: any) => {
+                const seated = Boolean(item?.table_id);
+                const tableNum = item?.tables?.number;
+                const ppl = Number(item?.numberOfPeople ?? 1) || 1;
+                const cat = item?.guest_categories?.name ? String(item.guest_categories.name) : null;
+                return (
+                  <View style={styles.guestRow}>
+                    <View style={styles.guestRowTop}>
+                      <Text style={styles.guestName} numberOfLines={1}>
+                        {item?.name || '—'}
+                      </Text>
+                      <View style={styles.guestPplPill}>
+                        <Ionicons name="person" size={12} color={colors.gray[800]} />
+                        <Text style={styles.guestPplText}>{ppl}</Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.guestRowMeta}>
+                      <Text style={styles.guestMetaText} numberOfLines={1}>
+                        {seated ? (tableNum ? `שולחן ${tableNum}` : 'הושב') : 'טרם הושב'}
+                      </Text>
+                      {cat ? <Text style={styles.guestMetaDot}>•</Text> : null}
+                      {cat ? (
+                        <Text style={styles.guestMetaText} numberOfLines={1}>
+                          {cat}
+                        </Text>
+                      ) : null}
+                    </View>
+                  </View>
+                );
+              }}
+              ListEmptyComponent={
+                <View style={styles.guestEmpty}>
+                  <Text style={styles.guestEmptyTitle}>אין תוצאות</Text>
+                  <Text style={styles.guestEmptySub}>נסה לשנות חיפוש או פילטר.</Text>
+                </View>
+              }
+            />
+          </View>
         </View>
       ) : (
-        <ScrollView
-          ref={scrollViewRef}
-          style={styles.canvasScroll}
-          contentContainerStyle={{ 
-            width: canvasWidth,
-            height: height * 2,
-          }}
-          maximumZoomScale={3}
-          minimumZoomScale={0.5}
-          bounces={false}
-          bouncesZoom={false}
-          horizontal
-          scrollEnabled={!dragMode}
-          showsHorizontalScrollIndicator={false}
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={[styles.canvas, { width: canvasWidth, height: height * 2 }]}> 
-              {/* Grid */}
-              {[...Array(Math.ceil((height * 2) / 50))].map((_, i) => (
-                <View key={i} style={[styles.gridLine, { top: i * 50 }]} />
-              ))}
-              {[...Array(Math.ceil(canvasWidth / 80))].map((_, i) => (
-                <View key={i} style={[styles.gridLineV, { left: i * 80 }]} />
-              ))}
-              
-              {/* Tables */}
-              {tables.map(table => {
-                // מיקום מתוקן לפי minX ו-padding
-                const adjustedX = (table.x ?? 0) - minX + padding;
-                if (!positions[table.id]) {
-                  positions[table.id] = new Animated.ValueXY({
-                    x: adjustedX,
-                    y: typeof table.y === 'number' ? table.y : 60
-                  });
-                }
-                // Calculate total people seated at this table
-                const guestsAtTable = guests.filter(g => g.table_id === table.id);
-                const totalPeopleSeated = guestsAtTable.reduce((sum, guest) => sum + (guest.numberOfPeople || 1), 0);
-                const isTableFull = totalPeopleSeated >= table.capacity;
-                const isReserveTable = table.shape === 'reserve';
-                return (
-                  <Animated.View
-                    key={table.id}
-                    style={[
-                      styles.table,
-                      table.shape === 'rectangle' ? styles.tableRect : styles.tableSquare,
-                      isTableFull && styles.tableFullStyle,
-                      isReserveTable && styles.reserveTableStyle,
-                      selectedTableForDrag === table.id && styles.tableSelected,
-                      {
-                        transform: [
-                          ...(positions[table.id]
-                            ? positions[table.id].getTranslateTransform()
-                            : [{ translateX: adjustedX }, { translateY: table.y ?? 60 }]),
-                          {
-                            rotate: dragMode
-                              ? wobbleAnim.interpolate({
-                                  inputRange: [-1, 1],
-                                  outputRange: ['-2deg', '2deg'],
-                                })
-                              : '0deg',
-                          },
-                        ],
-                      },
-                    ]}
-                    {...getPanResponderForTable(table.id).panHandlers}
-                  >
-                    <Pressable
-                      onPressIn={() => setPressedTable(table.id)}
-                      onPressOut={() => setPressedTable(null)}
-                      onLongPress={() => {
-                        // Long press enters drag mode (like iOS home screen)
-                        dragModeRef.current = true;
-                        setDragMode(true);
-                        setSelectedTableForDrag(table.id);
-                      }}
-                      delayLongPress={320}
-                      onPress={() => {
-                        // Tap opens modal only when not in drag mode
-                        if (draggingTableIdRef.current === table.id) return;
-                        if (!dragMode) {
-                          handleTablePress(table);
-                        }
-                      }}
-                      style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
-                    >
-                      <Text style={[
-                        styles.tableName,
-                        isTableFull && styles.tableFullText,
-                        isReserveTable && styles.reserveTableText,
-                        pressedTable === table.id && { color: isTableFull ? colors.white : colors.textLight }
-                      ]}>{table.number}</Text>
-                      <Text style={[
-                        styles.tableCap,
-                        isTableFull && styles.tableFullCapText,
-                        isReserveTable && styles.reserveTableCapText,
-                        pressedTable === table.id && { color: isTableFull ? colors.white : colors.gray[500] }
-                      ]}>
-                        {totalPeopleSeated} / {table.capacity}
-                      </Text>
-                    </Pressable>
-                  </Animated.View>
-                );
-              })}
-              
-              {/* Text Areas */}
-              {textAreas.map((t, idx) => (
-                <View
-                  key={t.id}
-                  style={[styles.textArea, { top: t.y ?? 200 + idx * 40, left: t.x ?? 200 }]}
-                >
-                  <Text style={styles.textAreaText}>{t.text}</Text>
-                </View>
-              ))}
-          </View>
-        </ScrollView>
+        mapNode
       )}
     </View>
   );
@@ -1415,8 +1283,6 @@ const styles = StyleSheet.create({
   },
   canvasScroll: { flex: 1 },
   canvas: { 
-    width: width * 3,
-    height: height * 2,
     backgroundColor: colors.white, 
     overflow: 'hidden', 
   },
@@ -1482,6 +1348,129 @@ const styles = StyleSheet.create({
     elevation: 2 
   },
   textAreaText: { fontSize: 16, color: colors.text },
+
+  landscapeRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'stretch',
+  },
+  landscapeMapPane: {
+    flex: 1,
+    minWidth: 0,
+    // Map should be flush to the left edge.
+    marginLeft: 0,
+    paddingLeft: 0,
+  },
+  landscapeGuestPane: {
+    width: 360,
+    maxWidth: '44%',
+    minWidth: 300,
+    borderLeftWidth: 1,
+    borderLeftColor: 'rgba(15,23,42,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.94)',
+  },
+  guestPanelHeader: {
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(15,23,42,0.06)',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 10,
+  },
+  guestPanelTitle: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  guestPanelSub: {
+    marginTop: 2,
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.gray[600],
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  guestPanelSearchWrap: {
+    marginTop: 10,
+    marginHorizontal: 12,
+    paddingHorizontal: 12,
+    height: 40,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.10)',
+    backgroundColor: 'rgba(248,250,252,0.96)',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+  },
+  guestPanelSearchInput: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.text,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  guestPanelFilterRow: {
+    flexDirection: 'row-reverse',
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 8,
+  },
+  guestFilterPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.10)',
+    backgroundColor: 'rgba(255,255,255,0.92)',
+  },
+  guestFilterPillActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  guestFilterText: { fontSize: 11, fontWeight: '900', color: colors.gray[800], textAlign: 'right', writingDirection: 'rtl' },
+  guestFilterTextActive: { color: colors.white },
+  guestPanelList: {
+    paddingHorizontal: 12,
+    paddingBottom: 14,
+    paddingTop: 4,
+    gap: 10,
+  },
+  guestRow: {
+    padding: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.96)',
+  },
+  guestRowTop: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  guestName: { flex: 1, minWidth: 0, fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'right', writingDirection: 'rtl' },
+  guestPplPill: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(15,23,42,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+  },
+  guestPplText: { fontSize: 11, fontWeight: '900', color: colors.gray[800], textAlign: 'right' },
+  guestRowMeta: { marginTop: 8, flexDirection: 'row-reverse', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
+  guestMetaText: { fontSize: 11, fontWeight: '800', color: colors.gray[700], textAlign: 'right', writingDirection: 'rtl' },
+  guestMetaDot: { fontSize: 11, fontWeight: '900', color: colors.gray[500] },
+  guestEmpty: { paddingVertical: 28, alignItems: 'center', justifyContent: 'center', gap: 6 },
+  guestEmptyTitle: { fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'center', writingDirection: 'rtl' },
+  guestEmptySub: { fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'center', writingDirection: 'rtl' },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',

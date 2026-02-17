@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Svg, { Defs, Line, Pattern, Rect } from 'react-native-svg';
 import { GestureHandlerRootView, PinchGestureHandler, State as GHState } from 'react-native-gesture-handler';
-import { CELL_SIZE, TABLE_LABELS, clamp, tableCellSize, type Orientation, type TableType } from './types';
+import { CELL_SIZE, clamp, tableCellSize, type Orientation, type TableType } from './types';
 import { colors } from '@/constants/colors';
 
 function hexToRgba(hex: string, alpha: number) {
@@ -13,6 +13,17 @@ function hexToRgba(hex: string, alpha: number) {
   const b = parseInt(h.slice(4, 6), 16);
   if (![r, g, b].every(Number.isFinite)) return `rgba(0,0,0,${alpha})`;
   return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function getWebScroller(start: any) {
+  // react-native-web sometimes nests the actual scrolling element.
+  // We climb a few levels to find an element with scrollTop/scrollLeft.
+  let el = start;
+  for (let i = 0; i < 5 && el; i++) {
+    if (typeof el.scrollTop === 'number' && typeof el.scrollLeft === 'number') return el;
+    el = el.parentElement || el.parentNode;
+  }
+  return start;
 }
 
 type TableItem = {
@@ -63,6 +74,11 @@ export function SeatingGridReadonly({
   getTableSeatedCount?: (t: TableItem) => number | null;
 }) {
   const isWeb = Platform.OS === 'web';
+  const vScrollRef = useRef<ScrollView>(null);
+  const hScrollRef = useRef<ScrollView>(null);
+  const scrollXRef = useRef(0);
+  const scrollYRef = useRef(0);
+  const rafScrollRef = useRef<number | null>(null);
 
   // Compute content bounds so we "fit" to content, not to an oversized empty grid.
   const contentRect = useMemo(() => {
@@ -95,7 +111,9 @@ export function SeatingGridReadonly({
       return { originX: 0, originY: 0, cols: Math.max(1, gridCols), rows: Math.max(1, gridRows) };
     }
 
-    const pad = 4;
+    // Cell padding around content: keep some breathing room, but not so much
+    // that the initial "fit" feels overly zoomed-out (especially on web).
+    const pad = isWeb ? 2 : 3;
     const ox = clamp(Math.floor(minX) - pad, 0, Math.max(0, gridCols - 1));
     const oy = clamp(Math.floor(minY) - pad, 0, Math.max(0, gridRows - 1));
     const ex = clamp(Math.ceil(maxX) + pad, 1, Math.max(1, gridCols));
@@ -103,7 +121,7 @@ export function SeatingGridReadonly({
     const cols = Math.max(1, ex - ox);
     const rows = Math.max(1, ey - oy);
     return { originX: ox, originY: oy, cols, rows };
-  }, [gridCols, gridRows, labels, tables, zones]);
+  }, [gridCols, gridRows, isWeb, labels, tables, zones]);
 
   const baseW = contentRect.cols * CELL_SIZE;
   const baseH = contentRect.rows * CELL_SIZE;
@@ -116,18 +134,18 @@ export function SeatingGridReadonly({
     const vh = viewport?.h ?? 0;
     if (!vw || !vh) return 1;
     // Smaller padding on web so the initial view feels more "zoomed in".
-    const pad = isWeb ? 28 : 18;
+    const pad = isWeb ? 28 : 10;
     const sx = (vw - pad * 2) / Math.max(1, baseW);
     const sy = (vh - pad * 2) / Math.max(1, baseH);
     // Initial view should fit to viewport.
     // On web/desktop we allow a *controlled* upscale so the map doesn't look tiny
     // on large screens (while still clamping to a sensible max).
-    // Note: content can be very small (few tables), so we allow more upscale on web.
-    // The scroll container still prevents layout overflow, and users can wheel/pinch.
-    const maxFit = isWeb ? 8.0 : 1;
+    // Note: content can be very small (few tables), so we allow controlled upscale.
+    // This is especially important on native landscape, otherwise the map can look "zoomed out".
+    const maxFit = isWeb ? 8.0 : 3.0;
     const fit = Math.min(maxFit, sx, sy);
     // Web default: start slightly closer than "perfect fit".
-    const boost = isWeb ? 1.085 : 1;
+    const boost = isWeb ? 1.085 : 1.28;
     return clamp(fit * boost, 0.2, maxFit);
   }, [baseH, baseW, isWeb, viewport?.h, viewport?.w]);
 
@@ -139,13 +157,15 @@ export function SeatingGridReadonly({
   const minZoomRef = useRef(0.2);
   const maxZoomRef = useRef(3);
   const pinchStartZoomRef = useRef(1);
+  const pendingWebScrollRef = useRef<null | { left: number; top: number }>(null);
 
   useEffect(() => {
     fitZoomRef.current = fitZoom;
     // Allow zoom-out smaller than the initial fit.
     minZoomRef.current = 0.2;
-    // Allow higher zoom ceilings on web, otherwise "fit" can exceed maxZoom.
-    maxZoomRef.current = isWeb ? clamp(fitZoom * 2.2, Math.max(3, fitZoom), 10) : Math.min(3, Math.max(fitZoom, fitZoom * 3));
+    // Allow higher zoom ceilings, otherwise the initial "fit" (which can upscale)
+    // could exceed maxZoom on native landscape.
+    maxZoomRef.current = clamp(fitZoom * 2.2, Math.max(3, fitZoom), 10);
   }, [fitZoom]);
 
   // Auto-fit only when the CONTENT changes (not on every viewport/layout change),
@@ -192,7 +212,6 @@ export function SeatingGridReadonly({
   // When only the viewport changes (window resize / layout), re-fit *only if*
   // the user has not manually zoomed since the last auto-fit.
   useEffect(() => {
-    if (!isWeb) return;
     if (!viewport?.w || !viewport?.h) return;
     if (userAdjustedZoomRef.current) return;
     const next = fitZoom;
@@ -217,11 +236,35 @@ export function SeatingGridReadonly({
     const scale = e?.nativeEvent?.scale ?? 1;
     const min = minZoomRef.current || 0.2;
     const max = maxZoomRef.current || 3;
+    const cur = zoomRef.current || 1;
     const next = clamp((pinchStartZoomRef.current || 1) * scale, min, max);
+
+    // Keep the zoom anchored under the pinch focal point (native).
+    // Without this, zoom feels like it always “pulls” toward the same place.
+    if (!isWeb) {
+      const fx = Number(e?.nativeEvent?.focalX ?? 0) || 0;
+      const fy = Number(e?.nativeEvent?.focalY ?? 0) || 0;
+      const baseX = (scrollXRef.current + fx) / Math.max(0.0001, cur);
+      const baseY = (scrollYRef.current + fy) / Math.max(0.0001, cur);
+      const nextX = baseX * next - fx;
+      const nextY = baseY * next - fy;
+
+      if (rafScrollRef.current != null) cancelAnimationFrame(rafScrollRef.current);
+      rafScrollRef.current = requestAnimationFrame(() => {
+        rafScrollRef.current = null;
+        try {
+          hScrollRef.current?.scrollTo({ x: Math.max(0, nextX), animated: false });
+          vScrollRef.current?.scrollTo({ y: Math.max(0, nextY), animated: false });
+        } catch {
+          // ignore
+        }
+      });
+    }
+
     userAdjustedZoomRef.current = true;
     zoomRef.current = next;
     setZoom(next);
-  }, []);
+  }, [isWeb]);
 
   const onPinchStateChange = useCallback((e: any) => {
     const state = e?.nativeEvent?.state;
@@ -237,13 +280,14 @@ export function SeatingGridReadonly({
     (e: any) => {
       if (!isWeb) return;
       const dy = e?.deltaY ?? e?.nativeEvent?.deltaY ?? 0;
+      const rawEl = workAreaRef.current as any;
+      const el = getWebScroller(rawEl);
 
       // Shift + wheel = scroll (vertical)
       if (e?.shiftKey) {
         e?.preventDefault?.();
         e?.stopPropagation?.();
         try {
-          const el = workAreaRef.current as any;
           if (el) el.scrollTop = (el.scrollTop || 0) + dy;
         } catch {
           // ignore
@@ -261,12 +305,67 @@ export function SeatingGridReadonly({
       const base = Math.max(1, fitZoomRef.current || 1);
       const maxZoom = isWeb ? clamp(base * 2.2, Math.max(3, base), 10) : Math.min(3, Math.max(base, base * 1.7));
       const next = clamp(cur * factor, minZoom, maxZoom);
+
+      // Keep the zoom anchored under the mouse cursor (web).
+      // Without this, zoom feels like it always pulls toward a fixed corner.
+      const clientX = e?.clientX ?? e?.nativeEvent?.clientX;
+      const clientY = e?.clientY ?? e?.nativeEvent?.clientY;
+      let px = (viewport?.w ?? 0) / 2;
+      let py = (viewport?.h ?? 0) / 2;
+      try {
+        const r = el?.getBoundingClientRect?.();
+        if (r && typeof clientX === 'number' && typeof clientY === 'number') {
+          px = clientX - r.left;
+          py = clientY - r.top;
+        }
+      } catch {
+        // ignore
+      }
+
+      const scrollLeft = Number(el?.scrollLeft ?? 0) || 0;
+      const scrollTop = Number(el?.scrollTop ?? 0) || 0;
+      const baseX = (scrollLeft + px) / Math.max(0.0001, cur);
+      const baseY = (scrollTop + py) / Math.max(0.0001, cur);
+      const nextLeft = baseX * next - px;
+      const nextTop = baseY * next - py;
+
       userAdjustedZoomRef.current = true;
       zoomRef.current = next;
+      pendingWebScrollRef.current = { left: nextLeft, top: nextTop };
       setZoom(next);
     },
-    [isWeb]
+    [isWeb, viewport?.h, viewport?.w]
   );
+
+  // After zoom updates the layout (stageW/H), apply the pending scroll so the cursor anchor sticks.
+  useEffect(() => {
+    if (!isWeb) return;
+    const pending = pendingWebScrollRef.current;
+    if (!pending) return;
+    const el = getWebScroller(workAreaRef.current as any);
+    if (!el) return;
+
+    if (rafScrollRef.current != null) cancelAnimationFrame(rafScrollRef.current);
+    rafScrollRef.current = requestAnimationFrame(() => {
+      rafScrollRef.current = null;
+      // One extra frame helps ensure layout has applied (scrollWidth/Height updated).
+      requestAnimationFrame(() => {
+        try {
+          const el2 = getWebScroller(workAreaRef.current as any);
+          if (!el2) return;
+          const maxLeft = Math.max(0, Number(el2.scrollWidth ?? 0) - Number(el2.clientWidth ?? 0));
+          const maxTop = Math.max(0, Number(el2.scrollHeight ?? 0) - Number(el2.clientHeight ?? 0));
+          el2.scrollLeft = clamp(pending.left, 0, maxLeft);
+          el2.scrollTop = clamp(pending.top, 0, maxTop);
+        } catch {
+          // ignore
+        } finally {
+          // Clear after attempt (avoid re-applying on unrelated zoom changes)
+          if (pendingWebScrollRef.current === pending) pendingWebScrollRef.current = null;
+        }
+      });
+    });
+  }, [isWeb, zoom]);
 
   // Attach a non-passive wheel listener so preventDefault blocks scroll on web.
   useEffect(() => {
@@ -320,27 +419,24 @@ export function SeatingGridReadonly({
         {/* Native: allow panning by scrollviews. Web: overflow is already handled via CSS. */}
         {!isWeb ? (
           <ScrollView
+            ref={vScrollRef}
             style={{ flex: 1, alignSelf: 'stretch' }}
-            // Mobile UX: keep the map centered within the available space,
-            // but reduce padding so it doesn't feel "pushed down".
-            contentContainerStyle={{
-              flexGrow: 1,
-              alignItems: 'center',
-              justifyContent: 'center',
-              paddingHorizontal: 12,
-              paddingVertical: 10,
+            onScroll={(ev) => {
+              const y = ev?.nativeEvent?.contentOffset?.y;
+              if (typeof y === 'number') scrollYRef.current = y;
             }}
+            scrollEventThrottle={16}
             showsVerticalScrollIndicator={false}
           >
             <ScrollView
+              ref={hScrollRef}
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{
-                flexGrow: 1,
-                alignItems: 'center',
-                justifyContent: 'center',
-                paddingHorizontal: 8,
+              onScroll={(ev) => {
+                const x = ev?.nativeEvent?.contentOffset?.x;
+                if (typeof x === 'number') scrollXRef.current = x;
               }}
+              scrollEventThrottle={16}
             >
               <PinchGestureHandler onGestureEvent={onPinchGestureEvent} onHandlerStateChange={onPinchStateChange}>
                 <View collapsable={false} style={[styles.gridWrap, styles.gridWrapNative, { width: stageW, height: stageH }]}>
@@ -399,7 +495,6 @@ export function SeatingGridReadonly({
                       >
                         <Text style={[styles.tableNum, { color }]}>{t.number ?? ''}</Text>
                         {sub ? <Text style={styles.tableSub}>{sub}</Text> : null}
-                        <Text style={styles.tableType}>{TABLE_LABELS[t.type]}</Text>
                       </Pressable>
                     );
                   })}

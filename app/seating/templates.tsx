@@ -87,9 +87,8 @@ export default function SeatingTemplatesScreen(props: SeatingTemplatesScreenProp
   const [loading, setLoading] = useState(false);
   const [existingMap, setExistingMap] = useState<any>(null);
   const [selectedTableId, setSelectedTableId] = useState<number | null>(null);
-  const isWebMapRoute = Platform.OS === 'web' && pathname?.endsWith('/seating/templatesWeb');
   const resolvedStartMode: 'builder' | 'map' =
-    props.startMode ?? (startModeParam === 'map' ? 'map' : isWebMapRoute ? 'map' : 'builder');
+    props.startMode ?? (startModeParam === 'map' ? 'map' : 'builder');
   const [mode, setMode] = useState<'builder' | 'map'>(resolvedStartMode);
   const [baseTables, setBaseTables] = useState<BuiltTable[]>([]);
   const [manualTables, setManualTables] = useState<BuiltTable[]>([]);
@@ -142,15 +141,16 @@ export default function SeatingTemplatesScreen(props: SeatingTemplatesScreenProp
   // When opened on web, show the dedicated web page (unless explicitly kept here for editing).
   useEffect(() => {
     if (Platform.OS !== 'web') return;
-    if (!eventId) return;
     if (keep === '1') return;
-    // Avoid loops when we're already on the web route.
-    if (pathname?.endsWith('/seating/templatesWeb')) return;
 
-    router.replace({
-      pathname: '/seating/templatesWeb',
-      params: { eventId: String(eventId) },
-    });
+    Alert.alert('את הסקיצה ניתן לערוך רק מהאתר');
+    const r: any = router as any;
+    if (typeof r?.canGoBack === 'function' && r.canGoBack()) {
+      router.back();
+      return;
+    }
+    // Fallback: send to a safe root route.
+    router.replace('/(tabs)');
   }, [eventId, keep, pathname, router]);
 
   // Load existing seating map if available

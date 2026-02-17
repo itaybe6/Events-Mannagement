@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
   KeyboardAvoidingView,
   ScrollView,
   Platform,
+  useColorScheme,
 } from 'react-native';
 import { colors } from '@/constants/colors';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,8 +21,71 @@ import { useUserStore } from '@/store/userStore';
 import { LottieAnimation } from '@/components/LottieAnimation';
 import { supabase } from '@/lib/supabase';
 import { authService } from '@/lib/services/authService';
+import Svg, { Path } from 'react-native-svg';
 
-const { width, height } = Dimensions.get('window');
+const { height } = Dimensions.get('window');
+
+const NAVY_DEEP = '#0B1F3A';
+
+function RingsHeroIcon() {
+  return (
+    <View style={styles.heroIconWrap} pointerEvents="none">
+      <Svg width={128} height={128} viewBox="0 0 100 100" style={styles.heroRingsSvg}>
+        <Path d="M50 38 L54 44 L50 50 L46 44 Z" fill="rgba(255,255,255,0.95)" />
+      </Svg>
+
+      {/* Bride/Groom animation centered inside the rings */}
+      <LottieAnimation
+        source={require('../assets/animations/83J2Ko52jU.json')}
+        style={styles.heroLottie}
+        autoPlay
+        loop
+        speed={0.85}
+      />
+    </View>
+  );
+}
+
+function StarField() {
+  const stars = useMemo(
+    () => [
+      { x: 18, y: 30, s: 1.2, o: 0.55 },
+      { x: 44, y: 70, s: 1.1, o: 0.45 },
+      { x: 55, y: 160, s: 1.7, o: 0.35 },
+      { x: 92, y: 45, s: 2.2, o: 0.3 },
+      { x: 135, y: 84, s: 1.1, o: 0.4 },
+      { x: 160, y: 122, s: 1.6, o: 0.3 },
+      { x: 210, y: 60, s: 1.2, o: 0.35 },
+      { x: 250, y: 140, s: 1.4, o: 0.28 },
+      { x: 310, y: 95, s: 2.0, o: 0.22 },
+      { x: 340, y: 25, s: 1.0, o: 0.35 },
+      { x: 30, y: 190, s: 1.2, o: 0.25 },
+      { x: 120, y: 210, s: 1.1, o: 0.2 },
+      { x: 280, y: 210, s: 1.2, o: 0.18 },
+    ],
+    []
+  );
+
+  return (
+    <View style={styles.starsLayer} pointerEvents="none">
+      {stars.map((star, idx) => (
+        <View
+          // eslint-disable-next-line react/no-array-index-key
+          key={idx}
+          style={[
+            styles.starDot,
+            {
+              width: star.s * 2,
+              height: star.s * 2,
+              opacity: star.o,
+              transform: [{ translateX: star.x }, { translateY: star.y }],
+            },
+          ]}
+        />
+      ))}
+    </View>
+  );
+}
 
 export default function LoginScreen() {
   const [username, setUsername] = useState('');
@@ -29,7 +93,9 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
-  const { login, isLoggedIn, userType, userData } = useUserStore();
+  const { login } = useUserStore();
+  const scheme = useColorScheme();
+  const isDark = scheme === 'dark';
 
   const handleLogin = async () => {
     try {
@@ -153,7 +219,7 @@ export default function LoginScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
     >
-      <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
+      <StatusBar barStyle="light-content" backgroundColor={NAVY_DEEP} />
       
       <ScrollView 
         style={styles.scrollView}
@@ -161,105 +227,121 @@ export default function LoginScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* רקע כתום עם צורות */}
-        <View style={styles.orangeBackground}>
-        {/* צורות עננים */}
-        <View style={[styles.cloud, styles.cloud1]} />
-        <View style={[styles.cloud, styles.cloud2]} />
-        <View style={[styles.cloud, styles.cloud3]} />
-        
-        {/* כוכבים */}
-        <View style={[styles.star, styles.star1]}>
-          <Ionicons name="star" size={12} color={colors.white} />
+        {/* Top hero (55%) */}
+        <View style={styles.hero}>
+          <StarField />
+          <View style={styles.glow} pointerEvents="none" />
+
+          <View style={styles.heroCenter}>
+            <RingsHeroIcon />
+          </View>
         </View>
-        <View style={[styles.star, styles.star2]}>
-          <Ionicons name="star" size={8} color={colors.white} />
-        </View>
-        <View style={[styles.star, styles.star3]}>
-          <Ionicons name="star" size={10} color={colors.white} />
-        </View>
-        <View style={[styles.star, styles.star4]}>
-          <Ionicons name="star" size={6} color={colors.white} />
-        </View>
-        
-                        {/* אנימציית חתן וכלה */}
-        <View style={styles.charactersContainer}>
-          <LottieAnimation
-            source={require('../assets/animations/83J2Ko52jU.json')}
-            style={styles.brideGroomAnimation}
-            autoPlay={true}
-            loop={true}
-            speed={0.8}
-          />
-        </View>
-      </View>
-      
-      {/* תוכן לבן */}
-      <View style={styles.whiteContent}>
-        <View style={styles.logoContainer}>
-          <Image
-            source={require('../assets/images/logo-moon.png')}
-            style={styles.logo}
-            resizeMode="contain"
-          />
-        </View>
-        
-        {/* שדות התחברות */}
-        <View style={styles.loginForm}>
-          {/* שדה מייל */}
-          <View style={styles.inputContainer}>
-            <Ionicons name="mail" size={20} color={colors.gray[500]} style={styles.inputIcon} />
-            <TextInput
-              style={styles.textInput}
-              placeholder="אימייל"
-              placeholderTextColor={colors.gray[500]}
-              value={username}
-              onChangeText={setUsername}
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="email-address"
+
+        {/* Bottom floating card */}
+        <View style={styles.card}>
+          <View style={styles.brandWrap}>
+            <Image
+              source={require('../assets/images/logo-moon.png')}
+              style={styles.brandLogo}
+              resizeMode="contain"
+              accessibilityLabel="לוגו"
             />
           </View>
-          
-          {/* שדה סיסמה */}
-          <View style={styles.inputContainer}>
-            <Ionicons name="lock-closed" size={20} color={colors.gray[500]} style={styles.inputIcon} />
-            <TextInput
-              style={styles.textInput}
-              placeholder="סיסמה"
-              placeholderTextColor={colors.gray[500]}
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry={!showPassword}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
+
+          {/* Form */}
+          <View style={styles.form}>
+            {/* Email */}
+            <View style={styles.field}>
+              <View style={styles.fieldIconRight} pointerEvents="none">
+                <Ionicons name="mail-outline" size={20} color={colors.gray[500]} />
+              </View>
+              <TextInput
+                style={styles.fieldInput}
+                placeholder="אימייל"
+                placeholderTextColor={colors.gray[500]}
+                value={username}
+                onChangeText={setUsername}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="email-address"
+                textAlign="right"
+              />
+            </View>
+
+            {/* Password */}
+            <View style={styles.field}>
+              <View style={styles.fieldIconRight} pointerEvents="none">
+                <Ionicons
+                  name="lock-closed-outline"
+                  size={20}
+                  color={colors.gray[500]}
+                />
+              </View>
+
+              <TextInput
+                style={[styles.fieldInput, { paddingLeft: 46 }]}
+                placeholder="סיסמה"
+                placeholderTextColor={colors.gray[500]}
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry={!showPassword}
+                autoCapitalize="none"
+                autoCorrect={false}
+                textAlign="right"
+              />
+
+              <TouchableOpacity
+                style={styles.fieldIconLeftButton}
+                onPress={() => setShowPassword((prev) => !prev)}
+                accessibilityLabel={showPassword ? 'הסתר סיסמה' : 'הצג סיסמה'}
+              >
+                <Ionicons
+                  name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                  size={20}
+                  color={colors.gray[500]}
+                />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.forgotWrap}>
+              <TouchableOpacity
+                onPress={() => Alert.alert('איפוס סיסמה', 'בקרוב נוסיף אפשרות לאיפוס סיסמה.')}
+                accessibilityRole="button"
+              >
+                <Text style={styles.forgotText}>שכחת סיסמה?</Text>
+              </TouchableOpacity>
+            </View>
+
             <TouchableOpacity
-              style={styles.passwordToggle}
-              onPress={() => setShowPassword(!showPassword)}
+              style={[styles.primaryButton, isLoginDisabled && styles.primaryButtonDisabled]}
+              onPress={handleLogin}
+              disabled={isLoginDisabled}
+              activeOpacity={0.92}
             >
-              <Ionicons 
-                name={showPassword ? "eye-off" : "eye"} 
-                size={20} 
-                color={colors.gray[500]} 
+              <Text style={[styles.primaryButtonText, isLoginDisabled && styles.primaryButtonTextDisabled]}>
+                {loading ? 'מתחבר...' : 'התחבר'}
+              </Text>
+              <Ionicons
+                name="arrow-back"
+                size={18}
+                color={isLoginDisabled ? 'rgba(255,255,255,0.8)' : colors.white}
+                style={{ marginLeft: 8 }}
               />
             </TouchableOpacity>
+
+            <View style={styles.signupWrap}>
+              <Text style={styles.signupText}>
+                אין לך חשבון?{' '}
+              </Text>
+              <TouchableOpacity
+                onPress={() => Alert.alert('הרשמה', 'כדי ליצור משתמש חדש, פנה למנהל המערכת.')}
+                accessibilityRole="button"
+              >
+                <Text style={styles.signupLink}>צור אחד</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
-        
-        {/* כפתור התחברות */}
-        <TouchableOpacity
-          style={[
-            styles.loginButton,
-            isLoginDisabled && styles.loginButtonDisabled
-          ]}
-          onPress={handleLogin}
-          disabled={isLoginDisabled}
-        >
-          <Text style={styles.loginButtonText}>{loading ? 'מתחבר...' : 'התחבר'}</Text>
-        </TouchableOpacity>
-        
-      </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -268,7 +350,7 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.primary,
+    backgroundColor: NAVY_DEEP,
   },
   scrollView: {
     flex: 1,
@@ -276,124 +358,172 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
   },
-  orangeBackground: {
-    flex: 1,
-    backgroundColor: colors.primary,
-    position: 'relative',
+
+  hero: {
+    height: Math.max(320, height * 0.55),
+    backgroundColor: NAVY_DEEP,
     overflow: 'hidden',
   },
-  cloud: {
+  starsLayer: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.28,
+  },
+  starDot: {
     position: 'absolute',
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-    borderRadius: 50,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 9999,
   },
-  cloud1: {
-    width: 80,
-    height: 40,
-    top: 60,
-    left: 20,
-  },
-  cloud2: {
-    width: 60,
-    height: 30,
-    top: 100,
-    right: 30,
-  },
-  cloud3: {
-    width: 100,
-    height: 50,
-    top: 40,
-    right: 10,
-  },
-  star: {
+  glow: {
     position: 'absolute',
-    justifyContent: 'center',
-    alignItems: 'center',
+    top: '50%',
+    left: '50%',
+    width: 320,
+    height: 320,
+    marginLeft: -160,
+    marginTop: -160,
+    borderRadius: 9999,
+    backgroundColor: 'rgba(255,255,255,0.08)',
   },
-  star1: {
-    top: 80,
-    left: width * 0.2,
-  },
-  star2: {
-    top: 120,
-    right: width * 0.3,
-  },
-  star3: {
-    top: 60,
-    right: width * 0.1,
-  },
-  star4: {
-    top: 140,
-    left: width * 0.1,
-  },
-  charactersContainer: {
+  heroCenter: {
     flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 40,
-    paddingBottom: 20,
+    justifyContent: 'center',
+    paddingBottom: 10,
   },
-  brideGroomAnimation: {
-    marginTop: 150,
-    width: 350,
-    height: 350,
+  heroIconWrap: {
+    width: 260,
+    height: 260,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#fff',
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 0 },
   },
-  whiteContent: {
-    flex: 1,
+  heroRingsSvg: {
+    position: 'absolute',
+  },
+  heroLottie: {
+    width: 232,
+    height: 232,
+  },
+
+  card: {
     backgroundColor: colors.white,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    marginTop: -34,
     paddingHorizontal: 24,
-    paddingTop: 32,
-    paddingBottom: 40,
-    borderTopLeftRadius: 30,
-    borderTopRightRadius: 30,
-    minHeight: height * 0.5,
+    paddingTop: 26,
+    paddingBottom: 28,
+    minHeight: Math.max(360, height * 0.48),
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: -10 },
+    elevation: 14,
   },
-  logoContainer: {
+
+  brandWrap: {
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 22,
   },
-  logo: {
-    width: 330,
+  brandLogo: {
+    width: 320,
     height: 100,
   },
-  loginForm: {
-    marginBottom: 32,
+
+  form: {
+    width: '100%',
+    maxWidth: 420,
+    alignSelf: 'center',
   },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.gray[100],
-    borderRadius: 12,
-    marginBottom: 16,
-    paddingHorizontal: 16,
+  field: {
+    position: 'relative',
+    backgroundColor: colors.gray[50],
+    borderRadius: 18,
+    marginBottom: 14,
+    paddingRight: 46, // space for right icon
+    paddingLeft: 14,
     borderWidth: 1,
-    borderColor: colors.gray[200],
+    borderColor: 'rgba(0,0,0,0.06)',
   },
-  inputIcon: {
-    marginRight: 12,
+  fieldIconRight: {
+    position: 'absolute',
+    right: 14,
+    top: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  textInput: {
-    flex: 1,
+  fieldIconLeftButton: {
+    position: 'absolute',
+    left: 12,
+    top: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  fieldInput: {
+    height: 56,
     fontSize: 16,
     color: colors.text,
-    paddingVertical: 16,
-    textAlign: 'right',
+    paddingVertical: 14,
   },
-  passwordToggle: {
-    padding: 4,
+
+  forgotWrap: {
+    alignItems: 'flex-end',
+    marginTop: 2,
+    marginBottom: 14,
   },
-  loginButton: {
-    backgroundColor: colors.secondary,
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  loginButtonDisabled: {
-    backgroundColor: colors.gray[300],
-  },
-  loginButtonText: {
-    color: colors.white,
-    fontSize: 18,
+  forgotText: {
+    fontSize: 13,
+    color: colors.gray[600],
     fontWeight: '600',
+  },
+
+  primaryButton: {
+    marginTop: 6,
+    backgroundColor: colors.primary,
+    borderRadius: 9999,
+    height: 56,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    shadowColor: colors.primary,
+    shadowOpacity: 0.22,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 6,
+  },
+  primaryButtonDisabled: {
+    backgroundColor: 'rgba(6,23,62,0.55)',
+  },
+  primaryButtonText: {
+    color: colors.white,
+    fontSize: 17,
+    fontWeight: '800',
+  },
+  primaryButtonTextDisabled: {
+    color: 'rgba(255,255,255,0.92)',
+  },
+
+  signupWrap: {
+    marginTop: 22,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+  },
+  signupText: {
+    fontSize: 13,
+    color: colors.gray[600],
+  },
+  signupLink: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.primary,
+    textDecorationLine: 'underline',
   },
 }); 

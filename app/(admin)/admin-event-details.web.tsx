@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Modal,
   Platform,
   Pressable,
@@ -153,6 +154,35 @@ export default function AdminEventDetailsWebScreen() {
       pathname: '/(admin)/TablesList',
       params: { eventId: event.id },
     });
+  };
+
+  // Ensure seating map exists, then navigate to seating map editor/view
+  const handleSeatingMap = async () => {
+    if (!event?.id) return;
+    try {
+      const { data, error } = await supabase.from('seating_maps').select('*').eq('event_id', event.id).single();
+
+      // When there is no existing row, Supabase returns an error for .single().
+      // In that case (or if data is empty), create a new empty seating map.
+      if (!data) {
+        const { error: insertError } = await supabase.from('seating_maps').insert({
+          event_id: event.id,
+          num_tables: 0,
+          tables: [],
+          annotations: [],
+        });
+        if (insertError) throw insertError;
+      } else if (error && (error as any).code !== 'PGRST116') {
+        // Non "no rows" error; still allow navigation but surface message.
+        // eslint-disable-next-line no-console
+        console.warn('Failed to verify seating map row:', error);
+      }
+    } catch (e: any) {
+      Alert.alert('שגיאה', 'לא הצלחנו לפתוח/ליצור מפת הושבה. נסה שוב.');
+    }
+
+    // IMPORTANT: Keep admin layout by staying inside /(admin) group
+    router.push(`/(admin)/BrideGroomSeating?eventId=${event.id}`);
   };
 
   if (loading) {
@@ -406,7 +436,7 @@ export default function AdminEventDetailsWebScreen() {
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel="פרטים נוספים"
-                    onPress={() => router.push(`/(admin)/seating-templates?eventId=${event.id}`)}
+                    onPress={() => Alert.alert('את הסקיצה ניתן לערוך רק מהאתר')}
                   >
                     <Text style={styles.panelLink}>פרטים נוספים</Text>
                   </Pressable>
@@ -469,8 +499,8 @@ export default function AdminEventDetailsWebScreen() {
 
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel="רשימת שולחנות"
-                  onPress={handleTablesList}
+                  accessibilityLabel="מפת הושבה"
+                  onPress={handleSeatingMap}
                   style={({ hovered, pressed }: any) => [
                     styles.bigActionPrimary,
                     Platform.OS === 'web' && hovered ? styles.bigActionPrimaryHover : null,
@@ -480,10 +510,10 @@ export default function AdminEventDetailsWebScreen() {
                   <View style={styles.bigActionBgBlob1} />
                   <View style={styles.bigActionBgBlob2} />
                   <View style={styles.bigActionIconWrapPrimary}>
-                    <Ionicons name="list-outline" size={26} color={colors.white} />
+                    <Ionicons name="grid-outline" size={26} color={colors.white} />
                   </View>
-                  <Text style={styles.bigActionTitlePrimary}>רשימת שולחנות</Text>
-                  <Text style={styles.bigActionSubtitlePrimary}>ניהול וצפייה בכל השולחנות באירוע</Text>
+                  <Text style={styles.bigActionTitlePrimary}>מפת הושבה</Text>
+                  <Text style={styles.bigActionSubtitlePrimary}>צפייה ועריכה של מפת ההושבה באירוע</Text>
                 </Pressable>
               </View>
 

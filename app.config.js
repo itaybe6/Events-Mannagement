@@ -5,7 +5,10 @@ export default {
     name: "Moon",
     slug: "euroe-nitgmal-eiroom-mekapim",
     version: "1.0.0",
-    orientation: "portrait",
+    // Allow device rotation (portrait + landscape).
+    // If you want only specific screens to rotate, lock/unlock at runtime via expo-screen-orientation,
+    // but the app must still support the orientations at build time.
+    orientation: "default",
     icon: "./assets/images/icon.png",
     scheme: "myapp",
     userInterfaceStyle: "automatic",
