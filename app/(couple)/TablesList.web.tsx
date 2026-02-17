@@ -16,7 +16,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 
 import DesktopTopBar, { TopBarIconButton } from '@/components/desktop/DesktopTopBar';
-import { EventSwitcher } from '@/components/EventSwitcher';
 import { colors } from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
@@ -78,6 +77,12 @@ export default function TablesListWebScreen() {
   const [addSearch, setAddSearch] = useState('');
   const [addCategoryFilter, setAddCategoryFilter] = useState('הכל');
   const [addCategories, setAddCategories] = useState<string[]>([]);
+
+  // Edit guest people count (per guest at table)
+  const [editPeopleOpen, setEditPeopleOpen] = useState(false);
+  const [editingPeopleGuest, setEditingPeopleGuest] = useState<GuestRow | null>(null);
+  const [editPeopleCount, setEditPeopleCount] = useState('1');
+  const [editPeopleSaving, setEditPeopleSaving] = useState(false);
 
   const fetchTables = async () => {
     if (!resolvedEventId) return;
@@ -280,6 +285,57 @@ export default function TablesListWebScreen() {
     setTabBarVisible(true);
   };
 
+  const openEditPeopleModal = (g: GuestRow) => {
+    setEditingPeopleGuest(g);
+    const ppl = Number(g.numberOfPeople ?? g.number_of_people ?? 1) || 1;
+    setEditPeopleCount(String(Math.max(1, ppl)));
+    setEditPeopleSaving(false);
+    setEditPeopleOpen(true);
+    setTabBarVisible(false);
+  };
+
+  const closeEditPeopleModal = () => {
+    setEditPeopleOpen(false);
+    setEditingPeopleGuest(null);
+    setEditPeopleCount('1');
+    setEditPeopleSaving(false);
+    setTabBarVisible(true);
+  };
+
+  const handleSaveEditPeople = async () => {
+    if (!editingPeopleGuest) return;
+    if (editPeopleSaving) return;
+    const nextPeople = Math.max(1, Number.parseInt(String(editPeopleCount || '1'), 10) || 1);
+    setEditPeopleSaving(true);
+    try {
+      const { error } = await supabase.from('guests').update({ number_of_people: nextPeople } as any).eq('id', editingPeopleGuest.id);
+      if (error) throw error;
+
+      const tid = String(editingPeopleGuest.table_id || '').trim();
+      const nextGuests = guests.map((x) =>
+        String(x.id) === String(editingPeopleGuest.id) ? ({ ...x, number_of_people: nextPeople, numberOfPeople: nextPeople } as any) : x
+      );
+
+      // Keep legacy count in sync (non-fatal if it fails).
+      if (tid) {
+        const totalPeopleAtTable = nextGuests
+          .filter((x) => String(x.table_id || '') === tid)
+          .reduce((sum, x) => sum + (Number(x.numberOfPeople ?? x.number_of_people ?? 1) || 1), 0);
+        const { error: tableUpdateError } = await supabase.from('tables').update({ seated_guests: totalPeopleAtTable }).eq('id', tid);
+        if (tableUpdateError) console.error('Error updating table count:', tableUpdateError);
+      }
+
+      setGuests(nextGuests);
+      await fetchTables();
+      closeEditPeopleModal();
+    } catch (e) {
+      console.error('Save guest people count error:', e);
+      Alert.alert('שגיאה', 'לא ניתן לעדכן את כמות האנשים למוזמן.');
+    } finally {
+      setEditPeopleSaving(false);
+    }
+  };
+
   const toggleAddSelection = (guestId: string) => {
     setAddSelectedGuestIds((prev) => {
       const next = new Set(prev);
@@ -342,31 +398,37 @@ export default function TablesListWebScreen() {
     const g = guests.find((x) => String(x.id) === String(guestId));
     const guestName = String(g?.name || '').trim() || 'המוזמן';
 
+    const unseat = async () => {
+      const { error: guestUpdateError } = await supabase.from('guests').update({ table_id: null }).eq('id', guestId);
+      if (guestUpdateError) {
+        console.error('Error unseating guest:', guestUpdateError);
+        Alert.alert('שגיאה', 'לא ניתן להסיר את המוזמן מהשולחן.');
+        return;
+      }
+
+      const nextGuests = guests.map((x) => (String(x.id) === String(guestId) ? { ...x, table_id: null } : x));
+      const totalPeopleAtSource = nextGuests
+        .filter((x) => String(x.table_id || '') === tid)
+        .reduce((sum, x) => sum + (Number(x.numberOfPeople ?? x.number_of_people ?? 1) || 1), 0);
+
+      const { error: tableUpdateError } = await supabase.from('tables').update({ seated_guests: totalPeopleAtSource }).eq('id', tid);
+      if (tableUpdateError) console.error('Error updating source table count:', tableUpdateError);
+
+      setGuests(nextGuests);
+      await Promise.all([fetchGuests(), fetchTables()]);
+    };
+
+    // On web, Alert.alert is unreliable (often doesn't show), so use a native confirm.
+    if (Platform.OS === 'web') {
+      const ok = Boolean((globalThis as any)?.confirm?.(`להסיר את ${guestName} מהשולחן?`));
+      if (!ok) return;
+      await unseat();
+      return;
+    }
+
     Alert.alert('הסרה מהשולחן', `להסיר את ${guestName} מהשולחן?`, [
       { text: 'ביטול', style: 'cancel' },
-      {
-        text: 'הסר',
-        style: 'destructive',
-        onPress: async () => {
-          const { error: guestUpdateError } = await supabase.from('guests').update({ table_id: null }).eq('id', guestId);
-          if (guestUpdateError) {
-            console.error('Error unseating guest:', guestUpdateError);
-            Alert.alert('שגיאה', 'לא ניתן להסיר את המוזמן מהשולחן.');
-            return;
-          }
-
-          const nextGuests = guests.map((x) => (String(x.id) === String(guestId) ? { ...x, table_id: null } : x));
-          const totalPeopleAtSource = nextGuests
-            .filter((x) => String(x.table_id || '') === tid)
-            .reduce((sum, x) => sum + (Number(x.numberOfPeople ?? x.number_of_people ?? 1) || 1), 0);
-
-          const { error: tableUpdateError } = await supabase.from('tables').update({ seated_guests: totalPeopleAtSource }).eq('id', tid);
-          if (tableUpdateError) console.error('Error updating source table count:', tableUpdateError);
-
-          setGuests(nextGuests);
-          await Promise.all([fetchGuests(), fetchTables()]);
-        },
-      },
+      { text: 'הסר', style: 'destructive', onPress: () => void unseat() },
     ]);
   };
 
@@ -487,24 +549,6 @@ export default function TablesListWebScreen() {
         <View style={styles.shapeBottomLeft} />
       </View>
 
-      <DesktopTopBar
-        title="שולחנות"
-        subtitle="ניהול הושבה לפי שולחן"
-        leftActions={
-          <View style={styles.topBarLeftRow}>
-            <TopBarIconButton icon="map-outline" label="מפת הושבה" onPress={goToSeatingMap} />
-            <TopBarIconButton icon="refresh" label="רענן" onPress={load} />
-          </View>
-        }
-        rightActions={
-          <View style={styles.topBarRightRow}>
-            <StatPill icon="grid-outline" label="שולחנות" value={tables.length} tone="primary" />
-            <StatPill icon="checkmark-circle-outline" label="מלאים" value={fullTablesCount} tone="success" />
-            <StatPill icon="walk-outline" label="טרם הושבו" value={unseatedGuestsArriving.length} tone="warning" />
-          </View>
-        }
-      />
-
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={[
@@ -513,51 +557,12 @@ export default function TablesListWebScreen() {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.heroRow}>
-          <View style={styles.heroCard}>
-            <View style={styles.heroCardTop}>
-              <View style={styles.heroTitleWrap}>
-                <Text style={styles.heroTitle}>אירוע פעיל</Text>
-                <Text style={styles.heroSubtitle}>בחר אירוע כדי לנהל את הטבלאות והמושבים שלו</Text>
-              </View>
-              <EventSwitcher userId={userData?.id} selectedEventId={resolvedEventId} onSelectEventId={(id) => {
-                if (userData?.id) setActiveEvent(userData.id, id);
-                router.replace({ pathname: './', params: { eventId: id } });
-              }} label="אירוע" />
-            </View>
-          </View>
-        </View>
-
         <View style={[styles.mainRow, isNarrow ? styles.mainRowNarrow : null]}>
           {isNarrow ? (
             <>
               {/* On narrow screens, show list first (top), then details */}
               <View style={[styles.sideCol, !isNarrow ? { width: sideWidth } : null]}>{/* Tables list */}
                 <View style={styles.card}>
-                  <View style={styles.cardHeaderRow}>
-                    <View style={styles.cardTitleWrap}>
-                      <Text style={styles.cardTitle}>רשימת שולחנות</Text>
-                      <Text style={styles.cardHint} numberOfLines={1}>
-                        לחץ על שולחן כדי לראות פרטים ולהושיב מוזמנים
-                      </Text>
-                    </View>
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="הוסף מוזמנים לשולחן"
-                      onPress={() => openAddModal()}
-                      disabled={!selectedTable}
-                      style={({ hovered, pressed }: any) => [
-                        styles.primaryBtn,
-                        !selectedTable ? styles.btnDisabled : null,
-                        Platform.OS === 'web' && hovered && selectedTable ? styles.primaryBtnHover : null,
-                        pressed && selectedTable ? styles.btnPressed : null,
-                      ]}
-                    >
-                      <Ionicons name="person-add-outline" size={16} color={colors.white} />
-                      <Text style={styles.primaryBtnText}>הושבה מהירה</Text>
-                    </Pressable>
-                  </View>
-
                   <View style={styles.searchWrap}>
                     <View style={styles.searchIconRight}>
                       <Ionicons name="search" size={18} color={colors.gray[500]} />
@@ -736,33 +741,16 @@ export default function TablesListWebScreen() {
                               const selected = selectedGuestIdsToRemove.has(gid);
                               const ppl = Number(g.numberOfPeople ?? g.number_of_people ?? 1) || 1;
                               const cat = g.guest_categories?.name || 'ללא קטגוריה';
-                              return (
-                                <Pressable
-                                  key={gid}
-                                  accessibilityRole="button"
-                                  accessibilityLabel={editMode ? 'בחירת מוזמן להעברה' : 'מוזמן'}
-                                  onPress={() => (editMode ? toggleRemoveSelection(gid) : null)}
-                                  style={({ hovered, pressed }: any) => [
-                                    styles.guestCard,
-                                    { width: guestCardWidth },
-                                    editMode ? styles.guestCardEditable : null,
-                                    selected ? styles.guestCardSelected : null,
-                                    Platform.OS === 'web' && hovered ? styles.guestCardHover : null,
-                                    pressed ? styles.btnPressed : null,
-                                  ]}
-                                >
-                                  {editMode ? (
-                                    <View style={[styles.checkbox, selected ? styles.checkboxChecked : null]}>
-                                      {selected ? <Ionicons name="checkmark" size={14} color={colors.white} /> : null}
-                                    </View>
-                                  ) : (
+                              // On web, nested Pressables can swallow clicks.
+                              // Render a plain View when not in edit mode so trash/edit buttons are always clickable.
+                              if (!editMode) {
+                                return (
+                                  <View key={gid} style={[styles.guestCard, { width: guestCardWidth }]}>
                                     <View style={styles.peopleBadge}>
                                       <Ionicons name="person" size={12} color={colors.gray[700]} />
                                       <Text style={styles.peopleBadgeText}>{ppl}</Text>
                                     </View>
-                                  )}
 
-                                  {!editMode ? (
                                     <Pressable
                                       accessibilityRole="button"
                                       accessibilityLabel="הסר מהשולחן"
@@ -775,7 +763,48 @@ export default function TablesListWebScreen() {
                                     >
                                       <Ionicons name="trash-outline" size={16} color={colors.gray[700]} />
                                     </Pressable>
-                                  ) : null}
+
+                                    <Pressable
+                                      accessibilityRole="button"
+                                      accessibilityLabel="עריכת כמות אנשים"
+                                      onPress={() => openEditPeopleModal(g)}
+                                      style={({ hovered, pressed }: any) => [
+                                        styles.guestEditBtn,
+                                        Platform.OS === 'web' && hovered ? styles.guestEditBtnHover : null,
+                                        pressed ? styles.btnPressed : null,
+                                      ]}
+                                    >
+                                      <Ionicons name="create-outline" size={16} color={colors.gray[700]} />
+                                    </Pressable>
+
+                                    <Text style={styles.guestName} numberOfLines={1}>
+                                      {String(g.name || '').trim()}
+                                    </Text>
+                                    <Text style={styles.guestMeta} numberOfLines={1}>
+                                      {ppl} אנשים · {cat}
+                                    </Text>
+                                  </View>
+                                );
+                              }
+
+                              return (
+                                <Pressable
+                                  key={gid}
+                                  accessibilityRole="button"
+                                  accessibilityLabel="בחירת מוזמן להעברה"
+                                  onPress={() => toggleRemoveSelection(gid)}
+                                  style={({ hovered, pressed }: any) => [
+                                    styles.guestCard,
+                                    { width: guestCardWidth },
+                                    styles.guestCardEditable,
+                                    selected ? styles.guestCardSelected : null,
+                                    Platform.OS === 'web' && hovered ? styles.guestCardHover : null,
+                                    pressed ? styles.btnPressed : null,
+                                  ]}
+                                >
+                                  <View style={[styles.checkbox, selected ? styles.checkboxChecked : null]}>
+                                    {selected ? <Ionicons name="checkmark" size={14} color={colors.white} /> : null}
+                                  </View>
 
                                   <Text style={styles.guestName} numberOfLines={1}>
                                     {String(g.name || '').trim()}
@@ -894,33 +923,16 @@ export default function TablesListWebScreen() {
                               const selected = selectedGuestIdsToRemove.has(gid);
                               const ppl = Number(g.numberOfPeople ?? g.number_of_people ?? 1) || 1;
                               const cat = g.guest_categories?.name || 'ללא קטגוריה';
-                              return (
-                                <Pressable
-                                  key={gid}
-                                  accessibilityRole="button"
-                                  accessibilityLabel={editMode ? 'בחירת מוזמן להעברה' : 'מוזמן'}
-                                  onPress={() => (editMode ? toggleRemoveSelection(gid) : null)}
-                                  style={({ hovered, pressed }: any) => [
-                                    styles.guestCard,
-                                    { width: guestCardWidth },
-                                    editMode ? styles.guestCardEditable : null,
-                                    selected ? styles.guestCardSelected : null,
-                                    Platform.OS === 'web' && hovered ? styles.guestCardHover : null,
-                                    pressed ? styles.btnPressed : null,
-                                  ]}
-                                >
-                                  {editMode ? (
-                                    <View style={[styles.checkbox, selected ? styles.checkboxChecked : null]}>
-                                      {selected ? <Ionicons name="checkmark" size={14} color={colors.white} /> : null}
-                                    </View>
-                                  ) : (
+                              // On web, nested Pressables can swallow clicks.
+                              // Render a plain View when not in edit mode so trash/edit buttons are always clickable.
+                              if (!editMode) {
+                                return (
+                                  <View key={gid} style={[styles.guestCard, { width: guestCardWidth }]}>
                                     <View style={styles.peopleBadge}>
                                       <Ionicons name="person" size={12} color={colors.gray[700]} />
                                       <Text style={styles.peopleBadgeText}>{ppl}</Text>
                                     </View>
-                                  )}
 
-                                  {!editMode ? (
                                     <Pressable
                                       accessibilityRole="button"
                                       accessibilityLabel="הסר מהשולחן"
@@ -933,7 +945,48 @@ export default function TablesListWebScreen() {
                                     >
                                       <Ionicons name="trash-outline" size={16} color={colors.gray[700]} />
                                     </Pressable>
-                                  ) : null}
+
+                                    <Pressable
+                                      accessibilityRole="button"
+                                      accessibilityLabel="עריכת כמות אנשים"
+                                      onPress={() => openEditPeopleModal(g)}
+                                      style={({ hovered, pressed }: any) => [
+                                        styles.guestEditBtn,
+                                        Platform.OS === 'web' && hovered ? styles.guestEditBtnHover : null,
+                                        pressed ? styles.btnPressed : null,
+                                      ]}
+                                    >
+                                      <Ionicons name="create-outline" size={16} color={colors.gray[700]} />
+                                    </Pressable>
+
+                                    <Text style={styles.guestName} numberOfLines={1}>
+                                      {String(g.name || '').trim()}
+                                    </Text>
+                                    <Text style={styles.guestMeta} numberOfLines={1}>
+                                      {ppl} אנשים · {cat}
+                                    </Text>
+                                  </View>
+                                );
+                              }
+
+                              return (
+                                <Pressable
+                                  key={gid}
+                                  accessibilityRole="button"
+                                  accessibilityLabel="בחירת מוזמן להעברה"
+                                  onPress={() => toggleRemoveSelection(gid)}
+                                  style={({ hovered, pressed }: any) => [
+                                    styles.guestCard,
+                                    { width: guestCardWidth },
+                                    styles.guestCardEditable,
+                                    selected ? styles.guestCardSelected : null,
+                                    Platform.OS === 'web' && hovered ? styles.guestCardHover : null,
+                                    pressed ? styles.btnPressed : null,
+                                  ]}
+                                >
+                                  <View style={[styles.checkbox, selected ? styles.checkboxChecked : null]}>
+                                    {selected ? <Ionicons name="checkmark" size={14} color={colors.white} /> : null}
+                                  </View>
 
                                   <Text style={styles.guestName} numberOfLines={1}>
                                     {String(g.name || '').trim()}
@@ -979,30 +1032,6 @@ export default function TablesListWebScreen() {
 
               <View style={[styles.sideCol, { width: sideWidth }]}>
                 <View style={styles.card}>
-                  <View style={styles.cardHeaderRow}>
-                    <View style={styles.cardTitleWrap}>
-                      <Text style={styles.cardTitle}>רשימת שולחנות</Text>
-                      <Text style={styles.cardHint} numberOfLines={1}>
-                        לחץ על שולחן כדי לראות פרטים ולהושיב מוזמנים
-                      </Text>
-                    </View>
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="הוסף מוזמנים לשולחן"
-                      onPress={() => openAddModal()}
-                      disabled={!selectedTable}
-                      style={({ hovered, pressed }: any) => [
-                        styles.primaryBtn,
-                        !selectedTable ? styles.btnDisabled : null,
-                        Platform.OS === 'web' && hovered && selectedTable ? styles.primaryBtnHover : null,
-                        pressed && selectedTable ? styles.btnPressed : null,
-                      ]}
-                    >
-                      <Ionicons name="person-add-outline" size={16} color={colors.white} />
-                      <Text style={styles.primaryBtnText}>הושבה מהירה</Text>
-                    </Pressable>
-                  </View>
-
                   <View style={styles.searchWrap}>
                     <View style={styles.searchIconRight}>
                       <Ionicons name="search" size={18} color={colors.gray[500]} />
@@ -1307,11 +1336,99 @@ export default function TablesListWebScreen() {
         </Pressable>
       </Modal>
 
+      {/* Edit people count modal */}
+      <Modal visible={editPeopleOpen} transparent animationType="fade" onRequestClose={closeEditPeopleModal}>
+        <Pressable style={styles.modalOverlay} onPress={closeEditPeopleModal}>
+          <Pressable
+            style={[styles.modalCard, { maxHeight: Math.min(windowHeight * 0.92, 520), width: '100%', maxWidth: 520 }]}
+            onPress={() => {
+              /* swallow */
+            }}
+          >
+            <View style={styles.modalHeader}>
+              <View style={styles.modalTitleWrap}>
+                <Text style={styles.modalTitle} numberOfLines={1}>
+                  עריכת כמות אנשים
+                </Text>
+                <Text style={styles.modalSubtitle} numberOfLines={2}>
+                  {editingPeopleGuest ? String(editingPeopleGuest.name || '').trim() : ''}
+                </Text>
+              </View>
+
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="סגירה"
+                onPress={closeEditPeopleModal}
+                style={({ hovered, pressed }: any) => [
+                  styles.modalCloseBtn,
+                  Platform.OS === 'web' && hovered ? styles.modalCloseBtnHover : null,
+                  pressed ? styles.btnPressed : null,
+                ]}
+              >
+                <Ionicons name="close" size={18} color={colors.gray[700]} />
+              </Pressable>
+            </View>
+
+            <View style={styles.modalBody}>
+              <View style={styles.editPeopleField}>
+                <Text style={styles.editPeopleLabel}>כמות</Text>
+                <TextInput
+                  value={editPeopleCount}
+                  onChangeText={setEditPeopleCount}
+                  placeholder="1"
+                  placeholderTextColor={colors.gray[500]}
+                  keyboardType="numeric"
+                  style={styles.editPeopleInput}
+                />
+              </View>
+            </View>
+
+            <View style={styles.modalActions}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="ביטול"
+                onPress={closeEditPeopleModal}
+                disabled={editPeopleSaving}
+                style={({ hovered, pressed }: any) => [
+                  styles.secondaryBtn,
+                  editPeopleSaving ? styles.btnDisabled : null,
+                  Platform.OS === 'web' && hovered && !editPeopleSaving ? styles.secondaryBtnHover : null,
+                  pressed && !editPeopleSaving ? styles.btnPressed : null,
+                ]}
+              >
+                <Ionicons name="close" size={18} color={colors.gray[800]} />
+                <Text style={styles.secondaryBtnText}>ביטול</Text>
+              </Pressable>
+
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="שמור"
+                onPress={handleSaveEditPeople}
+                disabled={editPeopleSaving}
+                style={({ hovered, pressed }: any) => [
+                  styles.primaryBtn,
+                  editPeopleSaving ? styles.btnDisabled : null,
+                  Platform.OS === 'web' && hovered && !editPeopleSaving ? styles.primaryBtnHover : null,
+                  pressed && !editPeopleSaving ? styles.btnPressed : null,
+                ]}
+              >
+                <Ionicons name="checkmark" size={18} color={colors.white} />
+                <Text style={styles.primaryBtnText}>{editPeopleSaving ? 'שומר...' : 'שמור'}</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       {/* Move guests modal */}
       <Modal visible={moveOpen} transparent animationType="fade" onRequestClose={closeMoveModal}>
         <Pressable style={styles.modalOverlay} onPress={closeMoveModal}>
           <Pressable
-            style={[styles.modalCard, { maxHeight: Math.min(windowHeight * 0.92, 720), width: '100%', maxWidth: 760 }]}
+            style={[
+              styles.modalCard,
+              styles.moveModalCard,
+              { maxHeight: Math.min(windowHeight * 0.92, 720), width: '100%', maxWidth: 760 },
+            ]}
             onPress={() => {
               /* swallow */
             }}
@@ -1429,6 +1546,9 @@ export default function TablesListWebScreen() {
                             ]}
                           >
                             <View style={styles.moveTableTop}>
+                              <View style={[styles.moveRadio, active ? styles.moveRadioActive : null]}>
+                                {active ? <Ionicons name="checkmark" size={16} color={colors.white} /> : null}
+                              </View>
                               <View style={styles.moveTableTitleWrap}>
                                 <Text style={styles.moveTableTitle} numberOfLines={1}>
                                   שולחן {String((t as any).number ?? t.number ?? '—')}
@@ -1437,9 +1557,6 @@ export default function TablesListWebScreen() {
                                 <Text style={styles.moveTableSub} numberOfLines={1}>
                                   קיבולת {cap || '—'} · כרגע {seated} · אחרי {after}
                                 </Text>
-                              </View>
-                              <View style={[styles.moveRadio, active ? styles.moveRadioActive : null]}>
-                                {active ? <Ionicons name="checkmark" size={16} color={colors.white} /> : null}
                               </View>
                             </View>
 
@@ -1799,7 +1916,9 @@ const styles = StyleSheet.create({
   tableRowTitleWrap: {
     flex: 1,
     minWidth: 0,
-    alignItems: 'flex-end',
+    // In RTL, `flex-start` maps to the physical right edge.
+    // `flex-end` would align to the left when `direction: 'rtl'` is applied on web.
+    alignItems: 'flex-start',
     gap: 2,
     ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
   },
@@ -1843,7 +1962,15 @@ const styles = StyleSheet.create({
 
   detailBody: { marginTop: 14, gap: 14 },
 
-  guestsGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 12, alignItems: 'stretch' },
+  guestsGrid: {
+    // In RTL, a plain 'row' starts at the physical right edge.
+    // Using 'row-reverse' together with `direction: 'rtl'` can flip the start edge back to the left on web.
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    alignItems: 'stretch',
+    ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
+  },
   guestCard: {
     paddingHorizontal: 12,
     paddingBottom: 12,
@@ -1883,6 +2010,22 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
   guestTrashBtnHover: { backgroundColor: colors.gray[100], borderColor: 'rgba(6,23,62,0.18)' },
+
+  guestEditBtn: {
+    position: 'absolute',
+    top: 10,
+    left: 46,
+    width: 30,
+    height: 30,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.10)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  guestEditBtnHover: { backgroundColor: colors.gray[100], borderColor: 'rgba(6,23,62,0.18)' },
 
   checkbox: {
     position: 'absolute',
@@ -2030,6 +2173,11 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     boxShadow: '0 30px 80px rgba(0,0,0,0.20)',
   },
+  // The move modal is rendered in a portal on web; explicitly force RTL so content
+  // aligns to the right like the rest of the app.
+  moveModalCard: {
+    ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
+  },
   modalHeader: {
     paddingHorizontal: 16,
     paddingVertical: 14,
@@ -2058,6 +2206,22 @@ const styles = StyleSheet.create({
   modalBody: { padding: 16, gap: 12 },
   modalFilters: { gap: 10 },
   categoryRow: { flexDirection: 'row-reverse', gap: 8, paddingVertical: 2 },
+
+  editPeopleField: { gap: 8 },
+  editPeopleLabel: { fontSize: 12, fontWeight: '900', color: colors.gray[700], textAlign: 'right', writingDirection: 'rtl' },
+  editPeopleInput: {
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: colors.gray[50],
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.10)',
+    paddingHorizontal: 12,
+    fontSize: 14,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'left',
+    ...(Platform.OS === 'web' ? ({ direction: 'ltr' } as any) : null),
+  },
   categoryChip: {
     height: 36,
     paddingHorizontal: 12,
@@ -2209,7 +2373,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.96)',
   },
 
-  moveList: { padding: 10, gap: 10 },
+  moveList: {
+    padding: 10,
+    gap: 10,
+    ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
+  },
   moveTableItem: {
     padding: 12,
     borderRadius: 18,
@@ -2217,6 +2385,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(15,23,42,0.08)',
     backgroundColor: colors.white,
     gap: 6,
+    ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
   moveTableItemHover: {
@@ -2227,8 +2396,22 @@ const styles = StyleSheet.create({
   },
   moveTableItemActive: { borderColor: 'rgba(6,23,62,0.35)', backgroundColor: 'rgba(6,23,62,0.06)' },
   moveTableItemWarn: { borderColor: 'rgba(245,158,11,0.35)', backgroundColor: 'rgba(245,158,11,0.06)' },
-  moveTableTop: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  moveTableTitleWrap: { flex: 1, minWidth: 0, alignItems: 'flex-end', gap: 2 },
+  // Stable physical layout on web: keep radio on the right and text close to it.
+  moveTableTop: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    gap: 10,
+    width: '100%',
+    ...(Platform.OS === 'web' ? ({ direction: 'ltr' } as any) : null),
+  },
+  moveTableTitleWrap: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'flex-end',
+    gap: 2,
+    ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
+  },
   moveTableTitle: { fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'right', writingDirection: 'rtl' },
   moveTableSub: { fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'right', writingDirection: 'rtl' },
   moveRadio: {

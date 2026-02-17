@@ -1402,11 +1402,15 @@ const styles = StyleSheet.create({
   groupBody: {
     paddingHorizontal: 14,
     paddingVertical: 14,
-    flexDirection: 'row-reverse',
+    // In RTL, a plain 'row' starts at the physical right edge.
+    // Using 'row-reverse' together with `direction: 'rtl'` can flip the start edge back to the left on web.
+    flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 12,
     alignItems: 'stretch',
     backgroundColor: 'rgba(248,250,252,0.92)',
+    // @ts-expect-error - react-native-web supports direction
+    direction: 'rtl',
   },
   groupEmpty: {
     width: '100%',

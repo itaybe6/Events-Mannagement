@@ -37,6 +37,7 @@ type NotificationSettingRow = {
   message_content: string;
   days_from_wedding: number;
   channel?: 'SMS' | 'WHATSAPP';
+  notification_date?: string | null;
 };
 
 const NOTIFICATION_TEMPLATES: NotificationTemplate[] = [
@@ -111,6 +112,14 @@ export default function AutomaticNotificationsScreen() {
     const d = new Date(base);
     d.setDate(d.getDate() + days_from_wedding);
     return d;
+  };
+
+  const toLocalYmd = (d: Date) => {
+    if (!Number.isFinite(d.getTime())) return null;
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
   };
 
   const formatOffsetLabel = (days: number) => {
@@ -200,7 +209,17 @@ export default function AutomaticNotificationsScreen() {
     const nextEnabled = !row.enabled;
     try {
       if (row.id) {
-        const { error } = await supabase.from('notification_settings').update({ enabled: nextEnabled }).eq('id', row.id);
+        const updatePayload: any = { enabled: nextEnabled };
+        const ymd =
+          (event as any)?.date ? toLocalYmd(computeSendDate(String((event as any).date), row.days_from_wedding ?? 0)) : null;
+        if (ymd) updatePayload.notification_date = ymd;
+
+        let { error } = await supabase.from('notification_settings').update(updatePayload).eq('id', row.id);
+        if (error && isMissingColumn(error, 'notification_date')) {
+          delete updatePayload.notification_date;
+          const retry = await supabase.from('notification_settings').update(updatePayload).eq('id', row.id);
+          error = retry.error as any;
+        }
         if (error) throw error;
         setNotificationSettings((prev) =>
           prev.map((r) => (r.notification_type === row.notification_type ? { ...r, enabled: nextEnabled } : r))
@@ -218,10 +237,19 @@ export default function AutomaticNotificationsScreen() {
         days_from_wedding: typeof row.days_from_wedding === 'number' ? row.days_from_wedding : tpl?.days_from_wedding ?? 0,
         channel: (row.channel as any) || tpl?.channel || 'SMS',
       };
+      const ymd =
+        (event as any)?.date ? toLocalYmd(computeSendDate(String((event as any).date), payload.days_from_wedding)) : null;
+      if (ymd) payload.notification_date = ymd;
 
       let { data, error } = await supabase.from('notification_settings').insert(payload).select().single();
       if (error && isMissingColumn(error, 'channel')) {
         delete payload.channel;
+        const retry = await supabase.from('notification_settings').insert(payload).select().single();
+        data = retry.data as any;
+        error = retry.error as any;
+      }
+      if (error && isMissingColumn(error, 'notification_date')) {
+        delete payload.notification_date;
         const retry = await supabase.from('notification_settings').insert(payload).select().single();
         data = retry.data as any;
         error = retry.error as any;

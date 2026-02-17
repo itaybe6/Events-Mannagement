@@ -33,6 +33,7 @@ type NotificationSettingRow = {
   message_content?: string;
   days_from_wedding?: number;
   channel?: 'SMS' | 'WHATSAPP';
+  notification_date?: string | null;
 };
 
 const DEFAULT_TEMPLATES: Array<Omit<NotificationSettingRow, 'id' | 'event_id'>> = [
@@ -52,6 +53,14 @@ function computeSendDate(eventDate: Date, daysOffset: number) {
   const d = new Date(eventDate);
   d.setDate(d.getDate() + daysOffset);
   return d;
+}
+
+function toLocalYmd(d: Date) {
+  if (!Number.isFinite(d.getTime())) return null;
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
 }
 
 const isMissingColumn = (err: any, column: string) =>
@@ -227,14 +236,22 @@ export default function NotificationEditorScreen() {
     const signed =
       Number.isFinite(abs) ? (abs === 0 ? 0 : timingMode === 'before' ? -Math.abs(abs) : Math.abs(abs)) : NaN;
     const daysToSave = Number.isFinite(signed) ? signed : row.days_from_wedding ?? 0;
+    const notificationDateYmd =
+      eventDate && Number.isFinite(eventDate.getTime()) ? toLocalYmd(computeSendDate(eventDate, daysToSave)) : null;
 
     setSaving(true);
     try {
       if (row.id) {
         const updatePayload: any = { message_content: msg, days_from_wedding: daysToSave, channel: row.channel };
+        if (notificationDateYmd) updatePayload.notification_date = notificationDateYmd;
         let { error } = await supabase.from('notification_settings').update(updatePayload).eq('id', row.id);
         if (error && isMissingColumn(error, 'channel')) {
           delete updatePayload.channel;
+          const retry = await supabase.from('notification_settings').update(updatePayload).eq('id', row.id);
+          error = retry.error as any;
+        }
+        if (error && isMissingColumn(error, 'notification_date')) {
+          delete updatePayload.notification_date;
           const retry = await supabase.from('notification_settings').update(updatePayload).eq('id', row.id);
           error = retry.error as any;
         }
@@ -249,9 +266,16 @@ export default function NotificationEditorScreen() {
           days_from_wedding: daysToSave,
           channel: row.channel || 'SMS',
         };
+        if (notificationDateYmd) insertPayload.notification_date = notificationDateYmd;
         let { data, error } = await supabase.from('notification_settings').insert(insertPayload).select().single();
         if (error && isMissingColumn(error, 'channel')) {
           delete insertPayload.channel;
+          const retry = await supabase.from('notification_settings').insert(insertPayload).select().single();
+          data = retry.data as any;
+          error = retry.error as any;
+        }
+        if (error && isMissingColumn(error, 'notification_date')) {
+          delete insertPayload.notification_date;
           const retry = await supabase.from('notification_settings').insert(insertPayload).select().single();
           data = retry.data as any;
           error = retry.error as any;
@@ -291,7 +315,6 @@ export default function NotificationEditorScreen() {
           styles.headerWrap,
           {
             paddingTop: Math.max(12, insets.top + 10),
-            // @ts-expect-error - RN web style support
             backgroundImage:
               Platform.OS === 'web'
                 ? 'linear-gradient(135deg, rgba(29,78,216,0.12), rgba(255,255,255,0.65), rgba(16,185,129,0.08))'

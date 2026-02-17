@@ -147,18 +147,12 @@ export default function AdminEventDetailsWebScreen() {
     }
   };
 
-  const handleSeatingMap = async () => {
+  const handleTablesList = () => {
     if (!event?.id) return;
-    const { data } = await supabase.from('seating_maps').select('*').eq('event_id', event.id).single();
-    if (!data) {
-      await supabase.from('seating_maps').insert({
-        event_id: event.id,
-        num_tables: 0,
-        tables: [],
-        annotations: [],
-      });
-    }
-    router.push(`/(admin)/BrideGroomSeating?eventId=${event.id}`);
+    router.push({
+      pathname: '/(admin)/TablesList',
+      params: { eventId: event.id },
+    });
   };
 
   if (loading) {
@@ -335,8 +329,8 @@ export default function AdminEventDetailsWebScreen() {
 
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel="מפת הושבה"
-                  onPress={handleSeatingMap}
+                  accessibilityLabel="רשימת שולחנות"
+                  onPress={handleTablesList}
                   style={({ hovered, pressed }: any) => [
                     styles.quickActionBtn,
                     Platform.OS === 'web' && hovered ? styles.quickActionBtnHover : null,
@@ -345,9 +339,9 @@ export default function AdminEventDetailsWebScreen() {
                 >
                   <View style={styles.quickActionLeft}>
                     <View style={[styles.quickActionIcon, { backgroundColor: 'rgba(16,185,129,0.16)' }]}>
-                      <Ionicons name="grid-outline" size={18} color={'#10B981'} />
+                      <Ionicons name="list-outline" size={18} color={'#10B981'} />
                     </View>
-                    <Text style={styles.quickActionText}>מפת הושבה</Text>
+                    <Text style={styles.quickActionText}>רשימת שולחנות</Text>
                   </View>
                   <Ionicons name="chevron-back" size={18} color={colors.gray[500]} style={styles.quickActionChevron} />
                 </Pressable>
@@ -475,8 +469,8 @@ export default function AdminEventDetailsWebScreen() {
 
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel="מפת הושבה"
-                  onPress={handleSeatingMap}
+                  accessibilityLabel="רשימת שולחנות"
+                  onPress={handleTablesList}
                   style={({ hovered, pressed }: any) => [
                     styles.bigActionPrimary,
                     Platform.OS === 'web' && hovered ? styles.bigActionPrimaryHover : null,
@@ -486,10 +480,10 @@ export default function AdminEventDetailsWebScreen() {
                   <View style={styles.bigActionBgBlob1} />
                   <View style={styles.bigActionBgBlob2} />
                   <View style={styles.bigActionIconWrapPrimary}>
-                    <Ionicons name="grid-outline" size={26} color={colors.white} />
+                    <Ionicons name="list-outline" size={26} color={colors.white} />
                   </View>
-                  <Text style={styles.bigActionTitlePrimary}>מפת הושבה</Text>
-                  <Text style={styles.bigActionSubtitlePrimary}>שיבוץ אורחים בשולחנות</Text>
+                  <Text style={styles.bigActionTitlePrimary}>רשימת שולחנות</Text>
+                  <Text style={styles.bigActionSubtitlePrimary}>ניהול וצפייה בכל השולחנות באירוע</Text>
                 </Pressable>
               </View>
 

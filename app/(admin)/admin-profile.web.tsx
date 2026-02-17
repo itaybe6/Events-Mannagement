@@ -609,6 +609,7 @@ export default function AdminProfileWebScreen() {
                                 </View>
                               </View>
                               <Text style={[styles.barLabel, isCurrentMonth ? styles.barLabelHot : null]}>{b.label}</Text>
+                              <Text style={[styles.barValue, isCurrentMonth ? styles.barValueHot : null]}>{b.value}</Text>
                             </>
                           )}
                         </Pressable>
@@ -1178,6 +1179,8 @@ const styles = StyleSheet.create({
   },
   barLabel: { fontSize: 12, fontWeight: '800', color: ui.muted },
   barLabelHot: { color: ui.primary },
+  barValue: { marginTop: -6, fontSize: 11, fontWeight: '900', color: 'rgba(15,23,42,0.55)' },
+  barValueHot: { color: ui.primary },
 
   sideCardPrimary: {
     flex: 1,

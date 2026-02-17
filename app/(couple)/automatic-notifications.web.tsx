@@ -27,6 +27,7 @@ type NotificationSettingRow = {
   message_content: string;
   days_from_wedding: number;
   channel?: 'SMS' | 'WHATSAPP';
+  notification_date?: string | null;
 };
 
 const normalizeMessage = (s: string) => String(s || '').replace(/\r\n/g, '\n').trim();
@@ -74,6 +75,22 @@ function formatHeDate(value: unknown) {
   const d = value instanceof Date ? value : new Date(String(value ?? ''));
   if (Number.isNaN(d.getTime())) return '';
   return d.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+function toLocalYmd(d: Date) {
+  if (!Number.isFinite(d.getTime())) return null;
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function computeNotificationDateYmd(eventDate: unknown, daysOffset: number) {
+  const base = new Date(String(eventDate ?? ''));
+  if (!Number.isFinite(base.getTime())) return null;
+  const d = new Date(base);
+  d.setDate(d.getDate() + (Number(daysOffset) || 0));
+  return toLocalYmd(d);
 }
 
 const isMissingColumn = (err: any, column: string) =>
@@ -222,6 +239,7 @@ export default function AutomaticNotificationsWebScreen() {
           message_content: shouldUpgradeMessage ? String(tpl.defaultMessage ?? getDefaultMessageContent(defaultOwner)) : String(existing.message_content ?? ''),
           days_from_wedding: typeof existing.days_from_wedding === 'number' ? existing.days_from_wedding : tpl.days_from_wedding,
           channel: (existing.channel as any) || tpl.channel,
+          notification_date: (existing.notification_date as any) ?? null,
         };
       }
 
@@ -232,6 +250,7 @@ export default function AutomaticNotificationsWebScreen() {
         message_content: tpl.defaultMessage ?? getDefaultMessageContent(defaultOwner),
         days_from_wedding: tpl.days_from_wedding,
         channel: tpl.channel,
+        notification_date: null,
       };
     });
 
@@ -311,7 +330,16 @@ export default function AutomaticNotificationsWebScreen() {
 
     try {
       if (row.id) {
-        const { error } = await supabase.from('notification_settings').update({ enabled: nextEnabled }).eq('id', row.id);
+        const updatePayload: any = { enabled: nextEnabled };
+        const ymd = computeNotificationDateYmd((event as any)?.date, row.days_from_wedding ?? 0);
+        if (ymd) updatePayload.notification_date = ymd;
+
+        let { error } = await supabase.from('notification_settings').update(updatePayload).eq('id', row.id);
+        if (error && isMissingColumn(error, 'notification_date')) {
+          delete updatePayload.notification_date;
+          const retry = await supabase.from('notification_settings').update(updatePayload).eq('id', row.id);
+          error = retry.error as any;
+        }
         if (error) throw error;
         return;
       }
@@ -326,10 +354,18 @@ export default function AutomaticNotificationsWebScreen() {
         days_from_wedding: typeof row.days_from_wedding === 'number' ? row.days_from_wedding : tpl?.days_from_wedding ?? 0,
         channel: (row.channel as any) || tpl?.channel || 'SMS',
       };
+      const ymd = computeNotificationDateYmd((event as any)?.date, payload.days_from_wedding);
+      if (ymd) payload.notification_date = ymd;
 
       let { data, error } = await supabase.from('notification_settings').insert(payload).select().single();
       if (error && isMissingColumn(error, 'channel')) {
         delete payload.channel;
+        const retry = await supabase.from('notification_settings').insert(payload).select().single();
+        data = retry.data as any;
+        error = retry.error as any;
+      }
+      if (error && isMissingColumn(error, 'notification_date')) {
+        delete payload.notification_date;
         const retry = await supabase.from('notification_settings').insert(payload).select().single();
         data = retry.data as any;
         error = retry.error as any;
@@ -361,9 +397,16 @@ export default function AutomaticNotificationsWebScreen() {
         message_content: editDraft.message,
         days_from_wedding: editDraft.days,
       };
+      const ymd = computeNotificationDateYmd((event as any)?.date, editDraft.days);
+      if (ymd) payload.notification_date = ymd;
 
       if (selectedRow.id) {
-        const { error } = await supabase.from('notification_settings').update(payload).eq('id', selectedRow.id);
+        let { error } = await supabase.from('notification_settings').update(payload).eq('id', selectedRow.id);
+        if (error && isMissingColumn(error, 'notification_date')) {
+          delete payload.notification_date;
+          const retry = await supabase.from('notification_settings').update(payload).eq('id', selectedRow.id);
+          error = retry.error as any;
+        }
         if (error) throw error;
         setNotificationSettings((p) =>
           p.map((r) => (r.notification_type === selectedRow.notification_type ? { ...r, ...payload } : r))
@@ -381,10 +424,17 @@ export default function AutomaticNotificationsWebScreen() {
         days_from_wedding: editDraft.days,
         channel: (selectedRow.channel as any) || tpl?.channel || 'SMS',
       };
+      if (ymd) insertPayload.notification_date = ymd;
 
       let { data, error } = await supabase.from('notification_settings').insert(insertPayload).select().single();
       if (error && isMissingColumn(error, 'channel')) {
         delete insertPayload.channel;
+        const retry = await supabase.from('notification_settings').insert(insertPayload).select().single();
+        data = retry.data as any;
+        error = retry.error as any;
+      }
+      if (error && isMissingColumn(error, 'notification_date')) {
+        delete insertPayload.notification_date;
         const retry = await supabase.from('notification_settings').insert(insertPayload).select().single();
         data = retry.data as any;
         error = retry.error as any;
@@ -399,6 +449,24 @@ export default function AutomaticNotificationsWebScreen() {
       setSaving(false);
     }
   };
+
+  const scheduledSendDate = useMemo(() => {
+    const base = new Date(String((event as any)?.date ?? ''));
+    if (!Number.isFinite(base.getTime())) return null;
+    const days = Number(editDraft?.days ?? 0) || 0;
+    const d = new Date(base);
+    d.setDate(d.getDate() + days);
+    return d;
+  }, [editDraft?.days, event]);
+
+  const scheduledSendDateLabel = scheduledSendDate
+    ? scheduledSendDate.toLocaleDateString('he-IL', {
+        weekday: 'long',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+      })
+    : '—';
 
   if (loading) {
     return (
@@ -449,21 +517,8 @@ export default function AutomaticNotificationsWebScreen() {
       <View style={styles.body}>
         {/* Sidebar שמאלי */}
         <View style={[styles.sidebar, { width: sidebarWidth }]}>
-          <View style={styles.sidebarHeader}>
-            <View style={styles.sidebarHeaderRow}>
-              <Text style={styles.sidebarTitle}>עריכת הודעה</Text>
-              <Text style={styles.sidebarId} numberOfLines={1}>
-                {selectedRow?.id ? `${selectedRow.id.slice(0, 8)}` : '48201'}
-              </Text>
-            </View>
-            <Text style={styles.sidebarSubtitle} numberOfLines={2}>
-              ערוך את התוכן של "{selectedRow ? getDisplayTitle(selectedRow) : 'בחר הודעה'}"
-            </Text>
-          </View>
-
           <ScrollView style={styles.sidebarBody} contentContainerStyle={styles.sidebarBodyContent} showsVerticalScrollIndicator={false}>
-            <View style={styles.formBlock}>
-              <Text style={styles.label}>זמן שליחה</Text>
+            <View style={[styles.formBlock, styles.timeBlock]}>
               <View style={styles.timeRow}>
                 <Pressable
                   onPress={() => {
@@ -497,6 +552,13 @@ export default function AutomaticNotificationsWebScreen() {
                     <Text style={[styles.selectLikeText, styles.selectLikeTextDisabled]}>ימים</Text>
                   </View>
                 </View>
+              </View>
+
+              <View style={styles.scheduledRow}>
+                <Ionicons name="calendar-outline" size={14} color="#64748B" />
+                <Text style={styles.scheduledText} numberOfLines={1}>
+                  תאריך שליחה: {scheduledSendDateLabel}
+                </Text>
               </View>
             </View>
 
@@ -553,7 +615,6 @@ export default function AutomaticNotificationsWebScreen() {
             </View>
 
             <View style={styles.previewBlock}>
-              <Text style={styles.labelCenter}>תצוגה מקדימה בנייד</Text>
               <View style={styles.phoneFrame}>
                 <View style={styles.phoneNotch} />
                 <View style={styles.phoneScreen}>
@@ -722,11 +783,8 @@ export default function AutomaticNotificationsWebScreen() {
                   </Pressable>
                 );
               })}
-            </View>
-
-            {/* כרטיס WhatsApp */}
-            {whatsapp.length > 0 ? (
-              <View style={styles.whatsappRow}>
+              {/* WhatsApp card in the same row */}
+              {whatsapp.length > 0 ? (
                 <View style={styles.whatsappCard}>
                   <View style={styles.whatsappHeader}>
                     <View style={styles.whatsappIconWrap}>
@@ -751,8 +809,8 @@ export default function AutomaticNotificationsWebScreen() {
                     </Pressable>
                   </View>
                 </View>
-              </View>
-            ) : null}
+              ) : null}
+            </View>
           </View>
         </ScrollView>
       </View>
@@ -805,11 +863,30 @@ const styles = StyleSheet.create({
   sidebarBodyContent: { padding: 14, paddingBottom: 14, gap: 14 },
 
   formBlock: { gap: 8 },
+  timeBlock: { alignItems: 'flex-end', width: '100%' },
   label: { fontSize: 12, fontWeight: '900', color: '#374151', textAlign: 'right', textTransform: 'uppercase', letterSpacing: 0.5 },
   labelCenter: { fontSize: 12, fontWeight: '900', color: '#374151', textAlign: 'center', textTransform: 'uppercase', letterSpacing: 0.5 },
 
-  timeRow: { flexDirection: 'row-reverse', gap: 8, alignItems: 'center' },
-  timeRight: { flex: 1, minWidth: 0, flexDirection: 'row-reverse', gap: 8 },
+  // In `row-reverse`, `flex-start` pins content to the RIGHT.
+  timeRow: { width: '100%', flexDirection: 'row-reverse', justifyContent: 'flex-start', gap: 8, alignItems: 'center' },
+  // Keep this group compact (don't stretch and push left).
+  timeRight: { flexGrow: 0, flexShrink: 0, flexDirection: 'row-reverse', gap: 8, alignItems: 'center' },
+  scheduledRow: {
+    marginTop: 10,
+    width: '100%',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    // In `row-reverse`, `flex-start` pins content to the RIGHT.
+    justifyContent: 'flex-start',
+    gap: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: 'rgba(100,116,139,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(100,116,139,0.12)',
+  },
+  scheduledText: { fontSize: 12, fontWeight: '900', color: '#334155', textAlign: 'right', writingDirection: 'rtl', flexShrink: 1 },
   selectLike: {
     height: 40,
     borderRadius: 8,
@@ -879,39 +956,61 @@ const styles = StyleSheet.create({
   previewBlock: { marginTop: 6, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#F3F4F6', gap: 10 },
   phoneFrame: {
     alignSelf: 'center',
-    width: 260,
-    height: 350,
-    borderRadius: 28,
+    width: 300,
+    height: 420,
+    borderRadius: 34,
     backgroundColor: '#1E293B',
     borderWidth: 4,
     borderColor: '#334155',
     overflow: 'hidden',
     ...(Platform.OS === 'web' ? ({ boxShadow: '0 16px 36px rgba(0,0,0,0.2)' } as any) : null),
   },
-  phoneNotch: { position: 'absolute', top: 0, left: '50%', transform: [{ translateX: -54 }], width: 108, height: 18, backgroundColor: '#334155', borderBottomLeftRadius: 12, borderBottomRightRadius: 12, zIndex: 5 },
-  phoneScreen: { flex: 1, paddingTop: 26, paddingBottom: 10, paddingHorizontal: 12, backgroundColor: '#E5DDD5' },
-  phoneTime: { position: 'absolute', top: 6, right: 12, fontSize: 10, fontWeight: '900', color: '#fff' },
-  phoneStatusLeft: { position: 'absolute', top: 6, left: 12, flexDirection: 'row-reverse', gap: 4 },
-  phoneStatusDot: { width: 8, height: 8, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.85)' },
-  phoneHeader: { position: 'absolute', top: 0, left: 0, right: 0, height: 44, backgroundColor: '#075E54', flexDirection: 'row-reverse', alignItems: 'center', paddingHorizontal: 8, paddingTop: 8 },
-  phoneAvatar: { width: 20, height: 20, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.2)', marginLeft: 6 },
-  phoneHeaderTitle: { fontSize: 11, fontWeight: '900', color: '#fff', textAlign: 'right', flexShrink: 1 },
+  phoneNotch: {
+    position: 'absolute',
+    top: 0,
+    left: '50%',
+    transform: [{ translateX: -62 }],
+    width: 124,
+    height: 20,
+    backgroundColor: '#334155',
+    borderBottomLeftRadius: 14,
+    borderBottomRightRadius: 14,
+    zIndex: 5,
+  },
+  phoneScreen: { flex: 1, paddingTop: 28, paddingBottom: 12, paddingHorizontal: 14, backgroundColor: '#E5DDD5' },
+  phoneTime: { position: 'absolute', top: 7, right: 14, fontSize: 11, fontWeight: '900', color: '#fff' },
+  phoneStatusLeft: { position: 'absolute', top: 7, left: 14, flexDirection: 'row-reverse', gap: 5 },
+  phoneStatusDot: { width: 9, height: 9, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.85)' },
+  phoneHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 50,
+    backgroundColor: '#075E54',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingTop: 10,
+  },
+  phoneAvatar: { width: 24, height: 24, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.2)', marginLeft: 8 },
+  phoneHeaderTitle: { fontSize: 12, fontWeight: '900', color: '#fff', textAlign: 'right', flexShrink: 1 },
 
   bubble: {
-    marginTop: 34,
+    marginTop: 40,
     alignSelf: 'flex-end',
     maxWidth: '90%',
     backgroundColor: '#fff',
     borderRadius: 10,
     borderTopRightRadius: 3,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
     ...(Platform.OS === 'web' ? ({ boxShadow: '0 4px 12px rgba(0,0,0,0.08)' } as any) : null),
   },
-  bubbleText: { fontSize: 10, lineHeight: 14, fontWeight: '800', color: '#111827', textAlign: 'right' },
-  bubbleTime: { position: 'absolute', left: 8, bottom: 4, fontSize: 7, fontWeight: '900', color: '#9CA3AF' },
-  datePill: { alignSelf: 'center', marginTop: 12, backgroundColor: '#DCF8C6', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
-  datePillText: { fontSize: 9, fontWeight: '900', color: '#475569' },
+  bubbleText: { fontSize: 11, lineHeight: 16, fontWeight: '800', color: '#111827', textAlign: 'right' },
+  bubbleTime: { position: 'absolute', left: 10, bottom: 6, fontSize: 8, fontWeight: '900', color: '#9CA3AF' },
+  datePill: { alignSelf: 'center', marginTop: 14, backgroundColor: '#DCF8C6', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 7 },
+  datePillText: { fontSize: 10, fontWeight: '900', color: '#475569' },
 
   sidebarFooter: {
     padding: 14,
@@ -1000,10 +1099,16 @@ const styles = StyleSheet.create({
   cardsRow: {
     ...(Platform.OS === 'web'
       ? ({
-          display: 'grid',
-          gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+          display: 'flex',
+          flexDirection: 'row-reverse',
+          flexWrap: 'nowrap',
           gap: 16,
           alignItems: 'stretch',
+          overflowX: 'auto',
+          overflowY: 'hidden',
+          paddingBottom: 4,
+          WebkitOverflowScrolling: 'touch',
+          scrollbarWidth: 'thin',
         } as any)
       : ({
           flexDirection: 'row-reverse',
@@ -1013,24 +1118,17 @@ const styles = StyleSheet.create({
           flexWrap: 'wrap',
         } as any)),
   },
-  whatsappRow: {
-    ...(Platform.OS === 'web'
-      ? ({
-          display: 'grid',
-          gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-          gap: 16,
-          alignItems: 'stretch',
-        } as any)
-      : ({
-          flexDirection: 'row-reverse',
-          gap: 16,
-          alignItems: 'stretch',
-          justifyContent: 'flex-start',
-        } as any)),
-  },
 
   messageCard: {
-    ...(Platform.OS === 'web' ? ({} as any) : ({ flexGrow: 1, flexBasis: '32%', minWidth: 240 } as any)),
+    ...(Platform.OS === 'web'
+      ? ({
+          flexGrow: 1,
+          flexBasis: 0,
+          flexShrink: 0,
+          minWidth: 240,
+          maxWidth: 360,
+        } as any)
+      : ({ flexGrow: 1, flexBasis: '32%', minWidth: 240 } as any)),
     borderRadius: 14,
     backgroundColor: '#fff',
     padding: 18,
@@ -1065,7 +1163,15 @@ const styles = StyleSheet.create({
     padding: 20,
     borderWidth: 1,
     borderColor: '#86EFAC',
-    ...(Platform.OS === 'web' ? ({ gridColumn: '1 / span 1' } as any) : ({ width: '32%', minWidth: 240 } as any)),
+    ...(Platform.OS === 'web'
+      ? ({
+          flexGrow: 1,
+          flexBasis: 0,
+          flexShrink: 0,
+          minWidth: 240,
+          maxWidth: 360,
+        } as any)
+      : ({ flexGrow: 1, flexBasis: '32%', minWidth: 240 } as any)),
   },
   whatsappHeader: { flexDirection: 'row-reverse', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 14 },
   whatsappIconWrap: { width: 48, height: 48, borderRadius: 999, backgroundColor: '#25D366', alignItems: 'center', justifyContent: 'center', ...(Platform.OS === 'web' ? ({ boxShadow: '0 8px 24px rgba(37,211,102,0.25)' } as any) : null) },

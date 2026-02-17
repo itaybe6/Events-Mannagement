@@ -950,6 +950,16 @@ export default function BrideGroomSeatingWebScreen() {
       .filter(Boolean) as Array<{ id: string; title: string; data: GuestRow[] }>;
   }, [guestModalCategory, guestModalSearch, guestModalSections]);
 
+  const guestModalTotals = useMemo(() => {
+    let guestsCount = 0;
+    let peopleCount = 0;
+    for (const section of filteredGuestSections) {
+      guestsCount += section.data.length;
+      for (const g of section.data) peopleCount += Number((g as any)?.numberOfPeople) || 1;
+    }
+    return { guestsCount, peopleCount, sectionsCount: filteredGuestSections.length };
+  }, [filteredGuestSections]);
+
   const tablesForList = useMemo(() => {
     const q = tableListSearch.trim().toLowerCase();
     const byId = new Map<string, number>();
@@ -1476,72 +1486,170 @@ export default function BrideGroomSeatingWebScreen() {
               </Pressable>
             </View>
 
-            <View style={styles.modalFilterBar}>
-              <View style={[styles.modalSearchWrap, { flex: 1 }]}>
-                <Ionicons name="search" size={16} color={colors.gray[500]} />
-                <TextInput
-                  value={guestModalSearch}
-                  onChangeText={setGuestModalSearch}
-                  placeholder="חיפוש לפי שם..."
-                  placeholderTextColor={colors.gray[500]}
-                  style={styles.modalSearchInput}
-                />
-              </View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsRow}>
-                {guestModalCategories.map((c) => {
-                  const active = guestModalCategory === c;
-                  return (
-                    <Pressable
-                      key={c}
-                      accessibilityRole="button"
-                      accessibilityLabel={`קטגוריה ${c}`}
-                      onPress={() => setGuestModalCategory(c)}
-                      style={({ hovered, pressed }: any) => [
-                        styles.chip,
-                        active ? styles.chipActive : null,
-                        Platform.OS === 'web' && hovered && !active ? styles.chipHover : null,
-                        pressed ? styles.btnPressed : null,
-                      ]}
-                    >
-                      <Text style={[styles.chipText, active ? styles.chipTextActive : null]}>{c}</Text>
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
-            </View>
-
-            <ScrollView contentContainerStyle={styles.modalBody} showsVerticalScrollIndicator={false}>
-              {filteredGuestSections.length === 0 ? (
-                <Text style={styles.muted}>אין תוצאות</Text>
-              ) : (
-                filteredGuestSections.map((section) => (
-                  <View key={section.id} style={styles.sectionCard}>
-                    <Text style={styles.sectionTitle}>{section.title}</Text>
-                    <View style={styles.sectionGrid}>
-                      {section.data.map((g) => (
-                        <View key={g.id} style={styles.guestMiniCard}>
-                          <Text style={styles.guestMiniName} numberOfLines={1}>
-                            {g.name}
+            <View style={[styles.guestModalContent, isNarrow ? styles.guestModalContentNarrow : null]}>
+              {!isNarrow ? (
+                <View style={styles.guestModalSidebar}>
+                  <Text style={styles.guestModalSidebarTitle}>קטגוריות</Text>
+                  <ScrollView
+                    style={styles.guestModalSidebarScroll}
+                    contentContainerStyle={styles.guestModalSidebarList}
+                    showsVerticalScrollIndicator={false}
+                  >
+                    {guestModalCategories.map((c) => {
+                      const active = guestModalCategory === c;
+                      return (
+                        <Pressable
+                          key={c}
+                          accessibilityRole="button"
+                          accessibilityLabel={`קטגוריה ${c}`}
+                          onPress={() => setGuestModalCategory(c)}
+                          style={({ hovered, pressed }: any) => [
+                            styles.guestModalCategoryBtn,
+                            active ? styles.guestModalCategoryBtnActive : null,
+                            Platform.OS === 'web' && hovered && !active ? styles.guestModalCategoryBtnHover : null,
+                            pressed ? styles.btnPressed : null,
+                          ]}
+                        >
+                          <Text style={[styles.guestModalCategoryText, active ? styles.guestModalCategoryTextActive : null]} numberOfLines={1}>
+                            {c}
                           </Text>
-                          <View style={styles.guestMiniMetaRow}>
-                            {g.tables?.number ? (
-                              <View style={styles.miniPill}>
-                                <Ionicons name="grid-outline" size={12} color={colors.gray[700]} />
-                                <Text style={styles.miniPillText}>שולחן {g.tables.number}</Text>
-                              </View>
-                            ) : null}
-                            <View style={styles.miniPill}>
-                              <Ionicons name="person" size={12} color={colors.gray[700]} />
-                              <Text style={styles.miniPillText}>{Number(g.numberOfPeople) || 1}</Text>
-                            </View>
-                          </View>
-                        </View>
-                      ))}
-                    </View>
+                        </Pressable>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+              ) : null}
+
+              <View style={styles.guestModalMain}>
+                <View style={[styles.modalFilterBar, !isNarrow ? styles.guestModalTopBar : null]}>
+                  <View style={[styles.modalSearchWrap, { flex: 1 }]}>
+                    <Ionicons name="search" size={16} color={colors.gray[500]} />
+                    <TextInput
+                      value={guestModalSearch}
+                      onChangeText={setGuestModalSearch}
+                      placeholder="חיפוש לפי שם..."
+                      placeholderTextColor={colors.gray[500]}
+                      style={styles.modalSearchInput}
+                    />
                   </View>
-                ))
-              )}
-            </ScrollView>
+
+                  {isNarrow ? (
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsRow}>
+                      {guestModalCategories.map((c) => {
+                        const active = guestModalCategory === c;
+                        return (
+                          <Pressable
+                            key={c}
+                            accessibilityRole="button"
+                            accessibilityLabel={`קטגוריה ${c}`}
+                            onPress={() => setGuestModalCategory(c)}
+                            style={({ hovered, pressed }: any) => [
+                              styles.chip,
+                              active ? styles.chipActive : null,
+                              Platform.OS === 'web' && hovered && !active ? styles.chipHover : null,
+                              pressed ? styles.btnPressed : null,
+                            ]}
+                          >
+                            <Text style={[styles.chipText, active ? styles.chipTextActive : null]}>{c}</Text>
+                          </Pressable>
+                        );
+                      })}
+                    </ScrollView>
+                  ) : (
+                    <View style={styles.guestModalStatsWrap}>
+                      <Text style={styles.guestModalStatsText}>
+                        {guestModalTotals.guestsCount} מוזמנים • {guestModalTotals.peopleCount} אנשים
+                      </Text>
+                      <Text style={styles.guestModalStatsSubText} numberOfLines={1}>
+                        {guestModalCategory === 'הכל' ? `ב־${guestModalTotals.sectionsCount} קטגוריות` : `קטגוריה: ${guestModalCategory}`}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+
+                <ScrollView
+                  style={styles.guestModalListScroll}
+                  contentContainerStyle={styles.modalBody}
+                  showsVerticalScrollIndicator={false}
+                >
+                  {filteredGuestSections.length === 0 ? (
+                    <Text style={styles.muted}>אין תוצאות</Text>
+                  ) : (
+                    filteredGuestSections.map((section) => (
+                      <View key={section.id} style={styles.sectionCard}>
+                        <View style={styles.sectionHeaderRow}>
+                          <Text style={styles.sectionTitle}>{section.title}</Text>
+                          <Text style={styles.sectionCountText}>
+                            {section.data.length} • {section.data.reduce((sum, g) => sum + (Number((g as any)?.numberOfPeople) || 1), 0)} אנשים
+                          </Text>
+                        </View>
+
+                        {isNarrow ? (
+                          <View style={styles.sectionGrid}>
+                            {section.data.map((g) => (
+                              <View key={g.id} style={styles.guestMiniCard}>
+                                <Text style={styles.guestMiniName} numberOfLines={1}>
+                                  {g.name}
+                                </Text>
+                                <View style={styles.guestMiniMetaRow}>
+                                  {g.tables?.number ? (
+                                    <View style={styles.miniPill}>
+                                      <Ionicons name="grid-outline" size={12} color={colors.gray[700]} />
+                                      <Text style={styles.miniPillText}>שולחן {g.tables.number}</Text>
+                                    </View>
+                                  ) : null}
+                                  <View style={styles.miniPill}>
+                                    <Ionicons name="person" size={12} color={colors.gray[700]} />
+                                    <Text style={styles.miniPillText}>{Number(g.numberOfPeople) || 1}</Text>
+                                  </View>
+                                </View>
+                              </View>
+                            ))}
+                          </View>
+                        ) : (
+                          <View style={styles.guestRows}>
+                            {section.data.map((g) => {
+                              const name = String((g as any)?.name ?? '').trim();
+                              const initial = name ? name.slice(0, 1) : '—';
+                              return (
+                                <View key={g.id} style={styles.guestRow}>
+                                  <View style={styles.guestRowRight}>
+                                    <View style={styles.guestRowAvatar}>
+                                      <Text style={styles.guestRowAvatarText}>{initial}</Text>
+                                    </View>
+                                    <View style={styles.guestRowText}>
+                                      <Text style={styles.guestRowName} numberOfLines={1}>
+                                        {name || 'ללא שם'}
+                                      </Text>
+                                      <Text style={styles.guestRowSub} numberOfLines={1}>
+                                        {g.tables?.number ? `שולחן ${g.tables.number}` : 'טרם הושב'}
+                                      </Text>
+                                    </View>
+                                  </View>
+
+                                  <View style={styles.guestRowLeft}>
+                                    {g.tables?.number ? (
+                                      <View style={styles.miniPill}>
+                                        <Ionicons name="grid-outline" size={12} color={colors.gray[700]} />
+                                        <Text style={styles.miniPillText}>שולחן {g.tables.number}</Text>
+                                      </View>
+                                    ) : null}
+                                    <View style={styles.miniPill}>
+                                      <Ionicons name="person" size={12} color={colors.gray[700]} />
+                                      <Text style={styles.miniPillText}>{Number(g.numberOfPeople) || 1}</Text>
+                                    </View>
+                                  </View>
+                                </View>
+                              );
+                            })}
+                          </View>
+                        )}
+                      </View>
+                    ))
+                  )}
+                </ScrollView>
+              </View>
+            </View>
           </Pressable>
         </Pressable>
       </Modal>
@@ -2289,7 +2397,19 @@ const styles = StyleSheet.create({
   emptyMapTitle: { fontSize: 14, fontWeight: '900', color: colors.text, textAlign: 'center', writingDirection: 'rtl' },
   emptyMapSub: { fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'center', writingDirection: 'rtl', maxWidth: 460 },
 
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', padding: 16, justifyContent: 'center', alignItems: 'center' },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    padding: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...(Platform.OS === 'web'
+      ? ({
+          backdropFilter: 'blur(6px)',
+          WebkitBackdropFilter: 'blur(6px)',
+        } as any)
+      : null),
+  },
   modalCard: {
     width: '100%',
     maxWidth: 980,
@@ -2298,7 +2418,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.10)',
     overflow: 'hidden',
-    ...(Platform.OS === 'web' ? ({ boxShadow: '0 30px 80px rgba(0,0,0,0.20)' } as any) : null),
+    ...(Platform.OS === 'web'
+      ? ({
+          boxShadow: '0 30px 80px rgba(0,0,0,0.20)',
+          direction: 'rtl',
+        } as any)
+      : null),
   },
   modalHeader: { paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: 'rgba(15,23,42,0.06)', flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   modalTitle: { fontSize: 16, fontWeight: '900', color: colors.text, textAlign: 'right', writingDirection: 'rtl' },
@@ -2542,6 +2667,47 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : null),
   },
 
+  guestModalContent: { flex: 1, flexDirection: 'row-reverse', minHeight: 0 },
+  guestModalContentNarrow: { flexDirection: 'column' },
+  guestModalSidebar: {
+    width: 240,
+    backgroundColor: 'rgba(248,250,252,0.85)',
+    borderLeftWidth: 1,
+    borderLeftColor: 'rgba(15,23,42,0.06)',
+    padding: 12,
+    gap: 10,
+  },
+  guestModalSidebarTitle: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: colors.gray[700],
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  guestModalSidebarScroll: { flex: 1 },
+  guestModalSidebarList: { gap: 8, paddingBottom: 8 },
+  guestModalCategoryBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.10)',
+    alignItems: 'flex-end',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  guestModalCategoryBtnHover: { backgroundColor: 'rgba(248,250,252,0.92)' },
+  guestModalCategoryBtnActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  guestModalCategoryText: { fontSize: 12, fontWeight: '900', color: colors.gray[800], textAlign: 'right', writingDirection: 'rtl' },
+  guestModalCategoryTextActive: { color: colors.white },
+
+  guestModalMain: { flex: 1, minWidth: 0, minHeight: 0 },
+  guestModalTopBar: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
+  guestModalStatsWrap: { alignItems: 'flex-start', gap: 2, minWidth: 220 },
+  guestModalStatsText: { fontSize: 12, fontWeight: '900', color: colors.gray[800], textAlign: 'left' },
+  guestModalStatsSubText: { fontSize: 11, fontWeight: '900', color: colors.gray[600], textAlign: 'left' },
+  guestModalListScroll: { flex: 1 },
+
   chipsRow: { flexDirection: 'row-reverse', gap: 8 },
   chip: { paddingHorizontal: 12, paddingVertical: 9, borderRadius: 999, backgroundColor: colors.white, borderWidth: 1, borderColor: 'rgba(15,23,42,0.12)', ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
   chipHover: { backgroundColor: colors.gray[50] },
@@ -2557,14 +2723,15 @@ const styles = StyleSheet.create({
 
   modalBody: { padding: 14, gap: 12 },
   sectionCard: { backgroundColor: 'rgba(248,250,252,0.92)', borderRadius: 18, borderWidth: 1, borderColor: 'rgba(15,23,42,0.06)', padding: 12 },
+  sectionHeaderRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 10 },
   sectionTitle: {
     fontSize: 14,
     fontWeight: '900',
     color: colors.primary,
     textAlign: 'right',
-    marginBottom: 10,
     writingDirection: 'rtl',
   },
+  sectionCountText: { fontSize: 11, fontWeight: '900', color: colors.gray[600], textAlign: 'left' },
   sectionGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 10 },
   guestMiniCard: { flexBasis: 220, flexGrow: 1, minWidth: 220, borderRadius: 16, backgroundColor: colors.white, borderWidth: 1, borderColor: 'rgba(15,23,42,0.06)', padding: 10 },
   guestMiniName: {
@@ -2577,6 +2744,27 @@ const styles = StyleSheet.create({
   guestMiniMetaRow: { marginTop: 8, flexDirection: 'row-reverse', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   miniPill: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(15,23,42,0.04)', borderWidth: 1, borderColor: 'rgba(15,23,42,0.06)' },
   miniPillText: { fontSize: 11, fontWeight: '900', color: colors.gray[700], textAlign: 'right', writingDirection: 'rtl' },
+
+  guestRows: { gap: 10 },
+  guestRow: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 16,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.06)',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  guestRowRight: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 },
+  guestRowAvatar: { width: 34, height: 34, borderRadius: 999, backgroundColor: 'rgba(59,130,246,0.10)', alignItems: 'center', justifyContent: 'center' },
+  guestRowAvatarText: { fontSize: 14, fontWeight: '900', color: colors.yaleBlue, writingDirection: 'rtl' },
+  guestRowText: { flex: 1, minWidth: 0, alignItems: 'flex-end' },
+  guestRowName: { fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'right', writingDirection: 'rtl' },
+  guestRowSub: { marginTop: 2, fontSize: 11, fontWeight: '900', color: colors.gray[600], textAlign: 'right', writingDirection: 'rtl' },
+  guestRowLeft: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-start' },
 
   muted: {
     fontSize: 12,
@@ -2798,29 +2986,46 @@ const styles = StyleSheet.create({
   // Guest edit modal
   guestEditCard: {
     width: '100%',
-    backgroundColor: colors.gray[50],
+    backgroundColor: colors.white,
     borderRadius: 22,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.55)',
+    borderColor: 'rgba(15,23,42,0.10)',
     overflow: 'hidden',
-    ...(Platform.OS === 'web' ? ({ boxShadow: '0 6px 26px rgba(0,0,0,0.10)', direction: 'rtl' } as any) : null),
+    ...(Platform.OS === 'web'
+      ? ({
+          boxShadow: '0 30px 80px rgba(0,0,0,0.22)',
+          direction: 'rtl',
+        } as any)
+      : null),
   },
   guestEditHeader: {
     paddingHorizontal: 18,
     paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(226,232,240,0.9)',
-    backgroundColor: colors.white,
-    flexDirection: 'row',
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
+    ...(Platform.OS === 'web'
+      ? ({
+          backdropFilter: 'blur(10px)',
+          WebkitBackdropFilter: 'blur(10px)',
+        } as any)
+      : null),
   },
   guestEditHeaderText: { flex: 1, minWidth: 0, alignItems: 'flex-end', gap: 4 },
   guestEditTitle: { fontSize: 18, fontWeight: '900', color: colors.text, textAlign: 'right', writingDirection: 'rtl' },
   guestEditSubtitle: { fontSize: 13, fontWeight: '800', color: colors.gray[600], textAlign: 'right', writingDirection: 'rtl' },
-  guestEditBody: { padding: 18, gap: 14 },
-  guestEditInfoRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
+  guestEditBody: {
+    padding: 18,
+    gap: 14,
+    alignItems: 'stretch',
+    backgroundColor: 'rgba(248,250,252,0.72)',
+    ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
+  },
+  guestEditInfoRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' },
   guestEditInfoPill: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
@@ -2831,10 +3036,20 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.08)',
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 2px 10px rgba(0,0,0,0.04)' } as any) : null),
   },
   guestEditInfoText: { fontSize: 12, fontWeight: '900', color: colors.gray[800], textAlign: 'right', writingDirection: 'rtl' },
-  guestEditField: { gap: 8 },
-  guestEditLabel: { fontSize: 12, fontWeight: '900', color: colors.gray[700], textAlign: 'right', writingDirection: 'rtl' },
+  guestEditField: {
+    gap: 8,
+    alignItems: 'stretch',
+    padding: 14,
+    borderRadius: 18,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: 'rgba(226,232,240,0.9)',
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 2px 14px rgba(0,0,0,0.04)' } as any) : null),
+  },
+  guestEditLabel: { alignSelf: 'flex-end', fontSize: 12, fontWeight: '900', color: colors.gray[700], textAlign: 'right', writingDirection: 'rtl' },
   guestEditInput: {
     height: 46,
     borderRadius: 14,
@@ -2847,6 +3062,7 @@ const styles = StyleSheet.create({
     color: colors.text,
     textAlign: 'right',
     writingDirection: 'rtl',
+    alignSelf: 'stretch',
     ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : null),
   },
   guestEditMoveCard: {
@@ -2857,7 +3073,7 @@ const styles = StyleSheet.create({
     padding: 14,
     ...(Platform.OS === 'web' ? ({ boxShadow: '0 2px 14px rgba(0,0,0,0.04)' } as any) : null),
   },
-  guestEditMoveHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 },
+  guestEditMoveHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'flex-end', gap: 8, marginBottom: 10 },
   guestEditMoveTitle: { fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'right', writingDirection: 'rtl' },
   guestEditTablesList: {
     marginTop: 10,
@@ -2889,10 +3105,17 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderTopWidth: 1,
     borderTopColor: 'rgba(226,232,240,0.9)',
-    backgroundColor: 'rgba(248,250,252,0.75)',
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
     gap: 10,
+    ...(Platform.OS === 'web'
+      ? ({
+          backdropFilter: 'blur(10px)',
+          WebkitBackdropFilter: 'blur(10px)',
+        } as any)
+      : null),
   },
 
   confirmCard: {
