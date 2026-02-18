@@ -163,6 +163,7 @@ export default function AdminTabsLayout() {
       {/* Hidden admin wrappers for seating screens (keep admin tab bar) */}
       <Tabs.Screen name="BrideGroomSeating" options={{ href: null }} />
       <Tabs.Screen name="seating-templates" options={{ href: null }} />
+      <Tabs.Screen name="seating-map" options={{ href: null }} />
     </Tabs>
   );
 }

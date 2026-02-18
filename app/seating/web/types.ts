@@ -4,7 +4,7 @@ export type Orientation = 'row' | 'column';
 export const FIXED_SEATS: Record<TableType, number> = {
   regular: 12,
   knight: 20,
-  reserve: 12,
+  reserve: 8,
 };
 
 export const TABLE_LABELS: Record<TableType, string> = {
@@ -59,6 +59,10 @@ export const CELL_SIZE = 18;
 
 export const DEFAULT_GRID_COLS = 50;
 export const DEFAULT_GRID_ROWS = 35;
+
+// Backwards-compatible aliases (older screens used these names).
+export const GRID_COLS = DEFAULT_GRID_COLS;
+export const GRID_ROWS = DEFAULT_GRID_ROWS;
 
 export type GridRect = {
   x: number;

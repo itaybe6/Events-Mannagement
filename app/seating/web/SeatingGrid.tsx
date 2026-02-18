@@ -2,15 +2,16 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import Svg, { Defs, Line, Pattern, Rect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '@/constants/colors';
 import {
   CELL_SIZE,
+  GRID_COLS,
+  GRID_ROWS,
   TABLE_LABELS,
   clamp,
   tableCellSize,
   type SeatingItemKind,
 } from './types';
-import type { UseSeatingStateApi } from './_useSeatingState';
+import type { UseSeatingStateApi } from './useSeatingState';
 
 type Guides = {
   v: number[]; // x in cells
@@ -45,147 +46,8 @@ type ActiveEditState = NonNullable<EditState>;
 
 export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
   const isWeb = Platform.OS === 'web';
-  const baseW = api.gridCols * CELL_SIZE;
-  const baseH = api.gridRows * CELL_SIZE;
-
-  const workAreaRef = useRef<any>(null);
-  const [viewport, setViewport] = useState<{ w: number; h: number } | null>(null);
-  const pendingWebScrollRef = useRef<null | { left: number; top: number }>(null);
-  const rafScrollRef = useRef<number | null>(null);
-  const spaceDownRef = useRef(false);
-  const panRef = useRef<null | { startClient: { x: number; y: number }; startScroll: { left: number; top: number } }>(null);
-
-  // Compute content bounds so we can "fit" to what's actually placed (tables/zones/labels),
-  // instead of zooming out to an oversized empty grid.
-  const contentRect = useMemo(() => {
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = 0;
-    let maxY = 0;
-
-    const include = (x0: number, y0: number, x1: number, y1: number) => {
-      minX = Math.min(minX, x0);
-      minY = Math.min(minY, y0);
-      maxX = Math.max(maxX, x1);
-      maxY = Math.max(maxY, y1);
-    };
-
-    for (const t of api.tables) {
-      const sz = tableCellSize(t.type, t.seats, t.orientation);
-      include(t.gridX, t.gridY, t.gridX + sz.w, t.gridY + sz.h);
-    }
-    for (const z of api.zones) {
-      include(z.gridX, z.gridY, z.gridX + z.widthCells, z.gridY + z.heightCells);
-    }
-    for (const l of api.labels) {
-      include(l.gridX, l.gridY, l.gridX + 1, l.gridY + 1);
-    }
-
-    const hasAny = Number.isFinite(minX) && Number.isFinite(minY);
-    if (!hasAny) {
-      return { originX: 0, originY: 0, cols: Math.max(1, api.gridCols), rows: Math.max(1, api.gridRows) };
-    }
-
-    const padCells = 4;
-    const ox = clamp(Math.floor(minX) - padCells, 0, Math.max(0, api.gridCols - 1));
-    const oy = clamp(Math.floor(minY) - padCells, 0, Math.max(0, api.gridRows - 1));
-    const ex = clamp(Math.ceil(maxX) + padCells, 1, Math.max(1, api.gridCols));
-    const ey = clamp(Math.ceil(maxY) + padCells, 1, Math.max(1, api.gridRows));
-    const cols = Math.max(1, ex - ox);
-    const rows = Math.max(1, ey - oy);
-    return { originX: ox, originY: oy, cols, rows };
-  }, [api.gridCols, api.gridRows, api.labels, api.tables, api.zones]);
-
-  const fitBaseW = contentRect.cols * CELL_SIZE;
-  const fitBaseH = contentRect.rows * CELL_SIZE;
-
-  const fitZoom = useMemo(() => {
-    const vw = viewport?.w ?? 0;
-    const vh = viewport?.h ?? 0;
-    if (!vw || !vh) return 1;
-    const pad = isWeb ? 44 : 18;
-    const sx = (vw - pad * 2) / Math.max(1, fitBaseW);
-    const sy = (vh - pad * 2) / Math.max(1, fitBaseH);
-    // Fit to CONTENT bounds (not full grid). On web allow controlled upscale.
-    const maxFit = isWeb ? 6.0 : 1;
-    return clamp(Math.min(maxFit, sx, sy), 0.2, maxFit);
-  }, [fitBaseH, fitBaseW, isWeb, viewport?.h, viewport?.w]);
-
-  const [zoom, setZoom] = useState(1);
-  const zoomRef = useRef(1);
-  const fitZoomRef = useRef(1);
-  const userAdjustedZoomRef = useRef(false);
-  const lastAutoFitTokenRef = useRef<string>('');
-  useEffect(() => {
-    fitZoomRef.current = fitZoom;
-  }, [fitZoom]);
-
-  const autoFitToken = useMemo(
-    () =>
-      [
-        contentRect.originX,
-        contentRect.originY,
-        contentRect.cols,
-        contentRect.rows,
-        api.tables.length,
-        api.zones.length,
-        api.labels.length,
-      ].join('|'),
-    [api.labels.length, api.tables.length, api.zones.length, contentRect.cols, contentRect.originX, contentRect.originY, contentRect.rows]
-  );
-
-  const scrollToContentCenter = useCallback(
-    (z: number) => {
-      if (!isWeb) return;
-      const el = workAreaRef.current as any;
-      if (!el) return;
-      const cx = (contentRect.originX + contentRect.cols / 2) * CELL_SIZE * z;
-      const cy = (contentRect.originY + contentRect.rows / 2) * CELL_SIZE * z;
-      const vw = Number(el.clientWidth) || viewport?.w || 0;
-      const vh = Number(el.clientHeight) || viewport?.h || 0;
-      if (!vw || !vh) return;
-      const left = Math.max(0, cx - vw / 2);
-      const top = Math.max(0, cy - vh / 2);
-      try {
-        if (el?.scrollTo) el.scrollTo({ left, top, behavior: 'auto' });
-        else {
-          if (typeof el?.scrollLeft === 'number') el.scrollLeft = left;
-          if (typeof el?.scrollTop === 'number') el.scrollTop = top;
-        }
-      } catch {
-        // ignore
-      }
-    },
-    [contentRect.cols, contentRect.originX, contentRect.originY, contentRect.rows, isWeb, viewport?.h, viewport?.w]
-  );
-
-  // Auto-fit when CONTENT changes (or first mount), then center the content.
-  useEffect(() => {
-    if (!viewport?.w || !viewport?.h) return;
-    if (lastAutoFitTokenRef.current === autoFitToken) return;
-    lastAutoFitTokenRef.current = autoFitToken;
-
-    userAdjustedZoomRef.current = false;
-    setZoom(fitZoom);
-    zoomRef.current = fitZoom;
-    scrollToContentCenter(fitZoom);
-  }, [autoFitToken, fitZoom, scrollToContentCenter, viewport?.h, viewport?.w]);
-
-  // Responsive: on web, if user hasn't manually zoomed, keep fitting on viewport changes.
-  useEffect(() => {
-    if (!isWeb) return;
-    if (!viewport?.w || !viewport?.h) return;
-    if (userAdjustedZoomRef.current) return;
-    const next = fitZoom;
-    const cur = zoomRef.current || 1;
-    if (Math.abs(cur - next) < 0.001) return;
-    setZoom(next);
-    zoomRef.current = next;
-    scrollToContentCenter(next);
-  }, [fitZoom, isWeb, scrollToContentCenter, viewport?.h, viewport?.w]);
-
-  const stageW = baseW * zoom;
-  const stageH = baseH * zoom;
+  const gridW = GRID_COLS * CELL_SIZE;
+  const gridH = GRID_ROWS * CELL_SIZE;
 
   const gridRef = useRef<any>(null);
 
@@ -194,9 +56,6 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
   const [guides, setGuides] = useState<Guides>({ v: [], h: [] });
   const [marquee, setMarquee] = useState<null | { start: { x: number; y: number }; cur: { x: number; y: number } }>(null);
   const [edit, setEdit] = useState<EditState>(null);
-  const [numDialog, setNumDialog] = useState<null | { id: string; value: string }>(null);
-  const lastTapRef = useRef<null | { id: string; kind: SeatingItemKind; ts: number }>(null);
-  const DOUBLE_TAP_MS = 320;
 
   const selected = api.selectedIds;
 
@@ -210,11 +69,7 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
     (clientX: number, clientY: number) => {
       const rect = getGridRect();
       if (!rect) return { x: 0, y: 0 };
-      // `rect` is measured on the *scaled* stage. Convert to unscaled px by dividing by zoom.
-      const sx = clientX - rect.left;
-      const sy = clientY - rect.top;
-      const z = zoomRef.current || 1;
-      return { x: sx / z, y: sy / z };
+      return { x: clientX - rect.left, y: clientY - rect.top };
     },
     [getGridRect]
   );
@@ -222,10 +77,10 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
   const pxToCell = useCallback((px: number) => Math.round(px / CELL_SIZE), []);
   const clampCell = useCallback((x: number, y: number, w: number, h: number) => {
     return {
-      x: clamp(x, 0, Math.max(0, api.gridCols - w)),
-      y: clamp(y, 0, Math.max(0, api.gridRows - h)),
+      x: clamp(x, 0, Math.max(0, GRID_COLS - w)),
+      y: clamp(y, 0, Math.max(0, GRID_ROWS - h)),
     };
-  }, [api.gridCols, api.gridRows]);
+  }, []);
 
   const elementAtTargetIsItem = useCallback((e: any) => {
     try {
@@ -235,50 +90,6 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
       return false;
     }
   }, []);
-
-  const getWebScroller = useCallback((raw: any) => {
-    if (!raw) return null;
-    if (typeof raw?.scrollLeft === 'number' || typeof raw?.scrollTop === 'number') return raw;
-    try {
-      if (typeof raw?.getScrollableNode === 'function') {
-        const n = raw.getScrollableNode();
-        if (n) return n;
-      }
-    } catch {
-      // ignore
-    }
-    return raw;
-  }, []);
-
-  useEffect(() => {
-    if (!isWeb) return;
-    const onDown = (e: any) => {
-      if (e?.code === 'Space' || e?.key === ' ') {
-        // Don't interfere with typing in inputs/contenteditable fields.
-        const t = e?.target as any;
-        const tag = String(t?.tagName ?? '').toUpperCase();
-        if (tag === 'INPUT' || tag === 'TEXTAREA' || t?.isContentEditable) return;
-        spaceDownRef.current = true;
-        // Prevent page scrolling when space is pressed while interacting with the grid.
-        e?.preventDefault?.();
-      }
-    };
-    const onUp = (e: any) => {
-      if (e?.code === 'Space' || e?.key === ' ') {
-        const t = e?.target as any;
-        const tag = String(t?.tagName ?? '').toUpperCase();
-        if (tag === 'INPUT' || tag === 'TEXTAREA' || t?.isContentEditable) return;
-        spaceDownRef.current = false;
-        e?.preventDefault?.();
-      }
-    };
-    window.addEventListener('keydown', onDown);
-    window.addEventListener('keyup', onUp);
-    return () => {
-      window.removeEventListener('keydown', onDown);
-      window.removeEventListener('keyup', onUp);
-    };
-  }, [isWeb]);
 
   const computeTableGuides = useCallback(
     (activeId: string, draftX: number, draftY: number) => {
@@ -340,17 +151,6 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
     (kind: SeatingItemKind, id: string, e: any) => {
       if (!isWeb) return;
       if (edit?.id === id) return;
-      // If this is part of a double-click sequence, don't start dragging.
-      // Let the dblclick handler open the inline editor instead.
-      if (typeof e?.detail === 'number' && e.detail >= 2) return;
-      // Prevent browser text selection / drag image on web.
-      e?.preventDefault?.();
-      e?.stopPropagation?.();
-      try {
-        if (typeof e?.pointerId === 'number') (e?.currentTarget as any)?.setPointerCapture?.(e.pointerId);
-      } catch {
-        // ignore
-      }
 
       const groupIds =
         kind === 'table' && selected.size > 1 && selected.has(id) ? Array.from(selected) : [id];
@@ -390,31 +190,14 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
 
   const onWindowMove = useCallback(
     (ev: PointerEvent) => {
-      if (panRef.current) {
-        const el = getWebScroller(workAreaRef.current as any);
-        if (!el) return;
-        const dx = ev.clientX - panRef.current.startClient.x;
-        const dy = ev.clientY - panRef.current.startClient.y;
-        try {
-          const maxLeft = Math.max(0, Number(el.scrollWidth ?? 0) - Number(el.clientWidth ?? 0));
-          const maxTop = Math.max(0, Number(el.scrollHeight ?? 0) - Number(el.clientHeight ?? 0));
-          el.scrollLeft = clamp(panRef.current.startScroll.left - dx, 0, maxLeft);
-          el.scrollTop = clamp(panRef.current.startScroll.top - dy, 0, maxTop);
-        } catch {
-          // ignore
-        }
-        return;
-      }
-
       if (!drag && !resize && !marquee) return;
 
       // Resize
       if (resize) {
         const dxPx = ev.clientX - resize.startClient.x;
         const dyPx = ev.clientY - resize.startClient.y;
-        const scale = zoomRef.current || 1;
-        const dx = Math.round(dxPx / (CELL_SIZE * scale));
-        const dy = Math.round(dyPx / (CELL_SIZE * scale));
+        const dx = Math.round(dxPx / CELL_SIZE);
+        const dy = Math.round(dyPx / CELL_SIZE);
         const z = api.zones.find(zz => zz.id === resize.id);
         if (!z) return;
         const nextW =
@@ -427,7 +210,9 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
 
       // Marquee
       if (marquee) {
-        const cur = clientToLocalPx(ev.clientX, ev.clientY);
+        const rect = getGridRect();
+        if (!rect) return;
+        const cur = { x: ev.clientX - rect.left, y: ev.clientY - rect.top };
         setMarquee(prev => (prev ? { ...prev, cur } : prev));
         return;
       }
@@ -435,9 +220,8 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
       if (!drag) return;
       const dxPx = ev.clientX - drag.startClient.x;
       const dyPx = ev.clientY - drag.startClient.y;
-      const scale = zoomRef.current || 1;
-      const dx = Math.round(dxPx / (CELL_SIZE * scale));
-      const dy = Math.round(dyPx / (CELL_SIZE * scale));
+      const dx = Math.round(dxPx / CELL_SIZE);
+      const dy = Math.round(dyPx / CELL_SIZE);
 
       const draftById = new Map<string, { x: number; y: number }>();
 
@@ -483,10 +267,6 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
 
   const onWindowUp = useCallback(
     (ev: PointerEvent) => {
-      if (panRef.current) {
-        panRef.current = null;
-        return;
-      }
       if (resize) {
         setResize(null);
         return;
@@ -540,42 +320,12 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
       if (edit) return;
       if (elementAtTargetIsItem(e)) return;
 
-      // Prevent browser text selection while marquee-dragging.
-      e?.preventDefault?.();
-      e?.stopPropagation?.();
-      try {
-        if (typeof e?.pointerId === 'number') (e?.currentTarget as any)?.setPointerCapture?.(e.pointerId);
-      } catch {
-        // ignore
-      }
-
-      const isMiddleClick =
-        e?.button === 1 ||
-        e?.nativeEvent?.button === 1 ||
-        e?.buttons === 4 ||
-        e?.nativeEvent?.buttons === 4;
-      // Map-like behavior:
-      // - Default drag on background = pan
-      // - Shift + drag on background = marquee select
-      // (Space+drag and middle-click drag also pan)
-      const allowMarquee = !!(e?.shiftKey || e?.nativeEvent?.shiftKey);
-      const allowPan = spaceDownRef.current || isMiddleClick || !allowMarquee;
-
-      if (allowPan) {
-        const el = getWebScroller(workAreaRef.current as any);
-        if (!el) return;
-        panRef.current = {
-          startClient: { x: e.clientX ?? e.nativeEvent?.clientX ?? 0, y: e.clientY ?? e.nativeEvent?.clientY ?? 0 },
-          startScroll: { left: Number(el.scrollLeft ?? 0) || 0, top: Number(el.scrollTop ?? 0) || 0 },
-        };
-        return;
-      }
-
-      if (!allowMarquee) return;
-      const start = clientToLocalPx(e.clientX ?? e.nativeEvent?.clientX ?? 0, e.clientY ?? e.nativeEvent?.clientY ?? 0);
+      const rect = getGridRect();
+      if (!rect) return;
+      const start = { x: (e.clientX ?? e.nativeEvent?.clientX) - rect.left, y: (e.clientY ?? e.nativeEvent?.clientY) - rect.top };
       setMarquee({ start, cur: start });
     },
-    [clientToLocalPx, edit, elementAtTargetIsItem, getWebScroller, isWeb]
+    [edit, elementAtTargetIsItem, getGridRect, isWeb]
   );
 
   // Compute marquee selection IDs (updates while dragging)
@@ -685,50 +435,6 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
     [api.labels, api.tables, api.zones, isWeb]
   );
 
-  const openTableNumberDialog = useCallback(
-    (id: string) => {
-      if (!isWeb) return;
-      const t = api.tables.find(tt => tt.id === id);
-      setNumDialog({ id, value: String(t?.number ?? '') });
-    },
-    [api.tables, isWeb]
-  );
-
-  const commitTableNumberDialog = useCallback(() => {
-    if (!numDialog) return;
-    const raw = String(numDialog.value ?? '').trim();
-    const n = Number(raw);
-    if (Number.isFinite(n) && n > 0) {
-      api.renumberTable(numDialog.id, Math.floor(n));
-    }
-    setNumDialog(null);
-  }, [api, numDialog]);
-
-  const onItemPointerDown = useCallback(
-    (kind: SeatingItemKind, id: string, e: any) => {
-      if (!isWeb) return;
-
-      // Reliable double-click detection for RN web: time-based (don't rely on `e.detail`).
-      const now = Date.now();
-      const last = lastTapRef.current;
-      if (last && last.id === id && last.kind === kind && now - last.ts <= DOUBLE_TAP_MS) {
-        lastTapRef.current = null;
-        e?.preventDefault?.();
-        e?.stopPropagation?.();
-        setDrag(null);
-        setGuides({ v: [], h: [] });
-        setMarquee(null);
-        if (kind === 'table') openTableNumberDialog(id);
-        else startEdit(kind, id);
-        return;
-      }
-
-      lastTapRef.current = { id, kind, ts: now };
-      beginDrag(kind, id, e);
-    },
-    [beginDrag, isWeb, openTableNumberDialog, startEdit]
-  );
-
   const renderGhosts = useMemo(() => {
     if (!drag) return null;
     const draft = drag.draftById;
@@ -819,182 +525,20 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
     return { left, top, w, h };
   }, [marquee]);
 
-  const handleWheel = useCallback(
-    (e: any) => {
-      if (!isWeb) return;
-      const dy = e?.deltaY ?? e?.nativeEvent?.deltaY ?? 0;
-      const el = getWebScroller(workAreaRef.current as any);
-
-      // Shift + wheel = horizontal pan (no zoom)
-      if (e?.shiftKey) {
-        e?.preventDefault?.();
-        e?.stopPropagation?.();
-        try {
-          if (el) el.scrollLeft = (el.scrollLeft || 0) + dy;
-        } catch {
-          // ignore
-        }
-        return;
-      }
-
-      // Wheel (no Shift) = zoom only (no scrolling)
-      e?.preventDefault?.();
-      e?.stopPropagation?.();
-      const cur = zoomRef.current || 1;
-      // dy < 0 (wheel up) -> zoom in, dy > 0 (wheel down) -> zoom out
-      const factor = dy < 0 ? 1.06 : 1 / 1.06;
-      // Allow zooming out below "fit", so users can always zoom-out if they want.
-      const minZoom = 0.2;
-      const base = Math.max(1, fitZoomRef.current || 1);
-      const maxZoom = clamp(base * 2.2, Math.max(3, base), 10);
-      const next = clamp(cur * factor, minZoom, maxZoom);
-
-      // Keep zoom anchored under the mouse cursor by adjusting scrollLeft/Top.
-      const clientX = e?.clientX ?? e?.nativeEvent?.clientX;
-      const clientY = e?.clientY ?? e?.nativeEvent?.clientY;
-      let px = (viewport?.w ?? 0) / 2;
-      let py = (viewport?.h ?? 0) / 2;
-      try {
-        const r = el?.getBoundingClientRect?.();
-        if (r && typeof clientX === 'number' && typeof clientY === 'number') {
-          px = clientX - r.left;
-          py = clientY - r.top;
-        }
-      } catch {
-        // ignore
-      }
-
-      const scrollLeft = Number(el?.scrollLeft ?? 0) || 0;
-      const scrollTop = Number(el?.scrollTop ?? 0) || 0;
-      const baseX = (scrollLeft + px) / Math.max(0.0001, cur);
-      const baseY = (scrollTop + py) / Math.max(0.0001, cur);
-      const nextLeft = baseX * next - px;
-      const nextTop = baseY * next - py;
-
-      userAdjustedZoomRef.current = true;
-      zoomRef.current = next;
-      pendingWebScrollRef.current = { left: nextLeft, top: nextTop };
-      setZoom(next);
-    },
-    [getWebScroller, isWeb, viewport?.h, viewport?.w]
-  );
-
-  // After zoom updates the layout (stageW/H), apply the pending scroll so the cursor anchor sticks.
-  useEffect(() => {
-    if (!isWeb) return;
-    const pending = pendingWebScrollRef.current;
-    if (!pending) return;
-    const el = getWebScroller(workAreaRef.current as any);
-    if (!el) return;
-
-    if (rafScrollRef.current != null) cancelAnimationFrame(rafScrollRef.current);
-    rafScrollRef.current = requestAnimationFrame(() => {
-      rafScrollRef.current = null;
-      requestAnimationFrame(() => {
-        try {
-          const el2 = getWebScroller(workAreaRef.current as any);
-          if (!el2) return;
-          const maxLeft = Math.max(0, Number(el2.scrollWidth ?? 0) - Number(el2.clientWidth ?? 0));
-          const maxTop = Math.max(0, Number(el2.scrollHeight ?? 0) - Number(el2.clientHeight ?? 0));
-          el2.scrollLeft = clamp(pending.left, 0, maxLeft);
-          el2.scrollTop = clamp(pending.top, 0, maxTop);
-        } catch {
-          // ignore
-        } finally {
-          if (pendingWebScrollRef.current === pending) pendingWebScrollRef.current = null;
-        }
-      });
-    });
-  }, [getWebScroller, isWeb, zoom]);
-
-  // Attach a non-passive wheel listener so preventDefault actually blocks scroll on web.
-  useEffect(() => {
-    if (!isWeb) return;
-    const el = workAreaRef.current as any;
-    if (!el?.addEventListener) return;
-    const listener = (ev: WheelEvent) => handleWheel(ev);
-    el.addEventListener('wheel', listener, { passive: false });
-    return () => el.removeEventListener('wheel', listener as any);
-  }, [handleWheel, isWeb]);
-
-  const shouldCenterInViewport = useMemo(() => {
-    if (!isWeb) return false;
-    if (!viewport?.w || !viewport?.h) return false;
-    // Only center when the (scaled) stage is smaller than the viewport.
-    // This keeps the initial "fit" view feeling like it fills the map panel.
-    return stageW + 12 < viewport.w && stageH + 12 < viewport.h;
-  }, [isWeb, stageH, stageW, viewport?.h, viewport?.w]);
-
   return (
     <View style={styles.root}>
-      {/* Table number dialog (double click on table) */}
-      {isWeb && numDialog ? (
-        <View style={styles.dialogOverlay}>
-          <Pressable style={StyleSheet.absoluteFill as any} onPress={() => setNumDialog(null)} />
-          <View style={styles.dialogCard}>
-            <Text style={styles.dialogTitle}>מספר שולחן</Text>
-            <TextInput
-              autoFocus
-              value={numDialog?.value ?? ''}
-              onChangeText={(t) => setNumDialog(prev => (prev ? { ...prev, value: t } : prev))}
-              keyboardType="numeric"
-              placeholder="למשל: 12"
-              placeholderTextColor="rgba(17,24,39,0.35)"
-              style={styles.dialogInput}
-              {...(isWeb
-                ? ({
-                    onKeyDown: (e: any) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        commitTableNumberDialog();
-                      } else if (e.key === 'Escape') {
-                        e.preventDefault();
-                        setNumDialog(null);
-                      }
-                    },
-                  } as any)
-                : null)}
-            />
-            <View style={styles.dialogActions}>
-              <Pressable
-                onPress={() => setNumDialog(null)}
-                style={({ pressed }) => [styles.dialogBtn, styles.dialogBtnGhost, pressed && { opacity: 0.9 }]}
-              >
-                <Text style={styles.dialogBtnGhostText}>ביטול</Text>
-              </Pressable>
-              <Pressable
-                onPress={commitTableNumberDialog}
-                style={({ pressed }) => [styles.dialogBtn, styles.dialogBtnPrimary, pressed && { opacity: 0.92 }]}
-              >
-                <Text style={styles.dialogBtnPrimaryText}>שמור</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      ) : null}
-
       <View
         // focusable for Delete key
         {...(isWeb ? ({ tabIndex: 0, onKeyDown } as any) : {})}
-        ref={workAreaRef}
-        style={[
-          styles.workArea,
-          shouldCenterInViewport ? ({ alignItems: 'center', justifyContent: 'center' } as any) : null,
-        ]}
-        onLayout={(e) => {
-          const w = e?.nativeEvent?.layout?.width;
-          const h = e?.nativeEvent?.layout?.height;
-          if (typeof w === 'number' && typeof h === 'number' && w > 0 && h > 0) setViewport({ w, h });
-        }}
+        style={styles.workArea}
       >
         <View
           ref={gridRef}
-          style={[styles.gridWrap, { width: stageW, height: stageH }]}
+          style={[styles.gridWrap, { width: gridW, height: gridH }]}
           {...(isWeb ? ({ onPointerDown: onBackgroundPointerDown } as any) : {})}
         >
-          <View style={[styles.gridInner, { width: baseW, height: baseH, transform: [{ scale: zoom }] }]}>
           {/* Grid lines */}
-          <Svg width={baseW} height={baseH} style={StyleSheet.absoluteFill as any}>
+          <Svg width={gridW} height={gridH} style={StyleSheet.absoluteFill as any}>
             <Defs>
               <Pattern id="minor" x="0" y="0" width={CELL_SIZE} height={CELL_SIZE} patternUnits="userSpaceOnUse">
                 <Rect x="0" y="0" width={CELL_SIZE} height={CELL_SIZE} fill="transparent" />
@@ -1011,7 +555,7 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
                 x1={x * CELL_SIZE}
                 y1={0}
                 x2={x * CELL_SIZE}
-                y2={baseH}
+                y2={gridH}
                 stroke="rgba(43,140,238,0.85)"
                 strokeWidth={1}
                 strokeDasharray="6 6"
@@ -1022,7 +566,7 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
                 key={`gh-${idx}`}
                 x1={0}
                 y1={y * CELL_SIZE}
-                x2={baseW}
+                x2={gridW}
                 y2={y * CELL_SIZE}
                 stroke="rgba(43,140,238,0.85)"
                 strokeWidth={1}
@@ -1055,7 +599,8 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
                 ]}
                 {...(isWeb
                   ? ({
-                      onPointerDown: (e: any) => onItemPointerDown('zone', z.id, e),
+                      onPointerDown: (e: any) => beginDrag('zone', z.id, e),
+                      onDoubleClick: () => startEdit('zone', z.id),
                     } as any)
                   : null)}
               >
@@ -1092,9 +637,8 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
           {api.tables.map(t => {
             const sz = tableCellSize(t.type, t.seats, t.orientation);
             const isSelected = selected.has(t.id);
-            const isReserve = t.type === 'reserve';
-            const fillColor = isReserve ? '#F59E0B' : colors.yaleBlue;
-            const textColor = isReserve ? '#F59E0B' : colors.primary;
+            const color =
+              t.type === 'reserve' ? '#F59E0B' : t.type === 'knight' ? '#7C3AED' : '#2563EB';
             return (
               <View
                 key={t.id}
@@ -1106,21 +650,20 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
                     top: t.gridY * CELL_SIZE,
                     width: sz.w * CELL_SIZE,
                     height: sz.h * CELL_SIZE,
-                    // Use rgba for consistent rendering (avoid 8-digit hex quirks).
-                    // Dark-blue translucent (but visibly blue, not gray).
-                    backgroundColor: isReserve ? 'rgba(245,158,11,0.18)' : 'rgba(0,53,102,0.30)',
-                    borderColor: isReserve ? 'rgba(245,158,11,0.35)' : 'rgba(0,53,102,0.40)',
-                    ...(Platform.OS === 'web' && !isReserve ? ({ filter: 'saturate(1.35) brightness(1.02)' } as any) : null),
+                    backgroundColor: `${color}22`,
+                    borderColor: `${color}55`,
                   },
                   isSelected ? styles.selectedRing : null,
                 ]}
                 {...(isWeb
                   ? ({
-                      onPointerDown: (e: any) => onItemPointerDown('table', t.id, e),
+                      onPointerDown: (e: any) => beginDrag('table', t.id, e),
+                      onDoubleClick: () => startEdit('table', t.id),
                     } as any)
                   : null)}
               >
-                <Text style={[styles.tableNum, { color: textColor }]}>{t.number ?? ''}</Text>
+                <Text style={[styles.tableNum, { color }]}>{t.number ?? ''}</Text>
+                <Text style={styles.tableType}>{TABLE_LABELS[t.type]}</Text>
               </View>
             );
           })}
@@ -1139,7 +682,8 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
                 ]}
                 {...(isWeb
                   ? ({
-                      onPointerDown: (e: any) => onItemPointerDown('label', l.id, e),
+                      onPointerDown: (e: any) => beginDrag('label', l.id, e),
+                      onDoubleClick: () => startEdit('label', l.id),
                     } as any)
                   : null)}
               >
@@ -1172,7 +716,6 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
               onCancel={cancelEdit}
             />
           ) : null}
-          </View>
         </View>
       </View>
     </View>
@@ -1241,64 +784,12 @@ function InlineEditor({
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#f8fafc' },
-
-  dialogOverlay: {
-    ...(StyleSheet.absoluteFill as any),
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(15,23,42,0.35)',
-    padding: 18,
-    zIndex: 1000,
-  },
-  dialogCard: {
-    width: 360,
-    maxWidth: '92%',
-    borderRadius: 16,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: 'rgba(17,24,39,0.10)',
-    padding: 14,
-  },
-  dialogTitle: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: '#111418',
-    textAlign: 'center',
-    ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null),
-  },
-  dialogInput: {
-    marginTop: 10,
-    height: 44,
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(17,24,39,0.10)',
-    backgroundColor: '#fff',
-    fontWeight: '900',
-    color: '#111418',
-    textAlign: 'left',
-    ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null),
-  },
-  dialogActions: { marginTop: 12, flexDirection: 'row-reverse', gap: 10 },
-  dialogBtn: {
-    flex: 1,
-    height: 44,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  dialogBtnPrimary: { backgroundColor: '#2b8cee' },
-  dialogBtnPrimaryText: { color: '#fff', fontWeight: '900', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
-  dialogBtnGhost: { backgroundColor: 'rgba(17,24,39,0.04)', borderWidth: 1, borderColor: 'rgba(17,24,39,0.10)' },
-  dialogBtnGhostText: { color: 'rgba(17,24,39,0.75)', fontWeight: '900', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
-
+  root: { flex: 1, backgroundColor: '#e5e7eb' },
   workArea: {
     flex: 1,
-    alignItems: 'flex-start',
-    justifyContent: 'flex-start',
+    alignItems: 'center',
+    justifyContent: 'center',
     padding: 18,
-    ...(Platform.OS === 'web' ? ({ userSelect: 'none', WebkitUserSelect: 'none' } as any) : null),
     ...(Platform.OS === 'web' ? ({ overflow: 'auto' } as any) : null),
   },
   gridWrap: {
@@ -1307,17 +798,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(148,163,184,0.70)',
     overflow: 'hidden',
-    // On web we control centering via the scroll container (see `shouldCenterInViewport`).
-    // Keeping the stage anchored to the top-left makes scroll math predictable.
-    alignSelf: Platform.OS === 'web' ? ('flex-start' as any) : 'center',
-    ...(Platform.OS === 'web' ? ({ userSelect: 'none', WebkitUserSelect: 'none' } as any) : null),
-  },
-  gridInner: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    transformOrigin: '0 0' as any,
-    ...(Platform.OS === 'web' ? ({ userSelect: 'none', WebkitUserSelect: 'none' } as any) : null),
   },
 
   table: {
@@ -1331,10 +811,9 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 6 },
     elevation: 4,
-    ...(Platform.OS === 'web' ? ({ userSelect: 'none', WebkitUserSelect: 'none', cursor: 'grab' } as any) : null),
   },
-  tableNum: { fontSize: 16, fontWeight: '500', fontFamily: 'Rubik_500Medium' as any },
-  tableType: { marginTop: 2, fontSize: 11, fontWeight: '800', color: 'rgba(17,24,39,0.60)', fontFamily: 'Rubik_800ExtraBold' as any },
+  tableNum: { fontSize: 16, fontWeight: '900' },
+  tableType: { marginTop: 2, fontSize: 11, fontWeight: '800', color: 'rgba(17,24,39,0.60)' },
 
   zone: {
     position: 'absolute',
@@ -1344,9 +823,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(43,140,238,0.06)',
     alignItems: 'center',
     justifyContent: 'center',
-    ...(Platform.OS === 'web' ? ({ userSelect: 'none', WebkitUserSelect: 'none', cursor: 'grab' } as any) : null),
   },
-  zoneText: { fontWeight: '900', color: 'rgba(17,24,39,0.65)', fontFamily: 'Rubik_900Black' as any },
+  zoneText: { fontWeight: '900', color: 'rgba(17,24,39,0.65)' },
 
   labelWrap: {
     position: 'absolute',
@@ -1354,9 +832,8 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 12,
     backgroundColor: 'rgba(17,24,39,0.02)',
-    ...(Platform.OS === 'web' ? ({ userSelect: 'none', WebkitUserSelect: 'none', cursor: 'grab' } as any) : null),
   },
-  labelText: { fontWeight: '800', color: 'rgba(17,24,39,0.62)', fontFamily: 'Rubik_800ExtraBold' as any },
+  labelText: { fontWeight: '800', color: 'rgba(17,24,39,0.62)' },
 
   selectedRing: {
     borderWidth: 2,
@@ -1393,7 +870,5 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: '#111418',
     textAlign: 'right',
-    ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null),
   },
 });
-

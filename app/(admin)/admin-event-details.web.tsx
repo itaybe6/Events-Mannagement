@@ -203,8 +203,8 @@ export default function AdminEventDetailsWebScreen() {
   const handleEditSketch = () => {
     if (!event?.id) return;
     router.push({
-      pathname: '/(admin)/seating-templates',
-      params: { eventId: event.id, keep: '1' },
+      pathname: '/(admin)/seating-map' as any,
+      params: { eventId: event.id },
     });
   };
 
