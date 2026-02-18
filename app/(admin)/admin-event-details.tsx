@@ -644,6 +644,15 @@ export default function AdminEventDetailsScreen() {
               accessibilityLabel="עריכת סקיצה"
             />
             <ActionRow
+              title="צ׳ק-אין אורחים"
+              subtitle="סימון הגעה של אורחים בזמן אמת"
+              iconName="checkbox-outline"
+              iconBg="rgba(34, 197, 94, 0.14)"
+              iconColor="#22C55E"
+              onPress={() => router.push(`/(admin)/admin-guest-checkin?eventId=${event.id}`)}
+              accessibilityLabel="צ׳ק-אין אורחים"
+            />
+            <ActionRow
               title="שולחנות"
               subtitle="צפייה וניהול רשימת שולחנות"
               iconName="list-outline"

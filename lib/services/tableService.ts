@@ -19,10 +19,14 @@ export const tableService = {
       return data.map(table => ({
         id: table.id,
         name: table.name,
+        number: table.number ?? undefined,
         capacity: table.capacity,
         area: table.area || '',
         shape: table.shape as Table['shape'] || 'square',
         guests: table.guests.map((guest: any) => guest.id) || [],
+        x: table.x ?? undefined,
+        y: table.y ?? undefined,
+        seated_guests: table.seated_guests ?? undefined,
       }));
     } catch (error) {
       console.error('Get tables error:', error);
@@ -38,9 +42,13 @@ export const tableService = {
         .insert({
           event_id: eventId,
           name: table.name,
+          number: table.number ?? null,
           capacity: table.capacity,
           area: table.area,
           shape: table.shape || 'square',
+          x: table.x ?? null,
+          y: table.y ?? null,
+          seated_guests: table.seated_guests ?? null,
         })
         .select()
         .single();
@@ -50,10 +58,14 @@ export const tableService = {
       return {
         id: data.id,
         name: data.name,
+        number: data.number ?? undefined,
         capacity: data.capacity,
         area: data.area || '',
         shape: data.shape as Table['shape'] || 'square',
         guests: [],
+        x: data.x ?? undefined,
+        y: data.y ?? undefined,
+        seated_guests: data.seated_guests ?? undefined,
       };
     } catch (error) {
       console.error('Add table error:', error);
@@ -67,9 +79,13 @@ export const tableService = {
       const updateData: any = {};
       
       if (updates.name) updateData.name = updates.name;
+      if (updates.number !== undefined) updateData.number = updates.number;
       if (updates.capacity !== undefined) updateData.capacity = updates.capacity;
       if (updates.area !== undefined) updateData.area = updates.area;
       if (updates.shape) updateData.shape = updates.shape;
+      if (updates.x !== undefined) updateData.x = updates.x;
+      if (updates.y !== undefined) updateData.y = updates.y;
+      if (updates.seated_guests !== undefined) updateData.seated_guests = updates.seated_guests;
 
       const { data, error } = await supabase
         .from('tables')
@@ -86,10 +102,14 @@ export const tableService = {
       return {
         id: data.id,
         name: data.name,
+        number: data.number ?? undefined,
         capacity: data.capacity,
         area: data.area || '',
         shape: data.shape as Table['shape'] || 'square',
         guests: data.guests.map((guest: any) => guest.id) || [],
+        x: data.x ?? undefined,
+        y: data.y ?? undefined,
+        seated_guests: data.seated_guests ?? undefined,
       };
     } catch (error) {
       console.error('Update table error:', error);
@@ -137,10 +157,14 @@ export const tableService = {
       return {
         id: data.id,
         name: data.name,
+        number: data.number ?? undefined,
         capacity: data.capacity,
         area: data.area || '',
         shape: data.shape as Table['shape'] || 'square',
         guests: data.guests.map((guest: any) => guest.id) || [],
+        x: data.x ?? undefined,
+        y: data.y ?? undefined,
+        seated_guests: data.seated_guests ?? undefined,
       };
     } catch (error) {
       console.error('Get table with guests error:', error);

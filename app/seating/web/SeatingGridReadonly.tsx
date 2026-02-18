@@ -79,6 +79,7 @@ export function SeatingGridReadonly({
   const scrollXRef = useRef(0);
   const scrollYRef = useRef(0);
   const rafScrollRef = useRef<number | null>(null);
+  const gridWrapRef = useRef<any>(null);
 
   // Compute content bounds so we "fit" to content, not to an oversized empty grid.
   const contentRect = useMemo(() => {
@@ -157,7 +158,7 @@ export function SeatingGridReadonly({
   const minZoomRef = useRef(0.2);
   const maxZoomRef = useRef(3);
   const pinchStartZoomRef = useRef(1);
-  const pendingWebScrollRef = useRef<null | { left: number; top: number }>(null);
+  const pendingWebAnchorRef = useRef<null | { px: number; py: number; baseX: number; baseY: number }>(null);
 
   useEffect(() => {
     fitZoomRef.current = fitZoom;
@@ -282,6 +283,7 @@ export function SeatingGridReadonly({
       const dy = e?.deltaY ?? e?.nativeEvent?.deltaY ?? 0;
       const rawEl = workAreaRef.current as any;
       const el = getWebScroller(rawEl);
+      const wrapEl = gridWrapRef.current as any;
 
       // Shift + wheel = scroll (vertical)
       if (e?.shiftKey) {
@@ -307,7 +309,8 @@ export function SeatingGridReadonly({
       const next = clamp(cur * factor, minZoom, maxZoom);
 
       // Keep the zoom anchored under the mouse cursor (web).
-      // Without this, zoom feels like it always pulls toward a fixed corner.
+      // Important: our stage is centered via flex, so the wrapper offset can change as it grows.
+      // We compute the anchor relative to the wrapper position inside the scroller.
       const clientX = e?.clientX ?? e?.nativeEvent?.clientX;
       const clientY = e?.clientY ?? e?.nativeEvent?.clientY;
       let px = (viewport?.w ?? 0) / 2;
@@ -324,14 +327,26 @@ export function SeatingGridReadonly({
 
       const scrollLeft = Number(el?.scrollLeft ?? 0) || 0;
       const scrollTop = Number(el?.scrollTop ?? 0) || 0;
-      const baseX = (scrollLeft + px) / Math.max(0.0001, cur);
-      const baseY = (scrollTop + py) / Math.max(0.0001, cur);
-      const nextLeft = baseX * next - px;
-      const nextTop = baseY * next - py;
+      let wrapLeft = 0;
+      let wrapTop = 0;
+      try {
+        const sr = el?.getBoundingClientRect?.();
+        const wr = wrapEl?.getBoundingClientRect?.();
+        if (sr && wr) {
+          // convert wrapper viewport position into content coordinates
+          wrapLeft = (wr.left - sr.left) + scrollLeft;
+          wrapTop = (wr.top - sr.top) + scrollTop;
+        }
+      } catch {
+        // ignore
+      }
+
+      const baseX = (scrollLeft + px - wrapLeft) / Math.max(0.0001, cur);
+      const baseY = (scrollTop + py - wrapTop) / Math.max(0.0001, cur);
 
       userAdjustedZoomRef.current = true;
       zoomRef.current = next;
-      pendingWebScrollRef.current = { left: nextLeft, top: nextTop };
+      pendingWebAnchorRef.current = { px, py, baseX, baseY };
       setZoom(next);
     },
     [isWeb, viewport?.h, viewport?.w]
@@ -340,9 +355,10 @@ export function SeatingGridReadonly({
   // After zoom updates the layout (stageW/H), apply the pending scroll so the cursor anchor sticks.
   useEffect(() => {
     if (!isWeb) return;
-    const pending = pendingWebScrollRef.current;
+    const pending = pendingWebAnchorRef.current;
     if (!pending) return;
     const el = getWebScroller(workAreaRef.current as any);
+    const wrapEl = gridWrapRef.current as any;
     if (!el) return;
 
     if (rafScrollRef.current != null) cancelAnimationFrame(rafScrollRef.current);
@@ -352,16 +368,35 @@ export function SeatingGridReadonly({
       requestAnimationFrame(() => {
         try {
           const el2 = getWebScroller(workAreaRef.current as any);
+          const wrap2 = gridWrapRef.current as any;
           if (!el2) return;
+          const scrollLeft = Number(el2.scrollLeft ?? 0) || 0;
+          const scrollTop = Number(el2.scrollTop ?? 0) || 0;
+
+          let wrapLeft = 0;
+          let wrapTop = 0;
+          try {
+            const sr = el2?.getBoundingClientRect?.();
+            const wr = (wrap2 || wrapEl)?.getBoundingClientRect?.();
+            if (sr && wr) {
+              wrapLeft = (wr.left - sr.left) + scrollLeft;
+              wrapTop = (wr.top - sr.top) + scrollTop;
+            }
+          } catch {
+            // ignore
+          }
+
+          const desiredLeft = wrapLeft + pending.baseX * (zoomRef.current || zoom) - pending.px;
+          const desiredTop = wrapTop + pending.baseY * (zoomRef.current || zoom) - pending.py;
           const maxLeft = Math.max(0, Number(el2.scrollWidth ?? 0) - Number(el2.clientWidth ?? 0));
           const maxTop = Math.max(0, Number(el2.scrollHeight ?? 0) - Number(el2.clientHeight ?? 0));
-          el2.scrollLeft = clamp(pending.left, 0, maxLeft);
-          el2.scrollTop = clamp(pending.top, 0, maxTop);
+          el2.scrollLeft = clamp(desiredLeft, 0, maxLeft);
+          el2.scrollTop = clamp(desiredTop, 0, maxTop);
         } catch {
           // ignore
         } finally {
           // Clear after attempt (avoid re-applying on unrelated zoom changes)
-          if (pendingWebScrollRef.current === pending) pendingWebScrollRef.current = null;
+          if (pendingWebAnchorRef.current === pending) pendingWebAnchorRef.current = null;
         }
       });
     });
@@ -439,7 +474,11 @@ export function SeatingGridReadonly({
               scrollEventThrottle={16}
             >
               <PinchGestureHandler onGestureEvent={onPinchGestureEvent} onHandlerStateChange={onPinchStateChange}>
-                <View collapsable={false} style={[styles.gridWrap, styles.gridWrapNative, { width: stageW, height: stageH }]}>
+                <View
+                  ref={gridWrapRef}
+                  collapsable={false}
+                  style={[styles.gridWrap, styles.gridWrapNative, { width: stageW, height: stageH }]}
+                >
                   <View style={[styles.gridInnerNative, { width: baseW, height: baseH, transform: innerTransform }]}>
                   <Svg width={baseW} height={baseH} style={StyleSheet.absoluteFill as any}>
                     <Defs>
@@ -517,7 +556,7 @@ export function SeatingGridReadonly({
             </ScrollView>
           </ScrollView>
         ) : (
-          <View style={[styles.gridWrap, { width: stageW, height: stageH }]}>
+          <View ref={gridWrapRef} style={[styles.gridWrap, { width: stageW, height: stageH }]}>
             <View style={[styles.gridInnerWeb, { width: baseW, height: baseH, transform: innerTransform }]}>
             <Svg width={baseW} height={baseH} style={StyleSheet.absoluteFill as any}>
               <Defs>

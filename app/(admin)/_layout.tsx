@@ -25,11 +25,7 @@ export default function AdminTabsLayout() {
       router.replace('/login');
       return;
     }
-    if (userType === 'employee') {
-      router.replace('/(employee)/employee-events');
-      return;
-    }
-    if (userType !== 'admin') {
+    if (userType !== 'admin' && userType !== 'employee') {
       router.replace('/(couple)');
     }
   }, [isLoggedIn, userType, loading, router]);
@@ -87,6 +83,9 @@ export default function AdminTabsLayout() {
         },
       }}
     >
+      {userType === 'employee' ? <Tabs.Screen name="users" options={{ href: null }} /> : null}
+      {userType === 'employee' ? <Tabs.Screen name="admin-profile" options={{ href: null }} /> : null}
+
       <Tabs.Screen
         name="admin-events"
         options={{
@@ -102,39 +101,44 @@ export default function AdminTabsLayout() {
           ),
         }}
       />
-      <Tabs.Screen
-        name="users"
-        options={{
-          title: "ניהול משתמשים",
-          tabBarIcon: ({ focused }) => (
-            <View style={[styles.iconContainer, focused && styles.activeIconContainer] }>
-              <Ionicons
-                name="people-circle"
-                size={24}
-                color={focused ? colors.white : colors.gray[500]}
-              />
-            </View>
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="admin-profile"
-        options={{
-          title: 'פרופיל',
-          tabBarIcon: ({ focused }) => (
-            <View style={[styles.iconContainer, focused && styles.activeIconContainer] }>
-              <Ionicons
-                name="person-circle"
-                size={24}
-                color={focused ? colors.white : colors.gray[500]}
-              />
-            </View>
-          ),
-        }}
-      />
+      {userType !== 'employee' ? (
+        <Tabs.Screen
+          name="users"
+          options={{
+            title: "ניהול משתמשים",
+            tabBarIcon: ({ focused }) => (
+              <View style={[styles.iconContainer, focused && styles.activeIconContainer] }>
+                <Ionicons
+                  name="people-circle"
+                  size={24}
+                  color={focused ? colors.white : colors.gray[500]}
+                />
+              </View>
+            ),
+          }}
+        />
+      ) : null}
+      {userType !== 'employee' ? (
+        <Tabs.Screen
+          name="admin-profile"
+          options={{
+            title: 'פרופיל',
+            tabBarIcon: ({ focused }) => (
+              <View style={[styles.iconContainer, focused && styles.activeIconContainer] }>
+                <Ionicons
+                  name="person-circle"
+                  size={24}
+                  color={focused ? colors.white : colors.gray[500]}
+                />
+              </View>
+            ),
+          }}
+        />
+      ) : null}
 
       {/* Hidden routes in admin group */}
       <Tabs.Screen name="add-user-v2" options={{ href: null }} />
+      <Tabs.Screen name="admin-guest-checkin" options={{ href: null }} />
       <Tabs.Screen
         name="admin-events-create"
         options={{
