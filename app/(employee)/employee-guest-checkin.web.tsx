@@ -11,7 +11,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, usePathname, useRouter } from 'expo-router';
 
 import { colors } from '@/constants/colors';
 import { useGuestCheckInModel } from '@/features/guests/useGuestCheckInModel';
@@ -120,11 +120,13 @@ function Switch({
 
 export default function EmployeeGuestCheckinWebScreen() {
   const router = useRouter();
+  const pathname = usePathname();
   const { eventId } = useLocalSearchParams<{ eventId?: string }>();
   const resolvedEventId = useMemo(() => String(eventId || '').trim(), [eventId]);
   const { width, height } = useWindowDimensions();
   const isLg = width >= 1024;
   const isNarrow = width < 520;
+  const isAdminRoute = String(pathname || '').toLowerCase().includes('admin-guest-checkin');
   const [collapsedTableGroups, setCollapsedTableGroups] = useState<Record<string, boolean>>({});
   const [tableFilter, setTableFilter] = useState<string | null>(null);
   const [tables, setTables] = useState<Table[]>([]);
@@ -468,11 +470,17 @@ export default function EmployeeGuestCheckinWebScreen() {
     return Math.max(420, Math.round(height - 320));
   }, [height, isLg]);
 
+  const guestsColWidth = useMemo(() => {
+    if (!isLg) return undefined as number | undefined;
+    const w = Number(width) || 0;
+    return Math.max(340, Math.min(520, Math.round(w * 0.32)));
+  }, [isLg, width]);
+
   const stickyTop = useMemo(() => {
     if (Platform.OS !== 'web') return 0;
     if (!isLg) return 0;
-    // Leave room for the employee top navigation on web.
-    return 80;
+    // Keep a tiny gap from the top on web.
+    return 8;
   }, [isLg]);
 
   return (
@@ -501,149 +509,98 @@ export default function EmployeeGuestCheckinWebScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View style={[styles.content, !isLg ? styles.contentSm : null]}>
-            <View style={[styles.dashboardCol, !isLg ? styles.colSm : null]}>
-              <View style={Platform.OS === 'web' && isLg ? ({ position: 'sticky', top: stickyTop } as any) : null}>
-                <View style={[styles.card, styles.dashboardCard]}>
-                  <View style={styles.dashboardHeader}>
-                    <View style={styles.dashboardHeaderLeft}>
-                      <View style={styles.dashboardHeaderIcon}>
-                        <Ionicons name="sparkles" size={18} color="#fff" />
-                      </View>
-                      <View style={{ flex: 1, minWidth: 0 }}>
-                        <Text style={styles.dashboardHeaderTitle}>ניהול אירוע</Text>
-                        <Text style={styles.dashboardHeaderSub}>סטטוס נוכחי בזמן אמת</Text>
-                      </View>
+          <View style={styles.topDashboardWrap}>
+            <View style={Platform.OS === 'web' && isLg ? ({ position: 'sticky', top: stickyTop } as any) : null}>
+              <View style={[styles.card, styles.dashboardCard, isLg ? styles.dashboardCardTop : null]}>
+                <View style={styles.dashboardHeader}>
+                  <View style={styles.dashboardHeaderLeft}>
+                    <View style={styles.dashboardHeaderIcon}>
+                      <Ionicons name="sparkles" size={18} color="#fff" />
                     </View>
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="אפשרויות"
-                      onPress={() => {}}
-                      style={({ hovered, pressed }: any) => [
-                        styles.dashboardHeaderMenu,
-                        Platform.OS === 'web' && hovered ? { opacity: 0.95 } : null,
-                        pressed ? { opacity: 0.85 } : null,
-                      ]}
-                    >
-                      <Ionicons name="ellipsis-vertical" size={18} color="rgba(255,255,255,0.75)" />
-                    </Pressable>
-                    <View style={styles.dashboardHeaderGlow} pointerEvents="none" />
-                  </View>
-
-                  <View style={styles.dashboardBody}>
-                    <View style={styles.metricsGrid}>
-                      <View style={[styles.metricTile, styles.metricTileNeutral]}>
-                        <Text style={styles.metricTileValue}>{eventOverview.invitedPeople}</Text>
-                        <Text style={styles.metricTileLabel}>סה"כ מוזמנים</Text>
-                      </View>
-
-                      <View style={[styles.metricTile, styles.metricTileSuccess]}>
-                        <Text style={[styles.metricTileValue, styles.metricTileValueSuccess]}>{eventOverview.arrivedPeople}</Text>
-                        <Text style={[styles.metricTileLabel, styles.metricTileLabelSuccess]}>הגיעו</Text>
-                      </View>
-
-                      <View style={[styles.metricTile, styles.metricTileWarn]}>
-                        <Text style={[styles.metricTileValue, styles.metricTileValueWarn]}>{eventOverview.arrivingNotArrivedGuests}</Text>
-                        <Text style={[styles.metricTileLabel, styles.metricTileLabelWarn]}>טרם הגיעו</Text>
-                      </View>
-
-                      <View style={[styles.metricTile, styles.metricTileNeutral]}>
-                        <Text style={[styles.metricTileValue, styles.metricTileValueMuted]}>{eventOverview.emptyTables}</Text>
-                        <Text style={styles.metricTileLabel}>שולחנות ריקים</Text>
-                      </View>
-
-                      <View style={[styles.metricTile, styles.metricTileIndigo]}>
-                        <Text style={[styles.metricTileValue, styles.metricTileValueIndigo]}>{eventOverview.fullTables}</Text>
-                        <Text style={[styles.metricTileLabel, styles.metricTileLabelIndigo]}>שולחנות מלאים</Text>
-                      </View>
-
-                      <View style={[styles.metricTile, styles.metricTileYellow]}>
-                        <Text style={[styles.metricTileValue, styles.metricTileValueYellow]}>{eventOverview.reserveTables}</Text>
-                        <Text style={[styles.metricTileLabel, styles.metricTileLabelYellow]}>שולחנות רזרבה</Text>
-                      </View>
-                    </View>
-
-                    <View style={styles.arrivalCard}>
-                      <View style={styles.arrivalTopRow}>
-                        <View style={styles.arrivalTitleRow}>
-                          <Ionicons name="analytics" size={16} color={colors.gray[400]} />
-                          <Text style={styles.arrivalTitle}>קצב הגעה</Text>
-                        </View>
-                        <View style={styles.arrivalBadge}>
-                          <Text style={styles.arrivalBadgeStrong}>
-                            {counts.total ? `${counts.checkedIn}/${counts.total}` : '0/0'}
-                          </Text>
-                          <Text style={styles.arrivalBadgeSub}>הושלם</Text>
-                        </View>
-                      </View>
-
-                      <View style={styles.arrivalBarWrap}>
-                        <View
-                          style={[
-                            styles.arrivalBarFill,
-                            {
-                              width: `${counts.total ? Math.round((counts.checkedIn / counts.total) * 100) : 0}%`,
-                            } as any,
-                          ]}
-                        >
-                          <Text style={styles.arrivalBarText}>
-                            {counts.total ? `${Math.round((counts.checkedIn / counts.total) * 100)}%` : '0%'}
-                          </Text>
-                        </View>
-                        <View
-                          pointerEvents="none"
-                          style={[
-                            styles.arrivalBarStripes,
-                            Platform.OS === 'web'
-                              ? ({
-                                  backgroundImage:
-                                    'linear-gradient(45deg, rgba(255,255,255,.18) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.18) 50%, rgba(255,255,255,.18) 75%, transparent 75%, transparent)',
-                                  backgroundSize: '16px 16px',
-                                } as any)
-                              : null,
-                          ]}
-                        />
-                      </View>
-                      <View style={styles.arrivalBarLegend}>
-                        <Text style={styles.arrivalLegendText}>התחלה</Text>
-                        <Text style={styles.arrivalLegendText}>יעד</Text>
-                      </View>
-                    </View>
-
-                    <View style={styles.quickFilterWrap}>
-                      <Text style={styles.sectionTitle}>סינון מהיר</Text>
-                      <View style={styles.pillsRow}>
-                      {[
-                        { key: 'all' as const, label: 'הכל' },
-                        { key: 'checked_in' as const, label: 'הגיעו' },
-                        { key: 'not_checked_in' as const, label: 'לא הגיעו' },
-                      ].map((opt) => {
-                        const active = filter === opt.key;
-                        return (
-                          <Pressable
-                            key={opt.key}
-                            accessibilityRole="button"
-                            accessibilityLabel={opt.label}
-                            onPress={() => setFilter(opt.key)}
-                            style={({ hovered, pressed }: any) => [
-                              styles.pill,
-                              active ? styles.pillActive : null,
-                              Platform.OS === 'web' && hovered ? styles.pillHover : null,
-                              pressed ? { opacity: 0.92 } : null,
-                            ]}
-                          >
-                            <Text style={[styles.pillText, active ? styles.pillTextActive : null]}>{opt.label}</Text>
-                          </Pressable>
-                        );
-                      })}
-                      </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={styles.dashboardHeaderTitle}>ניהול אירוע</Text>
+                      <Text style={styles.dashboardHeaderSub}>סטטוס נוכחי בזמן אמת</Text>
                     </View>
                   </View>
+
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="חזרה לרשימת אירועים"
+                    onPress={() => router.replace(isAdminRoute ? '/(admin)/admin-events' : '/(employee)/employee-events')}
+                    style={({ hovered, pressed }: any) => [
+                      styles.dashboardBackBtn,
+                      Platform.OS === 'web' && hovered ? styles.dashboardBackBtnHover : null,
+                      pressed ? { opacity: 0.9 } : null,
+                    ]}
+                  >
+                  <Ionicons name="arrow-back" size={18} color="#fff" />
+                    <Text style={styles.dashboardBackText}>חזור</Text>
+                  </Pressable>
+
+                  <View style={styles.dashboardHeaderGlow} pointerEvents="none" />
+                </View>
+
+                <View style={[styles.dashboardBody, isLg ? styles.dashboardBodyTop : null]}>
+                  <View style={[styles.metricsGrid, isLg ? styles.metricsGridTop : null]}>
+                    <View style={[styles.metricTile, isLg ? styles.metricTileTop : null, styles.metricTileNeutral]}>
+                      <Text style={[styles.metricTileValue, isLg ? styles.metricTileValueTop : null]}>{eventOverview.invitedPeople}</Text>
+                      <Text style={[styles.metricTileLabel, isLg ? styles.metricTileLabelTop : null]}>סה"כ מוזמנים</Text>
+                    </View>
+
+                    <View style={[styles.metricTile, isLg ? styles.metricTileTop : null, styles.metricTileSuccess]}>
+                      <Text style={[styles.metricTileValue, isLg ? styles.metricTileValueTop : null, styles.metricTileValueSuccess]}>
+                        {eventOverview.arrivedPeople}
+                      </Text>
+                      <Text style={[styles.metricTileLabel, isLg ? styles.metricTileLabelTop : null, styles.metricTileLabelSuccess]}>הגיעו</Text>
+                    </View>
+
+                    <View style={[styles.metricTile, isLg ? styles.metricTileTop : null, styles.metricTileWarn]}>
+                      <Text style={[styles.metricTileValue, isLg ? styles.metricTileValueTop : null, styles.metricTileValueWarn]}>
+                        {eventOverview.arrivingNotArrivedGuests}
+                      </Text>
+                      <Text style={[styles.metricTileLabel, isLg ? styles.metricTileLabelTop : null, styles.metricTileLabelWarn]}>טרם הגיעו</Text>
+                    </View>
+
+                    <View style={[styles.metricTile, isLg ? styles.metricTileTop : null, styles.metricTileNeutral]}>
+                      <Text style={[styles.metricTileValue, isLg ? styles.metricTileValueTop : null, styles.metricTileValueMuted]}>
+                        {eventOverview.emptyTables}
+                      </Text>
+                      <Text style={[styles.metricTileLabel, isLg ? styles.metricTileLabelTop : null]}>שולחנות ריקים</Text>
+                    </View>
+
+                    <View style={[styles.metricTile, isLg ? styles.metricTileTop : null, styles.metricTileIndigo]}>
+                      <Text style={[styles.metricTileValue, isLg ? styles.metricTileValueTop : null, styles.metricTileValueIndigo]}>
+                        {eventOverview.fullTables}
+                      </Text>
+                      <Text style={[styles.metricTileLabel, isLg ? styles.metricTileLabelTop : null, styles.metricTileLabelIndigo]}>
+                        שולחנות מלאים
+                      </Text>
+                    </View>
+
+                    <View style={[styles.metricTile, isLg ? styles.metricTileTop : null, styles.metricTileYellow]}>
+                      <Text style={[styles.metricTileValue, isLg ? styles.metricTileValueTop : null, styles.metricTileValueYellow]}>
+                        {eventOverview.reserveTables}
+                      </Text>
+                      <Text style={[styles.metricTileLabel, isLg ? styles.metricTileLabelTop : null, styles.metricTileLabelYellow]}>
+                        שולחנות רזרבה
+                      </Text>
+                    </View>
+                  </View>
+
                 </View>
               </View>
             </View>
+          </View>
 
-            <View style={[styles.guestsCol, !isLg ? styles.colSm : null]}>
+          <View style={[styles.content, !isLg ? styles.contentSm : null]}>
+
+            <View
+              style={[
+                styles.guestsCol,
+                !isLg ? styles.colSm : null,
+                isLg && guestsColWidth ? ({ width: guestsColWidth } as any) : null,
+              ]}
+            >
               <View style={Platform.OS === 'web' && isLg ? ({ position: 'sticky', top: stickyTop } as any) : null}>
                 <View style={styles.card}>
                   <View style={styles.cardHeaderRow}>
@@ -981,21 +938,20 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     paddingHorizontal: 12,
     paddingBottom: 28,
-    paddingTop: 18,
+    paddingTop: 8,
   },
 
   content: {
-    marginTop: 12,
+    marginTop: 8,
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 14,
   },
   contentSm: { flexDirection: 'column', gap: 14 },
   // Keep side columns tighter to prioritize the map width.
-  dashboardCol: { width: 280, flexShrink: 0 },
-  guestsCol: { width: 580, flexShrink: 0 },
+  guestsCol: { width: 580, flexShrink: 1, minWidth: 340 },
   colSm: { width: '100%' },
-  main: { flex: 1, minWidth: 0 },
+  main: { flex: 1, minWidth: 520, flexShrink: 0 },
 
   card: {
     backgroundColor: 'rgba(255,255,255,0.96)',
@@ -1012,7 +968,11 @@ const styles = StyleSheet.create({
   dashboardCard: {
     padding: 0,
     overflow: 'hidden',
+    width: '100%',
+    alignSelf: 'stretch',
   },
+  topDashboardWrap: { width: '100%', marginTop: 8, marginBottom: 10 },
+  dashboardCardTop: { maxHeight: 200, maxWidth: 1960 },
   cardTitle: { fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'right' },
 
   dashboardGrid: {
@@ -1044,6 +1004,20 @@ const styles = StyleSheet.create({
   dashboardHeaderTitle: { fontSize: 15, fontWeight: '900', color: '#fff', textAlign: 'right' },
   dashboardHeaderSub: { marginTop: 2, fontSize: 11, fontWeight: '800', color: 'rgba(209,213,219,0.95)', textAlign: 'right' },
   dashboardHeaderMenu: { padding: 6, borderRadius: 10 },
+  dashboardBackBtn: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  dashboardBackBtnHover: { backgroundColor: 'rgba(255,255,255,0.14)' },
+  dashboardBackText: { fontSize: 12, fontWeight: '900', color: '#fff', textAlign: 'right' },
   dashboardHeaderGlow: {
     position: 'absolute',
     top: -24,
@@ -1055,7 +1029,9 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? ({ filter: 'blur(28px)' } as any) : null),
   },
   dashboardBody: { paddingHorizontal: 14, paddingBottom: 12, paddingTop: 10, gap: 10 },
+  dashboardBodyTop: { paddingHorizontal: 12, paddingBottom: 10, paddingTop: 8, gap: 8 },
   metricsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between' },
+  metricsGridTop: { gap: 6 },
   metricTile: {
     width: '31.5%',
     minWidth: 86,
@@ -1067,12 +1043,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     ...(Platform.OS === 'web' ? ({ transitionProperty: 'transform, box-shadow, background-color', transitionDuration: '150ms' } as any) : null),
   },
+  metricTileTop: {
+    width: '16%',
+    minWidth: 0,
+    paddingVertical: 6,
+    paddingHorizontal: 6,
+    borderRadius: 12,
+  },
   metricTileNeutral: { backgroundColor: 'rgba(248,250,252,1)', borderColor: 'rgba(15,23,42,0.06)' },
   metricTileSuccess: { backgroundColor: 'rgba(236,253,245,1)', borderColor: 'rgba(16,185,129,0.22)' },
   metricTileWarn: { backgroundColor: 'rgba(255,247,237,1)', borderColor: 'rgba(245,158,11,0.24)' },
   metricTileIndigo: { backgroundColor: 'rgba(238,242,255,1)', borderColor: 'rgba(99,102,241,0.22)' },
   metricTileYellow: { backgroundColor: 'rgba(254,252,232,1)', borderColor: 'rgba(234,179,8,0.24)' },
   metricTileValue: { fontSize: 20, fontWeight: '900', color: '#111827', textAlign: 'center' },
+  metricTileValueTop: { fontSize: 18 },
   metricTileValueMuted: { color: 'rgba(55,65,81,0.95)' },
   metricTileValueSuccess: { color: '#047857' },
   metricTileValueWarn: { color: '#B45309' },
@@ -1087,6 +1071,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase' as any,
     letterSpacing: 0.6,
   },
+  metricTileLabelTop: { marginTop: 3, fontSize: 9, letterSpacing: 0.4 },
   metricTileLabelSuccess: { color: 'rgba(4,120,87,0.95)' },
   metricTileLabelWarn: { color: 'rgba(180,83,9,0.95)' },
   metricTileLabelIndigo: { color: 'rgba(67,56,202,0.95)' },
@@ -1099,7 +1084,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.06)',
   },
+  arrivalCardTop: { paddingVertical: 8, paddingHorizontal: 10, borderRadius: 16 },
   arrivalTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 8 },
+  arrivalTopRowTop: { marginBottom: 6 },
   arrivalTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   arrivalTitle: { fontSize: 12, fontWeight: '900', color: 'rgba(55,65,81,0.95)', textAlign: 'right' },
   arrivalBadge: {
@@ -1189,6 +1176,7 @@ const styles = StyleSheet.create({
   searchInput: { paddingRight: 42, paddingLeft: 12, fontSize: 14, fontWeight: '800', color: colors.text },
 
   pillsRow: { marginTop: 8, flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  pillsRowTop: { marginTop: 0 },
   pill: {
     borderRadius: 12,
     paddingHorizontal: 14,

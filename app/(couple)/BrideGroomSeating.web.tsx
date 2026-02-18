@@ -1031,7 +1031,7 @@ export default function BrideGroomSeatingWebScreen() {
             accentColor={colors.primary}
             onPress={() =>
               router.push({
-                pathname: '/(couple)/TablesList',
+                pathname: '/(couple)/TablesList' as const,
                 params: resolvedEventId ? { eventId: resolvedEventId } : {},
               })
             }
@@ -1422,11 +1422,6 @@ export default function BrideGroomSeatingWebScreen() {
                     tables={webSketch.tables}
                     zones={webSketch.zones}
                     labels={webSketch.labels}
-                    getTableSeatedCount={(t: any) => {
-                      const num = t?.number;
-                      if (!num) return null;
-                      return seatedByNumber.get(Number(num)) ?? 0;
-                    }}
                     getTableTooltip={(t: any) => {
                       const num = t?.number;
                       if (!num) return null;
