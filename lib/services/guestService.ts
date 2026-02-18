@@ -25,6 +25,10 @@ export const guestService = {
         numberOfPeople: guest.number_of_people || 1,
         checkedIn: Boolean((guest as any).checked_in),
         checkedInAt: (guest as any).checked_in_at ? new Date((guest as any).checked_in_at) : null,
+        checkedInCount:
+          (guest as any).checked_in_count === null || (guest as any).checked_in_count === undefined
+            ? null
+            : Number((guest as any).checked_in_count) || 0,
       }));
     } catch (error) {
       console.error('Get guests error:', error);
@@ -110,6 +114,10 @@ export const guestService = {
         numberOfPeople: data.number_of_people || 1,
         checkedIn: Boolean((data as any).checked_in),
         checkedInAt: (data as any).checked_in_at ? new Date((data as any).checked_in_at) : null,
+        checkedInCount:
+          (data as any).checked_in_count === null || (data as any).checked_in_count === undefined
+            ? null
+            : Number((data as any).checked_in_count) || 0,
       };
     } catch (error) {
       console.error('Update guest error:', error);
@@ -191,11 +199,55 @@ export const guestService = {
   },
 
   // Check-in (arrival to venue)
-  setGuestCheckedIn: async (guestId: string, checkedIn: boolean): Promise<Guest> => {
+  setGuestCheckedIn: async (guestId: string, checkedIn: boolean, opts?: { checkedInCount?: number | null }): Promise<Guest> => {
     try {
       const payload: any = {
         checked_in: Boolean(checkedIn),
         checked_in_at: checkedIn ? new Date().toISOString() : null,
+      };
+      if (checkedIn) {
+        if (opts?.checkedInCount !== undefined) payload.checked_in_count = opts.checkedInCount;
+      } else {
+        // When un-checking, clear the actual arrived count.
+        payload.checked_in_count = null;
+      }
+
+      const { data, error } = await supabase
+        .from('guests')
+        .update(payload)
+        .eq('id', guestId)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      return {
+        id: data.id,
+        name: data.name,
+        phone: data.phone || '',
+        status: data.status as Guest['status'],
+        tableId: data.table_id,
+        gift: Number(data.gift_amount) || 0,
+        message: data.message || '',
+        category_id: data.category_id,
+        numberOfPeople: data.number_of_people || 1,
+        checkedIn: Boolean((data as any).checked_in),
+        checkedInAt: (data as any).checked_in_at ? new Date((data as any).checked_in_at) : null,
+        checkedInCount:
+          (data as any).checked_in_count === null || (data as any).checked_in_count === undefined
+            ? null
+            : Number((data as any).checked_in_count) || 0,
+      };
+    } catch (error) {
+      console.error('Set guest checked-in error:', error);
+      throw error;
+    }
+  },
+
+  setGuestCheckedInCount: async (guestId: string, checkedInCount: number | null): Promise<Guest> => {
+    try {
+      const payload: any = {
+        checked_in_count: checkedInCount === null ? null : Number(checkedInCount) || 0,
       };
 
       const { data, error } = await supabase
@@ -219,9 +271,13 @@ export const guestService = {
         numberOfPeople: data.number_of_people || 1,
         checkedIn: Boolean((data as any).checked_in),
         checkedInAt: (data as any).checked_in_at ? new Date((data as any).checked_in_at) : null,
+        checkedInCount:
+          (data as any).checked_in_count === null || (data as any).checked_in_count === undefined
+            ? null
+            : Number((data as any).checked_in_count) || 0,
       };
     } catch (error) {
-      console.error('Set guest checked-in error:', error);
+      console.error('Set guest checked-in count error:', error);
       throw error;
     }
   },

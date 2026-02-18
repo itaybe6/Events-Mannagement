@@ -11,6 +11,8 @@ export type Guest = {
   // Check-in (arrival to the venue). Optional for backward compatibility.
   checkedIn?: boolean;
   checkedInAt?: Date | null;
+  // Actual arrived people count (can differ from numberOfPeople). Optional for backward compatibility.
+  checkedInCount?: number | null;
 };
 
 export type GuestCategory = {

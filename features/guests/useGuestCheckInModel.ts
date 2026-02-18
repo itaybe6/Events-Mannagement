@@ -34,6 +34,7 @@ export function useGuestCheckInModel(params: {
   const [categories, setCategories] = useState<GuestCategory[]>([]);
   const [query, setQuery] = useState('');
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [savingCountId, setSavingCountId] = useState<string | null>(null);
   const [filter, setFilter] = useState<GuestCheckInFilter>('all');
   const [collapsed, setCollapsed] = useState<Set<GuestCheckInCategoryKey>>(new Set());
 
@@ -204,13 +205,30 @@ export function useGuestCheckInModel(params: {
     const next = !Boolean(guest.checkedIn);
     setSavingId(guest.id);
     try {
-      const updated = await guestService.setGuestCheckedIn(guest.id, next);
+      const fallbackCount = Number(guest.numberOfPeople) || 1;
+      const desiredCount =
+        guest.checkedInCount === null || guest.checkedInCount === undefined ? fallbackCount : Number(guest.checkedInCount) || 0;
+      const updated = await guestService.setGuestCheckedIn(guest.id, next, next ? { checkedInCount: desiredCount } : undefined);
       setGuests((prev) => prev.map((g) => (g.id === guest.id ? { ...g, ...updated } : g)));
     } catch (e) {
       console.error('Check-in update error:', e);
       Alert.alert('שגיאה', 'לא ניתן לעדכן הגעה');
     } finally {
       setSavingId(null);
+    }
+  }, []);
+
+  const setCheckedInCount = useCallback(async (guest: Guest, checkedInCount: number) => {
+    const next = Math.max(0, Math.floor(Number(checkedInCount) || 0));
+    setSavingCountId(guest.id);
+    try {
+      const updated = await guestService.setGuestCheckedInCount(guest.id, next);
+      setGuests((prev) => prev.map((g) => (g.id === guest.id ? { ...g, ...updated } : g)));
+    } catch (e) {
+      console.error('Check-in count update error:', e);
+      Alert.alert('שגיאה', 'לא ניתן לעדכן כמות הגעה');
+    } finally {
+      setSavingCountId(null);
     }
   }, []);
 
@@ -235,6 +253,8 @@ export function useGuestCheckInModel(params: {
     refresh,
     toggleCheckIn,
     savingId,
+    setCheckedInCount,
+    savingCountId,
   };
 }
 

@@ -40,13 +40,98 @@ type NotificationSettingRow = {
   notification_date?: string | null;
 };
 
+const normalizeMessage = (s: string) => String(s || '').replace(/\r\n/g, '\n').trim();
+
+type EventKind = 'wedding' | 'brit' | 'barMitzvah' | 'generic';
+
+function detectEventKind(event: Event | null): EventKind {
+  const title = String((event as any)?.title ?? '').toLowerCase();
+  const groom = String((event as any)?.groomName ?? (event as any)?.groom_name ?? '').trim();
+  const bride = String((event as any)?.brideName ?? (event as any)?.bride_name ?? '').trim();
+
+  if (
+    title.includes('ברית') ||
+    title.includes('בריתה') ||
+    title.includes('brit') ||
+    title.includes('baby') ||
+    title.includes('תינוק')
+  )
+    return 'brit';
+
+  if (
+    title.includes('בר מצ') ||
+    title.includes('בת מצ') ||
+    title.includes('bar mitz') ||
+    title.includes('bat mitz')
+  )
+    return 'barMitzvah';
+
+  if (title.includes('חתונ') || title.includes('wedding') || (groom && bride)) return 'wedding';
+  return 'generic';
+}
+
+function defaultMessageByType(args: { notificationType: string; kind: EventKind }) {
+  const { notificationType, kind } = args;
+  const eventNoun =
+    kind === 'wedding' ? 'החתונה' : kind === 'brit' ? 'הברית/ה' : kind === 'barMitzvah' ? 'בר/בת המצווה' : 'האירוע';
+
+  switch (notificationType) {
+    case 'reminder_1':
+      if (kind === 'wedding') {
+        return normalizeMessage(
+          'אורחים יקרים,\n' +
+            'בתאריך {{תאריך}} תיערך החתונה של {{שמות_חתן_כלה}} ב{{מיקום}}.\n' +
+            'לאישור הגעה: [הדביקו כאן קישור]\n' +
+            'להנחיות הגעה: [הדביקו כאן קישור]\n' +
+            'נשמח לראותכם!'
+        );
+      }
+      return normalizeMessage(
+        'שלום,\n' +
+          `בתאריך {{תאריך}} ייערך ${eventNoun} ({{שם_אירוע}}) ב{{מיקום}}.\n` +
+          'לאישור הגעה: [הדביקו כאן קישור]\n' +
+          'להנחיות הגעה: [הדביקו כאן קישור]\n' +
+          'נשמח לראותכם!'
+      );
+
+    case 'reminder_2':
+      return normalizeMessage(
+        'תזכורת:\n' +
+          '{{שם_אירוע}} בעוד שבועיים ({{תאריך}}).\n' +
+          'נשמח לאישור הגעה בקישור: [הדביקו כאן קישור]'
+      );
+
+    case 'reminder_3':
+      return normalizeMessage(
+        'עוד שבוע ל{{שם_אירוע}} ({{תאריך}}).\n' + 'אם עדיין לא אישרתם הגעה: [הדביקו כאן קישור]'
+      );
+
+    case 'whatsapp_event_day':
+      return normalizeMessage('היום זה היום!\n' + '{{שם_אירוע}} מתקיים היום.\n' + 'לכניסה מהירה והנחיות: [הדביקו כאן קישור]');
+
+    case 'after_1':
+      return normalizeMessage('תודה שבאתם ל{{שם_אירוע}}.\n' + 'היה לנו כיף גדול איתכם, תודה על האיחולים והאהבה.');
+
+    default:
+      return normalizeMessage('שלום,\n' + '{{שם_אירוע}} ב{{מיקום}} בתאריך {{תאריך}}.\n' + 'נשמח לראותכם!');
+  }
+}
+
 const NOTIFICATION_TEMPLATES: NotificationTemplate[] = [
-  { notification_type: 'reminder_1', title: 'הודעה רגילה 1 (לפני האירוע)', days_from_wedding: -30, channel: 'SMS', defaultMessage: 'שלום! רצינו להזכיר לכם על האירוע הקרוב שלנו.' },
-  { notification_type: 'reminder_2', title: 'הודעה רגילה 2 (לפני האירוע)', days_from_wedding: -14, channel: 'SMS', defaultMessage: 'היי! האירוע בעוד שבועיים, מחכים לראות אתכם!' },
-  { notification_type: 'reminder_3', title: 'הודעה רגילה 3 (לפני האירוע)', days_from_wedding: -7, channel: 'SMS', defaultMessage: 'תזכורת אחרונה: האירוע בעוד שבוע. נשמח לראותכם!' },
-  { notification_type: 'whatsapp_event_day', title: 'וואטסאפ ביום האירוע', days_from_wedding: 0, channel: 'WHATSAPP', defaultMessage: 'היום האירוע! נתראה שם' },
-  { notification_type: 'after_1', title: 'הודעה רגילה אחרי האירוע', days_from_wedding: 1, channel: 'SMS', defaultMessage: 'תודה שבאתם! היה לנו כיף גדול איתכם.' },
+  { notification_type: 'reminder_1', title: 'הודעה ראשונה', days_from_wedding: -30, channel: 'SMS', defaultMessage: undefined },
+  { notification_type: 'reminder_2', title: 'הודעה שנייה', days_from_wedding: -14, channel: 'SMS', defaultMessage: undefined },
+  { notification_type: 'reminder_3', title: 'הודעה שלישית', days_from_wedding: -7, channel: 'SMS', defaultMessage: undefined },
+  { notification_type: 'whatsapp_event_day', title: 'וואטסאפ ביום האירוע', days_from_wedding: 0, channel: 'WHATSAPP', defaultMessage: undefined },
+  { notification_type: 'after_1', title: 'הודעה רגילה אחרי האירוע', days_from_wedding: 1, channel: 'SMS', defaultMessage: undefined },
 ];
+
+const LEGACY_DEFAULT_MESSAGES: Record<string, Set<string>> = {
+  reminder_1: new Set([normalizeMessage('שלום! רצינו להזכיר לכם על האירוע הקרוב שלנו.')]),
+  reminder_2: new Set([normalizeMessage('היי! האירוע בעוד שבועיים, מחכים לראות אתכם!')]),
+  reminder_3: new Set([normalizeMessage('תזכורת אחרונה: האירוע בעוד שבוע. נשמח לראותכם!')]),
+  whatsapp_event_day: new Set([normalizeMessage('היום האירוע! נתראה שם')]),
+  after_1: new Set([normalizeMessage('תודה שבאתם! היה לנו כיף גדול איתכם.')]),
+};
 
 export default function AutomaticNotificationsScreen() {
   const router = useRouter();
@@ -139,7 +224,7 @@ export default function AutomaticNotificationsScreen() {
     return String(userData?.name || '').trim();
   };
 
-  const fetchSettings = async (event_id: string, eventDateISO: string, owner?: string) => {
+  const fetchSettings = async (event_id: string, eventDateISO: string, owner?: string, eventForDefaults?: Event | null) => {
     const { data: rows, error } = await supabase
       .from('notification_settings')
       .select('*')
@@ -151,23 +236,27 @@ export default function AutomaticNotificationsScreen() {
     }
 
     const existingMap = new Map<string, any>(((rows as any[]) || []).map((r) => [r.notification_type, r]));
+    const kind = detectEventKind(eventForDefaults ?? null);
 
     const merged: NotificationSettingRow[] = NOTIFICATION_TEMPLATES.map((tpl) => {
       const existing = existingMap.get(tpl.notification_type);
       if (existing) {
+        const existingMsg = normalizeMessage(String(existing.message_content ?? ''));
+        const desiredDefault = defaultMessageByType({ notificationType: tpl.notification_type, kind });
+        const shouldUpgradeMessage = existingMsg.length === 0 || LEGACY_DEFAULT_MESSAGES[tpl.notification_type]?.has(existingMsg);
         return {
           id: existing.id,
           event_id: existing.event_id,
           notification_type: existing.notification_type,
           title: existing.title ?? tpl.title,
           enabled: Boolean(existing.enabled),
-          message_content: String(existing.message_content ?? ''),
+          message_content: shouldUpgradeMessage ? desiredDefault : String(existing.message_content ?? ''),
           days_from_wedding: typeof existing.days_from_wedding === 'number' ? existing.days_from_wedding : tpl.days_from_wedding,
           channel: (existing.channel as any) || tpl.channel,
         };
       }
 
-      const defaultMessage = tpl.defaultMessage ?? getDefaultMessageContent(owner);
+      const defaultMessage = defaultMessageByType({ notificationType: tpl.notification_type, kind });
       return {
         notification_type: tpl.notification_type,
         title: tpl.title,
@@ -194,7 +283,7 @@ export default function AutomaticNotificationsScreen() {
         const title = await loadOwnerTitle(eventData as any);
         setOwnerTitle(title);
         if ((eventData as any)?.id && (eventData as any)?.date) {
-          await fetchSettings((eventData as any).id, (eventData as any).date, title);
+          await fetchSettings((eventData as any).id, (eventData as any).date, title, eventData);
         }
       } finally {
         setLoading(false);

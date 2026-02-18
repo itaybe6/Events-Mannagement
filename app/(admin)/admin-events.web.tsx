@@ -17,6 +17,7 @@ import { Picker } from '@react-native-picker/picker';
 
 import { colors } from '@/constants/colors';
 import { eventService } from '@/lib/services/eventService';
+import { supabase } from '@/lib/supabase';
 import { Event } from '@/types';
 import { MONTHS } from '@/features/events/eventsConstants';
 import { useEventsListModel } from '@/features/events/useEventsListModel';
@@ -121,9 +122,78 @@ export default function AdminEventsWebScreen() {
     filteredEvents,
   } = useEventsListModel(loadEventsFn, { errorTitle: 'שגיאה', errorMessage: 'לא ניתן לטעון אירועים כרגע' });
 
+  const [guestStatsByEventId, setGuestStatsByEventId] = useState<
+    Record<string, { invitedPeople: number; comingPeople: number; seatedPeople: number }>
+  >({});
+  const [guestStatsLoading, setGuestStatsLoading] = useState(false);
+
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  const visibleEventIds = useMemo(
+    () => filteredEvents.map((e) => String(e.id)).filter(Boolean),
+    [filteredEvents]
+  );
+
+  const visibleEventIdsKey = useMemo(() => visibleEventIds.join(','), [visibleEventIds]);
+
+  useEffect(() => {
+    if (visibleEventIds.length === 0) {
+      setGuestStatsByEventId({});
+      return;
+    }
+
+    let cancelled = false;
+    setGuestStatsLoading(true);
+
+    (async () => {
+      const { data, error } = await supabase
+        .from('guests')
+        .select('event_id,status,number_of_people,table_id')
+        .in('event_id', visibleEventIds);
+
+      if (cancelled) return;
+
+      if (error || !Array.isArray(data)) {
+        console.error('Failed to load guests aggregates for events:', error);
+        setGuestStatsByEventId({});
+        return;
+      }
+
+      const next: Record<string, { invitedPeople: number; comingPeople: number; seatedPeople: number }> = {};
+      for (const row of data as any[]) {
+        const eventId = String(row?.event_id ?? '').trim();
+        if (!eventId) continue;
+        const people = Number(row?.number_of_people) || 1;
+        const status = String(row?.status ?? '').trim();
+        const hasTable = Boolean(row?.table_id);
+
+        const prev = next[eventId] || { invitedPeople: 0, comingPeople: 0, seatedPeople: 0 };
+        prev.invitedPeople += people;
+        if (status === 'מגיע') prev.comingPeople += people;
+        if (hasTable) prev.seatedPeople += people;
+        next[eventId] = prev;
+      }
+
+      setGuestStatsByEventId(next);
+    })()
+      .catch((e) => {
+        if (!cancelled) {
+          console.error('Guests aggregates error:', e);
+          setGuestStatsByEventId({});
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setGuestStatsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [visibleEventIdsKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const formatCount = (n: number) => (Number(n) || 0).toLocaleString('he-IL');
 
   return (
     <View style={styles.page}>
@@ -226,8 +296,10 @@ export default function AdminEventsWebScreen() {
             <Text style={[styles.th, { width: 110 }]}>תאריך</Text>
             <Text style={[styles.th, { flex: 1 }]}>כותרת</Text>
             <Text style={[styles.th, { flex: 1 }]}>מיקום</Text>
+            <Text style={[styles.th, { width: 100, textAlign: 'center' }]}>מוזמנים</Text>
+            <Text style={[styles.th, { width: 100, textAlign: 'center' }]}>מגיעים</Text>
+            <Text style={[styles.th, { width: 100, textAlign: 'center' }]}>הושבו</Text>
             <Text style={[styles.th, { width: 120 }]}>זמן</Text>
-            <Text style={[styles.th, { width: 110, textAlign: 'center' }]}>סטטוס</Text>
             <Text style={[styles.th, { width: 90, textAlign: 'center' }]}>פעולה</Text>
           </View>
 
@@ -253,6 +325,7 @@ export default function AdminEventsWebScreen() {
                 const ownerAvatar = String((e as any).userAvatarUrl || e.userAvatarUrl || '').trim();
                 const subtitle = getEventSubtitle(e);
                 const status = getStatusMeta(e.date);
+                const guestStats = guestStatsByEventId[String(e.id)] || null;
                 const statusToneStyle =
                   status.tone === 'active'
                     ? styles.statusPillActive
@@ -322,15 +395,27 @@ export default function AdminEventsWebScreen() {
                       {e.city ? `, ${e.city}` : ''}
                     </Text>
 
+                    <View style={[styles.cell, { width: 100, alignItems: 'center' }]}>
+                      <Text style={styles.guestsMetaMain}>
+                        {guestStatsLoading ? '…' : guestStats ? formatCount(guestStats.invitedPeople) : '—'}
+                      </Text>
+                    </View>
+
+                    <View style={[styles.cell, { width: 100, alignItems: 'center' }]}>
+                      <Text style={styles.guestsMetaMain}>
+                        {guestStatsLoading ? '…' : guestStats ? formatCount(guestStats.comingPeople) : '—'}
+                      </Text>
+                    </View>
+
+                    <View style={[styles.cell, { width: 100, alignItems: 'center' }]}>
+                      <Text style={styles.guestsMetaMain}>
+                        {guestStatsLoading ? '…' : guestStats ? formatCount(guestStats.seatedPeople) : '—'}
+                      </Text>
+                    </View>
+
                     <View style={[styles.cell, { width: 120 }]}>
                       <Text style={styles.timeMain}>{daysLeftLabel(e.date)}</Text>
                       <Text style={styles.timeSub}>{formatDateLabel(e.date)}</Text>
-                    </View>
-
-                    <View style={[styles.cell, { width: 110, alignItems: 'center' }]}>
-                      <View style={[styles.statusPill, statusToneStyle]}>
-                        <Text style={styles.statusPillText}>{status.label}</Text>
-                      </View>
                     </View>
 
                     <View style={[styles.cell, { width: 90, alignItems: 'center' }]}>
@@ -722,6 +807,12 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: colors.text,
     textAlign: 'right',
+  },
+  guestsMetaMain: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'center',
   },
   timeSub: {
     marginTop: 3,

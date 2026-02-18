@@ -75,6 +75,11 @@ export default function AdminEventDetailsWebScreen() {
   const [editOpen, setEditOpen] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
   const [editDatePickerOpen, setEditDatePickerOpen] = useState(false);
+  const [webCalendarOpen, setWebCalendarOpen] = useState(false);
+  const [webCalendarMonth, setWebCalendarMonth] = useState(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  });
   const [editForm, setEditForm] = useState({
     date: new Date(),
     location: '',
@@ -102,6 +107,45 @@ export default function AdminEventDetailsWebScreen() {
     () => guests.reduce((sum, g) => sum + (Number((g as any).numberOfPeople) || 1), 0),
     [guests]
   );
+
+  const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const toISODate = (d: Date) => {
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  };
+
+  const monthTitle = useMemo(() => {
+    try {
+      return webCalendarMonth.toLocaleDateString('he-IL', { month: 'long', year: 'numeric' });
+    } catch {
+      return `${webCalendarMonth.getMonth() + 1}/${webCalendarMonth.getFullYear()}`;
+    }
+  }, [webCalendarMonth]);
+
+  const calendarDays = useMemo(() => {
+    // Week starts Sunday (Israel). Build 6 weeks grid (42 days).
+    const firstOfMonth = new Date(webCalendarMonth.getFullYear(), webCalendarMonth.getMonth(), 1);
+    const startOffset = firstOfMonth.getDay(); // 0..6 (Sun..Sat)
+    const gridStart = new Date(firstOfMonth);
+    gridStart.setDate(firstOfMonth.getDate() - startOffset);
+    return Array.from({ length: 42 }, (_, i) => {
+      const d = new Date(gridStart);
+      d.setDate(gridStart.getDate() + i);
+      return d;
+    });
+  }, [webCalendarMonth]);
+
+  const openEditDatePicker = () => {
+    if (Platform.OS === 'web') {
+      const base = editForm.date ? editForm.date : new Date();
+      setWebCalendarMonth(new Date(base.getFullYear(), base.getMonth(), 1));
+      setWebCalendarOpen(true);
+      return;
+    }
+    setEditDatePickerOpen(true);
+  };
 
   const openEditEvent = () => {
     if (!event) return;
@@ -592,7 +636,7 @@ export default function AdminEventDetailsWebScreen() {
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="בחירת תאריך"
-                onPress={() => setEditDatePickerOpen(true)}
+                onPress={openEditDatePicker}
                 style={({ hovered, pressed }: any) => [
                   styles.inputLike,
                   Platform.OS === 'web' && hovered ? styles.inputLikeHover : null,
@@ -700,6 +744,121 @@ export default function AdminEventDetailsWebScreen() {
               locale="he-IL"
               date={editForm.date}
             />
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        transparent
+        visible={Platform.OS === 'web' && webCalendarOpen}
+        animationType="fade"
+        onRequestClose={() => setWebCalendarOpen(false)}
+      >
+        <Pressable style={styles.editOverlay} onPress={() => setWebCalendarOpen(false)}>
+          <Pressable style={styles.dateModalCard} onPress={() => null}>
+            <View style={styles.dateModalHeader}>
+              <View style={styles.dateHeaderSide}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="חודש קודם"
+                  onPress={() => setWebCalendarMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))}
+                  style={({ hovered, pressed }: any) => [
+                    styles.iconCircle,
+                    Platform.OS === 'web' && hovered ? styles.iconCircleHover : null,
+                    pressed ? { opacity: 0.9 } : null,
+                  ]}
+                >
+                  <Ionicons name="chevron-forward" size={18} color={'rgba(17,24,39,0.70)'} />
+                </Pressable>
+
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="חודש הבא"
+                  onPress={() => setWebCalendarMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))}
+                  style={({ hovered, pressed }: any) => [
+                    styles.iconCircle,
+                    Platform.OS === 'web' && hovered ? styles.iconCircleHover : null,
+                    pressed ? { opacity: 0.9 } : null,
+                  ]}
+                >
+                  <Ionicons name="chevron-back" size={18} color={'rgba(17,24,39,0.70)'} />
+                </Pressable>
+              </View>
+
+              <Text style={styles.dateModalTitle}>{monthTitle}</Text>
+
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="סגירה"
+                onPress={() => setWebCalendarOpen(false)}
+                style={({ hovered, pressed }: any) => [
+                  styles.iconCircle,
+                  Platform.OS === 'web' && hovered ? styles.iconCircleHover : null,
+                  pressed ? { opacity: 0.9 } : null,
+                ]}
+              >
+                <Ionicons name="close" size={18} color={'rgba(17,24,39,0.70)'} />
+              </Pressable>
+            </View>
+
+            <View style={styles.weekRow}>
+              {['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ש'].map((d) => (
+                <Text key={d} style={styles.weekDay}>
+                  {d}
+                </Text>
+              ))}
+            </View>
+
+            <View style={styles.calendarGrid}>
+              {calendarDays.map((d) => {
+                const day = startOfDay(d);
+                const isOutside = d.getMonth() !== webCalendarMonth.getMonth();
+                const selected = toISODate(day) === toISODate(startOfDay(editForm.date));
+                return (
+                  <Pressable
+                    key={toISODate(day)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`בחירת תאריך ${d.toLocaleDateString('he-IL')}`}
+                    onPress={() => {
+                      setEditForm((f) => ({ ...f, date: new Date(d.getFullYear(), d.getMonth(), d.getDate()) }));
+                      setWebCalendarOpen(false);
+                    }}
+                    style={({ hovered, pressed }: any) => [
+                      styles.dayCell,
+                      isOutside ? styles.dayCellOutside : null,
+                      selected ? styles.dayCellSelected : null,
+                      Platform.OS === 'web' && hovered ? styles.dayCellHover : null,
+                      pressed ? { opacity: 0.92 } : null,
+                    ]}
+                  >
+                    <Text style={[styles.dayText, isOutside ? styles.dayTextOutside : null, selected ? styles.dayTextSelected : null]}>
+                      {d.getDate()}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <View style={styles.dateModalFooter}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="בחירת היום"
+                onPress={() => {
+                  const d = new Date();
+                  setWebCalendarMonth(new Date(d.getFullYear(), d.getMonth(), 1));
+                  setEditForm((f) => ({ ...f, date: new Date(d.getFullYear(), d.getMonth(), d.getDate()) }));
+                  setWebCalendarOpen(false);
+                }}
+                style={({ hovered, pressed }: any) => [
+                  styles.todayBtn,
+                  Platform.OS === 'web' && hovered ? styles.todayBtnHover : null,
+                  pressed ? { opacity: 0.92 } : null,
+                ]}
+              >
+                <Ionicons name="today-outline" size={16} color={colors.primary} />
+                <Text style={styles.todayBtnText}>היום</Text>
+              </Pressable>
+            </View>
           </Pressable>
         </Pressable>
       </Modal>
@@ -1120,6 +1279,7 @@ const styles = StyleSheet.create({
   editCard: { width: '100%', maxWidth: 720, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.98)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.7)', overflow: 'hidden', maxHeight: '88%' },
   editHeader: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   iconCircle: { width: 40, height: 40, borderRadius: 999, backgroundColor: 'rgba(17,24,39,0.06)', justifyContent: 'center', alignItems: 'center' },
+  iconCircleHover: { backgroundColor: 'rgba(17,24,39,0.09)' },
   editTitle: { fontSize: 18, fontWeight: '900', color: '#111827', textAlign: 'center' },
   editSubtitle: { marginTop: 4, fontSize: 12, fontWeight: '800', color: 'rgba(17,24,39,0.55)', textAlign: 'center' },
   editDivider: { height: 1, backgroundColor: 'rgba(17,24,39,0.08)', marginHorizontal: 16 },
@@ -1136,5 +1296,64 @@ const styles = StyleSheet.create({
   footerBtnPrimary: { flex: 2, height: 50, borderRadius: 14, backgroundColor: '#1d4ed8', justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 8 },
   footerBtnPrimaryHover: { opacity: 0.95 },
   footerBtnPrimaryText: { fontSize: 14, fontWeight: '900', color: '#fff' },
+
+  dateModalCard: {
+    width: '100%',
+    maxWidth: 520,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.98)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.7)',
+    padding: 16,
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 20px 60px rgba(0,0,0,0.18)' } as any) : null),
+  },
+  dateModalHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  dateHeaderSide: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
+  dateModalTitle: { width: '100%', flex: 1, fontSize: 16, fontWeight: '900', color: '#111827', textAlign: 'center' },
+  weekRow: {
+    marginTop: 14,
+    flexDirection: 'row-reverse',
+    justifyContent: 'space-between',
+    paddingHorizontal: 6,
+  },
+  weekDay: { width: '14.2857%', textAlign: 'center', fontSize: 11, fontWeight: '900', color: 'rgba(17,24,39,0.55)' },
+  calendarGrid: { marginTop: 10, flexDirection: 'row-reverse', flexWrap: 'wrap' },
+  dayCell: {
+    width: '14.2857%',
+    paddingVertical: 10,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 4,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  dayCellHover: { backgroundColor: 'rgba(17, 24, 39, 0.04)' },
+  dayCellOutside: { opacity: 0.55 },
+  dayCellSelected: { backgroundColor: colors.primary },
+  dayText: { fontSize: 13, fontWeight: '900', color: '#111827', textAlign: 'center' },
+  dayTextOutside: { color: 'rgba(17,24,39,0.55)' },
+  dayTextSelected: { color: colors.white },
+  dateModalFooter: {
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(17, 24, 39, 0.06)',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    gap: 10,
+  },
+  todayBtn: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: 'rgba(22,45,156,0.06)',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  todayBtnHover: { backgroundColor: 'rgba(22,45,156,0.10)' },
+  todayBtnText: { fontSize: 12, fontWeight: '900', color: colors.primary, textAlign: 'right' },
 });
 
