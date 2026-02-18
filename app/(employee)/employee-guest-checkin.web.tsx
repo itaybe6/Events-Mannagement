@@ -124,6 +124,8 @@ export default function EmployeeGuestCheckinWebScreen() {
   const resolvedEventId = useMemo(() => String(eventId || '').trim(), [eventId]);
   const { width, height } = useWindowDimensions();
   const isLg = width >= 1024;
+  const isNarrow = width < 520;
+  const [collapsedTableGroups, setCollapsedTableGroups] = useState<Record<string, boolean>>({});
   const [tableFilter, setTableFilter] = useState<string | null>(null);
   const [tables, setTables] = useState<Table[]>([]);
   const [tableNumberById, setTableNumberById] = useState<Map<string, number | null>>(() => new Map());
@@ -222,8 +224,9 @@ export default function EmployeeGuestCheckinWebScreen() {
   const seatedByNumber = useMemo(() => {
     const m = new Map<number, number>();
     guests.forEach((g) => {
-      if (!g.tableId) return;
-      const num = tableNumberById.get(String(g.tableId)) ?? null;
+      const tableIdKey = g.tableId === null || g.tableId === undefined ? '' : String(g.tableId).trim();
+      if (!tableIdKey) return;
+      const num = tableNumberById.get(tableIdKey) ?? null;
       if (typeof num !== 'number') return;
       const ppl = Number(g.numberOfPeople) || 1;
       m.set(num, (m.get(num) || 0) + ppl);
@@ -388,9 +391,72 @@ export default function EmployeeGuestCheckinWebScreen() {
 
   const visibleGuests = useMemo(() => {
     if (!tableFilter) return filteredGuests;
-    if (tableFilter === NO_TABLE_KEY) return filteredGuests.filter((g) => !g.tableId);
-    return filteredGuests.filter((g) => String(g.tableId || '') === tableFilter);
+    if (tableFilter === NO_TABLE_KEY) {
+      return filteredGuests.filter((g) => g.tableId === null || g.tableId === undefined || String(g.tableId).trim() === '');
+    }
+    return filteredGuests.filter((g) => String(g.tableId ?? '').trim() === tableFilter);
   }, [filteredGuests, tableFilter]);
+
+  const groupedVisibleGuests = useMemo(() => {
+    const groups = new Map<
+      string,
+      {
+        key: string;
+        label: string;
+        sort: number;
+        guests: any[];
+        peopleTotal: number;
+        arrivedPeople: number;
+        guestCount: number;
+      }
+    >();
+
+    for (const g of visibleGuests) {
+      const tableIdKey = g.tableId === null || g.tableId === undefined ? '' : String(g.tableId).trim();
+      const tableNumber = tableIdKey ? (tableNumberById.get(tableIdKey) ?? null) : null;
+
+      let key = 'none';
+      let label = 'ללא שולחן';
+      let sort = 2_000_000;
+
+      if (typeof tableNumber === 'number') {
+        key = `t:${tableNumber}`;
+        label = `שולחן ${tableNumber}`;
+        sort = tableNumber;
+      } else if (tableIdKey) {
+        key = `id:${tableIdKey}`;
+        label = tableLabelById.get(tableIdKey) || 'שולחן';
+        sort = 1_000_000;
+      }
+
+      const people = Number(g.numberOfPeople) || 1;
+      const arrivedCount =
+        g.checkedInCount === null || g.checkedInCount === undefined ? people : Number(g.checkedInCount) || 0;
+
+      const current = groups.get(key) || {
+        key,
+        label,
+        sort,
+        guests: [] as any[],
+        peopleTotal: 0,
+        arrivedPeople: 0,
+        guestCount: 0,
+      };
+
+      current.guests.push(g);
+      current.peopleTotal += people;
+      current.arrivedPeople += g.checkedIn ? arrivedCount : 0;
+      current.guestCount += 1;
+      groups.set(key, current);
+    }
+
+    const arr = Array.from(groups.values());
+    arr.sort((a, b) => {
+      if (a.sort !== b.sort) return a.sort - b.sort;
+      return String(a.label).localeCompare(String(b.label), 'he');
+    });
+    return arr;
+  }, [tableLabelById, tableNumberById, visibleGuests]);
 
   const mapCardHeight = useMemo(() => {
     if (!height || !isLg) return 620;
@@ -438,74 +504,115 @@ export default function EmployeeGuestCheckinWebScreen() {
           <View style={[styles.content, !isLg ? styles.contentSm : null]}>
             <View style={[styles.dashboardCol, !isLg ? styles.colSm : null]}>
               <View style={Platform.OS === 'web' && isLg ? ({ position: 'sticky', top: stickyTop } as any) : null}>
-                <View style={styles.card}>
-                  <Text style={styles.cardTitle}>דשבורד אירוע</Text>
-
-                  <View style={[styles.dashboardGrid, !isLg ? styles.dashboardGridSm : null]}>
-                    <View style={styles.metricCard}>
-                      <View style={styles.metricIcon}>
-                        <Ionicons name="people" size={16} color={colors.primary} />
+                <View style={[styles.card, styles.dashboardCard]}>
+                  <View style={styles.dashboardHeader}>
+                    <View style={styles.dashboardHeaderLeft}>
+                      <View style={styles.dashboardHeaderIcon}>
+                        <Ionicons name="sparkles" size={18} color="#fff" />
                       </View>
                       <View style={{ flex: 1, minWidth: 0 }}>
-                        <Text style={styles.metricLabel}>מוזמנים</Text>
-                        <Text style={styles.metricValue}>{eventOverview.invitedPeople}</Text>
+                        <Text style={styles.dashboardHeaderTitle}>ניהול אירוע</Text>
+                        <Text style={styles.dashboardHeaderSub}>סטטוס נוכחי בזמן אמת</Text>
                       </View>
                     </View>
-
-                    <View style={[styles.metricCard, { backgroundColor: 'rgba(16,185,129,0.08)', borderColor: 'rgba(16,185,129,0.18)' }]}>
-                      <View style={[styles.metricIcon, { backgroundColor: 'rgba(16,185,129,0.12)' }]}>
-                        <Ionicons name="checkmark-circle" size={16} color="#0F766E" />
-                      </View>
-                      <View style={{ flex: 1, minWidth: 0 }}>
-                        <Text style={styles.metricLabel}>הגיעו</Text>
-                        <Text style={[styles.metricValue, { color: '#0F766E' }]}>{eventOverview.arrivedPeople}</Text>
-                      </View>
-                    </View>
-
-                    <View style={styles.metricCard}>
-                      <View style={[styles.metricIcon, { backgroundColor: 'rgba(245,158,11,0.12)' }]}>
-                        <Ionicons name="time" size={16} color="#B45309" />
-                      </View>
-                      <View style={{ flex: 1, minWidth: 0 }}>
-                        <Text style={styles.metricLabel}>אישר ועדיין לא הגיע</Text>
-                        <Text style={[styles.metricValue, { color: '#B45309' }]}>{eventOverview.arrivingNotArrivedGuests}</Text>
-                      </View>
-                    </View>
-
-                    <View style={styles.metricCard}>
-                      <View style={[styles.metricIcon, { backgroundColor: 'rgba(79,70,229,0.10)' }]}>
-                        <Ionicons name="grid" size={16} color="#4338CA" />
-                      </View>
-                      <View style={{ flex: 1, minWidth: 0 }}>
-                        <Text style={styles.metricLabel}>שולחנות מלאים</Text>
-                        <Text style={[styles.metricValue, { color: '#4338CA' }]}>{eventOverview.fullTables}</Text>
-                      </View>
-                    </View>
-
-                    <View style={styles.metricCard}>
-                      <View style={[styles.metricIcon, { backgroundColor: 'rgba(148,163,184,0.18)' }]}>
-                        <Ionicons name="remove-circle" size={16} color={colors.gray[700]} />
-                      </View>
-                      <View style={{ flex: 1, minWidth: 0 }}>
-                        <Text style={styles.metricLabel}>שולחנות ריקים</Text>
-                        <Text style={styles.metricValue}>{eventOverview.emptyTables}</Text>
-                      </View>
-                    </View>
-
-                    <View style={styles.metricCard}>
-                      <View style={[styles.metricIcon, { backgroundColor: 'rgba(204,160,0,0.12)' }]}>
-                        <Ionicons name="shield" size={16} color={colors.secondary} />
-                      </View>
-                      <View style={{ flex: 1, minWidth: 0 }}>
-                        <Text style={styles.metricLabel}>שולחנות רזרבה</Text>
-                        <Text style={[styles.metricValue, { color: colors.secondary }]}>{eventOverview.reserveTables}</Text>
-                      </View>
-                    </View>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="אפשרויות"
+                      onPress={() => {}}
+                      style={({ hovered, pressed }: any) => [
+                        styles.dashboardHeaderMenu,
+                        Platform.OS === 'web' && hovered ? { opacity: 0.95 } : null,
+                        pressed ? { opacity: 0.85 } : null,
+                      ]}
+                    >
+                      <Ionicons name="ellipsis-vertical" size={18} color="rgba(255,255,255,0.75)" />
+                    </Pressable>
+                    <View style={styles.dashboardHeaderGlow} pointerEvents="none" />
                   </View>
 
-                  <View style={{ marginTop: 14 }}>
-                    <Text style={styles.sectionTitle}>סינון מהיר</Text>
-                    <View style={styles.pillsRow}>
+                  <View style={styles.dashboardBody}>
+                    <View style={styles.metricsGrid}>
+                      <View style={[styles.metricTile, styles.metricTileNeutral]}>
+                        <Text style={styles.metricTileValue}>{eventOverview.invitedPeople}</Text>
+                        <Text style={styles.metricTileLabel}>סה"כ מוזמנים</Text>
+                      </View>
+
+                      <View style={[styles.metricTile, styles.metricTileSuccess]}>
+                        <Text style={[styles.metricTileValue, styles.metricTileValueSuccess]}>{eventOverview.arrivedPeople}</Text>
+                        <Text style={[styles.metricTileLabel, styles.metricTileLabelSuccess]}>הגיעו</Text>
+                      </View>
+
+                      <View style={[styles.metricTile, styles.metricTileWarn]}>
+                        <Text style={[styles.metricTileValue, styles.metricTileValueWarn]}>{eventOverview.arrivingNotArrivedGuests}</Text>
+                        <Text style={[styles.metricTileLabel, styles.metricTileLabelWarn]}>טרם הגיעו</Text>
+                      </View>
+
+                      <View style={[styles.metricTile, styles.metricTileNeutral]}>
+                        <Text style={[styles.metricTileValue, styles.metricTileValueMuted]}>{eventOverview.emptyTables}</Text>
+                        <Text style={styles.metricTileLabel}>שולחנות ריקים</Text>
+                      </View>
+
+                      <View style={[styles.metricTile, styles.metricTileIndigo]}>
+                        <Text style={[styles.metricTileValue, styles.metricTileValueIndigo]}>{eventOverview.fullTables}</Text>
+                        <Text style={[styles.metricTileLabel, styles.metricTileLabelIndigo]}>שולחנות מלאים</Text>
+                      </View>
+
+                      <View style={[styles.metricTile, styles.metricTileYellow]}>
+                        <Text style={[styles.metricTileValue, styles.metricTileValueYellow]}>{eventOverview.reserveTables}</Text>
+                        <Text style={[styles.metricTileLabel, styles.metricTileLabelYellow]}>שולחנות רזרבה</Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.arrivalCard}>
+                      <View style={styles.arrivalTopRow}>
+                        <View style={styles.arrivalTitleRow}>
+                          <Ionicons name="analytics" size={16} color={colors.gray[400]} />
+                          <Text style={styles.arrivalTitle}>קצב הגעה</Text>
+                        </View>
+                        <View style={styles.arrivalBadge}>
+                          <Text style={styles.arrivalBadgeStrong}>
+                            {counts.total ? `${counts.checkedIn}/${counts.total}` : '0/0'}
+                          </Text>
+                          <Text style={styles.arrivalBadgeSub}>הושלם</Text>
+                        </View>
+                      </View>
+
+                      <View style={styles.arrivalBarWrap}>
+                        <View
+                          style={[
+                            styles.arrivalBarFill,
+                            {
+                              width: `${counts.total ? Math.round((counts.checkedIn / counts.total) * 100) : 0}%`,
+                            } as any,
+                          ]}
+                        >
+                          <Text style={styles.arrivalBarText}>
+                            {counts.total ? `${Math.round((counts.checkedIn / counts.total) * 100)}%` : '0%'}
+                          </Text>
+                        </View>
+                        <View
+                          pointerEvents="none"
+                          style={[
+                            styles.arrivalBarStripes,
+                            Platform.OS === 'web'
+                              ? ({
+                                  backgroundImage:
+                                    'linear-gradient(45deg, rgba(255,255,255,.18) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.18) 50%, rgba(255,255,255,.18) 75%, transparent 75%, transparent)',
+                                  backgroundSize: '16px 16px',
+                                } as any)
+                              : null,
+                          ]}
+                        />
+                      </View>
+                      <View style={styles.arrivalBarLegend}>
+                        <Text style={styles.arrivalLegendText}>התחלה</Text>
+                        <Text style={styles.arrivalLegendText}>יעד</Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.quickFilterWrap}>
+                      <Text style={styles.sectionTitle}>סינון מהיר</Text>
+                      <View style={styles.pillsRow}>
                       {[
                         { key: 'all' as const, label: 'הכל' },
                         { key: 'checked_in' as const, label: 'הגיעו' },
@@ -529,19 +636,7 @@ export default function EmployeeGuestCheckinWebScreen() {
                           </Pressable>
                         );
                       })}
-                    </View>
-                  </View>
-
-                  <View style={styles.summaryRow}>
-                    <View style={styles.summaryPill}>
-                      <Text style={styles.summaryPillText}>
-                        {counts.total ? `${counts.checkedIn}/${counts.total} הגיעו` : 'אין נתונים'}
-                      </Text>
-                    </View>
-                    <View style={[styles.summaryPill, { backgroundColor: 'rgba(34,197,94,0.10)' }]}>
-                      <Text style={[styles.summaryPillText, { color: '#15803D' }]}>
-                        {counts.total ? `${Math.round((counts.checkedIn / counts.total) * 100)}%` : '0%'}
-                      </Text>
+                      </View>
                     </View>
                   </View>
                 </View>
@@ -552,7 +647,6 @@ export default function EmployeeGuestCheckinWebScreen() {
               <View style={Platform.OS === 'web' && isLg ? ({ position: 'sticky', top: stickyTop } as any) : null}>
                 <View style={styles.card}>
                   <View style={styles.cardHeaderRow}>
-                    <Text style={styles.cardTitle}>רשימת אורחים</Text>
                     {tableFilter ? (
                       <Pressable
                         accessibilityRole="button"
@@ -568,8 +662,6 @@ export default function EmployeeGuestCheckinWebScreen() {
                       </Pressable>
                     ) : null}
                   </View>
-
-                  <Text style={styles.helperText}>סינון שולחן: {activeTableLabel}</Text>
 
                   <View style={[styles.mainSearchWrap, { marginTop: 12 }]}>
                     <View style={styles.searchIconRight}>
@@ -604,111 +696,170 @@ export default function EmployeeGuestCheckinWebScreen() {
                         showsVerticalScrollIndicator={false}
                         nestedScrollEnabled
                       >
-                        <View style={{ gap: 10 }}>
-                          {visibleGuests.map((g) => {
-                            const checkedIn = Boolean(g.checkedIn);
-                            const isSaving = savingId === g.id;
-                            const tag = statusTag(g.status);
-                            const tableNumber = g.tableId ? (tableNumberById.get(g.tableId) ?? null) : null;
-                            const people = Number(g.numberOfPeople) || 1;
-                            const arrivedCount =
-                              g.checkedInCount === null || g.checkedInCount === undefined ? people : Number(g.checkedInCount) || 0;
-
+                        <View style={styles.tableGroupsWrap}>
+                          {groupedVisibleGuests.map((group) => {
+                            const collapsed = Boolean(collapsedTableGroups[group.key]);
                             return (
-                              <Pressable
-                                key={g.id}
-                                accessibilityRole="button"
-                                accessibilityLabel={`בחירת אורח ${g.name}`}
-                                onPress={() => {
-                                  const next = typeof tableNumber === 'number' ? tableNumber : null;
-                                  setSelectedTableNumber((prev) => (prev === next ? null : next));
-                                }}
-                                style={({ hovered, pressed }: any) => [
-                                  styles.guestRowCompact,
-                                  checkedIn ? styles.guestRowCompactOn : null,
-                                  Platform.OS === 'web' && hovered ? { backgroundColor: 'rgba(6,23,62,0.03)' } : null,
-                                  pressed ? { opacity: 0.96 } : null,
-                                ]}
-                              >
-                                <View style={[styles.guestRowAccent, checkedIn ? styles.guestRowAccentOn : null]} />
-
-                                <View style={styles.guestRowMain}>
-                                  <View style={[styles.avatar, styles.avatarCompact, checkedIn ? styles.avatarOn : null]}>
-                                    <Text style={styles.avatarText}>{initialsFromName(g.name)}</Text>
-                                  </View>
-
-                                  <View style={{ flex: 1, minWidth: 0 }}>
-                                    <Text style={styles.guestNameCompact} numberOfLines={1}>
-                                      {g.name}
-                                    </Text>
-                                    <Text style={styles.guestMetaCompact} numberOfLines={1}>
-                                      {people === 1 ? 'אדם אחד' : `${people} אנשים`}
-                                    </Text>
-                                  </View>
-                                </View>
-
-                                <View style={styles.guestRowRight}>
-                                  <View style={styles.tableChip}>
-                                    <Text style={styles.tableChipText}>{tableNumber != null ? `שולחן ${tableNumber}` : '—'}</Text>
-                                  </View>
-
-                                  <View style={[styles.statusTag, { backgroundColor: tag.bg }]}>
-                                    <Text style={[styles.statusTagText, { color: tag.fg }]}>{g.status}</Text>
-                                  </View>
-
-                                  {checkedIn ? (
-                                    <View style={styles.compactStepper}>
-                                      <Pressable
-                                        accessibilityRole="button"
-                                        accessibilityLabel={`הפחת כמות שהגיעה עבור ${g.name}`}
-                                        onPress={() => void setCheckedInCount(g, Math.max(0, arrivedCount - 1))}
-                                        disabled={savingCountId === g.id || arrivedCount <= 0}
-                                        style={({ hovered, pressed }: any) => [
-                                          styles.stepBtnCompact,
-                                          (savingCountId === g.id || arrivedCount <= 0) ? styles.stepBtnDisabled : null,
-                                          Platform.OS === 'web' && hovered ? styles.stepBtnHover : null,
-                                          pressed ? { opacity: 0.92 } : null,
-                                        ]}
-                                      >
-                                        <Text style={styles.stepBtnText}>-</Text>
-                                      </Pressable>
-
-                                      <View style={styles.compactCountWrap}>
-                                        {savingCountId === g.id ? (
-                                          <ActivityIndicator size={12} color={colors.primary} />
-                                        ) : (
-                                          <Text style={styles.compactCountText}>{arrivedCount}</Text>
-                                        )}
-                                      </View>
-
-                                      <Pressable
-                                        accessibilityRole="button"
-                                        accessibilityLabel={`הגדל כמות שהגיעה עבור ${g.name}`}
-                                        onPress={() => void setCheckedInCount(g, arrivedCount + 1)}
-                                        disabled={savingCountId === g.id}
-                                        style={({ hovered, pressed }: any) => [
-                                          styles.stepBtnCompact,
-                                          savingCountId === g.id ? styles.stepBtnDisabled : null,
-                                          Platform.OS === 'web' && hovered ? styles.stepBtnHover : null,
-                                          pressed ? { opacity: 0.92 } : null,
-                                        ]}
-                                      >
-                                        <Text style={styles.stepBtnText}>+</Text>
-                                      </Pressable>
+                              <View key={group.key} style={styles.tableGroupCard}>
+                                <Pressable
+                                  accessibilityRole="button"
+                                  accessibilityLabel={`שולחן ${group.label}`}
+                                  onPress={() =>
+                                    setCollapsedTableGroups((prev) => ({ ...prev, [group.key]: !prev[group.key] }))
+                                  }
+                                  style={({ hovered, pressed }: any) => [
+                                    styles.tableGroupHeader,
+                                    Platform.OS === 'web' && hovered ? { backgroundColor: 'rgba(17,24,39,0.03)' } : null,
+                                    pressed ? { opacity: 0.95 } : null,
+                                  ]}
+                                >
+                                  <View style={styles.tableGroupTitleRow}>
+                                    <View style={styles.tableGroupIcon}>
+                                      <Ionicons name="restaurant" size={14} color={colors.primary} />
                                     </View>
-                                  ) : (
-                                    <Text style={styles.peoplePill}>{people}</Text>
-                                  )}
+                                    <Text style={styles.tableGroupTitle} numberOfLines={1}>
+                                      {group.label}
+                                    </Text>
+                                  </View>
 
-                                  <Switch
-                                    checked={checkedIn}
-                                    saving={isSaving}
-                                    disabled={isSaving}
-                                    accessibilityLabel={checkedIn ? `סמן שלא הגיע: ${g.name}` : `סמן שהגיע: ${g.name}`}
-                                    onPress={() => void toggleCheckIn(g)}
-                                  />
-                                </View>
-                              </Pressable>
+                                  <View style={styles.tableGroupMetaRow}>
+                                    <View style={styles.tableGroupMetaPill}>
+                                      <Text style={styles.tableGroupMetaStrong}>{group.arrivedPeople}</Text>
+                                      <Text style={styles.tableGroupMetaDim}>/</Text>
+                                      <Text style={styles.tableGroupMetaStrong}>{group.peopleTotal}</Text>
+                                      <Text style={styles.tableGroupMetaDim}>אנשים</Text>
+                                    </View>
+                                    <View style={styles.tableGroupMetaPill}>
+                                      <Text style={styles.tableGroupMetaStrong}>{group.guestCount}</Text>
+                                      <Text style={styles.tableGroupMetaDim}>מוזמנים</Text>
+                                    </View>
+                                    <Ionicons
+                                      name={collapsed ? 'chevron-down' : 'chevron-up'}
+                                      size={16}
+                                      color={colors.gray[500]}
+                                    />
+                                  </View>
+                                </Pressable>
+
+                                {collapsed ? null : (
+                                  <View style={styles.tableGroupBody}>
+                                    {group.guests.map((g: any) => {
+                                      const checkedIn = Boolean(g.checkedIn);
+                                      const isSaving = savingId === g.id;
+                                      const tag = statusTag(g.status);
+                                      const tableIdKey =
+                                        g.tableId === null || g.tableId === undefined ? '' : String(g.tableId).trim();
+                                      const tableNumber = tableIdKey ? (tableNumberById.get(tableIdKey) ?? null) : null;
+                                      const people = Number(g.numberOfPeople) || 1;
+                                      const arrivedCount =
+                                        g.checkedInCount === null || g.checkedInCount === undefined
+                                          ? people
+                                          : Number(g.checkedInCount) || 0;
+
+                                      return (
+                                        <Pressable
+                                          key={g.id}
+                                          accessibilityRole="button"
+                                          accessibilityLabel={`בחירת אורח ${g.name}`}
+                                          onPress={() => {
+                                            const next = typeof tableNumber === 'number' ? tableNumber : null;
+                                            setSelectedTableNumber((prev) => (prev === next ? null : next));
+                                          }}
+                                          style={({ hovered, pressed }: any) => [
+                                            styles.guestRowCompact,
+                                            checkedIn ? styles.guestRowCompactOn : null,
+                                            Platform.OS === 'web' && hovered ? { backgroundColor: 'rgba(6,23,62,0.03)' } : null,
+                                            pressed ? { opacity: 0.96 } : null,
+                                          ]}
+                                        >
+                                          <View style={[styles.guestRowAccent, checkedIn ? styles.guestRowAccentOn : null]} />
+
+                                          <View style={styles.guestRowMain}>
+                                            <View style={[styles.avatar, styles.avatarCompact, checkedIn ? styles.avatarOn : null]}>
+                                              <Text style={styles.avatarText}>{initialsFromName(g.name)}</Text>
+                                            </View>
+
+                                            <View style={{ flex: 1, minWidth: 0 }}>
+                                              <Text style={styles.guestNameCompact} numberOfLines={1}>
+                                                {g.name}
+                                              </Text>
+                                              <Text style={styles.guestMetaCompact} numberOfLines={1}>
+                                                {people === 1 ? 'אדם אחד' : `${people} אנשים`}
+                                              </Text>
+                                            </View>
+                                          </View>
+
+                                          <View style={styles.guestRowRight}>
+                                            <View style={styles.tableChip}>
+                                              <Text style={styles.tableChipText}>
+                                                {tableNumber != null ? `שולחן ${tableNumber}` : '—'}
+                                              </Text>
+                                            </View>
+
+                                            <View style={[styles.statusTag, { backgroundColor: tag.bg }]}>
+                                              <Text style={[styles.statusTagText, { color: tag.fg }]}>{g.status}</Text>
+                                            </View>
+
+                                            <View style={styles.arrivalSlot}>
+                                              {checkedIn ? (
+                                                <View style={styles.compactStepper}>
+                                                  <Pressable
+                                                    accessibilityRole="button"
+                                                    accessibilityLabel={`הפחת כמות שהגיעה עבור ${g.name}`}
+                                                    onPress={() => void setCheckedInCount(g, Math.max(0, arrivedCount - 1))}
+                                                    disabled={savingCountId === g.id || arrivedCount <= 0}
+                                                    style={({ hovered, pressed }: any) => [
+                                                      styles.stepBtnCompact,
+                                                      (savingCountId === g.id || arrivedCount <= 0) ? styles.stepBtnDisabled : null,
+                                                      Platform.OS === 'web' && hovered ? styles.stepBtnHover : null,
+                                                      pressed ? { opacity: 0.92 } : null,
+                                                    ]}
+                                                  >
+                                                    <Text style={styles.stepBtnText}>-</Text>
+                                                  </Pressable>
+
+                                                  <View style={styles.compactCountWrap}>
+                                                    {savingCountId === g.id ? (
+                                                      <ActivityIndicator size={12} color={colors.primary} />
+                                                    ) : (
+                                                      <Text style={styles.compactCountText}>{arrivedCount}</Text>
+                                                    )}
+                                                  </View>
+
+                                                  <Pressable
+                                                    accessibilityRole="button"
+                                                    accessibilityLabel={`הגדל כמות שהגיעה עבור ${g.name}`}
+                                                    onPress={() => void setCheckedInCount(g, arrivedCount + 1)}
+                                                    disabled={savingCountId === g.id}
+                                                    style={({ hovered, pressed }: any) => [
+                                                      styles.stepBtnCompact,
+                                                      savingCountId === g.id ? styles.stepBtnDisabled : null,
+                                                      Platform.OS === 'web' && hovered ? styles.stepBtnHover : null,
+                                                      pressed ? { opacity: 0.92 } : null,
+                                                    ]}
+                                                  >
+                                                    <Text style={styles.stepBtnText}>+</Text>
+                                                  </Pressable>
+                                                </View>
+                                              ) : (
+                                                <Text style={styles.peoplePill}>{people}</Text>
+                                              )}
+                                            </View>
+
+                                            <Switch
+                                              checked={checkedIn}
+                                              saving={isSaving}
+                                              disabled={isSaving}
+                                              accessibilityLabel={checkedIn ? `סמן שלא הגיע: ${g.name}` : `סמן שהגיע: ${g.name}`}
+                                              onPress={() => void toggleCheckIn(g)}
+                                            />
+                                          </View>
+                                        </Pressable>
+                                      );
+                                    })}
+                                  </View>
+                                )}
+                              </View>
                             );
                           })}
                         </View>
@@ -762,23 +913,31 @@ export default function EmployeeGuestCheckinWebScreen() {
                       labels={webSketch.labels}
                       hideTableType
                       showTableBorder={false}
-                      getTableBaseColor={(t: any) => (t?.type === 'reserve' ? colors.secondary : colors.primary)}
-                      getTableBackgroundAlpha={(t: any) => (t?.type === 'reserve' ? 0.18 : 0.42)}
-                      selectedRingColor={colors.secondary}
+                      getTableBaseColor={(t: any) => {
+                        const selected = Boolean(selectedTableNumber) && Number(t?.number) === Number(selectedTableNumber);
+                        if (selected) return '#10B981';
+                        return t?.type === 'reserve' ? colors.secondary : colors.primary;
+                      }}
+                      getTableBackgroundAlpha={(t: any) => {
+                        const selected = Boolean(selectedTableNumber) && Number(t?.number) === Number(selectedTableNumber);
+                        if (selected) return 0.28;
+                        return t?.type === 'reserve' ? 0.18 : 0.42;
+                      }}
+                      selectedRingColor="#10B981"
                       isTableSelected={(t: any) => Boolean(selectedTableNumber) && Number(t?.number) === Number(selectedTableNumber)}
                       getTableSubLabel={(t: any) => {
                         const num = t?.number;
                         if (!num) return null;
                         const seated = seatedByNumber.get(Number(num)) ?? 0;
                         const cap = Number(t?.seats ?? 0) || 0;
-                        return cap ? `${seated} / ${cap}` : String(seated);
+                        return cap ? `${cap} / ${seated}` : String(seated);
                       }}
                       getTableTooltip={(t: any) => {
                         const num = t?.number;
                         if (!num) return null;
                         const seated = seatedByNumber.get(Number(num)) ?? 0;
                         const cap = Number(t?.seats ?? 0) || 0;
-                        return cap ? `יושבים בשולחן: ${seated} / ${cap}` : `יושבים בשולחן: ${seated}`;
+                        return cap ? `יושבים בשולחן: ${cap} / ${seated}` : `יושבים בשולחן: ${seated}`;
                       }}
                       onPressTableNumber={(num) => {
                         if (!num) return;
@@ -850,17 +1009,134 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     elevation: 1,
   },
+  dashboardCard: {
+    padding: 0,
+    overflow: 'hidden',
+  },
   cardTitle: { fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'right' },
 
   dashboardGrid: {
-    marginTop: 12,
+    marginTop: 10,
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
+    gap: 8,
   },
   dashboardGridSm: {
-    flexDirection: 'column',
+    gap: 8,
   },
+  dashboardHeader: {
+    backgroundColor: '#111827',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  dashboardHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 },
+  dashboardHeaderIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dashboardHeaderTitle: { fontSize: 15, fontWeight: '900', color: '#fff', textAlign: 'right' },
+  dashboardHeaderSub: { marginTop: 2, fontSize: 11, fontWeight: '800', color: 'rgba(209,213,219,0.95)', textAlign: 'right' },
+  dashboardHeaderMenu: { padding: 6, borderRadius: 10 },
+  dashboardHeaderGlow: {
+    position: 'absolute',
+    top: -24,
+    right: -24,
+    width: 120,
+    height: 120,
+    borderRadius: 999,
+    backgroundColor: 'rgba(99,102,241,0.22)',
+    ...(Platform.OS === 'web' ? ({ filter: 'blur(28px)' } as any) : null),
+  },
+  dashboardBody: { paddingHorizontal: 14, paddingBottom: 12, paddingTop: 10, gap: 10 },
+  metricsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between' },
+  metricTile: {
+    width: '31.5%',
+    minWidth: 86,
+    borderRadius: 14,
+    paddingVertical: 9,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...(Platform.OS === 'web' ? ({ transitionProperty: 'transform, box-shadow, background-color', transitionDuration: '150ms' } as any) : null),
+  },
+  metricTileNeutral: { backgroundColor: 'rgba(248,250,252,1)', borderColor: 'rgba(15,23,42,0.06)' },
+  metricTileSuccess: { backgroundColor: 'rgba(236,253,245,1)', borderColor: 'rgba(16,185,129,0.22)' },
+  metricTileWarn: { backgroundColor: 'rgba(255,247,237,1)', borderColor: 'rgba(245,158,11,0.24)' },
+  metricTileIndigo: { backgroundColor: 'rgba(238,242,255,1)', borderColor: 'rgba(99,102,241,0.22)' },
+  metricTileYellow: { backgroundColor: 'rgba(254,252,232,1)', borderColor: 'rgba(234,179,8,0.24)' },
+  metricTileValue: { fontSize: 20, fontWeight: '900', color: '#111827', textAlign: 'center' },
+  metricTileValueMuted: { color: 'rgba(55,65,81,0.95)' },
+  metricTileValueSuccess: { color: '#047857' },
+  metricTileValueWarn: { color: '#B45309' },
+  metricTileValueIndigo: { color: '#4338CA' },
+  metricTileValueYellow: { color: '#CA8A04' },
+  metricTileLabel: {
+    marginTop: 4,
+    fontSize: 10,
+    fontWeight: '800',
+    color: 'rgba(107,114,128,1)',
+    textAlign: 'center',
+    textTransform: 'uppercase' as any,
+    letterSpacing: 0.6,
+  },
+  metricTileLabelSuccess: { color: 'rgba(4,120,87,0.95)' },
+  metricTileLabelWarn: { color: 'rgba(180,83,9,0.95)' },
+  metricTileLabelIndigo: { color: 'rgba(67,56,202,0.95)' },
+  metricTileLabelYellow: { color: 'rgba(161,98,7,0.95)' },
+
+  arrivalCard: {
+    borderRadius: 18,
+    padding: 10,
+    backgroundColor: 'rgba(249,250,251,1)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.06)',
+  },
+  arrivalTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 8 },
+  arrivalTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  arrivalTitle: { fontSize: 12, fontWeight: '900', color: 'rgba(55,65,81,0.95)', textAlign: 'right' },
+  arrivalBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.06)',
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 2px 8px rgba(0,0,0,0.05)' } as any) : null),
+  },
+  arrivalBadgeStrong: { fontSize: 12, fontWeight: '900', color: '#111827', textAlign: 'right' },
+  arrivalBadgeSub: { fontSize: 10, fontWeight: '800', color: 'rgba(107,114,128,1)', textAlign: 'right' },
+  arrivalBarWrap: {
+    height: 32,
+    borderRadius: 999,
+    backgroundColor: 'rgba(229,231,235,1)',
+    overflow: 'hidden',
+    justifyContent: 'center',
+  },
+  arrivalBarFill: {
+    height: '100%',
+    backgroundColor: '#10B981',
+    borderRadius: 999,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+  },
+  arrivalBarText: { fontSize: 12, fontWeight: '900', color: '#fff', textAlign: 'right' },
+  arrivalBarStripes: { position: 'absolute', inset: 0 as any, opacity: 0.28 },
+  arrivalBarLegend: { marginTop: 6, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4 },
+  arrivalLegendText: { fontSize: 10, fontWeight: '800', color: 'rgba(156,163,175,1)', textAlign: 'right' },
+
+  quickFilterWrap: { gap: 6 },
   metricCard: {
     width: '48%',
     minWidth: 140,
@@ -868,21 +1144,21 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(6,23,62,0.08)',
     borderRadius: 16,
-    padding: 12,
+    padding: 10,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
   },
   metricIcon: {
-    width: 34,
-    height: 34,
+    width: 30,
+    height: 30,
     borderRadius: 12,
     backgroundColor: 'rgba(6,23,62,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   metricLabel: { fontSize: 11, fontWeight: '900', color: colors.gray[600], textAlign: 'right' },
-  metricValue: { marginTop: 2, fontSize: 18, fontWeight: '900', color: colors.text, textAlign: 'right' },
+  metricValue: { marginTop: 2, fontSize: 16, fontWeight: '900', color: colors.text, textAlign: 'right' },
   sectionTitle: {
     fontSize: 11,
     fontWeight: '900',
@@ -912,7 +1188,7 @@ const styles = StyleSheet.create({
   searchIconRight: { position: 'absolute', right: 12 },
   searchInput: { paddingRight: 42, paddingLeft: 12, fontSize: 14, fontWeight: '800', color: colors.text },
 
-  pillsRow: { marginTop: 10, flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  pillsRow: { marginTop: 8, flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   pill: {
     borderRadius: 12,
     paddingHorizontal: 14,
@@ -984,6 +1260,59 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(15,23,42,0.06)',
     padding: 14,
   },
+  tableGroupsWrap: { gap: 10 },
+  tableGroupCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.06)',
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    overflow: 'hidden',
+  },
+  tableGroupHeader: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    backgroundColor: 'rgba(15,23,42,0.02)',
+    ...(Platform.OS === 'web' ? ({ direction: 'ltr' } as any) : null),
+  },
+  tableGroupTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    gap: 8,
+    flex: 1,
+    minWidth: 0,
+    ...(Platform.OS === 'web' ? ({ direction: 'ltr' } as any) : null),
+  },
+  tableGroupIcon: {
+    width: 26,
+    height: 26,
+    borderRadius: 10,
+    backgroundColor: 'rgba(6,23,62,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.10)',
+  },
+  tableGroupTitle: { fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'left' },
+  tableGroupMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 },
+  tableGroupMetaPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.06)',
+  },
+  tableGroupMetaStrong: { fontSize: 12, fontWeight: '900', color: colors.primary, textAlign: 'left' },
+  tableGroupMetaDim: { fontSize: 11, fontWeight: '800', color: colors.gray[600], textAlign: 'left' },
+  tableGroupBody: { padding: 10, gap: 10 },
   tableHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1008,8 +1337,8 @@ const styles = StyleSheet.create({
   mapLegendDot: { width: 10, height: 10, borderRadius: 999 },
   mapLegendText: { fontSize: 12, fontWeight: '900', color: colors.gray[700], textAlign: 'right' },
 
-  statusTag: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 },
-  statusTagText: { fontSize: 12, fontWeight: '900', textAlign: 'right' },
+  statusTag: { minWidth: 74, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
+  statusTagText: { fontSize: 12, fontWeight: '900', textAlign: 'center' },
 
   guestRowCompact: {
     position: 'relative',
@@ -1042,10 +1371,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(6,23,62,0.06)',
     borderWidth: 1,
     borderColor: 'rgba(6,23,62,0.10)',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     justifyContent: 'center',
+    ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
   },
-  tableChipText: { fontSize: 12, fontWeight: '900', color: colors.primary, textAlign: 'center' },
+  tableChipText: { alignSelf: 'stretch', fontSize: 12, fontWeight: '900', color: colors.primary, textAlign: 'right' },
+  arrivalSlot: { width: 112, alignItems: 'center', justifyContent: 'center' },
   peoplePill: {
     minWidth: 30,
     textAlign: 'center',
