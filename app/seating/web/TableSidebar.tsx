@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -35,6 +35,11 @@ export function TableSidebar({
   const [tableType, setTableType] = useState<TableType>('regular');
   const [orientation, setOrientation] = useState<Orientation>('row');
   const [quantity, setQuantity] = useState(1);
+
+  // Default "knight" table to vertical (lengthwise).
+  useEffect(() => {
+    if (tableType === 'knight') setOrientation('column');
+  }, [tableType]);
 
   const seats = FIXED_SEATS[tableType];
 

@@ -114,9 +114,7 @@ function reducer(state: State, action: Action): State {
       const seats = action.config.seats ?? FIXED_SEATS[action.config.type];
       const type = action.config.type;
       const placementOrientation = action.config.orientation ?? 'row';
-      // For "knight" tables we always keep a horizontal (row) orientation,
-      // while still allowing column/row placement direction for batches.
-      const orientation = type === 'knight' ? 'row' : placementOrientation;
+      const orientation = placementOrientation;
       const qty = clamp(Math.floor(action.config.quantity || 1), 1, 20);
       const gap = 1;
 
