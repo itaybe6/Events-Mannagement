@@ -91,6 +91,7 @@ export default function LoginScreen() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const { login } = useUserStore();
@@ -99,6 +100,7 @@ export default function LoginScreen() {
 
   const handleLogin = async () => {
     try {
+      setErrorMessage(null);
       setLoading(true);
       // התחברות ל-Supabase Auth
       const { data, error } = await supabase.auth.signInWithPassword({
@@ -107,12 +109,14 @@ export default function LoginScreen() {
       });
 
       if (error || !data.user) {
-        Alert.alert(
-          'שגיאה בהתחברות',
-          'מייל או סיסמה שגויים. נסה שוב.',
-          [{ text: 'אישור', style: 'default' }]
-        );
-        setLoading(false);
+        const msg = error?.message ?? '';
+        if (typeof msg === 'string' && msg.includes('Email not confirmed')) {
+          setErrorMessage('יש לאמת את כתובת המייל לפני ההתחברות.');
+        } else if (typeof msg === 'string' && msg.includes('Too many requests')) {
+          setErrorMessage('יותר מדי ניסיונות התחברות. נסה שוב מאוחר יותר.');
+        } else {
+          setErrorMessage('מייל או סיסמה שגויים. נסה שוב.');
+        }
         return;
       }
 
@@ -201,11 +205,7 @@ export default function LoginScreen() {
       }
     } catch (error) {
       console.error('Login error:', error);
-      Alert.alert(
-        'שגיאה בהתחברות',
-        'אירעה שגיאה במהלך ההתחברות. נסה שוב.',
-        [{ text: 'אישור', style: 'default' }]
-      );
+      setErrorMessage('אירעה שגיאה במהלך ההתחברות. נסה שוב.');
     } finally {
       setLoading(false);
     }
@@ -260,7 +260,10 @@ export default function LoginScreen() {
                 placeholder="אימייל"
                 placeholderTextColor={colors.gray[500]}
                 value={username}
-                onChangeText={setUsername}
+                onChangeText={(text) => {
+                  setUsername(text);
+                  if (errorMessage) setErrorMessage(null);
+                }}
                 autoCapitalize="none"
                 autoCorrect={false}
                 keyboardType="email-address"
@@ -283,7 +286,10 @@ export default function LoginScreen() {
                 placeholder="סיסמה"
                 placeholderTextColor={colors.gray[500]}
                 value={password}
-                onChangeText={setPassword}
+                onChangeText={(text) => {
+                  setPassword(text);
+                  if (errorMessage) setErrorMessage(null);
+                }}
                 secureTextEntry={!showPassword}
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -302,6 +308,12 @@ export default function LoginScreen() {
                 />
               </TouchableOpacity>
             </View>
+
+            {errorMessage ? (
+              <View style={styles.errorBox} accessibilityRole="alert">
+                <Text style={styles.errorText}>{errorMessage}</Text>
+              </View>
+            ) : null}
 
             <View style={styles.forgotWrap}>
               <TouchableOpacity
@@ -470,6 +482,24 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.text,
     paddingVertical: 14,
+  },
+
+  errorBox: {
+    backgroundColor: 'rgba(185, 28, 28, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(185, 28, 28, 0.20)',
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginTop: 2,
+    marginBottom: 12,
+  },
+  errorText: {
+    color: '#B91C1C',
+    fontSize: 13,
+    fontWeight: '800',
+    textAlign: 'right',
+    lineHeight: 18,
   },
 
   forgotWrap: {

@@ -23,6 +23,7 @@ export default function LoginWebScreen() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const { login } = useUserStore();
@@ -61,6 +62,7 @@ export default function LoginWebScreen() {
 
   const handleLogin = async () => {
     try {
+      setErrorMessage(null);
       setLoading(true);
 
       const { data, error } = await supabase.auth.signInWithPassword({
@@ -69,7 +71,14 @@ export default function LoginWebScreen() {
       });
 
       if (error || !data.user) {
-        Alert.alert('שגיאה בהתחברות', 'מייל או סיסמה שגויים. נסה שוב.');
+        const msg = error?.message ?? '';
+        if (typeof msg === 'string' && msg.includes('Email not confirmed')) {
+          setErrorMessage('יש לאמת את כתובת המייל לפני ההתחברות.');
+        } else if (typeof msg === 'string' && msg.includes('Too many requests')) {
+          setErrorMessage('יותר מדי ניסיונות התחברות. נסה שוב מאוחר יותר.');
+        } else {
+          setErrorMessage('מייל או סיסמה שגויים. נסה שוב.');
+        }
         return;
       }
 
@@ -150,7 +159,7 @@ export default function LoginWebScreen() {
         router.replace('/(couple)');
       }
     } catch (e) {
-      Alert.alert('שגיאה בהתחברות', 'אירעה שגיאה במהלך ההתחברות. נסה שוב.');
+      setErrorMessage('אירעה שגיאה במהלך ההתחברות. נסה שוב.');
     } finally {
       setLoading(false);
     }
@@ -201,7 +210,10 @@ export default function LoginWebScreen() {
             <TextInput
               style={[styles.input, styles.inputLtr]}
               value={username}
-              onChangeText={setUsername}
+              onChangeText={(text) => {
+                setUsername(text);
+                if (errorMessage) setErrorMessage(null);
+              }}
               placeholder="name@example.com"
               placeholderTextColor={colors.gray[500]}
               autoCapitalize="none"
@@ -220,7 +232,10 @@ export default function LoginWebScreen() {
             <TextInput
               style={[styles.input, styles.inputWithLeftButton]}
               value={password}
-              onChangeText={setPassword}
+              onChangeText={(text) => {
+                setPassword(text);
+                if (errorMessage) setErrorMessage(null);
+              }}
               placeholder="••••••"
               placeholderTextColor={colors.gray[500]}
               secureTextEntry={!showPassword}
@@ -242,6 +257,12 @@ export default function LoginWebScreen() {
               />
             </Pressable>
           </View>
+
+          {errorMessage ? (
+            <View style={styles.errorBox} accessibilityRole="alert">
+              <Text style={styles.errorText}>{errorMessage}</Text>
+            </View>
+          ) : null}
 
           <View style={styles.rowBetween}>
             <Pressable
@@ -585,6 +606,22 @@ const styles = StyleSheet.create({
   },
   form: {
     gap: 12,
+  },
+  errorBox: {
+    backgroundColor: 'rgba(185, 28, 28, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(185, 28, 28, 0.20)',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginTop: 6,
+  },
+  errorText: {
+    color: '#B91C1C',
+    fontSize: 13,
+    fontWeight: '900',
+    textAlign: 'right',
+    lineHeight: 18,
   },
   label: {
     fontSize: 12,

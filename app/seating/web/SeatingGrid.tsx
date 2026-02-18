@@ -50,6 +50,10 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
 
   const workAreaRef = useRef<any>(null);
   const [viewport, setViewport] = useState<{ w: number; h: number } | null>(null);
+  const pendingWebScrollRef = useRef<null | { left: number; top: number }>(null);
+  const rafScrollRef = useRef<number | null>(null);
+  const spaceDownRef = useRef(false);
+  const panRef = useRef<null | { startClient: { x: number; y: number }; startScroll: { left: number; top: number } }>(null);
 
   // Compute content bounds so we can "fit" to what's actually placed (tables/zones/labels),
   // instead of zooming out to an oversized empty grid.
@@ -232,6 +236,50 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
     }
   }, []);
 
+  const getWebScroller = useCallback((raw: any) => {
+    if (!raw) return null;
+    if (typeof raw?.scrollLeft === 'number' || typeof raw?.scrollTop === 'number') return raw;
+    try {
+      if (typeof raw?.getScrollableNode === 'function') {
+        const n = raw.getScrollableNode();
+        if (n) return n;
+      }
+    } catch {
+      // ignore
+    }
+    return raw;
+  }, []);
+
+  useEffect(() => {
+    if (!isWeb) return;
+    const onDown = (e: any) => {
+      if (e?.code === 'Space' || e?.key === ' ') {
+        // Don't interfere with typing in inputs/contenteditable fields.
+        const t = e?.target as any;
+        const tag = String(t?.tagName ?? '').toUpperCase();
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || t?.isContentEditable) return;
+        spaceDownRef.current = true;
+        // Prevent page scrolling when space is pressed while interacting with the grid.
+        e?.preventDefault?.();
+      }
+    };
+    const onUp = (e: any) => {
+      if (e?.code === 'Space' || e?.key === ' ') {
+        const t = e?.target as any;
+        const tag = String(t?.tagName ?? '').toUpperCase();
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || t?.isContentEditable) return;
+        spaceDownRef.current = false;
+        e?.preventDefault?.();
+      }
+    };
+    window.addEventListener('keydown', onDown);
+    window.addEventListener('keyup', onUp);
+    return () => {
+      window.removeEventListener('keydown', onDown);
+      window.removeEventListener('keyup', onUp);
+    };
+  }, [isWeb]);
+
   const computeTableGuides = useCallback(
     (activeId: string, draftX: number, draftY: number) => {
       const active = api.tables.find(t => t.id === activeId);
@@ -342,6 +390,22 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
 
   const onWindowMove = useCallback(
     (ev: PointerEvent) => {
+      if (panRef.current) {
+        const el = getWebScroller(workAreaRef.current as any);
+        if (!el) return;
+        const dx = ev.clientX - panRef.current.startClient.x;
+        const dy = ev.clientY - panRef.current.startClient.y;
+        try {
+          const maxLeft = Math.max(0, Number(el.scrollWidth ?? 0) - Number(el.clientWidth ?? 0));
+          const maxTop = Math.max(0, Number(el.scrollHeight ?? 0) - Number(el.clientHeight ?? 0));
+          el.scrollLeft = clamp(panRef.current.startScroll.left - dx, 0, maxLeft);
+          el.scrollTop = clamp(panRef.current.startScroll.top - dy, 0, maxTop);
+        } catch {
+          // ignore
+        }
+        return;
+      }
+
       if (!drag && !resize && !marquee) return;
 
       // Resize
@@ -419,6 +483,10 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
 
   const onWindowUp = useCallback(
     (ev: PointerEvent) => {
+      if (panRef.current) {
+        panRef.current = null;
+        return;
+      }
       if (resize) {
         setResize(null);
         return;
@@ -481,10 +549,33 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
         // ignore
       }
 
+      const isMiddleClick =
+        e?.button === 1 ||
+        e?.nativeEvent?.button === 1 ||
+        e?.buttons === 4 ||
+        e?.nativeEvent?.buttons === 4;
+      // Map-like behavior:
+      // - Default drag on background = pan
+      // - Shift + drag on background = marquee select
+      // (Space+drag and middle-click drag also pan)
+      const allowMarquee = !!(e?.shiftKey || e?.nativeEvent?.shiftKey);
+      const allowPan = spaceDownRef.current || isMiddleClick || !allowMarquee;
+
+      if (allowPan) {
+        const el = getWebScroller(workAreaRef.current as any);
+        if (!el) return;
+        panRef.current = {
+          startClient: { x: e.clientX ?? e.nativeEvent?.clientX ?? 0, y: e.clientY ?? e.nativeEvent?.clientY ?? 0 },
+          startScroll: { left: Number(el.scrollLeft ?? 0) || 0, top: Number(el.scrollTop ?? 0) || 0 },
+        };
+        return;
+      }
+
+      if (!allowMarquee) return;
       const start = clientToLocalPx(e.clientX ?? e.nativeEvent?.clientX ?? 0, e.clientY ?? e.nativeEvent?.clientY ?? 0);
       setMarquee({ start, cur: start });
     },
-    [clientToLocalPx, edit, elementAtTargetIsItem, isWeb]
+    [clientToLocalPx, edit, elementAtTargetIsItem, getWebScroller, isWeb]
   );
 
   // Compute marquee selection IDs (updates while dragging)
@@ -732,15 +823,14 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
     (e: any) => {
       if (!isWeb) return;
       const dy = e?.deltaY ?? e?.nativeEvent?.deltaY ?? 0;
+      const el = getWebScroller(workAreaRef.current as any);
 
-      // Shift + wheel = scroll the container (VERTICAL) and DO NOT zoom.
-      // (Browsers often map Shift+Wheel to horizontal scroll, so we force vertical.)
+      // Shift + wheel = horizontal pan (no zoom)
       if (e?.shiftKey) {
         e?.preventDefault?.();
         e?.stopPropagation?.();
         try {
-          const el = workAreaRef.current as any;
-          if (el) el.scrollTop = (el.scrollTop || 0) + dy;
+          if (el) el.scrollLeft = (el.scrollLeft || 0) + dy;
         } catch {
           // ignore
         }
@@ -758,12 +848,64 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
       const base = Math.max(1, fitZoomRef.current || 1);
       const maxZoom = clamp(base * 2.2, Math.max(3, base), 10);
       const next = clamp(cur * factor, minZoom, maxZoom);
+
+      // Keep zoom anchored under the mouse cursor by adjusting scrollLeft/Top.
+      const clientX = e?.clientX ?? e?.nativeEvent?.clientX;
+      const clientY = e?.clientY ?? e?.nativeEvent?.clientY;
+      let px = (viewport?.w ?? 0) / 2;
+      let py = (viewport?.h ?? 0) / 2;
+      try {
+        const r = el?.getBoundingClientRect?.();
+        if (r && typeof clientX === 'number' && typeof clientY === 'number') {
+          px = clientX - r.left;
+          py = clientY - r.top;
+        }
+      } catch {
+        // ignore
+      }
+
+      const scrollLeft = Number(el?.scrollLeft ?? 0) || 0;
+      const scrollTop = Number(el?.scrollTop ?? 0) || 0;
+      const baseX = (scrollLeft + px) / Math.max(0.0001, cur);
+      const baseY = (scrollTop + py) / Math.max(0.0001, cur);
+      const nextLeft = baseX * next - px;
+      const nextTop = baseY * next - py;
+
       userAdjustedZoomRef.current = true;
       zoomRef.current = next;
+      pendingWebScrollRef.current = { left: nextLeft, top: nextTop };
       setZoom(next);
     },
-    [isWeb]
+    [getWebScroller, isWeb, viewport?.h, viewport?.w]
   );
+
+  // After zoom updates the layout (stageW/H), apply the pending scroll so the cursor anchor sticks.
+  useEffect(() => {
+    if (!isWeb) return;
+    const pending = pendingWebScrollRef.current;
+    if (!pending) return;
+    const el = getWebScroller(workAreaRef.current as any);
+    if (!el) return;
+
+    if (rafScrollRef.current != null) cancelAnimationFrame(rafScrollRef.current);
+    rafScrollRef.current = requestAnimationFrame(() => {
+      rafScrollRef.current = null;
+      requestAnimationFrame(() => {
+        try {
+          const el2 = getWebScroller(workAreaRef.current as any);
+          if (!el2) return;
+          const maxLeft = Math.max(0, Number(el2.scrollWidth ?? 0) - Number(el2.clientWidth ?? 0));
+          const maxTop = Math.max(0, Number(el2.scrollHeight ?? 0) - Number(el2.clientHeight ?? 0));
+          el2.scrollLeft = clamp(pending.left, 0, maxLeft);
+          el2.scrollTop = clamp(pending.top, 0, maxTop);
+        } catch {
+          // ignore
+        } finally {
+          if (pendingWebScrollRef.current === pending) pendingWebScrollRef.current = null;
+        }
+      });
+    });
+  }, [getWebScroller, isWeb, zoom]);
 
   // Attach a non-passive wheel listener so preventDefault actually blocks scroll on web.
   useEffect(() => {
