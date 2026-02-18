@@ -405,7 +405,6 @@ function RootLayoutNav() {
       <Stack.Screen name="(employee)" options={{ headerShown: false }} />
       <Stack.Screen name="modal" options={{ presentation: "modal" }} />
       
-      <Stack.Screen name="rsvp/invite" options={{ title: "הזמנת אורחים" }} />
       <Stack.Screen name="seating/templates" options={{ headerShown: false }} />
        
     </Stack>

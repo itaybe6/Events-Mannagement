@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Platform,
   Pressable,
   ScrollView,
@@ -17,9 +16,54 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { colors } from '@/constants/colors';
 import { useGuestCheckInModel } from '@/features/guests/useGuestCheckInModel';
 import { tableService } from '@/lib/services/tableService';
+import { supabase } from '@/lib/supabase';
+import { SeatingGridReadonly } from '../seating/web/SeatingGridReadonly';
+import { DEFAULT_GRID_COLS, DEFAULT_GRID_ROWS, tableCellSize, type Orientation, type TableType } from '../seating/web/_types';
 import type { Guest, Table } from '@/types';
 
 const NO_TABLE_KEY = '__no_table__' as const;
+
+type WebSketch = {
+  gridCols: number;
+  gridRows: number;
+  tables: any[];
+  zones: any[];
+  labels: any[];
+};
+
+function toArrayMaybe(v: any): any[] {
+  if (!v) return [];
+  return Array.isArray(v) ? v : [];
+}
+
+function getWebV2FromAnnotations(annotations: any) {
+  if (!annotations) return null;
+  if (Array.isArray(annotations)) {
+    const found = annotations.find((x) => x && typeof x === 'object' && x.type === 'web_v2' && x.version === 2);
+    return found ?? null;
+  }
+  if (typeof annotations === 'object') {
+    const w = (annotations as any).web_v2;
+    return w && typeof w === 'object' ? w : null;
+  }
+  return null;
+}
+
+function tableTypeFromShape(shape: any): TableType {
+  const s = String(shape || '').toLowerCase();
+  if (s === 'reserve') return 'reserve';
+  if (s === 'rectangle' || s === 'knight') return 'knight';
+  return 'regular';
+}
+
+function parseTableNumber(v: unknown): number | null {
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  if (typeof v === 'string') {
+    const n = Number.parseInt(v.trim(), 10);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
 
 function statusTag(status: Guest['status']) {
   if (status === 'מגיע') return { bg: 'rgba(34,197,94,0.12)', fg: '#15803D' };
@@ -36,11 +80,6 @@ function initialsFromName(name: string) {
   const b = parts[1]?.[0] ?? '';
   const s = `${a}${b}`.trim();
   return s ? s.toUpperCase() : '•';
-}
-
-function clamp01(n: number) {
-  if (!Number.isFinite(n)) return 0;
-  return Math.max(0, Math.min(1, n));
 }
 
 function Switch({
@@ -83,11 +122,14 @@ export default function EmployeeGuestCheckinWebScreen() {
   const router = useRouter();
   const { eventId } = useLocalSearchParams<{ eventId?: string }>();
   const resolvedEventId = useMemo(() => String(eventId || '').trim(), [eventId]);
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const isLg = width >= 1024;
   const [tableFilter, setTableFilter] = useState<string | null>(null);
   const [tables, setTables] = useState<Table[]>([]);
   const [tableNumberById, setTableNumberById] = useState<Map<string, number | null>>(() => new Map());
+  const [webSketch, setWebSketch] = useState<WebSketch | null>(null);
+  const [mapLoading, setMapLoading] = useState(false);
+  const [selectedTableNumber, setSelectedTableNumber] = useState<number | null>(null);
 
   const {
     loading,
@@ -118,11 +160,15 @@ export default function EmployeeGuestCheckinWebScreen() {
 
     try {
       const rows = await tableService.getTables(resolvedEventId);
-      const next = new Map<string, number | null>();
-      rows.forEach((t) => {
-        next.set(t.id, typeof t.number === 'number' ? t.number : null);
+      const normalized = rows.map((t) => {
+        const n = parseTableNumber((t as any).number);
+        return { ...t, number: n === null ? undefined : n };
       });
-      setTables(rows);
+      const next = new Map<string, number | null>();
+      normalized.forEach((t) => {
+        next.set(t.id, parseTableNumber((t as any).number));
+      });
+      setTables(normalized);
       setTableNumberById(next);
     } catch (e) {
       console.error('Load tables error:', e);
@@ -150,7 +196,7 @@ export default function EmployeeGuestCheckinWebScreen() {
   const tableLabelById = useMemo(() => {
     const m = new Map<string, string>();
     tablesSorted.forEach((t) => {
-      const n = typeof t.number === 'number' ? t.number : null;
+      const n = parseTableNumber((t as any).number);
       const name = String(t.name || '').trim();
       const label = n !== null ? `שולחן ${n}` : name ? `שולחן ${name}` : 'שולחן';
       m.set(t.id, label);
@@ -164,49 +210,154 @@ export default function EmployeeGuestCheckinWebScreen() {
     return tableLabelById.get(tableFilter) || 'שולחן';
   }, [tableFilter, tableLabelById]);
 
-  const tableStats = useMemo(() => {
-    const grouped = new Map<string, { checkedIn: number; total: number }>();
+  const tableIdByNumber = useMemo(() => {
+    const m = new Map<number, string>();
+    tablesSorted.forEach((t) => {
+      const n = parseTableNumber((t as any).number);
+      if (typeof n === 'number') m.set(n, t.id);
+    });
+    return m;
+  }, [tablesSorted]);
+
+  const seatedByNumber = useMemo(() => {
+    const m = new Map<number, number>();
     guests.forEach((g) => {
-      const key = g.tableId ? String(g.tableId) : NO_TABLE_KEY;
-      const prev = grouped.get(key) || { checkedIn: 0, total: 0 };
-      const next = { checkedIn: prev.checkedIn + (g.checkedIn ? 1 : 0), total: prev.total + 1 };
-      grouped.set(key, next);
+      if (!g.tableId) return;
+      const num = tableNumberById.get(String(g.tableId)) ?? null;
+      if (typeof num !== 'number') return;
+      const ppl = Number(g.numberOfPeople) || 1;
+      m.set(num, (m.get(num) || 0) + ppl);
     });
-    return grouped;
-  }, [guests]);
+    return m;
+  }, [guests, tableNumberById]);
 
-  const tableRows = useMemo(() => {
-    const rows: Array<{
-      key: string;
-      label: string;
-      checkedIn: number;
-      total: number;
-    }> = tablesSorted.map((t) => {
-      const stats = tableStats.get(t.id) || { checkedIn: 0, total: 0 };
-      return { key: t.id, label: tableLabelById.get(t.id) || 'שולחן', checkedIn: stats.checkedIn, total: stats.total };
-    });
-
-    const noTableStats = tableStats.get(NO_TABLE_KEY);
-    if (noTableStats) {
-      rows.push({ key: NO_TABLE_KEY, label: 'ללא שולחן', checkedIn: noTableStats.checkedIn, total: noTableStats.total });
-    }
-
-    // Handle guests referencing a tableId that isn't in the tables list.
-    const known = new Set(rows.map((r) => r.key));
-    tableStats.forEach((stats, key) => {
-      if (known.has(key)) return;
-      if (key === NO_TABLE_KEY) return;
-      const n = tableNumberById.get(key) ?? null;
-      rows.push({
-        key,
-        label: n !== null ? `שולחן ${n}` : 'שולחן (לא ידוע)',
-        checkedIn: stats.checkedIn,
-        total: stats.total,
+  const buildSketchFromCurrentTables = useCallback((currentTables: Table[]): WebSketch | null => {
+    const placed = (currentTables || [])
+      .filter(Boolean)
+      .filter((t) => typeof t.x === 'number' && typeof t.y === 'number')
+      .map((t) => {
+        const type = tableTypeFromShape((t as any).shape);
+        const seats = Number((t as any).capacity ?? 12) || (type === 'knight' ? 20 : 12);
+        return {
+          id: `table-live-${String(t.id)}`,
+          type,
+          seats,
+          orientation: 'row' as Orientation,
+          gridX: Math.round((Number(t.x) || 0) / 40),
+          gridY: Math.round((Number(t.y) || 0) / 40),
+          number: typeof (t as any).number === 'number' ? (t as any).number : Number((t as any).number) || undefined,
+        };
       });
-    });
 
-    return rows;
-  }, [tableLabelById, tableNumberById, tableStats, tablesSorted]);
+    if (!placed.length) return null;
+    const maxX = placed.reduce((m, t) => Math.max(m, t.gridX + tableCellSize(t.type, t.seats, t.orientation).w), 0);
+    const maxY = placed.reduce((m, t) => Math.max(m, t.gridY + tableCellSize(t.type, t.seats, t.orientation).h), 0);
+    return {
+      gridCols: Math.max(DEFAULT_GRID_COLS, maxX + 10),
+      gridRows: Math.max(DEFAULT_GRID_ROWS, maxY + 10),
+      tables: placed,
+      zones: [],
+      labels: [],
+    };
+  }, []);
+
+  const fetchWebSketch = useCallback(async () => {
+    if (!resolvedEventId) {
+      setWebSketch(null);
+      return;
+    }
+    setMapLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('seating_maps')
+        .select('annotations,tables')
+        .eq('event_id', resolvedEventId)
+        .maybeSingle();
+
+      void error;
+      const annotations = (data as any)?.annotations;
+      const webV2 = getWebV2FromAnnotations(annotations);
+
+      const webV2Cols = webV2 && typeof webV2?.grid?.cols === 'number' ? Math.round(webV2.grid.cols) : DEFAULT_GRID_COLS;
+      const webV2Rows = webV2 && typeof webV2?.grid?.rows === 'number' ? Math.round(webV2.grid.rows) : DEFAULT_GRID_ROWS;
+      const webV2Zones = webV2 ? toArrayMaybe(webV2.zones ?? webV2?.state?.zones ?? webV2?.data?.zones) : [];
+      const webV2Labels = webV2 ? toArrayMaybe(webV2.labels ?? webV2?.state?.labels ?? webV2?.data?.labels) : [];
+      const webV2Tables = webV2 ? toArrayMaybe(webV2.tables ?? webV2?.state?.tables ?? webV2?.data?.tables) : [];
+
+      let finalCols = webV2Cols;
+      let finalRows = webV2Rows;
+      let finalTables: any[] = webV2Tables;
+      let finalZones: any[] = webV2Zones;
+      let finalLabels: any[] = webV2Labels;
+
+      // If web_v2 didn't include tables, try legacy seating_maps.tables first.
+      if (!finalTables.length) {
+        const legacy = Array.isArray((data as any)?.tables) ? ((data as any).tables as any[]) : null;
+        if (legacy?.length) {
+          const mapped = legacy
+            .filter(Boolean)
+            .map((t: any, idx: number) => {
+              const type: TableType = t.isReserve ? 'reserve' : t.isKnight ? 'knight' : 'regular';
+              const num = typeof t.id === 'number' ? t.id : idx + 1;
+              const gridX = Math.round((Number(t.x) || 0) / 40);
+              const gridY = Math.round((Number(t.y) || 0) / 40);
+              return {
+                id: `table-legacy-${num}`,
+                type,
+                seats: Number(t.seats) || (type === 'knight' ? 20 : 12),
+                orientation: 'row' as Orientation,
+                gridX,
+                gridY,
+                number: num,
+              };
+            });
+          const maxX = mapped.reduce(
+            (m: number, t: any) => Math.max(m, t.gridX + tableCellSize(t.type, t.seats, t.orientation).w),
+            0
+          );
+          const maxY = mapped.reduce(
+            (m: number, t: any) => Math.max(m, t.gridY + tableCellSize(t.type, t.seats, t.orientation).h),
+            0
+          );
+          finalCols = Math.max(finalCols, DEFAULT_GRID_COLS, maxX + 6);
+          finalRows = Math.max(finalRows, DEFAULT_GRID_ROWS, maxY + 6);
+          finalTables = mapped;
+        }
+      }
+
+      // Final fallback: build from current tables state (if positions exist)
+      if (!finalTables.length) {
+        const fromLive = buildSketchFromCurrentTables(tables);
+        if (fromLive) {
+          setWebSketch(fromLive);
+          return;
+        }
+      }
+
+      if (finalTables.length || finalZones.length || finalLabels.length) {
+        setWebSketch({
+          gridCols: finalCols,
+          gridRows: finalRows,
+          tables: finalTables,
+          zones: finalZones,
+          labels: finalLabels,
+        });
+        return;
+      }
+
+      setWebSketch(null);
+    } catch (e) {
+      console.error('Fetch web sketch error:', e);
+      setWebSketch(null);
+    } finally {
+      setMapLoading(false);
+    }
+  }, [buildSketchFromCurrentTables, resolvedEventId, tables]);
+
+  useEffect(() => {
+    void fetchWebSketch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resolvedEventId, tables.length]);
 
   const eventOverview = useMemo(() => {
     const invitedPeople = guests.reduce((sum, g) => sum + (Number(g.numberOfPeople) || 1), 0);
@@ -241,6 +392,23 @@ export default function EmployeeGuestCheckinWebScreen() {
     return filteredGuests.filter((g) => String(g.tableId || '') === tableFilter);
   }, [filteredGuests, tableFilter]);
 
+  const mapCardHeight = useMemo(() => {
+    if (!height || !isLg) return 620;
+    return Math.max(620, Math.round(height - 120));
+  }, [height, isLg]);
+
+  const guestListMaxHeight = useMemo(() => {
+    if (!height || !isLg) return undefined;
+    return Math.max(420, Math.round(height - 320));
+  }, [height, isLg]);
+
+  const stickyTop = useMemo(() => {
+    if (Platform.OS !== 'web') return 0;
+    if (!isLg) return 0;
+    // Leave room for the employee top navigation on web.
+    return 80;
+  }, [isLg]);
+
   return (
     <View style={styles.page}>
       {!resolvedEventId ? (
@@ -268,8 +436,8 @@ export default function EmployeeGuestCheckinWebScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View style={[styles.content, !isLg ? styles.contentSm : null]}>
-            <View style={[styles.aside, !isLg ? styles.asideSm : null]}>
-              <View style={[styles.asideSticky, Platform.OS === 'web' ? ({ position: 'sticky', top: 16 } as any) : null]}>
+            <View style={[styles.dashboardCol, !isLg ? styles.colSm : null]}>
+              <View style={Platform.OS === 'web' && isLg ? ({ position: 'sticky', top: stickyTop } as any) : null}>
                 <View style={styles.card}>
                   <Text style={styles.cardTitle}>דשבורד אירוע</Text>
 
@@ -377,10 +545,14 @@ export default function EmployeeGuestCheckinWebScreen() {
                     </View>
                   </View>
                 </View>
+              </View>
+            </View>
 
+            <View style={[styles.guestsCol, !isLg ? styles.colSm : null]}>
+              <View style={Platform.OS === 'web' && isLg ? ({ position: 'sticky', top: stickyTop } as any) : null}>
                 <View style={styles.card}>
                   <View style={styles.cardHeaderRow}>
-                    <Text style={styles.cardTitle}>סטטוס הגעה לפי שולחנות</Text>
+                    <Text style={styles.cardTitle}>רשימת אורחים</Text>
                     {tableFilter ? (
                       <Pressable
                         accessibilityRole="button"
@@ -392,147 +564,107 @@ export default function EmployeeGuestCheckinWebScreen() {
                           pressed ? { opacity: 0.92 } : null,
                         ]}
                       >
-                        <Text style={styles.linkBtnText}>נקה</Text>
+                        <Text style={styles.linkBtnText}>נקה שולחן</Text>
                       </Pressable>
                     ) : null}
                   </View>
 
-                  <Text style={styles.helperText}>פעיל: {activeTableLabel}</Text>
+                  <Text style={styles.helperText}>סינון שולחן: {activeTableLabel}</Text>
 
-                  <View style={{ gap: 10, marginTop: 12 }}>
-                    {tableRows.map((row) => {
-                      const active = tableFilter === row.key;
-                      const ratio = row.total ? row.checkedIn / row.total : 0;
-                      const pct = Math.round(clamp01(ratio) * 100);
-                      return (
-                        <Pressable
-                          key={row.key}
-                          accessibilityRole="button"
-                          accessibilityLabel={`סינון שולחן ${row.label}`}
-                          onPress={() => setTableFilter(String(row.key))}
-                          style={({ hovered, pressed }: any) => [
-                            styles.statCard,
-                            active ? styles.statCardActive : null,
-                            Platform.OS === 'web' && hovered ? styles.statCardHover : null,
-                            pressed ? { opacity: 0.92 } : null,
-                          ]}
-                        >
-                          <View style={styles.statTopRow}>
-                            <Text style={styles.statName} numberOfLines={1}>
-                              {row.label}
-                            </Text>
-                            <View style={styles.statPctPill}>
-                              <Text style={styles.statPctText}>{pct}%</Text>
-                            </View>
-                          </View>
-
-                          <View style={styles.progressTrack}>
-                            <View style={[styles.progressFill, { width: `${Math.round(clamp01(ratio) * 100)}%` } as any]} />
-                          </View>
-
-                          <Text style={styles.statBottomText}>{`${row.checkedIn}/${row.total} הגיעו`}</Text>
-                        </Pressable>
-                      );
-                    })}
+                  <View style={[styles.mainSearchWrap, { marginTop: 12 }]}>
+                    <View style={styles.searchIconRight}>
+                      <Ionicons name="search" size={18} color={colors.gray[500]} />
+                    </View>
+                    <TextInput
+                      style={styles.searchInput}
+                      placeholder="חיפוש אורח או שולחן..."
+                      placeholderTextColor={colors.gray[500]}
+                      value={query}
+                      onChangeText={setQuery}
+                      textAlign="right"
+                      autoCapitalize="none"
+                    />
                   </View>
-                </View>
-              </View>
-            </View>
 
-            <View style={styles.main}>
-              <View style={styles.mainHeader}>
-                <View style={[styles.mainSearchWrap, { flex: 1, minWidth: 0 }]}>
-                  <View style={styles.searchIconRight}>
-                    <Ionicons name="search" size={18} color={colors.gray[500]} />
-                  </View>
-                  <TextInput
-                    style={styles.searchInput}
-                    placeholder="חיפוש אורח או שולחן..."
-                    placeholderTextColor={colors.gray[500]}
-                    value={query}
-                    onChangeText={setQuery}
-                    textAlign="right"
-                    autoCapitalize="none"
-                  />
-                </View>
-              </View>
-
-              <View style={styles.listWrap}>
-                {loading ? (
-                  <View style={styles.loadingRow}>
-                    <ActivityIndicator size="large" color={colors.primary} />
-                    <Text style={styles.loadingText}>טוען אורחים…</Text>
-                  </View>
-                ) : visibleGuests.length === 0 ? (
-                  <View style={styles.emptyRow}>
-                    <Ionicons name="people-outline" size={42} color={colors.gray[500]} />
-                    <Text style={styles.emptyTitle}>לא נמצאו אורחים</Text>
-                    <Text style={styles.emptyText}>נסה לשנות חיפוש / פילטר / קטגוריה.</Text>
-                  </View>
-                ) : (
-                  <View style={{ paddingBottom: 16 }}>
-                    {isLg ? (
-                      <View style={styles.tableHeader}>
-                        <Text style={[styles.th, { width: 76, textAlign: 'center' }]}>אותיות</Text>
-                        <Text style={[styles.th, { flex: 1, paddingRight: 6 }]}>שם האורח</Text>
-                        <Text style={[styles.th, { width: 110, textAlign: 'center' }]}>סטטוס</Text>
-                        <Text style={[styles.th, { width: 90, textAlign: 'center' }]}>שולחן</Text>
-                        <Text style={[styles.th, { width: 120, textAlign: 'center' }]}>אנשים</Text>
-                        <Text style={[styles.th, { width: 90, textAlign: 'center' }]}>הגעה</Text>
+                  <View style={[styles.listWrap, { marginTop: 12 }]}>
+                    {loading ? (
+                      <View style={styles.loadingRow}>
+                        <ActivityIndicator size="large" color={colors.primary} />
+                        <Text style={styles.loadingText}>טוען אורחים…</Text>
                       </View>
-                    ) : null}
+                    ) : visibleGuests.length === 0 ? (
+                      <View style={styles.emptyRow}>
+                        <Ionicons name="people-outline" size={42} color={colors.gray[500]} />
+                        <Text style={styles.emptyTitle}>לא נמצאו אורחים</Text>
+                        <Text style={styles.emptyText}>נסה לשנות חיפוש / פילטר / שולחן.</Text>
+                      </View>
+                    ) : (
+                      <ScrollView
+                        style={guestListMaxHeight ? ({ maxHeight: guestListMaxHeight } as any) : undefined}
+                        showsVerticalScrollIndicator={false}
+                        nestedScrollEnabled
+                      >
+                        <View style={{ gap: 10 }}>
+                          {visibleGuests.map((g) => {
+                            const checkedIn = Boolean(g.checkedIn);
+                            const isSaving = savingId === g.id;
+                            const tag = statusTag(g.status);
+                            const tableNumber = g.tableId ? (tableNumberById.get(g.tableId) ?? null) : null;
+                            const people = Number(g.numberOfPeople) || 1;
+                            const arrivedCount =
+                              g.checkedInCount === null || g.checkedInCount === undefined ? people : Number(g.checkedInCount) || 0;
 
-                    <View style={{ gap: 10, marginTop: 10 }}>
-                      {visibleGuests.map((g) => {
-                        const checkedIn = Boolean(g.checkedIn);
-                        const isSaving = savingId === g.id;
-                        const tag = statusTag(g.status);
-                        const tableNumber = g.tableId ? (tableNumberById.get(g.tableId) ?? null) : null;
-                        const people = Number(g.numberOfPeople) || 1;
-                        const arrivedCount =
-                          g.checkedInCount === null || g.checkedInCount === undefined ? people : Number(g.checkedInCount) || 0;
+                            return (
+                              <Pressable
+                                key={g.id}
+                                accessibilityRole="button"
+                                accessibilityLabel={`בחירת אורח ${g.name}`}
+                                onPress={() => {
+                                  const next = typeof tableNumber === 'number' ? tableNumber : null;
+                                  setSelectedTableNumber((prev) => (prev === next ? null : next));
+                                }}
+                                style={({ hovered, pressed }: any) => [
+                                  styles.guestRowCompact,
+                                  checkedIn ? styles.guestRowCompactOn : null,
+                                  Platform.OS === 'web' && hovered ? { backgroundColor: 'rgba(6,23,62,0.03)' } : null,
+                                  pressed ? { opacity: 0.96 } : null,
+                                ]}
+                              >
+                                <View style={[styles.guestRowAccent, checkedIn ? styles.guestRowAccentOn : null]} />
 
-                        return (
-                          <View key={g.id} style={[styles.guestCard, !isLg ? styles.guestCardSm : null]}>
-                            <View style={[styles.accentBar, checkedIn ? styles.accentBarOn : null]} />
-
-                            {isLg ? (
-                              <View style={styles.guestRow}>
-                                <View style={[styles.cell, { width: 76, alignItems: 'center' }]}>
-                                  <View style={[styles.avatar, checkedIn ? styles.avatarOn : null]}>
+                                <View style={styles.guestRowMain}>
+                                  <View style={[styles.avatar, styles.avatarCompact, checkedIn ? styles.avatarOn : null]}>
                                     <Text style={styles.avatarText}>{initialsFromName(g.name)}</Text>
+                                  </View>
+
+                                  <View style={{ flex: 1, minWidth: 0 }}>
+                                    <Text style={styles.guestNameCompact} numberOfLines={1}>
+                                      {g.name}
+                                    </Text>
+                                    <Text style={styles.guestMetaCompact} numberOfLines={1}>
+                                      {people === 1 ? 'אדם אחד' : `${people} אנשים`}
+                                    </Text>
                                   </View>
                                 </View>
 
-                                <View style={[styles.cell, { flex: 1, minWidth: 0, paddingRight: 6 }]}>
-                                  <Text style={styles.guestName} numberOfLines={1}>
-                                    {g.name}
-                                  </Text>
-                                  <Text style={styles.guestSub} numberOfLines={1}>
-                                    {g.phone ? `${g.phone}${people > 1 ? ` • +${people - 1}` : ''}` : people > 1 ? `+${people - 1}` : ''}
-                                  </Text>
-                                </View>
+                                <View style={styles.guestRowRight}>
+                                  <View style={styles.tableChip}>
+                                    <Text style={styles.tableChipText}>{tableNumber != null ? `שולחן ${tableNumber}` : '—'}</Text>
+                                  </View>
 
-                                <View style={[styles.cell, { width: 110, alignItems: 'flex-end' }]}>
                                   <View style={[styles.statusTag, { backgroundColor: tag.bg }]}>
                                     <Text style={[styles.statusTagText, { color: tag.fg }]}>{g.status}</Text>
                                   </View>
-                                </View>
 
-                                <View style={[styles.cell, { width: 90, alignItems: 'center' }]}>
-                                  <Text style={styles.cellText}>{tableNumber ?? '—'}</Text>
-                                </View>
-
-                                <View style={[styles.cell, { width: 120, alignItems: 'center' }]}>
                                   {checkedIn ? (
-                                    <View style={styles.countStepper}>
+                                    <View style={styles.compactStepper}>
                                       <Pressable
                                         accessibilityRole="button"
                                         accessibilityLabel={`הפחת כמות שהגיעה עבור ${g.name}`}
                                         onPress={() => void setCheckedInCount(g, Math.max(0, arrivedCount - 1))}
                                         disabled={savingCountId === g.id || arrivedCount <= 0}
                                         style={({ hovered, pressed }: any) => [
-                                          styles.stepBtn,
+                                          styles.stepBtnCompact,
                                           (savingCountId === g.id || arrivedCount <= 0) ? styles.stepBtnDisabled : null,
                                           Platform.OS === 'web' && hovered ? styles.stepBtnHover : null,
                                           pressed ? { opacity: 0.92 } : null,
@@ -541,13 +673,12 @@ export default function EmployeeGuestCheckinWebScreen() {
                                         <Text style={styles.stepBtnText}>-</Text>
                                       </Pressable>
 
-                                      <View style={styles.countValueWrap}>
+                                      <View style={styles.compactCountWrap}>
                                         {savingCountId === g.id ? (
-                                          <ActivityIndicator size={14} color={colors.primary} />
+                                          <ActivityIndicator size={12} color={colors.primary} />
                                         ) : (
-                                          <Text style={styles.countValueText}>{arrivedCount}</Text>
+                                          <Text style={styles.compactCountText}>{arrivedCount}</Text>
                                         )}
-                                        <Text style={styles.countValueSub}>הגיעו</Text>
                                       </View>
 
                                       <Pressable
@@ -556,7 +687,7 @@ export default function EmployeeGuestCheckinWebScreen() {
                                         onPress={() => void setCheckedInCount(g, arrivedCount + 1)}
                                         disabled={savingCountId === g.id}
                                         style={({ hovered, pressed }: any) => [
-                                          styles.stepBtn,
+                                          styles.stepBtnCompact,
                                           savingCountId === g.id ? styles.stepBtnDisabled : null,
                                           Platform.OS === 'web' && hovered ? styles.stepBtnHover : null,
                                           pressed ? { opacity: 0.92 } : null,
@@ -566,11 +697,9 @@ export default function EmployeeGuestCheckinWebScreen() {
                                       </Pressable>
                                     </View>
                                   ) : (
-                                    <Text style={styles.cellText}>{people}</Text>
+                                    <Text style={styles.peoplePill}>{people}</Text>
                                   )}
-                                </View>
 
-                                <View style={[styles.cell, { width: 90, alignItems: 'center' }]}>
                                   <Switch
                                     checked={checkedIn}
                                     saving={isSaving}
@@ -579,106 +708,93 @@ export default function EmployeeGuestCheckinWebScreen() {
                                     onPress={() => void toggleCheckIn(g)}
                                   />
                                 </View>
-                              </View>
-                            ) : (
-                              <View style={{ gap: 10 }}>
-                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                                  <View style={[styles.avatar, checkedIn ? styles.avatarOn : null]}>
-                                    <Text style={styles.avatarText}>{initialsFromName(g.name)}</Text>
-                                  </View>
-                                  <View style={{ flex: 1, minWidth: 0 }}>
-                                    <Text style={styles.guestName} numberOfLines={1}>
-                                      {g.name}
-                                    </Text>
-                                    <Text style={styles.guestSub} numberOfLines={1}>
-                                      {g.phone || '—'}
-                                    </Text>
-                                  </View>
-                                  <Switch
-                                    checked={checkedIn}
-                                    saving={isSaving}
-                                    disabled={isSaving}
-                                    accessibilityLabel={checkedIn ? `סמן שלא הגיע: ${g.name}` : `סמן שהגיע: ${g.name}`}
-                                    onPress={() => void toggleCheckIn(g)}
-                                  />
-                                </View>
-
-                                <View style={styles.kvRow}>
-                                  <Text style={styles.kvLabel}>סטטוס</Text>
-                                  <View style={[styles.statusTag, { backgroundColor: tag.bg }]}>
-                                    <Text style={[styles.statusTagText, { color: tag.fg }]}>{g.status}</Text>
-                                  </View>
-                                </View>
-
-                                <View style={styles.kvRow}>
-                                  <Text style={styles.kvLabel}>שולחן</Text>
-                                  <Text style={styles.kvValue}>{tableNumber ?? '—'}</Text>
-                                </View>
-
-                                <View style={styles.kvRow}>
-                                  <Text style={styles.kvLabel}>אנשים</Text>
-                                  {checkedIn ? (
-                                    <View style={{ alignItems: 'flex-end' }}>
-                                      <Text style={styles.kvValue}>{arrivedCount}</Text>
-                                      <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
-                                        <Pressable
-                                          accessibilityRole="button"
-                                          accessibilityLabel={`הפחת כמות שהגיעה עבור ${g.name}`}
-                                          onPress={() => void setCheckedInCount(g, Math.max(0, arrivedCount - 1))}
-                                          disabled={savingCountId === g.id || arrivedCount <= 0}
-                                          style={({ hovered, pressed }: any) => [
-                                            styles.miniBtn,
-                                            (savingCountId === g.id || arrivedCount <= 0) ? styles.miniBtnDisabled : null,
-                                            Platform.OS === 'web' && hovered ? styles.miniBtnHover : null,
-                                            pressed ? { opacity: 0.92 } : null,
-                                          ]}
-                                        >
-                                          <Text style={styles.miniBtnText}>-</Text>
-                                        </Pressable>
-                                        <Pressable
-                                          accessibilityRole="button"
-                                          accessibilityLabel={`הגדל כמות שהגיעה עבור ${g.name}`}
-                                          onPress={() => void setCheckedInCount(g, arrivedCount + 1)}
-                                          disabled={savingCountId === g.id}
-                                          style={({ hovered, pressed }: any) => [
-                                            styles.miniBtn,
-                                            savingCountId === g.id ? styles.miniBtnDisabled : null,
-                                            Platform.OS === 'web' && hovered ? styles.miniBtnHover : null,
-                                            pressed ? { opacity: 0.92 } : null,
-                                          ]}
-                                        >
-                                          <Text style={styles.miniBtnText}>+</Text>
-                                        </Pressable>
-                                      </View>
-                                    </View>
-                                  ) : (
-                                    <Text style={styles.kvValue}>{people}</Text>
-                                  )}
-                                </View>
-                              </View>
-                            )}
-                          </View>
-                        );
-                      })}
-                    </View>
-
-                    <View style={{ marginTop: 16, alignItems: 'center' }}>
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel="טען עוד אורחים"
-                        onPress={() => {}}
-                        style={({ hovered, pressed }: any) => [
-                          styles.loadMoreBtn,
-                          Platform.OS === 'web' && hovered ? styles.loadMoreBtnHover : null,
-                          pressed ? { opacity: 0.92 } : null,
-                        ]}
-                      >
-                        <Ionicons name="chevron-down" size={18} color={colors.gray[700]} />
-                        <Text style={styles.loadMoreText}>טען עוד אורחים</Text>
-                      </Pressable>
-                    </View>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
+                      </ScrollView>
+                    )}
                   </View>
-                )}
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.main}>
+              <View
+                style={[
+                  styles.card,
+                  Platform.OS === 'web' && isLg ? ({ position: 'sticky', top: stickyTop } as any) : null,
+                  { minHeight: mapCardHeight },
+                ]}
+              >
+                <View style={styles.cardHeaderRow}>
+                  <Text style={styles.cardTitle}>מפת הושבה</Text>
+                  <Text style={[styles.helperText, { marginTop: 0 }]}>לחץ על שולחן כדי לסנן</Text>
+                </View>
+
+                <View style={styles.mapLegendRow}>
+                  <View style={styles.mapLegendItem}>
+                    <View style={[styles.mapLegendDot, { backgroundColor: colors.primary }]} />
+                    <Text style={styles.mapLegendText}>רגיל</Text>
+                  </View>
+                  <View style={styles.mapLegendItem}>
+                    <View style={[styles.mapLegendDot, { backgroundColor: colors.primary }]} />
+                    <Text style={styles.mapLegendText}>אביר</Text>
+                  </View>
+                  <View style={styles.mapLegendItem}>
+                    <View style={[styles.mapLegendDot, { backgroundColor: colors.secondary }]} />
+                    <Text style={styles.mapLegendText}>רזרבה</Text>
+                  </View>
+                </View>
+
+                <View style={{ marginTop: 12, flex: 1, minHeight: mapCardHeight - 70 }}>
+                  {mapLoading ? (
+                    <View style={styles.loadingRow}>
+                      <ActivityIndicator size="large" color={colors.primary} />
+                      <Text style={styles.loadingText}>טוען מפה…</Text>
+                    </View>
+                  ) : webSketch ? (
+                    <SeatingGridReadonly
+                      gridCols={webSketch.gridCols}
+                      gridRows={webSketch.gridRows}
+                      tables={webSketch.tables}
+                      zones={webSketch.zones}
+                      labels={webSketch.labels}
+                      hideTableType
+                      showTableBorder={false}
+                      getTableBaseColor={(t: any) => (t?.type === 'reserve' ? colors.secondary : colors.primary)}
+                      getTableBackgroundAlpha={(t: any) => (t?.type === 'reserve' ? 0.18 : 0.42)}
+                      selectedRingColor={colors.secondary}
+                      isTableSelected={(t: any) => Boolean(selectedTableNumber) && Number(t?.number) === Number(selectedTableNumber)}
+                      getTableSubLabel={(t: any) => {
+                        const num = t?.number;
+                        if (!num) return null;
+                        const seated = seatedByNumber.get(Number(num)) ?? 0;
+                        const cap = Number(t?.seats ?? 0) || 0;
+                        return cap ? `${seated} / ${cap}` : String(seated);
+                      }}
+                      getTableTooltip={(t: any) => {
+                        const num = t?.number;
+                        if (!num) return null;
+                        const seated = seatedByNumber.get(Number(num)) ?? 0;
+                        const cap = Number(t?.seats ?? 0) || 0;
+                        return cap ? `יושבים בשולחן: ${seated} / ${cap}` : `יושבים בשולחן: ${seated}`;
+                      }}
+                      onPressTableNumber={(num) => {
+                        if (!num) return;
+                        const id = tableIdByNumber.get(Number(num));
+                        if (!id) return;
+                        setTableFilter((prev) => (prev === id ? null : id));
+                      }}
+                    />
+                  ) : (
+                    <View style={styles.emptyRow}>
+                      <Ionicons name="map-outline" size={42} color={colors.gray[500]} />
+                      <Text style={styles.emptyTitle}>אין מפה עדיין</Text>
+                      <Text style={styles.emptyText}>כשתהיה סקיצה לאירוע, היא תופיע כאן.</Text>
+                    </View>
+                  )}
+                </View>
               </View>
             </View>
           </View>
@@ -701,9 +817,10 @@ const styles = StyleSheet.create({
 
   screen: {
     width: '100%',
-    maxWidth: 1600,
+    // Allow more horizontal room so the seating map can be big on wide monitors.
+    maxWidth: 1960,
     alignSelf: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     paddingBottom: 28,
     paddingTop: 18,
   },
@@ -712,12 +829,13 @@ const styles = StyleSheet.create({
     marginTop: 12,
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 18,
+    gap: 14,
   },
   contentSm: { flexDirection: 'column', gap: 14 },
-  aside: { width: 380, flexShrink: 0 },
-  asideSm: { width: '100%' },
-  asideSticky: { gap: 14 },
+  // Keep side columns tighter to prioritize the map width.
+  dashboardCol: { width: 280, flexShrink: 0 },
+  guestsCol: { width: 580, flexShrink: 0 },
+  colSm: { width: '100%' },
   main: { flex: 1, minWidth: 0 },
 
   card: {
@@ -885,8 +1003,85 @@ const styles = StyleSheet.create({
   emptyTitle: { fontSize: 15, fontWeight: '900', color: colors.text, textAlign: 'center' },
   emptyText: { fontSize: 13, fontWeight: '700', color: colors.gray[600], textAlign: 'center' },
 
+  mapLegendRow: { marginTop: 10, flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 12, alignItems: 'center' },
+  mapLegendItem: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
+  mapLegendDot: { width: 10, height: 10, borderRadius: 999 },
+  mapLegendText: { fontSize: 12, fontWeight: '900', color: colors.gray[700], textAlign: 'right' },
+
   statusTag: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 },
   statusTagText: { fontSize: 12, fontWeight: '900', textAlign: 'right' },
+
+  guestRowCompact: {
+    position: 'relative',
+    minHeight: 56,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.06)',
+    backgroundColor: 'rgba(255,255,255,0.98)',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    overflow: 'hidden',
+    ...(Platform.OS === 'web' ? ({ direction: 'ltr' } as any) : null),
+  },
+  guestRowCompactOn: { backgroundColor: 'rgba(34,197,94,0.06)', borderColor: 'rgba(34,197,94,0.14)' },
+  guestRowAccent: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, backgroundColor: 'rgba(148,163,184,0.7)' },
+  guestRowAccentOn: { backgroundColor: '#10B981' },
+  guestRowMain: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  guestRowRight: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 0 },
+  guestNameCompact: { fontSize: 14, fontWeight: '900', color: colors.text, textAlign: 'right' },
+  guestMetaCompact: { marginTop: 2, fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'right' },
+  tableChip: {
+    height: 28,
+    minWidth: 92,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    backgroundColor: 'rgba(6,23,62,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.10)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tableChipText: { fontSize: 12, fontWeight: '900', color: colors.primary, textAlign: 'center' },
+  peoplePill: {
+    minWidth: 30,
+    textAlign: 'center',
+    fontSize: 12,
+    fontWeight: '900',
+    color: colors.primary,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(6,23,62,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.10)',
+  },
+  compactStepper: {
+    height: 32,
+    borderRadius: 12,
+    backgroundColor: 'rgba(15,23,42,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.06)',
+    paddingHorizontal: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  stepBtnCompact: {
+    width: 26,
+    height: 26,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  compactCountWrap: { minWidth: 20, alignItems: 'center', justifyContent: 'center' },
+  compactCountText: { fontSize: 12, fontWeight: '900', color: colors.text, textAlign: 'center' },
 
   guestCard: {
     backgroundColor: 'rgba(255,255,255,0.98)',
@@ -945,6 +1140,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  avatarCompact: { width: 34, height: 34 },
   avatarOn: { backgroundColor: 'rgba(34,197,94,0.10)', borderColor: 'rgba(34,197,94,0.20)' },
   avatarText: { fontSize: 12, fontWeight: '900', color: colors.gray[700], textAlign: 'center' },
   guestName: { fontSize: 15, fontWeight: '900', color: colors.text, textAlign: 'right' },

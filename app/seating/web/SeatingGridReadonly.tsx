@@ -3,6 +3,24 @@ import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Defs, Line, Pattern, Rect } from 'react-native-svg';
 import { CELL_SIZE, TABLE_LABELS, clamp, tableCellSize, type Orientation, type TableType } from './_types';
 
+function hexToRgba(hex: string, alpha: number) {
+  const raw = String(hex || '').trim().replace('#', '');
+  if (raw.length !== 6) return `rgba(0,0,0,${alpha})`;
+  const r = Number.parseInt(raw.slice(0, 2), 16);
+  const g = Number.parseInt(raw.slice(2, 4), 16);
+  const b = Number.parseInt(raw.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function isHex6(color: string) {
+  return typeof color === 'string' && color.startsWith('#') && color.length === 7;
+}
+
+function clampAlpha(a: number) {
+  if (!Number.isFinite(a)) return 0;
+  return Math.max(0, Math.min(1, a));
+}
+
 type TableItem = {
   id: string;
   type: TableType;
@@ -37,6 +55,14 @@ export function SeatingGridReadonly({
   labels,
   onPressTableNumber,
   getTableTooltip,
+  getTableSubLabel,
+  hideTableType,
+  getTableBaseColor,
+  getTableBackgroundAlpha,
+  getTableBorderAlpha,
+  showTableBorder,
+  isTableSelected,
+  selectedRingColor,
 }: {
   gridCols: number;
   gridRows: number;
@@ -45,6 +71,14 @@ export function SeatingGridReadonly({
   labels: LabelItem[];
   onPressTableNumber?: (num: number | undefined) => void;
   getTableTooltip?: (t: TableItem) => string | null;
+  getTableSubLabel?: (t: TableItem) => string | null;
+  hideTableType?: boolean;
+  getTableBaseColor?: (t: TableItem) => string | null;
+  getTableBackgroundAlpha?: (t: TableItem) => number | null;
+  getTableBorderAlpha?: (t: TableItem) => number | null;
+  showTableBorder?: boolean;
+  isTableSelected?: (t: TableItem) => boolean;
+  selectedRingColor?: string;
 }) {
   const isWeb = Platform.OS === 'web';
 
@@ -273,8 +307,31 @@ export function SeatingGridReadonly({
             {/* Tables */}
             {tables.map(t => {
               const sz = tableCellSize(t.type, t.seats, t.orientation);
-              const color = t.type === 'reserve' ? '#F59E0B' : t.type === 'knight' ? '#7C3AED' : '#2563EB';
+              const baseDefault = t.type === 'reserve' ? '#F59E0B' : t.type === 'knight' ? '#7C3AED' : '#2563EB';
+              const base = (getTableBaseColor?.(t) ?? baseDefault) || baseDefault;
+              const selected = Boolean(isTableSelected?.(t));
+              const ringBase = selectedRingColor && String(selectedRingColor).trim() ? String(selectedRingColor).trim() : base;
+
+              const bgAlpha = getTableBackgroundAlpha?.(t);
+              const borderAlpha = getTableBorderAlpha?.(t);
+              const borderOn = showTableBorder !== false;
+
+              const bg =
+                typeof bgAlpha === 'number' && isHex6(base)
+                  ? hexToRgba(base, clampAlpha(bgAlpha))
+                  : isHex6(base)
+                    ? `${base}22`
+                    : base;
+
+              const borderColor =
+                typeof borderAlpha === 'number' && isHex6(base)
+                  ? hexToRgba(base, clampAlpha(borderAlpha))
+                  : isHex6(base)
+                    ? `${base}55`
+                    : 'rgba(15,23,42,0.18)';
+
               const tip = getTableTooltip?.(t) ?? null;
+              const sub = getTableSubLabel?.(t) ?? null;
               return (
                 <Pressable
                   key={t.id}
@@ -305,19 +362,30 @@ export function SeatingGridReadonly({
                     : null)}
                   style={({ pressed }) => [
                     styles.table,
+                    selected ? styles.tableSelected : null,
+                    selected
+                      ? ({
+                          borderWidth: 0,
+                          ...(Platform.OS === 'web'
+                            ? ({ boxShadow: `0 0 0 3px ${hexToRgba(isHex6(ringBase) ? ringBase : '#06173e', 0.35)}` } as any)
+                            : null),
+                        } as any)
+                      : null,
                     {
                       left: (t.gridX - contentRect.originX) * CELL_SIZE,
                       top: (t.gridY - contentRect.originY) * CELL_SIZE,
                       width: sz.w * CELL_SIZE,
                       height: sz.h * CELL_SIZE,
-                      backgroundColor: `${color}22`,
-                      borderColor: `${color}55`,
+                      backgroundColor: bg,
+                      borderWidth: borderOn ? 1 : 0,
+                      borderColor: borderOn ? borderColor : 'transparent',
                       opacity: pressed ? 0.9 : 1,
                     },
                   ]}
                 >
-                  <Text style={[styles.tableNum, { color }]}>{t.number ?? ''}</Text>
-                  <Text style={styles.tableType}>{TABLE_LABELS[t.type]}</Text>
+                  <Text style={[styles.tableNum, { color: base }]}>{t.number ?? ''}</Text>
+                  {!hideTableType ? <Text style={styles.tableType}>{TABLE_LABELS[t.type]}</Text> : null}
+                  {sub ? <Text style={styles.tableSub}>{sub}</Text> : null}
                 </Pressable>
               );
             })}
@@ -363,7 +431,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 12,
     fontWeight: '800',
-    ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null),
   },
   gridWrap: {
     backgroundColor: '#fff',
@@ -388,8 +455,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
-  tableNum: { fontSize: 16, fontWeight: '900', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
-  tableType: { marginTop: 2, fontSize: 11, fontWeight: '800', color: 'rgba(17,24,39,0.60)', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
+  tableSelected: {
+    transform: [{ scale: 1.02 }],
+    shadowColor: '#06173e',
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+  },
+  tableNum: { fontSize: 16, fontWeight: '900' },
+  tableType: { marginTop: 2, fontSize: 11, fontWeight: '800', color: 'rgba(17,24,39,0.60)' },
+  tableSub: { marginTop: 3, fontSize: 11, fontWeight: '900', color: 'rgba(17,24,39,0.78)' },
 
   zone: {
     position: 'absolute',
@@ -401,7 +476,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  zoneText: { fontWeight: '900', color: 'rgba(17,24,39,0.65)', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
+  zoneText: { fontWeight: '900', color: 'rgba(17,24,39,0.65)' },
 
   labelWrap: {
     position: 'absolute',
@@ -410,5 +485,5 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: 'rgba(17,24,39,0.02)',
   },
-  labelText: { fontWeight: '800', color: 'rgba(17,24,39,0.62)', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
+  labelText: { fontWeight: '800', color: 'rgba(17,24,39,0.62)' },
 });

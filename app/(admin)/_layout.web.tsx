@@ -1,7 +1,8 @@
-import React, { useEffect } from 'react';
-import { Slot, useRouter } from 'expo-router';
+import React, { useEffect, useMemo } from 'react';
+import { Slot, usePathname, useRouter, useSegments } from 'expo-router';
 import { ActivityIndicator, StyleSheet, Text, View, Pressable, Platform } from 'react-native';
 import DesktopSidebar from '@/components/desktop/DesktopSidebar';
+import DesktopTopBar, { TopBarIconButton } from '@/components/desktop/DesktopTopBar';
 import { useUserStore } from '@/store/userStore';
 import { colors } from '@/constants/colors';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,6 +10,8 @@ import { Image } from 'expo-image';
 
 export default function AdminWebLayout() {
   const router = useRouter();
+  const pathname = usePathname();
+  const segments = useSegments();
   const { userType, isLoggedIn, loading, logout, userData } = useUserStore();
   
   useEffect(() => {
@@ -51,32 +54,40 @@ export default function AdminWebLayout() {
     .join('')
     .toUpperCase();
 
+  const topNav = useMemo(() => {
+    const seg = Array.isArray(segments) ? segments.map((s) => String(s)) : [];
+    const segStr = seg.join('/');
+    const pFromHook = String(pathname || '');
+    const pFromLocation = Platform.OS === 'web' ? String((globalThis as any)?.location?.pathname || '') : '';
+    const hay = `${segStr} ${pFromHook} ${pFromLocation}`.toLowerCase();
+    // Admin guest check-in page should use top navigation on web.
+    return hay.includes('admin-guest-checkin') || hay.includes('guest-checkin');
+  }, [pathname, segments]);
+
   return (
-    <View style={styles.container}>
-      <View style={styles.sidebarWrap}>
-        <DesktopSidebar
-          title=""
-          navItems={
-            userType === 'employee'
-              ? [
-                  { href: '/(admin)/admin-events', label: 'אירועים', icon: 'calendar-outline' },
-                  { href: '/(employee)/employee-profile', label: 'פרופיל', icon: 'person-circle' },
-                ]
-              : [
-                  { href: '/(admin)/admin-events', label: 'אירועים', icon: 'calendar-outline' },
-                  { href: '/(admin)/users', label: 'משתמשים', icon: 'people-circle' },
-                  { href: '/(admin)/admin-profile', label: 'פרופיל', icon: 'person-circle' },
-                ]
-          }
-          footer={
-            <View style={styles.sidebarFooter}>
-              <View style={styles.userCard}>
-                <View style={styles.userMeta}>
-                  <Text style={styles.userName} numberOfLines={1}>
-                    {userName}
-                  </Text>
-                </View>
-                <View style={styles.userAvatarRing}>
+    <View style={[styles.container, topNav ? styles.containerTopNav : null]}>
+      {topNav ? (
+        <>
+          <DesktopTopBar
+            title={userType === 'employee' ? 'עובד' : 'אדמין'}
+            subtitle={userName}
+            rightActions={
+              <>
+                <TopBarIconButton icon="calendar-outline" label="אירועים" onPress={() => router.push('/(admin)/admin-events')} />
+                {userType !== 'employee' ? (
+                  <TopBarIconButton icon="people-circle" label="משתמשים" onPress={() => router.push('/(admin)/users')} />
+                ) : null}
+                <TopBarIconButton
+                  icon="person-circle"
+                  label="פרופיל"
+                  onPress={() => router.push(userType === 'employee' ? '/(employee)/employee-profile' : '/(admin)/admin-profile')}
+                />
+              </>
+            }
+            leftActions={
+              <>
+                <TopBarIconButton icon="log-out-outline" label="התנתקות" onPress={() => void handleLogout()} />
+                <View style={styles.topAvatarRing}>
                   {avatarUrl ? (
                     <Image source={{ uri: avatarUrl }} style={styles.userAvatarImg} contentFit="cover" transition={0} />
                   ) : (
@@ -85,30 +96,73 @@ export default function AdminWebLayout() {
                     </View>
                   )}
                 </View>
-              </View>
+              </>
+            }
+          />
+          <View style={styles.contentTopNav}>
+            <Slot />
+          </View>
+        </>
+      ) : (
+        <>
+          <View style={styles.sidebarWrap}>
+            <DesktopSidebar
+              title=""
+              navItems={
+                userType === 'employee'
+                  ? [
+                      { href: '/(admin)/admin-events', label: 'אירועים', icon: 'calendar-outline' },
+                      { href: '/(employee)/employee-profile', label: 'פרופיל', icon: 'person-circle' },
+                    ]
+                  : [
+                      { href: '/(admin)/admin-events', label: 'אירועים', icon: 'calendar-outline' },
+                      { href: '/(admin)/users', label: 'משתמשים', icon: 'people-circle' },
+                      { href: '/(admin)/admin-profile', label: 'פרופיל', icon: 'person-circle' },
+                    ]
+              }
+              footer={
+                <View style={styles.sidebarFooter}>
+                  <View style={styles.userCard}>
+                    <View style={styles.userMeta}>
+                      <Text style={styles.userName} numberOfLines={1}>
+                        {userName}
+                      </Text>
+                    </View>
+                    <View style={styles.userAvatarRing}>
+                      {avatarUrl ? (
+                        <Image source={{ uri: avatarUrl }} style={styles.userAvatarImg} contentFit="cover" transition={0} />
+                      ) : (
+                        <View style={styles.userAvatarFallback}>
+                          <Text style={styles.userAvatarInitials}>{initials || 'U'}</Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
 
-              <View style={styles.footerDivider} />
+                  <View style={styles.footerDivider} />
 
-              <Pressable
-                onPress={handleLogout}
-                accessibilityRole="button"
-                accessibilityLabel="התנתקות"
-                style={({ hovered, pressed }: any) => [
-                  styles.logoutBtn,
-                  Platform.OS === 'web' && hovered ? styles.logoutBtnHover : null,
-                  pressed ? styles.logoutBtnPressed : null,
-                ]}
-              >
-                <Ionicons name="log-out-outline" size={18} color="#fff" />
-                <Text style={styles.logoutText}>התנתקות</Text>
-              </Pressable>
-            </View>
-          }
-        />
-      </View>
-      <View style={styles.content}>
-        <Slot />
-      </View>
+                  <Pressable
+                    onPress={handleLogout}
+                    accessibilityRole="button"
+                    accessibilityLabel="התנתקות"
+                    style={({ hovered, pressed }: any) => [
+                      styles.logoutBtn,
+                      Platform.OS === 'web' && hovered ? styles.logoutBtnHover : null,
+                      pressed ? styles.logoutBtnPressed : null,
+                    ]}
+                  >
+                    <Ionicons name="log-out-outline" size={18} color="#fff" />
+                    <Text style={styles.logoutText}>התנתקות</Text>
+                  </Pressable>
+                </View>
+              }
+            />
+          </View>
+          <View style={styles.content}>
+            <Slot />
+          </View>
+        </>
+      )}
     </View>
   );
 }
@@ -120,7 +174,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8fafc',
     height: '100%',
   },
+  containerTopNav: { flexDirection: 'column' },
   content: {
+    flex: 1,
+    height: '100%',
+    overflow: 'hidden',
+  },
+  contentTopNav: {
     flex: 1,
     height: '100%',
     overflow: 'hidden',
@@ -187,6 +247,15 @@ const styles = StyleSheet.create({
   userAvatarImg: { width: '100%', height: '100%' },
   userAvatarFallback: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   userAvatarInitials: { fontSize: 12, fontWeight: '900', color: colors.primary },
+  topAvatarRing: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.10)',
+    backgroundColor: 'rgba(15,23,42,0.05)',
+  },
   userMeta: {
     flex: 1,
     minWidth: 0,
