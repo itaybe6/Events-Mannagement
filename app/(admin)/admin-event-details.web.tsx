@@ -200,6 +200,14 @@ export default function AdminEventDetailsWebScreen() {
     });
   };
 
+  const handleEditSketch = () => {
+    if (!event?.id) return;
+    router.push({
+      pathname: '/(admin)/seating-templates',
+      params: { eventId: event.id, keep: '1' },
+    });
+  };
+
   // Ensure seating map exists, then navigate to seating map editor/view
   const handleSeatingMap = async () => {
     if (!event?.id) return;
@@ -422,6 +430,25 @@ export default function AdminEventDetailsWebScreen() {
 
                 <Pressable
                   accessibilityRole="button"
+                  accessibilityLabel="עריכת סקיצה"
+                  onPress={handleEditSketch}
+                  style={({ hovered, pressed }: any) => [
+                    styles.quickActionBtn,
+                    Platform.OS === 'web' && hovered ? styles.quickActionBtnHover : null,
+                    pressed ? { opacity: 0.92 } : null,
+                  ]}
+                >
+                  <View style={styles.quickActionLeft}>
+                    <View style={[styles.quickActionIcon, { backgroundColor: 'rgba(249,115,22,0.14)' }]}>
+                      <Ionicons name="create-outline" size={18} color={'#F97316'} />
+                    </View>
+                    <Text style={styles.quickActionText}>עריכת סקיצה</Text>
+                  </View>
+                  <Ionicons name="chevron-back" size={18} color={colors.gray[500]} style={styles.quickActionChevron} />
+                </Pressable>
+
+                <Pressable
+                  accessibilityRole="button"
                   accessibilityLabel="צ׳ק-אין אורחים"
                   onPress={() => router.push(`/(admin)/admin-guest-checkin?eventId=${event.id}`)}
                   style={({ hovered, pressed }: any) => [
@@ -499,7 +526,7 @@ export default function AdminEventDetailsWebScreen() {
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel="פרטים נוספים"
-                    onPress={() => Alert.alert('את הסקיצה ניתן לערוך רק מהאתר')}
+                    onPress={handleTablesList}
                   >
                     <Text style={styles.panelLink}>פרטים נוספים</Text>
                   </Pressable>

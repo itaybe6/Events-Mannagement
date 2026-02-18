@@ -90,6 +90,7 @@ export default function SeatingTemplatesScreen(props: SeatingTemplatesScreenProp
   const resolvedStartMode: 'builder' | 'map' =
     props.startMode ?? (startModeParam === 'map' ? 'map' : 'builder');
   const [mode, setMode] = useState<'builder' | 'map'>(resolvedStartMode);
+  const isWebMapRoute = Platform.OS === 'web' && resolvedStartMode === 'map';
   const [baseTables, setBaseTables] = useState<BuiltTable[]>([]);
   const [manualTables, setManualTables] = useState<BuiltTable[]>([]);
   const [hiddenTableIds, setHiddenTableIds] = useState<Set<number>>(new Set());
