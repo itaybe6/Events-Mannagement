@@ -4,7 +4,7 @@ export type Orientation = 'row' | 'column';
 export const FIXED_SEATS: Record<TableType, number> = {
   regular: 12,
   knight: 20,
-  reserve: 8,
+  reserve: 12,
 };
 
 export const TABLE_LABELS: Record<TableType, string> = {
@@ -60,10 +60,6 @@ export const CELL_SIZE = 18;
 export const DEFAULT_GRID_COLS = 50;
 export const DEFAULT_GRID_ROWS = 35;
 
-// Backwards-compatible aliases (older screens used these names).
-export const GRID_COLS = DEFAULT_GRID_COLS;
-export const GRID_ROWS = DEFAULT_GRID_ROWS;
-
 export type GridRect = {
   x: number;
   y: number;
@@ -82,9 +78,7 @@ export function makeId(prefix: 'table' | 'zone' | 'label') {
 export function tableCellSize(type: TableType, seats: number, orientation: Orientation): { w: number; h: number } {
   if (type === 'knight') {
     const long = Math.max(Math.ceil((seats || 20) / 2), 3);
-    // Make the "knight" table slightly thicker so labels fit better on web.
-    const thick = 3;
-    return orientation === 'row' ? { w: long, h: thick } : { w: thick, h: long };
+    return orientation === 'row' ? { w: long, h: 2 } : { w: 2, h: long };
   }
   // regular + reserve
   return { w: 3, h: 3 };

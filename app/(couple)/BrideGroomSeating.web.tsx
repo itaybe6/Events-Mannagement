@@ -23,7 +23,7 @@ import { useLayoutStore } from '@/store/layoutStore';
 import { useUserStore } from '@/store/userStore';
 
 import { SeatingGridReadonly } from '../seating/web/SeatingGridReadonly';
-import { DEFAULT_GRID_COLS, DEFAULT_GRID_ROWS, tableCellSize, type Orientation, type TableType } from '../seating/web/types';
+import { DEFAULT_GRID_COLS, DEFAULT_GRID_ROWS, tableCellSize, type Orientation, type TableType } from '../seating/web/_types';
 import type { Table } from '@/types';
 
 type GuestRow = {

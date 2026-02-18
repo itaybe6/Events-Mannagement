@@ -55,6 +55,23 @@ const PREVIEW_MAP_HEIGHT = 560;
 const PREVIEW_MAP_Y_RANGE = 800;
 const PREVIEW_TABLE_CARD_WIDTH = 44;
 
+// Seating map table sizing (world-space, not screen-space).
+// Smaller values make it easier to fit many tables in the map.
+const MAP_TABLE_SIZE = {
+  regular: { w: 64, h: 64 },
+  knight: { w: 56, h: 110 },
+} as const;
+
+const MAP_TABLE_GAP = 18;
+
+function getMapTableSizeByFlags(isKnight: boolean) {
+  return isKnight ? MAP_TABLE_SIZE.knight : MAP_TABLE_SIZE.regular;
+}
+
+function getMapTableSizeByKind(kind: 'regular' | 'knight' | 'reserve' | 'square') {
+  return kind === 'knight' ? MAP_TABLE_SIZE.knight : MAP_TABLE_SIZE.regular;
+}
+
 type SeatingTemplatesScreenProps = {
   startMode?: 'builder' | 'map';
   eventId?: string;
@@ -780,8 +797,9 @@ export default function SeatingTemplatesScreen(props: SeatingTemplatesScreenProp
       const mapW = mapSize.cols * 200;
       const mapH = mapSize.rows * 200;
       const table = tablesForEdit.find(t => t.id === tableId);
-      const w = table?.isKnight ? 68 : 78;
-      const h = table?.isKnight ? 130 : 78;
+      const sz = getMapTableSizeByFlags(!!table?.isKnight);
+      const w = sz.w;
+      const h = sz.h;
       const clampedX = clamp(x, 0, Math.max(0, mapW - w));
       const clampedY = clamp(y, 0, Math.max(0, mapH - h));
       x = Math.round(clampedX / 10) * 10;
@@ -806,14 +824,15 @@ export default function SeatingTemplatesScreen(props: SeatingTemplatesScreenProp
       while (hiddenTableIds.has(nextId)) nextId += 1;
       const isKnight = kind === 'knight';
       const isReserve = kind === 'reserve';
-      const seats = isKnight ? 20 : isReserve ? 8 : 12;
+      const seats = isKnight ? 20 : 12;
 
       // Always clamp new tables into the white map area when mapSize exists.
       if (mapSize?.cols && mapSize?.rows) {
         const mapW = mapSize.cols * 200;
         const mapH = mapSize.rows * 200;
-        const w = isKnight ? 68 : 78;
-        const h = isKnight ? 130 : 78;
+        const sz = getMapTableSizeByFlags(isKnight);
+        const w = sz.w;
+        const h = sz.h;
         const clampedX = clamp(x, 0, Math.max(0, mapW - w));
         const clampedY = clamp(y, 0, Math.max(0, mapH - h));
         x = Math.round(clampedX / 10) * 10;
@@ -859,12 +878,13 @@ export default function SeatingTemplatesScreen(props: SeatingTemplatesScreenProp
       const safeCount = Math.max(1, Math.min(200, Math.floor(count || 1)));
       const isKnight = kind === 'knight';
       const isReserve = kind === 'reserve';
-      const seats = isKnight ? 20 : isReserve ? 8 : 12;
+      const seats = isKnight ? 20 : 12;
 
       // spacing in world units (snapped feel)
-      const w = isKnight ? 68 : 78;
-      const h = isKnight ? 130 : 78;
-      const gap = 26;
+      const sz = getMapTableSizeByFlags(isKnight);
+      const w = sz.w;
+      const h = sz.h;
+      const gap = MAP_TABLE_GAP;
       const stepX = layout === 'row' ? w + gap : 0;
       const stepY = layout === 'column' ? h + gap : 0;
 
@@ -933,8 +953,9 @@ export default function SeatingTemplatesScreen(props: SeatingTemplatesScreenProp
     const mapH = mapSize.rows * 200;
 
     const clampTable = (t: BuiltTable) => {
-      const w = t.isKnight ? 68 : 78;
-      const h = t.isKnight ? 130 : 78;
+      const sz = getMapTableSizeByFlags(t.isKnight);
+      const w = sz.w;
+      const h = sz.h;
       const nx = Math.round(clamp(t.x, 0, Math.max(0, mapW - w)) / 10) * 10;
       const ny = Math.round(clamp(t.y, 0, Math.max(0, mapH - h)) / 10) * 10;
       if (nx === t.x && ny === t.y) return t;
@@ -1817,8 +1838,7 @@ function SeatingFreeformMap({
   const sizeById = useMemo(() => {
     const map = new Map<number, { w: number; h: number }>();
     for (const t of tables) {
-      if (t.isKnight) map.set(t.id, { w: 68, h: 130 });
-      else map.set(t.id, { w: 78, h: 78 });
+      map.set(t.id, getMapTableSizeByFlags(t.isKnight));
     }
     return map;
   }, [tables]);
@@ -1826,7 +1846,7 @@ function SeatingFreeformMap({
   const clampTableToMap = useCallback(
     (id: number, x: number, y: number) => {
       if (!mapSize?.cols || !mapSize?.rows) return { x, y };
-      const sz = sizeById.get(id) ?? { w: 78, h: 78 };
+      const sz = sizeById.get(id) ?? MAP_TABLE_SIZE.regular;
       const mapW = mapSize.cols * GRID_MAJOR;
       const mapH = mapSize.rows * GRID_MAJOR;
       const clampedX = clamp(x, 0, Math.max(0, mapW - sz.w));
@@ -1939,7 +1959,7 @@ function SeatingFreeformMap({
       const stageW = worldSize.w;
       const stageH = worldSize.h;
       for (const t of added) {
-        const sz = sizeById.get(t.id) ?? { w: 78, h: 78 };
+        const sz = sizeById.get(t.id) ?? MAP_TABLE_SIZE.regular;
         const screenX = (t.x + origin.x) * s + tx;
         const screenY = (t.y + origin.y) * s + ty;
         const screenCx = (t.x + origin.x + sz.w / 2) * s + tx;
@@ -2020,7 +2040,7 @@ function SeatingFreeformMap({
         const pos = posByIdRef.current.get(t.id);
         const tx = pos?.x.value ?? t.x;
         const ty = pos?.y.value ?? t.y;
-        const sz = sizeById.get(t.id) ?? { w: 78, h: 78 };
+        const sz = sizeById.get(t.id) ?? MAP_TABLE_SIZE.regular;
 
         const tMinX = tx;
         const tMaxX = tx + sz.w;
@@ -2148,7 +2168,7 @@ function SeatingFreeformMap({
   const updateGuides = useCallback(
     (dragId: number, x: number, y: number) => {
       const TOL = 8; // alignment tolerance in world-units
-      const dragSize = sizeById.get(dragId) ?? { w: 78, h: 78 };
+      const dragSize = sizeById.get(dragId) ?? MAP_TABLE_SIZE.regular;
 
       const dragLeft = x;
       const dragRight = x + dragSize.w;
@@ -2166,7 +2186,7 @@ function SeatingFreeformMap({
         const pos = posByIdRef.current.get(t.id);
         const ox = pos?.x.value ?? t.x ?? 0;
         const oy = pos?.y.value ?? t.y ?? 0;
-        const sz = sizeById.get(t.id) ?? { w: 78, h: 78 };
+        const sz = sizeById.get(t.id) ?? MAP_TABLE_SIZE.regular;
 
         const left = ox;
         const right = ox + sz.w;
@@ -2469,8 +2489,9 @@ function SeatingFreeformMap({
     let baseY = Math.round((((viewportH / 2 - cy) / cs - origin.y) / 10)) * 10;
 
     if (count <= 1) {
-      const kindW = addKind === 'knight' ? 68 : 78;
-      const kindH = addKind === 'knight' ? 130 : 78;
+      const kindSz = getMapTableSizeByKind(addKind);
+      const kindW = kindSz.w;
+      const kindH = kindSz.h;
       if (mapSize?.cols && mapSize?.rows) {
         const mapW = mapSize.cols * GRID_MAJOR;
         const mapH = mapSize.rows * GRID_MAJOR;
@@ -2513,9 +2534,10 @@ function SeatingFreeformMap({
 
     // Focus on center of the new group so it's obvious where it was added
     const isKnight = addKind === 'knight';
-    const w = isKnight ? 68 : 78;
-    const h = isKnight ? 130 : 78;
-    const gap = 26;
+    const sz = getMapTableSizeByFlags(isKnight);
+    const w = sz.w;
+    const h = sz.h;
+    const gap = MAP_TABLE_GAP;
     const stepX = addLayout === 'row' ? w + gap : 0;
     const stepY = addLayout === 'column' ? h + gap : 0;
     const groupW = w + (count - 1) * stepX;
@@ -3829,8 +3851,7 @@ function DraggableTableNode({
   const lastGuideY = useSharedValue(0);
 
   const tableSize = useMemo(() => {
-    if (kind === 'knight') return { w: 68, h: 130 };
-    return { w: 78, h: 78 };
+    return getMapTableSizeByKind(kind);
   }, [kind]);
 
   const dragGesture = useMemo(

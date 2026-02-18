@@ -4,14 +4,12 @@ import Svg, { Defs, Line, Pattern, Rect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import {
   CELL_SIZE,
-  GRID_COLS,
-  GRID_ROWS,
   TABLE_LABELS,
   clamp,
   tableCellSize,
   type SeatingItemKind,
-} from './types';
-import type { UseSeatingStateApi } from './useSeatingState';
+} from './_types';
+import type { UseSeatingStateApi } from './_useSeatingState';
 
 type Guides = {
   v: number[]; // x in cells
@@ -46,8 +44,8 @@ type ActiveEditState = NonNullable<EditState>;
 
 export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
   const isWeb = Platform.OS === 'web';
-  const gridW = GRID_COLS * CELL_SIZE;
-  const gridH = GRID_ROWS * CELL_SIZE;
+  const gridW = api.gridCols * CELL_SIZE;
+  const gridH = api.gridRows * CELL_SIZE;
 
   const gridRef = useRef<any>(null);
 
@@ -77,10 +75,10 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
   const pxToCell = useCallback((px: number) => Math.round(px / CELL_SIZE), []);
   const clampCell = useCallback((x: number, y: number, w: number, h: number) => {
     return {
-      x: clamp(x, 0, Math.max(0, GRID_COLS - w)),
-      y: clamp(y, 0, Math.max(0, GRID_ROWS - h)),
+      x: clamp(x, 0, Math.max(0, api.gridCols - w)),
+      y: clamp(y, 0, Math.max(0, api.gridRows - h)),
     };
-  }, []);
+  }, [api.gridCols, api.gridRows]);
 
   const elementAtTargetIsItem = useCallback((e: any) => {
     try {
