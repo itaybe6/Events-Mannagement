@@ -375,6 +375,25 @@ export default function AdminEventDetailsWebScreen() {
                   </View>
                   <Ionicons name="chevron-back" size={18} color={colors.gray[500]} style={styles.quickActionChevron} />
                 </Pressable>
+
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="צ׳ק-אין אורחים"
+                  onPress={() => router.push(`/(admin)/admin-guest-checkin?eventId=${event.id}`)}
+                  style={({ hovered, pressed }: any) => [
+                    styles.quickActionBtn,
+                    Platform.OS === 'web' && hovered ? styles.quickActionBtnHover : null,
+                    pressed ? { opacity: 0.92 } : null,
+                  ]}
+                >
+                  <View style={styles.quickActionLeft}>
+                    <View style={[styles.quickActionIcon, { backgroundColor: 'rgba(34,197,94,0.16)' }]}>
+                      <Ionicons name="checkbox-outline" size={18} color={'#22C55E'} />
+                    </View>
+                    <Text style={styles.quickActionText}>צ׳ק-אין אורחים</Text>
+                  </View>
+                  <Ionicons name="chevron-back" size={18} color={colors.gray[500]} style={styles.quickActionChevron} />
+                </Pressable>
               </View>
             </View>
 

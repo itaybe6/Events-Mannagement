@@ -145,7 +145,7 @@ export default function LoginWebScreen() {
       if (userRow.user_type === 'admin') {
         router.replace('/(admin)/admin-events');
       } else if (userRow.user_type === 'employee') {
-        router.replace('/(employee)/employee-events');
+        router.replace('/(admin)/admin-events');
       } else {
         router.replace('/(couple)');
       }

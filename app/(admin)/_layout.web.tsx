@@ -17,11 +17,7 @@ export default function AdminWebLayout() {
       router.replace('/login');
       return;
     }
-    if (userType === 'employee') {
-      router.replace('/(employee)/employee-events');
-      return;
-    }
-    if (userType !== 'admin') {
+    if (userType !== 'admin' && userType !== 'employee') {
       router.replace('/(couple)');
     }
   }, [isLoggedIn, userType, loading, router]);
@@ -60,11 +56,18 @@ export default function AdminWebLayout() {
       <View style={styles.sidebarWrap}>
         <DesktopSidebar
           title=""
-          navItems={[
-            { href: '/(admin)/admin-events', label: 'אירועים', icon: 'calendar-outline' },
-            { href: '/(admin)/users', label: 'משתמשים', icon: 'people-circle' },
-            { href: '/(admin)/admin-profile', label: 'פרופיל', icon: 'person-circle' },
-          ]}
+          navItems={
+            userType === 'employee'
+              ? [
+                  { href: '/(admin)/admin-events', label: 'אירועים', icon: 'calendar-outline' },
+                  { href: '/(employee)/employee-profile', label: 'פרופיל', icon: 'person-circle' },
+                ]
+              : [
+                  { href: '/(admin)/admin-events', label: 'אירועים', icon: 'calendar-outline' },
+                  { href: '/(admin)/users', label: 'משתמשים', icon: 'people-circle' },
+                  { href: '/(admin)/admin-profile', label: 'פרופיל', icon: 'person-circle' },
+                ]
+          }
           footer={
             <View style={styles.sidebarFooter}>
               <View style={styles.userCard}>

@@ -1,11 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { colors } from '@/constants/colors';
-import DesktopTopBar, { TopBarIconButton } from '@/components/desktop/DesktopTopBar';
 import { useGuestCheckInModel } from '@/features/guests/useGuestCheckInModel';
+import { tableService } from '@/lib/services/tableService';
 import type { Guest } from '@/types';
 
 const UNCATEGORIZED_KEY = '__uncategorized__' as const;
@@ -26,20 +26,12 @@ export default function EmployeeGuestCheckinWebScreen() {
   const { eventId } = useLocalSearchParams<{ eventId?: string }>();
   const resolvedEventId = useMemo(() => String(eventId || '').trim(), [eventId]);
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
-
-  const fallbackToDetails = useMemo(
-    () =>
-      resolvedEventId
-        ? `/(employee)/employee-event-details?id=${resolvedEventId}`
-        : '/(employee)/employee-events',
-    [resolvedEventId]
-  );
+  const [tableNumberById, setTableNumberById] = useState<Map<string, number | null>>(() => new Map());
 
   const {
     loading,
     categories,
     filteredGuests,
-    counts,
     sections,
     query,
     setQuery,
@@ -54,9 +46,29 @@ export default function EmployeeGuestCheckinWebScreen() {
     errorMessage: 'לא ניתן לטעון את רשימת האורחים',
   });
 
+  const loadTables = useCallback(async () => {
+    if (!resolvedEventId) {
+      setTableNumberById(new Map());
+      return;
+    }
+
+    try {
+      const tables = await tableService.getTables(resolvedEventId);
+      const next = new Map<string, number | null>();
+      tables.forEach((t) => {
+        next.set(t.id, typeof t.number === 'number' ? t.number : null);
+      });
+      setTableNumberById(next);
+    } catch (e) {
+      console.error('Load tables error:', e);
+      setTableNumberById(new Map());
+    }
+  }, [resolvedEventId]);
+
   useEffect(() => {
     void refresh();
-  }, [refresh]);
+    void loadTables();
+  }, [refresh, loadTables]);
 
   const categoryLabelById = useMemo(() => {
     const m = new Map<string, string>();
@@ -107,17 +119,6 @@ export default function EmployeeGuestCheckinWebScreen() {
 
   return (
     <View style={styles.page}>
-      <DesktopTopBar
-        title="צ׳ק-אין אורחים"
-        subtitle={`${counts.checkedIn}/${counts.total} הגיעו${resolvedEventId ? ` · אירוע: ${resolvedEventId}` : ''}`}
-        leftActions={
-          <>
-            <TopBarIconButton icon="arrow-forward" label="חזרה" onPress={() => router.replace(fallbackToDetails)} />
-            <TopBarIconButton icon="refresh" label="רענון" onPress={() => void refresh()} />
-          </>
-        }
-      />
-
       {!resolvedEventId ? (
         <View style={styles.emptyWrap}>
           <Ionicons name="alert-circle-outline" size={44} color={colors.gray[500]} />
@@ -142,6 +143,7 @@ export default function EmployeeGuestCheckinWebScreen() {
               <View style={styles.tableHeader}>
                 <Text style={[styles.th, { width: 120, textAlign: 'center' }]}>צ׳ק-אין</Text>
                 <Text style={[styles.th, { flex: 1 }]}>שם</Text>
+                <Text style={[styles.th, { width: 90, textAlign: 'center' }]}>מס׳ שולחן</Text>
                 <Text style={[styles.th, { width: 160 }]}>טלפון</Text>
                 <Text style={[styles.th, { width: 90, textAlign: 'center' }]}>אנשים</Text>
                 <Text style={[styles.th, { width: 220 }]}>קטגוריה</Text>
@@ -203,6 +205,10 @@ export default function EmployeeGuestCheckinWebScreen() {
 
                         <Text style={[styles.td, { flex: 1 }]} numberOfLines={1}>
                           {g.name}
+                        </Text>
+
+                        <Text style={[styles.td, { width: 90, textAlign: 'center' }]} numberOfLines={1}>
+                          {g.tableId ? (tableNumberById.get(g.tableId) ?? '—') : '—'}
                         </Text>
 
                         <View style={[styles.td, { width: 160, flexDirection: 'row-reverse', gap: 8, alignItems: 'center' }]}>
