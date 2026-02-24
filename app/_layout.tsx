@@ -336,7 +336,7 @@ function RootLayoutNav() {
     // Don't navigate until we've finished initializing
     if (initializing || loading) return;
 
-    const isPublicInvitation = segments[0] === 'invitation';
+    const isPublicInvitation = segments[0] === 'invitation' || segments[0] === 'i';
 
     // אם המשתמש מחובר והוא בעמוד ההתחברות - העבר לקבוצת הטאבים לפי תפקיד
     if (isLoggedIn && segments[0] === 'login') {
@@ -406,6 +406,7 @@ function RootLayoutNav() {
       <Stack.Screen name="(couple)" options={{ headerShown: false }} />
       <Stack.Screen name="(employee)" options={{ headerShown: false }} />
       <Stack.Screen name="invitation/[token]" options={{ headerShown: false }} />
+      <Stack.Screen name="i/[token]" options={{ headerShown: false }} />
       <Stack.Screen name="modal" options={{ presentation: "modal" }} />
       
       <Stack.Screen name="seating/templates" options={{ headerShown: false }} />

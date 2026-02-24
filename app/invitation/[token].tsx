@@ -99,14 +99,15 @@ export default function InvitationLandingScreen() {
   const canSubmit = Boolean(info?.guest?.id) && !saving;
 
   const submit = async () => {
-    if (!info?.guest?.invitationToken) return;
+    const submitToken = String(info?.guest?.invitationCode || info?.guest?.invitationToken || '').trim();
+    if (!submitToken) return;
     if (saving) return;
     if (submittedLocked) return;
 
     setSaving(true);
     try {
       const nextPeople = status === 'מגיע' ? Math.max(1, Math.min(99, Number(peopleCount) || 1)) : undefined;
-      const updatedGuest = await invitationService.updateRsvpByToken(info.guest.invitationToken, {
+      const updatedGuest = await invitationService.updateRsvpByToken(submitToken, {
         status,
         numberOfPeople: nextPeople,
       });

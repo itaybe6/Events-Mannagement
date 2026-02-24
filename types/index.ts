@@ -13,6 +13,11 @@ export type Guest = {
    * Optional for backward compatibility (older DBs/migrations).
    */
   invitationToken?: string;
+  /**
+   * Short, URL-friendly code used for prettier invitation links.
+   * Optional for backward compatibility (older DBs/migrations).
+   */
+  invitationCode?: string;
   // Check-in (arrival to the venue). Optional for backward compatibility.
   checkedIn?: boolean;
   checkedInAt?: Date | null;

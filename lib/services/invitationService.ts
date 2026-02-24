@@ -27,6 +27,7 @@ export type InvitationGuestInfo = {
   status: Guest['status'];
   numberOfPeople: number;
   invitationToken: string;
+  invitationCode?: string;
   rsvpLocked?: boolean;
   rsvpSubmittedAt?: Date | null;
 };
@@ -101,6 +102,7 @@ export const invitationService = {
         status: ((guestRow.status ?? 'ממתין') as Guest['status']) ?? 'ממתין',
         numberOfPeople: Number(guestRow.number_of_people) || 1,
         invitationToken: String(guestRow.invitation_token ?? t),
+        invitationCode: guestRow.invitation_code ? String(guestRow.invitation_code) : undefined,
         rsvpLocked: Boolean(guestRow.rsvp_locked),
         rsvpSubmittedAt: guestRow.rsvp_submitted_at ? new Date(String(guestRow.rsvp_submitted_at)) : null,
       },
@@ -146,6 +148,7 @@ export const invitationService = {
       status: ((data as any).status ?? 'ממתין') as Guest['status'],
       numberOfPeople: Number((data as any).number_of_people) || 1,
       invitationToken: String((data as any).invitation_token ?? t),
+      invitationCode: (data as any).invitation_code ? String((data as any).invitation_code) : undefined,
       rsvpLocked: Boolean((data as any).rsvp_locked),
       rsvpSubmittedAt: (data as any).rsvp_submitted_at ? new Date(String((data as any).rsvp_submitted_at)) : null,
     } satisfies InvitationGuestInfo;

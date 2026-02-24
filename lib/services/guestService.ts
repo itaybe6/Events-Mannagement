@@ -24,6 +24,7 @@ export const guestService = {
         category_id: guest.category_id,
         numberOfPeople: guest.number_of_people || 1,
         invitationToken: (guest as any).invitation_token ? String((guest as any).invitation_token) : undefined,
+        invitationCode: (guest as any).invitation_code ? String((guest as any).invitation_code) : undefined,
         checkedIn: Boolean((guest as any).checked_in),
         checkedInAt: (guest as any).checked_in_at ? new Date((guest as any).checked_in_at) : null,
         checkedInCount:
@@ -69,6 +70,7 @@ export const guestService = {
         category_id: data.category_id,
         numberOfPeople: data.number_of_people || 1,
         invitationToken: (data as any).invitation_token ? String((data as any).invitation_token) : undefined,
+        invitationCode: (data as any).invitation_code ? String((data as any).invitation_code) : undefined,
       };
     } catch (error) {
       console.error('Add guest error:', error);
@@ -115,6 +117,7 @@ export const guestService = {
         category_id: data.category_id,
         numberOfPeople: data.number_of_people || 1,
         invitationToken: (data as any).invitation_token ? String((data as any).invitation_token) : undefined,
+        invitationCode: (data as any).invitation_code ? String((data as any).invitation_code) : undefined,
         checkedIn: Boolean((data as any).checked_in),
         checkedInAt: (data as any).checked_in_at ? new Date((data as any).checked_in_at) : null,
         checkedInCount:
@@ -166,6 +169,7 @@ export const guestService = {
         category_id: (data as any).category_id,
         numberOfPeople: (data as any).number_of_people || 1,
         invitationToken: (data as any).invitation_token ? String((data as any).invitation_token) : undefined,
+        invitationCode: (data as any).invitation_code ? String((data as any).invitation_code) : undefined,
         checkedIn: Boolean((data as any).checked_in),
         checkedInAt: (data as any).checked_in_at ? new Date((data as any).checked_in_at) : null,
       };
@@ -198,6 +202,7 @@ export const guestService = {
         category_id: (data as any).category_id,
         numberOfPeople: (data as any).number_of_people || 1,
         invitationToken: (data as any).invitation_token ? String((data as any).invitation_token) : undefined,
+        invitationCode: (data as any).invitation_code ? String((data as any).invitation_code) : undefined,
         checkedIn: Boolean((data as any).checked_in),
         checkedInAt: (data as any).checked_in_at ? new Date((data as any).checked_in_at) : null,
       };
@@ -241,6 +246,7 @@ export const guestService = {
         category_id: data.category_id,
         numberOfPeople: data.number_of_people || 1,
         invitationToken: (data as any).invitation_token ? String((data as any).invitation_token) : undefined,
+        invitationCode: (data as any).invitation_code ? String((data as any).invitation_code) : undefined,
         checkedIn: Boolean((data as any).checked_in),
         checkedInAt: (data as any).checked_in_at ? new Date((data as any).checked_in_at) : null,
         checkedInCount:
@@ -280,6 +286,7 @@ export const guestService = {
         category_id: data.category_id,
         numberOfPeople: data.number_of_people || 1,
         invitationToken: (data as any).invitation_token ? String((data as any).invitation_token) : undefined,
+        invitationCode: (data as any).invitation_code ? String((data as any).invitation_code) : undefined,
         checkedIn: Boolean((data as any).checked_in),
         checkedInAt: (data as any).checked_in_at ? new Date((data as any).checked_in_at) : null,
         checkedInCount:

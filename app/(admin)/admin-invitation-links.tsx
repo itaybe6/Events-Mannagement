@@ -41,13 +41,13 @@ function formatDateNumeric(d: Date) {
   return `${dd}/${mm}/${yyyy}`;
 }
 
-function buildInviteUrl(token: string) {
-  const t = String(token || '').trim();
+function buildInviteUrl(tokenOrCode: string) {
+  const t = String(tokenOrCode || '').trim();
   if (!t) return '';
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
-    return `${window.location.origin}/invitation/${t}`;
+    return `${window.location.origin}/i/${t}`;
   }
-  return Linking.createURL(`/invitation/${t}`);
+  return Linking.createURL(`/i/${t}`);
 }
 
 export default function AdminInvitationLinksScreen() {
@@ -490,8 +490,8 @@ export default function AdminInvitationLinksScreen() {
           ) : (
             <View style={{ gap: 10 }}>
               {filteredGuests.map((g) => {
-                const token = String((g as any).invitationToken || '').trim();
-                const url = token ? buildInviteUrl(token) : '';
+                const codeOrToken = String((g as any).invitationCode || (g as any).invitationToken || '').trim();
+                const url = codeOrToken ? buildInviteUrl(codeOrToken) : '';
                 return (
                   <View key={g.id} style={styles.guestRow}>
                     <View style={{ flex: 1, minWidth: 0 }}>
