@@ -18,6 +18,7 @@ import type { Guest } from '@/types';
 import { invitationService, type InvitationInfo } from '@/lib/services/invitationService';
 
 type Status = Guest['status'];
+const GOLD = '#D4AF37';
 
 function formatDateNumeric(d: Date) {
   const dd = String(d.getDate()).padStart(2, '0');
@@ -213,7 +214,7 @@ export default function InvitationLandingScreen() {
           <View style={styles.card}>
             <View style={styles.imageCard}>
               {invitationImageUrl ? (
-                <Image source={{ uri: invitationImageUrl }} style={styles.image} contentFit="contain" transition={0} />
+                <Image source={{ uri: invitationImageUrl }} style={styles.image} contentFit="cover" transition={0} />
               ) : (
                 <View style={styles.heroFallback}>
                   <Ionicons name="image-outline" size={30} color={colors.gray[500]} />
@@ -237,32 +238,35 @@ export default function InvitationLandingScreen() {
                 </Text>
               )}
 
-              <View style={styles.metaRow}>
-                <View style={styles.metaPill}>
-                  <Ionicons name="calendar-outline" size={14} color={'rgba(2,6,23,0.70)'} />
-                  <Text style={styles.metaPillText}>{formatDateNumeric(info.event.date)}</Text>
-                </View>
+              <View style={styles.infoLine}>
+                <Ionicons name="calendar-outline" size={16} color={'rgba(2,6,23,0.72)'} />
+                <Text style={styles.infoLineText}>{formatDateNumeric(info.event.date)}</Text>
               </View>
 
-              <Text style={styles.venueText} numberOfLines={2}>
-                {String(info.event.location || '')}
-              </Text>
+              <View style={styles.infoLine}>
+                <Ionicons name="location-outline" size={16} color={'rgba(2,6,23,0.72)'} />
+                <Text style={styles.infoLineText} numberOfLines={2}>
+                  {String(info.event.location || '')}
+                </Text>
+              </View>
 
               {(weddingDetails.receptionTime || weddingDetails.ceremonyTime) ? (
-                <View style={styles.timesRow}>
-                  {weddingDetails.ceremonyTime ? (
-                    <View style={styles.timeChip}>
-                      <Ionicons name="heart-outline" size={14} color={'rgba(2,6,23,0.70)'} />
-                      <Text style={styles.timeChipText}>חופה {weddingDetails.ceremonyTime}</Text>
-                    </View>
-                  ) : null}
-                  {weddingDetails.receptionTime ? (
-                    <View style={styles.timeChip}>
-                      <Ionicons name="wine-outline" size={14} color={'rgba(2,6,23,0.70)'} />
-                      <Text style={styles.timeChipText}>קבלת פנים {weddingDetails.receptionTime}</Text>
-                    </View>
-                  ) : null}
-                </View>
+                <>
+                  <View style={styles.timesRow}>
+                    {weddingDetails.ceremonyTime ? (
+                      <View style={styles.timeChip}>
+                        <Ionicons name="heart" size={14} color={GOLD} />
+                        <Text style={styles.timeChipText}>חופה {weddingDetails.ceremonyTime}</Text>
+                      </View>
+                    ) : null}
+                    {weddingDetails.receptionTime ? (
+                      <View style={styles.timeChip}>
+                        <Ionicons name="wine" size={14} color={GOLD} />
+                        <Text style={styles.timeChipText}>קבלת פנים {weddingDetails.receptionTime}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                </>
               ) : null}
 
               {(weddingDetails.brideParents || weddingDetails.groomParents) ? (
@@ -336,26 +340,28 @@ export default function InvitationLandingScreen() {
             </View>
 
             {status === 'מגיע' ? (
-              <View style={styles.countRow}>
-                <Text style={styles.countLabel}>מספר אורחים</Text>
-                <View style={styles.stepper}>
-                  <Pressable
-                    onPress={() => setPeopleCount((n) => Math.min(99, (Number(n) || 1) + 1))}
-                    style={({ pressed }) => [styles.stepBtn, pressed ? { opacity: 0.92 } : null]}
-                    accessibilityRole="button"
-                    accessibilityLabel="הגדל מספר אורחים"
-                  >
-                    <Ionicons name="add" size={18} color={'rgba(2,6,23,0.85)'} />
-                  </Pressable>
-                  <Text style={styles.countValue}>{Math.max(1, Number(peopleCount) || 1)}</Text>
-                  <Pressable
-                    onPress={() => setPeopleCount((n) => Math.max(1, (Number(n) || 1) - 1))}
-                    style={({ pressed }) => [styles.stepBtn, pressed ? { opacity: 0.92 } : null]}
-                    accessibilityRole="button"
-                    accessibilityLabel="הקטן מספר אורחים"
-                  >
-                    <Ionicons name="remove" size={18} color={'rgba(2,6,23,0.85)'} />
-                  </Pressable>
+              <View style={styles.countBox}>
+                <View style={styles.countRow}>
+                  <Text style={styles.countLabel}>מספר אורחים</Text>
+                  <View style={styles.stepper}>
+                    <Pressable
+                      onPress={() => setPeopleCount((n) => Math.max(1, (Number(n) || 1) - 1))}
+                      style={({ pressed }) => [styles.stepBtn, styles.stepBtnSecondary, pressed ? { opacity: 0.92 } : null]}
+                      accessibilityRole="button"
+                      accessibilityLabel="הקטן מספר אורחים"
+                    >
+                      <Ionicons name="remove" size={18} color={'rgba(2,6,23,0.85)'} />
+                    </Pressable>
+                    <Text style={styles.countValue}>{Math.max(1, Number(peopleCount) || 1)}</Text>
+                    <Pressable
+                      onPress={() => setPeopleCount((n) => Math.min(99, (Number(n) || 1) + 1))}
+                      style={({ pressed }) => [styles.stepBtn, styles.stepBtnPrimary, pressed ? { opacity: 0.92 } : null]}
+                      accessibilityRole="button"
+                      accessibilityLabel="הגדל מספר אורחים"
+                    >
+                      <Ionicons name="add" size={18} color={'#fff'} />
+                    </Pressable>
+                </View>
                 </View>
               </View>
             ) : null}
@@ -373,6 +379,7 @@ export default function InvitationLandingScreen() {
             >
               {saving ? <ActivityIndicator color="#fff" /> : null}
               <Text style={styles.submitText}>{saving ? 'שולח...' : 'שליחה ואישור'}</Text>
+              {!saving ? <Ionicons name="paper-plane-outline" size={20} color="#fff" /> : null}
             </Pressable>
           </View>
 
@@ -450,50 +457,35 @@ const styles = StyleSheet.create({
   details: { paddingHorizontal: 16, paddingBottom: 16, alignItems: 'center', gap: 10 },
   title: { marginTop: 2, fontSize: 22, fontWeight: '900', color: colors.text, textAlign: 'center' },
   amp: { color: '#D4AF37', fontWeight: '900' },
-  metaRow: { flexDirection: 'row-reverse', justifyContent: 'center' },
-  metaPill: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: 'rgba(15,23,42,0.04)',
-    borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.06)',
-  },
-  metaPillText: { fontSize: 13, fontWeight: '900', color: 'rgba(2,6,23,0.72)', textAlign: 'center' },
-  venueText: { marginTop: -2, fontSize: 13, fontWeight: '800', color: 'rgba(2,6,23,0.72)', textAlign: 'center' },
+  infoLine: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  infoLineText: { fontSize: 13, fontWeight: '800', color: 'rgba(2,6,23,0.72)', textAlign: 'center' },
 
-  timesRow: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8, justifyContent: 'center' },
+  timesRow: { marginTop: 6, flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8, justifyContent: 'center' },
   timeChip: {
-    flexDirection: 'row-reverse',
+    flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 999,
-    backgroundColor: 'rgba(15,69,230,0.06)',
+    backgroundColor: 'rgba(15,23,42,0.03)',
     borderWidth: 1,
-    borderColor: 'rgba(15,69,230,0.10)',
+    borderColor: 'rgba(15,23,42,0.08)',
   },
   timeChipText: { fontSize: 12, fontWeight: '900', color: 'rgba(2,6,23,0.78)', textAlign: 'right' },
 
+
   parentsCard: {
     width: '100%',
-    marginTop: 2,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.08)',
-    backgroundColor: 'rgba(15,23,42,0.02)',
-    paddingVertical: 12,
-    paddingHorizontal: 12,
+    marginTop: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 6,
     flexDirection: 'row-reverse',
     gap: 12,
     alignItems: 'stretch',
   },
   parentsCol: { flex: 1, minWidth: 0, alignItems: 'center', justifyContent: 'center', gap: 6 },
-  parentsDivider: { width: 1, backgroundColor: 'rgba(15,23,42,0.10)' },
+  parentsDivider: { width: 1, backgroundColor: 'rgba(212,175,55,0.35)' },
   parentsTitle: { fontSize: 12, fontWeight: '900', color: '#D4AF37', textAlign: 'center' },
   parentsValue: { fontSize: 12, fontWeight: '800', color: 'rgba(2,6,23,0.70)', textAlign: 'center', lineHeight: 18 },
 
@@ -540,27 +532,37 @@ const styles = StyleSheet.create({
   rsvpBtnText: { fontSize: 12, fontWeight: '900', color: 'rgba(2,6,23,0.78)', textAlign: 'center' },
   rsvpBtnTextDark: { color: '#fff' },
 
-  countRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 2 },
-  countLabel: { fontSize: 12, fontWeight: '900', color: 'rgba(2,6,23,0.72)', textAlign: 'right' },
-  stepper: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  countBox: {
+    marginTop: 2,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.10)',
+    backgroundColor: '#fff',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  countRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  countLabel: { fontSize: 13, fontWeight: '900', color: 'rgba(2,6,23,0.80)', textAlign: 'right' },
+  stepper: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   stepBtn: {
-    width: 34,
-    height: 34,
+    width: 40,
+    height: 40,
     borderRadius: 999,
-    backgroundColor: 'rgba(2,6,23,0.06)',
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.10)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  countValue: { minWidth: 24, textAlign: 'center', fontSize: 14, fontWeight: '900', color: 'rgba(2,6,23,0.82)' },
+  stepBtnPrimary: { backgroundColor: '#0B1020', borderColor: 'rgba(11,16,32,0.18)' },
+  stepBtnSecondary: { backgroundColor: 'rgba(2,6,23,0.04)' },
+  countValue: { minWidth: 24, textAlign: 'center', fontSize: 16, fontWeight: '900', color: 'rgba(2,6,23,0.86)' },
 
   submitBtn: {
     marginTop: 8,
     height: 56,
     borderRadius: 18,
     backgroundColor: '#0B1020',
-    flexDirection: 'row-reverse',
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 10,
