@@ -36,10 +36,29 @@ export type InvitationInfo = {
   event: InvitationEventInfo;
 };
 
-const supabaseUrl =
-  process.env.EXPO_PUBLIC_SUPABASE_URL || Constants.expoConfig?.extra?.EXPO_PUBLIC_SUPABASE_URL;
+function getExpoExtra(): Record<string, any> | undefined {
+  return (
+    (Constants.expoConfig?.extra as any) ??
+    ((Constants as any).manifest?.extra as any) ??
+    ((Constants as any).manifest2?.extra as any)
+  );
+}
+
+function normalizeSupabaseUrl(input?: string): string | undefined {
+  const raw = String(input ?? '').trim();
+  if (!raw) return undefined;
+  if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
+  if (raw.includes('.supabase.co')) return `https://${raw.replace(/^\/+/, '')}`;
+  if (/^[a-z0-9-]+$/i.test(raw)) return `https://${raw}.supabase.co`;
+  return raw;
+}
+
+const extra = getExpoExtra();
+const supabaseUrl = normalizeSupabaseUrl(
+  process.env.EXPO_PUBLIC_SUPABASE_URL || extra?.EXPO_PUBLIC_SUPABASE_URL
+);
 const supabaseAnonKey =
-  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || Constants.expoConfig?.extra?.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || extra?.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 
 const webNoopLock = async <T,>(_name: string, _acquireTimeout: number, fn: () => Promise<T>): Promise<T> => fn();
 
