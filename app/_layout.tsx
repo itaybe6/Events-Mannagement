@@ -336,6 +336,8 @@ function RootLayoutNav() {
     // Don't navigate until we've finished initializing
     if (initializing || loading) return;
 
+    const isPublicInvitation = segments[0] === 'invitation';
+
     // אם המשתמש מחובר והוא בעמוד ההתחברות - העבר לקבוצת הטאבים לפי תפקיד
     if (isLoggedIn && segments[0] === 'login') {
       const { userType } = useUserStore.getState();
@@ -348,7 +350,7 @@ function RootLayoutNav() {
       }
     }
     // אם המשתמש לא מחובר ולא בעמוד ההתחברות - העבר להתחברות
-    else if (!isLoggedIn && segments[0] !== 'login') {
+    else if (!isLoggedIn && segments[0] !== 'login' && !isPublicInvitation) {
       router.replace('/login');
     }
   }, [isLoggedIn, segments, initializing, loading]);
@@ -403,6 +405,7 @@ function RootLayoutNav() {
       <Stack.Screen name="(admin)" options={{ headerShown: false }} />
       <Stack.Screen name="(couple)" options={{ headerShown: false }} />
       <Stack.Screen name="(employee)" options={{ headerShown: false }} />
+      <Stack.Screen name="invitation/[token]" options={{ headerShown: false }} />
       <Stack.Screen name="modal" options={{ presentation: "modal" }} />
       
       <Stack.Screen name="seating/templates" options={{ headerShown: false }} />

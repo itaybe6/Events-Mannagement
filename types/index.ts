@@ -8,6 +8,11 @@ export type Guest = {
   message: string;
   category_id: string; // קטגוריה חובה
   numberOfPeople: number;
+  /**
+   * Unique token used for the public invitation landing page.
+   * Optional for backward compatibility (older DBs/migrations).
+   */
+  invitationToken?: string;
   // Check-in (arrival to the venue). Optional for backward compatibility.
   checkedIn?: boolean;
   checkedInAt?: Date | null;
@@ -54,6 +59,15 @@ export type Event = {
   groomName?: string;
   brideName?: string;
   rsvpLink?: string;
+  /**
+   * Invitation landing page configuration (shown to invitees).
+   */
+  invitationTitle?: string;
+  invitationImageUrl?: string;
+  receptionTime?: string;
+  ceremonyTime?: string;
+  brideParents?: string;
+  groomParents?: string;
   tasks: Task[];
   user_id?: string; // מזהה המשתמש שהאירוע שלו
   userName?: string; // שם המשתמש שהאירוע שלו (לתצוגת אדמין)

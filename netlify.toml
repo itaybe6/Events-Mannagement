@@ -1,0 +1,10 @@
+[build]
+  command = "npx expo export -p web"
+  publish = "dist"
+
+# SPA routing (expo-router): serve index.html for deep links
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+

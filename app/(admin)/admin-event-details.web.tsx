@@ -465,6 +465,25 @@ export default function AdminEventDetailsWebScreen() {
                   </View>
                   <Ionicons name="chevron-back" size={18} color={colors.gray[500]} style={styles.quickActionChevron} />
                 </Pressable>
+
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="לינק להזמנה"
+                  onPress={() => router.push(`/(admin)/admin-invitation-links?eventId=${event.id}`)}
+                  style={({ hovered, pressed }: any) => [
+                    styles.quickActionBtn,
+                    Platform.OS === 'web' && hovered ? styles.quickActionBtnHover : null,
+                    pressed ? { opacity: 0.92 } : null,
+                  ]}
+                >
+                  <View style={styles.quickActionLeft}>
+                    <View style={[styles.quickActionIcon, { backgroundColor: 'rgba(168,85,247,0.14)' }]}>
+                      <Ionicons name="link-outline" size={18} color={'#A855F7'} />
+                    </View>
+                    <Text style={styles.quickActionText}>לינק להזמנה</Text>
+                  </View>
+                  <Ionicons name="chevron-back" size={18} color={colors.gray[500]} style={styles.quickActionChevron} />
+                </Pressable>
               </View>
             </View>
 

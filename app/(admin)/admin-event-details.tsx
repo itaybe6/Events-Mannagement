@@ -635,6 +635,15 @@ export default function AdminEventDetailsScreen() {
           {/* Bottom actions (match provided design): two stacked action cards */}
           <View style={styles.bottomActions}>
             <ActionRow
+              title="לינק להזמנה"
+              subtitle="הגדרת תמונה/כותרת והעתקת קישורים אישיים למוזמנים"
+              iconName="link-outline"
+              iconBg="rgba(168, 85, 247, 0.14)"
+              iconColor="#A855F7"
+              onPress={() => router.push(`/(admin)/admin-invitation-links?eventId=${event.id}`)}
+              accessibilityLabel="לינק להזמנה"
+            />
+            <ActionRow
               title="עריכת סקיצה"
               subtitle="ניהול סידורי הושבה וסקיצות"
               iconName="create-outline"

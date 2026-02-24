@@ -25,6 +25,12 @@ export type Event = {
   groom_name?: string;
   bride_name?: string;
   rsvp_link?: string;
+  invitation_title?: string;
+  invitation_image_url?: string;
+  reception_time?: string;
+  ceremony_time?: string;
+  bride_parents?: string;
+  groom_parents?: string;
   story?: string;
   guests_count: number;
   budget: number;
@@ -51,8 +57,14 @@ export type Guest = {
   phone?: string;
   status: 'מגיע' | 'לא מגיע' | 'ממתין';
   table_id?: string;
+  category_id?: string;
   gift_amount: number;
   message?: string;
+  number_of_people?: number;
+  checked_in?: boolean;
+  checked_in_at?: string;
+  checked_in_count?: number | null;
+  invitation_token?: string;
   created_at: string;
   updated_at: string;
 };

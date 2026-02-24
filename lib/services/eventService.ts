@@ -28,6 +28,12 @@ export const eventService = {
         groomName: (event as any).groom_name ?? undefined,
         brideName: (event as any).bride_name ?? undefined,
         rsvpLink: (event as any).rsvp_link ?? undefined,
+        invitationTitle: (event as any).invitation_title ?? undefined,
+        invitationImageUrl: (event as any).invitation_image_url ?? undefined,
+        receptionTime: (event as any).reception_time ?? undefined,
+        ceremonyTime: (event as any).ceremony_time ?? undefined,
+        brideParents: (event as any).bride_parents ?? undefined,
+        groomParents: (event as any).groom_parents ?? undefined,
         user_id: event.user_id,
         userName: (event as any)?.users?.name ?? undefined,
         userAvatarUrl: (event as any)?.users?.avatar_url ?? undefined,
@@ -101,6 +107,12 @@ export const eventService = {
         groomName: (data as any).groom_name ?? undefined,
         brideName: (data as any).bride_name ?? undefined,
         rsvpLink: (data as any).rsvp_link ?? undefined,
+        invitationTitle: (data as any).invitation_title ?? undefined,
+        invitationImageUrl: (data as any).invitation_image_url ?? undefined,
+        receptionTime: (data as any).reception_time ?? undefined,
+        ceremonyTime: (data as any).ceremony_time ?? undefined,
+        brideParents: (data as any).bride_parents ?? undefined,
+        groomParents: (data as any).groom_parents ?? undefined,
         user_id: data.user_id, // הוסף את user_id
         userName: (data as any)?.users?.name ?? undefined,
         userAvatarUrl: (data as any)?.users?.avatar_url ?? undefined,
@@ -136,6 +148,12 @@ export const eventService = {
       if (eventData.groomName !== undefined) insertData.groom_name = eventData.groomName;
       if (eventData.brideName !== undefined) insertData.bride_name = eventData.brideName;
       if (eventData.rsvpLink !== undefined) insertData.rsvp_link = eventData.rsvpLink;
+      if ((eventData as any).invitationTitle !== undefined) insertData.invitation_title = (eventData as any).invitationTitle;
+      if ((eventData as any).invitationImageUrl !== undefined) insertData.invitation_image_url = (eventData as any).invitationImageUrl;
+      if ((eventData as any).receptionTime !== undefined) insertData.reception_time = (eventData as any).receptionTime;
+      if ((eventData as any).ceremonyTime !== undefined) insertData.ceremony_time = (eventData as any).ceremonyTime;
+      if ((eventData as any).brideParents !== undefined) insertData.bride_parents = (eventData as any).brideParents;
+      if ((eventData as any).groomParents !== undefined) insertData.groom_parents = (eventData as any).groomParents;
 
       const { data, error } = await supabase
         .from('events')
@@ -157,6 +175,12 @@ export const eventService = {
         groomName: (data as any).groom_name ?? undefined,
         brideName: (data as any).bride_name ?? undefined,
         rsvpLink: (data as any).rsvp_link ?? undefined,
+        invitationTitle: (data as any).invitation_title ?? undefined,
+        invitationImageUrl: (data as any).invitation_image_url ?? undefined,
+        receptionTime: (data as any).reception_time ?? undefined,
+        ceremonyTime: (data as any).ceremony_time ?? undefined,
+        brideParents: (data as any).bride_parents ?? undefined,
+        groomParents: (data as any).groom_parents ?? undefined,
         tasks: [],
       };
     } catch (error) {
@@ -181,6 +205,12 @@ export const eventService = {
       if (eventData.groomName !== undefined) insertData.groom_name = eventData.groomName;
       if (eventData.brideName !== undefined) insertData.bride_name = eventData.brideName;
       if (eventData.rsvpLink !== undefined) insertData.rsvp_link = eventData.rsvpLink;
+      if ((eventData as any).invitationTitle !== undefined) insertData.invitation_title = (eventData as any).invitationTitle;
+      if ((eventData as any).invitationImageUrl !== undefined) insertData.invitation_image_url = (eventData as any).invitationImageUrl;
+      if ((eventData as any).receptionTime !== undefined) insertData.reception_time = (eventData as any).receptionTime;
+      if ((eventData as any).ceremonyTime !== undefined) insertData.ceremony_time = (eventData as any).ceremonyTime;
+      if ((eventData as any).brideParents !== undefined) insertData.bride_parents = (eventData as any).brideParents;
+      if ((eventData as any).groomParents !== undefined) insertData.groom_parents = (eventData as any).groomParents;
 
       const { data, error } = await supabase
         .from('events')
@@ -208,6 +238,12 @@ export const eventService = {
         groomName: (data as any).groom_name ?? undefined,
         brideName: (data as any).bride_name ?? undefined,
         rsvpLink: (data as any).rsvp_link ?? undefined,
+        invitationTitle: (data as any).invitation_title ?? undefined,
+        invitationImageUrl: (data as any).invitation_image_url ?? undefined,
+        receptionTime: (data as any).reception_time ?? undefined,
+        ceremonyTime: (data as any).ceremony_time ?? undefined,
+        brideParents: (data as any).bride_parents ?? undefined,
+        groomParents: (data as any).groom_parents ?? undefined,
         tasks: [],
       };
     } catch (error) {
@@ -231,6 +267,12 @@ export const eventService = {
       if (updates.groomName !== undefined) updateData.groom_name = updates.groomName;
       if (updates.brideName !== undefined) updateData.bride_name = updates.brideName;
       if (updates.rsvpLink !== undefined) updateData.rsvp_link = updates.rsvpLink;
+      if ((updates as any).invitationTitle !== undefined) updateData.invitation_title = (updates as any).invitationTitle;
+      if ((updates as any).invitationImageUrl !== undefined) updateData.invitation_image_url = (updates as any).invitationImageUrl;
+      if ((updates as any).receptionTime !== undefined) updateData.reception_time = (updates as any).receptionTime;
+      if ((updates as any).ceremonyTime !== undefined) updateData.ceremony_time = (updates as any).ceremonyTime;
+      if ((updates as any).brideParents !== undefined) updateData.bride_parents = (updates as any).brideParents;
+      if ((updates as any).groomParents !== undefined) updateData.groom_parents = (updates as any).groomParents;
 
       const { data, error } = await supabase
         .from('events')
@@ -255,6 +297,13 @@ export const eventService = {
         budget: Number(data.budget) || 0,
         groomName: (data as any).groom_name ?? undefined,
         brideName: (data as any).bride_name ?? undefined,
+        rsvpLink: (data as any).rsvp_link ?? undefined,
+        invitationTitle: (data as any).invitation_title ?? undefined,
+        invitationImageUrl: (data as any).invitation_image_url ?? undefined,
+        receptionTime: (data as any).reception_time ?? undefined,
+        ceremonyTime: (data as any).ceremony_time ?? undefined,
+        brideParents: (data as any).bride_parents ?? undefined,
+        groomParents: (data as any).groom_parents ?? undefined,
         tasks: data.tasks.map((task: any) => ({
           id: task.id,
           title: task.title,
