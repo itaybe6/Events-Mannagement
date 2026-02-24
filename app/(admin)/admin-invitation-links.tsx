@@ -21,6 +21,7 @@ import { colors } from '@/constants/colors';
 import { useAdminEventDetailsModel } from '@/features/events/useAdminEventDetailsModel';
 import { eventService } from '@/lib/services/eventService';
 import { invitationAssetService } from '@/lib/services/invitationAssetService';
+import { supabase } from '@/lib/supabase';
 
 function getEventTypeLabel(rawTitle: string) {
   const raw = String(rawTitle ?? '').trim();
@@ -83,6 +84,19 @@ export default function AdminInvitationLinksScreen() {
   const [uploading, setUploading] = useState(false);
   const [guestFilter, setGuestFilter] = useState<'all' | 'מגיע' | 'ממתין' | 'לא מגיע'>('all');
 
+  const [selectionMode, setSelectionMode] = useState<'single' | 'multi'>('multi');
+  const [selectedGuestIds, setSelectedGuestIds] = useState<Set<string>>(() => new Set());
+  const [smsTemplate, setSmsTemplate] = useState('היי {name}, נשמח שתאשרו הגעה כאן: {link}');
+  const [smsSending, setSmsSending] = useState(false);
+  const [smsLastResult, setSmsLastResult] = useState<null | {
+    totalSelected: number;
+    totalValidPhone: number;
+    skippedNoPhone: number;
+    skippedInvalidPhone: number;
+    sent: number;
+    failed: number;
+  }>(null);
+
   useEffect(() => {
     setForm({
       invitationTitle: String((event as any)?.invitationTitle ?? ''),
@@ -125,6 +139,97 @@ export default function AdminInvitationLinksScreen() {
     if (guestFilter === 'all') return all;
     return all.filter((g) => g.status === guestFilter);
   }, [guests, guestFilter]);
+
+  const selectedCount = selectedGuestIds.size;
+  const selectedStats = useMemo(() => {
+    const byId = new Map<string, any>((Array.isArray(guests) ? guests : []).map((g) => [String(g.id), g]));
+    let withPhone = 0;
+    let missingPhone = 0;
+    for (const gid of selectedGuestIds) {
+      const g = byId.get(String(gid));
+      const phone = String(g?.phone ?? '').trim();
+      if (phone) withPhone += 1;
+      else missingPhone += 1;
+    }
+    return { withPhone, missingPhone };
+  }, [selectedGuestIds, guests]);
+
+  const toggleGuest = (guestId: string) => {
+    const gid = String(guestId || '').trim();
+    if (!gid) return;
+    setSelectedGuestIds((prev) => {
+      const next = new Set(prev);
+      const has = next.has(gid);
+      if (selectionMode === 'single') {
+        next.clear();
+        if (!has) next.add(gid);
+        return next;
+      }
+      if (has) next.delete(gid);
+      else next.add(gid);
+      return next;
+    });
+  };
+
+  const selectAllFiltered = () => {
+    setSelectedGuestIds((prev) => {
+      const next = new Set(prev);
+      for (const g of filteredGuests) next.add(String(g.id));
+      return next;
+    });
+  };
+
+  const clearSelection = () => setSelectedGuestIds(new Set());
+
+  const sendSms = async () => {
+    if (!event?.id) return;
+    if (smsSending) return;
+    const template = String(smsTemplate || '').trim();
+    if (!template) {
+      Alert.alert('שגיאה', 'יש למלא הודעת SMS');
+      return;
+    }
+    if (selectedGuestIds.size === 0) {
+      Alert.alert('בחר מוזמנים', 'בחר לפחות מוזמן אחד לשליחה, או השתמש ב״בחר הכל״.');
+      return;
+    }
+
+    const baseUrl =
+      Platform.OS === 'web' && typeof window !== 'undefined' ? String(window.location.origin) : undefined;
+
+    setSmsSending(true);
+    setSmsLastResult(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('send-invitation-sms', {
+        body: {
+          eventId: event.id,
+          guestIds: Array.from(selectedGuestIds),
+          messageTemplate: template,
+          baseUrl,
+        },
+      });
+
+      if (error) throw error;
+      const result = (data as any)?.result;
+      if (!result) throw new Error('תגובה לא תקינה מהשרת');
+
+      setSmsLastResult({
+        totalSelected: Number(result.totalSelected) || 0,
+        totalValidPhone: Number(result.totalValidPhone) || 0,
+        skippedNoPhone: Number(result.skippedNoPhone) || 0,
+        skippedInvalidPhone: Number(result.skippedInvalidPhone) || 0,
+        sent: Number(result.sent) || 0,
+        failed: Number(result.failed) || 0,
+      });
+
+      Alert.alert('נשלח', `נשלחו ${Number(result.sent) || 0} הודעות.\nנכשלו ${Number(result.failed) || 0}.`);
+    } catch (e: any) {
+      const message = e?.message ? String(e.message) : 'שגיאה לא ידועה';
+      Alert.alert('שגיאה', `לא ניתן לשלוח SMS.\n\n${message}`);
+    } finally {
+      setSmsSending(false);
+    }
+  };
 
   const copyText = async (value: string) => {
     const text = String(value || '').trim();
@@ -485,6 +590,92 @@ export default function AdminInvitationLinksScreen() {
             </Pressable>
           </View>
 
+          <View style={styles.smsCard}>
+            <View style={styles.smsHeaderRow}>
+              <View style={styles.smsTitleWrap}>
+                <Ionicons name="chatbox-outline" size={16} color={'rgba(2,6,23,0.75)'} />
+                <Text style={styles.smsTitle}>שליחת SMS עם לינק</Text>
+              </View>
+              <View style={styles.smsBadge}>
+                <Text style={styles.smsBadgeText}>{selectedCount}</Text>
+                <Text style={styles.smsBadgeText}>נבחרו</Text>
+              </View>
+            </View>
+
+            <View style={styles.smsModeRow}>
+              <Pressable
+                onPress={() => setSelectionMode('single')}
+                style={({ pressed }) => [
+                  styles.modePill,
+                  selectionMode === 'single' ? styles.modePillActive : null,
+                  pressed ? { opacity: 0.92 } : null,
+                ]}
+              >
+                <Text style={[styles.modeText, selectionMode === 'single' ? styles.modeTextActive : null]}>בחירה יחידה</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setSelectionMode('multi')}
+                style={({ pressed }) => [
+                  styles.modePill,
+                  selectionMode === 'multi' ? styles.modePillActive : null,
+                  pressed ? { opacity: 0.92 } : null,
+                ]}
+              >
+                <Text style={[styles.modeText, selectionMode === 'multi' ? styles.modeTextActive : null]}>בחירה מרובה</Text>
+              </Pressable>
+
+              <View style={{ flex: 1 }} />
+
+              <Pressable onPress={selectAllFiltered} style={({ pressed }) => [styles.smallBtn, pressed ? { opacity: 0.92 } : null]}>
+                <Ionicons name="checkbox-outline" size={16} color={colors.primary} />
+                <Text style={styles.smallBtnText}>בחר הכל</Text>
+              </Pressable>
+              <Pressable onPress={clearSelection} style={({ pressed }) => [styles.smallBtn, pressed ? { opacity: 0.92 } : null]}>
+                <Ionicons name="close-circle-outline" size={16} color={colors.primary} />
+                <Text style={styles.smallBtnText}>נקה</Text>
+              </Pressable>
+            </View>
+
+            <Text style={styles.smsHint}>
+              משתנים זמינים: <Text style={styles.smsHintMono}>{'{name}'}</Text> · <Text style={styles.smsHintMono}>{'{link}'}</Text>
+            </Text>
+
+            <TextInput
+              value={smsTemplate}
+              onChangeText={setSmsTemplate}
+              placeholder="כתוב הודעת SMS..."
+              placeholderTextColor={'rgba(17,24,39,0.35)'}
+              style={styles.smsInput}
+              textAlign="right"
+              multiline
+            />
+
+            <View style={styles.smsFooterRow}>
+              <Text style={styles.smsMeta}>
+                עם טלפון: {selectedStats.withPhone} · בלי טלפון: {selectedStats.missingPhone}
+              </Text>
+
+              <Pressable
+                onPress={() => void sendSms()}
+                disabled={smsSending || selectedCount === 0}
+                style={({ pressed }) => [
+                  styles.smsSendBtn,
+                  pressed ? { opacity: 0.92 } : null,
+                  smsSending || selectedCount === 0 ? { opacity: 0.6 } : null,
+                ]}
+              >
+                {smsSending ? <ActivityIndicator color="#fff" /> : <Ionicons name="paper-plane-outline" size={16} color="#fff" />}
+                <Text style={styles.smsSendText}>{smsSending ? 'שולח...' : 'שלח SMS'}</Text>
+              </Pressable>
+            </View>
+
+            {smsLastResult ? (
+              <Text style={styles.smsResult}>
+                נשלחו {smsLastResult.sent} · נכשלו {smsLastResult.failed} · בלי טלפון {smsLastResult.skippedNoPhone} · טלפון לא תקין {smsLastResult.skippedInvalidPhone}
+              </Text>
+            ) : null}
+          </View>
+
           {filteredGuests.length === 0 ? (
             <Text style={styles.empty}>{guests.length === 0 ? 'אין עדיין מוזמנים באירוע.' : 'אין תוצאות לסינון שבחרת.'}</Text>
           ) : (
@@ -492,6 +683,7 @@ export default function AdminInvitationLinksScreen() {
               {filteredGuests.map((g) => {
                 const codeOrToken = String((g as any).invitationCode || (g as any).invitationToken || '').trim();
                 const url = codeOrToken ? buildInviteUrl(codeOrToken) : '';
+                const checked = selectedGuestIds.has(String(g.id));
                 return (
                   <View key={g.id} style={styles.guestRow}>
                     <View style={{ flex: 1, minWidth: 0 }}>
@@ -503,6 +695,19 @@ export default function AdminInvitationLinksScreen() {
                         {g.status === 'מגיע' ? ` · ${g.numberOfPeople || 1} מגיעים` : ''}
                       </Text>
                     </View>
+
+                    <Pressable
+                      onPress={() => toggleGuest(g.id)}
+                      style={({ pressed }) => [
+                        styles.checkBtn,
+                        checked ? styles.checkBtnActive : null,
+                        pressed ? { opacity: 0.92 } : null,
+                      ]}
+                      accessibilityRole="button"
+                      accessibilityLabel={checked ? `ביטול בחירה עבור ${g.name}` : `בחירה עבור ${g.name}`}
+                    >
+                      <Ionicons name={checked ? 'checkmark' : 'ellipse-outline'} size={18} color={checked ? '#fff' : colors.primary} />
+                    </Pressable>
 
                     <Pressable
                       onPress={() => void copyText(url)}
@@ -651,6 +856,17 @@ const styles = StyleSheet.create({
   },
   guestName: { fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'right' },
   guestMeta: { marginTop: 3, fontSize: 12, fontWeight: '700', color: colors.gray[600], textAlign: 'right' },
+  checkBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(15,69,230,0.14)',
+    backgroundColor: 'rgba(15,69,230,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkBtnActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   copyBtn: {
     height: 40,
     paddingHorizontal: 12,
@@ -662,6 +878,50 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   copyBtnText: { fontSize: 12, fontWeight: '900', color: '#fff', textAlign: 'right' },
+
+  smsCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+    backgroundColor: 'rgba(15,23,42,0.02)',
+    padding: 12,
+    gap: 10,
+  },
+  smsHeaderRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  smsTitleWrap: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
+  smsTitle: { fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'right' },
+  smsBadge: { flexDirection: 'row-reverse', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(2,6,23,0.04)' },
+  smsBadgeText: { fontSize: 12, fontWeight: '900', color: 'rgba(2,6,23,0.72)', textAlign: 'right' },
+
+  smsModeRow: { flexDirection: 'row-reverse', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
+  modePill: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: '#fff', borderWidth: 1, borderColor: 'rgba(15,23,42,0.10)' },
+  modePillActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  modeText: { fontSize: 12, fontWeight: '900', color: 'rgba(2,6,23,0.72)', textAlign: 'right' },
+  modeTextActive: { color: '#fff' },
+
+  smallBtn: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12, backgroundColor: '#fff', borderWidth: 1, borderColor: 'rgba(15,69,230,0.14)' },
+  smallBtnText: { fontSize: 12, fontWeight: '900', color: colors.primary, textAlign: 'right' },
+
+  smsHint: { fontSize: 12, fontWeight: '800', color: 'rgba(2,6,23,0.62)', textAlign: 'right' },
+  smsHintMono: { fontWeight: '900' },
+  smsInput: {
+    minHeight: 92,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.10)',
+    backgroundColor: '#fff',
+    color: '#111827',
+    fontSize: 13,
+    fontWeight: '800',
+    textAlignVertical: 'top',
+  },
+  smsFooterRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  smsMeta: { fontSize: 12, fontWeight: '800', color: 'rgba(2,6,23,0.62)', textAlign: 'right' },
+  smsSendBtn: { height: 42, paddingHorizontal: 14, borderRadius: 14, backgroundColor: colors.primary, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  smsSendText: { fontSize: 12, fontWeight: '900', color: '#fff', textAlign: 'right' },
+  smsResult: { fontSize: 12, fontWeight: '800', color: 'rgba(2,6,23,0.70)', textAlign: 'right' },
 
   footer: { marginTop: 2, fontSize: 12, fontWeight: '700', color: colors.gray[500], textAlign: 'center' },
 });
