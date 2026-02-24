@@ -27,7 +27,7 @@
 2) פרוס:
 
 ```bash
-supabase functions deploy send-invitation-sms
+supabase functions deploy send-invitation-sms --no-verify-jwt
 ```
 
 3) הגדר secrets:
@@ -39,7 +39,10 @@ supabase secrets set PULSEEM_API_KEY="..." SITE_BASE_URL="https://your-site.com"
 #### אפשרות B: דרך Supabase Dashboard
 1) Edge Functions → Create new function בשם `send-invitation-sms`.\n
 2) הדבק את הקוד מהקובץ `supabase/functions/send-invitation-sms/index.ts`.\n
-3) הוסף Secrets לפי הרשימה למעלה.\n
+3) Settings של הפונקציה: כבה **Verify JWT**.\n
+   - זה קריטי כדי ש־CORS preflight (OPTIONS) לא ייחסם בדפדפן.\n
+   - אנחנו בודקים הרשאות בקוד עבור POST, אז זה עדיין בטוח.\n
+4) הוסף Secrets לפי הרשימה למעלה.\n
 
 ### איך זה עובד באפליקציה
 במסך `לינק להזמנה` (`app/(admin)/admin-invitation-links.tsx`) יש:\n

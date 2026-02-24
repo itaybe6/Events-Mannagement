@@ -200,7 +200,16 @@ export default function AdminInvitationLinksScreen() {
     setSmsSending(true);
     setSmsLastResult(null);
     try {
+      const sessionRes = await supabase.auth.getSession();
+      const accessToken = sessionRes.data.session?.access_token;
+      if (!accessToken) {
+        throw new Error('לא נמצא חיבור משתמש (נא להתחבר מחדש)');
+      }
+
       const { data, error } = await supabase.functions.invoke('send-invitation-sms', {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
         body: {
           eventId: event.id,
           guestIds: Array.from(selectedGuestIds),
