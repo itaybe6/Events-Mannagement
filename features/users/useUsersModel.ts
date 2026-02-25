@@ -52,7 +52,10 @@ export function useUsersModel(opts: { demoUsers: UserWithMetadata[] }) {
       const connectionResult = await authService.testConnection();
       if (!connectionResult.success) {
         setIsDemoMode(true);
-        Alert.alert('אבחון בעיות דאטאבייס', connectionResult.message, [{ text: 'הבנתי' }]);
+        // On web, blocking alerts can feel like the UI "froze".
+        if (Platform.OS !== 'web') {
+          Alert.alert('אבחון בעיות דאטאבייס', connectionResult.message, [{ text: 'הבנתי' }]);
+        }
       } else {
         setIsDemoMode(false);
       }
@@ -68,23 +71,39 @@ export function useUsersModel(opts: { demoUsers: UserWithMetadata[] }) {
       setUsers(usersData);
       setIsDemoMode(false);
     } catch (error) {
+      const message = error instanceof Error ? error.message : '';
       const isNetworkError =
-        error instanceof Error && (error.message.includes('Network') || error.message.includes('fetch'));
+        message.includes('Network') || message.includes('fetch') || message.includes('Failed to fetch');
+      const isAbortLike =
+        message.includes('AbortError') || message.toLowerCase().includes('aborted') || message.toLowerCase().includes('cancel');
+
+      // If navigation happens mid-request (or the browser cancels it), don't wipe the UI.
+      if (isAbortLike) {
+        return;
+      }
 
       if (isNetworkError) {
         setIsDemoMode(true);
         setUsers(opts.demoUsers);
-        Alert.alert(
-          '🌐 מצב דמו',
-          'לא ניתן להתחבר לדאטאבייס. האפליקציה פועלת במצב דמו עם נתונים לדוגמה.\n\nתוכל לנסות שוב מאוחר יותר כשהחיבור יחזור.',
-          [{ text: 'הבנתי', style: 'default' }]
-        );
+        // Avoid blocking alert on web; the screen already renders the demo state.
+        if (Platform.OS !== 'web') {
+          Alert.alert(
+            '🌐 מצב דמו',
+            'לא ניתן להתחבר לדאטאבייס. האפליקציה פועלת במצב דמו עם נתונים לדוגמה.\n\nתוכל לנסות שוב מאוחר יותר כשהחיבור יחזור.',
+            [{ text: 'הבנתי', style: 'default' }]
+          );
+        }
       } else {
-        setUsers([]);
+        // Don't clear the list on non-network errors; it looks like "all users were deleted".
+        // Keep the previous list if we have one, otherwise fall back to demo users.
+        setIsDemoMode(true);
+        setUsers((prev) => (prev.length > 0 ? prev : opts.demoUsers));
         let errorMessage = 'לא ניתן לטעון את רשימת המשתמשים מהדאטאבייס';
-        if (error instanceof Error) errorMessage += `\n\nפרטי השגיאה: ${error.message}`;
+        if (message) errorMessage += `\n\nפרטי השגיאה: ${message}`;
 
-        Alert.alert('שגיאה בחיבור לדאטאבייס', errorMessage, [{ text: 'אישור', style: 'default' }]);
+        if (Platform.OS !== 'web') {
+          Alert.alert('שגיאה בחיבור לדאטאבייס', errorMessage, [{ text: 'אישור', style: 'default' }]);
+        }
       }
     } finally {
       setLoading(false);
@@ -148,8 +167,8 @@ export function useUsersModel(opts: { demoUsers: UserWithMetadata[] }) {
 
       const publicUrl = await avatarService.uploadUserAvatar(selectedUser.id, {
         uri: asset.uri,
-        fileName: asset.fileName,
-        mimeType: asset.mimeType,
+        fileName: asset.fileName ?? undefined,
+        mimeType: asset.mimeType ?? undefined,
         file: (asset as any)?.file,
         base64: asset.base64,
       });

@@ -54,9 +54,17 @@ type AddUserScreenV2Props = {
    * `webPremiumEmbedded`: intended to be rendered inside a centered web "card" wrapper.
    */
   variant?: 'default' | 'webPremiumEmbedded';
+  /**
+   * When true, show an automatic alert if DB connection test fails.
+   * For web we usually keep this false to avoid blocking UI; the screen already shows a demo-mode banner.
+   */
+  autoShowDbConnectionAlert?: boolean;
 };
 
-export default function AddUserScreenV2({ variant = 'default' }: AddUserScreenV2Props) {
+export default function AddUserScreenV2({
+  variant = 'default',
+  autoShowDbConnectionAlert = true,
+}: AddUserScreenV2Props) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   // This screen is intentionally "light" (per design request), regardless of device theme.
@@ -150,7 +158,7 @@ export default function AddUserScreenV2({ variant = 'default' }: AddUserScreenV2
     try {
       const connectionResult = await authService.testConnection();
       setIsDemoMode(!connectionResult.success);
-      if (!connectionResult.success) {
+      if (!connectionResult.success && autoShowDbConnectionAlert) {
         Alert.alert('אבחון בעיות דאטאבייס', connectionResult.message, [{ text: 'הבנתי' }]);
       }
     } catch {

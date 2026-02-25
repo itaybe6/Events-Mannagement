@@ -345,6 +345,8 @@ export default function UsersWebScreen() {
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="משתמש חדש"
+        // NOTE: `.web` is a filename suffix, not part of the Expo Router path.
+        // Navigating to `/(admin)/add-user-v2` will automatically pick `add-user-v2.web.tsx` on web.
         onPress={() => router.push('/(admin)/add-user-v2')}
         style={({ hovered, pressed }: any) => [
           styles.fabCreate,
