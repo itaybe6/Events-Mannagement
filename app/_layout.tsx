@@ -23,7 +23,7 @@ I18nManager.allowRTL(true);
 I18nManager.forceRTL(true);
 
 const rtlTextStyle = { textAlign: 'right' as const, writingDirection: 'rtl' as const };
-const baseFontStyle = { fontFamily: rubikBaseFontFamily as any };
+const baseFontStyle = { fontFamily: (Platform.OS === 'web' ? 'Rubik' : rubikBaseFontFamily) as any };
 const RTL_MARK = '\u200F';
 
 // React 19 + RNW/RN can ignore `defaultProps`-based global styling in some cases.
@@ -69,7 +69,10 @@ const RTL_MARK = '\u200F';
   };
 
   const pickRubikFamily = (weight?: number | null) => {
-    // On web we only have "Rubik"; on native we may have weight-specific family names.
+    // On web we want the standard CSS family ("Rubik") so the browser can pick weights.
+    if (Platform.OS === 'web') return 'Rubik';
+
+    // On native we may have weight-specific family names.
     const w = typeof weight === 'number' ? weight : null;
     const pick =
       w != null && w >= 900 ? 'Rubik_900Black'
@@ -80,7 +83,7 @@ const RTL_MARK = '\u200F';
       : w != null && w <= 300 ? 'Rubik_300Light'
       : 'Rubik_400Regular';
 
-    if (rubikKeys.size === 0) return rubikBaseFontFamily; // web
+    if (rubikKeys.size === 0) return rubikBaseFontFamily;
     return rubikKeys.has(pick) ? pick : rubikBaseFontFamily;
   };
 

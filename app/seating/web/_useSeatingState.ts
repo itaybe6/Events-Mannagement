@@ -336,3 +336,8 @@ export function useSeatingState() {
 
 export type UseSeatingStateApi = ReturnType<typeof useSeatingState>;
 export type SeatingStateSnapshot = State;
+
+// expo-router treats files under `app/` as routes on web; provide a default export.
+export default function SeatingUseStateRouteShim() {
+  return null;
+}

@@ -39,7 +39,7 @@ export function useUsersModel(opts: { demoUsers: UserWithMetadata[] }) {
   const [loading, setLoading] = useState(false);
   const [isDemoMode, setIsDemoMode] = useState(false);
 
-  const [userFilter, setUserFilter] = useState<UserFilter>('all');
+  const [userFilter, setUserFilter] = useState<UserFilter>('event_owner');
   const [searchQuery, setSearchQuery] = useState('');
 
   const [selectedUser, setSelectedUser] = useState<UserWithMetadata | null>(null);

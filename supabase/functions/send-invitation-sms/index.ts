@@ -262,6 +262,9 @@ serve(async (req) => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          // Pulseem Swagger defines header name as `APIKey` (and some docs mention `X-Api-Key`).
+          // Send both to be safe across accounts/environments.
+          "APIKey": pulseemApiKey,
           "X-Api-Key": pulseemApiKey,
         },
         body: JSON.stringify(payload),

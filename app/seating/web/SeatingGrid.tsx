@@ -870,3 +870,6 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
 });
+
+// expo-router treats files under `app/` as routes on web; provide a default export.
+export default SeatingGrid;

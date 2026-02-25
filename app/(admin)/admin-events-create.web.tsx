@@ -801,17 +801,17 @@ const styles = StyleSheet.create({
     maxWidth: 1560,
     paddingHorizontal: 28,
   },
-  columns: { flex: 1, flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
+  columns: { flex: 1, flexDirection: 'row', gap: 12, alignItems: 'stretch', minHeight: 0 },
   columnsMobile: { flexDirection: 'column' },
 
-  main: { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0 },
-  mainContent: { gap: 18, paddingBottom: 18 },
-  mainContentMobile: { paddingBottom: 96 },
+  main: { flex: 1, minWidth: 0, minHeight: 0 },
+  mainContent: { gap: 18, paddingBottom: 40 },
+  mainContentMobile: { paddingBottom: 130 },
 
   hero: { gap: 8 },
 
   progressWrap: { marginTop: 10, gap: 10 },
-  progressRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
+  progressRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' },
   progressMeta: { fontSize: 12, fontWeight: '700', color: '#4B5563', textAlign: 'right' },
   progressTrack: { height: 8, borderRadius: 999, backgroundColor: '#E5E7EB', overflow: 'hidden' },
   progressFill: {
@@ -822,7 +822,15 @@ const styles = StyleSheet.create({
   },
 
   section: { gap: 12 },
-  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 10 },
+  // Section header row: step badge + title.
+  sectionTitleRow: {
+    alignSelf: 'stretch',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    gap: 10,
+  },
   badge: {
     width: 32,
     height: 32,
@@ -832,7 +840,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   badgeText: { fontSize: 13, fontWeight: '900', color: stylesTokens.primary },
-  sectionTitle: { fontSize: 18, fontWeight: '900', color: stylesTokens.text, textAlign: 'right', flexShrink: 1 },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: stylesTokens.text,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+    flexShrink: 1,
+  },
 
   typeGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 12 },
   typeGridDesktop: { flexWrap: 'nowrap' },
@@ -981,7 +996,7 @@ const styles = StyleSheet.create({
   },
   summaryTitle: { width: '100%', fontSize: 16, fontWeight: '900', color: stylesTokens.white, textAlign: 'right', marginBottom: 12 },
   summaryList: { gap: 14 },
-  summaryItem: { flexDirection: 'row-reverse', alignItems: 'flex-start', gap: 12 },
+  summaryItem: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, verticalAlign: 'bottom' as any },
   summaryIconCircle: {
     width: 40,
     height: 40,
@@ -993,11 +1008,11 @@ const styles = StyleSheet.create({
   summaryIconCircleMuted: { backgroundColor: 'rgba(255,255,255,0.12)' },
   summaryText: { flex: 1, minWidth: 0, alignItems: 'flex-end' },
   summaryLabel: { fontSize: 10, fontWeight: '900', color: 'rgba(255,255,255,0.75)', textAlign: 'right' },
-  summaryValue: { marginTop: 2, fontSize: 14, fontWeight: '900', color: stylesTokens.white, textAlign: 'right' },
+  summaryValue: { marginTop: 2, fontSize: 14, fontWeight: '800', color: stylesTokens.white, textAlign: 'right' },
   summaryValueMuted: { color: 'rgba(255,255,255,0.62)', fontStyle: 'italic' },
 
   summaryFooter: { marginTop: 16, paddingTop: 14, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.14)', gap: 12 },
-  statusRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
+  statusRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' },
   statusLabel: { fontSize: 12, fontWeight: '700', color: 'rgba(255,255,255,0.75)', textAlign: 'right' },
   statusChip: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.16)' },
   statusChipReady: { backgroundColor: 'rgba(16, 185, 129, 0.22)' },

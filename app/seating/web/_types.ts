@@ -84,3 +84,8 @@ export function tableCellSize(type: TableType, seats: number, orientation: Orien
   return { w: 3, h: 3 };
 }
 
+// expo-router treats files under `app/` as routes on web; provide a default export.
+export default function SeatingTypesRouteShim() {
+  return null;
+}
+

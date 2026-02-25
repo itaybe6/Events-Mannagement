@@ -591,3 +591,6 @@ const styles = StyleSheet.create({
   },
   deleteBtnText: { color: '#B91C1C', fontWeight: '900', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
 });
+
+// expo-router treats files under `app/` as routes on web; provide a default export.
+export default TableSidebar;

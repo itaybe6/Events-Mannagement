@@ -487,3 +487,6 @@ const styles = StyleSheet.create({
   },
   labelText: { fontWeight: '800', color: 'rgba(17,24,39,0.62)' },
 });
+
+// expo-router treats files under `app/` as routes on web; provide a default export.
+export default SeatingGridReadonly;

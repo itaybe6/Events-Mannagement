@@ -13,18 +13,20 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
-import { Picker } from '@react-native-picker/picker';
 
 import { colors } from '@/constants/colors';
 import { useDemoUsersStore } from '@/store/demoUsersStore';
 import { useUsersModel, type UserFilter } from '@/features/users/useUsersModel';
 import type { UserWithMetadata } from '@/lib/services/userService';
 
-const USER_FILTERS: Array<{ label: string; value: UserFilter }> = [
-  { label: 'הכל', value: 'all' },
-  { label: 'מנהלים', value: 'admin' },
+type RoleFilter = Exclude<UserFilter, 'all'>;
+
+const DEFAULT_FILTER: RoleFilter = 'event_owner';
+
+const ROLE_FILTERS: Array<{ label: string; value: RoleFilter }> = [
   { label: 'בעלי אירוע', value: 'event_owner' },
   { label: 'עובדים', value: 'employee' },
+  { label: 'מנהלים', value: 'admin' },
 ];
 
 function getUserTypeLabel(type: UserWithMetadata['userType']) {
@@ -107,59 +109,53 @@ export default function UsersWebScreen() {
   return (
     <View style={styles.page}>
       <View style={styles.filterBarOuter}>
-        <View style={styles.filterBar}>
-          <View style={styles.filterBarLeft}>
-            <View style={styles.filterLabelRow}>
-              <Ionicons name="filter" size={18} color={colors.primary} />
-              <Text style={styles.filterLabel}>סינון</Text>
-            </View>
-            <View style={styles.filterDivider} />
-
-            <View style={styles.searchWrapInline}>
-              <Ionicons name="search" size={18} color={colors.gray[500]} style={styles.searchIconInline} />
-              <TextInput
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                placeholder="חיפוש משתמש..."
-                placeholderTextColor={colors.gray[500]}
-                style={styles.searchInputInline}
-                textAlign="right"
-                returnKeyType="search"
-                autoCapitalize="none"
-              />
-            </View>
+        {/* Card 1: Search */}
+        <View style={styles.searchCard}>
+          <View style={styles.searchCardHeader}>
+            <Ionicons name="search" size={18} color={colors.primary} />
+            <Text style={styles.searchCardTitle}>חיפוש</Text>
           </View>
 
-          <View style={styles.filterBarRight}>
-            <View style={styles.selectWrap}>
-              <Picker
-                selectedValue={userFilter}
-                onValueChange={(value) => setUserFilter(value as UserFilter)}
-                style={styles.picker}
-                dropdownIconColor={colors.gray[600]}
-              >
-                {USER_FILTERS.map((f) => (
-                  <Picker.Item key={f.value} label={`${f.label} (${counts[f.value] ?? 0})`} value={f.value} />
-                ))}
-              </Picker>
-            </View>
-
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="איפוס סינון"
-              onPress={() => {
-                setSearchQuery('');
-                setUserFilter('all');
-              }}
-              style={({ hovered, pressed }: any) => [
-                styles.resetBtn,
-                Platform.OS === 'web' && hovered ? styles.resetBtnHover : null,
-                pressed ? { opacity: 0.92 } : null,
-              ]}
-            >
-              <Text style={styles.resetBtnText}>איפוס</Text>
-            </Pressable>
+          <View style={styles.searchWrapInline}>
+            <Ionicons name="search" size={18} color={colors.gray[500]} style={styles.searchIconInline} />
+            <TextInput
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="חיפוש משתמש..."
+              placeholderTextColor={colors.gray[500]}
+              style={styles.searchInputInline}
+              textAlign="right"
+              returnKeyType="search"
+              autoCapitalize="none"
+            />
           </View>
+        </View>
+
+        {/* Role filter tags (no card background) */}
+        <View style={styles.tagsRow}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.roleChipsRow}>
+            {ROLE_FILTERS.map((f) => {
+              const active = userFilter === f.value;
+              return (
+                <Pressable
+                  key={f.value}
+                  accessibilityRole="button"
+                  accessibilityLabel={`סינון לפי ${f.label}`}
+                  onPress={() => setUserFilter(f.value)}
+                  style={({ hovered, pressed }: any) => [
+                    styles.roleChip,
+                    active ? styles.roleChipActive : null,
+                    Platform.OS === 'web' && hovered ? styles.roleChipHover : null,
+                    pressed ? { opacity: 0.92 } : null,
+                  ]}
+                >
+                  <Text style={[styles.roleChipText, active ? styles.roleChipTextActive : null]}>
+                    {f.label} ({counts[f.value] ?? 0})
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
         </View>
       </View>
 
@@ -366,39 +362,25 @@ export default function UsersWebScreen() {
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: '#f6f7f9' },
 
-  filterBarOuter: { paddingHorizontal: 32, paddingBottom: 16, paddingTop: 18 },
-  filterBar: {
+  filterBarOuter: { paddingHorizontal: 32, paddingBottom: 16, paddingTop: 18, gap: 12 },
+  searchCard: {
     backgroundColor: colors.white,
     borderRadius: 18,
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.08)',
     padding: 14,
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 16,
+    gap: 10,
     shadowColor: '#0b1c41',
     shadowOpacity: 0.06,
     shadowRadius: 20,
     shadowOffset: { width: 0, height: 8 },
   },
-  filterBarLeft: {
-    flex: 1,
-    minWidth: 0,
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: 12,
-    flexWrap: 'wrap',
-  },
-  filterBarRight: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
-  filterLabelRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
-  filterLabel: { fontSize: 14, fontWeight: '900', color: colors.text, textAlign: 'right' },
-  filterDivider: { width: 1, height: 28, backgroundColor: 'rgba(15,23,42,0.10)', marginHorizontal: 6 },
+  searchCardHeader: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
+  searchCardTitle: { fontSize: 14, fontWeight: '900', color: colors.text, textAlign: 'right' },
 
   searchWrapInline: {
     height: 42,
     minWidth: 260,
-    flexGrow: 1,
     borderRadius: 14,
     backgroundColor: 'rgba(15,23,42,0.04)',
     borderWidth: 1,
@@ -408,29 +390,27 @@ const styles = StyleSheet.create({
   searchIconInline: { position: 'absolute', right: 12 },
   searchInputInline: { paddingRight: 40, paddingLeft: 12, fontSize: 15, fontWeight: '600', color: colors.text },
 
-  selectWrap: {
+  tagsRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
+
+  roleChipsRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
+  roleChip: {
     height: 42,
-    minWidth: 200,
-    borderRadius: 14,
-    overflow: 'hidden',
+    paddingHorizontal: 14,
+    borderRadius: 999,
     backgroundColor: 'rgba(15,23,42,0.04)',
     borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.06)',
-    justifyContent: 'center',
-  },
-  picker: { height: 42, width: '100%', color: colors.text },
-  resetBtn: {
-    height: 42,
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    backgroundColor: 'rgba(15,69,230,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(15,69,230,0.14)',
+    borderColor: 'rgba(15,23,42,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
-  resetBtnHover: { backgroundColor: 'rgba(15,69,230,0.12)' },
-  resetBtnText: { fontSize: 13, fontWeight: '800', color: colors.primary, textAlign: 'right' },
+  roleChipHover: { backgroundColor: 'rgba(15,23,42,0.06)' },
+  roleChipActive: {
+    backgroundColor: 'rgba(15,69,230,0.10)',
+    borderColor: 'rgba(15,69,230,0.22)',
+  },
+  roleChipText: { fontSize: 13, fontWeight: '800', color: colors.gray[700], textAlign: 'right' },
+  roleChipTextActive: { color: colors.primary },
 
   contentRow: {
     flex: 1,
@@ -531,9 +511,10 @@ const styles = StyleSheet.create({
     padding: 14,
     borderTopWidth: 1,
     borderTopColor: 'rgba(15,23,42,0.06)',
-    flexDirection: 'row-reverse',
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    flexWrap: 'wrap',
   },
   tableFooterText: { fontSize: 12, fontWeight: '600', color: colors.gray[600], textAlign: 'right' },
 
