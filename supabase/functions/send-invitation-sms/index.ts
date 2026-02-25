@@ -19,6 +19,8 @@ type SendInvitationSmsResult = {
   skippedInvalidPhone: number;
   sent: number;
   failed: number;
+  pulseemSendIds: string[];
+  pulseemResponses: Array<{ sendId: string; httpStatus: number; ok: boolean; bodySnippet?: string }>;
   failures: Array<{ guestId: string; phone?: string | null; reason: string }>;
 };
 
@@ -58,6 +60,7 @@ function fillTemplate(template: string, vars: Record<string, string>) {
   let out = template;
   for (const [k, v] of Object.entries(vars)) {
     out = out.split(`{${k}}`).join(v);
+    out = out.split(`{{${k}}}`).join(v);
   }
   return out;
 }
@@ -154,7 +157,11 @@ serve(async (req) => {
 
     const [{ data: profile, error: profileError }, { data: eventRow, error: eventError }] = await Promise.all([
       adminClient.from("users").select("id, user_type").eq("id", userId).maybeSingle(),
-      adminClient.from("events").select("id, user_id, title").eq("id", eventId).maybeSingle(),
+      adminClient
+        .from("events")
+        .select("id, user_id, title, date, location, city, groom_name, bride_name")
+        .eq("id", eventId)
+        .maybeSingle(),
     ]);
     if (profileError) return json({ error: profileError.message }, { status: 500 });
     if (eventError) return json({ error: eventError.message }, { status: 500 });
@@ -184,6 +191,19 @@ serve(async (req) => {
     if (!baseUrl) return json({ error: "Missing baseUrl (pass from client or set SITE_BASE_URL secret)" }, { status: 400 });
 
     const eventTitle = String((eventRow as any)?.title ?? "").trim();
+    const eventDateRaw = (eventRow as any)?.date;
+    const eventDate = eventDateRaw ? new Date(eventDateRaw) : new Date("invalid");
+    const eventDateText = Number.isFinite(eventDate.getTime())
+      ? eventDate.toLocaleDateString("he-IL", { day: "2-digit", month: "2-digit", year: "numeric" })
+      : "";
+
+    const location = String((eventRow as any)?.location ?? "").trim();
+    const city = String((eventRow as any)?.city ?? "").trim();
+    const eventLocationText = [location, city].filter(Boolean).join(", ");
+
+    const groomName = String((eventRow as any)?.groom_name ?? "").trim();
+    const brideName = String((eventRow as any)?.bride_name ?? "").trim();
+    const coupleNames = groomName && brideName ? `${groomName} ו${brideName}` : groomName || brideName || "";
 
     const failures: SendInvitationSmsResult["failures"] = [];
     const prepared = (guests ?? []).map((g: any) => {
@@ -194,10 +214,23 @@ serve(async (req) => {
       const phoneOk = n.ok ? n.value : "";
       const hasPhone = Boolean(String(rawPhone ?? "").trim());
       const hasToken = Boolean(token);
+      const fullName = String(g.name ?? "").trim();
+      const firstName = fullName ? fullName.split(/\s+/)[0] : "";
       const text = fillTemplate(messageTemplate, {
-        name: String(g.name ?? "").trim(),
+        // Common tokens used in UI
+        name: fullName,
         link,
         event: eventTitle,
+        event_date: eventDateText,
+        date: eventDateText,
+        // Hebrew tokens used in the templates on the web screen
+        "שם_פרטי": firstName || fullName,
+        "שם_אירוע": eventTitle,
+        "תאריך": eventDateText,
+        "מיקום": eventLocationText,
+        "שם_חתן": groomName,
+        "שם_כלה": brideName,
+        "שמות_חתן_כלה": coupleNames,
       });
       return {
         id: String(g.id),
@@ -237,12 +270,15 @@ serve(async (req) => {
 
     let sent = 0;
     let failed = 0;
+    const pulseemSendIds: string[] = [];
+    const pulseemResponses: SendInvitationSmsResult["pulseemResponses"] = [];
 
     // Pulseem supports bulk lists; chunk to be safe.
     const batches = chunk(sendable, 200);
     for (let bi = 0; bi < batches.length; bi++) {
       const batch = batches[bi];
       const sendId = `${sendIdBase}-${bi + 1}`;
+      pulseemSendIds.push(sendId);
 
       const payload: any = {
         sendId,
@@ -271,10 +307,13 @@ serve(async (req) => {
       });
 
       const ok = resp.ok;
+      const respText = await resp.text().catch(() => "");
+      const snippet = respText ? respText.slice(0, 500) : "";
+      pulseemResponses.push({ sendId, httpStatus: resp.status, ok, bodySnippet: snippet || undefined });
+      console.log("Pulseem response", { sendId, httpStatus: resp.status, ok, snippet });
       if (!ok) {
-        const errText = await resp.text().catch(() => "");
         for (const b of batch) {
-          failures.push({ guestId: b.id, phone: b.phoneOk, reason: `pulseem_error_${resp.status}${errText ? `:${errText}` : ""}` });
+          failures.push({ guestId: b.id, phone: b.phoneOk, reason: `pulseem_error_${resp.status}${respText ? `:${respText}` : ""}` });
         }
         failed += batch.length;
       } else {
@@ -282,7 +321,7 @@ serve(async (req) => {
       }
 
       // Log to messages table (best-effort)
-      const status = ok ? "נשלח" : "נכשל";
+      const status = ok ? `נשלח (sendId=${sendId})` : `נכשל (sendId=${sendId})`;
       const rows = batch.map((b) => ({
         event_id: eventId,
         type: "SMS",
@@ -305,6 +344,8 @@ serve(async (req) => {
       skippedInvalidPhone: invalidPhone,
       sent,
       failed,
+      pulseemSendIds,
+      pulseemResponses,
       failures,
     };
 

@@ -28,6 +28,7 @@ type NotificationSettingRow = {
   days_from_wedding: number;
   channel?: 'SMS' | 'WHATSAPP';
   notification_date?: string | null;
+  recipient_guest_ids?: string[] | null;
 };
 
 const normalizeMessage = (s: string) => String(s || '').replace(/\r\n/g, '\n').trim();
@@ -233,6 +234,17 @@ export default function AutomaticNotificationsWebScreen() {
   const [editDraft, setEditDraft] = useState<{ message: string; days: number } | null>(null);
   const [saving, setSaving] = useState(false);
 
+  const [allGuests, setAllGuests] = useState<
+    Array<{ id: string; name: string; phone?: string; status: 'מגיע' | 'לא מגיע' | 'ממתין' }>
+  >([]);
+  const [sendingNow, setSendingNow] = useState(false);
+
+  // Recipient picking is only for the first message.
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerSearch, setPickerSearch] = useState('');
+  const [pickerFilter, setPickerFilter] = useState<'all' | 'מגיע' | 'ממתין' | 'לא מגיע'>('all');
+  const [pickerSelectedIds, setPickerSelectedIds] = useState<Set<string>>(() => new Set());
+
   const sidebarWidth = useMemo(() => {
     // Slightly wider editor on desktop, but keep reasonable bounds.
     // Examples:
@@ -335,6 +347,9 @@ export default function AutomaticNotificationsWebScreen() {
           days_from_wedding: typeof existing.days_from_wedding === 'number' ? existing.days_from_wedding : tpl.days_from_wedding,
           channel: (existing.channel as any) || tpl.channel,
           notification_date: (existing.notification_date as any) ?? null,
+          recipient_guest_ids: Array.isArray((existing as any).recipient_guest_ids)
+            ? ((existing as any).recipient_guest_ids as any[]).map((x) => String(x))
+            : [],
         };
       }
 
@@ -346,6 +361,7 @@ export default function AutomaticNotificationsWebScreen() {
         days_from_wedding: tpl.days_from_wedding,
         channel: tpl.channel,
         notification_date: null,
+        recipient_guest_ids: [],
       };
     });
 
@@ -368,6 +384,27 @@ export default function AutomaticNotificationsWebScreen() {
         if (cancelled) return;
         setOwnerTitle(title);
         await fetchSettings((eventData as any).id, title, eventData);
+
+        const { data: guestRows, error: guestError } = await supabase
+          .from('guests')
+          .select('id, name, phone, status')
+          .eq('event_id', (eventData as any).id)
+          .order('name', { ascending: true });
+        if (!cancelled) {
+          if (guestError) {
+            console.warn('Failed to load guests (couple web):', guestError);
+            setAllGuests([]);
+          } else {
+            setAllGuests(
+              ((guestRows as any[]) || []).map((g) => ({
+                id: String(g.id),
+                name: String(g.name ?? ''),
+                phone: g.phone ? String(g.phone) : undefined,
+                status: (g.status as any) || 'ממתין',
+              }))
+            );
+          }
+        }
       } catch (e) {
         console.warn('Failed to load couple web automatic notifications:', e);
         if (!cancelled) {
@@ -485,7 +522,49 @@ export default function AutomaticNotificationsWebScreen() {
     setEditDraft((d) => (d ? { ...d, message: `${d.message}${d.message ? ' ' : ''}${token}` } : d));
   };
 
-  const saveDraft = async () => {
+  const openRecipientsPicker = (row: NotificationSettingRow) => {
+    // Only for the first message.
+    if (String(row.notification_type) !== 'reminder_1') return;
+    const ids = Array.isArray((row as any).recipient_guest_ids)
+      ? ((row as any).recipient_guest_ids as any[]).map((x) => String(x))
+      : [];
+    setPickerSelectedIds(new Set(ids));
+    setPickerSearch('');
+    setPickerFilter('all');
+    setPickerOpen(true);
+  };
+
+  const pickerFilteredGuests = useMemo(() => {
+    const q = String(pickerSearch || '').trim().toLowerCase();
+    const base = Array.isArray(allGuests) ? allGuests : [];
+    let out = base;
+    if (pickerFilter !== 'all') out = out.filter((g) => g.status === pickerFilter);
+    if (q) out = out.filter((g) => String(g.name || '').toLowerCase().includes(q) || String(g.phone || '').includes(q));
+    return out;
+  }, [allGuests, pickerFilter, pickerSearch]);
+
+  const pickerToggleGuest = (guestId: string) => {
+    const id = String(guestId || '').trim();
+    if (!id) return;
+    setPickerSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const pickerSelectAllFiltered = () => {
+    setPickerSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const g of pickerFilteredGuests) next.add(String(g.id));
+      return next;
+    });
+  };
+
+  const pickerClear = () => setPickerSelectedIds(new Set());
+
+  const saveDraft = async (opts?: { recipientGuestIds?: string[] }) => {
     if (!event?.id || !selectedRow || !editDraft) return;
     setSaving(true);
     try {
@@ -494,6 +573,7 @@ export default function AutomaticNotificationsWebScreen() {
         message_content: editDraft.message,
         days_from_wedding: editDraft.days,
       };
+      if (opts?.recipientGuestIds) payload.recipient_guest_ids = opts.recipientGuestIds;
       const ymd = computeNotificationDateYmd((event as any)?.date, editDraft.days);
       if (ymd) payload.notification_date = ymd;
 
@@ -501,6 +581,11 @@ export default function AutomaticNotificationsWebScreen() {
         let { error } = await supabase.from('notification_settings').update(payload).eq('id', selectedRow.id);
         if (error && isMissingColumn(error, 'notification_date')) {
           delete payload.notification_date;
+          const retry = await supabase.from('notification_settings').update(payload).eq('id', selectedRow.id);
+          error = retry.error as any;
+        }
+        if (error && isMissingColumn(error, 'recipient_guest_ids')) {
+          delete payload.recipient_guest_ids;
           const retry = await supabase.from('notification_settings').update(payload).eq('id', selectedRow.id);
           error = retry.error as any;
         }
@@ -521,6 +606,7 @@ export default function AutomaticNotificationsWebScreen() {
         days_from_wedding: editDraft.days,
         channel: (selectedRow.channel as any) || tpl?.channel || 'SMS',
       };
+      if (opts?.recipientGuestIds) insertPayload.recipient_guest_ids = opts.recipientGuestIds;
       if (ymd) insertPayload.notification_date = ymd;
 
       let { data, error } = await supabase.from('notification_settings').insert(insertPayload).select().single();
@@ -536,6 +622,12 @@ export default function AutomaticNotificationsWebScreen() {
         data = retry.data as any;
         error = retry.error as any;
       }
+      if (error && isMissingColumn(error, 'recipient_guest_ids')) {
+        delete insertPayload.recipient_guest_ids;
+        const retry = await supabase.from('notification_settings').insert(insertPayload).select().single();
+        data = retry.data as any;
+        error = retry.error as any;
+      }
       if (error) throw error;
       setNotificationSettings((p) =>
         p.map((r) => (r.notification_type === selectedRow.notification_type ? { ...(r as any), ...(data as any) } : r))
@@ -544,6 +636,131 @@ export default function AutomaticNotificationsWebScreen() {
       console.error('Error saving notification draft (couple web):', e);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const saveRecipientsForReminder1 = async (guestIds: string[]) => {
+    if (!event?.id) return;
+    const ids = Array.isArray(guestIds) ? guestIds.map(String).map((s) => s.trim()).filter(Boolean) : [];
+
+    const row = notificationSettings.find((r) => r.notification_type === 'reminder_1') || null;
+    if (!row) return;
+
+    // Update local state immediately
+    setNotificationSettings((prev) =>
+      prev.map((r) => (r.notification_type === 'reminder_1' ? ({ ...(r as any), recipient_guest_ids: ids } as any) : r))
+    );
+
+    // Persist to DB (upsert)
+    try {
+      if (row.id) {
+        const updatePayload: any = { recipient_guest_ids: ids };
+        let { error } = await supabase.from('notification_settings').update(updatePayload).eq('id', row.id);
+        if (error && isMissingColumn(error, 'recipient_guest_ids')) {
+          // environment without migration
+          throw error;
+        }
+        if (error) throw error;
+        return;
+      }
+
+      const tpl = NOTIFICATION_TEMPLATES.find((t) => t.notification_type === row.notification_type);
+      const insertPayload: any = {
+        event_id: event.id,
+        notification_type: row.notification_type,
+        title: getDisplayTitle(row),
+        enabled: Boolean(row.enabled ?? false),
+        message_content: String(row.message_content || '').trim() || tpl?.defaultMessage || getDefaultMessageContent(ownerTitle),
+        days_from_wedding: typeof row.days_from_wedding === 'number' ? row.days_from_wedding : tpl?.days_from_wedding ?? -30,
+        channel: (row.channel as any) || tpl?.channel || 'SMS',
+        recipient_guest_ids: ids,
+      };
+      const ymd = computeNotificationDateYmd((event as any)?.date, insertPayload.days_from_wedding);
+      if (ymd) insertPayload.notification_date = ymd;
+
+      let { data, error } = await supabase.from('notification_settings').insert(insertPayload).select().single();
+      if (error && isMissingColumn(error, 'channel')) {
+        delete insertPayload.channel;
+        const retry = await supabase.from('notification_settings').insert(insertPayload).select().single();
+        data = retry.data as any;
+        error = retry.error as any;
+      }
+      if (error && isMissingColumn(error, 'notification_date')) {
+        delete insertPayload.notification_date;
+        const retry = await supabase.from('notification_settings').insert(insertPayload).select().single();
+        data = retry.data as any;
+        error = retry.error as any;
+      }
+      if (error && isMissingColumn(error, 'recipient_guest_ids')) {
+        delete insertPayload.recipient_guest_ids;
+        const retry = await supabase.from('notification_settings').insert(insertPayload).select().single();
+        data = retry.data as any;
+        error = retry.error as any;
+      }
+      if (error) throw error;
+
+      setNotificationSettings((p) =>
+        p.map((r) => (r.notification_type === 'reminder_1' ? { ...(r as any), ...(data as any), recipient_guest_ids: ids } : r))
+      );
+    } catch (e) {
+      console.error('Save recipients failed (couple web):', e);
+      alert('לא ניתן לשמור רשימת מוזמנים (בדוק שהרצת את המיגרציה)');
+    }
+  };
+
+  const sendNow = async () => {
+    if (!event?.id || !selectedRow || !editDraft) return;
+    if (sendingNow) return;
+    if (!editDraft.message.trim()) {
+      alert('יש למלא תוכן הודעה');
+      return;
+    }
+
+    setSendingNow(true);
+    try {
+      // For reminder_2/reminder_3: send only to pending guests (status = ממתין) automatically.
+      const nt = String(selectedRow.notification_type || '').trim();
+      const shouldAutoPending = nt === 'reminder_2' || nt === 'reminder_3';
+
+      if (!shouldAutoPending) {
+        const ids = Array.isArray((selectedRow as any).recipient_guest_ids)
+          ? ((selectedRow as any).recipient_guest_ids as any[]).map((x) => String(x))
+          : [];
+        if (ids.length === 0) {
+          alert('להודעה הראשונה צריך לבחור מוזמנים (לחץ "הוסף מוזמנים")');
+          return;
+        }
+        await saveDraft({ recipientGuestIds: ids });
+      } else {
+        await saveDraft();
+      }
+
+      const sessionRes = await supabase.auth.getSession();
+      const accessToken = sessionRes.data.session?.access_token;
+      if (!accessToken) throw new Error('לא נמצא חיבור משתמש (נא להתחבר מחדש)');
+
+      const origin = typeof window !== 'undefined' ? String(window.location.origin) : '';
+      const baseUrl =
+        origin && !origin.includes('localhost') && !origin.includes('127.0.0.1') ? origin : undefined;
+
+      const { data, error } = await supabase.functions.invoke('send-invitation-sms', {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        body: {
+          eventId: event.id,
+          guestIds: shouldAutoPending ? undefined : Array.isArray((selectedRow as any).recipient_guest_ids) ? (selectedRow as any).recipient_guest_ids : undefined,
+          filterStatus: shouldAutoPending ? 'ממתין' : 'all',
+          messageTemplate: editDraft.message,
+          baseUrl,
+        },
+      });
+      if (error) throw error;
+      const result = (data as any)?.result;
+      alert(`נשלחו ${Number(result?.sent) || 0} · נכשלו ${Number(result?.failed) || 0}`);
+    } catch (e) {
+      console.error('Send SMS now failed (couple web):', e);
+      alert('לא ניתן לשלוח כרגע');
+    } finally {
+      setSendingNow(false);
     }
   };
 
@@ -689,6 +906,12 @@ export default function AutomaticNotificationsWebScreen() {
                 <Pressable onPress={() => insertVariable('{{מיקום}}')} style={({ pressed }: any) => [styles.chip, pressed ? { opacity: 0.85 } : null]}>
                   <Text style={[styles.chipText, { color: ui.primary }]}>{'{{מיקום}}'}</Text>
                 </Pressable>
+                <Pressable onPress={() => insertVariable('{name}')} style={({ pressed }: any) => [styles.chip, pressed ? { opacity: 0.85 } : null]}>
+                  <Text style={[styles.chipText, { color: ui.primary }]}>{'{name}'}</Text>
+                </Pressable>
+                <Pressable onPress={() => insertVariable('{link}')} style={({ pressed }: any) => [styles.chip, pressed ? { opacity: 0.85 } : null]}>
+                  <Text style={[styles.chipText, { color: ui.primary }]}>{'{link}'}</Text>
+                </Pressable>
                 <View style={[styles.chip, styles.chipAdd]}>
                   <Text style={styles.chipAddText}>+ משתנה</Text>
                 </View>
@@ -742,7 +965,9 @@ export default function AutomaticNotificationsWebScreen() {
 
           <View style={styles.sidebarFooter}>
             <Pressable
-              onPress={() => void saveDraft()}
+              onPress={() =>
+                void saveDraft()
+              }
               disabled={saving || !selectedRow || !editDraft}
               style={({ hovered, pressed }: any) => [
                 styles.saveBtn,
@@ -753,6 +978,22 @@ export default function AutomaticNotificationsWebScreen() {
             >
               <Text style={styles.saveBtnText}>{saving ? 'שומר...' : 'שמור שינויים'}</Text>
             </Pressable>
+
+            {String(selectedRow?.channel || 'SMS') === 'SMS' ? (
+              <Pressable
+                onPress={() => void sendNow()}
+                disabled={sendingNow || !selectedRow || !editDraft}
+                style={({ hovered, pressed }: any) => [
+                  styles.sendNowBtn,
+                  sendingNow || !selectedRow || !editDraft ? styles.sendNowBtnDisabled : null,
+                  Platform.OS === 'web' && hovered && !(sendingNow || !selectedRow || !editDraft) ? styles.sendNowBtnHover : null,
+                  pressed ? { transform: [{ translateY: -1 }], opacity: 0.98 } : null,
+                ]}
+              >
+                <Ionicons name="paper-plane-outline" size={16} color="#fff" />
+                <Text style={styles.sendNowBtnText}>{sendingNow ? 'שולח...' : 'שלח עכשיו'}</Text>
+              </Pressable>
+            ) : null}
 
             <Pressable
               onPress={() => {
@@ -858,6 +1099,34 @@ export default function AutomaticNotificationsWebScreen() {
                       />
                     </View>
 
+                  {row.notification_type === 'reminder_1' ? (
+                    <View style={styles.cardInlineRow}>
+                      <View style={styles.cardInlineMeta}>
+                        <Ionicons name="people-outline" size={14} color="rgba(2,6,23,0.55)" />
+                        <Text style={styles.cardInlineMetaText}>
+                          {Array.isArray((row as any).recipient_guest_ids) ? (row as any).recipient_guest_ids.length : 0} מוזמנים
+                        </Text>
+                      </View>
+                      <Pressable
+                        onPress={(e: any) => {
+                          e?.stopPropagation?.();
+                          e?.preventDefault?.();
+                          setSelectedType(row.notification_type);
+                          openRecipientsPicker(row);
+                        }}
+                        style={({ pressed }: any) => [styles.cardInlineBtn, pressed ? { opacity: 0.9 } : null]}
+                      >
+                        <Ionicons name="person-add-outline" size={16} color={ui.primary} />
+                        <Text style={[styles.cardInlineBtnText, { color: ui.primary }]}>הוסף מוזמנים</Text>
+                      </Pressable>
+                    </View>
+                  ) : row.notification_type === 'reminder_2' || row.notification_type === 'reminder_3' ? (
+                    <View style={styles.cardAutoNote}>
+                      <Ionicons name="time-outline" size={14} color="rgba(2,6,23,0.55)" />
+                      <Text style={styles.cardAutoNoteText}>נשלח אוטומטית רק לממתינים (שלא הגיבו)</Text>
+                    </View>
+                  ) : null}
+
                     <View style={styles.cardBottomRow}>
                       <Pressable
                         onPress={(e: any) => {
@@ -912,6 +1181,110 @@ export default function AutomaticNotificationsWebScreen() {
           </View>
         </ScrollView>
       </View>
+
+      {pickerOpen ? (
+        <View style={styles.pickerOverlay}>
+          <Pressable style={styles.pickerBackdrop} onPress={() => setPickerOpen(false)} />
+          <View style={styles.pickerCard}>
+            <View style={styles.pickerHeader}>
+              <Text style={styles.pickerTitle}>הוספת מוזמנים להודעה הראשונה</Text>
+              <Pressable onPress={() => setPickerOpen(false)} style={({ pressed }: any) => [styles.pickerClose, pressed ? { opacity: 0.9 } : null]}>
+                <Ionicons name="close" size={18} color="#111827" />
+              </Pressable>
+            </View>
+
+            <View style={styles.pickerSearchRow}>
+              <Ionicons name="search-outline" size={16} color="#64748B" />
+              <TextInput
+                value={pickerSearch}
+                onChangeText={setPickerSearch}
+                placeholder="חיפוש לפי שם או טלפון..."
+                placeholderTextColor="rgba(100,116,139,0.6)"
+                style={styles.pickerSearchInput}
+              />
+            </View>
+
+            <View style={styles.pickerToolsRow}>
+              <View style={styles.recipientsFiltersRow}>
+                {(['all', 'ממתין', 'מגיע', 'לא מגיע'] as const).map((k) => (
+                  <Pressable
+                    key={k}
+                    onPress={() => setPickerFilter(k)}
+                    style={({ pressed }: any) => [
+                      styles.recipientsPill,
+                      pickerFilter === k ? styles.recipientsPillActive : null,
+                      pressed ? { opacity: 0.9 } : null,
+                    ]}
+                  >
+                    <Text style={[styles.recipientsPillText, pickerFilter === k ? styles.recipientsPillTextActive : null]}>
+                      {k === 'all' ? 'הכל' : k}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+
+              <View style={{ flex: 1 }} />
+
+              <Pressable onPress={pickerSelectAllFiltered} style={({ pressed }: any) => [styles.recipientsActionBtn, pressed ? { opacity: 0.9 } : null]}>
+                <Ionicons name="checkbox-outline" size={14} color="#111827" />
+                <Text style={styles.recipientsActionText}>בחר הכל</Text>
+              </Pressable>
+              <Pressable onPress={pickerClear} style={({ pressed }: any) => [styles.recipientsActionBtn, pressed ? { opacity: 0.9 } : null]}>
+                <Ionicons name="close-circle-outline" size={14} color="#111827" />
+                <Text style={styles.recipientsActionText}>נקה</Text>
+              </Pressable>
+            </View>
+
+            <View style={styles.pickerMetaRow}>
+              <Text style={styles.pickerMetaText}>נבחרו: {pickerSelectedIds.size}</Text>
+              <Text style={styles.pickerMetaText}>סה״כ בתצוגה: {pickerFilteredGuests.length}</Text>
+            </View>
+
+            <ScrollView style={styles.pickerList} contentContainerStyle={styles.pickerListContent} showsVerticalScrollIndicator={false}>
+              {pickerFilteredGuests.map((g) => {
+                const checked = pickerSelectedIds.has(String(g.id));
+                return (
+                  <Pressable
+                    key={g.id}
+                    onPress={() => pickerToggleGuest(g.id)}
+                    style={({ pressed }: any) => [
+                      styles.recipientRow,
+                      checked ? styles.recipientRowActive : null,
+                      pressed ? { opacity: 0.95 } : null,
+                    ]}
+                  >
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={styles.recipientName} numberOfLines={1}>
+                        {g.name}
+                      </Text>
+                      <Text style={styles.recipientMeta} numberOfLines={1}>
+                        {g.status}
+                        {g.phone ? ` · ${g.phone}` : ' · אין טלפון'}
+                      </Text>
+                    </View>
+                    <Ionicons name={checked ? 'checkmark-circle' : 'ellipse-outline'} size={18} color={checked ? ui.primary : '#94A3B8'} />
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+
+            <View style={styles.pickerFooter}>
+              <Pressable onPress={() => setPickerOpen(false)} style={({ pressed }: any) => [styles.pickerBtnSecondary, pressed ? { opacity: 0.9 } : null]}>
+                <Text style={styles.pickerBtnSecondaryText}>ביטול</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  void saveRecipientsForReminder1(Array.from(pickerSelectedIds));
+                  setPickerOpen(false);
+                }}
+                style={({ pressed }: any) => [styles.pickerBtnPrimary, pressed ? { opacity: 0.92 } : null]}
+              >
+                <Text style={styles.pickerBtnPrimaryText}>שמירה</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -1051,6 +1424,79 @@ const styles = StyleSheet.create({
   },
   charCount: { position: 'absolute', left: 12, bottom: 10, fontSize: 12, fontWeight: '800', color: '#9CA3AF' },
 
+  recipientsHeaderRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  recipientsBadge: { flexDirection: 'row-reverse', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(2,6,23,0.04)' },
+  recipientsBadgeText: { fontSize: 12, fontWeight: '900', color: 'rgba(2,6,23,0.72)', textAlign: 'right' },
+  recipientsHint: { fontSize: 12, fontWeight: '800', color: 'rgba(2,6,23,0.62)', textAlign: 'right', lineHeight: 18 },
+  recipientsMono: { fontWeight: '900' },
+
+  recipientsToolsRow: { marginTop: 6, flexDirection: 'row-reverse', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
+  recipientsFiltersRow: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8 },
+  recipientsPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  recipientsPillActive: { backgroundColor: 'rgba(79,70,229,0.10)', borderColor: 'rgba(79,70,229,0.20)' },
+  recipientsPillText: { fontSize: 12, fontWeight: '900', color: 'rgba(2,6,23,0.70)', textAlign: 'right' },
+  recipientsPillTextActive: { color: '#4F46E5' },
+
+  recipientsActionBtn: { height: 32, paddingHorizontal: 10, borderRadius: 10, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(2,6,23,0.10)', flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 6, ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
+  recipientsActionText: { fontSize: 12, fontWeight: '900', color: '#111827', textAlign: 'right' },
+
+  recipientsMetaRow: { marginTop: 10, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' },
+  recipientsMetaText: { fontSize: 12, fontWeight: '900', color: 'rgba(2,6,23,0.62)', textAlign: 'right' },
+  recipientsSendBtn: { height: 36, paddingHorizontal: 12, borderRadius: 12, backgroundColor: '#4F46E5', flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8, ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
+  recipientsSendText: { fontSize: 12, fontWeight: '900', color: '#fff', textAlign: 'right' },
+
+  recipientsList: { marginTop: 10, gap: 8 },
+  recipientRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingHorizontal: 10, paddingVertical: 10, borderRadius: 12, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(2,6,23,0.08)', ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
+  recipientRowActive: { backgroundColor: 'rgba(79,70,229,0.06)', borderColor: 'rgba(79,70,229,0.18)' },
+  recipientName: { fontSize: 13, fontWeight: '900', color: '#111827', textAlign: 'right' },
+  recipientMeta: { marginTop: 3, fontSize: 12, fontWeight: '800', color: '#64748B', textAlign: 'right' },
+
+  pickerOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 2000,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 18,
+  },
+  pickerBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(2,6,23,0.48)' },
+  pickerCard: {
+    width: '100%',
+    maxWidth: 760,
+    maxHeight: '86%',
+    borderRadius: 16,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: 'rgba(2,6,23,0.10)',
+    overflow: 'hidden',
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 24px 70px rgba(2,6,23,0.28)' } as any) : null),
+  },
+  pickerHeader: { paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: 'rgba(2,6,23,0.08)' },
+  pickerTitle: { fontSize: 14, fontWeight: '900', color: '#111827', textAlign: 'right' },
+  pickerClose: { width: 34, height: 34, borderRadius: 10, backgroundColor: 'rgba(2,6,23,0.04)', borderWidth: 1, borderColor: 'rgba(2,6,23,0.10)', alignItems: 'center', justifyContent: 'center', ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
+
+  pickerSearchRow: { margin: 14, paddingHorizontal: 12, height: 40, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(2,6,23,0.10)', backgroundColor: 'rgba(2,6,23,0.03)', flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
+  pickerSearchInput: { flex: 1, height: 40, fontSize: 13, fontWeight: '800', color: '#111827', textAlign: 'right', writingDirection: 'rtl', ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : null) },
+
+  pickerToolsRow: { paddingHorizontal: 14, paddingBottom: 10, flexDirection: 'row-reverse', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
+  pickerMetaRow: { paddingHorizontal: 14, paddingBottom: 10, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  pickerMetaText: { fontSize: 12, fontWeight: '900', color: 'rgba(2,6,23,0.62)', textAlign: 'right' },
+
+  pickerList: { flex: 1, minHeight: 0 },
+  pickerListContent: { paddingHorizontal: 14, paddingBottom: 14, gap: 8 },
+
+  pickerFooter: { padding: 14, borderTopWidth: 1, borderTopColor: 'rgba(2,6,23,0.08)', backgroundColor: 'rgba(248,250,252,1)', flexDirection: 'row-reverse', gap: 10 },
+  pickerBtnSecondary: { flex: 1, height: 44, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(2,6,23,0.10)', backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
+  pickerBtnSecondaryText: { fontSize: 13, fontWeight: '900', color: '#334155', textAlign: 'right' },
+  pickerBtnPrimary: { flex: 1.3, height: 44, borderRadius: 12, backgroundColor: '#4F46E5', alignItems: 'center', justifyContent: 'center', ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
+  pickerBtnPrimaryText: { fontSize: 13, fontWeight: '900', color: '#fff', textAlign: 'right' },
+
   previewBlock: { marginTop: 6, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#F3F4F6', gap: 10 },
   phoneFrame: {
     alignSelf: 'center',
@@ -1130,6 +1576,20 @@ const styles = StyleSheet.create({
   saveBtnHover: { backgroundColor: '#4338CA' },
   saveBtnDisabled: { opacity: 0.6, ...(Platform.OS === 'web' ? ({ cursor: 'default' } as any) : null) },
   saveBtnText: { color: '#fff', fontSize: 13, fontWeight: '900' },
+  sendNowBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: '#111827',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row-reverse',
+    gap: 8,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer', boxShadow: '0 12px 28px rgba(2,6,23,0.16)' } as any) : null),
+  },
+  sendNowBtnHover: { backgroundColor: '#0B1220' },
+  sendNowBtnDisabled: { opacity: 0.6, ...(Platform.OS === 'web' ? ({ cursor: 'default' } as any) : null) },
+  sendNowBtnText: { color: '#fff', fontSize: 13, fontWeight: '900' },
   cancelBtn: {
     height: 44,
     paddingHorizontal: 14,
@@ -1254,6 +1714,26 @@ const styles = StyleSheet.create({
 
   cardMetaRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, marginBottom: 14 },
   cardMetaText: { fontSize: 13, fontWeight: '800', color: '#6B7280', textAlign: 'right' },
+
+  cardInlineRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 12 },
+  cardInlineMeta: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6 },
+  cardInlineMetaText: { fontSize: 12, fontWeight: '900', color: 'rgba(2,6,23,0.55)', textAlign: 'right' },
+  cardInlineBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 10,
+    backgroundColor: 'rgba(79,70,229,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(79,70,229,0.14)',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  cardInlineBtnText: { fontSize: 12, fontWeight: '900', textAlign: 'right' },
+  cardAutoNote: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, marginBottom: 12 },
+  cardAutoNoteText: { fontSize: 12, fontWeight: '900', color: 'rgba(2,6,23,0.55)', textAlign: 'right' },
 
   cardBottomRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
   statusBadge: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1, flexDirection: 'row-reverse', alignItems: 'center', gap: 4, borderColor: '#E5E7EB', backgroundColor: '#F9FAFB' },

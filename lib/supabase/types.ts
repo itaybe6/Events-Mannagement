@@ -119,6 +119,7 @@ export type NotificationSetting = {
   notification_date?: string | null;
   enabled: boolean;
   message_content?: string;
+  recipient_guest_ids?: string[] | null;
   created_at: string;
   updated_at: string;
 }; 

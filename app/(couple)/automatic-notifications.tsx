@@ -133,7 +133,7 @@ const LEGACY_DEFAULT_MESSAGES: Record<string, Set<string>> = {
   after_1: new Set([normalizeMessage('תודה שבאתם! היה לנו כיף גדול איתכם.')]),
 };
 
-export default function AutomaticNotificationsScreen() {
+export default function AutomaticNotificationsScreen(props?: { editorPathname?: string }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { userData } = useUserStore();
@@ -350,10 +350,12 @@ export default function AutomaticNotificationsScreen() {
     }
   };
 
+  const editorPathname = (props as any)?.editorPathname || '/(couple)/notification-editor';
+
   const openEdit = (row: NotificationSettingRow) => {
     if (!resolvedEventId) return;
     router.push({
-      pathname: '/(couple)/notification-editor',
+      pathname: editorPathname,
       params: { eventId: resolvedEventId, notificationType: row.notification_type },
     } as any);
   };
