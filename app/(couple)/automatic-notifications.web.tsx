@@ -29,6 +29,13 @@ type NotificationSettingRow = {
   channel?: 'SMS' | 'WHATSAPP';
   notification_date?: string | null;
   recipient_guest_ids?: string[] | null;
+  // Flow Builder fields (may be missing in older DB envs; handle gracefully)
+  flow_id?: string | null;
+  sort_order?: number | null;
+  depends_on_setting_id?: string | null;
+  recipient_mode?: 'manual' | 'pending' | 'prev_pending' | null;
+  recipient_rule?: any;
+  ui_hidden?: boolean | null;
 };
 
 type SmsRunSummary = {
@@ -300,6 +307,7 @@ export default function AutomaticNotificationsWebScreen() {
   const [loading, setLoading] = useState(true);
   const [settingsSupported, setSettingsSupported] = useState(true);
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettingRow[]>([]);
+  const [flowSteps, setFlowSteps] = useState<NotificationSettingRow[]>([]);
   const [selectedType, setSelectedType] = useState<string>('reminder_1');
   const [editDraft, setEditDraft] = useState<{ message: string; days: number; timeHm: string } | null>(null);
   const [saving, setSaving] = useState(false);
@@ -318,6 +326,17 @@ export default function AutomaticNotificationsWebScreen() {
 
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorType, setEditorType] = useState<string | null>(null);
+  const [editorKind, setEditorKind] = useState<'template' | 'flow'>('template');
+  const [flowDraft, setFlowDraft] = useState<{
+    title: string;
+    recipientMode: 'manual' | 'pending' | 'prev_pending';
+    dependsOnSettingId: string | null;
+  } | null>(null);
+  const [dependsPickerOpen, setDependsPickerOpen] = useState(false);
+  const [addWizardOpen, setAddWizardOpen] = useState(false);
+  const [addWizardStep, setAddWizardStep] = useState<1 | 2>(1);
+  const [addWizardChannel, setAddWizardChannel] = useState<'SMS' | 'WHATSAPP'>('SMS');
+  const [addWizardInsertAt, setAddWizardInsertAt] = useState<number>(1);
   const [dateDialogOpen, setDateDialogOpen] = useState(false);
   const [timeDialogOpen, setTimeDialogOpen] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(() => new Date());
@@ -373,7 +392,35 @@ export default function AutomaticNotificationsWebScreen() {
       showToast('אין היסטוריית שליחה עדיין');
       return;
     }
-    const run = lastSmsRunBySettingId[String(row.id)];
+    const sid = String(row.id);
+    let run = lastSmsRunBySettingId[sid];
+
+    // The runs map is loaded once when entering the screen; refresh it on demand so
+    // newly-scheduled flow steps can show their status without a full page reload.
+    if (!run?.id) {
+      try {
+        const { data: latest, error } = await supabase
+          .from('scheduled_notification_sms_runs')
+          .select('id, notification_setting_id, status, claimed_at, error')
+          .eq('notification_setting_id', sid)
+          .order('claimed_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (!error && latest?.id) {
+          run = {
+            id: String((latest as any).id),
+            notification_setting_id: String((latest as any).notification_setting_id || sid),
+            status: String((latest as any).status ?? ''),
+            claimed_at: String((latest as any).claimed_at ?? ''),
+            error: (latest as any).error ? String((latest as any).error) : null,
+          };
+          setLastSmsRunBySettingId((prev) => ({ ...prev, [sid]: run }));
+        }
+      } catch (e) {
+        console.warn('Failed to refresh last sms run:', e);
+      }
+    }
+
     if (!run?.id) {
       showToast('אין היסטוריית שליחה עדיין');
       return;
@@ -547,7 +594,8 @@ export default function AutomaticNotificationsWebScreen() {
     }
 
     setSettingsSupported(true);
-    const existingMap = new Map<string, any>(((rows as any[]) || []).map((r) => [r.notification_type, r]));
+    const rawRows = (rows as any[]) || [];
+    const existingMap = new Map<string, any>(rawRows.map((r) => [r.notification_type, r]));
     // Hide legacy "reminder_3" and try to disable it to avoid accidental scheduling.
     try {
       const legacy = existingMap.get('reminder_3');
@@ -563,6 +611,7 @@ export default function AutomaticNotificationsWebScreen() {
       const existing = existingMap.get(tpl.notification_type);
       const desiredDefault = defaultMessageByType({ notificationType: tpl.notification_type, kind });
       if (existing) {
+        if (Boolean((existing as any)?.ui_hidden)) return null as any;
         const existingMsg = normalizeMessage(String(existing.message_content ?? ''));
         const shouldUpgradeMessage = existingMsg.length === 0 || LEGACY_DEFAULT_MESSAGES[tpl.notification_type]?.has(existingMsg);
 
@@ -579,6 +628,7 @@ export default function AutomaticNotificationsWebScreen() {
           recipient_guest_ids: Array.isArray((existing as any).recipient_guest_ids)
             ? ((existing as any).recipient_guest_ids as any[]).map((x) => String(x))
             : [],
+          ui_hidden: Boolean((existing as any)?.ui_hidden),
         };
       }
 
@@ -591,14 +641,65 @@ export default function AutomaticNotificationsWebScreen() {
         channel: tpl.channel,
         notification_date: null,
         recipient_guest_ids: [],
+        ui_hidden: false,
       };
-    });
+    }).filter(Boolean) as any;
 
     setNotificationSettings(merged);
 
+    // Flow Builder steps: notification_type is unique (e.g. "flow_step:<uuid>")
+    // Keep it resilient if new columns are not present yet (they'll be undefined).
+    const eventDateRaw = (eventForDefaults as any)?.date;
+    const evDate = eventDateRaw ? new Date(String(eventDateRaw)) : new Date('invalid');
+    const flowRows = rawRows.filter((r) => String(r?.notification_type || '').startsWith('flow_step:'));
+    const mappedFlow: NotificationSettingRow[] = flowRows
+      .map((r) => {
+        if (Boolean((r as any)?.ui_hidden)) return null as any;
+        const notifDateRaw = (r as any)?.notification_date;
+        const notifDate = notifDateRaw ? new Date(String(notifDateRaw)) : null;
+        const computedDays =
+          notifDate && Number.isFinite(notifDate.getTime()) && Number.isFinite(evDate.getTime())
+            ? diffDaysLocal(notifDate, evDate)
+            : 0;
+        const days =
+          typeof (r as any)?.days_from_wedding === 'number' ? Number((r as any).days_from_wedding) : computedDays;
+
+        return {
+          id: (r as any)?.id ? String((r as any).id) : undefined,
+          event_id: (r as any)?.event_id ? String((r as any).event_id) : undefined,
+          notification_type: String((r as any)?.notification_type || '').trim(),
+          title: String((r as any)?.title ?? 'שלב'),
+          enabled: Boolean((r as any)?.enabled),
+          message_content: String((r as any)?.message_content ?? ''),
+          days_from_wedding: days,
+          channel: ((r as any)?.channel as any) || 'SMS',
+          notification_date: (r as any)?.notification_date ? String((r as any).notification_date) : null,
+          recipient_guest_ids: Array.isArray((r as any).recipient_guest_ids)
+            ? ((r as any).recipient_guest_ids as any[]).map((x) => String(x))
+            : [],
+          flow_id: (r as any)?.flow_id ? String((r as any).flow_id) : null,
+          sort_order: typeof (r as any)?.sort_order === 'number' ? Number((r as any).sort_order) : 0,
+          depends_on_setting_id: (r as any)?.depends_on_setting_id ? String((r as any).depends_on_setting_id) : null,
+          recipient_mode: (r as any)?.recipient_mode ? String((r as any).recipient_mode) : null,
+          recipient_rule: (r as any)?.recipient_rule ?? null,
+          ui_hidden: Boolean((r as any)?.ui_hidden),
+        };
+      })
+      .filter((r) => Boolean(r.notification_type));
+
+    mappedFlow.sort((a, b) => {
+      const oa = Number((a as any).sort_order ?? 0) || 0;
+      const ob = Number((b as any).sort_order ?? 0) || 0;
+      if (oa !== ob) return oa - ob;
+      const da = a.notification_date ? new Date(String(a.notification_date)).getTime() : 0;
+      const db = b.notification_date ? new Date(String(b.notification_date)).getTime() : 0;
+      return da - db;
+    });
+    setFlowSteps(mappedFlow);
+
     // Fetch last SMS runs (per setting) for status UI.
     try {
-      const settingIds = merged
+      const settingIds = [...merged, ...mappedFlow]
         .filter((r) => r.id && (r.channel || 'SMS') === 'SMS')
         .map((r) => String(r.id));
       if (settingIds.length === 0) {
@@ -695,10 +796,14 @@ export default function AutomaticNotificationsWebScreen() {
     [notificationSettings, selectedType]
   );
 
-  const editorRow = useMemo(
-    () => (editorType ? notificationSettings.find((r) => r.notification_type === editorType) || null : null),
-    [editorType, notificationSettings]
-  );
+  const editorRow = useMemo(() => {
+    if (!editorType) return null;
+    const nt = String(editorType || '').trim();
+    if (!nt) return null;
+    const inTemplates = notificationSettings.find((r) => r.notification_type === nt) || null;
+    if (inTemplates) return inTemplates;
+    return flowSteps.find((r) => r.notification_type === nt) || null;
+  }, [editorType, flowSteps, notificationSettings]);
 
   const demoInvitation = useMemo(() => {
     const pickFrom = (list: any[]) => {
@@ -753,6 +858,7 @@ export default function AutomaticNotificationsWebScreen() {
   };
 
   const openEditor = (row: NotificationSettingRow) => {
+    setEditorKind('template');
     setSelectedType(row.notification_type);
     setEditorType(row.notification_type);
     const days = Number(row.days_from_wedding || 0);
@@ -763,12 +869,38 @@ export default function AutomaticNotificationsWebScreen() {
       days: normalizedDays,
       timeHm: inferTimeHmFromExisting((row as any).notification_date),
     });
+    setFlowDraft(null);
+    setEditorOpen(true);
+  };
+
+  const openFlowEditor = (row: NotificationSettingRow) => {
+    setEditorKind('flow');
+    setSelectedType(row.notification_type);
+    setEditorType(row.notification_type);
+    const rawDt = (row as any)?.notification_date;
+    const dt = rawDt ? new Date(String(rawDt)) : null;
+    const hasValidDt = dt && Number.isFinite(dt.getTime());
+    const days = typeof row.days_from_wedding === 'number' ? Number(row.days_from_wedding) : 0;
+    setEditDraft({
+      message: normalizeTemplateToSingleBraces(String(row.message_content || '')),
+      days,
+      timeHm: hasValidDt ? formatTime(dt as any) : '11:00',
+    });
+    setFlowDraft({
+      title: String(row.title ?? 'שלב'),
+      recipientMode: (String((row as any)?.recipient_mode || 'manual') as any) || 'manual',
+      dependsOnSettingId: (row as any)?.depends_on_setting_id ? String((row as any).depends_on_setting_id) : null,
+    });
     setEditorOpen(true);
   };
 
   const closeEditor = () => {
     setEditorOpen(false);
     setEditorType(null);
+    setEditorKind('template');
+    setFlowDraft(null);
+    setDependsPickerOpen(false);
+    setAddWizardOpen(false);
     setDateDialogOpen(false);
     setTimeDialogOpen(false);
     setRecipientsPreviewOpen(false);
@@ -776,23 +908,90 @@ export default function AutomaticNotificationsWebScreen() {
   };
 
   const openRecipientsPreview = useCallback(
-    (row: NotificationSettingRow) => {
+    async (row: NotificationSettingRow) => {
       const nt = String(row.notification_type || '').trim();
-      const isAutoPending = nt === 'reminder_2';
       const ids = Array.isArray((row as any).recipient_guest_ids)
         ? ((row as any).recipient_guest_ids as any[]).map((x) => String(x))
         : [];
 
+      const isFlow = nt.startsWith('flow_step:');
+      const recipientMode = isFlow ? String((row as any)?.recipient_mode || 'manual') : null;
+      const isAutoPending = nt === 'reminder_2' || (isFlow && recipientMode === 'pending');
+
       if (isAutoPending && ids.length === 0) {
         const pending = allGuests.filter((g) => String(g.status || '').trim() === 'ממתין');
-        setRecipientsPreviewTitle('מוזמנים (ממתינים)');
-        setRecipientsPreviewHint('לא נבחרה רשימה — תישלח אוטומטית לכל הממתינים.');
+        setRecipientsPreviewTitle(isFlow ? 'מוזמנים (ממתינים)' : 'מוזמנים (ממתינים)');
+        setRecipientsPreviewHint(
+          isFlow
+            ? 'הבחירה היא דינאמית — תישלח אוטומטית לכל המוזמנים במצב ממתין.'
+            : 'לא נבחרה רשימה — תישלח אוטומטית לכל הממתינים.'
+        );
         setRecipientsPreviewRows(
           pending.map((g) => ({ id: String(g.id), name: String(g.name || ''), phone: g.phone, status: g.status }))
         );
-      setRecipientsPreviewSearch('');
+        setRecipientsPreviewSearch('');
         setRecipientsPreviewOpen(true);
         return;
+      }
+
+      if (isFlow && recipientMode === 'prev_pending') {
+        const dependsOn = String((row as any)?.depends_on_setting_id || '').trim();
+        if (!dependsOn) {
+          setRecipientsPreviewTitle('מוזמנים');
+          setRecipientsPreviewHint('לא הוגדר שלב קודם.');
+          setRecipientsPreviewRows([]);
+          setRecipientsPreviewSearch('');
+          setRecipientsPreviewOpen(true);
+          return;
+        }
+        try {
+          const { data: prevRun, error: runErr } = await supabase
+            .from('scheduled_notification_sms_runs')
+            .select('id, status, claimed_at')
+            .eq('notification_setting_id', dependsOn)
+            .order('claimed_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (runErr || !prevRun?.id) {
+            setRecipientsPreviewTitle('מוזמנים (שלב קודם)');
+            setRecipientsPreviewHint('אין עדיין שליחה קודמת שממנה ניתן לגזור רשימה.');
+            setRecipientsPreviewRows([]);
+            setRecipientsPreviewSearch('');
+            setRecipientsPreviewOpen(true);
+            return;
+          }
+
+          const { data: recRows, error: recErr } = await supabase
+            .from('scheduled_notification_sms_run_recipients')
+            .select('guest_id, status')
+            .eq('run_id', String((prevRun as any).id))
+            .eq('status', 'sent')
+            .order('created_at', { ascending: true });
+          if (recErr) throw recErr;
+          const prevIds = ((recRows as any[]) || []).map((r) => String((r as any).guest_id)).filter(Boolean);
+          const pendingIds = new Set(allGuests.filter((g) => String(g.status || '').trim() === 'ממתין').map((g) => String(g.id)));
+          const idsToShow = prevIds.filter((id) => pendingIds.has(String(id)));
+          const byId = new Map(allGuests.map((g) => [String(g.id), g]));
+          const selected = idsToShow
+            .map((id) => byId.get(String(id)))
+            .filter(Boolean)
+            .map((g: any) => ({ id: String(g.id), name: String(g.name || ''), phone: g.phone, status: g.status }));
+
+          setRecipientsPreviewTitle('מוזמנים (ממתינים מהשלב הקודם)');
+          setRecipientsPreviewHint('מחושב לפי שליחה אחרונה של השלב הקודם + סטטוס ממתין.');
+          setRecipientsPreviewRows(selected);
+          setRecipientsPreviewSearch('');
+          setRecipientsPreviewOpen(true);
+          return;
+        } catch (e) {
+          console.warn('Failed to compute prev_pending preview:', e);
+          setRecipientsPreviewTitle('מוזמנים');
+          setRecipientsPreviewHint('לא ניתן לחשב כרגע את הרשימה.');
+          setRecipientsPreviewRows([]);
+          setRecipientsPreviewSearch('');
+          setRecipientsPreviewOpen(true);
+          return;
+        }
       }
 
       const byId = new Map(allGuests.map((g) => [String(g.id), g]));
@@ -819,7 +1018,39 @@ export default function AutomaticNotificationsWebScreen() {
     return order.map((t) => rowsByType.get(t)).filter(Boolean) as NotificationSettingRow[];
   }, [rowsByType]);
 
-  const timelineRows = displayRows;
+  const flowStepsSorted = useMemo(() => {
+    const list = Array.isArray(flowSteps) ? [...flowSteps] : [];
+    list.sort((a, b) => {
+      const oa = Number((a as any).sort_order ?? 0) || 0;
+      const ob = Number((b as any).sort_order ?? 0) || 0;
+      if (oa !== ob) return oa - ob;
+      const da = a.notification_date ? new Date(String(a.notification_date)).getTime() : 0;
+      const db = b.notification_date ? new Date(String(b.notification_date)).getTime() : 0;
+      return da - db;
+    });
+    return list;
+  }, [flowSteps]);
+
+  // Combine built-in cards + flow steps into one ordered list.
+  // Flow steps use `sort_order` as an insertion index (1-based) among ALL cards.
+  const combinedCards = useMemo(() => {
+    const templates = displayRows.map((r) => ({ kind: 'template' as const, row: r }));
+    const flows = [...flowStepsSorted]
+      .filter((s) => !Boolean((s as any)?.ui_hidden))
+      .sort((a, b) => (Number((a as any).sort_order ?? 0) || 0) - (Number((b as any).sort_order ?? 0) || 0))
+      .map((r) => ({ kind: 'flow' as const, row: r }));
+
+    const out = [...templates];
+    for (const f of flows) {
+      const posRaw = Number((f.row as any)?.sort_order ?? 0) || 0;
+      const idx = Math.max(0, Math.min(out.length, Math.floor(posRaw) - 1));
+      out.splice(idx, 0, f);
+    }
+    return out;
+  }, [displayRows, flowStepsSorted]);
+
+  const timelineRows = useMemo(() => combinedCards.map((c) => c.row), [combinedCards]);
+  const timelineUseScroll = timelineRows.length > 6;
 
   const iconForType = (row: NotificationSettingRow) => {
     const t = row.notification_type;
@@ -833,10 +1064,17 @@ export default function AutomaticNotificationsWebScreen() {
   const toggleNotification = async (row: NotificationSettingRow) => {
     if (!event?.id) return;
     const nextEnabled = !row.enabled;
+    const isFlow = String(row.notification_type || '').startsWith('flow_step:');
 
-    setNotificationSettings((prev) =>
-      prev.map((r) => (r.notification_type === row.notification_type ? { ...r, enabled: nextEnabled } : r))
-    );
+    if (isFlow) {
+      setFlowSteps((prev) =>
+        prev.map((r) => (r.notification_type === row.notification_type ? ({ ...(r as any), enabled: nextEnabled } as any) : r))
+      );
+    } else {
+      setNotificationSettings((prev) =>
+        prev.map((r) => (r.notification_type === row.notification_type ? { ...r, enabled: nextEnabled } : r))
+      );
+    }
 
     try {
       if (row.id) {
@@ -895,9 +1133,15 @@ export default function AutomaticNotificationsWebScreen() {
       );
     } catch (e) {
       console.error('Error toggling notification (couple web):', e);
-      setNotificationSettings((prev) =>
-        prev.map((r) => (r.notification_type === row.notification_type ? { ...r, enabled: row.enabled } : r))
-      );
+      if (isFlow) {
+        setFlowSteps((prev) =>
+          prev.map((r) => (r.notification_type === row.notification_type ? ({ ...(r as any), enabled: row.enabled } as any) : r))
+        );
+      } else {
+        setNotificationSettings((prev) =>
+          prev.map((r) => (r.notification_type === row.notification_type ? { ...r, enabled: row.enabled } : r))
+        );
+      }
     }
   };
 
@@ -908,7 +1152,13 @@ export default function AutomaticNotificationsWebScreen() {
 
   const openRecipientsPicker = (row: NotificationSettingRow) => {
     const nt = String(row.notification_type || '').trim();
-    const shouldAutoPending = nt === 'reminder_2';
+    const isFlow = nt.startsWith('flow_step:');
+    const recipientMode = isFlow ? String((row as any)?.recipient_mode || 'manual') : null;
+    const shouldAutoPending = nt === 'reminder_2' || (isFlow && recipientMode === 'pending');
+    if (isFlow && recipientMode !== 'manual') {
+      showToast('בחירה ידנית זמינה רק במצב "בחירה ידנית"');
+      return;
+    }
     const ids = Array.isArray((row as any).recipient_guest_ids)
       ? ((row as any).recipient_guest_ids as any[]).map((x) => String(x))
       : [];
@@ -917,6 +1167,52 @@ export default function AutomaticNotificationsWebScreen() {
     setPickerSearch('');
     setPickerFilter(shouldAutoPending ? 'pending' : 'all');
     setPickerOpen(true);
+  };
+
+  const hideCard = async (row: NotificationSettingRow) => {
+    if (!event?.id) return;
+    const ok = typeof window !== 'undefined' ? window.confirm('למחוק את הכרטיסיה מהמסך? ניתן להחזיר רק דרך DB.') : true;
+    if (!ok) return;
+    const nt = String(row.notification_type || '').trim();
+    if (!nt) return;
+
+    try {
+      if (row.id) {
+        const { error } = await supabase
+          .from('notification_settings')
+          .update({ ui_hidden: true, enabled: false })
+          .eq('id', row.id);
+        if (error && isMissingColumn(error, 'ui_hidden')) throw error;
+        if (error) throw error;
+      } else {
+        // create row just to persist ui_hidden
+        const tpl = NOTIFICATION_TEMPLATES.find((t) => t.notification_type === nt);
+        const payload: any = {
+          event_id: event.id,
+          notification_type: nt,
+          title: getDisplayTitle(row),
+          enabled: false,
+          ui_hidden: true,
+          message_content: String(row.message_content || '').trim() || tpl?.defaultMessage || getDefaultMessageContent(ownerTitle),
+          days_from_wedding: typeof row.days_from_wedding === 'number' ? row.days_from_wedding : tpl?.days_from_wedding ?? 0,
+          channel: (row.channel as any) || tpl?.channel || 'SMS',
+        };
+        const dt = computeNotificationDateTime((event as any)?.date, payload.days_from_wedding, '11:00');
+        if (dt) payload.notification_date = dt.toISOString();
+        let { error } = await supabase.from('notification_settings').insert(payload);
+        if (error && isMissingColumn(error, 'ui_hidden')) throw error;
+        if (error) throw error;
+      }
+
+      setNotificationSettings((prev) => prev.filter((r) => r.notification_type !== nt));
+      if (selectedType === nt) {
+        const fallback = (combinedCards.find((c) => c.row.notification_type !== nt)?.row?.notification_type as any) || 'reminder_1';
+        setSelectedType(fallback);
+      }
+    } catch (e) {
+      console.error('Failed to hide card:', e);
+      alert('לא ניתן למחוק כרטיסיה (בדוק שהרצת את המיגרציה החדשה).');
+    }
   };
 
   const pickerFilteredGuests = useMemo(() => {
@@ -958,8 +1254,14 @@ export default function AutomaticNotificationsWebScreen() {
     if (!event?.id || !editorRow || !editDraft) return;
     setSaving(true);
     try {
+      const isFlow = editorKind === 'flow' && String(editorRow.notification_type || '').startsWith('flow_step:');
+      if (isFlow && !flowDraft) {
+        alert('שגיאה: חסרים נתוני שלב');
+        return;
+      }
+
       const payload: any = {
-        title: getDisplayTitle(editorRow),
+        title: isFlow ? String(flowDraft?.title || 'שלב') : getDisplayTitle(editorRow),
         message_content: editDraft.message,
         days_from_wedding: editDraft.days,
       };
@@ -970,6 +1272,19 @@ export default function AutomaticNotificationsWebScreen() {
         return;
       }
       payload.notification_date = dt.toISOString();
+
+      if (isFlow) {
+        const mode = String(flowDraft?.recipientMode || 'manual');
+        payload.recipient_mode = mode;
+        payload.depends_on_setting_id = flowDraft?.dependsOnSettingId ? String(flowDraft.dependsOnSettingId) : null;
+        payload.recipient_rule =
+          mode === 'pending'
+            ? { mode: 'pending' }
+            : mode === 'prev_pending'
+              ? { mode: 'prev_pending', dependsOn: payload.depends_on_setting_id }
+              : { mode: 'manual' };
+        if (mode !== 'manual') payload.recipient_guest_ids = [];
+      }
 
       if (editorRow.id) {
         let { error } = await supabase.from('notification_settings').update(payload).eq('id', editorRow.id);
@@ -983,12 +1298,32 @@ export default function AutomaticNotificationsWebScreen() {
           const retry = await supabase.from('notification_settings').update(payload).eq('id', editorRow.id);
           error = retry.error as any;
         }
+        if (error && isMissingColumn(error, 'recipient_mode')) {
+          delete payload.recipient_mode;
+          delete payload.recipient_rule;
+          delete payload.depends_on_setting_id;
+          const retry = await supabase.from('notification_settings').update(payload).eq('id', editorRow.id);
+          error = retry.error as any;
+        }
         if (error) throw error;
-        setNotificationSettings((p) =>
-          p.map((r) => (r.notification_type === editorRow.notification_type ? { ...r, ...payload } : r))
-        );
+        if (isFlow) {
+          setFlowSteps((p) =>
+            p.map((r) =>
+              r.notification_type === editorRow.notification_type ? ({ ...(r as any), ...(payload as any) } as any) : r
+            )
+          );
+        } else {
+          setNotificationSettings((p) =>
+            p.map((r) => (r.notification_type === editorRow.notification_type ? { ...r, ...payload } : r))
+          );
+        }
         if (opts?.toastOnSuccess) showToast('השינויים נשמרו');
         if (opts?.closeOnSuccess) closeEditor();
+        return;
+      }
+
+      if (isFlow) {
+        alert('שגיאה: שלב חדש חייב להיווצר דרך "הוסף כרטיסיה"');
         return;
       }
 
@@ -1043,13 +1378,23 @@ export default function AutomaticNotificationsWebScreen() {
     if (!nt) return;
     const ids = Array.isArray(guestIds) ? guestIds.map(String).map((s) => s.trim()).filter(Boolean) : [];
 
-    const row = notificationSettings.find((r) => r.notification_type === nt) || null;
+    const row =
+      notificationSettings.find((r) => r.notification_type === nt) ||
+      flowSteps.find((r) => r.notification_type === nt) ||
+      null;
     if (!row) return;
+    const isFlow = String(row.notification_type || '').startsWith('flow_step:');
 
     // Update local state immediately
-    setNotificationSettings((prev) =>
-      prev.map((r) => (r.notification_type === nt ? ({ ...(r as any), recipient_guest_ids: ids } as any) : r))
-    );
+    if (isFlow) {
+      setFlowSteps((prev) =>
+        prev.map((r) => (r.notification_type === nt ? ({ ...(r as any), recipient_guest_ids: ids } as any) : r))
+      );
+    } else {
+      setNotificationSettings((prev) =>
+        prev.map((r) => (r.notification_type === nt ? ({ ...(r as any), recipient_guest_ids: ids } as any) : r))
+      );
+    }
 
     // Persist to DB (upsert)
     try {
@@ -1061,6 +1406,11 @@ export default function AutomaticNotificationsWebScreen() {
           throw error;
         }
         if (error) throw error;
+        return;
+      }
+
+      if (isFlow) {
+        alert('שגיאה: שלב חדש חייב להיווצר דרך "הוסף כרטיסיה"');
         return;
       }
 
@@ -1124,17 +1474,53 @@ export default function AutomaticNotificationsWebScreen() {
         alert('שליחת WhatsApp עדיין לא זמינה מהמסך הזה.');
         return;
       }
-      const shouldAutoPending = nt === 'reminder_2';
-      const isRequiredList = nt === 'reminder_1';
-      const ids = Array.isArray((editorRow as any).recipient_guest_ids)
+      const isFlow = nt.startsWith('flow_step:');
+      const flowMode = isFlow ? String((editorRow as any)?.recipient_mode || flowDraft?.recipientMode || 'manual') : null;
+      const shouldAutoPending = nt === 'reminder_2' || (isFlow && flowMode === 'pending');
+      const isRequiredList = nt === 'reminder_1' || (isFlow && flowMode === 'manual');
+      let ids = Array.isArray((editorRow as any).recipient_guest_ids)
         ? ((editorRow as any).recipient_guest_ids as any[]).map((x) => String(x))
         : [];
 
       if (isRequiredList && ids.length === 0) {
-        alert('להודעה הראשונה צריך לבחור מוזמנים (לחץ "הוסף מוזמנים")');
+        alert(isFlow ? 'במצב "בחירה ידנית" צריך לבחור מוזמנים.' : 'להודעה הראשונה צריך לבחור מוזמנים (לחץ "הוסף מוזמנים")');
         return;
       }
-      // Optional: if selected, limit sending to that list.
+      // Flow: prev_pending -> compute recipients from previous step's last run + current pending status
+      if (isFlow && flowMode === 'prev_pending') {
+        const dependsOn = String((editorRow as any)?.depends_on_setting_id || flowDraft?.dependsOnSettingId || '').trim();
+        if (!dependsOn) {
+          alert('בחר שלב קודם כדי לחשב "ממתינים מהשלב הקודם".');
+          return;
+        }
+        const { data: prevRun, error: runErr } = await supabase
+          .from('scheduled_notification_sms_runs')
+          .select('id, status, claimed_at')
+          .eq('notification_setting_id', dependsOn)
+          .order('claimed_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (runErr || !prevRun?.id) {
+          alert('אין עדיין שליחה קודמת שממנה ניתן לגזור רשימה.');
+          return;
+        }
+        const { data: recRows, error: recErr } = await supabase
+          .from('scheduled_notification_sms_run_recipients')
+          .select('guest_id, status')
+          .eq('run_id', String((prevRun as any).id))
+          .eq('status', 'sent')
+          .order('created_at', { ascending: true });
+        if (recErr) throw recErr;
+        const prevIds = ((recRows as any[]) || []).map((r) => String((r as any).guest_id)).filter(Boolean);
+        const pendingIds = new Set(allGuests.filter((g) => String(g.status || '').trim() === 'ממתין').map((g) => String(g.id)));
+        ids = prevIds.filter((id) => pendingIds.has(String(id)));
+        if (ids.length === 0) {
+          alert('לא נמצאו ממתינים מהשלב הקודם לשליחה.');
+          return;
+        }
+      }
+
+      // Persist current editor draft before sending
       if (ids.length > 0) await saveDraft({ recipientGuestIds: ids });
       else await saveDraft();
 
@@ -1182,6 +1568,178 @@ export default function AutomaticNotificationsWebScreen() {
     const dt = computeNotificationDateTime((event as any)?.date, Number(editDraft?.days ?? 0) || 0, String(editDraft?.timeHm || '11:00'));
     return dt;
   }, [editDraft?.days, editDraft?.timeHm, event]);
+
+  const openAddWizard = useCallback(() => {
+    const nextInsertAt = (flowStepsSorted?.length || 0) + 1;
+    setAddWizardChannel('SMS');
+    setAddWizardInsertAt(nextInsertAt);
+    setAddWizardStep(1);
+    setAddWizardOpen(true);
+  }, [flowStepsSorted?.length]);
+
+  const closeAddWizard = useCallback(() => {
+    setAddWizardOpen(false);
+    setAddWizardStep(1);
+  }, []);
+
+  const insertFlowStep = useCallback(async (args: { channel: 'SMS' | 'WHATSAPP'; insertAt: number }) => {
+    if (!event?.id) return;
+    const channel = args.channel;
+    const existing = flowStepsSorted;
+    const combinedLen = combinedCards.length;
+    const insertAt = Math.max(1, Math.min(combinedLen + 1, Math.floor(Number(args.insertAt) || 1)));
+
+    const stepTitleRe = /^שלב\s+(\d+)\s*$/;
+    const patches: any[] = [];
+    const updatedExisting: NotificationSettingRow[] = existing.map((s, idx) => {
+      const posOld = Number((s as any).sort_order ?? (idx + 1)) || (idx + 1);
+      const posNew = posOld >= insertAt ? posOld + 1 : posOld;
+      let nextTitle = String(s.title ?? '');
+      const m = stepTitleRe.exec(nextTitle.trim());
+      if (m) {
+        const n = Number(m[1]);
+        if (Number.isFinite(n) && n >= insertAt) nextTitle = `שלב ${n + 1}`;
+      }
+      if (s.id) patches.push({ id: String(s.id), sort_order: posNew, title: nextTitle });
+      return { ...(s as any), sort_order: posNew, title: nextTitle } as any;
+    });
+
+    // Persist shifting of existing steps (best-effort). If columns don't exist, user needs migration.
+    try {
+      if (patches.length > 0) {
+        const { error: upErr } = await supabase.from('notification_settings').upsert(patches, { onConflict: 'id' });
+        if (upErr && isMissingColumn(upErr, 'sort_order')) throw upErr;
+      }
+    } catch (e) {
+      console.error('Failed to shift step order:', e);
+      alert('לא ניתן להזיז שלבים (בדוק שהרצת את המיגרציה החדשה).');
+      return;
+    }
+
+    const uuid = typeof crypto !== 'undefined' && typeof (crypto as any).randomUUID === 'function' ? (crypto as any).randomUUID() : String(Date.now());
+    const nt = `flow_step:${uuid}`;
+    const defaultDays = -7;
+    const dt = computeNotificationDateTime((event as any)?.date, defaultDays, '11:00');
+    const insertPayload: any = {
+      event_id: event.id,
+      notification_type: nt,
+      title: `שלב ${insertAt}`,
+      enabled: false,
+      message_content: normalizeTemplateToSingleBraces(defaultMessageByType({ notificationType: 'reminder_2', kind: detectEventKind(event as any) })),
+      days_from_wedding: defaultDays,
+      channel,
+      recipient_guest_ids: [],
+      flow_id: event.id,
+      sort_order: insertAt,
+      recipient_mode: 'manual',
+      recipient_rule: { mode: 'manual' },
+      depends_on_setting_id: null,
+    };
+    if (dt) insertPayload.notification_date = dt.toISOString();
+
+    try {
+      let { data, error } = await supabase.from('notification_settings').insert(insertPayload).select().single();
+      if (error && isMissingColumn(error, 'flow_id')) {
+        delete insertPayload.flow_id;
+        delete insertPayload.sort_order;
+        delete insertPayload.recipient_mode;
+        delete insertPayload.recipient_rule;
+        delete insertPayload.depends_on_setting_id;
+        const retry = await supabase.from('notification_settings').insert(insertPayload).select().single();
+        data = retry.data as any;
+        error = retry.error as any;
+      }
+      if (error && isMissingColumn(error, 'recipient_guest_ids')) {
+        delete insertPayload.recipient_guest_ids;
+        const retry = await supabase.from('notification_settings').insert(insertPayload).select().single();
+        data = retry.data as any;
+        error = retry.error as any;
+      }
+      if (error && isMissingColumn(error, 'notification_date')) {
+        delete insertPayload.notification_date;
+        const retry = await supabase.from('notification_settings').insert(insertPayload).select().single();
+        data = retry.data as any;
+        error = retry.error as any;
+      }
+      if (error) throw error;
+
+      const created: NotificationSettingRow = {
+        id: data?.id ? String(data.id) : undefined,
+        event_id: data?.event_id ? String(data.event_id) : undefined,
+        notification_type: String(data?.notification_type || nt),
+        title: String(data?.title ?? insertPayload.title),
+        enabled: Boolean(data?.enabled),
+        message_content: String(data?.message_content ?? insertPayload.message_content),
+        days_from_wedding: typeof data?.days_from_wedding === 'number' ? Number(data.days_from_wedding) : defaultDays,
+        channel: (data?.channel as any) || channel,
+        notification_date: data?.notification_date ? String(data.notification_date) : insertPayload.notification_date ?? null,
+        recipient_guest_ids: Array.isArray(data?.recipient_guest_ids) ? (data.recipient_guest_ids as any[]).map((x) => String(x)) : [],
+        flow_id: data?.flow_id ? String(data.flow_id) : (insertPayload.flow_id ? String(insertPayload.flow_id) : null),
+        sort_order: typeof data?.sort_order === 'number' ? Number(data.sort_order) : insertAt,
+        recipient_mode: data?.recipient_mode ? String(data.recipient_mode) : 'manual',
+        recipient_rule: data?.recipient_rule ?? insertPayload.recipient_rule ?? null,
+        depends_on_setting_id: data?.depends_on_setting_id ? String(data.depends_on_setting_id) : null,
+      };
+
+      const merged = [...updatedExisting, created].sort((a, b) => (Number((a as any).sort_order ?? 0) || 0) - (Number((b as any).sort_order ?? 0) || 0));
+      setFlowSteps(merged);
+      openFlowEditor(created);
+    } catch (e) {
+      console.error('Failed to add flow step:', e);
+      alert('לא ניתן להוסיף כרטיסיה (בדוק שהרצת את המיגרציה החדשה).');
+    }
+  }, [event, flowStepsSorted, combinedCards.length]);
+
+  const deleteFlowStep = useCallback(
+    async (row: NotificationSettingRow) => {
+      if (!row?.id) {
+        setFlowSteps((p) => p.filter((s) => s.notification_type !== row.notification_type));
+        return;
+      }
+      const ok = typeof window !== 'undefined' ? window.confirm('למחוק את הכרטיסיה?') : true;
+      if (!ok) return;
+      try {
+        const { error } = await supabase.from('notification_settings').delete().eq('id', row.id);
+        if (error) throw error;
+        setFlowSteps((p) => p.filter((s) => s.id !== row.id));
+        if (editorType === row.notification_type) closeEditor();
+      } catch (e) {
+        console.error('Failed to delete flow step:', e);
+        alert('לא ניתן למחוק כרטיסיה.');
+      }
+    },
+    [editorType]
+  );
+
+  const moveFlowStep = useCallback(
+    async (row: NotificationSettingRow, dir: -1 | 1) => {
+      const list = flowStepsSorted;
+      const idx = list.findIndex((s) => s.notification_type === row.notification_type);
+      if (idx < 0) return;
+      const j = idx + dir;
+      if (j < 0 || j >= list.length) return;
+      const a = list[idx];
+      const b = list[j];
+      const ao = Number((a as any).sort_order ?? 0) || 0;
+      const bo = Number((b as any).sort_order ?? 0) || 0;
+      // swap locally
+      setFlowSteps((prev) =>
+        prev.map((s) => {
+          if (s.notification_type === a.notification_type) return { ...(s as any), sort_order: bo } as any;
+          if (s.notification_type === b.notification_type) return { ...(s as any), sort_order: ao } as any;
+          return s;
+        })
+      );
+      // persist best-effort
+      try {
+        if (a.id) await supabase.from('notification_settings').update({ sort_order: bo }).eq('id', a.id);
+        if (b.id) await supabase.from('notification_settings').update({ sort_order: ao }).eq('id', b.id);
+      } catch (e) {
+        console.warn('Failed to persist step order swap:', e);
+      }
+    },
+    [flowStepsSorted]
+  );
 
   const calendarSelected = useMemo(() => {
     const d = scheduledSendDateTime;
@@ -1282,8 +1840,53 @@ export default function AutomaticNotificationsWebScreen() {
                 </Pressable>
               </View>
             </View>
-            <View style={styles.timelineRow}>
-              {timelineRows.map((row, idx) => {
+            {timelineUseScroll ? (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.timelineScroller}
+                contentContainerStyle={styles.timelineRowScroll}
+              >
+                {timelineRows.map((row, idx) => {
+                  const active = row.notification_type === selectedType;
+                  const abs = Math.abs(row.days_from_wedding);
+                  const label =
+                    row.days_from_wedding === 0
+                      ? 'יום האירוע'
+                      : row.days_from_wedding < 0
+                        ? `לפני ${abs} יום`
+                        : `אחרי ${abs} יום`;
+                  const sendAt = (() => {
+                    const raw = (row as any)?.notification_date;
+                    const d = raw ? new Date(String(raw)) : null;
+                    if (d && Number.isFinite(d.getTime())) return d;
+                    return computeNotificationDateTime((event as any)?.date, row.days_from_wedding ?? 0, '11:00');
+                  })();
+                  const dateLabel = formatHeDate(sendAt) || '—';
+                  const timeLabel = sendAt ? formatTime(sendAt) : '';
+
+                  return (
+                    <React.Fragment key={row.notification_type}>
+                      <Pressable onPress={() => setSelectedType(row.notification_type)} style={styles.timelineItemScroll}>
+                        <Text style={[styles.timelineLabel, active ? { color: ui.primary, fontWeight: '900' } : null]}>{label}</Text>
+                        <View style={[styles.timelineDot, active ? { backgroundColor: ui.primary } : null]}>
+                          {row.days_from_wedding === 0 ? <Ionicons name="calendar" size={20} color="#fff" /> : null}
+                        </View>
+                        {active ? <View style={[styles.timelineActiveLine, { backgroundColor: ui.primary }]} /> : null}
+                        <Text style={[styles.timelineTitle, active ? { color: '#1f2937', fontWeight: '900' } : null]} numberOfLines={1}>
+                          {getDisplayTitle(row)}
+                        </Text>
+                        <Text style={styles.timelineDate}>{dateLabel}</Text>
+                        {timeLabel ? <Text style={styles.timelineTime}>{timeLabel}</Text> : null}
+                      </Pressable>
+                      {idx < timelineRows.length - 1 ? <View style={styles.timelineConnectorScroll} /> : null}
+                    </React.Fragment>
+                  );
+                })}
+              </ScrollView>
+            ) : (
+              <View style={styles.timelineRow}>
+                {timelineRows.map((row, idx) => {
                 const active = row.notification_type === selectedType;
                 const abs = Math.abs(row.days_from_wedding);
                 const label =
@@ -1315,19 +1918,37 @@ export default function AutomaticNotificationsWebScreen() {
                   </React.Fragment>
                 );
               })}
-            </View>
+              </View>
+            )}
           </View>
 
           {/* כרטיסי הודעות */}
           <View style={styles.cardsContainer}>
             <View style={styles.cardsRow}>
-              {displayRows.map((row, idx) => {
+              {combinedCards.map((item, idx) => {
+                const row = item.row;
                 const selected = row.notification_type === selectedType;
                 const number = String(idx + 1).padStart(2, '0');
                 const lastRun =
                   row.id && (row.channel || 'SMS') === 'SMS' ? lastSmsRunBySettingId[String(row.id)] : undefined;
                 const lastRunLabel = lastRun ? statusLabel(String(lastRun.status)) : null;
                 const lastRunAt = lastRun?.claimed_at ? formatHeDateTimeShort(lastRun.claimed_at) : '';
+
+                const isFlow = item.kind === 'flow';
+                const mode = isFlow ? String((row as any)?.recipient_mode || 'manual') : null;
+                const ids = Array.isArray((row as any).recipient_guest_ids) ? (row as any).recipient_guest_ids : [];
+                const recipientsLabel = !isFlow
+                  ? (() => {
+                      const nt = String(row.notification_type || '').trim();
+                      if (nt === 'reminder_2' && ids.length === 0) return 'כל הממתינים';
+                      if (nt === 'reminder_1' || nt === 'reminder_2') return `${ids.length} מוזמנים${nt === 'reminder_1' ? '' : ' (אופציונלי)'}`;
+                      return '';
+                    })()
+                  : mode === 'pending'
+                    ? 'כל הממתינים'
+                    : mode === 'prev_pending'
+                      ? 'ממתינים מהשלב הקודם'
+                      : `${ids.length} מוזמנים`;
 
                 return (
                   <Pressable
@@ -1342,23 +1963,31 @@ export default function AutomaticNotificationsWebScreen() {
                     <View style={styles.cardTopRow}>
                       <Text style={styles.cardNumber}>{number}</Text>
                       <View style={[styles.cardIconWrap, selected ? { backgroundColor: ui.primary } : null]}>
-                        <Ionicons name={iconForType(row) as any} size={20} color={selected ? '#fff' : ui.primary} />
+                        <Ionicons
+                          name={(isFlow ? 'layers-outline' : (iconForType(row) as any)) as any}
+                          size={20}
+                          color={selected ? '#fff' : ui.primary}
+                        />
                       </View>
                     </View>
 
                     <Text style={styles.cardTitle} numberOfLines={1}>
-                      {getDisplayTitle(row)}
+                      {isFlow ? String((row as any).title || `שלב ${idx + 1}`) : getDisplayTitle(row)}
                     </Text>
 
                     <View style={styles.cardMetaRow}>
                       <Ionicons name="time-outline" size={14} color="#9ca3af" />
-                      <Text style={styles.cardMetaText}>{formatOffsetLabel(row.days_from_wedding)}</Text>
-                      <Ionicons
-                        name="information-circle-outline"
-                        size={14}
-                        color="#d1d5db"
-                        style={Platform.OS === 'web' ? ({ marginInlineStart: 'auto' } as any) : ({ marginRight: 'auto' } as any)}
-                      />
+                      <Text style={styles.cardMetaText}>
+                        {formatOffsetLabel(Number((row as any).days_from_wedding ?? 0) || 0)}
+                      </Text>
+                      {!isFlow ? (
+                        <Ionicons
+                          name="information-circle-outline"
+                          size={14}
+                          color="#d1d5db"
+                          style={Platform.OS === 'web' ? ({ marginInlineStart: 'auto' } as any) : ({ marginRight: 'auto' } as any)}
+                        />
+                      ) : null}
                     </View>
 
                     {(row.channel || 'SMS') === 'SMS' ? (
@@ -1377,82 +2006,545 @@ export default function AutomaticNotificationsWebScreen() {
                       </Pressable>
                     ) : null}
 
-                  {row.notification_type === 'reminder_1' || row.notification_type === 'reminder_2' ? (
-                    <>
+                    {recipientsLabel ? (
                       <View style={styles.cardInlineRow}>
                         <View style={styles.cardInlineMeta}>
                           <Ionicons name="people-outline" size={14} color="rgba(2,6,23,0.55)" />
-                          <Text style={styles.cardInlineMetaText}>
-                            {(() => {
-                              const nt = String(row.notification_type || '').trim();
-                              const ids = Array.isArray((row as any).recipient_guest_ids) ? (row as any).recipient_guest_ids : [];
-                              if (nt === 'reminder_2' && ids.length === 0) return 'כל הממתינים';
-                              return `${ids.length} מוזמנים${nt === 'reminder_1' ? '' : ' (אופציונלי)'}`;
-                            })()}
-                          </Text>
+                          <Text style={styles.cardInlineMetaText}>{recipientsLabel}</Text>
                         </View>
-                      </View>
 
-                      {row.notification_type === 'reminder_2' ? (
-                        <View style={styles.cardAutoNote}>
-                          <Ionicons name="time-outline" size={14} color="rgba(2,6,23,0.55)" />
-                          <Text style={styles.cardAutoNoteText}>נשלח אוטומטית רק לממתינים (אפשר להגביל לרשימה)</Text>
-                        </View>
-                      ) : null}
-                    </>
-                  ) : null}
+                        {isFlow ? (
+                          <Pressable
+                            onPress={(e: any) => {
+                              e?.stopPropagation?.();
+                              e?.preventDefault?.();
+                              void toggleNotification(row);
+                            }}
+                            accessibilityRole="switch"
+                            accessibilityState={{ checked: !!row.enabled }}
+                            style={({ pressed }: any) => [styles.toggleBtn, pressed ? { opacity: 0.92 } : null]}
+                          >
+                            <View style={[styles.toggleTrack, row.enabled ? styles.toggleTrackOn : styles.toggleTrackOff]}>
+                              <View style={[styles.toggleThumb, row.enabled ? styles.toggleThumbOn : styles.toggleThumbOff]} />
+                            </View>
+                            <Text style={[styles.toggleLabel, row.enabled ? styles.toggleLabelOn : styles.toggleLabelOff]}>
+                              {row.enabled ? 'פעילה' : 'כבויה'}
+                            </Text>
+                          </Pressable>
+                        ) : null}
+                      </View>
+                    ) : null}
 
                     <View style={styles.cardBottomRow}>
-                      <Pressable
-                        onPress={(e: any) => {
-                          e?.stopPropagation?.();
-                          e?.preventDefault?.();
-                          void toggleNotification(row);
-                        }}
-                        accessibilityRole="switch"
-                        accessibilityState={{ checked: !!row.enabled }}
-                        style={({ pressed }: any) => [styles.toggleBtn, pressed ? { opacity: 0.92 } : null]}
-                      >
-                        <View style={[styles.toggleTrack, row.enabled ? styles.toggleTrackOn : styles.toggleTrackOff]}>
-                          <View style={[styles.toggleThumb, row.enabled ? styles.toggleThumbOn : styles.toggleThumbOff]} />
+                      {isFlow ? (
+                        <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8 }}>
+                          <Pressable
+                            onPress={(e: any) => {
+                              e?.stopPropagation?.();
+                              e?.preventDefault?.();
+                              void deleteFlowStep(row as any);
+                            }}
+                            style={({ pressed }: any) => [styles.builderIconBtnDanger, pressed ? { opacity: 0.9 } : null]}
+                            accessibilityLabel="מחק"
+                          >
+                            <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                          </Pressable>
                         </View>
-                        <Text style={[styles.toggleLabel, row.enabled ? styles.toggleLabelOn : styles.toggleLabelOff]}>
-                          {row.enabled ? 'פעילה' : 'כבויה'}
-                        </Text>
-                      </Pressable>
+                      ) : (
+                        <Pressable
+                          onPress={(e: any) => {
+                            e?.stopPropagation?.();
+                            e?.preventDefault?.();
+                            void toggleNotification(row);
+                          }}
+                          accessibilityRole="switch"
+                          accessibilityState={{ checked: !!row.enabled }}
+                          style={({ pressed }: any) => [styles.toggleBtn, pressed ? { opacity: 0.92 } : null]}
+                        >
+                          <View style={[styles.toggleTrack, row.enabled ? styles.toggleTrackOn : styles.toggleTrackOff]}>
+                            <View style={[styles.toggleThumb, row.enabled ? styles.toggleThumbOn : styles.toggleThumbOff]} />
+                          </View>
+                          <Text style={[styles.toggleLabel, row.enabled ? styles.toggleLabelOn : styles.toggleLabelOff]}>
+                            {row.enabled ? 'פעילה' : 'כבויה'}
+                          </Text>
+                        </Pressable>
+                      )}
 
-                    <Pressable
-                      onPress={(e: any) => {
-                        e?.stopPropagation?.();
-                        e?.preventDefault?.();
-                        openEditor(row);
-                      }}
-                      style={({ pressed }: any) => [styles.editBtn, pressed ? { opacity: 0.9 } : null]}
-                    >
-                      <Ionicons name="create-outline" size={16} color={ui.primary} />
-                      <Text style={[styles.editBtnText, { color: ui.primary }]}>ערוך</Text>
-                    </Pressable>
+                      <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8 }}>
+                        <Pressable
+                          onPress={(e: any) => {
+                            e?.stopPropagation?.();
+                            e?.preventDefault?.();
+                            if (isFlow) openFlowEditor(row);
+                            else openEditor(row);
+                          }}
+                          style={({ pressed }: any) => [styles.editBtn, pressed ? { opacity: 0.9 } : null]}
+                        >
+                          <Ionicons name="create-outline" size={16} color={ui.primary} />
+                          <Text style={[styles.editBtnText, { color: ui.primary }]}>ערוך</Text>
+                        </Pressable>
+
+                        {!isFlow ? (
+                          <Pressable
+                            onPress={(e: any) => {
+                              e?.stopPropagation?.();
+                              e?.preventDefault?.();
+                              void hideCard(row);
+                            }}
+                            style={({ pressed }: any) => [styles.builderIconBtnDanger, pressed ? { opacity: 0.9 } : null]}
+                            accessibilityLabel="מחק כרטיסיה"
+                          >
+                            <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                          </Pressable>
+                        ) : null}
+                      </View>
                     </View>
                   </Pressable>
                 );
               })}
             </View>
           </View>
+
+          {false ? (
+            <View style={styles.builderCard}>
+            <View style={styles.builderHeaderRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.builderTitle}>Builder · הודעות מתוזמנות</Text>
+                <Text style={styles.builderSub}>הוסף/מחק כרטיסיות, סדר לפי הצורך, ובחר נמענים לכל שלב.</Text>
+              </View>
+            </View>
+
+            {flowStepsSorted.length === 0 ? (
+              <Text style={styles.builderEmpty}>אין עדיין כרטיסיות. לחץ על כפתור ה־+ בתחתית המסך כדי להוסיף.</Text>
+            ) : (
+              <View style={styles.cardsContainer}>
+                <View style={styles.cardsRow}>
+                  {flowStepsSorted.map((step, idx) => {
+                    const selected = step.notification_type === selectedType;
+                    const number = String(displayRows.length + idx + 1).padStart(2, '0');
+                    const lastRun =
+                      step.id && (step.channel || 'SMS') === 'SMS' ? lastSmsRunBySettingId[String(step.id)] : undefined;
+                    const lastRunLabel = lastRun ? statusLabel(String(lastRun.status)) : null;
+                    const lastRunAt = lastRun?.claimed_at ? formatHeDateTimeShort(lastRun.claimed_at) : '';
+
+                    const mode = String((step as any)?.recipient_mode || 'manual');
+                    const ids = Array.isArray((step as any).recipient_guest_ids) ? (step as any).recipient_guest_ids : [];
+                    const recipientsLabel =
+                      mode === 'pending' ? 'כל הממתינים' : mode === 'prev_pending' ? 'ממתינים מהשלב הקודם' : `${ids.length} מוזמנים`;
+
+                    return (
+                      <Pressable
+                        key={step.notification_type}
+                        onPress={() => setSelectedType(step.notification_type)}
+                        style={({ hovered }: any) => [
+                          styles.messageCard,
+                          selected ? styles.messageCardSelected : null,
+                          Platform.OS === 'web' && hovered && !selected ? styles.messageCardHover : null,
+                        ]}
+                      >
+                        <View style={styles.cardTopRow}>
+                          <Text style={styles.cardNumber}>{number}</Text>
+                          <View style={[styles.cardIconWrap, selected ? { backgroundColor: ui.primary } : null]}>
+                            <Ionicons name="layers-outline" size={20} color={selected ? '#fff' : ui.primary} />
+                          </View>
+                        </View>
+
+                        <Text style={styles.cardTitle} numberOfLines={1}>
+                          {String(step.title || `שלב ${idx + 1}`)}
+                        </Text>
+
+                        <View style={styles.cardMetaRow}>
+                          <Ionicons name="time-outline" size={14} color="#9ca3af" />
+                          <Text style={styles.cardMetaText}>{formatOffsetLabel(Number(step.days_from_wedding ?? 0) || 0)}</Text>
+                        </View>
+
+                        <View style={styles.cardInlineRow}>
+                          <View style={styles.cardInlineMeta}>
+                            <Ionicons name="people-outline" size={14} color="rgba(2,6,23,0.55)" />
+                            <Text style={styles.cardInlineMetaText}>{recipientsLabel}</Text>
+                          </View>
+                          <Pressable
+                            onPress={(e: any) => {
+                              e?.stopPropagation?.();
+                              e?.preventDefault?.();
+                              void openRecipientsPreview(step);
+                            }}
+                            style={({ pressed }: any) => [styles.cardInlineBtn, pressed ? { opacity: 0.9 } : null]}
+                          >
+                            <Ionicons name="eye-outline" size={16} color={ui.primary} />
+                            <Text style={[styles.cardInlineBtnText, { color: ui.primary }]}>צפייה</Text>
+                          </Pressable>
+                        </View>
+
+                        {(step.channel || 'SMS') === 'SMS' ? (
+                          <Pressable
+                            onPress={(e: any) => {
+                              e?.stopPropagation?.();
+                              e?.preventDefault?.();
+                              void openSendStatus(step);
+                            }}
+                            style={({ pressed }: any) => [styles.sendStatusPill, pressed ? { opacity: 0.9 } : null]}
+                          >
+                            <Ionicons name="checkmark-done-outline" size={14} color={lastRunLabel?.color || 'rgba(100,116,139,1)'} />
+                            <Text style={[styles.sendStatusText, { color: lastRunLabel?.color || 'rgba(100,116,139,1)' }]} numberOfLines={1}>
+                              {lastRunLabel ? `${lastRunLabel.text}${lastRunAt ? ` · ${lastRunAt}` : ''}` : 'סטטוס: לא נשלח עדיין'}
+                            </Text>
+                          </Pressable>
+                        ) : null}
+
+                        <View style={styles.cardBottomRow}>
+                          <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8 }}>
+                            <Pressable
+                              onPress={(e: any) => {
+                                e?.stopPropagation?.();
+                                e?.preventDefault?.();
+                                void deleteFlowStep(step);
+                              }}
+                              style={({ pressed }: any) => [styles.builderIconBtnDanger, pressed ? { opacity: 0.9 } : null]}
+                              accessibilityLabel="מחק"
+                            >
+                              <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                            </Pressable>
+                          </View>
+
+                          <Pressable
+                            onPress={(e: any) => {
+                              e?.stopPropagation?.();
+                              e?.preventDefault?.();
+                              openFlowEditor(step);
+                            }}
+                            style={({ pressed }: any) => [styles.editBtn, pressed ? { opacity: 0.9 } : null]}
+                          >
+                            <Ionicons name="create-outline" size={16} color={ui.primary} />
+                            <Text style={[styles.editBtnText, { color: ui.primary }]}>ערוך</Text>
+                          </Pressable>
+                        </View>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
+            </View>
+          ) : null}
         </ScrollView>
       </View>
+
+      {/* FAB: Add flow step (like Users page) */}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="הוסף כרטיסיה"
+        onPress={openAddWizard}
+        style={({ hovered, pressed }: any) => [
+          styles.fabAddStep,
+          Platform.OS === 'web' && hovered ? styles.fabAddStepHover : null,
+          pressed ? { opacity: 0.92 } : null,
+        ]}
+      >
+        <Ionicons name="add" size={22} color="#fff" />
+      </Pressable>
+
+      {/* Add Step Wizard (2-step form) */}
+      {addWizardOpen ? (
+        <View style={styles.dialogOverlay}>
+          <Pressable style={styles.pickerBackdrop} onPress={closeAddWizard} />
+          <View style={styles.dialogCard}>
+            <View style={styles.dialogHeader}>
+              <Text style={styles.dialogTitle}>{addWizardStep === 1 ? 'איזה הודעה תרצה לבחור?' : 'בחירת שלב'}</Text>
+              <Pressable onPress={closeAddWizard} style={styles.dialogClose}>
+                <Ionicons name="close" size={18} color="#111827" />
+              </Pressable>
+            </View>
+
+            {addWizardStep === 1 ? (
+              <View style={{ padding: 14, gap: 12 }}>
+                <Text style={styles.recipientsPreviewHint}>בחר סוג הודעה. לאחר מכן תבחר לאיזה שלב להכניס את הכרטיסיה.</Text>
+                <View style={styles.wizardChoiceRow}>
+                  <Pressable
+                    onPress={() => {
+                      setAddWizardChannel('SMS');
+                      setAddWizardStep(2);
+                      setAddWizardInsertAt(flowStepsSorted.length + 1);
+                    }}
+                    style={({ pressed }: any) => [
+                      styles.wizardChoiceBtn,
+                      addWizardChannel === 'SMS' ? styles.wizardChoiceBtnActive : null,
+                      pressed ? { opacity: 0.92 } : null,
+                    ]}
+                  >
+                    <Ionicons name="chatbubble-ellipses-outline" size={20} color={addWizardChannel === 'SMS' ? '#4F46E5' : '#111827'} />
+                    <Text style={[styles.wizardChoiceTitle, addWizardChannel === 'SMS' ? styles.wizardChoiceTitleActive : null]}>SMS</Text>
+                    <Text style={styles.wizardChoiceSub}>שליחה מתוזמנת נתמכת כרגע</Text>
+                  </Pressable>
+
+                  <Pressable
+                    onPress={() => {
+                      setAddWizardChannel('WHATSAPP');
+                      setAddWizardStep(2);
+                      setAddWizardInsertAt(flowStepsSorted.length + 1);
+                    }}
+                    style={({ pressed }: any) => [
+                      styles.wizardChoiceBtn,
+                      addWizardChannel === 'WHATSAPP' ? styles.wizardChoiceBtnActive : null,
+                      pressed ? { opacity: 0.92 } : null,
+                    ]}
+                  >
+                    <Ionicons name="logo-whatsapp" size={20} color={addWizardChannel === 'WHATSAPP' ? '#4F46E5' : '#111827'} />
+                    <Text style={[styles.wizardChoiceTitle, addWizardChannel === 'WHATSAPP' ? styles.wizardChoiceTitleActive : null]}>WhatsApp</Text>
+                    <Text style={styles.wizardChoiceSub}>כרגע לא נשלח אוטומטית, אבל נשמר כשלב</Text>
+                  </Pressable>
+                </View>
+
+                <View style={styles.dialogActions}>
+                  <Pressable onPress={closeAddWizard} style={[styles.dialogBtn, styles.dialogBtnGhost]}>
+                    <Text style={styles.dialogBtnGhostText}>ביטול</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setAddWizardStep(2)}
+                    style={[styles.dialogBtn, styles.dialogBtnPrimary]}
+                  >
+                    <Text style={styles.dialogBtnPrimaryText}>המשך</Text>
+                  </Pressable>
+                </View>
+              </View>
+            ) : (
+              <View style={{ padding: 14, gap: 12 }}>
+                <View style={styles.wizardChipRow}>
+                  <View style={styles.wizardChip}>
+                    <Ionicons name={addWizardChannel === 'WHATSAPP' ? 'logo-whatsapp' : 'chatbubble-ellipses-outline'} size={14} color="#4F46E5" />
+                    <Text style={styles.wizardChipText}>{addWizardChannel === 'WHATSAPP' ? 'WhatsApp' : 'SMS'}</Text>
+                  </View>
+                  <Text style={styles.recipientsPreviewHint}>בחר לאיזה שלב להכניס. שלבים קיימים יזוזו אוטומטית קדימה.</Text>
+                </View>
+
+                <ScrollView style={{ maxHeight: 440 }} contentContainerStyle={{ gap: 8, paddingBottom: 6 }}>
+                  {(() => {
+                    const cards = combinedCards;
+                    const options: Array<{ key: string; insertAt: number; title: string; sub: string }> = [];
+
+                    if (cards.length === 0) {
+                      options.push({
+                        key: 'only',
+                        insertAt: 1,
+                        title: 'כרטיסיה ראשונה (שלב 1)',
+                        sub: 'ייווצר שלב 1 חדש.',
+                      });
+                    } else {
+                      options.push({
+                        key: 'before-first',
+                        insertAt: 1,
+                        title: 'לפני שלב 1',
+                        sub: `הכרטיסיה "${String(cards[0]?.row?.title || 'כרטיסיה')}" תזוז למיקום הבא`,
+                      });
+                    }
+
+                    // Insert after each existing card i => insertAt i+2
+                    for (let i = 0; i < cards.length; i++) {
+                      const after = cards[i]?.row;
+                      const next = cards[i + 1]?.row;
+                      const insertAt = i + 2;
+                      options.push({
+                        key: `after-${String((after as any)?.id || (after as any)?.notification_type || i)}`,
+                        insertAt,
+                        title: `אחרי ${String((after as any)?.title || `כרטיסיה ${i + 1}`)}`,
+                        sub: next
+                          ? `הכרטיסיה הבאה "${String((next as any)?.title || `כרטיסיה ${i + 2}`)}" תזוז למיקום הבא`
+                          : `יוסף בסוף הרשימה (מיקום ${insertAt})`,
+                      });
+                    }
+
+                    return options.map((opt) => {
+                      const selected = addWizardInsertAt === opt.insertAt;
+                      return (
+                        <Pressable
+                          key={opt.key}
+                          onPress={() => setAddWizardInsertAt(opt.insertAt)}
+                          style={({ pressed }: any) => [
+                            styles.wizardInsertCard,
+                            selected ? styles.wizardInsertCardSelected : null,
+                            pressed ? { opacity: 0.92 } : null,
+                          ]}
+                        >
+                          <View style={styles.wizardInsertTopRow}>
+                            <Text style={styles.wizardInsertTitle}>{opt.title}</Text>
+                            {selected ? (
+                              <View style={styles.wizardInsertBadge}>
+                                <Ionicons name="checkmark" size={14} color="#16A34A" />
+                                <Text style={styles.wizardInsertBadgeText}>נבחר</Text>
+                              </View>
+                            ) : null}
+                          </View>
+                          <Text style={styles.wizardInsertSub}>{opt.sub}</Text>
+                        </Pressable>
+                      );
+                    });
+                  })()}
+                </ScrollView>
+
+                <View style={styles.dialogActions}>
+                  <Pressable
+                    onPress={() => setAddWizardStep(1)}
+                    style={[styles.dialogBtn, styles.dialogBtnGhost]}
+                  >
+                    <Text style={styles.dialogBtnGhostText}>חזרה</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={async () => {
+                      await insertFlowStep({ channel: addWizardChannel, insertAt: addWizardInsertAt });
+                      closeAddWizard();
+                    }}
+                    style={[styles.dialogBtn, styles.dialogBtnPrimary]}
+                  >
+                    <Text style={styles.dialogBtnPrimaryText}>הוסף כרטיסיה</Text>
+                  </Pressable>
+                </View>
+              </View>
+            )}
+          </View>
+        </View>
+      ) : null}
 
       {editorOpen && editorRow ? (
         <View style={styles.editorOverlay}>
           <Pressable style={styles.pickerBackdrop} onPress={closeEditor} />
           <View style={styles.editorCard}>
             <View style={styles.pickerHeader}>
-              <Text style={styles.pickerTitle}>{`עריכת ${getDisplayTitle(editorRow)}`}</Text>
+              <Text style={styles.pickerTitle}>
+                {editorKind === 'flow' ? `עריכת ${String(flowDraft?.title || editorRow.title || 'שלב')}` : `עריכת ${getDisplayTitle(editorRow)}`}
+              </Text>
               <Pressable onPress={closeEditor} style={({ pressed }: any) => [styles.pickerClose, pressed ? { opacity: 0.9 } : null]}>
                 <Ionicons name="close" size={18} color="#111827" />
               </Pressable>
             </View>
 
             <ScrollView style={styles.editorBody} contentContainerStyle={styles.editorBodyContent} showsVerticalScrollIndicator={false}>
+              {editorKind === 'flow' ? (
+                <View style={styles.editorSection}>
+                  <View style={styles.editorSectionHeader}>
+                    <Ionicons name="albums-outline" size={16} color="rgba(79,70,229,1)" />
+                    <Text style={styles.editorSectionTitle}>כרטיסיה</Text>
+                  </View>
+
+                  <View style={styles.fieldRow}>
+                    <Text style={styles.fieldLabel}>כותרת</Text>
+                    <TextInput
+                      value={flowDraft?.title ?? ''}
+                      onChangeText={(t) => setFlowDraft((d) => (d ? { ...d, title: String(t || '') } : d))}
+                      style={styles.fieldInput}
+                      placeholder="כותרת לשלב"
+                      placeholderTextColor="rgba(100,116,139,0.6)"
+                    />
+                  </View>
+
+                  <View style={styles.fieldRow}>
+                    <Text style={styles.fieldLabel}>נמענים</Text>
+                    <View style={styles.modeRow}>
+                      <Pressable
+                        onPress={() => setFlowDraft((d) => (d ? { ...d, recipientMode: 'manual' } : d))}
+                        style={({ pressed }: any) => [
+                          styles.modePill,
+                          flowDraft?.recipientMode === 'manual' ? styles.modePillActive : null,
+                          pressed ? { opacity: 0.92 } : null,
+                        ]}
+                      >
+                        <Text style={[styles.modePillText, flowDraft?.recipientMode === 'manual' ? styles.modePillTextActive : null]}>
+                          בחירה ידנית
+                        </Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => setFlowDraft((d) => (d ? { ...d, recipientMode: 'pending' } : d))}
+                        style={({ pressed }: any) => [
+                          styles.modePill,
+                          flowDraft?.recipientMode === 'pending' ? styles.modePillActive : null,
+                          pressed ? { opacity: 0.92 } : null,
+                        ]}
+                      >
+                        <Text style={[styles.modePillText, flowDraft?.recipientMode === 'pending' ? styles.modePillTextActive : null]}>
+                          כל הממתינים
+                        </Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => setFlowDraft((d) => (d ? { ...d, recipientMode: 'prev_pending' } : d))}
+                        style={({ pressed }: any) => [
+                          styles.modePill,
+                          flowDraft?.recipientMode === 'prev_pending' ? styles.modePillActive : null,
+                          pressed ? { opacity: 0.92 } : null,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.modePillText,
+                            flowDraft?.recipientMode === 'prev_pending' ? styles.modePillTextActive : null,
+                          ]}
+                        >
+                          ממתינים מהשלב הקודם
+                        </Text>
+                      </Pressable>
+                    </View>
+                  </View>
+
+                  {flowDraft?.recipientMode === 'prev_pending' ? (
+                    <View style={styles.fieldRow}>
+                      <Text style={styles.fieldLabel}>שלב קודם</Text>
+                      {(() => {
+                        const candidates = [...displayRows, ...flowStepsSorted].filter(
+                          (s) =>
+                            String((s as any)?.id || '').trim() &&
+                            String((s as any)?.id) !== String(editorRow.id || '') &&
+                            String((s as any)?.channel || 'SMS') === 'SMS'
+                        );
+                        const selected = flowDraft?.dependsOnSettingId
+                          ? candidates.find((s) => String((s as any).id) === String(flowDraft.dependsOnSettingId))
+                          : null;
+                        const selectedDt = selected?.notification_date ? new Date(String(selected.notification_date)) : null;
+                        const selectedWhen = selectedDt && Number.isFinite(selectedDt.getTime()) ? formatHeDateTimeShort(selectedDt) : '';
+                        const selectedRun = selected?.id ? lastSmsRunBySettingId[String(selected.id)] : undefined;
+                        const selectedRunLabel = selectedRun ? statusLabel(String(selectedRun.status)) : null;
+
+                        return (
+                          <View style={{ gap: 10 }}>
+                            <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                              <Pressable
+                                onPress={() => setDependsPickerOpen(true)}
+                                style={({ pressed }: any) => [styles.dependsSelectBtn, pressed ? { opacity: 0.92 } : null]}
+                              >
+                                <Ionicons name="git-branch-outline" size={16} color="#4F46E5" />
+                                <View style={{ flex: 1, minWidth: 0 }}>
+                                  <Text style={styles.dependsSelectTitle} numberOfLines={1}>
+                                    {selected ? String(selected.title || 'שלב') : 'בחר שלב קודם…'}
+                                  </Text>
+                                  <Text style={styles.dependsSelectSub} numberOfLines={1}>
+                                    {selected
+                                      ? `${selectedWhen ? `${selectedWhen} · ` : ''}${selectedRunLabel ? `שליחה אחרונה: ${selectedRunLabel.text}` : 'אין שליחה קודמת'}`
+                                      : 'נדרש כדי לחשב “ממתינים מהשלב הקודם”.'}
+                                  </Text>
+                                </View>
+                                <Ionicons name="chevron-back" size={18} color="rgba(100,116,139,1)" />
+                              </Pressable>
+
+                              <Pressable
+                                onPress={() => setFlowDraft((d) => (d ? { ...d, dependsOnSettingId: null } : d))}
+                                style={({ pressed }: any) => [
+                                  styles.dependsClearBtn,
+                                  pressed ? { opacity: 0.92 } : null,
+                                ]}
+                                accessibilityLabel="נקה בחירה"
+                              >
+                                <Ionicons name="close" size={16} color="rgba(100,116,139,1)" />
+                              </Pressable>
+                            </View>
+
+                            <Text style={styles.editorSectionHint}>
+                              הרשימה מחושבת לפי השליחה האחרונה של השלב שתבחר + סטטוס <Text style={styles.recipientsHintEm}>ממתין</Text>.
+                            </Text>
+                          </View>
+                        );
+                      })()}
+                    </View>
+                  ) : null}
+                </View>
+              ) : null}
+
               <View style={styles.editorSection}>
                 <View style={styles.editorSectionHeader}>
                   <Ionicons name="time-outline" size={16} color="rgba(79,70,229,1)" />
@@ -1618,6 +2710,84 @@ export default function AutomaticNotificationsWebScreen() {
                 </View>
               ) : null}
 
+              {editorKind === 'flow' && String(editorRow.notification_type || '').startsWith('flow_step:') ? (
+                <View style={styles.editorSection}>
+                  <View style={styles.editorSectionHeader}>
+                    <Ionicons name="people-outline" size={16} color="rgba(79,70,229,1)" />
+                    <Text style={styles.editorSectionTitle}>מוזמנים</Text>
+                  </View>
+
+                  {(() => {
+                    const mode = String(flowDraft?.recipientMode || (editorRow as any)?.recipient_mode || 'manual');
+                    const ids = Array.isArray((editorRow as any).recipient_guest_ids)
+                      ? ((editorRow as any).recipient_guest_ids as any[]).map((x) => String(x))
+                      : [];
+
+                    if (mode === 'pending') {
+                      return (
+                        <View style={styles.recipientsCard}>
+                          <Text style={styles.recipientsHint}>
+                            מצב <Text style={styles.recipientsHintEm}>כל הממתינים</Text> — הרשימה מחושבת אוטומטית בזמן שליחה.
+                          </Text>
+                          <Pressable
+                            onPress={() => void openRecipientsPreview(editorRow)}
+                            style={({ pressed }: any) => [styles.recipientsEyeBtn, pressed ? { opacity: 0.92 } : null]}
+                          >
+                            <Ionicons name="eye-outline" size={16} color={ui.primary} />
+                            <Text style={styles.recipientsEyeText}>צפייה</Text>
+                          </Pressable>
+                        </View>
+                      );
+                    }
+
+                    if (mode === 'prev_pending') {
+                      return (
+                        <View style={styles.recipientsCard}>
+                          <Text style={styles.recipientsHint}>
+                            מצב <Text style={styles.recipientsHintEm}>ממתינים מהשלב הקודם</Text> — מחושב לפי שליחה אחרונה של שלב קודם + סטטוס ממתין.
+                          </Text>
+                          <Pressable
+                            onPress={() => void openRecipientsPreview(editorRow)}
+                            style={({ pressed }: any) => [styles.recipientsEyeBtn, pressed ? { opacity: 0.92 } : null]}
+                          >
+                            <Ionicons name="eye-outline" size={16} color={ui.primary} />
+                            <Text style={styles.recipientsEyeText}>צפייה</Text>
+                          </Pressable>
+                        </View>
+                      );
+                    }
+
+                    return (
+                      <View style={styles.recipientsCard}>
+                        <View style={styles.recipientsTopRow}>
+                          <View style={styles.recipientsMetaLeft}>
+                            <View style={styles.recipientsCountPill}>
+                              <Text style={styles.recipientsCountText}>{`${ids.length} נבחרו`}</Text>
+                            </View>
+
+                            <Pressable
+                              onPress={() => void openRecipientsPreview(editorRow)}
+                              style={({ pressed }: any) => [styles.recipientsEyeBtn, pressed ? { opacity: 0.92 } : null]}
+                            >
+                              <Ionicons name="eye-outline" size={16} color={ui.primary} />
+                              <Text style={styles.recipientsEyeText}>צפייה</Text>
+                            </Pressable>
+                          </View>
+
+                          <Pressable
+                            onPress={() => openRecipientsPicker(editorRow)}
+                            style={({ pressed }: any) => [styles.recipientsPrimaryBtn, pressed ? { opacity: 0.92 } : null]}
+                          >
+                            <Ionicons name="person-add-outline" size={16} color="#fff" />
+                            <Text style={styles.recipientsPrimaryBtnText}>בחר מוזמנים</Text>
+                          </Pressable>
+                        </View>
+                      </View>
+                    );
+                  })()}
+                </View>
+              ) : null}
+
               <View style={styles.editorSection}>
                 <View style={styles.editorSectionHeader}>
                   <Ionicons name="phone-portrait-outline" size={16} color="rgba(79,70,229,1)" />
@@ -1699,6 +2869,86 @@ export default function AutomaticNotificationsWebScreen() {
               </Pressable>
             </View>
           </View>
+
+          {dependsPickerOpen ? (
+            <View style={styles.dialogOverlay}>
+              <Pressable style={styles.pickerBackdrop} onPress={() => setDependsPickerOpen(false)} />
+              <View style={styles.dialogCard}>
+                <View style={styles.dialogHeader}>
+                  <Text style={styles.dialogTitle}>בחירת שלב קודם</Text>
+                  <Pressable onPress={() => setDependsPickerOpen(false)} style={styles.dialogClose}>
+                    <Ionicons name="close" size={18} color="#111827" />
+                  </Pressable>
+                </View>
+
+                <View style={{ padding: 14, gap: 10 }}>
+                  <Text style={styles.recipientsPreviewHint}>
+                    בחר מאיזו כרטיסיה לשאוב את המוזמנים שנשלחו אליהם בהצלחה, ואז יסוננו רק מי שעדיין במצב{' '}
+                    <Text style={styles.recipientsHintEm}>ממתין</Text>.
+                  </Text>
+
+                  <ScrollView style={{ maxHeight: 440 }} contentContainerStyle={{ gap: 8, paddingBottom: 6 }}>
+                    {(() => {
+                      const candidates = [...displayRows, ...flowStepsSorted].filter(
+                        (s) =>
+                          String((s as any)?.id || '').trim() &&
+                          String((s as any)?.id) !== String(editorRow.id || '') &&
+                          String((s as any)?.channel || 'SMS') === 'SMS'
+                      );
+
+                      if (candidates.length === 0) {
+                        return <Text style={styles.recipientsPreviewEmpty}>אין כרטיסיות זמינות לבחירה.</Text>;
+                      }
+
+                      return candidates.map((s) => {
+                        const sid = String((s as any).id);
+                        const isSelected = flowDraft?.dependsOnSettingId === sid;
+                        const dt = (s as any)?.notification_date ? new Date(String((s as any).notification_date)) : null;
+                        const when = dt && Number.isFinite(dt.getTime()) ? formatHeDateTimeShort(dt) : '—';
+                        const run = lastSmsRunBySettingId[sid];
+                        const runLabel = run ? statusLabel(String(run.status)) : null;
+
+                        return (
+                          <Pressable
+                            key={sid}
+                            onPress={() => {
+                              setFlowDraft((d) => (d ? { ...d, dependsOnSettingId: sid } : d));
+                              setDependsPickerOpen(false);
+                            }}
+                            style={({ pressed }: any) => [
+                              styles.dependsOptionCard,
+                              isSelected ? styles.dependsOptionCardSelected : null,
+                              pressed ? { opacity: 0.92 } : null,
+                            ]}
+                          >
+                            <View style={styles.dependsOptionTopRow}>
+                              <Text style={styles.dependsOptionTitle} numberOfLines={1}>
+                                {String((s as any)?.title || 'כרטיסיה')}
+                              </Text>
+                              {isSelected ? (
+                                <View style={styles.dependsOptionBadge}>
+                                  <Ionicons name="checkmark" size={14} color="#16A34A" />
+                                  <Text style={styles.dependsOptionBadgeText}>נבחר</Text>
+                                </View>
+                              ) : null}
+                            </View>
+                            <View style={styles.dependsOptionMetaRow}>
+                              <Ionicons name="time-outline" size={14} color="rgba(100,116,139,1)" />
+                              <Text style={styles.dependsOptionMetaText}>{when}</Text>
+                              <Ionicons name="checkmark-done-outline" size={14} color={runLabel?.color || 'rgba(100,116,139,1)'} />
+                              <Text style={[styles.dependsOptionMetaText, { color: runLabel?.color || 'rgba(100,116,139,1)' }]}>
+                                {runLabel ? runLabel.text : 'לא נשלח'}
+                              </Text>
+                            </View>
+                          </Pressable>
+                        );
+                      });
+                    })()}
+                  </ScrollView>
+                </View>
+              </View>
+            </View>
+          ) : null}
 
           {dateDialogOpen ? (
             <View style={styles.dialogOverlay}>
@@ -1880,6 +3130,7 @@ export default function AutomaticNotificationsWebScreen() {
                     })
                     .map((g) => (
                     <View key={g.id} style={styles.recipientsPreviewRow}>
+                      <Ionicons name="person-circle-outline" size={22} color="rgba(79,70,229,0.65)" />
                       <View style={{ flex: 1, minWidth: 0 }}>
                         <Text style={styles.recipientsPreviewName} numberOfLines={1}>
                           {g.name || '—'}
@@ -1888,7 +3139,6 @@ export default function AutomaticNotificationsWebScreen() {
                           {(g.status ? `${g.status} · ` : '') + (g.phone ? g.phone : 'אין טלפון')}
                         </Text>
                       </View>
-                      <Ionicons name="person-circle-outline" size={22} color="rgba(79,70,229,0.65)" />
                     </View>
                   ))}
                 </ScrollView>
@@ -2490,10 +3740,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: 'rgba(2,6,23,0.08)',
-    flexDirection: 'row',
+    flexDirection: 'row-reverse',
     flexWrap: 'wrap',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
     gap: 10,
   },
   recipientsPreviewName: { fontSize: 13, fontWeight: '900', color: '#111827', textAlign: 'right' },
@@ -2901,6 +4151,21 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? ({ direction: 'ltr' } as any) : null),
   },
   timelineItem: { alignItems: 'center', gap: 8, flex: 1, ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
+  timelineScroller: { width: '100%' },
+  timelineRowScroll: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 2,
+    ...(Platform.OS === 'web' ? ({ direction: 'ltr' } as any) : null),
+  },
+  timelineItemScroll: {
+    alignItems: 'center',
+    gap: 8,
+    width: 168,
+    flexShrink: 0,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
   timelineLabel: { fontSize: 12, fontWeight: '800', color: '#9CA3AF', textAlign: 'center' },
   timelineDot: {
     width: 14,
@@ -2915,6 +4180,7 @@ const styles = StyleSheet.create({
   timelineDate: { fontSize: 11, fontWeight: '900', color: '#111827', textAlign: 'center', marginTop: 2, writingDirection: 'ltr' },
   timelineTime: { fontSize: 12, fontWeight: '900', color: '#111827', textAlign: 'center', marginTop: 1, writingDirection: 'ltr' },
   timelineConnector: { width: 60, height: 1, backgroundColor: '#E5E7EB', alignSelf: 'center', marginBottom: 50 },
+  timelineConnectorScroll: { width: 42, height: 1, backgroundColor: '#E5E7EB', alignSelf: 'center', marginTop: 28 },
 
   cardsContainer: { gap: 16 },
   cardsRow: {
@@ -2924,14 +4190,11 @@ const styles = StyleSheet.create({
           // RTL is already applied at the page level (`direction: rtl`).
           // Using `row-reverse` here double-flips the order and places "01" on the left.
           flexDirection: 'row',
-          flexWrap: 'nowrap',
+          flexWrap: 'wrap',
           gap: 16,
           alignItems: 'stretch',
-          overflowX: 'auto',
-          overflowY: 'hidden',
-          paddingBottom: 4,
-          WebkitOverflowScrolling: 'touch',
-          scrollbarWidth: 'thin',
+          overflowX: 'hidden',
+          overflowY: 'visible',
         } as any)
       : ({
           flexDirection: 'row',
@@ -2942,14 +4205,194 @@ const styles = StyleSheet.create({
         } as any)),
   },
 
+  builderCard: {
+    marginTop: 18,
+    padding: 14,
+    borderRadius: 18,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: 'rgba(2,6,23,0.08)',
+  },
+  builderHeaderRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  builderTitle: { fontSize: 14, fontWeight: '900', color: '#111827', textAlign: 'right' },
+  builderSub: { marginTop: 2, fontSize: 12, fontWeight: '700', color: 'rgba(100,116,139,1)', textAlign: 'right' },
+  builderEmpty: { marginTop: 12, fontSize: 12, fontWeight: '800', color: 'rgba(100,116,139,1)', textAlign: 'right' },
+  builderStepCard: {
+    padding: 12,
+    borderRadius: 16,
+    backgroundColor: 'rgba(248,250,252,1)',
+    borderWidth: 1,
+    borderColor: 'rgba(2,6,23,0.06)',
+  },
+  builderStepTopRow: { flexDirection: 'row-reverse', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 },
+  builderStepTitle: { fontSize: 13, fontWeight: '900', color: '#111827', textAlign: 'right' },
+  builderStepMetaRow: { marginTop: 6, flexDirection: 'row-reverse', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
+  builderStepMetaText: { fontSize: 12, fontWeight: '800', color: 'rgba(100,116,139,1)', textAlign: 'right' },
+  builderStepActions: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6 },
+  builderIconBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: 'rgba(2,6,23,0.10)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  builderIconBtnDanger: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: 'rgba(239,68,68,0.20)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  builderStepBottomRow: { marginTop: 10, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' },
+  builderEditBtn: {
+    height: 34,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: 'rgba(79,70,229,0.24)',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  builderEditText: { fontSize: 12, fontWeight: '900', textAlign: 'right' },
+
+  fieldRow: { marginTop: 10, gap: 6 },
+  fieldLabel: { fontSize: 12, fontWeight: '900', color: 'rgba(2,6,23,0.75)', textAlign: 'right' },
+  fieldInput: {
+    height: 40,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(2,6,23,0.10)',
+    backgroundColor: '#fff',
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#111827',
+    textAlign: 'right',
+    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : null),
+  },
+  modeRow: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8 },
+  modePill: { paddingHorizontal: 10, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(2,6,23,0.10)', backgroundColor: '#fff', ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
+  modePillActive: { backgroundColor: 'rgba(79,70,229,0.10)', borderColor: 'rgba(79,70,229,0.26)' },
+  modePillText: { fontSize: 12, fontWeight: '900', color: 'rgba(2,6,23,0.70)', textAlign: 'right' },
+  modePillTextActive: { color: '#4F46E5' },
+  dependsRow: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8 },
+  dependsPill: { maxWidth: 220, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(2,6,23,0.10)', backgroundColor: '#fff', ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
+  dependsPillActive: { backgroundColor: 'rgba(79,70,229,0.10)', borderColor: 'rgba(79,70,229,0.26)' },
+  dependsText: { fontSize: 12, fontWeight: '900', color: 'rgba(2,6,23,0.70)', textAlign: 'right' },
+  dependsTextActive: { color: '#4F46E5' },
+
+  dependsSelectBtn: {
+    height: 54,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(2,6,23,0.10)',
+    backgroundColor: '#fff',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 10,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  dependsSelectTitle: { fontSize: 13, fontWeight: '900', color: '#111827', textAlign: 'right' },
+  dependsSelectSub: { marginTop: 2, fontSize: 12, fontWeight: '800', color: 'rgba(100,116,139,1)', textAlign: 'right' },
+  dependsClearBtn: {
+    width: 44,
+    height: 54,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(2,6,23,0.08)',
+    backgroundColor: 'rgba(2,6,23,0.03)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+
+  dependsOptionCard: {
+    padding: 12,
+    borderRadius: 14,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: 'rgba(2,6,23,0.08)',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  dependsOptionCardSelected: { borderColor: 'rgba(22,163,74,0.30)', backgroundColor: 'rgba(22,163,74,0.06)' },
+  dependsOptionTopRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  dependsOptionTitle: { fontSize: 13, fontWeight: '900', color: '#111827', textAlign: 'right', flex: 1 },
+  dependsOptionBadge: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(22,163,74,0.10)', borderWidth: 1, borderColor: 'rgba(22,163,74,0.18)' },
+  dependsOptionBadgeText: { fontSize: 12, fontWeight: '900', color: '#16A34A', textAlign: 'right' },
+  dependsOptionMetaRow: { marginTop: 8, flexDirection: 'row-reverse', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
+  dependsOptionMetaText: { fontSize: 12, fontWeight: '800', color: 'rgba(100,116,139,1)', textAlign: 'right' },
+
+  wizardChoiceRow: { flexDirection: 'row-reverse', gap: 12, flexWrap: 'wrap' },
+  wizardChoiceBtn: {
+    flex: 1,
+    minWidth: 220,
+    padding: 14,
+    borderRadius: 16,
+    backgroundColor: '#fff',
+    borderWidth: 2,
+    borderColor: 'rgba(2,6,23,0.08)',
+    gap: 6,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  wizardChoiceBtnActive: { borderColor: 'rgba(79,70,229,0.45)', backgroundColor: 'rgba(79,70,229,0.06)' },
+  wizardChoiceTitle: { fontSize: 14, fontWeight: '900', color: '#111827', textAlign: 'right' },
+  wizardChoiceTitleActive: { color: '#4F46E5' },
+  wizardChoiceSub: { fontSize: 12, fontWeight: '800', color: 'rgba(100,116,139,1)', textAlign: 'right' },
+
+  wizardChipRow: { gap: 8 },
+  wizardChip: { alignSelf: 'flex-start', flexDirection: 'row-reverse', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(79,70,229,0.10)', borderWidth: 1, borderColor: 'rgba(79,70,229,0.20)' },
+  wizardChipText: { fontSize: 12, fontWeight: '900', color: '#4F46E5', textAlign: 'right' },
+
+  wizardInsertCard: { padding: 12, borderRadius: 14, backgroundColor: '#fff', borderWidth: 1, borderColor: 'rgba(2,6,23,0.08)', ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
+  wizardInsertCardSelected: { borderColor: 'rgba(22,163,74,0.30)', backgroundColor: 'rgba(22,163,74,0.06)' },
+  wizardInsertTopRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  wizardInsertTitle: { fontSize: 13, fontWeight: '900', color: '#111827', textAlign: 'right' },
+  wizardInsertSub: { marginTop: 6, fontSize: 12, fontWeight: '800', color: 'rgba(100,116,139,1)', textAlign: 'right' },
+  wizardInsertBadge: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(22,163,74,0.10)', borderWidth: 1, borderColor: 'rgba(22,163,74,0.18)' },
+  wizardInsertBadgeText: { fontSize: 12, fontWeight: '900', color: '#16A34A', textAlign: 'right' },
+
+  fabAddStep: {
+    position: Platform.OS === 'web' ? ('fixed' as any) : 'absolute',
+    left: 24,
+    bottom: 24,
+    width: 52,
+    height: 52,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#4F46E5',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+    shadowColor: '#4F46E5',
+    shadowOpacity: 0.22,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    zIndex: 60,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  fabAddStepHover: { opacity: 0.96 },
+
   messageCard: {
     ...(Platform.OS === 'web'
       ? ({
-          flexGrow: 1,
-          flexBasis: 0,
+          flexGrow: 0,
           flexShrink: 0,
+          flexBasis: 'calc(25% - 12px)',
           minWidth: 240,
-          maxWidth: 360,
+          maxWidth: 'calc(25% - 12px)',
         } as any)
       : ({ flexGrow: 1, flexBasis: '32%', minWidth: 240 } as any)),
     borderRadius: 14,

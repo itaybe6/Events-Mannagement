@@ -167,8 +167,21 @@ serve(async (req) => {
 
   try {
     const cronSecret = String(Deno.env.get("SCHEDULED_SMS_CRON_SECRET") ?? "").trim();
-    if (!cronSecret) {
-      return json({ error: "Missing Edge secret: SCHEDULED_SMS_CRON_SECRET" }, { status: 500 });
+    const supabaseUrl = String(Deno.env.get("SUPABASE_URL") ?? "").trim();
+    const supabaseServiceKey = String(Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "").trim();
+    const pulseemApiKey = String(Deno.env.get("PULSEEM_API_KEY") ?? "").trim();
+    const pulseemFromNumber = String(Deno.env.get("PULSEEM_FROM_NUMBER") ?? "").trim();
+
+    const missing: string[] = [];
+    if (!cronSecret) missing.push("SCHEDULED_SMS_CRON_SECRET");
+    if (!supabaseUrl) missing.push("SUPABASE_URL");
+    if (!supabaseServiceKey) missing.push("SUPABASE_SERVICE_ROLE_KEY");
+    if (!pulseemApiKey) missing.push("PULSEEM_API_KEY");
+    // SITE_BASE_URL is optional; only required when message uses `{link}`.
+
+    if (missing.length > 0) {
+      console.error("Scheduler env is missing required secrets:", { missing });
+      return json({ error: "missing_required_env", missing }, { status: 500 });
     }
 
     const providedSecret = String(req.headers.get("x-cron-secret") ?? "").trim();
@@ -176,22 +189,9 @@ serve(async (req) => {
       return json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    if (!supabaseUrl || !supabaseServiceKey) {
-      return json({ error: "Missing Supabase environment variables for Edge Function" }, { status: 500 });
-    }
-
-    const pulseemApiKey = Deno.env.get("PULSEEM_API_KEY");
-    const pulseemFromNumber = String(Deno.env.get("PULSEEM_FROM_NUMBER") ?? "").trim();
-    if (!pulseemApiKey) {
-      return json({ error: "Missing Pulseem secret (PULSEEM_API_KEY)" }, { status: 500 });
-    }
-
+    // SITE_BASE_URL is only required when the message actually needs `{link}`.
+    // Don't hard-fail the whole scheduler if it's missing.
     const baseUrl = normalizeBaseUrl(Deno.env.get("SITE_BASE_URL"));
-    if (!baseUrl) {
-      return json({ error: "Missing SITE_BASE_URL (needed to build invitation links)" }, { status: 500 });
-    }
 
     const body = (await req.json().catch(() => ({}))) as any;
     const limitRaw = Number(body?.limit);
@@ -324,9 +324,20 @@ serve(async (req) => {
 
       const failures: Array<{ guestId: string; phone?: string | null; reason: string }> = [];
 
+      // Only require an invitation token when the message actually needs the `{link}` placeholder.
+      // Many scheduled messages may contain a fixed URL (or no URL at all), in which case token is not required.
+      const needsInvitationToken = (() => {
+        const t = String(messageTemplate ?? "");
+        return t.includes("{link}") || t.includes("{{link}}");
+      })();
+      if (needsInvitationToken && !baseUrl) {
+        await setRunStatus(adminClient, runId, { status: "failed", error: "missing_site_base_url" });
+        continue;
+      }
+
       const prepared = list.map((g: any) => {
         const token = String(g.invitation_code ?? g.invitation_token ?? "").trim();
-        const link = token ? `${baseUrl}/i/${token}` : "";
+        const link = token && baseUrl ? `${baseUrl}/i/${token}` : "";
         const rawPhone = g.phone;
         const n = normalizePhone(rawPhone);
         const phoneOk = n.ok ? n.value : "";
@@ -370,7 +381,7 @@ serve(async (req) => {
           failures.push({ guestId: p.id, phone: p.phoneRaw ?? null, reason: "invalid_phone" });
           return false;
         }
-        if (!p.hasToken) {
+        if (needsInvitationToken && !p.hasToken) {
           failures.push({ guestId: p.id, phone: p.phoneRaw ?? null, reason: "missing_invitation_token" });
           return false;
         }
