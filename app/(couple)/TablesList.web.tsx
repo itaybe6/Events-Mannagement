@@ -1347,10 +1347,10 @@ export default function TablesListWebScreen() {
           >
             <View style={styles.modalHeader}>
               <View style={styles.modalTitleWrap}>
-                <Text style={styles.modalTitle} numberOfLines={1}>
+                <Text style={[styles.modalTitle, styles.editPeopleTitle]} numberOfLines={1}>
                   עריכת כמות אנשים
                 </Text>
-                <Text style={styles.modalSubtitle} numberOfLines={2}>
+                <Text style={[styles.modalSubtitle, styles.editPeopleSubtitle]} numberOfLines={2}>
                   {editingPeopleGuest ? String(editingPeopleGuest.name || '').trim() : ''}
                 </Text>
               </View>
@@ -1370,7 +1370,7 @@ export default function TablesListWebScreen() {
             </View>
 
             <View style={styles.modalBody}>
-              <View style={styles.editPeopleField}>
+              <View style={[styles.editPeopleField, styles.editPeopleFieldCard]}>
                 <Text style={styles.editPeopleLabel}>כמות</Text>
                 <TextInput
                   value={editPeopleCount}
@@ -2080,8 +2080,27 @@ const styles = StyleSheet.create({
 
   emptyBox: { padding: 20, alignItems: 'flex-end', justifyContent: 'center', gap: 10 },
   emptyTableBox: { padding: 22, alignItems: 'flex-end', justifyContent: 'center', gap: 10, backgroundColor: 'rgba(248,250,252,0.85)', borderRadius: 18, borderWidth: 1, borderColor: 'rgba(15,23,42,0.06)' },
-  emptyTitle: { fontSize: 16, fontWeight: '900', color: colors.text, textAlign: 'right', writingDirection: 'rtl' },
-  emptySubtitle: { fontSize: 13, fontWeight: '800', color: colors.gray[600], textAlign: 'right', writingDirection: 'rtl', maxWidth: 560 },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+    alignSelf: 'stretch',
+    width: '100%',
+    ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
+  },
+  emptySubtitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.gray[600],
+    textAlign: 'right',
+    writingDirection: 'rtl',
+    maxWidth: 560,
+    alignSelf: 'stretch',
+    width: '100%',
+    ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
+  },
 
   primaryBtn: {
     height: 40,
@@ -2208,7 +2227,25 @@ const styles = StyleSheet.create({
   categoryRow: { flexDirection: 'row-reverse', gap: 8, paddingVertical: 2 },
 
   editPeopleField: { gap: 8 },
-  editPeopleLabel: { fontSize: 12, fontWeight: '900', color: colors.gray[700], textAlign: 'right', writingDirection: 'rtl' },
+  editPeopleTitle: { alignSelf: 'stretch', width: '100%', textAlign: 'right', writingDirection: 'rtl' },
+  editPeopleSubtitle: { alignSelf: 'stretch', width: '100%', textAlign: 'right', writingDirection: 'rtl' },
+  editPeopleField: { gap: 10, alignItems: 'flex-end' },
+  editPeopleFieldCard: {
+    padding: 14,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+    backgroundColor: 'rgba(248,250,252,0.70)',
+  },
+  editPeopleLabel: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: colors.gray[700],
+    textAlign: 'right',
+    writingDirection: 'rtl',
+    alignSelf: 'stretch',
+    width: '100%',
+  },
   editPeopleInput: {
     height: 44,
     borderRadius: 14,
@@ -2219,7 +2256,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '900',
     color: colors.text,
-    textAlign: 'left',
+    textAlign: 'right',
+    alignSelf: 'stretch',
+    width: '100%',
     ...(Platform.OS === 'web' ? ({ direction: 'ltr' } as any) : null),
   },
   categoryChip: {

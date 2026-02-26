@@ -517,7 +517,7 @@ const styles = StyleSheet.create({
   workArea: {
     flex: 1,
     alignItems: 'center',
-    justifyContent: 'flex-start',
+    justifyContent: Platform.OS === 'web' ? 'flex-start' : 'center',
     padding: 0,
     ...(Platform.OS === 'web' ? ({ overflow: 'auto', userSelect: 'none', WebkitUserSelect: 'none' } as any) : null),
   },

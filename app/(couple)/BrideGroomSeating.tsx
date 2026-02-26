@@ -517,6 +517,102 @@ export default function BrideGroomSeating() {
     return [];
   }
 
+  const toFiniteNumber = (value: any) => {
+    const n = typeof value === 'number' ? value : Number(value);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  const normalizeOrientation = (value: any): Orientation => (value === 'column' ? 'column' : 'row');
+
+  const normalizeTableType = (value: any): TableType => {
+    const v = String(value ?? '').trim();
+    if (v === 'regular' || v === 'reserve' || v === 'knight') return v;
+    // Back-compat: legacy booleans
+    if ((value as any)?.isReserve) return 'reserve';
+    if ((value as any)?.isKnight) return 'knight';
+    return 'regular';
+  };
+
+  const normalizeWebV2Tables = (items: any[]) => {
+    return (items || [])
+      .filter(Boolean)
+      .map((t: any, idx: number) => {
+        const type: TableType = normalizeTableType(t?.type ?? t);
+        const seats =
+          toFiniteNumber(t?.seats ?? t?.capacity) ?? (type === 'knight' ? 20 : 12);
+        const gridX =
+          toFiniteNumber(
+            t?.gridX ??
+              t?.x ??
+              t?.col ??
+              t?.grid?.x ??
+              t?.pos?.x ??
+              t?.position?.x ??
+              t?.p?.x
+          ) ?? 0;
+        const gridY =
+          toFiniteNumber(
+            t?.gridY ??
+              t?.y ??
+              t?.row ??
+              t?.grid?.y ??
+              t?.pos?.y ??
+              t?.position?.y ??
+              t?.p?.y
+          ) ?? 0;
+        const orientation = normalizeOrientation(t?.orientation);
+        const number = toFiniteNumber(t?.number ?? t?.num ?? t?.tableNumber);
+        return {
+          id: String(t?.id ?? `table-${idx}`),
+          type,
+          seats,
+          orientation,
+          gridX,
+          gridY,
+          ...(number != null ? { number: Math.round(number) } : {}),
+        };
+      })
+      .filter((t: any) => Number.isFinite(t.gridX) && Number.isFinite(t.gridY));
+  };
+
+  const normalizeWebV2Zones = (items: any[]) => {
+    return (items || [])
+      .filter(Boolean)
+      .map((z: any, idx: number) => {
+        const gridX =
+          toFiniteNumber(z?.gridX ?? z?.x ?? z?.col ?? z?.grid?.x ?? z?.pos?.x ?? z?.position?.x ?? z?.p?.x) ?? 0;
+        const gridY =
+          toFiniteNumber(z?.gridY ?? z?.y ?? z?.row ?? z?.grid?.y ?? z?.pos?.y ?? z?.position?.y ?? z?.p?.y) ?? 0;
+        const widthCells = toFiniteNumber(z?.widthCells ?? z?.w ?? z?.width) ?? 1;
+        const heightCells = toFiniteNumber(z?.heightCells ?? z?.h ?? z?.height) ?? 1;
+        return {
+          id: String(z?.id ?? `zone-${idx}`),
+          name: String(z?.name ?? ''),
+          gridX,
+          gridY,
+          widthCells: Math.max(1, Math.round(widthCells)),
+          heightCells: Math.max(1, Math.round(heightCells)),
+        };
+      });
+  };
+
+  const normalizeWebV2Labels = (items: any[]) => {
+    return (items || [])
+      .filter(Boolean)
+      .map((l: any, idx: number) => {
+        const gridX =
+          toFiniteNumber(l?.gridX ?? l?.x ?? l?.col ?? l?.grid?.x ?? l?.pos?.x ?? l?.position?.x ?? l?.p?.x) ?? 0;
+        const gridY =
+          toFiniteNumber(l?.gridY ?? l?.y ?? l?.row ?? l?.grid?.y ?? l?.pos?.y ?? l?.position?.y ?? l?.p?.y) ?? 0;
+        return {
+          id: String(l?.id ?? `label-${idx}`),
+          text: String(l?.text ?? ''),
+          gridX,
+          gridY,
+        };
+      });
+  };
+
   // משיכת הערות (annotations) + סקיצה מה-DB
   const fetchTextAreas = async () => {
     if (!resolvedEventId) return;
@@ -543,15 +639,15 @@ export default function BrideGroomSeating() {
         webV2 && typeof webV2?.grid?.cols === 'number' ? Math.round(webV2.grid.cols) : DEFAULT_GRID_COLS;
       const webV2Rows =
         webV2 && typeof webV2?.grid?.rows === 'number' ? Math.round(webV2.grid.rows) : DEFAULT_GRID_ROWS;
-      const webV2Zones = webV2 ? toArrayMaybe(webV2.zones ?? webV2?.state?.zones ?? webV2?.data?.zones) : [];
-      const webV2Labels = webV2 ? toArrayMaybe(webV2.labels ?? webV2?.state?.labels ?? webV2?.data?.labels) : [];
-      const webV2Tables = webV2 ? toArrayMaybe(webV2.tables ?? webV2?.state?.tables ?? webV2?.data?.tables) : [];
+      const webV2ZonesRaw = webV2 ? toArrayMaybe(webV2.zones ?? webV2?.state?.zones ?? webV2?.data?.zones) : [];
+      const webV2LabelsRaw = webV2 ? toArrayMaybe(webV2.labels ?? webV2?.state?.labels ?? webV2?.data?.labels) : [];
+      const webV2TablesRaw = webV2 ? toArrayMaybe(webV2.tables ?? webV2?.state?.tables ?? webV2?.data?.tables) : [];
 
       let finalCols = webV2Cols;
       let finalRows = webV2Rows;
-      let finalTables: any[] = webV2Tables;
-      let finalZones: any[] = webV2Zones;
-      let finalLabels: any[] = webV2Labels;
+      let finalTables: any[] = normalizeWebV2Tables(webV2TablesRaw);
+      let finalZones: any[] = normalizeWebV2Zones(webV2ZonesRaw);
+      let finalLabels: any[] = normalizeWebV2Labels(webV2LabelsRaw);
 
       if (__DEV__ && webV2) {
         console.log('[BrideGroomSeating:webSketch]', {
@@ -604,6 +700,16 @@ export default function BrideGroomSeating() {
           .select('id,number,capacity,shape,x,y')
           .eq('event_id', resolvedEventId);
         if (!publicTablesError && Array.isArray(publicTables) && publicTables.length) {
+          const px = publicTables.map((t: any) => ({
+            x: Number(t?.x) || 0,
+            y: Number(t?.y) || 0,
+          }));
+          const pxXMin = Math.min(...px.map((p) => p.x));
+          const pxXMax = Math.max(...px.map((p) => p.x));
+          const pxYMin = Math.min(...px.map((p) => p.y));
+          const pxYMax = Math.max(...px.map((p) => p.y));
+          const publicPositionsUnset = pxXMax === 0 && pxXMin === 0 && pxYMax === 0 && pxYMin === 0;
+
           const mapped = publicTables.map((t: any) => {
             const type: TableType = t.shape === 'reserve' ? 'reserve' : t.shape === 'rectangle' ? 'knight' : 'regular';
             const gridX = Math.round((Number(t.x) || 0) / 40);
@@ -618,18 +724,69 @@ export default function BrideGroomSeating() {
               number: typeof t.number === 'number' ? t.number : undefined,
             };
           });
-          const maxX = mapped.reduce(
-            (m: number, t: any) => Math.max(m, t.gridX + tableCellSize(t.type, t.seats, t.orientation).w),
-            0
-          );
-          const maxY = mapped.reduce(
-            (m: number, t: any) => Math.max(m, t.gridY + tableCellSize(t.type, t.seats, t.orientation).h),
-            0
-          );
-          finalCols = Math.max(finalCols, DEFAULT_GRID_COLS, maxX + 6);
-          finalRows = Math.max(finalRows, DEFAULT_GRID_ROWS, maxY + 6);
-          finalTables = mapped;
+          finalTables = normalizeWebV2Tables(mapped);
+
+          // If all tables have pixel positions unset (x=y=0), we *must* auto-layout.
+          // Otherwise the map will always show a stacked column on the edge.
+          if (publicPositionsUnset) {
+            // Mark by forcing X spread check to pass (handled below).
+            finalTables = finalTables.map((t: any) => ({ ...t, gridX: 0, gridY: 0 }));
+          }
         }
+      }
+
+      // Ensure we never pass invalid coordinates to the readonly grid (native would render nothing).
+      // Re-normalize whatever source we ended up with.
+      finalTables = normalizeWebV2Tables(finalTables);
+
+      // If all tables cluster at the same X (i.e. no real 2D layout was designed),
+      // auto-arrange them into a grid so the mobile map is actually readable.
+      if (finalTables.length >= 2) {
+        const xs = finalTables.map((t: any) => Number(t.gridX) || 0);
+        const xMin = Math.min(...xs);
+        const xMax = Math.max(...xs);
+        const shouldAutoArrange =
+          xMax - xMin <= 2 ||
+          finalTables.every((t: any) => (Number(t.gridX) || 0) === 0 && (Number(t.gridY) || 0) === 0);
+
+        if (shouldAutoArrange) {
+          // Spread tables more horizontally (especially in landscape) and add generous spacing.
+          const n = finalTables.length;
+          const aspect = windowWidth / Math.max(1, windowHeight);
+          const isWide = aspect >= 1.2;
+          const COL_MULT = isWide ? 2.0 : 1.45;
+          const TABLE_COLS = Math.min(14, Math.max(4, Math.ceil(Math.sqrt(n) * COL_MULT)));
+
+          const STEP = isWide ? 9 : 8; // cells
+          const START_X = 4;
+          const START_Y = 4;
+
+          finalTables = finalTables.map((t: any, idx: number) => ({
+            ...t,
+            gridX: START_X + (idx % TABLE_COLS) * STEP,
+            gridY: START_Y + Math.floor(idx / TABLE_COLS) * STEP,
+          }));
+        }
+      }
+
+      // Always ensure grid dims fit the placed content (avoid overlaps / tiny cramped view).
+      if (finalTables.length || finalZones.length || finalLabels.length) {
+        const maxX = Math.max(
+          0,
+          ...finalTables.map((t: any) => (Number(t.gridX) || 0) + tableCellSize(t.type, t.seats, t.orientation).w),
+          ...finalZones.map((z: any) => (Number(z.gridX) || 0) + (Number(z.widthCells) || 1)),
+          ...finalLabels.map((l: any) => (Number(l.gridX) || 0) + 1)
+        );
+        const maxY = Math.max(
+          0,
+          ...finalTables.map((t: any) => (Number(t.gridY) || 0) + tableCellSize(t.type, t.seats, t.orientation).h),
+          ...finalZones.map((z: any) => (Number(z.gridY) || 0) + (Number(z.heightCells) || 1)),
+          ...finalLabels.map((l: any) => (Number(l.gridY) || 0) + 1)
+        );
+
+        // Keep reasonable but never too small; contentRect will crop excess anyway.
+        finalCols = Math.max(24, Math.ceil(maxX) + 6);
+        finalRows = Math.max(20, Math.ceil(maxY) + 6);
       }
 
       if (finalTables.length || finalZones.length || finalLabels.length) {
@@ -725,11 +882,6 @@ export default function BrideGroomSeating() {
         tables={webSketch.tables}
         zones={webSketch.zones}
         labels={webSketch.labels}
-        getTableSeatedCount={(t: any) => {
-          const num = t?.number;
-          if (!num) return null;
-          return seatedByNumber.get(Number(num)) ?? 0;
-        }}
         getTableTooltip={(t: any) => {
           const num = t?.number;
           if (!num) return null;
@@ -1582,7 +1734,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     width: '100%',
   },
-  guestName: {
+  guestNameLarge: {
     fontSize: 18,
     fontWeight: '600',
     textAlign: 'right',

@@ -1395,26 +1395,8 @@ export default function BrideGroomSeatingWebScreen() {
           </View>
 
           <View style={styles.rightCol}>
-            <View style={[styles.mapCard, { height: mapCardHeight }]}>
-              <View style={styles.mapHeader}>
-                <Text style={styles.mapTitle}>מפה</Text>
-                <View style={styles.legend}>
-                  <View style={styles.legendItem}>
-                    <View style={[styles.legendDot, { backgroundColor: colors.yaleBlue }]} />
-                    <Text style={styles.legendText}>רגיל</Text>
-                  </View>
-                  <View style={styles.legendItem}>
-                    <View style={[styles.legendDot, { backgroundColor: colors.yaleBlue }]} />
-                    <Text style={styles.legendText}>אביר</Text>
-                  </View>
-                  <View style={styles.legendItem}>
-                    <View style={[styles.legendDot, { backgroundColor: '#F59E0B' }]} />
-                    <Text style={styles.legendText}>רזרבה</Text>
-                  </View>
-                </View>
-              </View>
-
-              <View style={styles.mapBody}>
+            <View style={[styles.mapCard, { minHeight: mapCardHeight }]}>
+              <View style={{ flex: 1, minHeight: mapCardHeight }}>
                 {webSketch ? (
                   <SeatingGridReadonly
                     gridCols={webSketch.gridCols}
@@ -1422,18 +1404,44 @@ export default function BrideGroomSeatingWebScreen() {
                     tables={webSketch.tables}
                     zones={webSketch.zones}
                     labels={webSketch.labels}
-                    getTableTooltip={(t: any) => {
-                      const num = t?.number;
-                      if (!num) return null;
-                      const seated = seatedByNumber.get(Number(num)) ?? 0;
-                      return `יושבים בשולחן: ${seated}`;
+                    hideTableType
+                    showTableBorder={false}
+                    getTableBaseColor={(t: any) => {
+                      const selectedNumber =
+                        (seatConfirmOpen && seatConfirmTable ? Number((seatConfirmTable as any).number) : null) ??
+                        (selectedTableForModal ? Number((selectedTableForModal as any).number) : null);
+                      const selected = Number.isFinite(selectedNumber as any) && Number(t?.number) === Number(selectedNumber);
+                      if (selected) return '#10B981';
+                      return t?.type === 'reserve' ? colors.secondary : colors.primary;
+                    }}
+                    getTableBackgroundAlpha={(t: any) => {
+                      const selectedNumber =
+                        (seatConfirmOpen && seatConfirmTable ? Number((seatConfirmTable as any).number) : null) ??
+                        (selectedTableForModal ? Number((selectedTableForModal as any).number) : null);
+                      const selected = Number.isFinite(selectedNumber as any) && Number(t?.number) === Number(selectedNumber);
+                      if (selected) return 0.28;
+                      return t?.type === 'reserve' ? 0.18 : 0.42;
+                    }}
+                    selectedRingColor="#10B981"
+                    isTableSelected={(t: any) => {
+                      const selectedNumber =
+                        (seatConfirmOpen && seatConfirmTable ? Number((seatConfirmTable as any).number) : null) ??
+                        (selectedTableForModal ? Number((selectedTableForModal as any).number) : null);
+                      return Boolean(selectedNumber) && Number(t?.number) === Number(selectedNumber);
                     }}
                     getTableSubLabel={(t: any) => {
                       const num = t?.number;
                       if (!num) return null;
                       const seated = seatedByNumber.get(Number(num)) ?? 0;
                       const cap = Number(t?.seats ?? 0) || 0;
-                      return cap ? `${seated} / ${cap}` : String(seated);
+                      return cap ? `${cap} / ${seated}` : String(seated);
+                    }}
+                    getTableTooltip={(t: any) => {
+                      const num = t?.number;
+                      if (!num) return null;
+                      const seated = seatedByNumber.get(Number(num)) ?? 0;
+                      const cap = Number(t?.seats ?? 0) || 0;
+                      return cap ? `יושבים בשולחן: ${cap} / ${seated}` : `יושבים בשולחן: ${seated}`;
                     }}
                     onPressTableNumber={(num) => {
                       if (!num) return;
@@ -1448,7 +1456,7 @@ export default function BrideGroomSeatingWebScreen() {
                   />
                 ) : (
                   <View style={styles.emptyMap}>
-                    <Ionicons name="map-outline" size={34} color={colors.gray[400]} />
+                    <Ionicons name="map-outline" size={42} color={colors.gray[500]} />
                     <Text style={styles.emptyMapTitle}>אין מפה עדיין</Text>
                     <Text style={styles.emptyMapSub}>כשתהיה סקיצה לאירוע, היא תופיע כאן.</Text>
                   </View>
@@ -2320,6 +2328,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.07)',
     backgroundColor: 'rgba(255,255,255,0.92)',
+    ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
   },
   tableRowActive: {
     borderColor: 'rgba(59,130,246,0.35)',
@@ -2336,9 +2345,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 10,
   },
-  tableRowRight: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 },
+  tableRowRight: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 },
   tableRowText: { flex: 1, minWidth: 0, alignItems: 'flex-end' },
-  tableRowActions: { marginTop: 10, alignItems: 'flex-start' },
+  tableRowActions: { marginTop: 10, alignItems: 'flex-end' },
   tableManageBtn: {
     height: 36,
     alignSelf: 'flex-start',
@@ -2358,8 +2367,8 @@ const styles = StyleSheet.create({
   },
   tableManageBtnText: { fontSize: 12, fontWeight: '900', color: colors.gray[700], textAlign: 'right', writingDirection: 'rtl' },
   tableNumPill: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(6,23,62,0.08)', borderWidth: 1, borderColor: 'rgba(6,23,62,0.10)' },
-  tableNumPillText: { fontSize: 12, fontWeight: '900', color: '#0d1c2b', textAlign: 'right' },
-  tableRowTitle: { fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'right' },
+  tableNumPillText: { fontSize: 12, fontWeight: '900', color: '#0d1c2b', textAlign: 'right', writingDirection: 'rtl' },
+  tableRowTitle: { fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'right', writingDirection: 'rtl' },
   tableRowSub: { marginTop: 2, fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'right', writingDirection: 'rtl' },
   tableStatusPill: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: 1 },
   tableStatusOk: { backgroundColor: 'rgba(16,185,129,0.10)', borderColor: 'rgba(16,185,129,0.24)' },
@@ -2373,24 +2382,20 @@ const styles = StyleSheet.create({
 
   mapCard: {
     flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.92)',
-    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.08)',
-    overflow: 'hidden',
-    ...(Platform.OS === 'web' ? ({ backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)', boxShadow: '0 14px 34px rgba(13,28,43,0.08)' } as any) : null),
+    borderColor: 'rgba(15,23,42,0.06)',
+    padding: 16,
+    shadowColor: colors.primary,
+    shadowOpacity: 0.05,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 1,
   },
-  mapHeader: { paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(15,23,42,0.06)', flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  mapTitle: { fontSize: 14, fontWeight: '900', color: '#0d1c2b', textAlign: 'right' },
-  legend: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
-  legendItem: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6 },
-  legendDot: { width: 10, height: 10, borderRadius: 999 },
-  legendText: { fontSize: 12, fontWeight: '800', color: colors.gray[700], textAlign: 'right', writingDirection: 'rtl' },
-  // Reduce padding so the map uses more of the card area (feels more "zoomed").
-  mapBody: { flex: 1, padding: 6 },
-  emptyMap: { flex: 1, borderRadius: 18, borderWidth: 1, borderColor: 'rgba(15,23,42,0.06)', backgroundColor: 'rgba(248,250,252,0.92)', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 18 },
-  emptyMapTitle: { fontSize: 14, fontWeight: '900', color: colors.text, textAlign: 'center', writingDirection: 'rtl' },
-  emptyMapSub: { fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'center', writingDirection: 'rtl', maxWidth: 460 },
+  emptyMap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 30 },
+  emptyMapTitle: { fontSize: 15, fontWeight: '900', color: colors.text, textAlign: 'center', writingDirection: 'rtl' },
+  emptyMapSub: { fontSize: 13, fontWeight: '700', color: colors.gray[600], textAlign: 'center', writingDirection: 'rtl', maxWidth: 460 },
 
   modalOverlay: {
     flex: 1,

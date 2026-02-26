@@ -156,6 +156,36 @@ export default function EmployeeGuestCheckinWebScreen() {
   const [moveSelectedTableId, setMoveSelectedTableId] = useState<string | null>(null);
   const [movePrevSelectedTableNumber, setMovePrevSelectedTableNumber] = useState<number | null>(null);
 
+  const [editingArrivedCountGuestId, setEditingArrivedCountGuestId] = useState<string | null>(null);
+  const [editingArrivedCountValue, setEditingArrivedCountValue] = useState('');
+
+  const startEditArrivedCount = useCallback((g: any, arrivedCount: number) => {
+    const id = String(g?.id ?? '').trim();
+    if (!id) return;
+    setEditingArrivedCountGuestId(id);
+    setEditingArrivedCountValue(String(Number(arrivedCount) || 0));
+  }, []);
+
+  const cancelEditArrivedCount = useCallback(() => {
+    setEditingArrivedCountGuestId(null);
+    setEditingArrivedCountValue('');
+  }, []);
+
+  const confirmEditArrivedCount = useCallback(
+    async (g: any) => {
+      if (!g) return;
+      const id = String(g?.id ?? '').trim();
+      if (!id) return;
+      const raw = String(editingArrivedCountValue ?? '').trim();
+      const n0 = raw === '' ? 0 : Number(raw);
+      const next = Number.isFinite(n0) ? Math.max(0, Math.floor(n0)) : null;
+      cancelEditArrivedCount();
+      if (next === null) return;
+      await setCheckedInCount(g, next);
+    },
+    [cancelEditArrivedCount, editingArrivedCountValue, setCheckedInCount]
+  );
+
   const loadTables = useCallback(async () => {
     if (!resolvedEventId) {
       setTables([]);
@@ -251,10 +281,13 @@ export default function EmployeeGuestCheckinWebScreen() {
     guests.forEach((g) => {
       const tableIdKey = g.tableId === null || g.tableId === undefined ? '' : String(g.tableId).trim();
       if (!tableIdKey) return;
+      if (!g.checkedIn) return;
       const num = tableNumberById.get(tableIdKey) ?? null;
       if (typeof num !== 'number') return;
-      const ppl = Number(g.numberOfPeople) || 1;
-      m.set(num, (m.get(num) || 0) + ppl);
+      const people = Number(g.numberOfPeople) || 1;
+      const actual = g.checkedInCount === null || g.checkedInCount === undefined ? null : Number(g.checkedInCount);
+      const arrived = actual !== null && Number.isFinite(actual) ? actual : people;
+      m.set(num, (m.get(num) || 0) + Math.max(0, arrived));
     });
     return m;
   }, [guests, tableNumberById]);
@@ -264,8 +297,11 @@ export default function EmployeeGuestCheckinWebScreen() {
     guests.forEach((g) => {
       const tableIdKey = g.tableId === null || g.tableId === undefined ? '' : String(g.tableId).trim();
       if (!tableIdKey) return;
-      const ppl = Number(g.numberOfPeople) || 1;
-      m.set(tableIdKey, (m.get(tableIdKey) || 0) + ppl);
+      if (!g.checkedIn) return;
+      const people = Number(g.numberOfPeople) || 1;
+      const actual = g.checkedInCount === null || g.checkedInCount === undefined ? null : Number(g.checkedInCount);
+      const arrived = actual !== null && Number.isFinite(actual) ? actual : people;
+      m.set(tableIdKey, (m.get(tableIdKey) || 0) + Math.max(0, arrived));
     });
     return m;
   }, [guests]);
@@ -608,7 +644,12 @@ export default function EmployeeGuestCheckinWebScreen() {
 
   const moveGuestPeople = useMemo(() => {
     if (!moveGuest) return 0;
-    return Number((moveGuest as any).numberOfPeople) || 1;
+    const people = Number((moveGuest as any).numberOfPeople) || 1;
+    if (!(moveGuest as any).checkedIn) return people;
+    const raw = (moveGuest as any).checkedInCount;
+    if (raw === null || raw === undefined) return people;
+    const n = Number(raw);
+    return Number.isFinite(n) ? Math.max(0, n) : people;
   }, [moveGuest]);
 
   const moveGuestFromTableId = useMemo(() => {
@@ -761,8 +802,41 @@ export default function EmployeeGuestCheckinWebScreen() {
                               <View style={styles.compactCountWrap}>
                                 {savingCountId === g.id ? (
                                   <ActivityIndicator size={12} color={colors.primary} />
+                                ) : editingArrivedCountGuestId === String(g.id) ? (
+                                  <TextInput
+                                    style={[
+                                      styles.compactCountInput,
+                                      Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : null,
+                                    ]}
+                                    value={editingArrivedCountValue}
+                                    onChangeText={setEditingArrivedCountValue}
+                                    autoFocus
+                                    keyboardType="numeric"
+                                    {...(Platform.OS === 'web' ? ({ inputMode: 'numeric' } as any) : null)}
+                                    returnKeyType="done"
+                                    blurOnSubmit
+                                    onSubmitEditing={() => void confirmEditArrivedCount(g)}
+                                    onBlur={cancelEditArrivedCount}
+                                    onKeyPress={(e: any) => {
+                                      const k = e?.nativeEvent?.key;
+                                      if (k === 'Enter') void confirmEditArrivedCount(g);
+                                      if (k === 'Escape') cancelEditArrivedCount();
+                                    }}
+                                    textAlign="center"
+                                  />
                                 ) : (
-                                  <Text style={styles.compactCountText}>{arrivedCount}</Text>
+                                  <Pressable
+                                    accessibilityRole="button"
+                                    accessibilityLabel={`עריכת כמות שהגיעה עבור ${g.name}`}
+                                    onPress={() => startEditArrivedCount(g, arrivedCount)}
+                                    style={({ hovered, pressed }: any) => [
+                                      Platform.OS === 'web' ? ({ cursor: 'text' } as any) : null,
+                                      Platform.OS === 'web' && hovered ? ({ opacity: 0.85 } as any) : null,
+                                      pressed ? ({ opacity: 0.85 } as any) : null,
+                                    ]}
+                                  >
+                                    <Text style={styles.compactCountText}>{arrivedCount}</Text>
+                                  </Pressable>
                                 )}
                               </View>
 
@@ -1112,7 +1186,7 @@ export default function EmployeeGuestCheckinWebScreen() {
                 <View style={styles.modalGuestMetaRow}>
                   <Ionicons name="people" size={14} color={colors.primary} />
                   <Text style={styles.modalGuestMetaText}>
-                    {(Number(moveGuest.numberOfPeople) || 1) === 1 ? 'אורח 1' : `${Number(moveGuest.numberOfPeople) || 1} אורחים`}
+                    {moveGuestPeople === 1 ? 'אורח 1' : `${moveGuestPeople} אורחים`}
                   </Text>
                 </View>
               </View>
@@ -1768,6 +1842,15 @@ const styles = StyleSheet.create({
   },
   compactCountWrap: { minWidth: 20, alignItems: 'center', justifyContent: 'center' },
   compactCountText: { fontSize: 12, fontWeight: '900', color: colors.text, textAlign: 'center' },
+  compactCountInput: {
+    minWidth: 20,
+    paddingVertical: 0,
+    paddingHorizontal: 0,
+    fontSize: 12,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'center',
+  },
 
   guestCard: {
     backgroundColor: 'rgba(255,255,255,0.98)',
