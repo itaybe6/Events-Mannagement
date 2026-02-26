@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated, Pressable, ActivityIndicator, Modal, TextInput, FlatList, useWindowDimensions, Alert, PanResponder, Platform, StatusBar } from 'react-native';
 import Svg, { Defs, Line, Pattern, Rect } from 'react-native-svg';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Reanimated, { runOnUI, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Reanimated, { cancelAnimation, runOnUI, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { supabase } from '@/lib/supabase';
 import { useUserStore } from '@/store/userStore';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
@@ -1267,247 +1267,214 @@ function MobileSeatingMap({
   onPressTableNumber?: (num: number | undefined) => void;
   getTableSubLabel?: (t: any) => string | null;
 }) {
-  const viewportW = useSharedValue(0);
-  const viewportH = useSharedValue(0);
-  const contentW = useSharedValue(1);
-  const contentH = useSharedValue(1);
-  const [viewport, setViewport] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+  // useWindowDimensions gives us rotation events for free.
+  const { width: winW, height: winH } = useWindowDimensions();
 
-  // Crop to content bounds (same idea as web readonly viewer)
+  // ── Content bounds ────────────────────────────────────────────────────────
   const contentRect = useMemo(() => {
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = 0;
-    let maxY = 0;
-
+    let minX = Infinity, minY = Infinity, maxX = 0, maxY = 0;
     const include = (x0: number, y0: number, x1: number, y1: number) => {
-      minX = Math.min(minX, x0);
-      minY = Math.min(minY, y0);
-      maxX = Math.max(maxX, x1);
-      maxY = Math.max(maxY, y1);
+      minX = Math.min(minX, x0); minY = Math.min(minY, y0);
+      maxX = Math.max(maxX, x1); maxY = Math.max(maxY, y1);
     };
-
     for (const t of sketch.tables || []) {
       const sz = tableCellSize(t.type, t.seats, t.orientation);
       include(t.gridX, t.gridY, t.gridX + sz.w, t.gridY + sz.h);
     }
-    for (const z of sketch.zones || []) {
-      include(z.gridX, z.gridY, z.gridX + z.widthCells, z.gridY + z.heightCells);
-    }
-    for (const l of sketch.labels || []) {
-      include(l.gridX, l.gridY, l.gridX + 1, l.gridY + 1);
-    }
-
-    const hasAny = Number.isFinite(minX) && Number.isFinite(minY);
-    if (!hasAny) return { originX: 0, originY: 0, cols: Math.max(1, sketch.gridCols), rows: Math.max(1, sketch.gridRows) };
-
+    for (const z of sketch.zones || []) include(z.gridX, z.gridY, z.gridX + z.widthCells, z.gridY + z.heightCells);
+    for (const l of sketch.labels || []) include(l.gridX, l.gridY, l.gridX + 1, l.gridY + 1);
+    if (!Number.isFinite(minX))
+      return { originX: 0, originY: 0, cols: Math.max(1, sketch.gridCols), rows: Math.max(1, sketch.gridRows) };
     const pad = 1;
     const ox = Math.max(0, Math.floor(minX) - pad);
     const oy = Math.max(0, Math.floor(minY) - pad);
-    const ex = Math.max(1, Math.ceil(maxX) + pad);
-    const ey = Math.max(1, Math.ceil(maxY) + pad);
-    return { originX: ox, originY: oy, cols: Math.max(1, ex - ox), rows: Math.max(1, ey - oy) };
+    return {
+      originX: ox, originY: oy,
+      cols: Math.max(1, Math.ceil(maxX) + pad - ox),
+      rows: Math.max(1, Math.ceil(maxY) + pad - oy),
+    };
   }, [sketch.gridCols, sketch.gridRows, sketch.labels, sketch.tables, sketch.zones]);
 
   const baseW = contentRect.cols * CELL_SIZE;
   const baseH = contentRect.rows * CELL_SIZE;
 
-  const scale = useSharedValue(1);
-  const tx = useSharedValue(0);
-  const ty = useSharedValue(0);
-  const startScale = useSharedValue(1);
-  const startTx = useSharedValue(0);
-  const startTy = useSharedValue(0);
-  const hasUserInteracted = useSharedValue(false);
-  const didInitialFit = useSharedValue(false);
-  const fitScale = useSharedValue(1);
+  // ── Shared values (all on the UI thread) ─────────────────────────────────
+  // tx/ty are PAN offsets in SCREEN pixels from the centered position.
+  // The Reanimated.View is centered by flexbox, so at tx=0,ty=0,scale=fitS
+  // the map fills exactly the viewport.
+  const scale   = useSharedValue(1);
+  const tx      = useSharedValue(0);
+  const ty      = useSharedValue(0);
+  // "saved" = values at gesture start (avoids jumps on new touch)
+  const sv_s  = useSharedValue(1);
+  const sv_tx = useSharedValue(0);
+  const sv_ty = useSharedValue(0);
+  // Viewport + content dims available to worklets
+  const vW = useSharedValue(winW);
+  const vH = useSharedValue(winH);
+  const cW = useSharedValue(baseW);
+  const cH = useSharedValue(baseH);
 
-  useEffect(() => {
-    contentW.value = Math.max(1, baseW);
-    contentH.value = Math.max(1, baseH);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [baseW, baseH]);
+  useEffect(() => { vW.value = winW; vH.value = winH; }, [winW, winH, vW, vH]);
+  useEffect(() => { cW.value = baseW; cH.value = baseH; }, [baseW, baseH, cW, cH]);
 
-  const fitToView = useCallback((force?: boolean) => {
-    const vw = viewportW.value;
-    const vh = viewportH.value;
-    if (!vw || !vh) return;
-    if (!force && (hasUserInteracted.value || didInitialFit.value)) return;
-    const margin = 0;
-    const s = Math.min((vw - margin * 2) / Math.max(1, baseW), (vh - margin * 2) / Math.max(1, baseH));
-    const nextScale = clampNumber(s, 0.2, 6);
-    fitScale.value = nextScale;
-    scale.value = withTiming(nextScale, { duration: 180 });
-    // Center is handled by layout; pan offsets start at 0
-    tx.value = withTiming(0, { duration: 180 });
-    ty.value = withTiming(0, { duration: 180 });
-    didInitialFit.value = true;
-  }, [baseH, baseW, scale, tx, ty, viewportH, viewportW]);
+  // ── Fit: scale to fill viewport, center (tx=ty=0) ────────────────────────
+  const doFit = useCallback(() => {
+    const vw = winW, vh = winH, bw = baseW, bh = baseH;
+    if (!vw || !vh || !bw || !bh) return;
+    // Sync shared values immediately so worklets see up-to-date viewport
+    vW.value = vw; vH.value = vh;
+    cW.value = bw; cH.value = bh;
+    const s = clampNumber(Math.min(vw / bw, vh / bh), 0.1, 10);
+    cancelAnimation(scale); cancelAnimation(tx); cancelAnimation(ty);
+    scale.value = withTiming(s, { duration: 260 });
+    tx.value    = withTiming(0, { duration: 260 });
+    ty.value    = withTiming(0, { duration: 260 });
+    sv_s.value  = s; sv_tx.value = 0; sv_ty.value = 0;
+  }, [winW, winH, baseW, baseH, scale, tx, ty, sv_s, sv_tx, sv_ty, vW, vH, cW, cH]);
 
-  // Re-fit whenever content changes (tables/zones/labels) after layout is known
-  useEffect(() => {
-    fitToView(false);
-  }, [fitToView, contentRect.cols, contentRect.rows, sketch.tables?.length, sketch.zones?.length, sketch.labels?.length]);
+  // Fit on rotation or initial content load.
+  const didFitRef = useRef(false);
+  useEffect(() => { doFit(); }, [winW, winH]);
+  useEffect(() => { if (!didFitRef.current) { didFitRef.current = true; doFit(); } }, [baseW, baseH]);
 
-  const clampTranslateWorklet = useCallback(() => {
+  // ── Clamp: keep map reachable; called on UI thread after each gesture ─────
+  const doClamp = () => {
     'worklet';
-    const vw = viewportW.value;
-    const vh = viewportH.value;
-    const cw = contentW.value;
-    const ch = contentH.value;
     const s = scale.value;
-    const pad = 24;
-    const w = cw * s;
-    const h = ch * s;
+    const bw = cW.value, bh = cH.value;
+    const vw = vW.value, vh = vH.value;
+    const pad = 40; // px the user can drag "past" the edge
+    // Max pan so that the edge of the scaled content is still 'pad' px inside viewport
+    const mxRaw = (bw * s - vw) / 2;
+    const myRaw = (bh * s - vh) / 2;
+    const mx = mxRaw > 0 ? mxRaw + pad : 0;
+    const my = myRaw > 0 ? myRaw + pad : 0;
+    tx.value = clampNumber(tx.value, -mx, mx);
+    ty.value = clampNumber(ty.value, -my, my);
+    sv_tx.value = tx.value;
+    sv_ty.value = ty.value;
+  };
 
-    // Layout centers the content at tx/ty=0. Clamp symmetrically around center.
-    if (w <= vw) tx.value = 0;
-    else {
-      const max = (w - vw) / 2 + pad;
-      tx.value = clampNumber(tx.value, -max, max);
-    }
-
-    if (h <= vh) ty.value = 0;
-    else {
-      const max = (h - vh) / 2 + pad;
-      ty.value = clampNumber(ty.value, -max, max);
-    }
-  }, [contentH, contentW, scale, tx, ty, viewportH, viewportW]);
-
+  // ── Gestures ──────────────────────────────────────────────────────────────
   const pinch = Gesture.Pinch()
     .onBegin(() => {
-      hasUserInteracted.value = true;
-      startScale.value = scale.value;
-      startTx.value = tx.value;
-      startTy.value = ty.value;
+      cancelAnimation(scale); cancelAnimation(tx); cancelAnimation(ty);
+      sv_s.value  = scale.value;
+      sv_tx.value = tx.value;
+      sv_ty.value = ty.value;
     })
     .onUpdate((e) => {
-      const vw = viewportW.value;
-      const vh = viewportH.value;
-      if (!vw || !vh) return;
-
-      const minS = Math.max(0.2, (fitScale.value || 1) * 0.6);
-      const maxS = Math.max(8, (fitScale.value || 1) * 10);
-      const nextS = clampNumber(startScale.value * e.scale, minS, maxS);
-      // Zoom around the focal point for a smoother feel.
-      const cx = vw / 2;
-      const cy = vh / 2;
-      const px = (e.focalX - cx - startTx.value) / Math.max(0.0001, startScale.value);
-      const py = (e.focalY - cy - startTy.value) / Math.max(0.0001, startScale.value);
-      scale.value = nextS;
-      tx.value = startTx.value + px * (startScale.value - nextS);
-      ty.value = startTy.value + py * (startScale.value - nextS);
+      const minS = clampNumber(Math.min(vW.value / Math.max(1, cW.value), vH.value / Math.max(1, cH.value)) * 0.4, 0.08, 1);
+      const maxS = 10;
+      const ns = clampNumber(sv_s.value * e.scale, minS, maxS);
+      // Zoom toward the pinch focal point
+      const cx = vW.value / 2;
+      const cy = vH.value / 2;
+      const fpx = (e.focalX - cx - sv_tx.value) / Math.max(0.001, sv_s.value);
+      const fpy = (e.focalY - cy - sv_ty.value) / Math.max(0.001, sv_s.value);
+      scale.value = ns;
+      tx.value = sv_tx.value - fpx * (ns - sv_s.value);
+      ty.value = sv_ty.value - fpy * (ns - sv_s.value);
     })
-    .onEnd(() => {
-      clampTranslateWorklet();
-    });
+    .onEnd(() => { doClamp(); });
 
   const pan = Gesture.Pan()
     .averageTouches(true)
-    .minDistance(1)
+    .minDistance(0)
     .onBegin(() => {
-      hasUserInteracted.value = true;
-      startTx.value = tx.value;
-      startTy.value = ty.value;
+      cancelAnimation(tx); cancelAnimation(ty);
+      sv_tx.value = tx.value;
+      sv_ty.value = ty.value;
     })
     .onUpdate((e) => {
-      tx.value = startTx.value + e.translationX;
-      ty.value = startTy.value + e.translationY;
+      tx.value = sv_tx.value + e.translationX;
+      ty.value = sv_ty.value + e.translationY;
     })
-    .onEnd(() => {
-      clampTranslateWorklet();
-    });
+    .onEnd(() => { doClamp(); });
 
   const gesture = Gesture.Simultaneous(pan, pinch);
 
-  const stageStyle = useAnimatedStyle(() => {
-    return {
-      // Content is centered by layout; scale around center is desired.
-      // Translate is applied after scale and is in screen pixels.
-      transform: [{ scale: scale.value }, { translateX: tx.value }, { translateY: ty.value }],
-    };
-  });
+  // ── Animated style ────────────────────────────────────────────────────────
+  // translateX/Y then scale: translate moves center, scale expands around it.
+  // This keeps the math: tx=0 → centered, |tx| ≤ (bw*s-vw)/2+pad.
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: tx.value },
+      { translateY: ty.value },
+      { scale: scale.value },
+    ],
+  }));
+
+  // ── Zoom buttons ─────────────────────────────────────────────────────────
+  const zoomBy = useCallback((factor: number) => {
+    const minS = clampNumber(Math.min(winW / Math.max(1, baseW), winH / Math.max(1, baseH)) * 0.4, 0.08, 1);
+    const ns = clampNumber(scale.value * factor, minS, 10);
+    cancelAnimation(scale);
+    scale.value = withTiming(ns, { duration: 200 });
+    sv_s.value = ns;
+    runOnUI(doClamp)();
+  }, [winW, winH, baseW, baseH, scale, sv_s, doClamp]);
 
   return (
-    <View
-      style={styles.mobileMapRoot}
-      onLayout={(e) => {
-        const w = e?.nativeEvent?.layout?.width;
-        const h = e?.nativeEvent?.layout?.height;
-        if (typeof w === 'number' && typeof h === 'number' && w > 0 && h > 0) {
-          viewportW.value = w;
-          viewportH.value = h;
-          setViewport({ w, h });
-          // Fit when we get first real layout.
-          fitToView(false);
-        }
-      }}
-    >
-      {/* Full-screen grid background (no white areas) */}
-      {viewport.w > 0 && viewport.h > 0 ? (
-        <Svg width={viewport.w} height={viewport.h} style={StyleSheet.absoluteFill as any}>
-          <Defs>
-            <Pattern id="minor-bg" x="0" y="0" width={CELL_SIZE} height={CELL_SIZE} patternUnits="userSpaceOnUse">
-              <Rect x="0" y="0" width={CELL_SIZE} height={CELL_SIZE} fill="transparent" />
-              <Line x1={CELL_SIZE} y1="0" x2="0" y2="0" stroke="rgba(148,163,184,0.18)" strokeWidth="1" />
-              <Line x1="0" y1={CELL_SIZE} x2="0" y2="0" stroke="rgba(148,163,184,0.18)" strokeWidth="1" />
-            </Pattern>
-          </Defs>
-          <Rect x="0" y="0" width="100%" height="100%" fill="url(#minor-bg)" />
-        </Svg>
-      ) : null}
+    <View style={styles.mobileMapRoot}>
+      {/* Full-screen grid background so no white space outside map */}
+      <Svg width="100%" height="100%" style={StyleSheet.absoluteFill as any}>
+        <Defs>
+          <Pattern id="bg-grid" x="0" y="0" width={CELL_SIZE} height={CELL_SIZE} patternUnits="userSpaceOnUse">
+            <Rect x="0" y="0" width={CELL_SIZE} height={CELL_SIZE} fill="transparent" />
+            <Line x1={CELL_SIZE} y1="0" x2="0" y2="0" stroke="rgba(148,163,184,0.18)" strokeWidth="1" />
+            <Line x1="0" y1={CELL_SIZE} x2="0" y2="0" stroke="rgba(148,163,184,0.18)" strokeWidth="1" />
+          </Pattern>
+        </Defs>
+        <Rect x="0" y="0" width="100%" height="100%" fill="url(#bg-grid)" />
+      </Svg>
 
       <GestureDetector gesture={gesture}>
-        <View style={styles.mobileGestureFill}>
-          <View style={styles.mobileStageCenter}>
-            <Reanimated.View style={[styles.mobileContent, { width: baseW, height: baseH }, stageStyle]}>
+        {/* flex centering: at tx=0,ty=0 the content is exactly centered */}
+        <View style={styles.mobileCenter}>
+          <Reanimated.View style={[{ width: baseW, height: baseH }, animStyle]}>
 
             {/* Zones */}
             {(sketch.zones || []).map((z: any) => {
               const left = (Number(z.gridX) - contentRect.originX) * CELL_SIZE;
-              const top = (Number(z.gridY) - contentRect.originY) * CELL_SIZE;
-              const w = (Number(z.widthCells) || 1) * CELL_SIZE;
-              const h = (Number(z.heightCells) || 1) * CELL_SIZE;
+              const top  = (Number(z.gridY) - contentRect.originY) * CELL_SIZE;
               return (
                 <View
                   key={String(z.id)}
-                  style={[
-                    styles.mobileZone,
-                    { width: w, height: h, transform: [{ translateX: left }, { translateY: top }] },
-                  ]}
+                  style={[styles.mobileZone, {
+                    width:  (Number(z.widthCells)  || 1) * CELL_SIZE,
+                    height: (Number(z.heightCells) || 1) * CELL_SIZE,
+                    transform: [{ translateX: left }, { translateY: top }],
+                  }]}
                 >
-                  <Text style={styles.mobileZoneText} numberOfLines={1}>
-                    {String(z.name ?? '')}
-                  </Text>
+                  <Text style={styles.mobileZoneText} numberOfLines={1}>{String(z.name ?? '')}</Text>
                 </View>
               );
             })}
 
             {/* Tables */}
             {(sketch.tables || []).map((t: any) => {
-              const sz = tableCellSize(t.type, t.seats, t.orientation);
+              const sz   = tableCellSize(t.type, t.seats, t.orientation);
               const left = (Number(t.gridX) - contentRect.originX) * CELL_SIZE;
-              const top = (Number(t.gridY) - contentRect.originY) * CELL_SIZE;
-              const w = sz.w * CELL_SIZE;
-              const h = sz.h * CELL_SIZE;
-              const base = t.type === 'reserve' ? '#F59E0B' : t.type === 'knight' ? '#7C3AED' : '#2563EB';
-              const sub = getTableSubLabel?.(t) ?? null;
+              const top  = (Number(t.gridY) - contentRect.originY) * CELL_SIZE;
+              const isReserve = t.type === 'reserve';
+              const base = isReserve ? '#F59E0B' : '#06173d';
+              const bg = isReserve ? `${base}22` : 'rgba(6, 23, 61, 0.82)';
+              const border = isReserve ? `${base}55` : 'rgba(6, 23, 61, 1)';
+              const textColor = isReserve ? base : '#FFFFFF';
+              const sub  = getTableSubLabel?.(t) ?? null;
               return (
                 <Pressable
                   key={String(t.id)}
                   onPress={() => onPressTableNumber?.(t.number)}
-                  style={[
-                    styles.mobileTable,
-                    {
-                      width: w,
-                      height: h,
-                      backgroundColor: `${base}22`,
-                      borderColor: `${base}55`,
-                      transform: [{ translateX: left }, { translateY: top }],
-                    },
-                  ]}
+                  style={[styles.mobileTable, {
+                    width: sz.w * CELL_SIZE, height: sz.h * CELL_SIZE,
+                    backgroundColor: bg, borderColor: border,
+                    transform: [{ translateX: left }, { translateY: top }],
+                  }]}
                 >
-                  <Text style={[styles.mobileTableNum, { color: base }]}>{t.number ?? ''}</Text>
+                  <Text style={[styles.mobileTableNum, { color: textColor }]}>{t.number ?? ''}</Text>
                   {sub ? <Text style={styles.mobileTableSub}>{sub}</Text> : null}
                 </Pressable>
               );
@@ -1516,47 +1483,24 @@ function MobileSeatingMap({
             {/* Labels */}
             {(sketch.labels || []).map((l: any) => {
               const left = (Number(l.gridX) - contentRect.originX) * CELL_SIZE;
-              const top = (Number(l.gridY) - contentRect.originY) * CELL_SIZE;
+              const top  = (Number(l.gridY) - contentRect.originY) * CELL_SIZE;
               return (
-                <View
-                  key={String(l.id)}
-                  style={[styles.mobileLabelWrap, { transform: [{ translateX: left }, { translateY: top }] }]}
-                >
-                  <Text style={styles.mobileLabelText} numberOfLines={1}>
-                    {String(l.text ?? '')}
-                  </Text>
+                <View key={String(l.id)} style={[styles.mobileLabelWrap, { transform: [{ translateX: left }, { translateY: top }] }]}>
+                  <Text style={styles.mobileLabelText} numberOfLines={1}>{String(l.text ?? '')}</Text>
                 </View>
               );
             })}
-            </Reanimated.View>
-          </View>
+
+          </Reanimated.View>
         </View>
       </GestureDetector>
 
+      {/* +/− zoom buttons */}
       <View style={styles.mobileMapControls}>
-        <TouchableOpacity
-          style={styles.mobileMapBtn}
-          onPress={() => {
-            // Zoom in around center
-            hasUserInteracted.value = true;
-            const minS = Math.max(0.2, (fitScale.value || 1) * 0.6);
-            const maxS = Math.max(8, (fitScale.value || 1) * 10);
-            scale.value = withTiming(clampNumber(scale.value * 1.18, minS, maxS), { duration: 140 });
-            runOnUI(clampTranslateWorklet)();
-          }}
-        >
+        <TouchableOpacity style={styles.mobileMapBtn} onPress={() => zoomBy(1.3)}>
           <Ionicons name="add" size={18} color={colors.text} />
         </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.mobileMapBtn}
-          onPress={() => {
-            hasUserInteracted.value = true;
-            const minS = Math.max(0.2, (fitScale.value || 1) * 0.6);
-            const maxS = Math.max(8, (fitScale.value || 1) * 10);
-            scale.value = withTiming(clampNumber(scale.value / 1.18, minS, maxS), { duration: 140 });
-            runOnUI(clampTranslateWorklet)();
-          }}
-        >
+        <TouchableOpacity style={styles.mobileMapBtn} onPress={() => zoomBy(1 / 1.3)}>
           <Ionicons name="remove" size={18} color={colors.text} />
         </TouchableOpacity>
       </View>
@@ -1675,23 +1619,16 @@ const styles = StyleSheet.create({
   canvasScroll: { flex: 1 },
   mobileMapRoot: {
     flex: 1,
-    backgroundColor: colors.white,
+    backgroundColor: '#f8fafc',
     overflow: 'hidden',
     direction: 'ltr',
   },
-  mobileGestureFill: {
-    flex: 1,
-    direction: 'ltr',
-  },
-  mobileStageCenter: {
+  mobileCenter: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  mobileContent: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
+    direction: 'ltr',
+    overflow: 'hidden',
   },
   mobileTable: {
     position: 'absolute',

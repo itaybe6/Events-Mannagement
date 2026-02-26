@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import Svg, { Defs, Line, Pattern, Rect } from 'react-native-svg';
+import Svg, { Rect } from 'react-native-svg';
 import { CELL_SIZE, TABLE_LABELS, clamp, tableCellSize, type Orientation, type TableType } from './_types';
 
 function hexToRgba(hex: string, alpha: number) {
@@ -145,10 +145,6 @@ export function SeatingGridReadonly({
   const zoomRef = useRef(1);
   const fitZoomRef = useRef(1);
   const lastAutoFitTokenRef = useRef<string>('');
-  const wheelRafRef = useRef<number | null>(null);
-  const pendingZoomAnchorRef = useRef<null | { clientX: number; clientY: number; contentX: number; contentY: number; zoom: number }>(
-    null
-  );
 
   useEffect(() => {
     fitZoomRef.current = fitZoom;
@@ -209,131 +205,6 @@ export function SeatingGridReadonly({
   const [tooltip, setTooltip] = useState<null | { text: string; x: number; y: number }>(null);
   const [tooltipSize, setTooltipSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
 
-  const getStageEl = useCallback(() => {
-    const refEl = stageRef.current as any;
-    if (refEl?.getBoundingClientRect) return refEl;
-    const wa = workAreaRef.current as any;
-    const q = wa?.querySelector?.('[data-seating-stage="1"]');
-    return q || null;
-  }, []);
-
-  const handleWheel = useCallback(
-    (e: any) => {
-      if (!isWeb) return;
-      const dy = e?.deltaY ?? e?.nativeEvent?.deltaY ?? 0;
-
-      // Shift + wheel = scroll (vertical)
-      if (e?.shiftKey) {
-        e?.preventDefault?.();
-        e?.stopPropagation?.();
-        try {
-          const el = workAreaRef.current as any;
-          if (el) el.scrollTop = (el.scrollTop || 0) + dy;
-        } catch {
-          // ignore
-        }
-        return;
-      }
-
-      e?.preventDefault?.();
-      e?.stopPropagation?.();
-
-      const el = workAreaRef.current as any;
-      if (!el) return;
-
-      const cur = zoomRef.current || 1;
-      const factor = dy < 0 ? 1.06 : 1 / 1.06;
-      const minZoom = fitZoomRef.current || 0.2;
-      const maxZoom = Math.max(minZoom, Math.min(12, minZoom * 2.2));
-      const next = clamp(cur * factor, minZoom, maxZoom);
-      if (next === cur) return;
-
-      const cx = e?.clientX ?? e?.nativeEvent?.clientX ?? 0;
-      const cy = e?.clientY ?? e?.nativeEvent?.clientY ?? 0;
-
-      // Measure actual DOM positions to find the content coordinate under the cursor.
-      // This is robust to padding + horizontal centering (alignSelf: 'center') and scroll.
-      const stageEl = getStageEl();
-      const workRect = el?.getBoundingClientRect?.() ?? null;
-      const stageRect = stageEl?.getBoundingClientRect?.() ?? null;
-      if (!workRect) return;
-
-      // Mouse inside the scroll container's viewport
-      const mouseX = cx - workRect.left;
-      const mouseY = cy - workRect.top;
-
-      // Content coordinate (unscaled) under the cursor
-      let contentX = (mouseX + (Number(el.scrollLeft) || 0)) / cur;
-      let contentY = (mouseY + (Number(el.scrollTop) || 0)) / cur;
-      if (stageRect) {
-        // stageRect.left/top already include scroll; convert to content coordinate:
-        // x_in_stage_px = (cx - stageRect.left)
-        contentX = (cx - stageRect.left) / cur;
-        contentY = (cy - stageRect.top) / cur;
-      }
-
-      zoomRef.current = next;
-      setZoom(next);
-
-      // Apply scroll in a rAF so DOM updates for new zoom.
-      pendingZoomAnchorRef.current = { clientX: cx, clientY: cy, contentX, contentY, zoom: next };
-      if (wheelRafRef.current == null && typeof requestAnimationFrame === 'function') {
-        // Double rAF to ensure React commit + layout are complete.
-        wheelRafRef.current = requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            wheelRafRef.current = null;
-            const a = pendingZoomAnchorRef.current;
-            pendingZoomAnchorRef.current = null;
-            if (!a) return;
-            try {
-              const el2 = workAreaRef.current as any;
-              if (!el2) return;
-              const stage2 = getStageEl();
-              const workRect2 = el2?.getBoundingClientRect?.() ?? null;
-              const stageRect2 = stage2?.getBoundingClientRect?.() ?? null;
-              if (!workRect2) return;
-
-              const mouseX2 = a.clientX - workRect2.left;
-              const mouseY2 = a.clientY - workRect2.top;
-
-              // stage offset in scroll-content coordinates (independent of scroll position)
-              const stageOffsetX = stageRect2 ? stageRect2.left - workRect2.left + (Number(el2.scrollLeft) || 0) : 0;
-              const stageOffsetY = stageRect2 ? stageRect2.top - workRect2.top + (Number(el2.scrollTop) || 0) : 0;
-
-              const desiredLeft = a.contentX * a.zoom + stageOffsetX - mouseX2;
-              const desiredTop = a.contentY * a.zoom + stageOffsetY - mouseY2;
-
-              const maxLeft = Math.max(0, (Number(el2.scrollWidth) || 0) - (Number(el2.clientWidth) || 0));
-              const maxTop = Math.max(0, (Number(el2.scrollHeight) || 0) - (Number(el2.clientHeight) || 0));
-
-              const clampedLeft = clamp(desiredLeft, 0, maxLeft);
-              const clampedTop = clamp(desiredTop, 0, maxTop);
-
-              if (el2?.scrollTo) el2.scrollTo({ left: clampedLeft, top: clampedTop, behavior: 'auto' });
-              else {
-                if (typeof el2?.scrollLeft === 'number') el2.scrollLeft = clampedLeft;
-                if (typeof el2?.scrollTop === 'number') el2.scrollTop = clampedTop;
-              }
-            } catch {
-              // ignore
-            }
-          });
-        });
-      }
-    },
-    [getStageEl, isWeb]
-  );
-
-  // Attach a non-passive wheel listener so preventDefault blocks scroll on web.
-  useEffect(() => {
-    if (!isWeb) return;
-    const el = workAreaRef.current as any;
-    if (!el?.addEventListener) return;
-    const listener = (ev: WheelEvent) => handleWheel(ev);
-    el.addEventListener('wheel', listener, { passive: false });
-    return () => el.removeEventListener('wheel', listener as any);
-  }, [handleWheel, isWeb]);
-
   return (
     <View style={styles.root}>
       <View
@@ -378,14 +249,8 @@ export function SeatingGridReadonly({
         >
           <View style={[styles.gridInner, { width: baseW, height: baseH, transform: [{ scale: zoom }] }]}>
             <Svg width={baseW} height={baseH} style={StyleSheet.absoluteFill as any}>
-              <Defs>
-                <Pattern id="minor" x="0" y="0" width={CELL_SIZE} height={CELL_SIZE} patternUnits="userSpaceOnUse">
-                  <Rect x="0" y="0" width={CELL_SIZE} height={CELL_SIZE} fill="transparent" />
-                  <Line x1={CELL_SIZE} y1="0" x2="0" y2="0" stroke="rgba(148,163,184,0.18)" strokeWidth="1" />
-                  <Line x1="0" y1={CELL_SIZE} x2="0" y2="0" stroke="rgba(148,163,184,0.18)" strokeWidth="1" />
-                </Pattern>
-              </Defs>
-              <Rect x="0" y="0" width="100%" height="100%" fill="url(#minor)" />
+              {/* Keep a solid background (no grid pattern). */}
+              <Rect x="0" y="0" width="100%" height="100%" fill="#ffffff" />
             </Svg>
 
             {/* Zones */}
@@ -410,24 +275,38 @@ export function SeatingGridReadonly({
             {/* Tables */}
             {tables.map(t => {
               const sz = tableCellSize(t.type, t.seats, t.orientation);
+              const selected = Boolean(isTableSelected?.(t));
+              const isReserve = t.type === 'reserve';
+              const highlight = isWeb ? (selected || isReserve) : selected;
+              const selectedWeb = isWeb ? selected : false;
+
               const baseDefault = t.type === 'reserve' ? '#F59E0B' : t.type === 'knight' ? '#7C3AED' : '#2563EB';
               const base = (getTableBaseColor?.(t) ?? baseDefault) || baseDefault;
-              const selected = Boolean(isTableSelected?.(t));
               const ringBase = selectedRingColor && String(selectedRingColor).trim() ? String(selectedRingColor).trim() : base;
 
               const bgAlpha = getTableBackgroundAlpha?.(t);
               const borderAlpha = getTableBorderAlpha?.(t);
               const borderOn = showTableBorder !== false;
 
-              const bg =
-                typeof bgAlpha === 'number' && isHex6(base)
+              // Web palette:
+              // - regular tables: #06173d
+              // - reserve tables: #06173d with transparency
+              // - selected tables: indicated mainly by ring/shadow
+              const webBg = isReserve ? 'rgba(124, 58, 237, 0.55)' : 'rgba(6, 23, 61, 0.82)';
+              const webAccent = 'rgba(255,255,255,0.95)';
+              const onDarkWeb = true;
+
+              const bg = isWeb
+                ? webBg
+                : typeof bgAlpha === 'number' && isHex6(base)
                   ? hexToRgba(base, clampAlpha(bgAlpha))
                   : isHex6(base)
                     ? `${base}22`
                     : base;
 
-              const borderColor =
-                typeof borderAlpha === 'number' && isHex6(base)
+              const borderColor = isWeb
+                ? '#FFFFFF'
+                : typeof borderAlpha === 'number' && isHex6(base)
                   ? hexToRgba(base, clampAlpha(borderAlpha))
                   : isHex6(base)
                     ? `${base}55`
@@ -465,13 +344,14 @@ export function SeatingGridReadonly({
                     : null)}
                   style={({ pressed }) => [
                     styles.table,
-                    selected ? styles.tableSelected : null,
-                    selected
+                    !isWeb && selected ? styles.tableSelected : null,
+                    isWeb
                       ? ({
-                          borderWidth: 0,
-                          ...(Platform.OS === 'web'
-                            ? ({ boxShadow: `0 0 0 3px ${hexToRgba(isHex6(ringBase) ? ringBase : '#06173e', 0.35)}` } as any)
-                            : null),
+                          boxShadow: selected
+                            ? `0 12px 26px rgba(245,158,11,0.18), 0 0 0 3px ${hexToRgba(isHex6(ringBase) ? ringBase : '#F59E0B', 0.22)}`
+                            : isReserve
+                              ? '0 12px 26px rgba(124,58,237,0.18)'
+                              : '0 12px 26px rgba(15,23,42,0.06)',
                         } as any)
                       : null,
                     {
@@ -480,15 +360,27 @@ export function SeatingGridReadonly({
                       width: sz.w * CELL_SIZE,
                       height: sz.h * CELL_SIZE,
                       backgroundColor: bg,
-                      borderWidth: borderOn ? 1 : 0,
-                      borderColor: borderOn ? borderColor : 'transparent',
+                      borderWidth: isWeb ? 2 : borderOn ? 1 : 0,
+                      borderColor: isWeb ? borderColor : borderOn ? borderColor : 'transparent',
                       opacity: pressed ? 0.9 : 1,
                     },
                   ]}
                 >
-                  <Text style={[styles.tableNum, { color: base }]}>{t.number ?? ''}</Text>
-                  {!hideTableType ? <Text style={styles.tableType}>{TABLE_LABELS[t.type]}</Text> : null}
-                  {sub ? <Text style={styles.tableSub}>{sub}</Text> : null}
+                  <Text style={[styles.tableNum, { color: isWeb ? webAccent : base }]}>{t.number ?? ''}</Text>
+                  {!hideTableType ? (
+                    <Text style={[styles.tableType, isWeb && onDarkWeb ? styles.tableTextOnDark : null]}>{TABLE_LABELS[t.type]}</Text>
+                  ) : null}
+                  {sub ? (
+                    <Text
+                      style={[
+                        styles.tableSub,
+                        isWeb && onDarkWeb ? styles.tableTextOnDark : null,
+                        selectedWeb ? styles.tableSubSelected : null,
+                      ]}
+                    >
+                      {sub}
+                    </Text>
+                  ) : null}
                 </Pressable>
               );
             })}
@@ -566,8 +458,10 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 10 },
   },
   tableNum: { fontSize: 16, fontWeight: '900' },
-  tableType: { marginTop: 2, fontSize: 11, fontWeight: '800', color: 'rgba(17,24,39,0.60)' },
-  tableSub: { marginTop: 3, fontSize: 11, fontWeight: '900', color: 'rgba(17,24,39,0.78)' },
+  tableType: { marginTop: 2, fontSize: 11, fontWeight: '800', color: 'rgba(51,65,85,0.55)' },
+  tableSub: { marginTop: 3, fontSize: 11, fontWeight: '900', color: 'rgba(51,65,85,0.55)' },
+  tableSubSelected: { color: 'rgba(180,83,9,0.78)' },
+  tableTextOnDark: { color: 'rgba(255,255,255,0.92)' },
 
   zone: {
     position: 'absolute',
