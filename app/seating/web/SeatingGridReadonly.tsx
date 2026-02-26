@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Svg, { Defs, Line, Pattern, Rect } from 'react-native-svg';
 import { CELL_SIZE, TABLE_LABELS, clamp, tableCellSize, type Orientation, type TableType } from './_types';
 
@@ -137,9 +137,10 @@ export function SeatingGridReadonly({
     const pad = 0;
     const sx = (vw - pad * 2) / Math.max(1, baseW);
     const sy = (vh - pad * 2) / Math.max(1, baseH);
-    // Allow zoom-in so the map can fill the available window space.
-    return clamp(Math.min(sx, sy), 0.2, 12);
-  }, [baseH, baseW, viewport?.h, viewport?.w]);
+    // On native, ensure tables stay readable (min ~40px per 3-cell table).
+    const minNativeZoom = isWeb ? 0.2 : Math.max(0.45, 40 / (3 * CELL_SIZE));
+    return clamp(Math.min(sx, sy), minNativeZoom, 12);
+  }, [baseH, baseW, isWeb, viewport?.h, viewport?.w]);
 
   const [zoom, setZoom] = useState(1);
   const zoomRef = useRef(1);
@@ -334,48 +335,7 @@ export function SeatingGridReadonly({
     return () => el.removeEventListener('wheel', listener as any);
   }, [handleWheel, isWeb]);
 
-  return (
-    <View style={styles.root}>
-      <View
-        ref={workAreaRef}
-        style={styles.workArea}
-        onLayout={(e) => {
-          const w = e?.nativeEvent?.layout?.width;
-          const h = e?.nativeEvent?.layout?.height;
-          if (typeof w === 'number' && typeof h === 'number' && w > 0 && h > 0) setViewport({ w, h });
-        }}
-      >
-        {isWeb && tooltip ? (
-          <View
-            pointerEvents="none"
-            onLayout={(e) => {
-              const w = e?.nativeEvent?.layout?.width;
-              const h = e?.nativeEvent?.layout?.height;
-              if (typeof w === 'number' && typeof h === 'number' && (w !== tooltipSize.w || h !== tooltipSize.h)) {
-                setTooltipSize({ w, h });
-              }
-            }}
-            style={[
-              styles.tooltip,
-              {
-                left: tooltip.x,
-                top: tooltip.y,
-                transform: [
-                  { translateX: -(tooltipSize.w || 0) / 2 },
-                  { translateY: -((tooltipSize.h || 0) + 10) },
-                ],
-              },
-            ]}
-          >
-            <Text style={styles.tooltipText}>{tooltip.text}</Text>
-          </View>
-        ) : null}
-
-        <View
-          ref={stageRef}
-          {...({ 'data-seating-stage': '1' } as any)}
-          style={[styles.gridWrap, { width: stageW, height: stageH }]}
-        >
+  const gridContent = (
           <View style={[styles.gridInner, { width: baseW, height: baseH, transform: [{ scale: zoom }] }]}>
             <Svg width={baseW} height={baseH} style={StyleSheet.absoluteFill as any}>
               <Defs>
@@ -506,7 +466,83 @@ export function SeatingGridReadonly({
               </View>
             ))}
           </View>
+  );
+
+  const stageView = (
+        <View
+          ref={stageRef}
+          {...({ 'data-seating-stage': '1' } as any)}
+          style={[styles.gridWrap, { width: stageW, height: stageH }]}
+        >
+          {gridContent}
         </View>
+  );
+
+  if (!isWeb) {
+    // Native: use ScrollView with pinch-to-zoom and pan support
+    return (
+      <View style={styles.root}>
+        <ScrollView
+          ref={workAreaRef as any}
+          style={styles.nativeScrollOuter}
+          contentContainerStyle={styles.nativeScrollContent}
+          maximumZoomScale={3}
+          minimumZoomScale={0.5}
+          bouncesZoom={false}
+          bounces={false}
+          showsHorizontalScrollIndicator={false}
+          showsVerticalScrollIndicator={false}
+          onLayout={(e) => {
+            const w = e?.nativeEvent?.layout?.width;
+            const h = e?.nativeEvent?.layout?.height;
+            if (typeof w === 'number' && typeof h === 'number' && w > 0 && h > 0) setViewport({ w, h });
+          }}
+        >
+          {stageView}
+        </ScrollView>
+      </View>
+    );
+  }
+
+  // Web: original layout with scroll container
+  return (
+    <View style={styles.root}>
+      <View
+        ref={workAreaRef}
+        style={styles.workArea}
+        onLayout={(e) => {
+          const w = e?.nativeEvent?.layout?.width;
+          const h = e?.nativeEvent?.layout?.height;
+          if (typeof w === 'number' && typeof h === 'number' && w > 0 && h > 0) setViewport({ w, h });
+        }}
+      >
+        {tooltip ? (
+          <View
+            pointerEvents="none"
+            onLayout={(e) => {
+              const w = e?.nativeEvent?.layout?.width;
+              const h = e?.nativeEvent?.layout?.height;
+              if (typeof w === 'number' && typeof h === 'number' && (w !== tooltipSize.w || h !== tooltipSize.h)) {
+                setTooltipSize({ w, h });
+              }
+            }}
+            style={[
+              styles.tooltip,
+              {
+                left: tooltip.x,
+                top: tooltip.y,
+                transform: [
+                  { translateX: -(tooltipSize.w || 0) / 2 },
+                  { translateY: -((tooltipSize.h || 0) + 10) },
+                ],
+              },
+            ]}
+          >
+            <Text style={styles.tooltipText}>{tooltip.text}</Text>
+          </View>
+        ) : null}
+
+        {stageView}
       </View>
     </View>
   );
@@ -547,7 +583,15 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     top: 0,
-    transformOrigin: '0 0' as any,
+    transformOrigin: Platform.OS === 'web' ? ('0 0' as any) : ('left top' as any),
+  },
+  nativeScrollOuter: {
+    flex: 1,
+  },
+  nativeScrollContent: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexGrow: 1,
   },
 
   table: {

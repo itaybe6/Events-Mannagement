@@ -745,21 +745,28 @@ export default function BrideGroomSeating() {
         const xs = finalTables.map((t: any) => Number(t.gridX) || 0);
         const xMin = Math.min(...xs);
         const xMax = Math.max(...xs);
+        // On mobile portrait, auto-arrange more aggressively (threshold 6 vs 2)
+        // since web-designed layouts often don't fit narrow screens.
+        const isMobileScreen = windowWidth < 500 && windowWidth < windowHeight;
+        const spreadThreshold = isMobileScreen ? 6 : 2;
         const shouldAutoArrange =
-          xMax - xMin <= 2 ||
+          xMax - xMin <= spreadThreshold ||
           finalTables.every((t: any) => (Number(t.gridX) || 0) === 0 && (Number(t.gridY) || 0) === 0);
 
         if (shouldAutoArrange) {
-          // Spread tables more horizontally (especially in landscape) and add generous spacing.
+          // Spread tables into a grid that fits the screen orientation.
           const n = finalTables.length;
           const aspect = windowWidth / Math.max(1, windowHeight);
           const isWide = aspect >= 1.2;
-          const COL_MULT = isWide ? 2.0 : 1.45;
-          const TABLE_COLS = Math.min(14, Math.max(4, Math.ceil(Math.sqrt(n) * COL_MULT)));
+          const isMobilePortrait = !isWide && windowWidth < 500;
 
-          const STEP = isWide ? 9 : 8; // cells
-          const START_X = 4;
-          const START_Y = 4;
+          // Mobile portrait: use fewer columns so tables are larger & readable.
+          const COL_MULT = isWide ? 2.0 : isMobilePortrait ? 0.9 : 1.45;
+          const TABLE_COLS = Math.min(14, Math.max(isMobilePortrait ? 3 : 4, Math.ceil(Math.sqrt(n) * COL_MULT)));
+
+          const STEP = isWide ? 9 : isMobilePortrait ? 6 : 8; // cells
+          const START_X = isMobilePortrait ? 2 : 4;
+          const START_Y = isMobilePortrait ? 2 : 4;
 
           finalTables = finalTables.map((t: any, idx: number) => ({
             ...t,
