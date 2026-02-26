@@ -155,7 +155,10 @@ export default function AdminInvitationLinksScreen() {
         window.open(demoUrl, '_blank', 'noopener,noreferrer');
         return;
       }
-      await Linking.openURL(demoUrl);
+      router.push({
+        pathname: '/i/[token]',
+        params: { token: 'demo', eventId: String(event?.id ?? '') },
+      } as any);
     } catch (e: any) {
       const msg = e?.message ? String(e.message) : 'לא ניתן לפתוח קישור';
       Alert.alert('דמו', msg);
@@ -720,7 +723,7 @@ export default function AdminInvitationLinksScreen() {
 
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: '#f6f6f8' },
-  content: { padding: 18, paddingBottom: 40, gap: 14 },
+  content: { padding: 18, paddingBottom: Platform.OS === 'web' ? 40 : 110, gap: 14 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 24 },
   centerText: { fontSize: 14, fontWeight: '800', color: colors.gray[700], textAlign: 'center' },
 

@@ -1,18 +1,34 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, Modal, FlatList, TextInput } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  BackHandler,
+  FlatList,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { useUserStore } from '@/store/userStore';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import { Ionicons } from '@expo/vector-icons';
 import { Table } from '@/types';
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter, useSegments } from 'expo-router';
 import { useLayoutStore } from '@/store/layoutStore';
 import { colors } from '@/constants/colors';
 import { EventSwitcher } from '@/components/EventSwitcher';
+import BackSwipe from '@/components/BackSwipe';
+import AppHeader from '@/components/AppHeader';
 
 export default function TablesList() {
   const userData = useUserStore((s) => s.userData);
   const router = useRouter();
+  const segments = useSegments();
   const { eventId: queryEventId } = useLocalSearchParams<{ eventId?: string }>();
   const activeUserId = useEventSelectionStore((s) => s.activeUserId);
   const activeEventId = useEventSelectionStore((s) => s.activeEventId);
@@ -42,6 +58,29 @@ export default function TablesList() {
         userData?.event_id ||
         ''
     ).trim() || null;
+
+  const isAdminContext = useMemo(() => segments.includes('(admin)'), [segments]);
+  const backHref = useMemo(() => {
+    if (resolvedEventId) {
+      return isAdminContext ? `/(admin)/admin-event-details?id=${resolvedEventId}` : `/(couple)?eventId=${resolvedEventId}`;
+    }
+    return isAdminContext ? '/(admin)/admin-events' : '/(couple)';
+  }, [isAdminContext, resolvedEventId]);
+
+  const handleBack = useCallback(() => {
+    router.replace(backHref as any);
+  }, [backHref, router]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (Platform.OS !== 'android') return;
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        handleBack();
+        return true;
+      });
+      return () => sub.remove();
+    }, [handleBack])
+  );
 
   const handleSelectEventId = (nextEventId: string) => {
     if (userData?.id) setActiveEvent(userData.id, nextEventId);
@@ -375,17 +414,31 @@ export default function TablesList() {
 
   if (loading) {
     return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
+      <BackSwipe fallbackHref={backHref} onBack={handleBack}>
+        <Stack.Screen
+          options={{
+            header: () => <AppHeader canGoBack onPressBack={handleBack} />,
+          }}
+        />
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      </BackSwipe>
     );
   }
 
   if (!resolvedEventId) {
     return (
-      <View style={styles.centered}>
-        <Text style={styles.errorText}>אין אירוע זמין</Text>
-      </View>
+      <BackSwipe fallbackHref={backHref} onBack={handleBack}>
+        <Stack.Screen
+          options={{
+            header: () => <AppHeader canGoBack onPressBack={handleBack} />,
+          }}
+        />
+        <View style={styles.centered}>
+          <Text style={styles.errorText}>אין אירוע זמין</Text>
+        </View>
+      </BackSwipe>
     );
   }
 
@@ -404,7 +457,13 @@ export default function TablesList() {
   const totalTables = tables.length;
 
   return (
-    <View style={styles.container}>
+    <BackSwipe fallbackHref={backHref} onBack={handleBack}>
+      <Stack.Screen
+        options={{
+          header: () => <AppHeader canGoBack onPressBack={handleBack} />,
+        }}
+      />
+      <View style={styles.container}>
       {/* Stats Bar */}
       <View style={styles.statsBar}>
         <View style={styles.statsGrid}>
@@ -785,7 +844,8 @@ export default function TablesList() {
           </View>
         </View>
       </Modal>
-    </View>
+      </View>
+    </BackSwipe>
   );
 }
 

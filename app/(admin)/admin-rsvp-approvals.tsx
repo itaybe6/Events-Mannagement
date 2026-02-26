@@ -1,7 +1,8 @@
-import React, { useMemo } from "react";
+import React, { useCallback, useMemo } from "react";
 import {
   ActivityIndicator,
   Alert,
+  BackHandler,
   Linking,
   Platform,
   SafeAreaView,
@@ -12,13 +13,15 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { colors } from "@/constants/colors";
 import { Guest, GuestCategory } from "@/types";
 import BackSwipe from "@/components/BackSwipe";
+import AppHeader from "@/components/AppHeader";
 import { useRsvpApprovalsModel } from "@/features/rsvp/useRsvpApprovalsModel";
 
 const sanitizePhone = (raw: string) => (raw || "").replace(/[^\d+]/g, "");
@@ -35,6 +38,21 @@ export default function AdminRsvpApprovalsScreen() {
         ? `/(admin)/admin-event-details?id=${resolvedEventId}`
         : "/(admin)/admin-events",
     [resolvedEventId]
+  );
+
+  const handleBack = useCallback(() => {
+    router.replace(fallbackToDetails as any);
+  }, [fallbackToDetails, router]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (Platform.OS !== "android") return;
+      const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+        handleBack();
+        return true;
+      });
+      return () => sub.remove();
+    }, [handleBack])
   );
 
   const {
@@ -61,7 +79,12 @@ export default function AdminRsvpApprovalsScreen() {
 
   if (loading) {
     return (
-      <BackSwipe fallbackHref={fallbackToDetails}>
+      <BackSwipe fallbackHref={fallbackToDetails} onBack={handleBack}>
+        <Stack.Screen
+          options={{
+            header: () => <AppHeader canGoBack onPressBack={handleBack} />,
+          }}
+        />
         <SafeAreaView style={[styles.center, { paddingTop: insets.top }]}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>טוען...</Text>
@@ -72,7 +95,12 @@ export default function AdminRsvpApprovalsScreen() {
 
   if (!resolvedEventId) {
     return (
-      <BackSwipe fallbackHref="/(admin)/admin-events">
+      <BackSwipe fallbackHref="/(admin)/admin-events" onBack={handleBack}>
+        <Stack.Screen
+          options={{
+            header: () => <AppHeader canGoBack onPressBack={handleBack} />,
+          }}
+        />
         <SafeAreaView style={[styles.center, { paddingTop: insets.top, paddingHorizontal: 20 }]}>
           <Text style={styles.errorTitle}>חסר מזהה אירוע</Text>
           <TouchableOpacity
@@ -90,7 +118,12 @@ export default function AdminRsvpApprovalsScreen() {
   }
 
   return (
-    <BackSwipe fallbackHref={fallbackToDetails}>
+    <BackSwipe fallbackHref={fallbackToDetails} onBack={handleBack}>
+      <Stack.Screen
+        options={{
+          header: () => <AppHeader canGoBack onPressBack={handleBack} />,
+        }}
+      />
       <SafeAreaView style={[styles.screen, { paddingTop: insets.top }]}>
         <ScrollView
           showsVerticalScrollIndicator={false}
@@ -245,7 +278,7 @@ export default function AdminRsvpApprovalsScreen() {
                                     accessibilityRole="button"
                                     accessibilityLabel={phoneOk ? `התקשר אל ${g.name}` : `אין מספר טלפון ל${g.name}`}
                                   >
-                                    <Ionicons name="call" size={16} color={colors.gray[500]} />
+                                    <Ionicons name="call" size={19} color={colors.gray[500]} />
                                   </TouchableOpacity>
 
                                   <TouchableOpacity
@@ -256,7 +289,7 @@ export default function AdminRsvpApprovalsScreen() {
                                     accessibilityRole="button"
                                     accessibilityLabel={`סימון לא מגיע ל${g.name}`}
                                   >
-                                    <Ionicons name="close" size={16} color={"#f87171"} />
+                                    <Ionicons name="close" size={19} color={"#f87171"} />
                                   </TouchableOpacity>
 
                                   <TouchableOpacity
@@ -267,7 +300,7 @@ export default function AdminRsvpApprovalsScreen() {
                                     accessibilityRole="button"
                                     accessibilityLabel={`אישור הגעה ל${g.name}`}
                                   >
-                                    <Ionicons name="checkmark" size={16} color={colors.primary} />
+                                    <Ionicons name="checkmark" size={19} color={colors.primary} />
                                   </TouchableOpacity>
 
                                   {isEditing ? (
@@ -279,7 +312,7 @@ export default function AdminRsvpApprovalsScreen() {
                                       accessibilityRole="button"
                                       accessibilityLabel={`ביטול עריכה עבור ${g.name}`}
                                     >
-                                      <Ionicons name="close" size={16} color={colors.gray[600]} />
+                                      <Ionicons name="close" size={19} color={colors.gray[600]} />
                                     </TouchableOpacity>
                                   ) : null}
                                 </View>
@@ -459,10 +492,10 @@ const styles = StyleSheet.create({
   guestName: { minWidth: 0, flexShrink: 1, fontSize: 14, fontWeight: "900", color: colors.text, textAlign: "right" },
   leftSlot: { width: 170, alignItems: "flex-start", justifyContent: "center" },
 
-  badgeBase: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, borderWidth: 1 },
+  badgeBase: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, borderWidth: 1 },
   // Nudge "מגיע" badge right to align with "לא מגיע"
   badgeOffsetComing: { marginLeft: 10 },
-  badgeTextBase: { fontSize: 10, fontWeight: "900" },
+  badgeTextBase: { fontSize: 13, fontWeight: "900" },
   badgeConfirmed: { backgroundColor: "rgba(52, 199, 89, 0.12)", borderColor: "rgba(52, 199, 89, 0.22)" },
   badgeTextConfirmed: { color: colors.success },
   badgeDeclined: { backgroundColor: "rgba(255, 59, 48, 0.10)", borderColor: "rgba(255, 59, 48, 0.18)" },
@@ -471,8 +504,8 @@ const styles = StyleSheet.create({
   actionsInline: { flexDirection: "row-reverse", alignItems: "center", gap: 10 },
   statusEditRow: { flexDirection: "row-reverse", alignItems: "center", gap: 10 },
   iconBtn: {
-    width: 28,
-    height: 28,
+    width: 36,
+    height: 36,
     borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",

@@ -340,18 +340,6 @@ export default function LoginScreen() {
                 style={{ marginLeft: 8 }}
               />
             </TouchableOpacity>
-
-            <View style={styles.signupWrap}>
-              <Text style={styles.signupText}>
-                אין לך חשבון?{' '}
-              </Text>
-              <TouchableOpacity
-                onPress={() => Alert.alert('הרשמה', 'כדי ליצור משתמש חדש, פנה למנהל המערכת.')}
-                accessibilityRole="button"
-              >
-                <Text style={styles.signupLink}>צור אחד</Text>
-              </TouchableOpacity>
-            </View>
           </View>
         </View>
       </ScrollView>

@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo } from "react";
 import {
   ActivityIndicator,
   Alert,
+  BackHandler,
   Linking,
   Platform,
   SafeAreaView,
@@ -12,26 +13,49 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { Stack, useLocalSearchParams, useRouter, useSegments } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { colors } from "@/constants/colors";
 import BackSwipe from "@/components/BackSwipe";
+import AppHeader from "@/components/AppHeader";
 import { useGuestCheckInModel } from "@/features/guests/useGuestCheckInModel";
 
 export default function EmployeeGuestCheckInScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const segments = useSegments();
   const { eventId } = useLocalSearchParams<{ eventId?: string }>();
 
   const resolvedEventId = useMemo(() => String(eventId || "").trim(), [eventId]);
+  const isAdminContext = useMemo(() => segments.includes("(admin)"), [segments]);
   const fallbackToDetails = useMemo(
     () =>
       resolvedEventId
-        ? `/(employee)/employee-event-details?id=${resolvedEventId}`
+        ? isAdminContext
+          ? `/(admin)/admin-event-details?id=${resolvedEventId}`
+          : `/(employee)/employee-event-details?id=${resolvedEventId}`
+        : isAdminContext
+        ? "/(admin)/admin-events"
         : "/(employee)/employee-events",
-    [resolvedEventId]
+    [isAdminContext, resolvedEventId]
+  );
+
+  const handleBack = useCallback(() => {
+    router.replace(fallbackToDetails as any);
+  }, [fallbackToDetails, router]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (Platform.OS !== "android") return;
+      const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+        handleBack();
+        return true;
+      });
+      return () => sub.remove();
+    }, [handleBack])
   );
 
   const {
@@ -86,7 +110,12 @@ export default function EmployeeGuestCheckInScreen() {
 
   if (loading) {
     return (
-      <BackSwipe fallbackHref={fallbackToDetails}>
+      <BackSwipe fallbackHref={fallbackToDetails} onBack={handleBack}>
+        <Stack.Screen
+          options={{
+            header: () => <AppHeader canGoBack onPressBack={handleBack} />,
+          }}
+        />
         <SafeAreaView style={[styles.center, { paddingTop: insets.top }]}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>טוען...</Text>
@@ -96,12 +125,18 @@ export default function EmployeeGuestCheckInScreen() {
   }
 
   if (!resolvedEventId) {
+    const listHref = isAdminContext ? "/(admin)/admin-events" : "/(employee)/employee-events";
     return (
-      <BackSwipe fallbackHref="/(employee)/employee-events">
+      <BackSwipe fallbackHref={listHref} onBack={handleBack}>
+        <Stack.Screen
+          options={{
+            header: () => <AppHeader canGoBack onPressBack={handleBack} />,
+          }}
+        />
         <SafeAreaView style={[styles.center, { paddingTop: insets.top, paddingHorizontal: 20 }]}>
           <Text style={styles.errorTitle}>חסר מזהה אירוע</Text>
           <TouchableOpacity
-            onPress={() => router.replace("/(employee)/employee-events")}
+            onPress={() => router.replace(listHref as any)}
             style={styles.backBtn}
             activeOpacity={0.9}
             accessibilityRole="button"
@@ -115,12 +150,17 @@ export default function EmployeeGuestCheckInScreen() {
   }
 
   return (
-    <BackSwipe fallbackHref={fallbackToDetails}>
+    <BackSwipe fallbackHref={fallbackToDetails} onBack={handleBack}>
+      <Stack.Screen
+        options={{
+          header: () => <AppHeader canGoBack onPressBack={handleBack} />,
+        }}
+      />
       <SafeAreaView style={[styles.screen, { paddingTop: insets.top }]}>
         {/* Top bar */}
         <View style={styles.topBar}>
           <TouchableOpacity
-            onPress={() => router.replace(fallbackToDetails)}
+            onPress={handleBack}
             style={styles.topIconBtn}
             activeOpacity={0.85}
             accessibilityRole="button"

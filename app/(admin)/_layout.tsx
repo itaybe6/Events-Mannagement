@@ -2,7 +2,7 @@ import React, { useEffect } from "react";
 import { Tabs, useRouter } from "expo-router";
 import { colors } from "@/constants/colors";
 import { Ionicons } from "@expo/vector-icons";
-import { Platform, StyleSheet, View, TouchableOpacity } from "react-native";
+import { Platform, StyleSheet, Text, View } from "react-native";
 import { useLayoutStore } from '@/store/layoutStore';
 import { useUserStore } from '@/store/userStore';
 import AppHeader, { getAppHeaderTotalHeight } from "@/components/AppHeader";
@@ -30,6 +30,128 @@ export default function AdminTabsLayout() {
     }
   }, [isLoggedIn, userType, loading, router]);
 
+  // Avoid non-Screen children inside Tabs. Expo Router can warn/crash if booleans/nulls leak into children.
+  const screens: React.ReactElement[] = [];
+
+  if (userType === "employee") {
+    // Hide admin-only tabs for employee.
+    screens.push(<Tabs.Screen key="emp-users-hidden" name="users" options={{ href: null }} />);
+    screens.push(<Tabs.Screen key="emp-admin-profile-hidden" name="admin-profile" options={{ href: null }} />);
+  } else {
+    screens.push(
+      <Tabs.Screen
+        key="users"
+        name="users"
+        options={{
+          title: "ניהול משתמשים",
+          tabBarIcon: ({ focused }) => (
+            <View style={styles.tabIconWithLabel}>
+              <Ionicons
+                name={focused ? "people" : "people-outline"}
+                size={22}
+                color={focused ? colors.primary : colors.gray[400]}
+              />
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.75}
+                style={[styles.tabLabel, focused && styles.tabLabelActive]}
+              >
+                משתמשים
+              </Text>
+            </View>
+          ),
+        }}
+      />
+    );
+  }
+
+  screens.push(
+    <Tabs.Screen
+      key="admin-events"
+      name="admin-events"
+      options={{
+        title: "אירועים",
+        tabBarIcon: ({ focused }) => (
+          <View style={[styles.tabIconWithLabel, styles.centerTab]}>
+            <View style={[styles.centerIconBubble, focused && styles.centerIconBubbleActive]}>
+              <Ionicons
+                name={focused ? "calendar" : "calendar-outline"}
+                size={22}
+                color={focused ? colors.white : colors.primary}
+              />
+            </View>
+            <Text
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.75}
+              style={[styles.tabLabel, focused && styles.tabLabelActive]}
+            >
+              אירועים
+            </Text>
+          </View>
+        ),
+      }}
+    />
+  );
+
+  if (userType !== "employee") {
+    screens.push(
+      <Tabs.Screen
+        key="admin-profile"
+        name="admin-profile"
+        options={{
+          title: "פרופיל",
+          tabBarIcon: ({ focused }) => (
+            <View style={styles.tabIconWithLabel}>
+              <Ionicons
+                name={focused ? "person" : "person-outline"}
+                size={22}
+                color={focused ? colors.primary : colors.gray[400]}
+              />
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.75}
+                style={[styles.tabLabel, focused && styles.tabLabelActive]}
+              >
+                פרופיל
+              </Text>
+            </View>
+          ),
+        }}
+      />
+    );
+  }
+
+  // Hidden routes in admin group
+  screens.push(<Tabs.Screen key="add-user-v2" name="add-user-v2" options={{ href: null }} />);
+  screens.push(<Tabs.Screen key="admin-guest-checkin" name="admin-guest-checkin" options={{ href: null }} />);
+  screens.push(<Tabs.Screen key="admin-invitation-links" name="admin-invitation-links" options={{ href: null }} />);
+  screens.push(<Tabs.Screen key="admin-events-create" name="admin-events-create" options={{ href: null }} />);
+  screens.push(
+    <Tabs.Screen
+      key="admin-event-details"
+      name="admin-event-details"
+      options={{
+        href: null,
+        headerStyle: {
+          height: headerTotalHeight,
+        },
+      }}
+    />
+  );
+  screens.push(<Tabs.Screen key="admin-event-messages" name="admin-event-messages" options={{ href: null }} />);
+  screens.push(<Tabs.Screen key="notification-editor" name="notification-editor" options={{ href: null }} />);
+  screens.push(<Tabs.Screen key="admin-rsvp-approvals" name="admin-rsvp-approvals" options={{ href: null }} />);
+  screens.push(<Tabs.Screen key="automatic-notifications" name="automatic-notifications" options={{ href: null }} />);
+  screens.push(<Tabs.Screen key="guests" name="guests" options={{ href: null }} />);
+  screens.push(<Tabs.Screen key="TablesList" name="TablesList" options={{ href: null }} />);
+  // Hidden admin wrappers for seating screens (keep admin tab bar)
+  screens.push(<Tabs.Screen key="BrideGroomSeating" name="BrideGroomSeating" options={{ href: null }} />);
+  screens.push(<Tabs.Screen key="seating-templates" name="seating-templates" options={{ href: null }} />);
+  screens.push(<Tabs.Screen key="seating-map" name="seating-map" options={{ href: null }} />);
+
   return (
     <Tabs
       screenOptions={{
@@ -51,31 +173,32 @@ export default function AdminTabsLayout() {
         tabBarStyle: {
           position: 'absolute',
           bottom: Platform.OS === 'ios' ? 30 : 20,
-          left: 15,
-          right: 15,
-          height: 65,
+          left: 20,
+          right: 20,
+          height: 68,
           backgroundColor: colors.white,
-          borderRadius: 35,
-          paddingHorizontal: 15,
-          paddingVertical: 8,
-          paddingTop: 12,
+          borderRadius: 34,
+          paddingHorizontal: 8,
+          paddingTop: 8,
+          paddingBottom: 8,
+          overflow: 'visible',
           shadowColor: colors.richBlack,
-          shadowOffset: { width: 0, height: -10 },
-          shadowOpacity: 0.25,
-          shadowRadius: 30,
-          elevation: 25,
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.12,
+          shadowRadius: 16,
+          elevation: 14,
           borderTopWidth: 0,
           borderWidth: 1,
-          borderColor: 'rgba(0,0,0,0.08)',
+          borderColor: colors.gray[200],
           display: isTabBarVisible ? 'flex' : 'none',
         },
         tabBarItemStyle: {
-          marginHorizontal: 3,
-          paddingVertical: 6,
-          paddingHorizontal: 8,
-          height: 30,
-          justifyContent: 'center',
-          alignItems: 'center',
+          flex: 1,
+          marginHorizontal: 2,
+          paddingVertical: 2,
+          paddingHorizontal: 0,
+          justifyContent: "center",
+          alignItems: "center",
         },
         tabBarIconStyle: {
           marginRight: 0,
@@ -83,103 +206,47 @@ export default function AdminTabsLayout() {
         },
       }}
     >
-      {userType === 'employee' ? <Tabs.Screen name="users" options={{ href: null }} /> : null}
-      {userType === 'employee' ? <Tabs.Screen name="admin-profile" options={{ href: null }} /> : null}
-
-      <Tabs.Screen
-        name="admin-events"
-        options={{
-          title: "אירועים",
-          tabBarIcon: ({ focused }) => (
-            <View style={[styles.iconContainer, focused && styles.activeIconContainer] }>
-              <Ionicons
-                name="calendar-outline"
-                size={24}
-                color={focused ? colors.white : colors.gray[500]}
-              />
-            </View>
-          ),
-        }}
-      />
-      {userType !== 'employee' ? (
-        <Tabs.Screen
-          name="users"
-          options={{
-            title: "ניהול משתמשים",
-            tabBarIcon: ({ focused }) => (
-              <View style={[styles.iconContainer, focused && styles.activeIconContainer] }>
-                <Ionicons
-                  name="people-circle"
-                  size={24}
-                  color={focused ? colors.white : colors.gray[500]}
-                />
-              </View>
-            ),
-          }}
-        />
-      ) : null}
-      {userType !== 'employee' ? (
-        <Tabs.Screen
-          name="admin-profile"
-          options={{
-            title: 'פרופיל',
-            tabBarIcon: ({ focused }) => (
-              <View style={[styles.iconContainer, focused && styles.activeIconContainer] }>
-                <Ionicons
-                  name="person-circle"
-                  size={24}
-                  color={focused ? colors.white : colors.gray[500]}
-                />
-              </View>
-            ),
-          }}
-        />
-      ) : null}
-
-      {/* Hidden routes in admin group */}
-      <Tabs.Screen name="add-user-v2" options={{ href: null }} />
-      <Tabs.Screen name="admin-guest-checkin" options={{ href: null }} />
-      <Tabs.Screen
-        name="admin-events-create"
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="admin-event-details"
-        options={{
-          href: null,
-          headerStyle: {
-            height: headerTotalHeight,
-          },
-        }}
-      />
-      <Tabs.Screen name="admin-event-messages" options={{ href: null }} />
-      <Tabs.Screen name="notification-editor" options={{ href: null }} />
-      <Tabs.Screen name="admin-rsvp-approvals" options={{ href: null }} />
-      <Tabs.Screen name="automatic-notifications" options={{ href: null }} />
-      <Tabs.Screen name="guests" options={{ href: null }} />
-      <Tabs.Screen name="TablesList" options={{ href: null }} />
-      {/* Hidden admin wrappers for seating screens (keep admin tab bar) */}
-      <Tabs.Screen name="BrideGroomSeating" options={{ href: null }} />
-      <Tabs.Screen name="seating-templates" options={{ href: null }} />
-      <Tabs.Screen name="seating-map" options={{ href: null }} />
+      {screens}
     </Tabs>
   );
 }
 
 const styles = StyleSheet.create({
-  iconContainer: {
+  tabIconWithLabel: {
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 3,
+    width: "100%",
+  },
+  centerTab: {
+    marginTop: 0,
+  },
+  centerIconBubble: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: colors.gray[100],
+    borderWidth: 1.5,
+    borderColor: colors.gray[300],
   },
-  activeIconContainer: {
+  centerIconBubbleActive: {
     backgroundColor: colors.primary,
-    borderWidth: 2,
-    borderColor: colors.secondary,
+    borderColor: colors.primary,
+  },
+  tabLabel: {
+    fontSize: 11,
+    color: colors.gray[400],
+    fontWeight: "600",
+    textAlign: "center",
+    writingDirection: "rtl",
+    includeFontPadding: false,
+    lineHeight: 13,
+  },
+  tabLabelActive: {
+    color: colors.primary,
+    fontWeight: "700",
   },
 });
 
