@@ -35,6 +35,7 @@ export function useGuestCheckInModel(params: {
   const [query, setQuery] = useState('');
   const [savingId, setSavingId] = useState<string | null>(null);
   const [savingCountId, setSavingCountId] = useState<string | null>(null);
+  const [savingMoveId, setSavingMoveId] = useState<string | null>(null);
   const [filter, setFilter] = useState<GuestCheckInFilter>('all');
   const [collapsed, setCollapsed] = useState<Set<GuestCheckInCategoryKey>>(new Set());
 
@@ -232,6 +233,21 @@ export function useGuestCheckInModel(params: {
     }
   }, []);
 
+  const assignGuestToTable = useCallback(async (guest: Guest, tableId: string | null) => {
+    setSavingMoveId(guest.id);
+    try {
+      const updated = await guestService.assignGuestToTable(guest.id, tableId);
+      setGuests((prev) => prev.map((g) => (g.id === guest.id ? { ...g, ...updated } : g)));
+      return true;
+    } catch (e) {
+      console.error('Assign guest to table error:', e);
+      Alert.alert('שגיאה', 'לא ניתן להעביר אורח בין שולחנות');
+      return false;
+    } finally {
+      setSavingMoveId(null);
+    }
+  }, []);
+
   return {
     // data
     loading,
@@ -255,6 +271,8 @@ export function useGuestCheckInModel(params: {
     savingId,
     setCheckedInCount,
     savingCountId,
+    assignGuestToTable,
+    savingMoveId,
   };
 }
 

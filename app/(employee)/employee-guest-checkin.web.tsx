@@ -65,12 +65,6 @@ function parseTableNumber(v: unknown): number | null {
   return null;
 }
 
-function statusTag(status: Guest['status']) {
-  if (status === 'מגיע') return { bg: 'rgba(34,197,94,0.12)', fg: '#15803D' };
-  if (status === 'לא מגיע') return { bg: 'rgba(244,63,94,0.12)', fg: '#BE123C' };
-  return { bg: 'rgba(15,23,42,0.06)', fg: colors.gray[700] };
-}
-
 function initialsFromName(name: string) {
   const parts = String(name || '')
     .trim()
@@ -149,11 +143,18 @@ export default function EmployeeGuestCheckinWebScreen() {
     savingId,
     setCheckedInCount,
     savingCountId,
+    assignGuestToTable,
+    savingMoveId,
   } = useGuestCheckInModel({
     eventId: resolvedEventId ? resolvedEventId : null,
     errorTitle: 'שגיאה',
     errorMessage: 'לא ניתן לטעון את רשימת האורחים',
   });
+
+  const [moveGuest, setMoveGuest] = useState<Guest | null>(null);
+  const [moveTableQuery, setMoveTableQuery] = useState('');
+  const [moveSelectedTableId, setMoveSelectedTableId] = useState<string | null>(null);
+  const [movePrevSelectedTableNumber, setMovePrevSelectedTableNumber] = useState<number | null>(null);
 
   const loadTables = useCallback(async () => {
     if (!resolvedEventId) {
@@ -223,6 +224,28 @@ export default function EmployeeGuestCheckinWebScreen() {
     return m;
   }, [tablesSorted]);
 
+  const tableCapacityById = useMemo(() => {
+    const m = new Map<string, number>();
+    tablesSorted.forEach((t) => {
+      const id = String((t as any).id ?? '').trim();
+      if (!id) return;
+      const cap = Number((t as any).capacity) || 0;
+      m.set(id, cap);
+    });
+    return m;
+  }, [tablesSorted]);
+
+  const tableCapacityByNumber = useMemo(() => {
+    const m = new Map<number, number>();
+    tablesSorted.forEach((t) => {
+      const n = parseTableNumber((t as any).number);
+      if (typeof n !== 'number') return;
+      const cap = Number((t as any).capacity) || 0;
+      m.set(n, cap);
+    });
+    return m;
+  }, [tablesSorted]);
+
   const seatedByNumber = useMemo(() => {
     const m = new Map<number, number>();
     guests.forEach((g) => {
@@ -235,6 +258,17 @@ export default function EmployeeGuestCheckinWebScreen() {
     });
     return m;
   }, [guests, tableNumberById]);
+
+  const seatedByTableId = useMemo(() => {
+    const m = new Map<string, number>();
+    guests.forEach((g) => {
+      const tableIdKey = g.tableId === null || g.tableId === undefined ? '' : String(g.tableId).trim();
+      if (!tableIdKey) return;
+      const ppl = Number(g.numberOfPeople) || 1;
+      m.set(tableIdKey, (m.get(tableIdKey) || 0) + ppl);
+    });
+    return m;
+  }, [guests]);
 
   const buildSketchFromCurrentTables = useCallback((currentTables: Table[]): WebSketch | null => {
     const placed = (currentTables || [])
@@ -410,12 +444,19 @@ export default function EmployeeGuestCheckinWebScreen() {
         peopleTotal: number;
         arrivedPeople: number;
         guestCount: number;
+        maxPeople: number; // table capacity (falls back to peopleTotal if 0)
       }
     >();
 
     for (const g of visibleGuests) {
       const tableIdKey = g.tableId === null || g.tableId === undefined ? '' : String(g.tableId).trim();
       const tableNumber = tableIdKey ? (tableNumberById.get(tableIdKey) ?? null) : null;
+      const capacity =
+        tableIdKey
+          ? tableCapacityById.get(tableIdKey) || 0
+          : typeof tableNumber === 'number'
+            ? tableCapacityByNumber.get(tableNumber) || 0
+            : 0;
 
       let key = 'none';
       let label = 'ללא שולחן';
@@ -443,12 +484,14 @@ export default function EmployeeGuestCheckinWebScreen() {
         peopleTotal: 0,
         arrivedPeople: 0,
         guestCount: 0,
+        maxPeople: 0,
       };
 
       current.guests.push(g);
       current.peopleTotal += people;
       current.arrivedPeople += g.checkedIn ? arrivedCount : 0;
       current.guestCount += 1;
+      current.maxPeople = Math.max(current.maxPeople || 0, capacity || 0);
       groups.set(key, current);
     }
 
@@ -458,7 +501,7 @@ export default function EmployeeGuestCheckinWebScreen() {
       return String(a.label).localeCompare(String(b.label), 'he');
     });
     return arr;
-  }, [tableLabelById, tableNumberById, visibleGuests]);
+  }, [tableCapacityById, tableCapacityByNumber, tableLabelById, tableNumberById, visibleGuests]);
 
   const mapCardHeight = useMemo(() => {
     if (!height || !isLg) return 620;
@@ -470,10 +513,40 @@ export default function EmployeeGuestCheckinWebScreen() {
     return Math.max(420, Math.round(height - 320));
   }, [height, isLg]);
 
+  const guestsListEstimatedHeight = useMemo(() => {
+    // Heuristic so the list "shrinks to fit" when there are few guests.
+    const GROUP_GAP = 10;
+    const GROUP_HEADER_H = 52;
+    const BODY_PADDING_V = 20; // tableGroupBody paddingVertical
+    const BODY_GAP = 10; // tableGroupBody gap
+    const ROW_H = 66; // guestRowCompact height + padding
+    const LIST_WRAP_PADDING_V = 28; // listWrap paddingVertical (14 top + 14 bottom)
+
+    let total = LIST_WRAP_PADDING_V;
+    groupedVisibleGuests.forEach((group, idx) => {
+      if (idx > 0) total += GROUP_GAP;
+      total += GROUP_HEADER_H;
+      const collapsed = Boolean(collapsedTableGroups[group.key]);
+      if (collapsed) return;
+      const rows = Array.isArray(group.guests) ? group.guests.length : 0;
+      if (rows <= 0) return;
+      total += BODY_PADDING_V;
+      total += rows * ROW_H;
+      total += Math.max(0, rows - 1) * BODY_GAP;
+    });
+    return total;
+  }, [groupedVisibleGuests, collapsedTableGroups]);
+
+  const shouldScrollGuests = useMemo(() => {
+    if (!guestListMaxHeight) return false;
+    return guestsListEstimatedHeight > guestListMaxHeight;
+  }, [guestListMaxHeight, guestsListEstimatedHeight]);
+
   const guestsColWidth = useMemo(() => {
     if (!isLg) return undefined as number | undefined;
     const w = Number(width) || 0;
-    return Math.max(340, Math.min(520, Math.round(w * 0.32)));
+    // Keep the guests "window" compact on wide screens.
+    return Math.max(420, Math.min(440, Math.round(w * 0.34)));
   }, [isLg, width]);
 
   const stickyTop = useMemo(() => {
@@ -482,6 +555,274 @@ export default function EmployeeGuestCheckinWebScreen() {
     // Keep a tiny gap from the top on web.
     return 8;
   }, [isLg]);
+
+  const tableNumberForId = useCallback(
+    (tableId: string | null) => {
+      if (!tableId) return null;
+      const key = String(tableId).trim();
+      const n = tableNumberById.get(key) ?? null;
+      return typeof n === 'number' ? n : null;
+    },
+    [tableNumberById]
+  );
+
+  const setMoveTargetTableId = useCallback(
+    (tableId: string | null) => {
+      setMoveSelectedTableId(tableId);
+      setSelectedTableNumber(tableNumberForId(tableId));
+    },
+    [tableNumberForId]
+  );
+
+  const openMoveModal = useCallback(
+    (guest: Guest) => {
+      setMovePrevSelectedTableNumber(selectedTableNumber);
+      setMoveGuest(guest);
+      setMoveTableQuery('');
+      setMoveTargetTableId(guest.tableId ?? null);
+    },
+    [selectedTableNumber, setMoveTargetTableId]
+  );
+
+  const closeMoveModal = useCallback(() => {
+    setMoveGuest(null);
+    setMoveTableQuery('');
+    setMoveSelectedTableId(null);
+    setSelectedTableNumber(movePrevSelectedTableNumber);
+    setMovePrevSelectedTableNumber(null);
+  }, [movePrevSelectedTableNumber]);
+
+  const moveOptions = useMemo(() => {
+    const q = moveTableQuery.trim().toLowerCase();
+    const base = tablesSorted.map((t) => {
+      const id = String((t as any).id ?? t.id);
+      const label = tableLabelById.get(id) || 'שולחן';
+      const capacity = Number((t as any).capacity) || 0;
+      const seated = seatedByTableId.get(String(id).trim()) || 0;
+      const shape = ((t as any).shape ?? null) as any;
+      return { id, label, capacity, seated, shape };
+    });
+    if (!q) return base;
+    return base.filter((x) => x.label.toLowerCase().includes(q));
+  }, [moveTableQuery, seatedByTableId, tableLabelById, tablesSorted]);
+
+  const moveGuestPeople = useMemo(() => {
+    if (!moveGuest) return 0;
+    return Number((moveGuest as any).numberOfPeople) || 1;
+  }, [moveGuest]);
+
+  const moveGuestFromTableId = useMemo(() => {
+    if (!moveGuest?.tableId) return null;
+    const s = String(moveGuest.tableId).trim();
+    return s ? s : null;
+  }, [moveGuest?.tableId]);
+
+  const previewSeatedForOption = useCallback(
+    (optId: string, optSeated: number) => {
+      let seated = Number(optSeated) || 0;
+      if (!moveGuest) return seated;
+      const id = String(optId || '').trim();
+      // If moving away from this table (and the target isn't this table), subtract.
+      if (moveGuestFromTableId && moveGuestFromTableId === id && moveSelectedTableId !== id) {
+        seated -= moveGuestPeople;
+      }
+      // If moving into this table (and the guest isn't already here), add.
+      if (moveSelectedTableId === id && moveGuestFromTableId !== id) {
+        seated += moveGuestPeople;
+      }
+      return Math.max(0, seated);
+    },
+    [moveGuest, moveGuestFromTableId, moveGuestPeople, moveSelectedTableId]
+  );
+
+  const previewOverflowForOption = useCallback(
+    (optId: string, optSeated: number, capacity: number, shape: any) => {
+      if (shape === 'reserve') return 0;
+      const cap = Number(capacity) || 0;
+      if (cap <= 0) return 0;
+      const wouldSeated = previewSeatedForOption(optId, optSeated);
+      return Math.max(0, wouldSeated - cap);
+    },
+    [previewSeatedForOption]
+  );
+
+  const isMoveSaving = Boolean(moveGuest && savingMoveId === moveGuest.id);
+
+  const confirmMove = useCallback(async () => {
+    if (!moveGuest) return;
+    const ok = await assignGuestToTable(moveGuest, moveSelectedTableId);
+    if (ok) closeMoveModal();
+  }, [assignGuestToTable, closeMoveModal, moveGuest, moveSelectedTableId]);
+
+  const guestsListContent = (
+    <View style={styles.tableGroupsWrap}>
+      {groupedVisibleGuests.map((group) => {
+        const collapsed = Boolean(collapsedTableGroups[group.key]);
+        const maxPeople = (Number((group as any).maxPeople) || 0) > 0 ? Number((group as any).maxPeople) || 0 : group.peopleTotal;
+        const overflow = Math.max(0, (Number(group.arrivedPeople) || 0) - (Number(maxPeople) || 0));
+        return (
+          <View key={group.key} style={[styles.tableGroupCard, overflow > 0 ? styles.tableGroupCardOverflow : null]}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`שולחן ${group.label}`}
+              onPress={() => setCollapsedTableGroups((prev) => ({ ...prev, [group.key]: !prev[group.key] }))}
+              style={({ hovered, pressed }: any) => [
+                styles.tableGroupHeader,
+                overflow > 0 ? styles.tableGroupHeaderOverflow : null,
+                Platform.OS === 'web' && hovered ? { backgroundColor: 'rgba(17,24,39,0.03)' } : null,
+                pressed ? { opacity: 0.95 } : null,
+              ]}
+            >
+              <View style={styles.tableGroupTitleRow}>
+                <View style={styles.tableGroupIcon}>
+                  <Ionicons name="restaurant" size={14} color={colors.primary} />
+                </View>
+                <Text style={styles.tableGroupTitle} numberOfLines={1}>
+                  {group.label}
+                </Text>
+              </View>
+
+              <View style={styles.tableGroupMetaRow}>
+                <View style={styles.tableGroupMetaPill}>
+                  <Text style={styles.tableGroupMetaStrong}>{group.arrivedPeople}</Text>
+                  <Text style={styles.tableGroupMetaDim}>/</Text>
+                  <Text style={styles.tableGroupMetaStrong}>{maxPeople}</Text>
+                  <Text style={styles.tableGroupMetaDim}>אנשים</Text>
+                </View>
+                {overflow > 0 ? (
+                  <View style={[styles.tableGroupMetaPill, styles.tableGroupMetaPillOverflow]}>
+                    <Text style={styles.tableGroupMetaStrongOverflow}>{overflow}</Text>
+                    <Text style={styles.tableGroupMetaDimOverflow}>חריגה</Text>
+                  </View>
+                ) : null}
+                <Ionicons name={collapsed ? 'chevron-down' : 'chevron-up'} size={16} color={colors.gray[500]} />
+              </View>
+            </Pressable>
+
+            {collapsed ? null : (
+              <View style={styles.tableGroupBody}>
+                {group.guests.map((g: any) => {
+                  const checkedIn = Boolean(g.checkedIn);
+                  const isSaving = savingId === g.id;
+                  const tableIdKey = g.tableId === null || g.tableId === undefined ? '' : String(g.tableId).trim();
+                  const tableNumber = tableIdKey ? (tableNumberById.get(tableIdKey) ?? null) : null;
+                  const people = Number(g.numberOfPeople) || 1;
+                  const arrivedCount =
+                    g.checkedInCount === null || g.checkedInCount === undefined ? people : Number(g.checkedInCount) || 0;
+
+                  return (
+                    <View key={g.id} style={[styles.guestRowCompact, checkedIn ? styles.guestRowCompactOn : null]}>
+                      <View style={[styles.guestRowAccent, checkedIn ? styles.guestRowAccentOn : null]} />
+
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`בחירת אורח ${g.name}`}
+                        onPress={() => {
+                          const next = typeof tableNumber === 'number' ? tableNumber : null;
+                          setSelectedTableNumber((prev) => (prev === next ? null : next));
+                        }}
+                        style={({ hovered, pressed }: any) => [
+                          styles.guestRowMain,
+                          Platform.OS === 'web' && hovered ? ({ backgroundColor: 'rgba(6,23,62,0.03)', borderRadius: 12 } as any) : null,
+                          pressed ? { opacity: 0.96 } : null,
+                        ]}
+                      >
+                        <View style={[styles.avatar, styles.avatarCompact, checkedIn ? styles.avatarOn : null]}>
+                          <Text style={styles.avatarText}>{initialsFromName(g.name)}</Text>
+                        </View>
+
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text style={styles.guestNameCompact} numberOfLines={1}>
+                            {g.name}
+                          </Text>
+                         
+                        </View>
+                      </Pressable>
+
+                      <View style={styles.guestRowRight}>
+                        <View style={styles.arrivalSlot}>
+                          {checkedIn ? (
+                            <View style={styles.compactStepper}>
+                              <Pressable
+                                accessibilityRole="button"
+                                accessibilityLabel={`הפחת כמות שהגיעה עבור ${g.name}`}
+                                onPress={() => void setCheckedInCount(g, Math.max(0, arrivedCount - 1))}
+                                disabled={savingCountId === g.id || arrivedCount <= 0}
+                                style={({ hovered, pressed }: any) => [
+                                  styles.stepBtnCompact,
+                                  savingCountId === g.id || arrivedCount <= 0 ? styles.stepBtnDisabled : null,
+                                  Platform.OS === 'web' && hovered ? styles.stepBtnHover : null,
+                                  pressed ? { opacity: 0.92 } : null,
+                                ]}
+                              >
+                                <Text style={styles.stepBtnText}>-</Text>
+                              </Pressable>
+
+                              <View style={styles.compactCountWrap}>
+                                {savingCountId === g.id ? (
+                                  <ActivityIndicator size={12} color={colors.primary} />
+                                ) : (
+                                  <Text style={styles.compactCountText}>{arrivedCount}</Text>
+                                )}
+                              </View>
+
+                              <Pressable
+                                accessibilityRole="button"
+                                accessibilityLabel={`הגדל כמות שהגיעה עבור ${g.name}`}
+                                onPress={() => void setCheckedInCount(g, arrivedCount + 1)}
+                                disabled={savingCountId === g.id}
+                                style={({ hovered, pressed }: any) => [
+                                  styles.stepBtnCompact,
+                                  savingCountId === g.id ? styles.stepBtnDisabled : null,
+                                  Platform.OS === 'web' && hovered ? styles.stepBtnHover : null,
+                                  pressed ? { opacity: 0.92 } : null,
+                                ]}
+                              >
+                                <Text style={styles.stepBtnText}>+</Text>
+                              </Pressable>
+                            </View>
+                          ) : (
+                            <Text style={styles.peoplePill}>{people}</Text>
+                          )}
+                        </View>
+
+                        <Switch
+                          checked={checkedIn}
+                          saving={isSaving}
+                          disabled={isSaving}
+                          accessibilityLabel={checkedIn ? `סמן שלא הגיע: ${g.name}` : `סמן שהגיע: ${g.name}`}
+                          onPress={() => void toggleCheckIn(g)}
+                        />
+
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={`העבר אורח ${g.name} לשולחן אחר`}
+                          onPress={() => openMoveModal(g)}
+                          disabled={isSaving || savingMoveId === g.id}
+                          style={({ hovered, pressed }: any) => [
+                            styles.moveBtn,
+                            (isSaving || savingMoveId === g.id) ? styles.moveBtnDisabled : null,
+                            Platform.OS === 'web' && hovered ? styles.moveBtnHover : null,
+                            pressed ? { opacity: 0.92 } : null,
+                          ]}
+                        >
+                          {savingMoveId === g.id ? (
+                            <ActivityIndicator size={14} color={colors.primary} />
+                          ) : (
+                            <Ionicons name="swap-horizontal" size={16} color={colors.gray[700]} />
+                          )}
+                        </Pressable>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+          </View>
+        );
+      })}
+    </View>
+  );
 
   return (
     <View style={styles.page}>
@@ -537,7 +878,7 @@ export default function EmployeeGuestCheckinWebScreen() {
                     <Text style={styles.dashboardBackText}>חזור</Text>
                   </Pressable>
 
-                  <View style={styles.dashboardHeaderGlow} pointerEvents="none" />
+                  <View style={[styles.dashboardHeaderGlow, { pointerEvents: 'none' } as any]} />
                 </View>
 
                 <View style={[styles.dashboardBody, isLg ? styles.dashboardBodyTop : null]}>
@@ -648,179 +989,17 @@ export default function EmployeeGuestCheckinWebScreen() {
                         <Text style={styles.emptyText}>נסה לשנות חיפוש / פילטר / שולחן.</Text>
                       </View>
                     ) : (
-                      <ScrollView
-                        style={guestListMaxHeight ? ({ maxHeight: guestListMaxHeight } as any) : undefined}
-                        showsVerticalScrollIndicator={false}
-                        nestedScrollEnabled
-                      >
-                        <View style={styles.tableGroupsWrap}>
-                          {groupedVisibleGuests.map((group) => {
-                            const collapsed = Boolean(collapsedTableGroups[group.key]);
-                            return (
-                              <View key={group.key} style={styles.tableGroupCard}>
-                                <Pressable
-                                  accessibilityRole="button"
-                                  accessibilityLabel={`שולחן ${group.label}`}
-                                  onPress={() =>
-                                    setCollapsedTableGroups((prev) => ({ ...prev, [group.key]: !prev[group.key] }))
-                                  }
-                                  style={({ hovered, pressed }: any) => [
-                                    styles.tableGroupHeader,
-                                    Platform.OS === 'web' && hovered ? { backgroundColor: 'rgba(17,24,39,0.03)' } : null,
-                                    pressed ? { opacity: 0.95 } : null,
-                                  ]}
-                                >
-                                  <View style={styles.tableGroupTitleRow}>
-                                    <View style={styles.tableGroupIcon}>
-                                      <Ionicons name="restaurant" size={14} color={colors.primary} />
-                                    </View>
-                                    <Text style={styles.tableGroupTitle} numberOfLines={1}>
-                                      {group.label}
-                                    </Text>
-                                  </View>
-
-                                  <View style={styles.tableGroupMetaRow}>
-                                    <View style={styles.tableGroupMetaPill}>
-                                      <Text style={styles.tableGroupMetaStrong}>{group.arrivedPeople}</Text>
-                                      <Text style={styles.tableGroupMetaDim}>/</Text>
-                                      <Text style={styles.tableGroupMetaStrong}>{group.peopleTotal}</Text>
-                                      <Text style={styles.tableGroupMetaDim}>אנשים</Text>
-                                    </View>
-                                    <View style={styles.tableGroupMetaPill}>
-                                      <Text style={styles.tableGroupMetaStrong}>{group.guestCount}</Text>
-                                      <Text style={styles.tableGroupMetaDim}>מוזמנים</Text>
-                                    </View>
-                                    <Ionicons
-                                      name={collapsed ? 'chevron-down' : 'chevron-up'}
-                                      size={16}
-                                      color={colors.gray[500]}
-                                    />
-                                  </View>
-                                </Pressable>
-
-                                {collapsed ? null : (
-                                  <View style={styles.tableGroupBody}>
-                                    {group.guests.map((g: any) => {
-                                      const checkedIn = Boolean(g.checkedIn);
-                                      const isSaving = savingId === g.id;
-                                      const tag = statusTag(g.status);
-                                      const tableIdKey =
-                                        g.tableId === null || g.tableId === undefined ? '' : String(g.tableId).trim();
-                                      const tableNumber = tableIdKey ? (tableNumberById.get(tableIdKey) ?? null) : null;
-                                      const people = Number(g.numberOfPeople) || 1;
-                                      const arrivedCount =
-                                        g.checkedInCount === null || g.checkedInCount === undefined
-                                          ? people
-                                          : Number(g.checkedInCount) || 0;
-
-                                      return (
-                                        <Pressable
-                                          key={g.id}
-                                          accessibilityRole="button"
-                                          accessibilityLabel={`בחירת אורח ${g.name}`}
-                                          onPress={() => {
-                                            const next = typeof tableNumber === 'number' ? tableNumber : null;
-                                            setSelectedTableNumber((prev) => (prev === next ? null : next));
-                                          }}
-                                          style={({ hovered, pressed }: any) => [
-                                            styles.guestRowCompact,
-                                            checkedIn ? styles.guestRowCompactOn : null,
-                                            Platform.OS === 'web' && hovered ? { backgroundColor: 'rgba(6,23,62,0.03)' } : null,
-                                            pressed ? { opacity: 0.96 } : null,
-                                          ]}
-                                        >
-                                          <View style={[styles.guestRowAccent, checkedIn ? styles.guestRowAccentOn : null]} />
-
-                                          <View style={styles.guestRowMain}>
-                                            <View style={[styles.avatar, styles.avatarCompact, checkedIn ? styles.avatarOn : null]}>
-                                              <Text style={styles.avatarText}>{initialsFromName(g.name)}</Text>
-                                            </View>
-
-                                            <View style={{ flex: 1, minWidth: 0 }}>
-                                              <Text style={styles.guestNameCompact} numberOfLines={1}>
-                                                {g.name}
-                                              </Text>
-                                              <Text style={styles.guestMetaCompact} numberOfLines={1}>
-                                                {people === 1 ? 'אדם אחד' : `${people} אנשים`}
-                                              </Text>
-                                            </View>
-                                          </View>
-
-                                          <View style={styles.guestRowRight}>
-                                            <View style={styles.tableChip}>
-                                              <Text style={styles.tableChipText}>
-                                                {tableNumber != null ? `שולחן ${tableNumber}` : '—'}
-                                              </Text>
-                                            </View>
-
-                                            <View style={[styles.statusTag, { backgroundColor: tag.bg }]}>
-                                              <Text style={[styles.statusTagText, { color: tag.fg }]}>{g.status}</Text>
-                                            </View>
-
-                                            <View style={styles.arrivalSlot}>
-                                              {checkedIn ? (
-                                                <View style={styles.compactStepper}>
-                                                  <Pressable
-                                                    accessibilityRole="button"
-                                                    accessibilityLabel={`הפחת כמות שהגיעה עבור ${g.name}`}
-                                                    onPress={() => void setCheckedInCount(g, Math.max(0, arrivedCount - 1))}
-                                                    disabled={savingCountId === g.id || arrivedCount <= 0}
-                                                    style={({ hovered, pressed }: any) => [
-                                                      styles.stepBtnCompact,
-                                                      (savingCountId === g.id || arrivedCount <= 0) ? styles.stepBtnDisabled : null,
-                                                      Platform.OS === 'web' && hovered ? styles.stepBtnHover : null,
-                                                      pressed ? { opacity: 0.92 } : null,
-                                                    ]}
-                                                  >
-                                                    <Text style={styles.stepBtnText}>-</Text>
-                                                  </Pressable>
-
-                                                  <View style={styles.compactCountWrap}>
-                                                    {savingCountId === g.id ? (
-                                                      <ActivityIndicator size={12} color={colors.primary} />
-                                                    ) : (
-                                                      <Text style={styles.compactCountText}>{arrivedCount}</Text>
-                                                    )}
-                                                  </View>
-
-                                                  <Pressable
-                                                    accessibilityRole="button"
-                                                    accessibilityLabel={`הגדל כמות שהגיעה עבור ${g.name}`}
-                                                    onPress={() => void setCheckedInCount(g, arrivedCount + 1)}
-                                                    disabled={savingCountId === g.id}
-                                                    style={({ hovered, pressed }: any) => [
-                                                      styles.stepBtnCompact,
-                                                      savingCountId === g.id ? styles.stepBtnDisabled : null,
-                                                      Platform.OS === 'web' && hovered ? styles.stepBtnHover : null,
-                                                      pressed ? { opacity: 0.92 } : null,
-                                                    ]}
-                                                  >
-                                                    <Text style={styles.stepBtnText}>+</Text>
-                                                  </Pressable>
-                                                </View>
-                                              ) : (
-                                                <Text style={styles.peoplePill}>{people}</Text>
-                                              )}
-                                            </View>
-
-                                            <Switch
-                                              checked={checkedIn}
-                                              saving={isSaving}
-                                              disabled={isSaving}
-                                              accessibilityLabel={checkedIn ? `סמן שלא הגיע: ${g.name}` : `סמן שהגיע: ${g.name}`}
-                                              onPress={() => void toggleCheckIn(g)}
-                                            />
-                                          </View>
-                                        </Pressable>
-                                      );
-                                    })}
-                                  </View>
-                                )}
-                              </View>
-                            );
-                          })}
-                        </View>
-                      </ScrollView>
+                      shouldScrollGuests ? (
+                        <ScrollView
+                          style={guestListMaxHeight ? ({ maxHeight: guestListMaxHeight } as any) : undefined}
+                          showsVerticalScrollIndicator={false}
+                          nestedScrollEnabled
+                        >
+                          {guestsListContent}
+                        </ScrollView>
+                      ) : (
+                        guestsListContent
+                      )
                     )}
                   </View>
                 </View>
@@ -916,6 +1095,195 @@ export default function EmployeeGuestCheckinWebScreen() {
           </View>
         </ScrollView>
       )}
+
+      {moveGuest ? (
+        <View style={styles.modalBackdrop}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="סגור העברת אורח"
+            onPress={closeMoveModal}
+            style={styles.modalBackdropPressable}
+          />
+
+          <View style={[styles.modalCard, isNarrow ? styles.modalCardNarrow : null]}>
+            <View style={styles.modalHeader}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="סגור"
+                onPress={closeMoveModal}
+                style={({ hovered, pressed }: any) => [
+                  styles.modalCloseBtn,
+                  Platform.OS === 'web' && hovered ? styles.modalCloseBtnHover : null,
+                  pressed ? { opacity: 0.9 } : null,
+                ]}
+              >
+                <Ionicons name="close" size={18} color={colors.gray[700]} />
+              </Pressable>
+              <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-end' }}>
+                <Text style={styles.modalKicker}>העברת אורח</Text>
+              </View>
+            </View>
+
+            <View style={styles.modalGuestRow}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.modalSubTitle} numberOfLines={1}>
+                  {moveGuest.name}
+                </Text>
+                <View style={styles.modalGuestMetaRow}>
+                  <Ionicons name="people" size={14} color={colors.primary} />
+                  <Text style={styles.modalGuestMetaText}>
+                    {(Number(moveGuest.numberOfPeople) || 1) === 1 ? 'אורח 1' : `${Number(moveGuest.numberOfPeople) || 1} אורחים`}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.modalAvatar}>
+                <Text style={styles.modalAvatarText}>{String(initialsFromName(moveGuest.name)).slice(0, 1)}</Text>
+              </View>
+            </View>
+
+            <View style={styles.modalSearchWrap}>
+              <View style={styles.modalSearchIcon}>
+                <Ionicons name="search" size={18} color={colors.primary} />
+              </View>
+              <TextInput
+                style={styles.modalSearchInput}
+                placeholder="חיפוש שולחן..."
+                placeholderTextColor="rgba(107,114,128,0.75)"
+                value={moveTableQuery}
+                onChangeText={setMoveTableQuery}
+                textAlign="right"
+                autoCapitalize="none"
+              />
+            </View>
+
+            <View style={styles.modalListWrap}>
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                style={styles.modalListScroll}
+                contentContainerStyle={{ paddingVertical: 6 }}
+              >
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="בחר ללא שולחן"
+                  onPress={() => setMoveTargetTableId(null)}
+                  style={({ hovered, pressed }: any) => [
+                    styles.modalOptionRow,
+                    moveSelectedTableId === null ? styles.modalOptionRowSelected : null,
+                    Platform.OS === 'web' && hovered ? styles.modalOptionRowHover : null,
+                    pressed ? { opacity: 0.94 } : null,
+                  ]}
+                >
+                  <Text style={styles.modalOptionText}>ללא שולחן</Text>
+                  <Ionicons
+                    name={moveSelectedTableId === null ? 'checkmark-circle' : 'ellipse-outline'}
+                    size={20}
+                    color={moveSelectedTableId === null ? colors.primary : 'rgba(156,163,175,0.9)'}
+                  />
+                </Pressable>
+
+                {moveOptions.map((opt) => (
+                  <Pressable
+                    key={opt.id}
+                    accessibilityRole="button"
+                    accessibilityLabel={`בחר ${opt.label}`}
+                    onPress={() => setMoveTargetTableId(opt.id)}
+                    style={({ hovered, pressed }: any) => [
+                      styles.modalOptionRow,
+                      moveSelectedTableId === opt.id ? styles.modalOptionRowSelected : null,
+                      Platform.OS === 'web' && hovered ? styles.modalOptionRowHover : null,
+                      pressed ? { opacity: 0.94 } : null,
+                    ]}
+                  >
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={styles.modalOptionText} numberOfLines={1}>
+                        {opt.label}
+                      </Text>
+                      {opt.capacity > 0 ? (
+                        <View style={styles.modalOptionMetaRow}>
+                          <Ionicons name="person" size={14} color="rgba(107,114,128,0.9)" />
+                          <Text style={styles.modalOptionMeta} numberOfLines={1}>
+                            יושבים: {previewSeatedForOption(opt.id, opt.seated)} מתוך {opt.capacity}
+                          </Text>
+                        </View>
+                      ) : null}
+                    </View>
+                    <View style={styles.modalOptionRight}>
+                      {opt.capacity > 0 ? (
+                        (() => {
+                          if (opt.shape === 'reserve') {
+                            return (
+                              <View style={styles.modalBadgeReserve}>
+                                <Text style={styles.modalBadgeReserveText}>רזרבה</Text>
+                              </View>
+                            );
+                          }
+                          const overflow = previewOverflowForOption(opt.id, opt.seated, opt.capacity, opt.shape);
+                          if (overflow > 0) {
+                            return (
+                              <View style={styles.modalBadgeOverflow}>
+                                <Text style={styles.modalBadgeOverflowText}>חריגה {overflow}</Text>
+                              </View>
+                            );
+                          }
+                          return (
+                            <View style={styles.modalBadgeOk}>
+                              <Text style={styles.modalBadgeOkText}>פנוי</Text>
+                            </View>
+                          );
+                        })()
+                      ) : null}
+                      <Ionicons
+                        name={moveSelectedTableId === opt.id ? 'checkmark-circle' : 'ellipse-outline'}
+                        size={20}
+                        color={moveSelectedTableId === opt.id ? colors.primary : 'rgba(156,163,175,0.9)'}
+                      />
+                    </View>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            </View>
+
+            <View style={styles.modalFooter}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="העבר"
+                onPress={confirmMove}
+                disabled={isMoveSaving}
+                style={({ hovered, pressed }: any) => [
+                  styles.modalPrimaryBtn,
+                  isMoveSaving ? styles.modalBtnDisabled : null,
+                  Platform.OS === 'web' && hovered ? styles.modalPrimaryBtnHover : null,
+                  pressed ? { opacity: 0.92 } : null,
+                ]}
+              >
+                {isMoveSaving ? (
+                  <ActivityIndicator size={16} color={colors.white} />
+                ) : (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Text style={styles.modalPrimaryBtnText}>העבר</Text>
+                    <Ionicons name="arrow-forward" size={16} color={colors.white} />
+                  </View>
+                )}
+              </Pressable>
+
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="ביטול"
+                onPress={closeMoveModal}
+                disabled={isMoveSaving}
+                style={({ hovered, pressed }: any) => [
+                  styles.modalSecondaryBtn,
+                  isMoveSaving ? styles.modalBtnDisabled : null,
+                  Platform.OS === 'web' && hovered ? styles.modalSecondaryBtnHover : null,
+                  pressed ? { opacity: 0.92 } : null,
+                ]}
+              >
+                <Text style={styles.modalSecondaryBtnText}>ביטול</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -949,8 +1317,9 @@ const styles = StyleSheet.create({
   },
   contentSm: { flexDirection: 'column', gap: 14 },
   // Keep side columns tighter to prioritize the map width.
-  guestsCol: { width: 580, flexShrink: 1, minWidth: 340 },
-  colSm: { width: '100%' },
+  guestsCol: { width: 460, flexShrink: 1, minWidth: 360 },
+  // On stacked layout (no map), keep the guests panel compact and centered.
+  colSm: { width: '100%', maxWidth: 520, alignSelf: 'center' },
   main: { flex: 1, minWidth: 520, flexShrink: 0 },
 
   card: {
@@ -1256,6 +1625,10 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.92)',
     overflow: 'hidden',
   },
+  tableGroupCardOverflow: {
+    borderColor: 'rgba(239,68,68,0.26)',
+    backgroundColor: 'rgba(254,242,242,0.92)',
+  },
   tableGroupHeader: {
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -1266,6 +1639,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(15,23,42,0.02)',
     ...(Platform.OS === 'web' ? ({ direction: 'ltr' } as any) : null),
   },
+  tableGroupHeaderOverflow: { backgroundColor: 'rgba(239,68,68,0.06)' },
   tableGroupTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1298,8 +1672,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.06)',
   },
+  tableGroupMetaPillOverflow: {
+    backgroundColor: 'rgba(239,68,68,0.08)',
+    borderColor: 'rgba(239,68,68,0.18)',
+  },
   tableGroupMetaStrong: { fontSize: 12, fontWeight: '900', color: colors.primary, textAlign: 'left' },
   tableGroupMetaDim: { fontSize: 11, fontWeight: '800', color: colors.gray[600], textAlign: 'left' },
+  tableGroupMetaStrongOverflow: { fontSize: 12, fontWeight: '900', color: '#DC2626', textAlign: 'left' },
+  tableGroupMetaDimOverflow: { fontSize: 11, fontWeight: '900', color: '#DC2626', textAlign: 'left' },
   tableGroupBody: { padding: 10, gap: 10 },
   tableHeader: {
     flexDirection: 'row',
@@ -1325,9 +1705,6 @@ const styles = StyleSheet.create({
   mapLegendDot: { width: 10, height: 10, borderRadius: 999 },
   mapLegendText: { fontSize: 12, fontWeight: '900', color: colors.gray[700], textAlign: 'right' },
 
-  statusTag: { minWidth: 74, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
-  statusTagText: { fontSize: 12, fontWeight: '900', textAlign: 'center' },
-
   guestRowCompact: {
     position: 'relative',
     minHeight: 56,
@@ -1339,7 +1716,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
     gap: 10,
     overflow: 'hidden',
     ...(Platform.OS === 'web' ? ({ direction: 'ltr' } as any) : null),
@@ -1347,23 +1724,33 @@ const styles = StyleSheet.create({
   guestRowCompactOn: { backgroundColor: 'rgba(34,197,94,0.06)', borderColor: 'rgba(34,197,94,0.14)' },
   guestRowAccent: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, backgroundColor: 'rgba(148,163,184,0.7)' },
   guestRowAccentOn: { backgroundColor: '#10B981' },
-  guestRowMain: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  guestRowRight: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 0 },
-  guestNameCompact: { fontSize: 14, fontWeight: '900', color: colors.text, textAlign: 'right' },
-  guestMetaCompact: { marginTop: 2, fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'right' },
-  tableChip: {
-    height: 28,
-    minWidth: 92,
-    paddingHorizontal: 10,
-    borderRadius: 999,
-    backgroundColor: 'rgba(6,23,62,0.06)',
-    borderWidth: 1,
-    borderColor: 'rgba(6,23,62,0.10)',
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-    ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
+  guestRowMain: {
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    // Keep a consistent "name column" width so the toggle aligns vertically across rows.
+    flexBasis: 260,
+    flexGrow: 1,
+    flexShrink: 1,
   },
-  tableChipText: { alignSelf: 'stretch', fontSize: 12, fontWeight: '900', color: colors.primary, textAlign: 'right' },
+  // Fixed controls width keeps the toggle in the same X position.
+  guestRowRight: { width: 210, flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 },
+  moveBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 12,
+    backgroundColor: 'rgba(15,23,42,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  moveBtnHover: { backgroundColor: 'rgba(15,23,42,0.06)' },
+  moveBtnDisabled: { opacity: 0.55 },
+  guestNameCompact: { fontSize: 14, fontWeight: '900', color: colors.text, textAlign: 'right' },
+  guestMetaCompact: { marginTop: 0, fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'right' },
   arrivalSlot: { width: 112, alignItems: 'center', justifyContent: 'center' },
   peoplePill: {
     minWidth: 30,
@@ -1495,6 +1882,191 @@ const styles = StyleSheet.create({
   },
   loadMoreBtnHover: { backgroundColor: 'rgba(255,255,255,1)' },
   loadMoreText: { fontSize: 13, fontWeight: '900', color: colors.gray[700], textAlign: 'right' },
+
+  modalBackdrop: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    ...(Platform.OS === 'web' ? ({ position: 'fixed', zIndex: 50 } as any) : null),
+  },
+  // Scrim area (left side) so the map stays visible.
+  modalBackdropPressable: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    // Leave room for the right-side drawer (width 420 + 16px margin on each side).
+    right: 452,
+    backgroundColor: 'rgba(15,23,42,0.10)',
+  },
+  modalCard: {
+    position: 'absolute',
+    right: 16,
+    top: 16,
+    bottom: 16,
+    width: 420,
+    maxWidth: 440,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.20)',
+    backgroundColor: 'rgba(249,250,251,0.98)',
+    padding: 18,
+    shadowColor: colors.primary,
+    shadowOpacity: 0.12,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 3,
+    ...(Platform.OS === 'web' ? ({ maxHeight: 'calc(100vh - 32px)' } as any) : null),
+  },
+  modalCardNarrow: {
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: '100%',
+    borderRadius: 0,
+    maxWidth: 9999,
+  },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  modalKicker: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: colors.primary,
+    textAlign: 'right',
+    letterSpacing: 0.6,
+  },
+  modalSubTitle: { marginTop: 2, fontSize: 26, fontWeight: '900', color: '#111827', textAlign: 'right' },
+  modalGuestRow: { marginTop: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  modalGuestMetaRow: { marginTop: 6, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  modalGuestMetaText: { fontSize: 13, fontWeight: '800', color: '#6B7280', textAlign: 'right' },
+  modalAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 999,
+    backgroundColor: 'rgba(6,23,62,0.10)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.18)',
+  },
+  modalAvatarText: { fontSize: 18, fontWeight: '900', color: colors.primary, textAlign: 'center' },
+  modalCloseBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.7)',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.12)',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  modalCloseBtnHover: { backgroundColor: 'rgba(255,255,255,0.95)' },
+  modalSearchWrap: {
+    marginTop: 14,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.10)',
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+  },
+  modalSearchIcon: { position: 'absolute', right: 12, top: 12 },
+  modalSearchInput: {
+    paddingRight: 42,
+    paddingLeft: 12,
+    paddingVertical: 12,
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#111827',
+  },
+  modalListWrap: { marginTop: 14, flex: 1, minHeight: 0 },
+  modalListScroll: { flex: 1, minHeight: 0, maxHeight: 420 },
+  modalOptionRow: {
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.98)',
+    borderWidth: 1,
+    borderColor: 'rgba(229,231,235,1)',
+    marginBottom: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  modalOptionRowSelected: {
+    backgroundColor: 'rgba(6,23,62,0.06)',
+    borderColor: 'rgba(6,23,62,0.70)',
+    borderWidth: 2,
+  },
+  modalOptionRowHover: { borderColor: 'rgba(6,23,62,0.30)' },
+  modalOptionText: { fontSize: 16, fontWeight: '900', color: '#111827', textAlign: 'right' },
+  modalOptionMetaRow: { marginTop: 6, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  modalOptionMeta: { fontSize: 12, fontWeight: '800', color: '#6B7280', textAlign: 'right' },
+  modalOptionRight: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 0 },
+  modalBadgeOk: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    backgroundColor: 'rgba(34,197,94,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(34,197,94,0.18)',
+  },
+  modalBadgeOkText: { fontSize: 12, fontWeight: '900', color: '#16A34A', textAlign: 'center' },
+  modalBadgeOverflow: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    backgroundColor: 'rgba(239,68,68,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(239,68,68,0.20)',
+  },
+  modalBadgeOverflowText: { fontSize: 12, fontWeight: '900', color: '#DC2626', textAlign: 'center' },
+  modalBadgeReserve: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    backgroundColor: 'rgba(6,23,62,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.16)',
+  },
+  modalBadgeReserveText: { fontSize: 12, fontWeight: '900', color: colors.primary, textAlign: 'center' },
+  modalFooter: { marginTop: 10, flexDirection: 'column', gap: 10 },
+  modalSecondaryBtn: {
+    width: '100%',
+    paddingVertical: 10,
+    borderRadius: 16,
+    backgroundColor: 'transparent',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  modalSecondaryBtnHover: { backgroundColor: 'rgba(6,23,62,0.06)' },
+  modalSecondaryBtnText: { fontSize: 13, fontWeight: '900', color: colors.primary, textAlign: 'center' },
+  modalPrimaryBtn: {
+    width: '100%',
+    paddingVertical: 14,
+    borderRadius: 16,
+    backgroundColor: colors.primary,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.20)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  modalPrimaryBtnHover: { opacity: 0.98 },
+  modalPrimaryBtnText: { fontSize: 13, fontWeight: '900', color: colors.white, textAlign: 'center' },
+  modalBtnDisabled: { opacity: 0.6 },
 
   emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 24 },
   primaryBtn: {
