@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -51,6 +51,24 @@ function buildInviteUrl(tokenOrCode: string) {
   return Linking.createURL(`/i/${t}`);
 }
 
+function buildDemoInviteUrl(eventId: string) {
+  const id = String(eventId || '').trim();
+  if (!id) return '';
+  const base = buildInviteUrl('demo');
+  if (!base) return '';
+  const joiner = base.includes('?') ? '&' : '?';
+  return `${base}${joiner}eventId=${encodeURIComponent(id)}`;
+}
+
+function getStatusDotColor(statusRaw: string) {
+  const s = String(statusRaw || '').trim();
+  if (!s) return 'rgba(17,24,39,0.25)';
+  if (s.includes('ממתין')) return colors.warning;
+  if (s.includes('לא')) return colors.error;
+  if (s.includes('מגיע')) return colors.success;
+  return 'rgba(17,24,39,0.25)';
+}
+
 export default function AdminInvitationLinksScreen() {
   const router = useRouter();
   const { eventId } = useLocalSearchParams<{ eventId?: string }>();
@@ -83,6 +101,10 @@ export default function AdminInvitationLinksScreen() {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [guestFilter, setGuestFilter] = useState<'all' | 'מגיע' | 'ממתין' | 'לא מגיע'>('all');
+  const [guestPickerOpen, setGuestPickerOpen] = useState(false);
+  const [guestSearch, setGuestSearch] = useState('');
+  const [copiedGuestId, setCopiedGuestId] = useState<string | null>(null);
+  const copyResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     setForm({
@@ -96,6 +118,12 @@ export default function AdminInvitationLinksScreen() {
       groomParents: String((event as any)?.groomParents ?? ''),
     });
   }, [event?.id]);
+
+  useEffect(() => {
+    return () => {
+      if (copyResetTimerRef.current) clearTimeout(copyResetTimerRef.current);
+    };
+  }, []);
 
   const invitationPreviewTitle = useMemo(() => {
     if (isWedding) {
@@ -113,6 +141,27 @@ export default function AdminInvitationLinksScreen() {
     return Number.isFinite(d.getTime()) ? formatDateNumeric(d) : '';
   }, [event?.date]);
 
+  const demoUrl = useMemo(() => {
+    return event?.id ? buildDemoInviteUrl(String(event.id)) : '';
+  }, [event?.id]);
+
+  const openDemo = async () => {
+    if (!demoUrl) {
+      Alert.alert('דמו', 'חסר מזהה אירוע כדי לפתוח דמו.');
+      return;
+    }
+    try {
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.open(demoUrl, '_blank', 'noopener,noreferrer');
+        return;
+      }
+      await Linking.openURL(demoUrl);
+    } catch (e: any) {
+      const msg = e?.message ? String(e.message) : 'לא ניתן לפתוח קישור';
+      Alert.alert('דמו', msg);
+    }
+  };
+
   const counts = useMemo(() => {
     const all = Array.isArray(guests) ? guests : [];
     const confirmed = all.filter((g) => g.status === 'מגיע').length;
@@ -127,21 +176,48 @@ export default function AdminInvitationLinksScreen() {
     return all.filter((g) => g.status === guestFilter);
   }, [guests, guestFilter]);
 
-  const copyText = async (value: string) => {
+  const pickerGuests = useMemo(() => {
+    const base = filteredGuests;
+    const q = String(guestSearch || '').trim().toLowerCase();
+    if (!q) return base;
+    return base.filter((g: any) => {
+      const name = String(g?.name || '').toLowerCase();
+      const phone = String(g?.phone || '');
+      return name.includes(q) || phone.includes(q);
+    });
+  }, [filteredGuests, guestSearch]);
+
+  const copyText = async (value: string): Promise<boolean> => {
     const text = String(value || '').trim();
-    if (!text) return;
+    if (!text) return false;
 
     try {
       if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(text);
-        Alert.alert('הועתק', 'הקישור הועתק ללוח');
-        return;
+        return true;
       }
     } catch {
       // fallback below
     }
 
     Alert.alert('העתקה', text);
+    return false;
+  };
+
+  const handleCopyPress = async (guestId: string, url: string) => {
+    const ok = await copyText(url);
+    if (!ok) return;
+
+    setCopiedGuestId(guestId);
+    if (copyResetTimerRef.current) clearTimeout(copyResetTimerRef.current);
+    copyResetTimerRef.current = setTimeout(() => {
+      setCopiedGuestId((cur) => (cur === guestId ? null : cur));
+    }, 1500);
+  };
+
+  const closeGuestPicker = () => {
+    setGuestPickerOpen(false);
+    setGuestSearch('');
   };
 
   const pickAndUploadInvitationImage = async () => {
@@ -264,10 +340,6 @@ export default function AdminInvitationLinksScreen() {
             <Text style={styles.sub}>הגדרת תצוגת הזמנה + קישורים אישיים למוזמנים</Text>
           </View>
 
-          <Pressable onPress={() => void refresh()} style={styles.iconBtn} accessibilityRole="button" accessibilityLabel="רענון">
-            <Ionicons name="refresh-outline" size={18} color={colors.primary} />
-          </Pressable>
-
           <Pressable onPress={() => router.back()} style={styles.iconBtn} accessibilityRole="button" accessibilityLabel="חזרה">
             <Ionicons name="arrow-forward" size={18} color={colors.primary} />
           </Pressable>
@@ -304,6 +376,32 @@ export default function AdminInvitationLinksScreen() {
                   {String(event.location ?? '')}
                 </Text>
               </View>
+            </View>
+
+            <View style={styles.demoCard}>
+              <View style={styles.demoIconWrap}>
+                <Ionicons name="globe-outline" size={18} color={colors.primary} />
+              </View>
+              <View style={styles.demoTextWrap}>
+                <Text style={styles.demoTitle}>לצפייה בדמו של דף ההזמנה</Text>
+                <Text style={styles.demoSub} numberOfLines={2}>
+                  {'ייפתח דמו כללי (לא על שם מוזמן) — כל בחירה נשמרת מקומית בלבד.'}
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => void openDemo()}
+                disabled={!demoUrl}
+                style={({ pressed }) => [
+                  styles.demoBtn,
+                  !demoUrl ? styles.demoBtnDisabled : null,
+                  pressed && demoUrl ? { opacity: 0.92 } : null,
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="לצפייה בדמו"
+              >
+                <Ionicons name="open-outline" size={16} color="#fff" />
+                <Text style={styles.demoBtnText}>לצפייה בדמו</Text>
+              </Pressable>
             </View>
           </View>
 
@@ -443,88 +541,176 @@ export default function AdminInvitationLinksScreen() {
             </View>
           </View>
 
-          <View style={styles.filtersRow}>
-            <Pressable
-              onPress={() => setGuestFilter('all')}
-              style={({ pressed }) => [
-                styles.filterPill,
-                guestFilter === 'all' ? styles.filterPillActive : null,
-                pressed ? { opacity: 0.92 } : null,
-              ]}
-            >
-              <Text style={[styles.filterText, guestFilter === 'all' ? styles.filterTextActive : null]}>הכל ({counts.all})</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => setGuestFilter('מגיע')}
-              style={({ pressed }) => [
-                styles.filterPill,
-                guestFilter === 'מגיע' ? styles.filterPillActive : null,
-                pressed ? { opacity: 0.92 } : null,
-              ]}
-            >
-              <Text style={[styles.filterText, guestFilter === 'מגיע' ? styles.filterTextActive : null]}>אישרו ({counts.confirmed})</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => setGuestFilter('ממתין')}
-              style={({ pressed }) => [
-                styles.filterPill,
-                guestFilter === 'ממתין' ? styles.filterPillActive : null,
-                pressed ? { opacity: 0.92 } : null,
-              ]}
-            >
-              <Text style={[styles.filterText, guestFilter === 'ממתין' ? styles.filterTextActive : null]}>ממתינים ({counts.pending})</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => setGuestFilter('לא מגיע')}
-              style={({ pressed }) => [
-                styles.filterPill,
-                guestFilter === 'לא מגיע' ? styles.filterPillActive : null,
-                pressed ? { opacity: 0.92 } : null,
-              ]}
-            >
-              <Text style={[styles.filterText, guestFilter === 'לא מגיע' ? styles.filterTextActive : null]}>לא מגיעים ({counts.declined})</Text>
-            </Pressable>
-          </View>
-
-          {filteredGuests.length === 0 ? (
-            <Text style={styles.empty}>{guests.length === 0 ? 'אין עדיין מוזמנים באירוע.' : 'אין תוצאות לסינון שבחרת.'}</Text>
-          ) : (
-            <View style={{ gap: 10 }}>
-              {filteredGuests.map((g) => {
-                const codeOrToken = String((g as any).invitationCode || (g as any).invitationToken || '').trim();
-                const url = codeOrToken ? buildInviteUrl(codeOrToken) : '';
-                return (
-                  <View key={g.id} style={styles.guestRow}>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={styles.guestName} numberOfLines={1}>
-                        {g.name}
-                      </Text>
-                      <Text style={styles.guestMeta} numberOfLines={1}>
-                        {g.status}
-                        {g.status === 'מגיע' ? ` · ${g.numberOfPeople || 1} מגיעים` : ''}
-                      </Text>
-                    </View>
-
-                    <Pressable
-                      onPress={() => void copyText(url)}
-                      disabled={!url}
-                      style={({ pressed }) => [
-                        styles.copyBtn,
-                        pressed ? { opacity: 0.92 } : null,
-                        !url ? { opacity: 0.5 } : null,
-                      ]}
-                      accessibilityRole="button"
-                      accessibilityLabel={`העתקת קישור עבור ${g.name}`}
-                    >
-                      <Ionicons name="copy-outline" size={18} color={colors.white} />
-                      <Text style={styles.copyBtnText}>העתק</Text>
-                    </Pressable>
-                  </View>
-                );
-              })}
+          <Pressable
+            onPress={() => setGuestPickerOpen(true)}
+            style={({ pressed }) => [styles.searchOpenBtn, pressed ? { opacity: 0.92 } : null]}
+            accessibilityRole="button"
+            accessibilityLabel="חיפוש מוזמן והעתקת קישור אישי"
+          >
+            <Ionicons name="search-outline" size={18} color={'rgba(17,24,39,0.65)'} />
+            <Text style={styles.searchOpenText} numberOfLines={1}>
+              חיפוש מוזמן והעתקת קישור אישי…
+            </Text>
+            <View style={{ flex: 1 }} />
+            <View style={styles.searchOpenCta}>
+              <Text style={styles.searchOpenCtaText}>פתח</Text>
+              <Ionicons name="chevron-back" size={16} color={colors.primary} />
             </View>
-          )}
+          </Pressable>
+
+          <View style={styles.linksStatsRow}>
+            <View style={styles.statPill}>
+              <View style={[styles.statDot, { backgroundColor: '#22c55e' }]} />
+              <Text style={styles.statText}>אישרו</Text>
+              <Text style={styles.statValue}>{counts.confirmed}</Text>
+            </View>
+            <View style={styles.statPill}>
+              <View style={[styles.statDot, { backgroundColor: '#f59e0b' }]} />
+              <Text style={styles.statText}>ממתינים</Text>
+              <Text style={styles.statValue}>{counts.pending}</Text>
+            </View>
+            <View style={styles.statPill}>
+              <View style={[styles.statDot, { backgroundColor: '#ef4444' }]} />
+              <Text style={styles.statText}>לא מגיעים</Text>
+              <Text style={styles.statValue}>{counts.declined}</Text>
+            </View>
+          </View>
         </View>
+
+        {guestPickerOpen ? (
+          <View style={styles.dialogOverlay}>
+            <Pressable style={styles.dialogBackdrop} onPress={closeGuestPicker} />
+            <View style={styles.dialogCard}>
+              <View style={styles.dialogHeader}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.dialogTitle} numberOfLines={1}>
+                    חיפוש מוזמן וקישור אישי
+                  </Text>
+                  <Text style={styles.dialogSub} numberOfLines={2}>
+                    חפש לפי שם/טלפון, ואז לחץ “העתק” כדי להעתיק את הקישור האישי של אותו מוזמן.
+                  </Text>
+                </View>
+                <Pressable onPress={closeGuestPicker} style={styles.dialogClose} accessibilityRole="button" accessibilityLabel="סגור">
+                  <Ionicons name="close" size={18} color={colors.text} />
+                </Pressable>
+              </View>
+
+              <View style={styles.dialogSearchRow}>
+                <Ionicons name="search-outline" size={16} color={colors.gray[600]} />
+                <TextInput
+                  value={guestSearch}
+                  onChangeText={setGuestSearch}
+                  placeholder="חיפוש לפי שם או טלפון..."
+                  placeholderTextColor={'rgba(17,24,39,0.35)'}
+                  style={styles.dialogSearchInput}
+                  textAlign="right"
+                />
+                {guestSearch.trim() ? (
+                  <Pressable
+                    onPress={() => setGuestSearch('')}
+                    style={({ pressed }) => [styles.clearBtn, pressed ? { opacity: 0.9 } : null]}
+                    accessibilityRole="button"
+                    accessibilityLabel="נקה חיפוש"
+                  >
+                    <Ionicons name="close-circle" size={18} color={'rgba(17,24,39,0.40)'} />
+                  </Pressable>
+                ) : null}
+              </View>
+
+              <View style={styles.dialogFiltersRow}>
+                <Pressable
+                  onPress={() => setGuestFilter('all')}
+                  style={({ pressed }) => [styles.filterPill, guestFilter === 'all' ? styles.filterPillActive : null, pressed ? { opacity: 0.92 } : null]}
+                >
+                  <Text style={[styles.filterText, guestFilter === 'all' ? styles.filterTextActive : null]}>הכל ({counts.all})</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setGuestFilter('ממתין')}
+                  style={({ pressed }) => [styles.filterPill, guestFilter === 'ממתין' ? styles.filterPillActive : null, pressed ? { opacity: 0.92 } : null]}
+                >
+                  <Text style={[styles.filterText, guestFilter === 'ממתין' ? styles.filterTextActive : null]}>ממתינים ({counts.pending})</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setGuestFilter('מגיע')}
+                  style={({ pressed }) => [styles.filterPill, guestFilter === 'מגיע' ? styles.filterPillActive : null, pressed ? { opacity: 0.92 } : null]}
+                >
+                  <Text style={[styles.filterText, guestFilter === 'מגיע' ? styles.filterTextActive : null]}>אישרו ({counts.confirmed})</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setGuestFilter('לא מגיע')}
+                  style={({ pressed }) => [styles.filterPill, guestFilter === 'לא מגיע' ? styles.filterPillActive : null, pressed ? { opacity: 0.92 } : null]}
+                >
+                  <Text style={[styles.filterText, guestFilter === 'לא מגיע' ? styles.filterTextActive : null]}>לא מגיעים ({counts.declined})</Text>
+                </Pressable>
+              </View>
+
+              <ScrollView style={styles.dialogList} contentContainerStyle={styles.dialogListContent} showsVerticalScrollIndicator={false}>
+                {pickerGuests.length === 0 ? (
+                  <Text style={styles.empty}>
+                    {guests.length === 0 ? 'אין עדיין מוזמנים באירוע.' : 'לא נמצאו תוצאות לחיפוש/סינון.'}
+                  </Text>
+                ) : (
+                  pickerGuests.map((g: any) => {
+                    const guestId = String(g.id);
+                    const codeOrToken = String(g?.invitationCode || g?.invitationToken || '').trim();
+                    const url = codeOrToken ? buildInviteUrl(codeOrToken) : '';
+                    const status = String(g?.status ?? '').trim();
+                    const phone = g?.phone ? String(g.phone) : '';
+                    const isArriving = status.includes('מגיע') && !status.includes('לא');
+                    const peopleCount = Number(g?.numberOfPeople || 1);
+                    const isCopied = copiedGuestId === guestId;
+                    return (
+                      <View key={guestId} style={styles.guestRow}>
+                        <View style={styles.avatarIconWrap} pointerEvents="none">
+                          <Ionicons name="person-circle-outline" size={34} color={'rgba(17,24,39,0.35)'} />
+                        </View>
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text style={styles.guestName} numberOfLines={1}>
+                            {String(g?.name ?? '')}
+                          </Text>
+                          <View style={styles.guestMetaBlock}>
+                            <View style={styles.statusRow}>
+                              <View style={[styles.statusDot, { backgroundColor: getStatusDotColor(status) }]} />
+                              <Text style={styles.statusText} numberOfLines={1}>
+                                {status || '—'}
+                              </Text>
+                            </View>
+                            {phone ? (
+                              <Text style={styles.metaLine} numberOfLines={1}>
+                                {phone}
+                              </Text>
+                            ) : null}
+                            {isArriving ? (
+                              <Text style={styles.metaLine} numberOfLines={1}>
+                                {`${peopleCount} מגיעים`}
+                              </Text>
+                            ) : null}
+                          </View>
+                        </View>
+
+                        <Pressable
+                          onPress={() => void handleCopyPress(guestId, url)}
+                          disabled={!url || isCopied}
+                          style={({ pressed }) => [
+                            styles.copyBtn,
+                            isCopied ? styles.copyBtnCopied : null,
+                            pressed ? { opacity: 0.92 } : null,
+                            !url ? { opacity: 0.5 } : null,
+                          ]}
+                          accessibilityRole="button"
+                          accessibilityLabel={`העתקת קישור עבור ${String(g?.name ?? '')}`}
+                        >
+                          <Ionicons name="copy-outline" size={18} color={isCopied ? 'rgba(17,24,39,0.62)' : colors.white} />
+                          <Text style={[styles.copyBtnText, isCopied ? styles.copyBtnTextCopied : null]}>{isCopied ? 'הועתק' : 'העתק'}</Text>
+                        </Pressable>
+                      </View>
+                    );
+                  })
+                )}
+              </ScrollView>
+            </View>
+          </View>
+        ) : null}
 
         <Text style={styles.footer}>© 2026 כל הזכויות שמורות למערכת אירועים</Text>
       </ScrollView>
@@ -565,7 +751,7 @@ const styles = StyleSheet.create({
   topGridDesktop: { flexDirection: 'row-reverse', alignItems: 'flex-start' },
   previewCardDesktop: { flex: 1, minWidth: 420, maxWidth: 560 },
   formCardDesktop: { flex: 1, minWidth: 520 },
-  cardHeaderRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  cardHeaderRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   cardTitle: { fontSize: 15, fontWeight: '900', color: colors.text, textAlign: 'right' },
 
   badge: { flexDirection: 'row-reverse', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(15,69,230,0.08)' },
@@ -584,6 +770,44 @@ const styles = StyleSheet.create({
   previewBottom: { padding: 12, gap: 4, backgroundColor: 'rgba(255,255,255,0.92)' },
   previewTitle: { fontSize: 16, fontWeight: '900', color: colors.text, textAlign: 'right' },
   previewMeta: { fontSize: 12, fontWeight: '700', color: colors.gray[600], textAlign: 'right' },
+
+  demoCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(15,69,230,0.16)',
+    backgroundColor: 'rgba(15,69,230,0.06)',
+    padding: 12,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 10,
+  },
+  demoIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,69,230,0.18)',
+  },
+  demoTextWrap: { flex: 1, minWidth: 0, gap: 2 },
+  demoTitle: { fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'right' },
+  demoSub: { fontSize: 12, fontWeight: '800', color: 'rgba(17,24,39,0.62)', textAlign: 'right', lineHeight: 18 },
+  demoBtn: {
+    height: 36,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: colors.primary,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer', boxShadow: '0 10px 22px rgba(15,69,230,0.22)' } as any) : null),
+  },
+  demoBtnDisabled: { opacity: 0.55, ...(Platform.OS === 'web' ? ({ cursor: 'default' } as any) : null) },
+  demoBtnText: { fontSize: 12, fontWeight: '900', color: '#fff', textAlign: 'right' },
 
   sectionTitle: { marginTop: 2, fontSize: 12, fontWeight: '900', color: 'rgba(17,24,39,0.78)', textAlign: 'right' },
   label: { marginTop: 2, fontSize: 12, fontWeight: '900', color: colors.text, textAlign: 'right' },
@@ -640,9 +864,8 @@ const styles = StyleSheet.create({
   filterText: { fontSize: 12, fontWeight: '900', color: 'rgba(17,24,39,0.72)', textAlign: 'right' },
   filterTextActive: { color: '#fff' },
   guestRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: Platform.OS === 'web' ? 'row' : 'row-reverse',
     alignItems: 'center',
-    justifyContent: 'space-between',
     gap: 10,
     padding: 12,
     borderRadius: 16,
@@ -651,7 +874,21 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.92)',
   },
   guestName: { fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'right' },
-  guestMeta: { marginTop: 3, fontSize: 12, fontWeight: '700', color: colors.gray[600], textAlign: 'right' },
+  guestMetaBlock: { marginTop: 4, gap: 2 },
+  statusRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
+  statusDot: { width: 8, height: 8, borderRadius: 999 },
+  statusText: { fontSize: 12, fontWeight: '800', color: colors.gray[700], textAlign: 'right' },
+  metaLine: { fontSize: 12, fontWeight: '700', color: colors.gray[600], textAlign: 'right' },
+  avatarIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+    backgroundColor: 'rgba(15,23,42,0.04)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   checkBtn: {
     width: 40,
     height: 40,
@@ -674,6 +911,103 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   copyBtnText: { fontSize: 12, fontWeight: '900', color: '#fff', textAlign: 'right' },
+  copyBtnCopied: { backgroundColor: 'rgba(17,24,39,0.10)', borderWidth: 1, borderColor: 'rgba(17,24,39,0.14)' },
+  copyBtnTextCopied: { color: 'rgba(17,24,39,0.72)' },
+
+  searchOpenBtn: {
+    height: 52,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    backgroundColor: 'rgba(17,24,39,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.10)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  searchOpenText: { fontSize: 13, fontWeight: '900', color: 'rgba(17,24,39,0.62)', textAlign: 'right' },
+  searchOpenCta: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6 },
+  searchOpenCtaText: { fontSize: 13, fontWeight: '900', color: colors.primary, textAlign: 'right' },
+
+  linksStatsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' },
+  statPill: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.08)',
+  },
+  statDot: { width: 8, height: 8, borderRadius: 999 },
+  statText: { fontSize: 12, fontWeight: '900', color: 'rgba(17,24,39,0.72)', textAlign: 'right' },
+  statValue: { fontSize: 12, fontWeight: '900', color: colors.text, textAlign: 'right' },
+
+  dialogOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+    zIndex: 999,
+    ...(Platform.OS === 'web' ? ({ position: 'fixed' } as any) : null),
+  },
+  dialogBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(2,6,23,0.45)',
+    ...(Platform.OS === 'web' ? ({ position: 'fixed' } as any) : null),
+  },
+  dialogCard: {
+    width: '100%',
+    maxWidth: 720,
+    maxHeight: '84%',
+    borderRadius: 18,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.12)',
+    padding: 14,
+    gap: 10,
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 22px 60px rgba(2,6,23,0.30)' } as any) : null),
+  },
+  dialogHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  dialogTitle: { fontSize: 15, fontWeight: '900', color: colors.text, textAlign: 'right' },
+  dialogSub: { marginTop: 2, fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'right', lineHeight: 18 },
+  dialogClose: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    backgroundColor: 'rgba(15,23,42,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  dialogSearchRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 10,
+    height: 46,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.10)',
+    backgroundColor: 'rgba(17,24,39,0.04)',
+  },
+  dialogSearchInput: { flex: 1, color: '#111827', fontSize: 14, fontWeight: '700' },
+  clearBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  dialogFiltersRow: { flexDirection: 'row', flexWrap: 'nowrap', gap: 8, alignItems: 'center' },
+  dialogList: { flex: 1 },
+  dialogListContent: { paddingBottom: 10, gap: 10 },
 
   smsCard: {
     borderRadius: 16,

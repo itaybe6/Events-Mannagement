@@ -1191,8 +1191,8 @@ const styles = StyleSheet.create({
   },
 
   metricsRow: {
-    flexDirection: 'row-reverse',
-    flexWrap: 'wrap',
+    flexDirection: 'row',
+    flexWrap: 'nowrap',
     gap: 12,
   },
   metricCard: {

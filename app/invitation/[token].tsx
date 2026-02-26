@@ -28,8 +28,10 @@ function formatDateNumeric(d: Date) {
 }
 
 export default function InvitationLandingScreen() {
-  const { token } = useLocalSearchParams<{ token?: string }>();
+  const { token, eventId } = useLocalSearchParams<{ token?: string; eventId?: string }>();
   const t = useMemo(() => String(token || '').trim(), [token]);
+  const demoEventId = useMemo(() => String(eventId || '').trim(), [eventId]);
+  const isDemo = useMemo(() => t.toLowerCase() === 'demo', [t]);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -73,12 +75,19 @@ export default function InvitationLandingScreen() {
       setLoading(true);
       setLoadError(null);
       try {
-        const data = await invitationService.getInvitationByToken(t);
+        const data = isDemo
+          ? await invitationService.getInvitationDemoByEventId(demoEventId)
+          : await invitationService.getInvitationByToken(t);
         if (!alive) return;
+        if (isDemo && !demoEventId) {
+          setInfo(null);
+          setLoadError('חסר מזהה אירוע לדמו');
+          return;
+        }
         setInfo(data);
-        if (data?.guest?.status) setStatus(data.guest.status);
-        setPeopleCount(Math.max(1, Math.min(99, Number(data?.guest?.numberOfPeople) || 1)));
-        setSubmittedLocked(Boolean((data as any)?.guest?.rsvpLocked));
+        if (!isDemo && data?.guest?.status) setStatus(data.guest.status);
+        if (!isDemo) setPeopleCount(Math.max(1, Math.min(99, Number(data?.guest?.numberOfPeople) || 1)));
+        setSubmittedLocked(isDemo ? false : Boolean((data as any)?.guest?.rsvpLocked));
       } catch (e: any) {
         if (!alive) return;
         const message = e?.message ? String(e.message) : 'שגיאה לא ידועה';
@@ -95,25 +104,32 @@ export default function InvitationLandingScreen() {
     return () => {
       alive = false;
     };
-  }, [t]);
+  }, [t, isDemo, demoEventId]);
 
-  const canSubmit = Boolean(info?.guest?.id) && !saving;
+  const canSubmit = Boolean(info) && !saving && (isDemo || Boolean(info?.guest?.id));
 
   const submit = async () => {
-    const submitToken = String(info?.guest?.invitationCode || info?.guest?.invitationToken || '').trim();
-    if (!submitToken) return;
     if (saving) return;
     if (submittedLocked) return;
 
     setSaving(true);
     try {
+      if (isDemo) {
+        // Demo mode: keep changes local only (do not update DB / guests).
+        setSubmittedLocked(true);
+        return;
+      }
+
+      const submitToken = String(info?.guest?.invitationCode || info?.guest?.invitationToken || '').trim();
+      if (!submitToken) return;
+
       const nextPeople = status === 'מגיע' ? Math.max(1, Math.min(99, Number(peopleCount) || 1)) : undefined;
       const updatedGuest = await invitationService.updateRsvpByToken(submitToken, {
         status,
         numberOfPeople: nextPeople,
       });
 
-      setInfo((prev) => (prev ? { ...prev, guest: { ...prev.guest, ...updatedGuest } } : prev));
+      setInfo((prev) => (prev ? { ...prev, guest: prev.guest ? { ...prev.guest, ...updatedGuest } : updatedGuest } : prev));
       setSubmittedLocked(true);
     } catch (e: any) {
       const message = e?.message ? String(e.message) : 'שגיאה לא ידועה';
@@ -192,15 +208,31 @@ export default function InvitationLandingScreen() {
             </View>
           </Animated.View>
 
-          <Text style={styles.successTitle}>תודה שעדכנתם אותנו</Text>
-          <Text style={styles.successText}>העדכון נשמר בהצלחה, ולא ניתן לשנות שוב דרך הקישור הזה.</Text>
+          <Text style={styles.successTitle}>{isDemo ? 'מצב דמו' : 'תודה שעדכנתם אותנו'}</Text>
+          <Text style={styles.successText}>
+            {isDemo
+              ? 'הבחירה נשמרה מקומית בלבד — לא נשמר שום עדכון ולא שונתה תשובה של אף אורח.'
+              : 'העדכון נשמר בהצלחה, ולא ניתן לשנות שוב דרך הקישור הזה.'}
+          </Text>
           <View style={styles.thanksMeta}>
             <Text style={styles.thanksMetaText}>
               סטטוס: {status}
               {status === 'מגיע' ? ` · ${Math.max(1, Number(peopleCount) || 1)} אורחים` : ''}
             </Text>
           </View>
-          <Text style={styles.thanksHint}>אפשר לסגור את הדף.</Text>
+          {isDemo ? (
+            <Pressable
+              onPress={() => setSubmittedLocked(false)}
+              style={({ pressed }) => [styles.demoResetBtn, pressed ? { opacity: 0.94 } : null]}
+              accessibilityRole="button"
+              accessibilityLabel="חזרה לדמו"
+            >
+              <Ionicons name="refresh" size={18} color={'rgba(2,6,23,0.78)'} />
+              <Text style={styles.demoResetText}>חזרה לדמו</Text>
+            </Pressable>
+          ) : (
+            <Text style={styles.thanksHint}>אפשר לסגור את הדף.</Text>
+          )}
         </View>
       </View>
     );
@@ -431,6 +463,20 @@ const styles = StyleSheet.create({
   },
   thanksMetaText: { fontSize: 12, fontWeight: '900', color: 'rgba(2,6,23,0.78)', textAlign: 'center' },
   thanksHint: { marginTop: 10, fontSize: 12, fontWeight: '800', color: 'rgba(2,6,23,0.55)', textAlign: 'center' },
+  demoResetBtn: {
+    marginTop: 10,
+    height: 44,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    backgroundColor: 'rgba(2,6,23,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(2,6,23,0.10)',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  demoResetText: { fontSize: 13, fontWeight: '900', color: 'rgba(2,6,23,0.78)', textAlign: 'center' },
 
   card: {
     backgroundColor: '#FFFFFF',

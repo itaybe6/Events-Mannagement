@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Modal,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -38,6 +39,14 @@ type NotificationSettingRow = {
   days_from_wedding: number;
   channel?: 'SMS' | 'WHATSAPP';
   notification_date?: string | null;
+};
+
+type SmsRunSummary = {
+  id: string;
+  notification_setting_id: string;
+  status: string;
+  claimed_at: string;
+  error?: string | null;
 };
 
 const normalizeMessage = (s: string) => String(s || '').replace(/\r\n/g, '\n').trim();
@@ -158,6 +167,14 @@ export default function AutomaticNotificationsScreen(props?: { editorPathname?: 
   const [loading, setLoading] = useState(true);
 
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettingRow[]>([]);
+  const [lastSmsRunBySettingId, setLastSmsRunBySettingId] = useState<Record<string, SmsRunSummary | undefined>>({});
+  const [sendStatusOpen, setSendStatusOpen] = useState(false);
+  const [sendStatusLoading, setSendStatusLoading] = useState(false);
+  const [sendStatusTitle, setSendStatusTitle] = useState('סטטוס שליחה');
+  const [sendStatusRun, setSendStatusRun] = useState<SmsRunSummary | null>(null);
+  const [sendStatusRows, setSendStatusRows] = useState<
+    Array<{ guestId: string; name: string; phone?: string; guestStatus?: string; sendStatus: 'sent' | 'failed' | 'skipped'; sentAt?: string | null; error?: string | null }>
+  >([]);
 
   const ui = useMemo(() => {
     // Light-only palette (always white UI)
@@ -199,6 +216,29 @@ export default function AutomaticNotificationsScreen(props?: { editorPathname?: 
     return d;
   };
 
+  const parseTimeHm = (value: string): { h: number; m: number } | null => {
+    const s = String(value || '').trim();
+    const m = /^(\d{1,2}):(\d{2})$/.exec(s);
+    if (!m) return null;
+    const h = Number(m[1]);
+    const min = Number(m[2]);
+    if (!Number.isInteger(h) || !Number.isInteger(min)) return null;
+    if (h < 0 || h > 23) return null;
+    if (min < 0 || min > 59) return null;
+    return { h, m: min };
+  };
+
+  const computeSendDateTime = (eventDateISO: string, days_from_wedding: number, timeHm: string) => {
+    const base = new Date(eventDateISO);
+    if (!Number.isFinite(base.getTime())) return null;
+    const hm = parseTimeHm(timeHm);
+    if (!hm) return null;
+    const d = new Date(base);
+    d.setDate(d.getDate() + (Number(days_from_wedding) || 0));
+    d.setHours(hm.h, hm.m, 0, 0);
+    return d;
+  };
+
   const toLocalYmd = (d: Date) => {
     if (!Number.isFinite(d.getTime())) return null;
     const yyyy = d.getFullYear();
@@ -211,6 +251,98 @@ export default function AutomaticNotificationsScreen(props?: { editorPathname?: 
     if (days === 0) return 'ביום האירוע';
     const abs = Math.abs(days);
     return days < 0 ? `${abs} ימים לפני האירוע` : `${abs} ימים אחרי האירוע`;
+  };
+
+  const formatHeDateTimeShort = (value: unknown) => {
+    const d = value instanceof Date ? value : new Date(String(value ?? ''));
+    if (!Number.isFinite(d.getTime())) return '';
+    const date = d.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' });
+    const time = d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+    return `${date} ${time}`;
+  };
+
+  const statusLabel = (s: string) => {
+    const v = String(s || '').trim();
+    if (v === 'sent') return { text: 'נשלח', color: '#16a34a' };
+    if (v === 'failed') return { text: 'נכשל', color: '#ef4444' };
+    if (v === 'sending') return { text: 'בתהליך', color: '#f59e0b' };
+    if (v === 'claimed') return { text: 'ממתין', color: '#f59e0b' };
+    if (v === 'skipped') return { text: 'דולג', color: '#64748b' };
+    return { text: '—', color: '#64748b' };
+  };
+
+  const openSendStatus = async (row: NotificationSettingRow) => {
+    if (!row?.id) return;
+    const run = lastSmsRunBySettingId[String(row.id)];
+    if (!run?.id) return;
+
+    setSendStatusTitle(`סטטוס שליחה · ${row.title}`);
+    setSendStatusRun(run);
+    setSendStatusRows([]);
+    setSendStatusOpen(true);
+    setSendStatusLoading(true);
+
+    try {
+      const { data: recRows, error: recError } = await supabase
+        .from('scheduled_notification_sms_run_recipients')
+        .select('guest_id, status, phone, sent_at, error')
+        .eq('run_id', run.id)
+        .order('created_at', { ascending: true });
+      if (recError) throw recError;
+
+      const recs = ((recRows as any[]) || []).map((r) => ({
+        guestId: String((r as any).guest_id),
+        sendStatus: String((r as any).status) as any,
+        phone: (r as any).phone ? String((r as any).phone) : undefined,
+        sentAt: (r as any).sent_at ? String((r as any).sent_at) : null,
+        error: (r as any).error ? String((r as any).error) : null,
+      }));
+      const ids = recs.map((r) => r.guestId).filter(Boolean);
+      const byId = new Map<string, { name: string; phone?: string; guestStatus?: string }>();
+      if (ids.length > 0) {
+        const { data: gRows, error: gError } = await supabase
+          .from('guests')
+          .select('id, name, phone, status')
+          .eq('event_id', resolvedEventId)
+          .in('id', ids);
+        if (!gError) {
+          for (const g of (gRows as any[]) || []) {
+            byId.set(String((g as any).id), {
+              name: String((g as any).name ?? ''),
+              phone: (g as any).phone ? String((g as any).phone) : undefined,
+              guestStatus: (g as any).status ? String((g as any).status) : undefined,
+            });
+          }
+        }
+      }
+
+      const decorated = recs.map((r) => {
+        const g = byId.get(r.guestId);
+        return {
+          guestId: r.guestId,
+          name: g?.name || '—',
+          phone: g?.phone || r.phone,
+          guestStatus: g?.guestStatus,
+          sendStatus: r.sendStatus,
+          sentAt: r.sentAt,
+          error: r.error,
+        };
+      });
+      const orderRank = (st: string) => (st === 'failed' ? 0 : st === 'skipped' ? 1 : 2);
+      decorated.sort((a, b) => {
+        const da = orderRank(String(a.sendStatus));
+        const db = orderRank(String(b.sendStatus));
+        if (da !== db) return da - db;
+        return String(a.name || '').localeCompare(String(b.name || ''), 'he');
+      });
+
+      setSendStatusRows(decorated);
+    } catch (e) {
+      console.warn('Failed to load send status rows:', e);
+      setSendStatusOpen(false);
+    } finally {
+      setSendStatusLoading(false);
+    }
   };
 
   const isMissingColumn = (err: any, column: string) =>
@@ -253,6 +385,7 @@ export default function AutomaticNotificationsScreen(props?: { editorPathname?: 
           message_content: shouldUpgradeMessage ? desiredDefault : String(existing.message_content ?? ''),
           days_from_wedding: typeof existing.days_from_wedding === 'number' ? existing.days_from_wedding : tpl.days_from_wedding,
           channel: (existing.channel as any) || tpl.channel,
+          notification_date: (existing.notification_date as any) ?? null,
         };
       }
 
@@ -268,6 +401,42 @@ export default function AutomaticNotificationsScreen(props?: { editorPathname?: 
     });
 
     setNotificationSettings(merged);
+
+    // Fetch last SMS runs (per setting) for status UI.
+    try {
+      const settingIds = merged
+        .filter((r) => r.id && (r.channel || 'SMS') === 'SMS')
+        .map((r) => String(r.id));
+      if (settingIds.length === 0) {
+        setLastSmsRunBySettingId({});
+      } else {
+        const { data: runs, error: runsError } = await supabase
+          .from('scheduled_notification_sms_runs')
+          .select('id, notification_setting_id, status, claimed_at, error')
+          .in('notification_setting_id', settingIds)
+          .order('claimed_at', { ascending: false });
+        if (runsError) {
+          console.warn('Failed to load last sms runs:', runsError);
+        } else {
+          const out: Record<string, SmsRunSummary> = {};
+          for (const r of (runs as any[]) || []) {
+            const sid = String((r as any).notification_setting_id || '').trim();
+            if (!sid) continue;
+            if (out[sid]) continue;
+            out[sid] = {
+              id: String((r as any).id),
+              notification_setting_id: sid,
+              status: String((r as any).status ?? ''),
+              claimed_at: String((r as any).claimed_at ?? ''),
+              error: (r as any).error ? String((r as any).error) : null,
+            };
+          }
+          setLastSmsRunBySettingId(out);
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to fetch last sms runs:', e);
+    }
   };
 
   useEffect(() => {
@@ -299,9 +468,18 @@ export default function AutomaticNotificationsScreen(props?: { editorPathname?: 
     try {
       if (row.id) {
         const updatePayload: any = { enabled: nextEnabled };
-        const ymd =
-          (event as any)?.date ? toLocalYmd(computeSendDate(String((event as any).date), row.days_from_wedding ?? 0)) : null;
-        if (ymd) updatePayload.notification_date = ymd;
+        if (nextEnabled) {
+          const existing = row.notification_date ? new Date(String(row.notification_date)) : null;
+          const hasRealTime =
+            existing && Number.isFinite(existing.getTime()) && (existing.getHours() !== 0 || existing.getMinutes() !== 0);
+          const dt =
+            hasRealTime && existing
+              ? existing
+              : (event as any)?.date
+                ? computeSendDateTime(String((event as any).date), row.days_from_wedding ?? 0, '10:00')
+                : null;
+          if (dt) updatePayload.notification_date = dt.toISOString();
+        }
 
         let { error } = await supabase.from('notification_settings').update(updatePayload).eq('id', row.id);
         if (error && isMissingColumn(error, 'notification_date')) {
@@ -326,9 +504,9 @@ export default function AutomaticNotificationsScreen(props?: { editorPathname?: 
         days_from_wedding: typeof row.days_from_wedding === 'number' ? row.days_from_wedding : tpl?.days_from_wedding ?? 0,
         channel: (row.channel as any) || tpl?.channel || 'SMS',
       };
-      const ymd =
-        (event as any)?.date ? toLocalYmd(computeSendDate(String((event as any).date), payload.days_from_wedding)) : null;
-      if (ymd) payload.notification_date = ymd;
+      const dt =
+        (event as any)?.date ? computeSendDateTime(String((event as any).date), payload.days_from_wedding, '10:00') : null;
+      if (dt) payload.notification_date = dt.toISOString();
 
       let { data, error } = await supabase.from('notification_settings').insert(payload).select().single();
       if (error && isMissingColumn(error, 'channel')) {
@@ -370,6 +548,11 @@ export default function AutomaticNotificationsScreen(props?: { editorPathname?: 
       ? `${formatOffsetLabel(row.days_from_wedding)}`
       : formatOffsetLabel(row.days_from_wedding);
 
+    const lastRun =
+      row.id && (row.channel || 'SMS') === 'SMS' ? lastSmsRunBySettingId[String(row.id)] : undefined;
+    const lastRunLabel = lastRun ? statusLabel(String(lastRun.status)) : null;
+    const lastRunAt = lastRun?.claimed_at ? formatHeDateTimeShort(lastRun.claimed_at) : '';
+
     const borderColor =
       variant === 'whatsapp'
         ? 'rgba(220,252,231,1)'
@@ -410,6 +593,21 @@ export default function AutomaticNotificationsScreen(props?: { editorPathname?: 
               {meta}
             </Text>
           </View>
+
+          {(row.channel || 'SMS') === 'SMS' ? (
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={() => openSendStatus(row)}
+              style={styles.sendStatusPill}
+              accessibilityRole="button"
+              accessibilityLabel="סטטוס שליחה"
+            >
+              <Ionicons name="checkmark-done-outline" size={14} color={lastRunLabel?.color || '#64748b'} />
+              <Text style={[styles.sendStatusText, { color: lastRunLabel?.color || '#64748b' }]} numberOfLines={1}>
+                {lastRunLabel ? `${lastRunLabel.text}${lastRunAt ? ` · ${lastRunAt}` : ''}` : 'סטטוס: לא נשלח עדיין'}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
 
         <View style={styles.chevronWrap}>
@@ -522,6 +720,63 @@ export default function AutomaticNotificationsScreen(props?: { editorPathname?: 
           </View>
         </View>
       </ScrollView>
+
+      <Modal visible={sendStatusOpen} transparent animationType="fade" onRequestClose={() => setSendStatusOpen(false)}>
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setSendStatusOpen(false)} />
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle} numberOfLines={1}>
+                {sendStatusTitle}
+              </Text>
+              <TouchableOpacity onPress={() => setSendStatusOpen(false)} style={styles.modalCloseBtn}>
+                <Ionicons name="close" size={18} color="#111827" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.modalBody}>
+              {sendStatusRun ? (
+                <Text style={styles.modalHint} numberOfLines={2}>
+                  {`ריצה אחרונה: ${formatHeDateTimeShort(sendStatusRun.claimed_at)} · ${statusLabel(sendStatusRun.status).text}`}
+                </Text>
+              ) : null}
+
+              {sendStatusLoading ? (
+                <View style={styles.modalCenter}>
+                  <ActivityIndicator />
+                </View>
+              ) : sendStatusRows.length === 0 ? (
+                <Text style={styles.modalEmpty}>אין נתונים להצגה.</Text>
+              ) : (
+                <ScrollView style={{ maxHeight: 420 }} contentContainerStyle={{ gap: 10, paddingBottom: 6 }}>
+                  {sendStatusRows.map((g) => {
+                    const st = statusLabel(g.sendStatus);
+                    const line =
+                      `${g.guestStatus ? `${g.guestStatus} · ` : ''}${g.phone ? g.phone : 'אין טלפון'}` +
+                      `${g.sentAt ? ` · ${formatHeDateTimeShort(g.sentAt)}` : ''}` +
+                      `${g.error ? ` · ${g.error}` : ''}`;
+                    return (
+                      <View key={g.guestId} style={styles.modalRow}>
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text style={styles.modalRowName} numberOfLines={1}>
+                            {g.name || '—'}
+                          </Text>
+                          <Text style={styles.modalRowMeta} numberOfLines={2}>
+                            {line}
+                          </Text>
+                        </View>
+                        <View style={styles.modalBadge}>
+                          <Text style={[styles.modalBadgeText, { color: st.color }]}>{st.text}</Text>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </ScrollView>
+              )}
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -608,5 +863,58 @@ const styles = StyleSheet.create({
   metaDot: { marginHorizontal: 10, fontSize: 14, fontWeight: '900' },
   metaText: { fontSize: 14, fontWeight: '700', textAlign: 'right', writingDirection: 'rtl' },
   chevronWrap: { paddingRight: 8, paddingLeft: 4, alignItems: 'center', justifyContent: 'center' },
+
+  sendStatusPill: {
+    marginTop: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.08)',
+    backgroundColor: 'rgba(17,24,39,0.03)',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+  },
+  sendStatusText: { fontSize: 12, fontWeight: '700', textAlign: 'right', flexShrink: 1 },
+
+  modalOverlay: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 18 },
+  modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(2,6,23,0.45)' },
+  modalCard: { width: '100%', maxWidth: 520, maxHeight: '86%', borderRadius: 16, backgroundColor: '#fff', overflow: 'hidden' },
+  modalHeader: { paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: 'rgba(17,24,39,0.08)' },
+  modalTitle: { fontSize: 14, fontWeight: '900', color: '#111827', textAlign: 'right', flex: 1 },
+  modalCloseBtn: { width: 34, height: 34, borderRadius: 10, backgroundColor: 'rgba(17,24,39,0.04)', borderWidth: 1, borderColor: 'rgba(17,24,39,0.10)', alignItems: 'center', justifyContent: 'center' },
+  modalBody: { padding: 14, gap: 10 },
+  modalHint: { fontSize: 12, fontWeight: '800', color: 'rgba(2,6,23,0.62)', textAlign: 'right' },
+  modalEmpty: { fontSize: 12, fontWeight: '900', color: 'rgba(2,6,23,0.62)', textAlign: 'right' },
+  modalCenter: { paddingVertical: 18, alignItems: 'center', justifyContent: 'center' },
+  modalRow: {
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.08)',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  modalRowName: { fontSize: 13, fontWeight: '900', color: '#111827', textAlign: 'right' },
+  modalRowMeta: {
+    marginTop: 3,
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#64748B',
+    textAlign: 'right',
+    display: 'flex',
+    justifyContent: 'flex-start',
+    alignItems: 'flex-start',
+    flexWrap: 'wrap',
+  },
+  modalBadge: { minWidth: 64, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(17,24,39,0.03)', borderWidth: 1, borderColor: 'rgba(17,24,39,0.08)', alignItems: 'center', justifyContent: 'center' },
+  modalBadgeText: { fontSize: 12, fontWeight: '900', textAlign: 'center' },
 });
 

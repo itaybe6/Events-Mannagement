@@ -2,12 +2,42 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.52.0";
 
-type GuestStatus = "מגיע" | "לא מגיע" | "ממתין";
+// Support legacy / UI variations across environments.
+type GuestStatus =
+  | "מגיע"
+  | "אישר"
+  | "ממתין"
+  | "מתלבטים"
+  | "לא מגיע"
+  | "לא מגיעים"
+  | "נשלחה הודעה";
+
+type FilterStatus =
+  | "all"
+  | "pending"
+  | "confirmed"
+  | "declined"
+  | GuestStatus;
+
+// "pending" should mean "hasn't responded yet" -> status "ממתין".
+const PENDING_STATUSES: GuestStatus[] = ["ממתין"];
+const CONFIRMED_STATUSES: GuestStatus[] = ["מגיע", "אישר"];
+const DECLINED_STATUSES: GuestStatus[] = ["לא מגיע", "לא מגיעים"];
+
+function normalizeFilterToStatuses(filter: string): GuestStatus[] | null {
+  const f = String(filter || "").trim();
+  if (!f || f === "all") return null;
+  if (f === "pending") return PENDING_STATUSES;
+  if (f === "confirmed") return CONFIRMED_STATUSES;
+  if (f === "declined") return DECLINED_STATUSES;
+  if ([...PENDING_STATUSES, ...CONFIRMED_STATUSES, ...DECLINED_STATUSES].includes(f as any)) return [f as any];
+  return [];
+}
 
 type SendInvitationSmsRequest = {
   eventId: string;
   guestIds?: string[];
-  filterStatus?: "all" | GuestStatus;
+  filterStatus?: FilterStatus;
   messageTemplate: string;
   baseUrl?: string;
 };
@@ -57,11 +87,31 @@ function getBaseUrl(req: Request, fromBody?: string) {
 }
 
 function fillTemplate(template: string, vars: Record<string, string>) {
-  let out = template;
-  for (const [k, v] of Object.entries(vars)) {
+  const stripMarks = (s: string) =>
+    String(s || "").replace(/[\u200E\u200F\u202A-\u202E]/g, "").trim();
+
+  let out = String(template ?? "");
+
+  // Fast-path exact replacements (both `{key}` and `{{key}}`)
+  for (const [kRaw, vRaw] of Object.entries(vars)) {
+    const k = stripMarks(kRaw);
+    const v = String(vRaw ?? "");
     out = out.split(`{${k}}`).join(v);
     out = out.split(`{{${k}}}`).join(v);
   }
+
+  // Robust replacement for `{{ ... }}` with possible spaces/RTL marks inside.
+  out = out.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (full, inner) => {
+    const key = stripMarks(inner);
+    return Object.prototype.hasOwnProperty.call(vars, key) ? String((vars as any)[key] ?? "") : full;
+  });
+
+  // Robust replacement for `{ ... }` (single braces), but avoid `{{...}}`.
+  out = out.replace(/\{(?!\{)\s*([^{}]+?)\s*\}(?!\})/g, (full, inner) => {
+    const key = stripMarks(inner);
+    return Object.prototype.hasOwnProperty.call(vars, key) ? String((vars as any)[key] ?? "") : full;
+  });
+
   return out;
 }
 
@@ -78,6 +128,33 @@ function chunk<T>(arr: T[], size: number) {
   const out: T[][] = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
   return out;
+}
+
+function makePulseemSendId(eventId: string, batchIndex: number) {
+  // Pulseem often has strict length limits on sendId (keep <= 50).
+  const ev = String(eventId || "").replace(/-/g, "").slice(0, 10);
+  const t = Date.now().toString(36);
+  const r = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
+  const bi = (batchIndex + 1).toString(36);
+  const id = `inv-${ev}-${t}-${r}-${bi}`;
+  return id.length <= 50 ? id : id.slice(0, 50);
+}
+
+function pulseemBodyLooksOk(text: string): { ok: boolean; reason?: string } {
+  const s = (text ?? "").trim();
+  if (!s) return { ok: false, reason: "empty_pulseem_response" };
+  try {
+    const j = JSON.parse(s);
+    const status = String(j?.status ?? "").toLowerCase();
+    const err = String(j?.error ?? j?.message ?? "").trim();
+    if (status === "error") return { ok: false, reason: err || "pulseem_status_error" };
+    if (!status && err) return { ok: false, reason: err };
+    if (status && status !== "success" && status !== "ok" && err) return { ok: false, reason: err };
+    return { ok: true };
+  } catch {
+    if (s.toLowerCase().includes("error")) return { ok: false, reason: "pulseem_error_in_body" };
+    return { ok: true };
+  }
 }
 
 serve(async (req) => {
@@ -143,13 +220,14 @@ serve(async (req) => {
     const eventId = String(body.eventId ?? "").trim();
     const messageTemplate = String(body.messageTemplate ?? "").trim();
     const filterStatusRaw = body.filterStatus ?? "all";
-    const filterStatus = String(filterStatusRaw).trim() as "all" | GuestStatus;
+    const filterStatus = String(filterStatusRaw).trim();
     const guestIds = Array.isArray(body.guestIds) ? body.guestIds.map(String).map((s) => s.trim()).filter(Boolean) : [];
 
     if (!eventId) return json({ error: "Missing eventId" }, { status: 400 });
     if (!messageTemplate) return json({ error: "Missing messageTemplate" }, { status: 400 });
     if (messageTemplate.length > 800) return json({ error: "messageTemplate too long" }, { status: 400 });
-    if (filterStatus !== "all" && filterStatus !== "מגיע" && filterStatus !== "ממתין" && filterStatus !== "לא מגיע") {
+    const statusList = normalizeFilterToStatuses(filterStatus);
+    if (statusList?.length === 0) {
       return json({ error: "Invalid filterStatus" }, { status: 400 });
     }
 
@@ -180,8 +258,8 @@ serve(async (req) => {
 
     if (guestIds.length > 0) {
       q = q.in("id", guestIds);
-    } else if (filterStatus !== "all") {
-      q = q.eq("status", filterStatus);
+    } else if (statusList && statusList.length > 0) {
+      q = statusList.length === 1 ? q.eq("status", statusList[0]) : q.in("status", statusList);
     }
 
     const { data: guests, error: guestsError } = await q;
@@ -266,7 +344,6 @@ serve(async (req) => {
     });
 
     const pulseemUrl = "https://api.pulseem.com/api/v1/SmsApi/SendSms";
-    const sendIdBase = `${eventId}-${Date.now()}`;
 
     let sent = 0;
     let failed = 0;
@@ -277,7 +354,7 @@ serve(async (req) => {
     const batches = chunk(sendable, 200);
     for (let bi = 0; bi < batches.length; bi++) {
       const batch = batches[bi];
-      const sendId = `${sendIdBase}-${bi + 1}`;
+      const sendId = makePulseemSendId(eventId, bi);
       pulseemSendIds.push(sendId);
 
       const payload: any = {
@@ -306,14 +383,17 @@ serve(async (req) => {
         body: JSON.stringify(payload),
       });
 
-      const ok = resp.ok;
       const respText = await resp.text().catch(() => "");
       const snippet = respText ? respText.slice(0, 500) : "";
-      pulseemResponses.push({ sendId, httpStatus: resp.status, ok, bodySnippet: snippet || undefined });
-      console.log("Pulseem response", { sendId, httpStatus: resp.status, ok, snippet });
-      if (!ok) {
+      const parsed = pulseemBodyLooksOk(respText);
+      const effectiveOk = resp.ok && parsed.ok;
+
+      pulseemResponses.push({ sendId, httpStatus: resp.status, ok: effectiveOk, bodySnippet: snippet || undefined });
+      console.log("Pulseem response", { sendId, httpStatus: resp.status, ok: effectiveOk, snippet });
+      if (!effectiveOk) {
         for (const b of batch) {
-          failures.push({ guestId: b.id, phone: b.phoneOk, reason: `pulseem_error_${resp.status}${respText ? `:${respText}` : ""}` });
+          const why = parsed.reason ? `pulseem:${parsed.reason}` : `pulseem_http_${resp.status}`;
+          failures.push({ guestId: b.id, phone: b.phoneOk, reason: `${why}${respText ? `:${respText}` : ""}` });
         }
         failed += batch.length;
       } else {
@@ -321,7 +401,7 @@ serve(async (req) => {
       }
 
       // Log to messages table (best-effort)
-      const status = ok ? `נשלח (sendId=${sendId})` : `נכשל (sendId=${sendId})`;
+      const status = effectiveOk ? `נשלח (sendId=${sendId})` : `נכשל (sendId=${sendId})`;
       const rows = batch.map((b) => ({
         event_id: eventId,
         type: "SMS",
@@ -349,7 +429,7 @@ serve(async (req) => {
       failures,
     };
 
-    return json({ ok: true, result });
+    return json({ ok: failed === 0, result });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     return json({ error: message }, { status: 500 });

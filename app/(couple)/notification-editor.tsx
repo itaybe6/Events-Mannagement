@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -19,6 +19,7 @@ import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-rou
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
+import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import { supabase } from '@/lib/supabase';
 import { useUserStore } from '@/store/userStore';
 import { useLayoutStore } from '@/store/layoutStore';
@@ -33,14 +34,15 @@ type NotificationSettingRow = {
   message_content?: string;
   days_from_wedding?: number;
   channel?: 'SMS' | 'WHATSAPP';
+  // Stored in DB as TIMESTAMPTZ (ISO string on the client).
   notification_date?: string | null;
   recipient_guest_ids?: string[] | null;
 };
 
 const DEFAULT_TEMPLATES: Array<Omit<NotificationSettingRow, 'id' | 'event_id'>> = [
   { notification_type: 'reminder_1', title: 'הודעה רגילה 1 (לפני האירוע)', days_from_wedding: -30, channel: 'SMS', enabled: false, message_content: '' },
-  { notification_type: 'reminder_2', title: 'הודעה רגילה 2 (לפני האירוע)', days_from_wedding: -14, channel: 'SMS', enabled: false, message_content: 'היי! האירוע בעוד שבועיים, מחכים לראות אתכם!' },
-  { notification_type: 'reminder_3', title: 'הודעה רגילה 3 (לפני האירוע)', days_from_wedding: -7, channel: 'SMS', enabled: false, message_content: 'תזכורת אחרונה: האירוע בעוד שבוע. נשמח לראותכם!' },
+  // Default: 14 days after message #1 (-30 + 14 = -16), can be edited manually.
+  { notification_type: 'reminder_2', title: 'הודעה שנייה (לממתינים)', days_from_wedding: -16, channel: 'SMS', enabled: false, message_content: 'תזכורת: אם עדיין לא אישרתם הגעה נשמח לאישור.' },
   { notification_type: 'whatsapp_event_day', title: 'וואטסאפ ביום האירוע', days_from_wedding: 0, channel: 'WHATSAPP', enabled: false, message_content: 'היום האירוע! נתראה שם' },
   { notification_type: 'after_1', title: 'הודעה רגילה אחרי האירוע', days_from_wedding: 1, channel: 'SMS', enabled: false, message_content: 'תודה שבאתם! היה לנו כיף גדול איתכם.' },
 ];
@@ -50,10 +52,76 @@ function formatDate(d: Date) {
   return d.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
+function formatDmySlashes(d: Date) {
+  if (Number.isNaN(d.getTime())) return '';
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = String(d.getFullYear());
+  return `${dd}/${mm}/${yyyy}`;
+}
+
 function computeSendDate(eventDate: Date, daysOffset: number) {
   const d = new Date(eventDate);
   d.setDate(d.getDate() + daysOffset);
   return d;
+}
+
+function formatTime(d: Date) {
+  if (Number.isNaN(d.getTime())) return '';
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${hh}:${mm}`;
+}
+
+function parseTimeHm(value: string): { h: number; m: number } | null {
+  const s = String(value || '').trim();
+  const m = /^(\d{1,2}):(\d{2})$/.exec(s);
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (!Number.isInteger(h) || !Number.isInteger(min)) return null;
+  if (h < 0 || h > 23) return null;
+  if (min < 0 || min > 59) return null;
+  return { h, m: min };
+}
+
+function parseYmd(ymd: string): { y: number; m: number; d: number } | null {
+  const s = String(ymd || '').trim();
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (!m) return null;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  if (!Number.isInteger(y) || !Number.isInteger(mo) || !Number.isInteger(d)) return null;
+  if (mo < 1 || mo > 12) return null;
+  if (d < 1 || d > 31) return null;
+  return { y, m: mo, d };
+}
+
+function formatDmyFromYmd(ymd: string) {
+  const p = parseYmd(ymd);
+  if (!p) return '';
+  const dd = String(p.d).padStart(2, '0');
+  const mm = String(p.m).padStart(2, '0');
+  return `${dd}/${mm}/${String(p.y)}`;
+}
+
+function startOfDayLocal(d: Date) {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+
+function diffDaysLocal(a: Date, b: Date) {
+  const ms = startOfDayLocal(a).getTime() - startOfDayLocal(b).getTime();
+  return Math.round(ms / (24 * 60 * 60 * 1000));
+}
+
+function formatOffsetLabel(days: number) {
+  if (!Number.isFinite(days)) return '';
+  if (days === 0) return 'ביום האירוע';
+  const abs = Math.abs(days);
+  return days < 0 ? `${abs} ימים לפני האירוע` : `${abs} ימים אחרי האירוע`;
 }
 
 function toLocalYmd(d: Date) {
@@ -93,12 +161,36 @@ export default function NotificationEditorScreen() {
   const [eventDate, setEventDate] = useState<Date | null>(null);
   const [row, setRow] = useState<NotificationSettingRow | null>(null);
 
-  const [timingMode, setTimingMode] = useState<'before' | 'after'>('before');
-  const [editedAbsDays, setEditedAbsDays] = useState('0');
+  const [editedSendDateYmd, setEditedSendDateYmd] = useState<string>('');
+  const [editedTimeHm, setEditedTimeHm] = useState('11:00');
   const [editedMessage, setEditedMessage] = useState('');
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const [timePickerOpen, setTimePickerOpen] = useState(false);
+  const dateInputRef = useRef<TextInput | null>(null);
+  const timeInputRef = useRef<TextInput | null>(null);
+
+  const webNativeOverlayInputStyle = useMemo(
+    () =>
+      Platform.OS === 'web'
+        ? ({
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            bottom: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            display: 'block',
+            opacity: 0.001,
+            cursor: 'pointer',
+            zIndex: 10,
+          } as any)
+        : null,
+    []
+  );
 
   const [guestFilter, setGuestFilter] = useState<'all' | 'מגיע' | 'ממתין' | 'לא מגיע'>(
-    notificationType === 'reminder_2' || notificationType === 'reminder_3' ? 'ממתין' : 'all'
+    notificationType === 'reminder_2' ? 'ממתין' : 'all'
   );
   const [allGuests, setAllGuests] = useState<
     Array<{ id: string; name: string; phone?: string; status: 'מגיע' | 'לא מגיע' | 'ממתין' }>
@@ -110,7 +202,6 @@ export default function NotificationEditorScreen() {
   const previousNotificationType = useMemo(() => {
     const nt = String(notificationType || '').trim();
     if (nt === 'reminder_2') return 'reminder_1';
-    if (nt === 'reminder_3') return 'reminder_2';
     return null;
   }, [notificationType]);
 
@@ -223,12 +314,26 @@ export default function NotificationEditorScreen() {
           message_content: String((base as any).message_content ?? ''),
           days_from_wedding: days,
           channel: ((base as any).channel as any) || (tpl?.channel as any) || 'SMS',
+          notification_date: (base as any).notification_date ? String((base as any).notification_date) : null,
           recipient_guest_ids: recipientIds,
         });
         setSelectedGuestIds(new Set(recipientIds));
 
-        setTimingMode(days < 0 ? 'before' : 'after');
-        setEditedAbsDays(String(Math.abs(days)));
+        {
+          const existingDtRaw = (base as any)?.notification_date;
+          const existingDt = existingDtRaw ? new Date(String(existingDtRaw)) : null;
+          const hasRealTime =
+            existingDt && Number.isFinite(existingDt.getTime()) && (existingDt.getHours() !== 0 || existingDt.getMinutes() !== 0);
+          setEditedTimeHm(hasRealTime && existingDt ? formatTime(existingDt) : '11:00');
+          if (existingDt && Number.isFinite(existingDt.getTime())) {
+            setEditedSendDateYmd(toLocalYmd(existingDt) || '');
+          } else if (d && Number.isFinite(d.getTime())) {
+            const fallback = computeSendDate(d, days);
+            setEditedSendDateYmd(toLocalYmd(fallback) || '');
+          } else {
+            setEditedSendDateYmd('');
+          }
+        }
         setEditedMessage(String((base as any).message_content ?? ''));
       } catch (e) {
         console.error('Editor load error:', e);
@@ -243,23 +348,24 @@ export default function NotificationEditorScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resolvedEventId, notificationType]);
 
-  const computedDateText = useMemo(() => {
-    if (!eventDate) return '';
-    const abs = Number.parseInt((editedAbsDays || '').trim(), 10);
-    const signed =
-      Number.isFinite(abs) ? (abs === 0 ? 0 : timingMode === 'before' ? -Math.abs(abs) : Math.abs(abs)) : 0;
-    return formatDate(computeSendDate(eventDate, signed));
-  }, [eventDate, editedAbsDays, timingMode]);
+  const computedSendAt = useMemo(() => {
+    if (!eventDate) return null;
+    const ymd = parseYmd(editedSendDateYmd);
+    const hm = parseTimeHm(editedTimeHm);
+    if (!ymd || !hm) return null;
+    return new Date(ymd.y, ymd.m - 1, ymd.d, hm.h, hm.m, 0, 0);
+  }, [editedSendDateYmd, editedTimeHm, eventDate]);
+
+  const offsetDays = useMemo(() => {
+    if (!eventDate || !computedSendAt) return null;
+    return diffDaysLocal(computedSendAt, eventDate);
+  }, [computedSendAt, eventDate]);
 
   const maxChars = 160;
   const charsCount = editedMessage.length;
   const isOverLimit = charsCount > maxChars;
 
-  const onChangeDays = (txt: string) => {
-    // Keep digits only (abs days).
-    const cleaned = String(txt || '').replace(/[^\d]/g, '');
-    setEditedAbsDays(cleaned);
-  };
+  const onChangeTimeHm = (txt: string) => setEditedTimeHm(String(txt || ''));
 
   const save = async (opts?: { recipientGuestIds?: string[]; navigateBack?: boolean }) => {
     if (!resolvedEventId || !row) return;
@@ -275,18 +381,18 @@ export default function NotificationEditorScreen() {
       return;
     }
 
-    const abs = Number.parseInt((editedAbsDays || '').trim(), 10);
-    const signed =
-      Number.isFinite(abs) ? (abs === 0 ? 0 : timingMode === 'before' ? -Math.abs(abs) : Math.abs(abs)) : NaN;
-    const daysToSave = Number.isFinite(signed) ? signed : row.days_from_wedding ?? 0;
-    const notificationDateYmd =
-      eventDate && Number.isFinite(eventDate.getTime()) ? toLocalYmd(computeSendDate(eventDate, daysToSave)) : null;
+    if (!eventDate) return;
+    if (!computedSendAt || offsetDays === null) {
+      Alert.alert('שגיאה', 'בחר תאריך ושעה תקינים לשליחה');
+      return;
+    }
+    const daysToSave = offsetDays;
 
     setSaving(true);
     try {
       if (row.id) {
-        const updatePayload: any = { message_content: msg, days_from_wedding: daysToSave, channel: row.channel };
-        if (notificationDateYmd) updatePayload.notification_date = notificationDateYmd;
+        const updatePayload: any = { message_content: msg, days_from_wedding: daysToSave, channel: row.channel, enabled: true };
+        updatePayload.notification_date = computedSendAt.toISOString();
         if (opts?.recipientGuestIds) updatePayload.recipient_guest_ids = opts.recipientGuestIds;
         let { error } = await supabase.from('notification_settings').update(updatePayload).eq('id', row.id);
         if (error && isMissingColumn(error, 'channel')) {
@@ -310,12 +416,12 @@ export default function NotificationEditorScreen() {
           event_id: resolvedEventId,
           notification_type: row.notification_type,
           title: row.title,
-          enabled: Boolean(row.enabled),
+          enabled: true,
           message_content: msg,
           days_from_wedding: daysToSave,
           channel: row.channel || 'SMS',
         };
-        if (notificationDateYmd) insertPayload.notification_date = notificationDateYmd;
+        insertPayload.notification_date = computedSendAt.toISOString();
         if (opts?.recipientGuestIds) insertPayload.recipient_guest_ids = opts.recipientGuestIds;
         let { data, error } = await supabase.from('notification_settings').insert(insertPayload).select().single();
         if (error && isMissingColumn(error, 'channel')) {
@@ -434,14 +540,17 @@ export default function NotificationEditorScreen() {
       Alert.alert('שגיאה', 'יש להזין תוכן הודעה');
       return;
     }
+    const nt = String(notificationType || '').trim();
+    const isAutoPending = nt === 'reminder_2';
     const ids = Array.from(selectedGuestIds);
-    if (ids.length === 0) {
+    if (ids.length === 0 && !isAutoPending) {
       Alert.alert('בחר מוזמנים', 'בחר לפחות מוזמן אחד לשליחה.');
       return;
     }
 
     setSendingNow(true);
     try {
+      // Persist current selection (empty list is meaningful for reminder_2: "all pending").
       await save({ recipientGuestIds: ids, navigateBack: false });
 
       const sessionRes = await supabase.auth.getSession();
@@ -456,7 +565,8 @@ export default function NotificationEditorScreen() {
         headers: { Authorization: `Bearer ${accessToken}` },
         body: {
           eventId: resolvedEventId,
-          guestIds: ids,
+          guestIds: ids.length > 0 ? ids : undefined,
+          filterStatus: isAutoPending ? 'pending' : 'all',
           messageTemplate: msg,
           baseUrl,
         },
@@ -538,47 +648,97 @@ export default function NotificationEditorScreen() {
               {/* When */}
               <View style={styles.section}>
                 <Text style={[styles.sectionTitle, { color: ui.text }]}>מתי לשלוח</Text>
-                <View style={[styles.segmentWrap, { backgroundColor: ui.softBlue, borderColor: 'rgba(29,78,216,0.14)' }]}>
-                  <Pressable
-                    onPress={() => setTimingMode('before')}
-                    style={[styles.segmentBtn, timingMode === 'before' ? styles.segmentBtnActive : null]}
-                    accessibilityRole="button"
-                    accessibilityLabel="לפני האירוע"
-                  >
-                    <Text style={[styles.segmentText, { color: timingMode === 'before' ? ui.primary : ui.sub }]}>לפני</Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => setTimingMode('after')}
-                    style={[styles.segmentBtn, timingMode === 'after' ? styles.segmentBtnActive : null]}
-                    accessibilityRole="button"
-                    accessibilityLabel="אחרי האירוע"
-                  >
-                    <Text style={[styles.segmentText, { color: timingMode === 'after' ? ui.primary : ui.sub }]}>אחרי</Text>
-                  </Pressable>
-                </View>
 
-                <View style={styles.cardsRow}>
-                  <View style={[styles.computedCard, { backgroundColor: ui.surface, borderColor: ui.border }]}>
-                    <Text style={[styles.computedLabel, { color: ui.sub }]}>תאריך מחושב</Text>
-                    <Text style={[styles.computedValue, { color: ui.text }]}>{computedDateText || '—'}</Text>
+                <View style={styles.scheduleRow}>
+                  <View style={styles.dateCol}>
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={() => {
+                        if (Platform.OS !== 'web') {
+                          setDatePickerOpen(true);
+                          return;
+                        }
+                        const el = dateInputRef.current as any;
+                        el?.showPicker?.();
+                        el?.click?.();
+                        el?.focus?.();
+                      }}
+                      style={({ pressed }) => [
+                        styles.scheduleCard,
+                        { backgroundColor: ui.surface, borderColor: ui.border },
+                        pressed && Platform.OS !== 'web' ? { opacity: 0.92 } : null,
+                      ]}
+                    >
+                      <View style={styles.scheduleCardTop}>
+                        <Text style={[styles.daysMeta, { color: ui.sub }]}>תאריך לשליחה</Text>
+                        <Ionicons name="calendar-outline" size={18} color={ui.sub} />
+                      </View>
+
+                      {Platform.OS === 'web' ? (
+                        // RN TextInput + type="date" doesn't reliably open a calendar on click; use a real input overlay.
+                        // @ts-expect-error web-only element
+                        <input
+                          ref={dateInputRef as any}
+                          value={editedSendDateYmd || ''}
+                          onChange={(e: any) => setEditedSendDateYmd(String(e?.target?.value || ''))}
+                          type="date"
+                          style={webNativeOverlayInputStyle}
+                        />
+                      ) : (
+                        <Text style={[styles.scheduleValueText, { color: ui.text }]}>
+                          {computedSendAt ? formatDmySlashes(computedSendAt) : editedSendDateYmd ? formatDmyFromYmd(editedSendDateYmd) : 'בחר תאריך'}
+                        </Text>
+                      )}
+
+                      {Platform.OS === 'web' ? (
+                        <Text style={[styles.scheduleValueText, { color: ui.text }]}>
+                          {editedSendDateYmd ? formatDmyFromYmd(editedSendDateYmd) : 'בחר תאריך'}
+                        </Text>
+                      ) : null}
+                    </Pressable>
+
+                    <Text style={[styles.offsetBelow, { color: ui.sub }]} numberOfLines={1}>
+                      {offsetDays === null ? '—' : formatOffsetLabel(offsetDays)}
+                    </Text>
                   </View>
-                  <View style={[styles.daysCard, { backgroundColor: ui.surface, borderColor: ui.border }]}>
-                    <View style={styles.daysCardTop}>
-                      <Text style={[styles.daysMeta, { color: ui.sub }]}>ימים</Text>
-                      <Ionicons name="time-outline" size={18} color={ui.sub} />
+
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => {
+                      if (Platform.OS !== 'web') {
+                        setTimePickerOpen(true);
+                        return;
+                      }
+                      const el = timeInputRef.current as any;
+                      el?.showPicker?.();
+                      el?.click?.();
+                      el?.focus?.();
+                    }}
+                    style={({ pressed }) => [
+                      styles.scheduleCardSmall,
+                      { backgroundColor: ui.surface, borderColor: ui.border },
+                      pressed && Platform.OS !== 'web' ? { opacity: 0.92 } : null,
+                    ]}
+                  >
+                    <View style={styles.scheduleCardTop}>
+                      <Text style={[styles.daysMeta, { color: ui.sub }]}>שעה</Text>
+                      <Ionicons name="alarm-outline" size={18} color={ui.sub} />
                     </View>
-                    <TextInput
-                      value={editedAbsDays}
-                      onChangeText={onChangeDays}
-                      placeholder="0"
-                      placeholderTextColor={ui.iconMuted}
-                      style={[styles.daysValue, { color: ui.text }]}
-                      keyboardType="numeric"
-                      inputMode="numeric"
-                      textAlign="center"
-                      maxLength={4}
-                    />
-                  </View>
+
+                    {Platform.OS === 'web' ? (
+                      // @ts-expect-error web-only element
+                      <input
+                        ref={timeInputRef as any}
+                        value={editedTimeHm || ''}
+                        onChange={(e: any) => onChangeTimeHm(String(e?.target?.value || ''))}
+                        type="time"
+                        step={60}
+                        style={webNativeOverlayInputStyle}
+                      />
+                    ) : (
+                      <Text style={[styles.scheduleValueText, { color: ui.text }]}>{editedTimeHm || 'בחר שעה'}</Text>
+                    )}
+                  </Pressable>
                 </View>
               </View>
 
@@ -590,7 +750,7 @@ export default function NotificationEditorScreen() {
                     <TouchableOpacity
                       style={[styles.toolBtn, { backgroundColor: ui.surfaceMuted, borderColor: 'rgba(17,24,39,0.06)' }]}
                       activeOpacity={0.92}
-                      onPress={() => setEditedMessage((prev) => `${prev}${prev ? ' ' : ''}{{event_date}}`)}
+                      onPress={() => setEditedMessage((prev) => `${prev}${prev ? ' ' : ''}{event_date}`)}
                       accessibilityRole="button"
                       accessibilityLabel="הוסף תאריך"
                     >
@@ -599,7 +759,7 @@ export default function NotificationEditorScreen() {
                     <TouchableOpacity
                       style={[styles.toolBtn, { backgroundColor: ui.surfaceMuted, borderColor: 'rgba(17,24,39,0.06)' }]}
                       activeOpacity={0.92}
-                      onPress={() => setEditedMessage((prev) => `${prev}${prev ? ' ' : ''}{{name}}`)}
+                      onPress={() => setEditedMessage((prev) => `${prev}${prev ? ' ' : ''}{name}`)}
                       accessibilityRole="button"
                       accessibilityLabel="הוסף שם"
                     >
@@ -650,8 +810,8 @@ export default function NotificationEditorScreen() {
                   </View>
 
                   <Text style={[styles.helperText, { color: ui.sub }]}>
-                    משתנים שימושיים: <Text style={styles.mono}>{'{{name}}'}</Text> · <Text style={styles.mono}>{'{{link}}'}</Text> ·{' '}
-                    <Text style={styles.mono}>{'{{event_date}}'}</Text>
+                    משתנים שימושיים: <Text style={styles.mono}>{'{name}'}</Text> · <Text style={styles.mono}>{'{link}'}</Text> ·{' '}
+                    <Text style={styles.mono}>{'{event_date}'}</Text>
                   </Text>
 
                   <View style={styles.filtersRow}>
@@ -755,6 +915,35 @@ export default function NotificationEditorScreen() {
         </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
 
+      {Platform.OS === 'web' ? null : (
+        <>
+          <DateTimePickerModal
+            isVisible={datePickerOpen}
+            mode="date"
+            date={computedSendAt ?? eventDate ?? new Date()}
+            display={Platform.OS === 'ios' ? 'inline' : 'default'}
+            onConfirm={(d) => {
+              setDatePickerOpen(false);
+              const next = toLocalYmd(d);
+              if (next) setEditedSendDateYmd(next);
+            }}
+            onCancel={() => setDatePickerOpen(false)}
+          />
+
+          <DateTimePickerModal
+            isVisible={timePickerOpen}
+            mode="time"
+            date={computedSendAt ?? eventDate ?? new Date()}
+            display={Platform.OS === 'ios' ? 'spinner' : 'spinner'}
+            onConfirm={(d) => {
+              setTimePickerOpen(false);
+              setEditedTimeHm(formatTime(d));
+            }}
+            onCancel={() => setTimePickerOpen(false)}
+          />
+        </>
+      )}
+
       {/* Bottom actions */}
       <View
         style={[
@@ -779,7 +968,7 @@ export default function NotificationEditorScreen() {
 
             <TouchableOpacity
               style={[styles.bottomBtnPrimary, { backgroundColor: saving ? ui.primaryHover : ui.primary }]}
-              onPress={save}
+              onPress={() => void save({ recipientGuestIds: Array.from(selectedGuestIds) })}
               activeOpacity={0.92}
               disabled={saving}
             >
@@ -830,6 +1019,22 @@ const styles = StyleSheet.create({
   section: { paddingHorizontal: 2, gap: 12 },
   sectionTitle: { fontSize: 13, fontWeight: '900', textAlign: 'right', paddingHorizontal: 2 },
 
+  scheduleRow: { flexDirection: 'row-reverse', alignItems: 'stretch', gap: 12 },
+  dateCol: { flex: 2, gap: 8 },
+  scheduleCard: { position: 'relative', flex: 2, minHeight: 92, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, gap: 6 },
+  scheduleCardSmall: { position: 'relative', flex: 1, minHeight: 92, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, gap: 6 },
+  scheduleCardTop: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
+  scheduleValueText: { fontSize: 18, fontWeight: '900', textAlign: 'right', writingDirection: 'ltr' },
+  scheduleSubText: { fontSize: 12, fontWeight: '800', textAlign: 'right', opacity: 0.85 },
+  offsetBelow: { fontSize: 12, fontWeight: '800', textAlign: 'right', opacity: 0.85 },
+  scheduleValueInput: {
+    fontSize: 16,
+    fontWeight: '900',
+    paddingVertical: 0,
+    paddingHorizontal: 0,
+    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : null),
+  },
+
   segmentWrap: { flexDirection: 'row-reverse', padding: 4, borderRadius: 16, borderWidth: 1 },
   segmentBtn: { flex: 1, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
   segmentBtnActive: {
@@ -846,13 +1051,15 @@ const styles = StyleSheet.create({
   computedCard: { flex: 1, height: 76, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center', gap: 4 },
   computedLabel: { fontSize: 11, fontWeight: '800' },
   computedValue: { fontSize: 18, fontWeight: '900', textAlign: 'center', writingDirection: 'ltr' },
+  sideCardsCol: { flex: 1, gap: 12 },
   daysCard: { flex: 1, height: 76, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, justifyContent: 'space-between' },
+  timeCard: { flex: 1, height: 76, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, justifyContent: 'space-between' },
   daysCardTop: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
   daysMeta: { fontSize: 11, fontWeight: '800' },
   daysValue: { fontSize: 22, fontWeight: '900', paddingVertical: 0, paddingHorizontal: 0 },
 
   messageHeaderRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  messageTools: { flexDirection: 'row-reverse', gap: 8 },
+  messageTools: { flexDirection: 'row-reverse', gap: 8, flexWrap: 'wrap' },
   toolBtn: { width: 36, height: 36, borderRadius: 14, borderWidth: 1, justifyContent: 'center', alignItems: 'center' },
   textareaWrap: { position: 'relative' },
   textarea: { borderRadius: 20, paddingHorizontal: 18, paddingVertical: 16, fontSize: 16, fontWeight: '700', minHeight: 280, lineHeight: 24, writingDirection: 'rtl', borderWidth: 1 },

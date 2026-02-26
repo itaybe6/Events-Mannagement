@@ -33,7 +33,7 @@ export type InvitationGuestInfo = {
 };
 
 export type InvitationInfo = {
-  guest: InvitationGuestInfo;
+  guest?: InvitationGuestInfo | null;
   event: InvitationEventInfo;
 };
 
@@ -106,6 +106,47 @@ export const invitationService = {
         rsvpLocked: Boolean(guestRow.rsvp_locked),
         rsvpSubmittedAt: guestRow.rsvp_submitted_at ? new Date(String(guestRow.rsvp_submitted_at)) : null,
       },
+      event: {
+        id: String(eventRow.id),
+        title: String(eventRow.title ?? ''),
+        date: Number.isFinite(date.getTime()) ? date : new Date(),
+        location: String(eventRow.location ?? ''),
+        city: String(eventRow.city ?? ''),
+        groomName: eventRow.groom_name ? String(eventRow.groom_name) : undefined,
+        brideName: eventRow.bride_name ? String(eventRow.bride_name) : undefined,
+        receptionTime: eventRow.reception_time ? String(eventRow.reception_time) : undefined,
+        ceremonyTime: eventRow.ceremony_time ? String(eventRow.ceremony_time) : undefined,
+        brideParents: eventRow.bride_parents ? String(eventRow.bride_parents) : undefined,
+        groomParents: eventRow.groom_parents ? String(eventRow.groom_parents) : undefined,
+        invitationTitle: eventRow.invitation_title ? String(eventRow.invitation_title) : undefined,
+        invitationImageUrl: eventRow.invitation_image_url ? String(eventRow.invitation_image_url) : undefined,
+      },
+    };
+  },
+
+  async getInvitationDemoByEventId(eventId: string): Promise<InvitationInfo | null> {
+    const id = String(eventId || '').trim();
+    if (!id) return null;
+
+    const client = createPublicClient();
+    const { data, error } = await client.rpc('get_invitation_demo', { p_event_id: id });
+    if (error) {
+      const msg = String((error as any)?.message ?? error);
+      if (msg.includes('get_invitation_demo') && msg.toLowerCase().includes('schema cache')) {
+        throw new Error(
+          'דמו לא זמין עדיין בבסיס הנתונים: חסרה פונקציה public.get_invitation_demo.\n\nיש להריץ את המיגרציה: supabase/migrations/20260225_public_invitation_demo_rpc.sql (ב־Supabase Dashboard → SQL Editor) ואז לבצע Reload ל־schema cache.'
+        );
+      }
+      throw error;
+    }
+    if (!data) return null;
+
+    const eventRow: any = (data as any).event ?? data;
+    if (!eventRow) return null;
+
+    const date = new Date(eventRow.date);
+    return {
+      guest: null,
       event: {
         id: String(eventRow.id),
         title: String(eventRow.title ?? ''),

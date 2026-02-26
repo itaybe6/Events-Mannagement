@@ -20,6 +20,31 @@
 - `SITE_BASE_URL` (אופציונלי): הדומיין שממנו יוצרים לינק, למשל `https://your-site.com`
   - אם לא מגדירים, הלקוח (web) שולח `baseUrl` אוטומטית.
 
+#### שליחה מתוזמנת (הודעות אוטומטיות לפי תאריך/שעה)
+כדי שהבחירה של תאריך/שעה במסכי **הודעות אוטומטיות** תישלח באמת בזמן, יש מנגנון שרץ ברקע:
+- Edge Function: `process-scheduled-notification-sms`
+- Cron בדאטאבייס (pg_cron) שמפעיל אותו כל דקה (דרך pg_net)
+- טבלת לוג/דדופ: `scheduled_notification_sms_runs`
+
+**Secrets נוספים (Edge Functions → Secrets):**
+- `SCHEDULED_SMS_CRON_SECRET`: מחרוזת אקראית (shared secret) שה־Cron ישלח בכותרת `x-cron-secret`
+
+**DB secrets (עובד גם ב־Supabase Local, בלי Vault):**
+אחרי שמריצים את המיגרציה, תריץ פעם אחת ב־SQL Editor:
+
+```sql
+insert into private.app_secrets(name, value)
+values
+  ('supabase_project_url', 'https://<project-ref>.supabase.co'),
+  ('scheduled_sms_cron_secret', '<same-as-SCHEDULED_SMS_CRON_SECRET>')
+on conflict (name) do update
+set value = excluded.value,
+    updated_at = now();
+```
+
+**SQL Migration:**
+- `supabase/migrations/20260225_scheduled_sms_notifications.sql` מוסיף את ה־RPC וה־Cron job.
+
 ### פריסה של ה־Edge Function
 יש 2 אפשרויות:
 
@@ -29,12 +54,13 @@
 
 ```bash
 supabase functions deploy send-invitation-sms --no-verify-jwt
+supabase functions deploy process-scheduled-notification-sms --no-verify-jwt
 ```
 
 3) הגדר secrets:
 
 ```bash
-supabase secrets set PULSEEM_API_KEY="..." SITE_BASE_URL="https://your-site.com"
+supabase secrets set PULSEEM_API_KEY="..." SITE_BASE_URL="https://your-site.com" SCHEDULED_SMS_CRON_SECRET="..."
 ```
 
 #### אפשרות B: דרך Supabase Dashboard
