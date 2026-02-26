@@ -499,7 +499,6 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: '#111418',
     textAlign: 'right',
-    ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null),
   },
   leaveSubtitle: {
     marginTop: 6,
@@ -507,12 +506,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: 'rgba(17,24,39,0.60)',
     textAlign: 'right',
-    ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null),
   },
   leaveActions: { marginTop: 12, flexDirection: 'row-reverse', gap: 10 },
   leaveBtn: { flex: 1, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   leaveBtnPrimary: { backgroundColor: '#2b8cee' },
-  leavePrimaryText: { color: '#fff', fontWeight: '900', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
+  leavePrimaryText: { color: '#fff', fontWeight: '900' },
   leaveBtnGhost: { backgroundColor: 'rgba(17,24,39,0.04)', borderWidth: 1, borderColor: 'rgba(17,24,39,0.10)' },
-  leaveGhostText: { color: 'rgba(17,24,39,0.75)', fontWeight: '900', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
+  leaveGhostText: { color: 'rgba(17,24,39,0.75)', fontWeight: '900' },
 });
