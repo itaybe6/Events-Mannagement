@@ -1,7 +1,9 @@
 import React, { useEffect } from "react";
 import { Tabs, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { Image, Platform, StyleSheet, View } from "react-native";
+import { BlurView } from "expo-blur";
+import { LinearGradient } from "expo-linear-gradient";
+import { Platform, StyleSheet, View } from "react-native";
 import { Image as ExpoImage } from "expo-image";
 
 import { colors } from "@/constants/colors";
@@ -15,14 +17,26 @@ function ProfileTabIcon({ focused }: { focused: boolean }) {
   const avatarUrl = useUserStore((s) => s.userData?.avatar_url);
 
   return (
-    <View style={[styles.iconContainer, focused && styles.activeIconContainer]}>
+    <View style={[styles.iconCircle, focused && styles.iconCircleActive]}>
+      <LinearGradient
+        pointerEvents="none"
+        colors={[
+          "rgba(255,255,255,0.55)",
+          "rgba(255,255,255,0.18)",
+          "rgba(255,255,255,0)",
+        ]}
+        locations={[0, 0.55, 1]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.iconGloss}
+      />
       {avatarUrl ? (
         <ExpoImage
           key={avatarUrl}
           source={{ uri: avatarUrl }}
           style={[
             styles.tabAvatar,
-            { borderColor: focused ? colors.white : "rgba(0,0,0,0.14)" },
+            { borderColor: focused ? "rgba(255,255,255,0.85)" : "rgba(0,0,0,0.14)" },
           ]}
           contentFit="cover"
           cachePolicy="none"
@@ -30,9 +44,9 @@ function ProfileTabIcon({ focused }: { focused: boolean }) {
         />
       ) : (
         <Ionicons
-          name="person-circle"
-          size={24}
-          color={focused ? colors.white : colors.gray[500]}
+          name={focused ? "person" : "person-outline"}
+          size={22}
+          color={focused ? colors.white : colors.gray[700]}
         />
       )}
     </View>
@@ -83,38 +97,73 @@ export default function EmployeeTabsLayout() {
           />
         ),
         tabBarShowLabel: false,
+        tabBarBackground: () => (
+          <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+            <BlurView intensity={28} tint="light" style={styles.tabBarBlur} />
+            <View style={styles.tabBarFrame} />
+            <LinearGradient
+              pointerEvents="none"
+              colors={[
+                "rgba(255,255,255,0.65)",
+                "rgba(255,255,255,0.18)",
+                "rgba(255,255,255,0)",
+              ]}
+              locations={[0, 0.35, 1]}
+              start={{ x: 0.5, y: 0 }}
+              end={{ x: 0.5, y: 1 }}
+              style={styles.tabBarTopShine}
+            />
+            <LinearGradient
+              pointerEvents="none"
+              colors={["rgba(255,255,255,0.28)", "rgba(255,255,255,0)"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.tabBarSheen}
+            />
+            <LinearGradient
+              pointerEvents="none"
+              colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.06)"]}
+              start={{ x: 0.5, y: 0.5 }}
+              end={{ x: 0.5, y: 1 }}
+              style={styles.tabBarBottomShade}
+            />
+          </View>
+        ),
         tabBarStyle: {
           position: "absolute",
-          bottom: Platform.OS === "ios" ? 30 : 20,
-          left: 15,
-          right: 15,
-          height: 65,
-          backgroundColor: colors.white,
-          borderRadius: 35,
-          paddingHorizontal: 15,
-          paddingVertical: 8,
-          paddingTop: 12,
+          bottom: Platform.OS === "ios" ? 28 : 22,
+          left: 20,
+          right: 20,
+          height: 60,
+          backgroundColor: "transparent",
+          borderRadius: 32,
+          paddingHorizontal: 8,
+          paddingVertical: 0,
+          paddingTop: 0,
+          paddingBottom: 0,
+          overflow: "hidden",
           shadowColor: colors.richBlack,
-          shadowOffset: { width: 0, height: -10 },
-          shadowOpacity: 0.25,
-          shadowRadius: 30,
-          elevation: 25,
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.12,
+          shadowRadius: 16,
+          elevation: 14,
           borderTopWidth: 0,
-          borderWidth: 1,
-          borderColor: "rgba(0,0,0,0.08)",
+          borderWidth: 0,
           display: isTabBarVisible ? "flex" : "none",
         },
         tabBarItemStyle: {
-          marginHorizontal: 3,
-          paddingVertical: 6,
-          paddingHorizontal: 8,
-          height: 30,
+          flex: 1,
+          marginHorizontal: 2,
+          paddingVertical: 0,
+          paddingHorizontal: 0,
           justifyContent: "center",
           alignItems: "center",
         },
         tabBarIconStyle: {
           marginRight: 0,
           marginLeft: 0,
+          marginTop: 10,
+          marginBottom: 0,
         },
       }}
     >
@@ -123,11 +172,23 @@ export default function EmployeeTabsLayout() {
         options={{
           title: "אירועים",
           tabBarIcon: ({ focused }) => (
-            <View style={[styles.iconContainer, focused && styles.activeIconContainer]}>
+            <View style={[styles.iconCircle, focused && styles.iconCircleActive]}>
+              <LinearGradient
+                pointerEvents="none"
+                colors={[
+                  "rgba(255,255,255,0.55)",
+                  "rgba(255,255,255,0.18)",
+                  "rgba(255,255,255,0)",
+                ]}
+                locations={[0, 0.55, 1]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.iconGloss}
+              />
               <Ionicons
-                name="calendar-outline"
-                size={24}
-                color={focused ? colors.white : colors.gray[500]}
+                name={focused ? "calendar" : "calendar-outline"}
+                size={22}
+                color={focused ? colors.white : colors.gray[700]}
               />
             </View>
           ),
@@ -151,17 +212,48 @@ export default function EmployeeTabsLayout() {
 }
 
 const styles = StyleSheet.create({
-  iconContainer: {
+  tabBarBlur: {
+    flex: 1,
+    borderRadius: 32,
+    overflow: "hidden",
+  },
+  tabBarFrame: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 32,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.7)",
+    backgroundColor: "rgba(255,255,255,0.16)",
+  },
+  tabBarTopShine: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 32,
+  },
+  tabBarSheen: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 32,
+  },
+  tabBarBottomShade: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 32,
+  },
+  iconCircle: {
     width: 40,
     height: 40,
     borderRadius: 20,
     justifyContent: "center",
     alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.42)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.75)",
+    overflow: "hidden",
   },
-  activeIconContainer: {
+  iconGloss: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.9,
+  },
+  iconCircleActive: {
     backgroundColor: colors.primary,
-    borderWidth: 2,
-    borderColor: colors.secondary,
+    borderColor: "rgba(255,255,255,0.55)",
   },
   tabAvatar: {
     width: 26,

@@ -2,7 +2,9 @@ import React, { useEffect } from "react";
 import { Tabs, useRouter } from "expo-router";
 import { colors } from "@/constants/colors";
 import { Ionicons } from "@expo/vector-icons";
-import { Platform, StyleSheet, Text, View } from "react-native";
+import { BlurView } from "expo-blur";
+import { LinearGradient } from "expo-linear-gradient";
+import { Platform, StyleSheet, View } from "react-native";
 import { useLayoutStore } from '@/store/layoutStore';
 import { useUserStore } from '@/store/userStore';
 import AppHeader, { getAppHeaderTotalHeight } from "@/components/AppHeader";
@@ -45,20 +47,24 @@ export default function AdminTabsLayout() {
         options={{
           title: "ניהול משתמשים",
           tabBarIcon: ({ focused }) => (
-            <View style={styles.tabIconWithLabel}>
+            <View style={[styles.iconCircle, focused && styles.iconCircleActive]}>
+              <LinearGradient
+                pointerEvents="none"
+                colors={[
+                  "rgba(255,255,255,0.55)",
+                  "rgba(255,255,255,0.18)",
+                  "rgba(255,255,255,0)",
+                ]}
+                locations={[0, 0.55, 1]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.iconGloss}
+              />
               <Ionicons
                 name={focused ? "people" : "people-outline"}
                 size={22}
-                color={focused ? colors.primary : colors.gray[400]}
+                color={focused ? colors.white : colors.gray[700]}
               />
-              <Text
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.75}
-                style={[styles.tabLabel, focused && styles.tabLabelActive]}
-              >
-                משתמשים
-              </Text>
             </View>
           ),
         }}
@@ -73,22 +79,24 @@ export default function AdminTabsLayout() {
       options={{
         title: "אירועים",
         tabBarIcon: ({ focused }) => (
-          <View style={[styles.tabIconWithLabel, styles.centerTab]}>
-            <View style={[styles.centerIconBubble, focused && styles.centerIconBubbleActive]}>
-              <Ionicons
-                name={focused ? "calendar" : "calendar-outline"}
-                size={22}
-                color={focused ? colors.white : colors.primary}
-              />
-            </View>
-            <Text
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              minimumFontScale={0.75}
-              style={[styles.tabLabel, focused && styles.tabLabelActive]}
-            >
-              אירועים
-            </Text>
+          <View style={[styles.iconCircle, styles.centerCircle, focused && styles.iconCircleActive]}>
+            <LinearGradient
+              pointerEvents="none"
+              colors={[
+                "rgba(255,255,255,0.55)",
+                "rgba(255,255,255,0.18)",
+                "rgba(255,255,255,0)",
+              ]}
+              locations={[0, 0.55, 1]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.iconGloss}
+            />
+            <Ionicons
+              name={focused ? "calendar" : "calendar-outline"}
+              size={22}
+              color={focused ? colors.white : colors.gray[700]}
+            />
           </View>
         ),
       }}
@@ -103,20 +111,24 @@ export default function AdminTabsLayout() {
         options={{
           title: "פרופיל",
           tabBarIcon: ({ focused }) => (
-            <View style={styles.tabIconWithLabel}>
+            <View style={[styles.iconCircle, focused && styles.iconCircleActive]}>
+              <LinearGradient
+                pointerEvents="none"
+                colors={[
+                  "rgba(255,255,255,0.55)",
+                  "rgba(255,255,255,0.18)",
+                  "rgba(255,255,255,0)",
+                ]}
+                locations={[0, 0.55, 1]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.iconGloss}
+              />
               <Ionicons
                 name={focused ? "person" : "person-outline"}
                 size={22}
-                color={focused ? colors.primary : colors.gray[400]}
+                color={focused ? colors.white : colors.gray[700]}
               />
-              <Text
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.75}
-                style={[styles.tabLabel, focused && styles.tabLabelActive]}
-              >
-                פרופיל
-              </Text>
             </View>
           ),
         }}
@@ -170,32 +182,64 @@ export default function AdminTabsLayout() {
           />
         ),
         tabBarShowLabel: false,
+        tabBarBackground: () => (
+          <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+            <BlurView intensity={28} tint="light" style={styles.tabBarBlur} />
+            <View style={styles.tabBarFrame} />
+            <LinearGradient
+              pointerEvents="none"
+              colors={[
+                "rgba(255,255,255,0.65)",
+                "rgba(255,255,255,0.18)",
+                "rgba(255,255,255,0)",
+              ]}
+              locations={[0, 0.35, 1]}
+              start={{ x: 0.5, y: 0 }}
+              end={{ x: 0.5, y: 1 }}
+              style={styles.tabBarTopShine}
+            />
+            <LinearGradient
+              pointerEvents="none"
+              colors={["rgba(255,255,255,0.28)", "rgba(255,255,255,0)"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.tabBarSheen}
+            />
+            <LinearGradient
+              pointerEvents="none"
+              colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.06)"]}
+              start={{ x: 0.5, y: 0.5 }}
+              end={{ x: 0.5, y: 1 }}
+              style={styles.tabBarBottomShade}
+            />
+          </View>
+        ),
         tabBarStyle: {
           position: 'absolute',
-          bottom: Platform.OS === 'ios' ? 30 : 20,
+          bottom: Platform.OS === 'ios' ? 28 : 22,
           left: 20,
           right: 20,
-          height: 68,
-          backgroundColor: colors.white,
-          borderRadius: 34,
+          height: 60,
+          backgroundColor: 'transparent',
+          borderRadius: 32,
           paddingHorizontal: 8,
-          paddingTop: 8,
-          paddingBottom: 8,
-          overflow: 'visible',
+          paddingVertical: 0,
+          paddingTop: 0,
+          paddingBottom: 0,
+          overflow: 'hidden',
           shadowColor: colors.richBlack,
           shadowOffset: { width: 0, height: 4 },
           shadowOpacity: 0.12,
           shadowRadius: 16,
           elevation: 14,
           borderTopWidth: 0,
-          borderWidth: 1,
-          borderColor: colors.gray[200],
+          borderWidth: 0,
           display: isTabBarVisible ? 'flex' : 'none',
         },
         tabBarItemStyle: {
           flex: 1,
           marginHorizontal: 2,
-          paddingVertical: 2,
+          paddingVertical: 0,
           paddingHorizontal: 0,
           justifyContent: "center",
           alignItems: "center",
@@ -203,6 +247,8 @@ export default function AdminTabsLayout() {
         tabBarIconStyle: {
           marginRight: 0,
           marginLeft: 0,
+          marginTop: 10,
+          marginBottom: 0,
         },
       }}
     >
@@ -212,41 +258,51 @@ export default function AdminTabsLayout() {
 }
 
 const styles = StyleSheet.create({
-  tabIconWithLabel: {
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 3,
-    width: "100%",
+  tabBarBlur: {
+    flex: 1,
+    borderRadius: 32,
+    overflow: "hidden",
   },
-  centerTab: {
-    marginTop: 0,
+  tabBarFrame: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 32,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.7)",
+    backgroundColor: "rgba(255,255,255,0.16)",
   },
-  centerIconBubble: {
+  tabBarTopShine: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 32,
+  },
+  tabBarSheen: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 32,
+  },
+  tabBarBottomShade: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 32,
+  },
+  iconCircle: {
     width: 40,
     height: 40,
     borderRadius: 20,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: colors.gray[100],
-    borderWidth: 1.5,
-    borderColor: colors.gray[300],
+    backgroundColor: "rgba(255,255,255,0.42)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.75)",
+    overflow: "hidden",
   },
-  centerIconBubbleActive: {
+  iconGloss: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.9,
+  },
+  iconCircleActive: {
     backgroundColor: colors.primary,
-    borderColor: colors.primary,
+    borderColor: "rgba(255,255,255,0.55)",
   },
-  tabLabel: {
-    fontSize: 11,
-    color: colors.gray[400],
-    fontWeight: "600",
-    textAlign: "center",
-    writingDirection: "rtl",
-    includeFontPadding: false,
-    lineHeight: 13,
-  },
-  tabLabelActive: {
-    color: colors.primary,
-    fontWeight: "700",
+  centerCircle: {
+    transform: [{ scale: 1 }],
   },
 });
 

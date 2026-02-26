@@ -87,6 +87,8 @@ export default function BrideGroomSeating() {
   const [selectedGuestsToAdd, setSelectedGuestsToAdd] = useState<Set<string>>(new Set());
   const [tableModalView, setTableModalView] = useState<'seated' | 'add'>('seated');
   const [tableName, setTableName] = useState('');
+  const [seatedEditMode, setSeatedEditMode] = useState(false);
+  const [selectedSeatedGuestsToRemove, setSelectedSeatedGuestsToRemove] = useState<Set<string>>(new Set());
 
   const handleToggleGuestSelection = (guestId: string) => {
     const newSelection = new Set(selectedGuestsToAdd);
@@ -145,6 +147,76 @@ export default function BrideGroomSeating() {
     setSelectedGuestsToAdd(new Set());
   };
 
+  const toggleSeatedGuestRemovalSelection = useCallback((guestId: string) => {
+    setSelectedSeatedGuestsToRemove((prev) => {
+      const next = new Set(prev);
+      const id = String(guestId);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const clearSeatedEditState = useCallback(() => {
+    setSeatedEditMode(false);
+    setSelectedSeatedGuestsToRemove(new Set());
+  }, []);
+
+  const handleRemoveSelectedGuestsFromTable = useCallback(() => {
+    if (!selectedTableForModal) return;
+    const ids = Array.from(selectedSeatedGuestsToRemove);
+    if (ids.length === 0) return;
+
+    Alert.alert(
+      'הסרת אורחים מהשולחן',
+      `האם להסיר ${ids.length} אורחים מהשולחן?`,
+      [
+        { text: 'ביטול', style: 'cancel' },
+        {
+          text: 'הסר',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { error: guestUpdateError } = await supabase
+                .from('guests')
+                .update({ table_id: null })
+                .in('id', ids);
+
+              if (guestUpdateError) {
+                console.error('Error removing guests from table:', guestUpdateError);
+                Alert.alert('שגיאה', 'אירעה שגיאה בהסרת האורחים מהשולחן');
+                return;
+              }
+
+              const selectedSet = new Set(ids.map(String));
+              const remainingGuestsAtTable = seatedGuestsForTable.filter((g) => !selectedSet.has(String(g.id)));
+              const newTotalPeople = remainingGuestsAtTable.reduce((sum, g) => sum + (g.numberOfPeople || 1), 0);
+
+              const { error: tableUpdateError } = await supabase
+                .from('tables')
+                .update({ seated_guests: newTotalPeople })
+                .eq('id', selectedTableForModal.id);
+
+              if (tableUpdateError) {
+                console.error('Error updating table count:', tableUpdateError);
+                Alert.alert('שגיאה', 'אירעה שגיאה בעדכון השולחן');
+                return;
+              }
+
+              await fetchGuests();
+              await fetchTables();
+              setSeatedGuestsForTable(remainingGuestsAtTable);
+              clearSeatedEditState();
+            } catch (e) {
+              console.error('Error in bulk remove guests:', e);
+              Alert.alert('שגיאה', 'אירעה שגיאה בהסרת האורחים מהשולחן');
+            }
+          },
+        },
+      ]
+    );
+  }, [clearSeatedEditState, fetchGuests, fetchTables, seatedGuestsForTable, selectedSeatedGuestsToRemove, selectedTableForModal]);
+
   const handleSaveTableName = async () => {
     if (!selectedTableForModal) {
       return;
@@ -175,11 +247,14 @@ export default function BrideGroomSeating() {
   };
 
   const { setTabBarVisible } = useLayoutStore();
-  // Map-only screen: hide tab bar (show only while leaving screen).
-  useEffect(() => {
-    setTabBarVisible(false);
-    return () => setTabBarVisible(true);
-  }, [setTabBarVisible]);
+  // Map-only screen: hide tab bar while focused.
+  // Important: tab screens often stay mounted; use focus/blur rather than mount/unmount.
+  useFocusEffect(
+    useCallback(() => {
+      setTabBarVisible(false);
+      return () => setTabBarVisible(true);
+    }, [setTabBarVisible])
+  );
 
   // If user rotates while in drag mode, exit drag mode.
   useEffect(() => {
@@ -203,12 +278,14 @@ export default function BrideGroomSeating() {
 
     setTableModalVisible(true);
     setTabBarVisible(false);
+    clearSeatedEditState();
   };
 
   const closeModalAndShowTabBar = async () => {
     await handleSaveTableName();
     setTableModalVisible(false);
     setTabBarVisible(false);
+    clearSeatedEditState();
   };
 
   const handleRemoveGuestFromTable = async (guestId: string) => {
@@ -442,7 +519,7 @@ export default function BrideGroomSeating() {
     [persistDraggedTablePosition, positions]
   );
 
-  const fetchTables = async () => {
+  async function fetchTables() {
     if (!resolvedEventId) return;
     
     const { data, error } = await supabase
@@ -452,9 +529,9 @@ export default function BrideGroomSeating() {
       .order('number');
     
     if (!error) setTables(data || []);
-  };
+  }
 
-  const fetchGuests = async () => {
+  async function fetchGuests() {
     if (!resolvedEventId) return;
 
     try {
@@ -493,7 +570,7 @@ export default function BrideGroomSeating() {
     } catch (error) {
       console.error('Error fetching guests for stats:', error);
     }
-  };
+  }
 
   function getWebV2FromAnnotations(annotations: any) {
     if (!annotations) return null;
@@ -988,6 +1065,18 @@ export default function BrideGroomSeating() {
                 >
                   {table.number}
                 </Text>
+                {table.name ? (
+                  <Text
+                    style={[
+                      styles.tableCustomName,
+                      isTableFull && styles.tableFullCapText,
+                      isReserveTable && styles.reserveTableCapText,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {table.name}
+                  </Text>
+                ) : null}
                 <Text
                   style={[
                     styles.tableCap,
@@ -1095,37 +1184,30 @@ export default function BrideGroomSeating() {
             </Text>
             
             <View style={styles.tableNameContainer}>
-              <TextInput
-                style={styles.tableNameInput}
-                value={tableName}
-                onChangeText={setTableName}
-                placeholder="הוסף שם לשולחן (אופציונלי)"
-                placeholderTextColor={colors.gray[500]}
-                onBlur={handleSaveTableName} // Save when input loses focus
-                onSubmitEditing={handleSaveTableName} // Save when pressing Enter/Done
-                returnKeyType="done"
-                blurOnSubmit={true}
-              />
-              <View style={styles.tableButtonsContainer}>
-                <TouchableOpacity 
-                  style={styles.saveNameButton} 
-                  onPress={handleSaveTableName}
-                >
+              <View style={styles.tableNameRow}>
+                <TouchableOpacity style={styles.saveNameButton} onPress={handleSaveTableName}>
                   <Ionicons name="checkmark" size={20} color={colors.primary} />
                 </TouchableOpacity>
-                <TouchableOpacity 
-                  style={styles.deleteTableButton} 
-                  onPress={handleDeleteTable}
-                >
-                  <Ionicons name="trash" size={20} color={colors.error} />
-                </TouchableOpacity>
+                <TextInput
+                  style={styles.tableNameInput}
+                  value={tableName}
+                  onChangeText={setTableName}
+                  placeholder="הוסף שם לשולחן (אופציונלי)"
+                  placeholderTextColor={colors.gray[500]}
+                  onBlur={handleSaveTableName} // Save when input loses focus
+                  onSubmitEditing={handleSaveTableName} // Save when pressing Enter/Done
+                  returnKeyType="done"
+                  blurOnSubmit={true}
+                />
               </View>
             </View>
 
             <View style={styles.toggleContainer}>
               <TouchableOpacity
                 style={[styles.toggleButton, tableModalView === 'seated' && styles.toggleButtonActive]}
-                onPress={() => setTableModalView('seated')}
+                onPress={() => {
+                  setTableModalView('seated');
+                }}
               >
                 <Text style={[styles.toggleButtonText, tableModalView === 'seated' && styles.toggleButtonTextActive]}>
                   אורחים ({seatedGuestsForTable.length})
@@ -1133,7 +1215,10 @@ export default function BrideGroomSeating() {
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.toggleButton, tableModalView === 'add' && styles.toggleButtonActive]}
-                onPress={() => setTableModalView('add')}
+                onPress={() => {
+                  setTableModalView('add');
+                  clearSeatedEditState();
+                }}
               >
                 <Text style={[styles.toggleButtonText, tableModalView === 'add' && styles.toggleButtonTextActive]}>
                   הוספת אורחים
@@ -1142,29 +1227,94 @@ export default function BrideGroomSeating() {
             </View>
 
             {tableModalView === 'seated' && (
-              <FlatList
-                data={seatedGuestsForTable}
-                keyExtractor={(item) => item.id.toString()}
-                numColumns={2}
-                columnWrapperStyle={{ justifyContent: 'space-between' }}
-                renderItem={({ item }) => (
-                  <View style={styles.seatedGuestItem}>
-                    <View style={{flexDirection: 'row', alignItems: 'center', flex: 1}}>
-                        <Text style={[styles.guestName, {fontSize: 14, flex: 1}]} numberOfLines={1}>{item.name}</Text>
-                        <View style={[styles.peopleCountBadge, {marginLeft: 4}]}>
+              <View style={{ flex: 1 }}>
+                <View style={styles.seatedHeaderRow}>
+                  <TouchableOpacity
+                    style={styles.seatedEditButton}
+                    activeOpacity={0.85}
+                    onPress={() => {
+                      if (seatedEditMode) clearSeatedEditState();
+                      else {
+                        setSelectedSeatedGuestsToRemove(new Set());
+                        setSeatedEditMode(true);
+                      }
+                    }}
+                  >
+                    <Ionicons
+                      name={seatedEditMode ? 'close' : 'create-outline'}
+                      size={18}
+                      color={colors.text}
+                      style={{ marginLeft: 6 }}
+                    />
+                    <Text style={styles.seatedEditButtonText}>{seatedEditMode ? 'ביטול' : 'עריכה'}</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <FlatList
+                  data={seatedGuestsForTable}
+                  keyExtractor={(item) => String(item.id)}
+                  numColumns={2}
+                  columnWrapperStyle={{ justifyContent: 'space-between' }}
+                  renderItem={({ item }) => {
+                    const id = String(item.id);
+                    const selected = selectedSeatedGuestsToRemove.has(id);
+                    return (
+                      <TouchableOpacity
+                        style={[
+                          styles.seatedGuestItem,
+                          seatedEditMode && styles.seatedGuestItemEditMode,
+                          seatedEditMode && selected && styles.seatedGuestItemSelected,
+                        ]}
+                        activeOpacity={seatedEditMode ? 0.85 : 1}
+                        onPress={() => {
+                          if (!seatedEditMode) return;
+                          toggleSeatedGuestRemovalSelection(id);
+                        }}
+                      >
+                        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 }}>
+                          <Text style={[styles.guestName, { fontSize: 14, flex: 1 }]} numberOfLines={1}>
+                            {item.name}
+                          </Text>
+                          <View style={[styles.peopleCountBadge, { marginLeft: 4 }]}>
                             <Ionicons name="person" size={10} color={colors.richBlack} />
-                            <Text style={[styles.peopleCountText, {fontSize: 10}]}>{item.numberOfPeople || 1}</Text>
+                            <Text style={[styles.peopleCountText, { fontSize: 10 }]}>{item.numberOfPeople || 1}</Text>
+                          </View>
                         </View>
-                    </View>
-                    <TouchableOpacity onPress={() => handleRemoveGuestFromTable(item.id)} style={{marginLeft: 4}}>
-                      <Ionicons name="trash-outline" size={20} color={colors.error} />
-                    </TouchableOpacity>
-                  </View>
-                )}
-                nestedScrollEnabled
-                style={{ flex: 1, marginTop: 20 }}
-                ListEmptyComponent={<Text style={styles.emptyListText}>אין אורחים יושבים בשולחן זה</Text>}
-              />
+
+                        {seatedEditMode ? (
+                          <Ionicons
+                            name={selected ? 'checkbox' : 'square-outline'}
+                            size={20}
+                            color={selected ? colors.primary : colors.gray[300]}
+                            style={{ marginLeft: 6 }}
+                          />
+                        ) : null}
+                      </TouchableOpacity>
+                    );
+                  }}
+                  nestedScrollEnabled
+                  style={{ flex: 1, marginTop: 12 }}
+                  ListEmptyComponent={<Text style={styles.emptyListText}>אין אורחים יושבים בשולחן זה</Text>}
+                />
+
+                {seatedEditMode ? (
+                  <TouchableOpacity
+                    style={[
+                      styles.bulkRemoveButton,
+                      selectedSeatedGuestsToRemove.size === 0 && styles.disabledButton,
+                    ]}
+                    activeOpacity={0.9}
+                    disabled={selectedSeatedGuestsToRemove.size === 0}
+                    onPress={handleRemoveSelectedGuestsFromTable}
+                  >
+                    <Text style={styles.bulkRemoveButtonText}>
+                      {selectedSeatedGuestsToRemove.size > 0
+                        ? `הסר ${selectedSeatedGuestsToRemove.size} אורחים מהשולחן`
+                        : 'בחר אורחים להסרה'}
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
             )}
             
             {tableModalView === 'add' && (
@@ -1460,22 +1610,47 @@ function MobileSeatingMap({
               const top  = (Number(t.gridY) - contentRect.originY) * CELL_SIZE;
               const isReserve = t.type === 'reserve';
               const base = isReserve ? '#F59E0B' : '#06173d';
-              const bg = isReserve ? `${base}22` : 'rgba(6, 23, 61, 0.82)';
+              // Regular tables: slightly more transparent blue (subtle).
+              // Reserve tables: keep current styling.
+              const bg = isReserve ? `${base}22` : 'rgba(6, 23, 61, 0.76)';
               const border = isReserve ? `${base}55` : 'rgba(6, 23, 61, 1)';
               const textColor = isReserve ? base : '#FFFFFF';
+              const tableScale = 1.1;
+              const w0 = sz.w * CELL_SIZE;
+              const h0 = sz.h * CELL_SIZE;
+              const w = w0 * tableScale;
+              const h = h0 * tableScale;
+              const dx = (w - w0) / 2;
+              const dy = (h - h0) / 2;
+              const tableName = String(t?.name ?? '').trim();
               const sub  = getTableSubLabel?.(t) ?? null;
               return (
                 <Pressable
                   key={String(t.id)}
                   onPress={() => onPressTableNumber?.(t.number)}
                   style={[styles.mobileTable, {
-                    width: sz.w * CELL_SIZE, height: sz.h * CELL_SIZE,
+                    width: w, height: h,
                     backgroundColor: bg, borderColor: border,
-                    transform: [{ translateX: left }, { translateY: top }],
+                    transform: [{ translateX: left - dx }, { translateY: top - dy }],
                   }]}
                 >
                   <Text style={[styles.mobileTableNum, { color: textColor }]}>{t.number ?? ''}</Text>
-                  {sub ? <Text style={styles.mobileTableSub}>{sub}</Text> : null}
+                  {tableName ? (
+                    <Text
+                      style={[
+                        styles.mobileTableName,
+                        { color: isReserve ? base : 'rgba(255,255,255,0.92)' },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {tableName}
+                    </Text>
+                  ) : null}
+                  {sub ? (
+                    <Text style={[styles.mobileTableSub, !isReserve && { color: 'rgba(255,255,255,0.92)' }]}>
+                      {sub}
+                    </Text>
+                  ) : null}
                 </Pressable>
               );
             })}
@@ -1636,8 +1811,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 4,
   },
   mobileTableNum: { fontSize: 16, fontWeight: '900' },
+  mobileTableName: { marginTop: 2, fontSize: 10, fontWeight: '900', textAlign: 'center' },
   mobileTableSub: { marginTop: 3, fontSize: 11, fontWeight: '900', color: 'rgba(17,24,39,0.78)' },
   mobileZone: {
     position: 'absolute',
@@ -1701,16 +1879,16 @@ const styles = StyleSheet.create({
     borderWidth: 1, 
     borderColor: colors.gray[300] 
   },
-  tableSquare: { width: 70, height: 70 },
+  tableSquare: { width: 80, height: 80 },
   // Knight table: vertical rectangle ("מלבן לאורך")
-  tableRect: { width: 58, height: 118 },
+  tableRect: { width: 66, height: 132 },
   tableSelected: {
     borderColor: colors.primary,
     borderWidth: 2,
   },
   tableName: { fontWeight: 'bold', fontSize: 16, color: colors.text },
   tableCustomName: {
-    fontSize: 12,
+    fontSize: 11,
     color: colors.textLight,
     marginTop: 2,
   },
@@ -2046,18 +2224,65 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 12,
     paddingHorizontal: 16,
-    backgroundColor: 'rgba(244, 67, 54, 0.06)',
+    backgroundColor: colors.gray[100],
     borderRadius: 12,
     marginBottom: 8,
     marginHorizontal: 4,
     borderWidth: 1,
-    borderColor: 'rgba(244, 67, 54, 0.2)',
+    borderColor: colors.gray[200],
     shadowColor: colors.richBlack,
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,
     width: '47%',
+  },
+  seatedHeaderRow: {
+    flexDirection: 'row-reverse',
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  seatedEditButton: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: 'rgba(15,23,42,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+  },
+  seatedEditButtonText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.text,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  seatedGuestItemEditMode: {
+    backgroundColor: 'rgba(43,140,238,0.04)',
+    borderColor: 'rgba(43,140,238,0.16)',
+  },
+  seatedGuestItemSelected: {
+    backgroundColor: 'rgba(43,140,238,0.10)',
+    borderColor: 'rgba(43,140,238,0.34)',
+  },
+  bulkRemoveButton: {
+    backgroundColor: colors.error,
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 16,
+    marginHorizontal: 4,
+    marginBottom: 12,
+  },
+  bulkRemoveButtonText: {
+    color: colors.white,
+    fontSize: 16,
+    fontWeight: '700',
+    textAlign: 'center',
+    writingDirection: 'rtl',
   },
   divider: {
     height: 1,
@@ -2127,6 +2352,11 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     marginBottom: 20,
   },
+  tableNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
   tableNameInput: {
     backgroundColor: colors.gray[50],
     paddingHorizontal: 16,
@@ -2137,7 +2367,7 @@ const styles = StyleSheet.create({
     writingDirection: 'rtl',
     borderWidth: 1,
     borderColor: colors.gray[300],
-    width: '100%',
+    flex: 1,
   },
   saveNameButton: {
     backgroundColor: colors.gray[50],
