@@ -113,7 +113,7 @@ export function SeatingGridReadonly({
       return { originX: 0, originY: 0, cols: Math.max(1, gridCols), rows: Math.max(1, gridRows) };
     }
 
-    const pad = 4;
+    const pad = 1;
     const ox = clamp(Math.floor(minX) - pad, 0, Math.max(0, gridCols - 1));
     const oy = clamp(Math.floor(minY) - pad, 0, Math.max(0, gridRows - 1));
     const ex = clamp(Math.ceil(maxX) + pad, 1, Math.max(1, gridCols));
@@ -127,29 +127,34 @@ export function SeatingGridReadonly({
   const baseH = contentRect.rows * CELL_SIZE;
 
   const workAreaRef = useRef<any>(null);
+  const stageRef = useRef<any>(null);
   const [viewport, setViewport] = useState<{ w: number; h: number } | null>(null);
 
   const fitZoom = useMemo(() => {
     const vw = viewport?.w ?? 0;
     const vh = viewport?.h ?? 0;
     if (!vw || !vh) return 1;
-    const pad = 44;
+    const pad = 0;
     const sx = (vw - pad * 2) / Math.max(1, baseW);
     const sy = (vh - pad * 2) / Math.max(1, baseH);
-    return clamp(Math.min(1, sx, sy), 0.2, 1);
+    // Allow zoom-in so the map can fill the available window space.
+    return clamp(Math.min(sx, sy), 0.2, 12);
   }, [baseH, baseW, viewport?.h, viewport?.w]);
 
   const [zoom, setZoom] = useState(1);
   const zoomRef = useRef(1);
   const fitZoomRef = useRef(1);
   const lastAutoFitTokenRef = useRef<string>('');
+  const wheelRafRef = useRef<number | null>(null);
+  const pendingZoomAnchorRef = useRef<null | { clientX: number; clientY: number; contentX: number; contentY: number; zoom: number }>(
+    null
+  );
 
   useEffect(() => {
     fitZoomRef.current = fitZoom;
   }, [fitZoom]);
 
-  // Auto-fit only when the CONTENT changes (not on every viewport/layout change),
-  // otherwise the map can "shrink" after a late layout re-measure.
+  // Auto-fit when content OR viewport changes so the map fills the window.
   const autoFitToken = useMemo(
     () =>
       [
@@ -160,8 +165,20 @@ export function SeatingGridReadonly({
         tables.length,
         zones.length,
         labels.length,
+        Math.round(viewport?.w ?? 0),
+        Math.round(viewport?.h ?? 0),
       ].join('|'),
-    [contentRect.cols, contentRect.originX, contentRect.originY, contentRect.rows, labels.length, tables.length, zones.length]
+    [
+      contentRect.cols,
+      contentRect.originX,
+      contentRect.originY,
+      contentRect.rows,
+      labels.length,
+      tables.length,
+      zones.length,
+      viewport?.h,
+      viewport?.w,
+    ]
   );
 
   useEffect(() => {
@@ -192,6 +209,14 @@ export function SeatingGridReadonly({
   const [tooltip, setTooltip] = useState<null | { text: string; x: number; y: number }>(null);
   const [tooltipSize, setTooltipSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
 
+  const getStageEl = useCallback(() => {
+    const refEl = stageRef.current as any;
+    if (refEl?.getBoundingClientRect) return refEl;
+    const wa = workAreaRef.current as any;
+    const q = wa?.querySelector?.('[data-seating-stage="1"]');
+    return q || null;
+  }, []);
+
   const handleWheel = useCallback(
     (e: any) => {
       if (!isWeb) return;
@@ -210,19 +235,93 @@ export function SeatingGridReadonly({
         return;
       }
 
-      // Wheel (no Shift) = zoom only
       e?.preventDefault?.();
       e?.stopPropagation?.();
+
+      const el = workAreaRef.current as any;
+      if (!el) return;
+
       const cur = zoomRef.current || 1;
       const factor = dy < 0 ? 1.06 : 1 / 1.06;
-      // Limit zoom-in so users can't zoom excessively.
       const minZoom = fitZoomRef.current || 0.2;
-      const maxZoom = Math.min(2, Math.max(minZoom, minZoom * 1.7));
+      const maxZoom = Math.max(minZoom, Math.min(12, minZoom * 2.2));
       const next = clamp(cur * factor, minZoom, maxZoom);
+      if (next === cur) return;
+
+      const cx = e?.clientX ?? e?.nativeEvent?.clientX ?? 0;
+      const cy = e?.clientY ?? e?.nativeEvent?.clientY ?? 0;
+
+      // Measure actual DOM positions to find the content coordinate under the cursor.
+      // This is robust to padding + horizontal centering (alignSelf: 'center') and scroll.
+      const stageEl = getStageEl();
+      const workRect = el?.getBoundingClientRect?.() ?? null;
+      const stageRect = stageEl?.getBoundingClientRect?.() ?? null;
+      if (!workRect) return;
+
+      // Mouse inside the scroll container's viewport
+      const mouseX = cx - workRect.left;
+      const mouseY = cy - workRect.top;
+
+      // Content coordinate (unscaled) under the cursor
+      let contentX = (mouseX + (Number(el.scrollLeft) || 0)) / cur;
+      let contentY = (mouseY + (Number(el.scrollTop) || 0)) / cur;
+      if (stageRect) {
+        // stageRect.left/top already include scroll; convert to content coordinate:
+        // x_in_stage_px = (cx - stageRect.left)
+        contentX = (cx - stageRect.left) / cur;
+        contentY = (cy - stageRect.top) / cur;
+      }
+
       zoomRef.current = next;
       setZoom(next);
+
+      // Apply scroll in a rAF so DOM updates for new zoom.
+      pendingZoomAnchorRef.current = { clientX: cx, clientY: cy, contentX, contentY, zoom: next };
+      if (wheelRafRef.current == null && typeof requestAnimationFrame === 'function') {
+        // Double rAF to ensure React commit + layout are complete.
+        wheelRafRef.current = requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            wheelRafRef.current = null;
+            const a = pendingZoomAnchorRef.current;
+            pendingZoomAnchorRef.current = null;
+            if (!a) return;
+            try {
+              const el2 = workAreaRef.current as any;
+              if (!el2) return;
+              const stage2 = getStageEl();
+              const workRect2 = el2?.getBoundingClientRect?.() ?? null;
+              const stageRect2 = stage2?.getBoundingClientRect?.() ?? null;
+              if (!workRect2) return;
+
+              const mouseX2 = a.clientX - workRect2.left;
+              const mouseY2 = a.clientY - workRect2.top;
+
+              // stage offset in scroll-content coordinates (independent of scroll position)
+              const stageOffsetX = stageRect2 ? stageRect2.left - workRect2.left + (Number(el2.scrollLeft) || 0) : 0;
+              const stageOffsetY = stageRect2 ? stageRect2.top - workRect2.top + (Number(el2.scrollTop) || 0) : 0;
+
+              const desiredLeft = a.contentX * a.zoom + stageOffsetX - mouseX2;
+              const desiredTop = a.contentY * a.zoom + stageOffsetY - mouseY2;
+
+              const maxLeft = Math.max(0, (Number(el2.scrollWidth) || 0) - (Number(el2.clientWidth) || 0));
+              const maxTop = Math.max(0, (Number(el2.scrollHeight) || 0) - (Number(el2.clientHeight) || 0));
+
+              const clampedLeft = clamp(desiredLeft, 0, maxLeft);
+              const clampedTop = clamp(desiredTop, 0, maxTop);
+
+              if (el2?.scrollTo) el2.scrollTo({ left: clampedLeft, top: clampedTop, behavior: 'auto' });
+              else {
+                if (typeof el2?.scrollLeft === 'number') el2.scrollLeft = clampedLeft;
+                if (typeof el2?.scrollTop === 'number') el2.scrollTop = clampedTop;
+              }
+            } catch {
+              // ignore
+            }
+          });
+        });
+      }
     },
-    [isWeb]
+    [getStageEl, isWeb]
   );
 
   // Attach a non-passive wheel listener so preventDefault blocks scroll on web.
@@ -272,7 +371,11 @@ export function SeatingGridReadonly({
           </View>
         ) : null}
 
-        <View style={[styles.gridWrap, { width: stageW, height: stageH }]}>
+        <View
+          ref={stageRef}
+          {...({ 'data-seating-stage': '1' } as any)}
+          style={[styles.gridWrap, { width: stageW, height: stageH }]}
+        >
           <View style={[styles.gridInner, { width: baseW, height: baseH, transform: [{ scale: zoom }] }]}>
             <Svg width={baseW} height={baseH} style={StyleSheet.absoluteFill as any}>
               <Defs>
@@ -413,9 +516,9 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: 'transparent' },
   workArea: {
     flex: 1,
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'flex-start',
-    padding: 18,
+    padding: 0,
     ...(Platform.OS === 'web' ? ({ overflow: 'auto', userSelect: 'none', WebkitUserSelect: 'none' } as any) : null),
   },
   tooltip: {

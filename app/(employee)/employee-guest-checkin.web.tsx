@@ -1014,27 +1014,7 @@ export default function EmployeeGuestCheckinWebScreen() {
                   { minHeight: mapCardHeight },
                 ]}
               >
-                <View style={styles.cardHeaderRow}>
-                  <Text style={styles.cardTitle}>מפת הושבה</Text>
-                  <Text style={[styles.helperText, { marginTop: 0 }]}>לחץ על שולחן כדי לסנן</Text>
-                </View>
-
-                <View style={styles.mapLegendRow}>
-                  <View style={styles.mapLegendItem}>
-                    <View style={[styles.mapLegendDot, { backgroundColor: colors.primary }]} />
-                    <Text style={styles.mapLegendText}>רגיל</Text>
-                  </View>
-                  <View style={styles.mapLegendItem}>
-                    <View style={[styles.mapLegendDot, { backgroundColor: colors.primary }]} />
-                    <Text style={styles.mapLegendText}>אביר</Text>
-                  </View>
-                  <View style={styles.mapLegendItem}>
-                    <View style={[styles.mapLegendDot, { backgroundColor: colors.secondary }]} />
-                    <Text style={styles.mapLegendText}>רזרבה</Text>
-                  </View>
-                </View>
-
-                <View style={{ marginTop: 12, flex: 1, minHeight: mapCardHeight - 70 }}>
+                <View style={{ flex: 1, minHeight: mapCardHeight }}>
                   {mapLoading ? (
                     <View style={styles.loadingRow}>
                       <ActivityIndicator size="large" color={colors.primary} />
