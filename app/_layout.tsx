@@ -5,6 +5,7 @@ import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, I18nManager, Platform, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { rubikBaseFontFamily, rubikFonts } from "@/lib/fonts";
 import { useUserStore } from '@/store/userStore';
 import { supabase } from '@/lib/supabase';
@@ -246,7 +247,11 @@ export default function RootLayout() {
     );
   }
 
-  return <RootLayoutNav />;
+  return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <RootLayoutNav />
+    </GestureHandlerRootView>
+  );
 }
 
 function RootLayoutNav() {
