@@ -34,6 +34,7 @@ export default {
       bundler: "metro"
     },
     plugins: [
+      "expo-font",
       [
         "expo-router",
         {

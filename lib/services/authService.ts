@@ -295,6 +295,60 @@ export const authService = {
     }
   },
 
+  // Update any user (admin only)
+  adminUpdateUser: async (
+    userId: string,
+    updates: Partial<Pick<AuthUser, 'name' | 'email' | 'phone' | 'userType'>> & { password?: string }
+  ): Promise<void> => {
+    if (!userId) throw new Error('Missing user id');
+
+    const dbUpdates: Partial<{
+      name: string;
+      email: string;
+      phone: string | null;
+      user_type: UserType;
+    }> = {};
+
+    if (updates.name !== undefined) dbUpdates.name = updates.name;
+    if (updates.email !== undefined) dbUpdates.email = updates.email;
+    if (updates.phone !== undefined) dbUpdates.phone = updates.phone ?? null;
+    if (updates.userType !== undefined) dbUpdates.user_type = updates.userType;
+
+    try {
+      if (Object.keys(dbUpdates).length > 0) {
+        const { error: profileError } = await supabaseAdmin.from('users').update(dbUpdates).eq('id', userId);
+        if (profileError) throw profileError;
+      }
+
+      const authUpdates: Record<string, any> = {};
+      if (updates.email !== undefined) {
+        authUpdates.email = updates.email;
+        authUpdates.email_confirm = true;
+      }
+      if (updates.password !== undefined) {
+        authUpdates.password = updates.password;
+      }
+
+      const hasMetadata =
+        updates.name !== undefined || updates.userType !== undefined || updates.phone !== undefined;
+      if (hasMetadata) {
+        authUpdates.user_metadata = {
+          ...(updates.name !== undefined ? { name: updates.name } : null),
+          ...(updates.userType !== undefined ? { user_type: updates.userType } : null),
+          ...(updates.phone !== undefined ? { phone: updates.phone ?? null } : null),
+        };
+      }
+
+      if (Object.keys(authUpdates).length > 0) {
+        const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(userId, authUpdates);
+        if (authError) throw authError;
+      }
+    } catch (error) {
+      console.error('❌ Admin update user error:', error);
+      throw error;
+    }
+  },
+
   // Sign in with email and password
   signIn: async (email: string, password: string) => {
     try {

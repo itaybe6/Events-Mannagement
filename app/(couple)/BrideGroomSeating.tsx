@@ -1,5 +1,8 @@
 import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated, Pressable, ActivityIndicator, Modal, TextInput, FlatList, useWindowDimensions, Alert, PanResponder, Platform, StatusBar } from 'react-native';
+import Svg, { Defs, Line, Pattern, Rect } from 'react-native-svg';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Reanimated, { cancelAnimation, runOnUI, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { supabase } from '@/lib/supabase';
 import { useUserStore } from '@/store/userStore';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
@@ -11,7 +14,7 @@ import { colors } from '@/constants/colors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { EventSwitcher } from '@/components/EventSwitcher';
 import { SeatingGridReadonly } from '../seating/web/SeatingGridReadonly';
-import { DEFAULT_GRID_COLS, DEFAULT_GRID_ROWS, tableCellSize, type Orientation, type TableType } from '../seating/web/_types';
+import { CELL_SIZE, DEFAULT_GRID_COLS, DEFAULT_GRID_ROWS, tableCellSize, type Orientation, type TableType } from '../seating/web/_types';
 
 export default function BrideGroomSeating() {
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
@@ -172,16 +175,13 @@ export default function BrideGroomSeating() {
   };
 
   const { setTabBarVisible } = useLayoutStore();
-  const [landscapeGuestSearch, setLandscapeGuestSearch] = useState('');
-  const [landscapeGuestFilter, setLandscapeGuestFilter] = useState<'unseated' | 'seated' | 'all'>('unseated');
-
-  // In landscape we want a "map-only" full screen (no header, no tab bar).
+  // Map-only screen: hide tab bar (show only while leaving screen).
   useEffect(() => {
-    setTabBarVisible(!isLandscape && !tableModalVisible);
+    setTabBarVisible(false);
     return () => setTabBarVisible(true);
-  }, [isLandscape, setTabBarVisible, tableModalVisible]);
+  }, [setTabBarVisible]);
 
-  // If user rotates while in drag mode, exit drag mode (map-only UX).
+  // If user rotates while in drag mode, exit drag mode.
   useEffect(() => {
     if (isLandscape && dragMode) setDragMode(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -208,7 +208,7 @@ export default function BrideGroomSeating() {
   const closeModalAndShowTabBar = async () => {
     await handleSaveTableName();
     setTableModalVisible(false);
-    setTabBarVisible(!isLandscape);
+    setTabBarVisible(false);
   };
 
   const handleRemoveGuestFromTable = async (guestId: string) => {
@@ -517,6 +517,102 @@ export default function BrideGroomSeating() {
     return [];
   }
 
+  const toFiniteNumber = (value: any) => {
+    const n = typeof value === 'number' ? value : Number(value);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  const normalizeOrientation = (value: any): Orientation => (value === 'column' ? 'column' : 'row');
+
+  const normalizeTableType = (value: any): TableType => {
+    const v = String(value ?? '').trim();
+    if (v === 'regular' || v === 'reserve' || v === 'knight') return v;
+    // Back-compat: legacy booleans
+    if ((value as any)?.isReserve) return 'reserve';
+    if ((value as any)?.isKnight) return 'knight';
+    return 'regular';
+  };
+
+  const normalizeWebV2Tables = (items: any[]) => {
+    return (items || [])
+      .filter(Boolean)
+      .map((t: any, idx: number) => {
+        const type: TableType = normalizeTableType(t?.type ?? t);
+        const seats =
+          toFiniteNumber(t?.seats ?? t?.capacity) ?? (type === 'knight' ? 20 : 12);
+        const gridX =
+          toFiniteNumber(
+            t?.gridX ??
+              t?.x ??
+              t?.col ??
+              t?.grid?.x ??
+              t?.pos?.x ??
+              t?.position?.x ??
+              t?.p?.x
+          ) ?? 0;
+        const gridY =
+          toFiniteNumber(
+            t?.gridY ??
+              t?.y ??
+              t?.row ??
+              t?.grid?.y ??
+              t?.pos?.y ??
+              t?.position?.y ??
+              t?.p?.y
+          ) ?? 0;
+        const orientation = normalizeOrientation(t?.orientation);
+        const number = toFiniteNumber(t?.number ?? t?.num ?? t?.tableNumber);
+        return {
+          id: String(t?.id ?? `table-${idx}`),
+          type,
+          seats,
+          orientation,
+          gridX,
+          gridY,
+          ...(number != null ? { number: Math.round(number) } : {}),
+        };
+      })
+      .filter((t: any) => Number.isFinite(t.gridX) && Number.isFinite(t.gridY));
+  };
+
+  const normalizeWebV2Zones = (items: any[]) => {
+    return (items || [])
+      .filter(Boolean)
+      .map((z: any, idx: number) => {
+        const gridX =
+          toFiniteNumber(z?.gridX ?? z?.x ?? z?.col ?? z?.grid?.x ?? z?.pos?.x ?? z?.position?.x ?? z?.p?.x) ?? 0;
+        const gridY =
+          toFiniteNumber(z?.gridY ?? z?.y ?? z?.row ?? z?.grid?.y ?? z?.pos?.y ?? z?.position?.y ?? z?.p?.y) ?? 0;
+        const widthCells = toFiniteNumber(z?.widthCells ?? z?.w ?? z?.width) ?? 1;
+        const heightCells = toFiniteNumber(z?.heightCells ?? z?.h ?? z?.height) ?? 1;
+        return {
+          id: String(z?.id ?? `zone-${idx}`),
+          name: String(z?.name ?? ''),
+          gridX,
+          gridY,
+          widthCells: Math.max(1, Math.round(widthCells)),
+          heightCells: Math.max(1, Math.round(heightCells)),
+        };
+      });
+  };
+
+  const normalizeWebV2Labels = (items: any[]) => {
+    return (items || [])
+      .filter(Boolean)
+      .map((l: any, idx: number) => {
+        const gridX =
+          toFiniteNumber(l?.gridX ?? l?.x ?? l?.col ?? l?.grid?.x ?? l?.pos?.x ?? l?.position?.x ?? l?.p?.x) ?? 0;
+        const gridY =
+          toFiniteNumber(l?.gridY ?? l?.y ?? l?.row ?? l?.grid?.y ?? l?.pos?.y ?? l?.position?.y ?? l?.p?.y) ?? 0;
+        return {
+          id: String(l?.id ?? `label-${idx}`),
+          text: String(l?.text ?? ''),
+          gridX,
+          gridY,
+        };
+      });
+  };
+
   // משיכת הערות (annotations) + סקיצה מה-DB
   const fetchTextAreas = async () => {
     if (!resolvedEventId) return;
@@ -543,15 +639,15 @@ export default function BrideGroomSeating() {
         webV2 && typeof webV2?.grid?.cols === 'number' ? Math.round(webV2.grid.cols) : DEFAULT_GRID_COLS;
       const webV2Rows =
         webV2 && typeof webV2?.grid?.rows === 'number' ? Math.round(webV2.grid.rows) : DEFAULT_GRID_ROWS;
-      const webV2Zones = webV2 ? toArrayMaybe(webV2.zones ?? webV2?.state?.zones ?? webV2?.data?.zones) : [];
-      const webV2Labels = webV2 ? toArrayMaybe(webV2.labels ?? webV2?.state?.labels ?? webV2?.data?.labels) : [];
-      const webV2Tables = webV2 ? toArrayMaybe(webV2.tables ?? webV2?.state?.tables ?? webV2?.data?.tables) : [];
+      const webV2ZonesRaw = webV2 ? toArrayMaybe(webV2.zones ?? webV2?.state?.zones ?? webV2?.data?.zones) : [];
+      const webV2LabelsRaw = webV2 ? toArrayMaybe(webV2.labels ?? webV2?.state?.labels ?? webV2?.data?.labels) : [];
+      const webV2TablesRaw = webV2 ? toArrayMaybe(webV2.tables ?? webV2?.state?.tables ?? webV2?.data?.tables) : [];
 
       let finalCols = webV2Cols;
       let finalRows = webV2Rows;
-      let finalTables: any[] = webV2Tables;
-      let finalZones: any[] = webV2Zones;
-      let finalLabels: any[] = webV2Labels;
+      let finalTables: any[] = normalizeWebV2Tables(webV2TablesRaw);
+      let finalZones: any[] = normalizeWebV2Zones(webV2ZonesRaw);
+      let finalLabels: any[] = normalizeWebV2Labels(webV2LabelsRaw);
 
       if (__DEV__ && webV2) {
         console.log('[BrideGroomSeating:webSketch]', {
@@ -604,6 +700,16 @@ export default function BrideGroomSeating() {
           .select('id,number,capacity,shape,x,y')
           .eq('event_id', resolvedEventId);
         if (!publicTablesError && Array.isArray(publicTables) && publicTables.length) {
+          const px = publicTables.map((t: any) => ({
+            x: Number(t?.x) || 0,
+            y: Number(t?.y) || 0,
+          }));
+          const pxXMin = Math.min(...px.map((p) => p.x));
+          const pxXMax = Math.max(...px.map((p) => p.x));
+          const pxYMin = Math.min(...px.map((p) => p.y));
+          const pxYMax = Math.max(...px.map((p) => p.y));
+          const publicPositionsUnset = pxXMax === 0 && pxXMin === 0 && pxYMax === 0 && pxYMin === 0;
+
           const mapped = publicTables.map((t: any) => {
             const type: TableType = t.shape === 'reserve' ? 'reserve' : t.shape === 'rectangle' ? 'knight' : 'regular';
             const gridX = Math.round((Number(t.x) || 0) / 40);
@@ -618,18 +724,69 @@ export default function BrideGroomSeating() {
               number: typeof t.number === 'number' ? t.number : undefined,
             };
           });
-          const maxX = mapped.reduce(
-            (m: number, t: any) => Math.max(m, t.gridX + tableCellSize(t.type, t.seats, t.orientation).w),
-            0
-          );
-          const maxY = mapped.reduce(
-            (m: number, t: any) => Math.max(m, t.gridY + tableCellSize(t.type, t.seats, t.orientation).h),
-            0
-          );
-          finalCols = Math.max(finalCols, DEFAULT_GRID_COLS, maxX + 6);
-          finalRows = Math.max(finalRows, DEFAULT_GRID_ROWS, maxY + 6);
-          finalTables = mapped;
+          finalTables = normalizeWebV2Tables(mapped);
+
+          // If all tables have pixel positions unset (x=y=0), we *must* auto-layout.
+          // Otherwise the map will always show a stacked column on the edge.
+          if (publicPositionsUnset) {
+            // Mark by forcing X spread check to pass (handled below).
+            finalTables = finalTables.map((t: any) => ({ ...t, gridX: 0, gridY: 0 }));
+          }
         }
+      }
+
+      // Ensure we never pass invalid coordinates to the readonly grid (native would render nothing).
+      // Re-normalize whatever source we ended up with.
+      finalTables = normalizeWebV2Tables(finalTables);
+
+      // If all tables cluster at the same X (i.e. no real 2D layout was designed),
+      // auto-arrange them into a grid so the mobile map is actually readable.
+      if (finalTables.length >= 2) {
+        const xs = finalTables.map((t: any) => Number(t.gridX) || 0);
+        const xMin = Math.min(...xs);
+        const xMax = Math.max(...xs);
+        const shouldAutoArrange =
+          xMax - xMin <= 2 ||
+          finalTables.every((t: any) => (Number(t.gridX) || 0) === 0 && (Number(t.gridY) || 0) === 0);
+
+        if (shouldAutoArrange) {
+          // Spread tables more horizontally (especially in landscape) and add generous spacing.
+          const n = finalTables.length;
+          const aspect = windowWidth / Math.max(1, windowHeight);
+          const isWide = aspect >= 1.2;
+          const COL_MULT = isWide ? 2.0 : 1.45;
+          const TABLE_COLS = Math.min(14, Math.max(4, Math.ceil(Math.sqrt(n) * COL_MULT)));
+
+          const STEP = isWide ? 9 : 8; // cells
+          const START_X = 4;
+          const START_Y = 4;
+
+          finalTables = finalTables.map((t: any, idx: number) => ({
+            ...t,
+            gridX: START_X + (idx % TABLE_COLS) * STEP,
+            gridY: START_Y + Math.floor(idx / TABLE_COLS) * STEP,
+          }));
+        }
+      }
+
+      // Always ensure grid dims fit the placed content (avoid overlaps / tiny cramped view).
+      if (finalTables.length || finalZones.length || finalLabels.length) {
+        const maxX = Math.max(
+          0,
+          ...finalTables.map((t: any) => (Number(t.gridX) || 0) + tableCellSize(t.type, t.seats, t.orientation).w),
+          ...finalZones.map((z: any) => (Number(z.gridX) || 0) + (Number(z.widthCells) || 1)),
+          ...finalLabels.map((l: any) => (Number(l.gridX) || 0) + 1)
+        );
+        const maxY = Math.max(
+          0,
+          ...finalTables.map((t: any) => (Number(t.gridY) || 0) + tableCellSize(t.type, t.seats, t.orientation).h),
+          ...finalZones.map((z: any) => (Number(z.gridY) || 0) + (Number(z.heightCells) || 1)),
+          ...finalLabels.map((l: any) => (Number(l.gridY) || 0) + 1)
+        );
+
+        // Keep reasonable but never too small; contentRect will crop excess anyway.
+        finalCols = Math.max(24, Math.ceil(maxX) + 6);
+        finalRows = Math.max(20, Math.ceil(maxY) + 6);
       }
 
       if (finalTables.length || finalZones.length || finalLabels.length) {
@@ -687,69 +844,52 @@ export default function BrideGroomSeating() {
   // Keep these hooks ABOVE early returns (loading / no event) to preserve hook order.
   const unseatedGuestsList = guests.filter((g) => g.status === 'מגיע' && !g.table_id);
 
-  const landscapeGuests = useMemo(() => {
-    const q = landscapeGuestSearch.trim().toLowerCase();
-    let list = (guests || []).filter((g: any) => g?.status === 'מגיע');
-    if (landscapeGuestFilter === 'seated') list = list.filter((g: any) => Boolean(g?.table_id));
-    if (landscapeGuestFilter === 'unseated') list = list.filter((g: any) => !g?.table_id);
-    if (q) {
-      list = list.filter((g: any) => String(g?.name || '').toLowerCase().includes(q));
-    }
-    list.sort((a: any, b: any) => {
-      const aSeated = Boolean(a?.table_id);
-      const bSeated = Boolean(b?.table_id);
-      if (aSeated !== bSeated) return aSeated ? 1 : -1;
-      return String(a?.name || '').localeCompare(String(b?.name || ''), 'he');
-    });
-    return list;
-  }, [guests, landscapeGuestFilter, landscapeGuestSearch]);
-
-  const landscapeTotals = useMemo(() => {
-    const confirmed = (guests || []).filter((g: any) => g?.status === 'מגיע');
-    const seated = confirmed.filter((g: any) => Boolean(g?.table_id));
-    const unseated = confirmed.filter((g: any) => !g?.table_id);
-    const people = (list: any[]) => list.reduce((sum, g) => sum + (Number(g?.numberOfPeople) || 1), 0);
-    return {
-      guestsCount: confirmed.length,
-      peopleCount: people(confirmed),
-      seatedCount: seated.length,
-      unseatedCount: unseated.length,
-    };
-  }, [guests]);
-
   const mapNode = webSketch ? (
     <View style={styles.canvasScroll}>
-      <SeatingGridReadonly
-        gridCols={webSketch.gridCols}
-        gridRows={webSketch.gridRows}
-        tables={webSketch.tables}
-        zones={webSketch.zones}
-        labels={webSketch.labels}
-        getTableSeatedCount={(t: any) => {
-          const num = t?.number;
-          if (!num) return null;
-          return seatedByNumber.get(Number(num)) ?? 0;
-        }}
-        getTableTooltip={(t: any) => {
-          const num = t?.number;
-          if (!num) return null;
-          const seated = seatedByNumber.get(Number(num)) ?? 0;
-          const cap = Number(t?.seats ?? 0) || 0;
-          return cap ? `יושבים בשולחן: ${seated} / ${cap}` : `יושבים בשולחן: ${seated}`;
-        }}
-        getTableSubLabel={(t: any) => {
-          const num = t?.number;
-          if (!num) return null;
-          const seated = seatedByNumber.get(Number(num)) ?? 0;
-          const cap = Number(t?.seats ?? 0) || 0;
-          return cap ? `${seated} / ${cap}` : String(seated);
-        }}
-        onPressTableNumber={(num) => {
-          if (!num) return;
-          const t = tables.find((x) => x.number === num);
-          if (t) handleTablePress(t);
-        }}
-      />
+      {Platform.OS === 'web' ? (
+        <SeatingGridReadonly
+          gridCols={webSketch.gridCols}
+          gridRows={webSketch.gridRows}
+          tables={webSketch.tables}
+          zones={webSketch.zones}
+          labels={webSketch.labels}
+          getTableTooltip={(t: any) => {
+            const num = t?.number;
+            if (!num) return null;
+            const seated = seatedByNumber.get(Number(num)) ?? 0;
+            const cap = Number(t?.seats ?? 0) || 0;
+            return cap ? `יושבים בשולחן: ${seated} / ${cap}` : `יושבים בשולחן: ${seated}`;
+          }}
+          getTableSubLabel={(t: any) => {
+            const num = t?.number;
+            if (!num) return null;
+            const seated = seatedByNumber.get(Number(num)) ?? 0;
+            const cap = Number(t?.seats ?? 0) || 0;
+            return cap ? `${seated} / ${cap}` : String(seated);
+          }}
+          onPressTableNumber={(num) => {
+            if (!num) return;
+            const t = tables.find((x) => x.number === num);
+            if (t) handleTablePress(t);
+          }}
+        />
+      ) : (
+        <MobileSeatingMap
+          sketch={webSketch}
+          onPressTableNumber={(num) => {
+            if (!num) return;
+            const t = tables.find((x) => x.number === num);
+            if (t) handleTablePress(t);
+          }}
+          getTableSubLabel={(t: any) => {
+            const num = t?.number;
+            if (!num) return null;
+            const seated = seatedByNumber.get(Number(num)) ?? 0;
+            const cap = Number(t?.seats ?? 0) || 0;
+            return cap ? `${seated} / ${cap}` : String(seated);
+          }}
+        />
+      )}
     </View>
   ) : (
     <ScrollView
@@ -889,36 +1029,34 @@ export default function BrideGroomSeating() {
 
   return (
     <View style={styles.container}>
-      <Stack.Screen options={{ headerShown: !isLandscape }} />
+      <Stack.Screen options={{ headerShown: false }} />
 
+      {/* Full-screen map frame */}
+      <View style={styles.mapFrame}>{mapNode}</View>
+
+      {/* Floating top bar: back + (optional) event switcher */}
       <View
-        style={{
-          paddingTop: isLandscape
-            ? Math.max(insets.top || 0, Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) : 0)
-            : Math.max(insets.top || 0, Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) : 0) + 28,
-        }}
-      />
-
-      {dragMode && !isLandscape && (
+        pointerEvents="box-none"
+        style={[
+          styles.floatingTopBar,
+          {
+            top: Math.max(insets.top || 0, Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) : 0) + 10,
+          },
+        ]}
+      >
         <TouchableOpacity
-          style={styles.dragModePill}
-          onPress={() => setDragMode(false)}
+          onPress={() => router.back()}
           activeOpacity={0.85}
+          style={styles.backFab}
+          accessibilityRole="button"
+          accessibilityLabel="חזרה"
         >
-          <Text style={styles.dragModeText}>סיים גרירה</Text>
+          <Ionicons name="chevron-up" size={20} color={colors.text} />
         </TouchableOpacity>
-      )}
 
-      {!isLandscape && (
-        <View
-          style={{
-            paddingHorizontal: 16,
-            paddingBottom: 0,
-            // Reduce the perceived gap between the header logo and the "active event" pill
-            // on native (this screen only), without shrinking the global header/logo.
-            marginTop: Platform.OS === 'web' ? 0 : -50,
-          }}
-        >
+        <View style={{ flex: 1 }} />
+
+        <View style={styles.eventSwitcherWrap}>
           <EventSwitcher
             userId={userData?.id}
             selectedEventId={resolvedEventId}
@@ -926,6 +1064,16 @@ export default function BrideGroomSeating() {
             label="אירוע פעיל"
           />
         </View>
+      </View>
+
+      {dragMode && (
+        <TouchableOpacity
+          style={styles.dragModePill}
+          onPress={() => setDragMode(false)}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.dragModeText}>סיים גרירה</Text>
+        </TouchableOpacity>
       )}
 
       {/* Table Guests Modal */}
@@ -1100,105 +1248,262 @@ export default function BrideGroomSeating() {
         </View>
       </Modal>
 
-      {/* Canvas + (landscape) guest panel */}
-      {isLandscape ? (
-        <View style={styles.landscapeRow}>
-          <View style={styles.landscapeMapPane}>{mapNode}</View>
+      {/* Map only: rendered inside mapFrame above */}
+    </View>
+  );
+}
 
-          <View style={styles.landscapeGuestPane}>
-            <View style={styles.guestPanelHeader}>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={styles.guestPanelTitle}>אנשי קשר</Text>
-                <Text style={styles.guestPanelSub} numberOfLines={1}>
-                  {landscapeTotals.guestsCount} מוזמנים • {landscapeTotals.peopleCount} אנשים
-                </Text>
-              </View>
-            </View>
+function clampNumber(n: number, min: number, max: number) {
+  'worklet';
+  return Math.min(max, Math.max(min, n));
+}
 
-            <View style={styles.guestPanelSearchWrap}>
-              <Ionicons name="search" size={16} color={colors.gray[500]} />
-              <TextInput
-                value={landscapeGuestSearch}
-                onChangeText={setLandscapeGuestSearch}
-                placeholder="חיפוש..."
-                placeholderTextColor={colors.gray[500]}
-                style={styles.guestPanelSearchInput}
-              />
-            </View>
+function MobileSeatingMap({
+  sketch,
+  onPressTableNumber,
+  getTableSubLabel,
+}: {
+  sketch: { gridCols: number; gridRows: number; tables: any[]; zones: any[]; labels: any[] };
+  onPressTableNumber?: (num: number | undefined) => void;
+  getTableSubLabel?: (t: any) => string | null;
+}) {
+  // useWindowDimensions gives us rotation events for free.
+  const { width: winW, height: winH } = useWindowDimensions();
 
-            <View style={styles.guestPanelFilterRow}>
-              <Pressable
-                onPress={() => setLandscapeGuestFilter('unseated')}
-                style={[styles.guestFilterPill, landscapeGuestFilter === 'unseated' ? styles.guestFilterPillActive : null]}
-              >
-                <Text style={[styles.guestFilterText, landscapeGuestFilter === 'unseated' ? styles.guestFilterTextActive : null]}>
-                  טרם הושבו ({landscapeTotals.unseatedCount})
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => setLandscapeGuestFilter('seated')}
-                style={[styles.guestFilterPill, landscapeGuestFilter === 'seated' ? styles.guestFilterPillActive : null]}
-              >
-                <Text style={[styles.guestFilterText, landscapeGuestFilter === 'seated' ? styles.guestFilterTextActive : null]}>
-                  הושבו ({landscapeTotals.seatedCount})
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => setLandscapeGuestFilter('all')}
-                style={[styles.guestFilterPill, landscapeGuestFilter === 'all' ? styles.guestFilterPillActive : null]}
-              >
-                <Text style={[styles.guestFilterText, landscapeGuestFilter === 'all' ? styles.guestFilterTextActive : null]}>הכל</Text>
-              </Pressable>
-            </View>
+  // ── Content bounds ────────────────────────────────────────────────────────
+  const contentRect = useMemo(() => {
+    let minX = Infinity, minY = Infinity, maxX = 0, maxY = 0;
+    const include = (x0: number, y0: number, x1: number, y1: number) => {
+      minX = Math.min(minX, x0); minY = Math.min(minY, y0);
+      maxX = Math.max(maxX, x1); maxY = Math.max(maxY, y1);
+    };
+    for (const t of sketch.tables || []) {
+      const sz = tableCellSize(t.type, t.seats, t.orientation);
+      include(t.gridX, t.gridY, t.gridX + sz.w, t.gridY + sz.h);
+    }
+    for (const z of sketch.zones || []) include(z.gridX, z.gridY, z.gridX + z.widthCells, z.gridY + z.heightCells);
+    for (const l of sketch.labels || []) include(l.gridX, l.gridY, l.gridX + 1, l.gridY + 1);
+    if (!Number.isFinite(minX))
+      return { originX: 0, originY: 0, cols: Math.max(1, sketch.gridCols), rows: Math.max(1, sketch.gridRows) };
+    const pad = 1;
+    const ox = Math.max(0, Math.floor(minX) - pad);
+    const oy = Math.max(0, Math.floor(minY) - pad);
+    return {
+      originX: ox, originY: oy,
+      cols: Math.max(1, Math.ceil(maxX) + pad - ox),
+      rows: Math.max(1, Math.ceil(maxY) + pad - oy),
+    };
+  }, [sketch.gridCols, sketch.gridRows, sketch.labels, sketch.tables, sketch.zones]);
 
-            <FlatList
-              data={landscapeGuests}
-              keyExtractor={(item) => String(item.id)}
-              contentContainerStyle={styles.guestPanelList}
-              showsVerticalScrollIndicator={false}
-              renderItem={({ item }: any) => {
-                const seated = Boolean(item?.table_id);
-                const tableNum = item?.tables?.number;
-                const ppl = Number(item?.numberOfPeople ?? 1) || 1;
-                const cat = item?.guest_categories?.name ? String(item.guest_categories.name) : null;
-                return (
-                  <View style={styles.guestRow}>
-                    <View style={styles.guestRowTop}>
-                      <Text style={styles.guestName} numberOfLines={1}>
-                        {item?.name || '—'}
-                      </Text>
-                      <View style={styles.guestPplPill}>
-                        <Ionicons name="person" size={12} color={colors.gray[800]} />
-                        <Text style={styles.guestPplText}>{ppl}</Text>
-                      </View>
-                    </View>
+  const baseW = contentRect.cols * CELL_SIZE;
+  const baseH = contentRect.rows * CELL_SIZE;
 
-                    <View style={styles.guestRowMeta}>
-                      <Text style={styles.guestMetaText} numberOfLines={1}>
-                        {seated ? (tableNum ? `שולחן ${tableNum}` : 'הושב') : 'טרם הושב'}
-                      </Text>
-                      {cat ? <Text style={styles.guestMetaDot}>•</Text> : null}
-                      {cat ? (
-                        <Text style={styles.guestMetaText} numberOfLines={1}>
-                          {cat}
-                        </Text>
-                      ) : null}
-                    </View>
-                  </View>
-                );
-              }}
-              ListEmptyComponent={
-                <View style={styles.guestEmpty}>
-                  <Text style={styles.guestEmptyTitle}>אין תוצאות</Text>
-                  <Text style={styles.guestEmptySub}>נסה לשנות חיפוש או פילטר.</Text>
+  // ── Shared values (all on the UI thread) ─────────────────────────────────
+  // tx/ty are PAN offsets in SCREEN pixels from the centered position.
+  // The Reanimated.View is centered by flexbox, so at tx=0,ty=0,scale=fitS
+  // the map fills exactly the viewport.
+  const scale   = useSharedValue(1);
+  const tx      = useSharedValue(0);
+  const ty      = useSharedValue(0);
+  // "saved" = values at gesture start (avoids jumps on new touch)
+  const sv_s  = useSharedValue(1);
+  const sv_tx = useSharedValue(0);
+  const sv_ty = useSharedValue(0);
+  // Viewport + content dims available to worklets
+  const vW = useSharedValue(winW);
+  const vH = useSharedValue(winH);
+  const cW = useSharedValue(baseW);
+  const cH = useSharedValue(baseH);
+
+  useEffect(() => { vW.value = winW; vH.value = winH; }, [winW, winH, vW, vH]);
+  useEffect(() => { cW.value = baseW; cH.value = baseH; }, [baseW, baseH, cW, cH]);
+
+  // ── Fit: scale to fill viewport, center (tx=ty=0) ────────────────────────
+  const doFit = useCallback(() => {
+    const vw = winW, vh = winH, bw = baseW, bh = baseH;
+    if (!vw || !vh || !bw || !bh) return;
+    // Sync shared values immediately so worklets see up-to-date viewport
+    vW.value = vw; vH.value = vh;
+    cW.value = bw; cH.value = bh;
+    const s = clampNumber(Math.min(vw / bw, vh / bh), 0.1, 10);
+    cancelAnimation(scale); cancelAnimation(tx); cancelAnimation(ty);
+    scale.value = withTiming(s, { duration: 260 });
+    tx.value    = withTiming(0, { duration: 260 });
+    ty.value    = withTiming(0, { duration: 260 });
+    sv_s.value  = s; sv_tx.value = 0; sv_ty.value = 0;
+  }, [winW, winH, baseW, baseH, scale, tx, ty, sv_s, sv_tx, sv_ty, vW, vH, cW, cH]);
+
+  // Fit on rotation or initial content load.
+  const didFitRef = useRef(false);
+  useEffect(() => { doFit(); }, [winW, winH]);
+  useEffect(() => { if (!didFitRef.current) { didFitRef.current = true; doFit(); } }, [baseW, baseH]);
+
+  // ── Clamp: keep map reachable; called on UI thread after each gesture ─────
+  const doClamp = () => {
+    'worklet';
+    const s = scale.value;
+    const bw = cW.value, bh = cH.value;
+    const vw = vW.value, vh = vH.value;
+    const pad = 40; // px the user can drag "past" the edge
+    // Max pan so that the edge of the scaled content is still 'pad' px inside viewport
+    const mxRaw = (bw * s - vw) / 2;
+    const myRaw = (bh * s - vh) / 2;
+    const mx = mxRaw > 0 ? mxRaw + pad : 0;
+    const my = myRaw > 0 ? myRaw + pad : 0;
+    tx.value = clampNumber(tx.value, -mx, mx);
+    ty.value = clampNumber(ty.value, -my, my);
+    sv_tx.value = tx.value;
+    sv_ty.value = ty.value;
+  };
+
+  // ── Gestures ──────────────────────────────────────────────────────────────
+  const pinch = Gesture.Pinch()
+    .onBegin(() => {
+      cancelAnimation(scale); cancelAnimation(tx); cancelAnimation(ty);
+      sv_s.value  = scale.value;
+      sv_tx.value = tx.value;
+      sv_ty.value = ty.value;
+    })
+    .onUpdate((e) => {
+      const minS = clampNumber(Math.min(vW.value / Math.max(1, cW.value), vH.value / Math.max(1, cH.value)) * 0.4, 0.08, 1);
+      const maxS = 10;
+      const ns = clampNumber(sv_s.value * e.scale, minS, maxS);
+      // Zoom toward the pinch focal point
+      const cx = vW.value / 2;
+      const cy = vH.value / 2;
+      const fpx = (e.focalX - cx - sv_tx.value) / Math.max(0.001, sv_s.value);
+      const fpy = (e.focalY - cy - sv_ty.value) / Math.max(0.001, sv_s.value);
+      scale.value = ns;
+      tx.value = sv_tx.value - fpx * (ns - sv_s.value);
+      ty.value = sv_ty.value - fpy * (ns - sv_s.value);
+    })
+    .onEnd(() => { doClamp(); });
+
+  const pan = Gesture.Pan()
+    .averageTouches(true)
+    .minDistance(0)
+    .onBegin(() => {
+      cancelAnimation(tx); cancelAnimation(ty);
+      sv_tx.value = tx.value;
+      sv_ty.value = ty.value;
+    })
+    .onUpdate((e) => {
+      tx.value = sv_tx.value + e.translationX;
+      ty.value = sv_ty.value + e.translationY;
+    })
+    .onEnd(() => { doClamp(); });
+
+  const gesture = Gesture.Simultaneous(pan, pinch);
+
+  // ── Animated style ────────────────────────────────────────────────────────
+  // translateX/Y then scale: translate moves center, scale expands around it.
+  // This keeps the math: tx=0 → centered, |tx| ≤ (bw*s-vw)/2+pad.
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: tx.value },
+      { translateY: ty.value },
+      { scale: scale.value },
+    ],
+  }));
+
+  // ── Zoom buttons ─────────────────────────────────────────────────────────
+  const zoomBy = useCallback((factor: number) => {
+    const minS = clampNumber(Math.min(winW / Math.max(1, baseW), winH / Math.max(1, baseH)) * 0.4, 0.08, 1);
+    const ns = clampNumber(scale.value * factor, minS, 10);
+    cancelAnimation(scale);
+    scale.value = withTiming(ns, { duration: 200 });
+    sv_s.value = ns;
+    runOnUI(doClamp)();
+  }, [winW, winH, baseW, baseH, scale, sv_s, doClamp]);
+
+  return (
+    <View style={styles.mobileMapRoot}>
+      {/* Full-screen grid background so no white space outside map */}
+      <Svg width="100%" height="100%" style={StyleSheet.absoluteFill as any}>
+        <Defs>
+          <Pattern id="bg-grid" x="0" y="0" width={CELL_SIZE} height={CELL_SIZE} patternUnits="userSpaceOnUse">
+            <Rect x="0" y="0" width={CELL_SIZE} height={CELL_SIZE} fill="transparent" />
+            <Line x1={CELL_SIZE} y1="0" x2="0" y2="0" stroke="rgba(148,163,184,0.18)" strokeWidth="1" />
+            <Line x1="0" y1={CELL_SIZE} x2="0" y2="0" stroke="rgba(148,163,184,0.18)" strokeWidth="1" />
+          </Pattern>
+        </Defs>
+        <Rect x="0" y="0" width="100%" height="100%" fill="url(#bg-grid)" />
+      </Svg>
+
+      <GestureDetector gesture={gesture}>
+        {/* flex centering: at tx=0,ty=0 the content is exactly centered */}
+        <View style={styles.mobileCenter}>
+          <Reanimated.View style={[{ width: baseW, height: baseH }, animStyle]}>
+
+            {/* Zones */}
+            {(sketch.zones || []).map((z: any) => {
+              const left = (Number(z.gridX) - contentRect.originX) * CELL_SIZE;
+              const top  = (Number(z.gridY) - contentRect.originY) * CELL_SIZE;
+              return (
+                <View
+                  key={String(z.id)}
+                  style={[styles.mobileZone, {
+                    width:  (Number(z.widthCells)  || 1) * CELL_SIZE,
+                    height: (Number(z.heightCells) || 1) * CELL_SIZE,
+                    transform: [{ translateX: left }, { translateY: top }],
+                  }]}
+                >
+                  <Text style={styles.mobileZoneText} numberOfLines={1}>{String(z.name ?? '')}</Text>
                 </View>
-              }
-            />
-          </View>
+              );
+            })}
+
+            {/* Tables */}
+            {(sketch.tables || []).map((t: any) => {
+              const sz   = tableCellSize(t.type, t.seats, t.orientation);
+              const left = (Number(t.gridX) - contentRect.originX) * CELL_SIZE;
+              const top  = (Number(t.gridY) - contentRect.originY) * CELL_SIZE;
+              const isReserve = t.type === 'reserve';
+              const base = isReserve ? '#F59E0B' : '#06173d';
+              const bg = isReserve ? `${base}22` : 'rgba(6, 23, 61, 0.82)';
+              const border = isReserve ? `${base}55` : 'rgba(6, 23, 61, 1)';
+              const textColor = isReserve ? base : '#FFFFFF';
+              const sub  = getTableSubLabel?.(t) ?? null;
+              return (
+                <Pressable
+                  key={String(t.id)}
+                  onPress={() => onPressTableNumber?.(t.number)}
+                  style={[styles.mobileTable, {
+                    width: sz.w * CELL_SIZE, height: sz.h * CELL_SIZE,
+                    backgroundColor: bg, borderColor: border,
+                    transform: [{ translateX: left }, { translateY: top }],
+                  }]}
+                >
+                  <Text style={[styles.mobileTableNum, { color: textColor }]}>{t.number ?? ''}</Text>
+                  {sub ? <Text style={styles.mobileTableSub}>{sub}</Text> : null}
+                </Pressable>
+              );
+            })}
+
+            {/* Labels */}
+            {(sketch.labels || []).map((l: any) => {
+              const left = (Number(l.gridX) - contentRect.originX) * CELL_SIZE;
+              const top  = (Number(l.gridY) - contentRect.originY) * CELL_SIZE;
+              return (
+                <View key={String(l.id)} style={[styles.mobileLabelWrap, { transform: [{ translateX: left }, { translateY: top }] }]}>
+                  <Text style={styles.mobileLabelText} numberOfLines={1}>{String(l.text ?? '')}</Text>
+                </View>
+              );
+            })}
+
+          </Reanimated.View>
         </View>
-      ) : (
-        mapNode
-      )}
+      </GestureDetector>
+
+      {/* +/− zoom buttons */}
+      <View style={styles.mobileMapControls}>
+        <TouchableOpacity style={styles.mobileMapBtn} onPress={() => zoomBy(1.3)}>
+          <Ionicons name="add" size={18} color={colors.text} />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.mobileMapBtn} onPress={() => zoomBy(1 / 1.3)}>
+          <Ionicons name="remove" size={18} color={colors.text} />
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -1206,6 +1511,36 @@ export default function BrideGroomSeating() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  mapFrame: {
+    flex: 1,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.10)',
+    overflow: 'hidden',
+  },
+  floatingTopBar: {
+    position: 'absolute',
+    left: 12,
+    right: 12,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 10,
+  },
+  backFab: {
+    width: 44,
+    height: 44,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.94)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  eventSwitcherWrap: {
+    flexShrink: 1,
+    minWidth: 0,
+    maxWidth: '78%',
+  },
   statsContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -1282,6 +1617,70 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   canvasScroll: { flex: 1 },
+  mobileMapRoot: {
+    flex: 1,
+    backgroundColor: '#f8fafc',
+    overflow: 'hidden',
+    direction: 'ltr',
+  },
+  mobileCenter: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    direction: 'ltr',
+    overflow: 'hidden',
+  },
+  mobileTable: {
+    position: 'absolute',
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mobileTableNum: { fontSize: 16, fontWeight: '900' },
+  mobileTableSub: { marginTop: 3, fontSize: 11, fontWeight: '900', color: 'rgba(17,24,39,0.78)' },
+  mobileZone: {
+    position: 'absolute',
+    borderRadius: 16,
+    borderWidth: 2,
+    borderStyle: 'dashed' as any,
+    borderColor: 'rgba(148,163,184,0.65)',
+    backgroundColor: 'rgba(43,140,238,0.05)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  mobileZoneText: { fontWeight: '900', color: 'rgba(17,24,39,0.65)' },
+  mobileLabelWrap: {
+    position: 'absolute',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 12,
+    backgroundColor: 'rgba(17,24,39,0.02)',
+  },
+  mobileLabelText: { fontWeight: '800', color: 'rgba(17,24,39,0.62)' },
+  mobileMapControls: {
+    position: 'absolute',
+    left: 12,
+    bottom: 12,
+    flexDirection: 'row',
+    gap: 10,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.10)',
+    borderRadius: 16,
+    padding: 8,
+  },
+  mobileMapBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(15,23,42,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+  },
   canvas: { 
     backgroundColor: colors.white, 
     overflow: 'hidden', 
@@ -1582,7 +1981,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     width: '100%',
   },
-  guestName: {
+  guestNameLarge: {
     fontSize: 18,
     fontWeight: '600',
     textAlign: 'right',

@@ -405,8 +405,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(17,24,39,0.08)',
   },
-  title: { fontSize: 18, fontWeight: '900', color: '#111418', textAlign: 'center', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
-  subtitle: { marginTop: 4, fontSize: 12, fontWeight: '700', color: 'rgba(17,24,39,0.55)', textAlign: 'center', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
+  title: { fontSize: 18, fontWeight: '900', color: '#111418', textAlign: 'center' },
+  subtitle: { marginTop: 4, fontSize: 12, fontWeight: '700', color: 'rgba(17,24,39,0.55)', textAlign: 'center' },
 
   // Tabs (underline style, like the screenshot)
   tabsRow: {
@@ -433,11 +433,11 @@ const styles = StyleSheet.create({
   tabBtnInactive: {
     borderBottomColor: 'transparent',
   },
-  tabText: { fontWeight: '900', fontSize: 12, color: 'rgba(17,24,39,0.70)', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
+  tabText: { fontWeight: '900', fontSize: 12, color: 'rgba(17,24,39,0.70)' },
   tabTextActive: { color: '#2b8cee' },
 
   body: { marginTop: 12, gap: 10 },
-  sectionTitle: { marginTop: 6, fontSize: 12, fontWeight: '900', color: '#111418', textAlign: 'right', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
+  sectionTitle: { marginTop: 6, fontSize: 12, fontWeight: '900', color: '#111418', textAlign: 'right' },
 
   mapSizeCard: {
     borderRadius: 16,
@@ -476,15 +476,15 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     borderWidth: 2,
   },
-  typeText: { fontWeight: '900', color: 'rgba(17,24,39,0.70)', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
+  typeText: { fontWeight: '900', color: 'rgba(17,24,39,0.70)' },
 
   rowBetween: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 },
-  label: { fontSize: 12, fontWeight: '800', color: 'rgba(17,24,39,0.60)', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
-  value: { fontSize: 14, fontWeight: '900', color: '#111418', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
+  label: { fontSize: 12, fontWeight: '800', color: 'rgba(17,24,39,0.60)' },
+  value: { fontSize: 14, fontWeight: '900', color: '#111418' },
 
   seatsStat: { marginTop: 10, alignItems: 'flex-start' },
-  seatsLabel: { fontSize: 12, fontWeight: '800', color: 'rgba(17,24,39,0.60)', textAlign: 'left', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
-  seatsValue: { marginTop: 6, fontSize: 20, fontWeight: '900', color: '#111418', textAlign: 'left', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
+  seatsLabel: { fontSize: 12, fontWeight: '800', color: 'rgba(17,24,39,0.60)', textAlign: 'left' },
+  seatsValue: { marginTop: 6, fontSize: 20, fontWeight: '900', color: '#111418', textAlign: 'left' },
 
   stepper: {
     flexDirection: 'row-reverse',
@@ -511,7 +511,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#2b8cee',
     borderColor: 'rgba(43,140,238,0.30)',
   },
-  stepValue: { fontSize: 24, fontWeight: '900', color: '#111418', letterSpacing: -0.4, ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
+  stepValue: { fontSize: 24, fontWeight: '900', color: '#111418', letterSpacing: -0.4 },
 
   segmentRow: { flexDirection: 'row-reverse', gap: 10, marginTop: 6 },
   segmentBtn: {
@@ -541,7 +541,7 @@ const styles = StyleSheet.create({
     width: 3,
     height: 22,
   },
-  segmentText: { fontWeight: '900', color: 'rgba(17,24,39,0.70)', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
+  segmentText: { fontWeight: '900', color: 'rgba(17,24,39,0.70)' },
   segmentTextActive: { color: '#2b8cee' },
 
   input: {
@@ -554,7 +554,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#111418',
     textAlign: 'right',
-    ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null),
   },
 
   primaryBtn: {
@@ -565,7 +564,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  primaryBtnText: { fontWeight: '900', color: '#fff', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
+  primaryBtnText: { fontWeight: '900', color: '#fff' },
 
   footer: { marginTop: 14, gap: 10 },
   saveBtn: {
@@ -577,7 +576,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
   },
-  saveBtnText: { color: '#fff', fontWeight: '900', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
+  saveBtnText: { color: '#fff', fontWeight: '900' },
   deleteBtn: {
     height: 46,
     borderRadius: 14,
@@ -589,7 +588,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
   },
-  deleteBtnText: { color: '#B91C1C', fontWeight: '900', ...(Platform.OS === 'web' ? ({ fontFamily: 'Rubik' } as any) : null) },
+  deleteBtnText: { color: '#B91C1C', fontWeight: '900' },
 });
 
 // expo-router treats files under `app/` as routes on web; provide a default export.

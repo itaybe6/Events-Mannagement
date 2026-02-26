@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import Svg, { Defs, Line, Pattern, Rect } from 'react-native-svg';
+import Svg, { Rect } from 'react-native-svg';
 import { CELL_SIZE, TABLE_LABELS, clamp, tableCellSize, type Orientation, type TableType } from './_types';
 
 function hexToRgba(hex: string, alpha: number) {
@@ -113,7 +113,7 @@ export function SeatingGridReadonly({
       return { originX: 0, originY: 0, cols: Math.max(1, gridCols), rows: Math.max(1, gridRows) };
     }
 
-    const pad = 4;
+    const pad = 1;
     const ox = clamp(Math.floor(minX) - pad, 0, Math.max(0, gridCols - 1));
     const oy = clamp(Math.floor(minY) - pad, 0, Math.max(0, gridRows - 1));
     const ex = clamp(Math.ceil(maxX) + pad, 1, Math.max(1, gridCols));
@@ -127,16 +127,18 @@ export function SeatingGridReadonly({
   const baseH = contentRect.rows * CELL_SIZE;
 
   const workAreaRef = useRef<any>(null);
+  const stageRef = useRef<any>(null);
   const [viewport, setViewport] = useState<{ w: number; h: number } | null>(null);
 
   const fitZoom = useMemo(() => {
     const vw = viewport?.w ?? 0;
     const vh = viewport?.h ?? 0;
     if (!vw || !vh) return 1;
-    const pad = 44;
+    const pad = 0;
     const sx = (vw - pad * 2) / Math.max(1, baseW);
     const sy = (vh - pad * 2) / Math.max(1, baseH);
-    return clamp(Math.min(1, sx, sy), 0.2, 1);
+    // Allow zoom-in so the map can fill the available window space.
+    return clamp(Math.min(sx, sy), 0.2, 12);
   }, [baseH, baseW, viewport?.h, viewport?.w]);
 
   const [zoom, setZoom] = useState(1);
@@ -148,8 +150,7 @@ export function SeatingGridReadonly({
     fitZoomRef.current = fitZoom;
   }, [fitZoom]);
 
-  // Auto-fit only when the CONTENT changes (not on every viewport/layout change),
-  // otherwise the map can "shrink" after a late layout re-measure.
+  // Auto-fit when content OR viewport changes so the map fills the window.
   const autoFitToken = useMemo(
     () =>
       [
@@ -160,8 +161,20 @@ export function SeatingGridReadonly({
         tables.length,
         zones.length,
         labels.length,
+        Math.round(viewport?.w ?? 0),
+        Math.round(viewport?.h ?? 0),
       ].join('|'),
-    [contentRect.cols, contentRect.originX, contentRect.originY, contentRect.rows, labels.length, tables.length, zones.length]
+    [
+      contentRect.cols,
+      contentRect.originX,
+      contentRect.originY,
+      contentRect.rows,
+      labels.length,
+      tables.length,
+      zones.length,
+      viewport?.h,
+      viewport?.w,
+    ]
   );
 
   useEffect(() => {
@@ -191,49 +204,6 @@ export function SeatingGridReadonly({
 
   const [tooltip, setTooltip] = useState<null | { text: string; x: number; y: number }>(null);
   const [tooltipSize, setTooltipSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
-
-  const handleWheel = useCallback(
-    (e: any) => {
-      if (!isWeb) return;
-      const dy = e?.deltaY ?? e?.nativeEvent?.deltaY ?? 0;
-
-      // Shift + wheel = scroll (vertical)
-      if (e?.shiftKey) {
-        e?.preventDefault?.();
-        e?.stopPropagation?.();
-        try {
-          const el = workAreaRef.current as any;
-          if (el) el.scrollTop = (el.scrollTop || 0) + dy;
-        } catch {
-          // ignore
-        }
-        return;
-      }
-
-      // Wheel (no Shift) = zoom only
-      e?.preventDefault?.();
-      e?.stopPropagation?.();
-      const cur = zoomRef.current || 1;
-      const factor = dy < 0 ? 1.06 : 1 / 1.06;
-      // Limit zoom-in so users can't zoom excessively.
-      const minZoom = fitZoomRef.current || 0.2;
-      const maxZoom = Math.min(2, Math.max(minZoom, minZoom * 1.7));
-      const next = clamp(cur * factor, minZoom, maxZoom);
-      zoomRef.current = next;
-      setZoom(next);
-    },
-    [isWeb]
-  );
-
-  // Attach a non-passive wheel listener so preventDefault blocks scroll on web.
-  useEffect(() => {
-    if (!isWeb) return;
-    const el = workAreaRef.current as any;
-    if (!el?.addEventListener) return;
-    const listener = (ev: WheelEvent) => handleWheel(ev);
-    el.addEventListener('wheel', listener, { passive: false });
-    return () => el.removeEventListener('wheel', listener as any);
-  }, [handleWheel, isWeb]);
 
   return (
     <View style={styles.root}>
@@ -272,17 +242,15 @@ export function SeatingGridReadonly({
           </View>
         ) : null}
 
-        <View style={[styles.gridWrap, { width: stageW, height: stageH }]}>
+        <View
+          ref={stageRef}
+          {...({ 'data-seating-stage': '1' } as any)}
+          style={[styles.gridWrap, { width: stageW, height: stageH }]}
+        >
           <View style={[styles.gridInner, { width: baseW, height: baseH, transform: [{ scale: zoom }] }]}>
             <Svg width={baseW} height={baseH} style={StyleSheet.absoluteFill as any}>
-              <Defs>
-                <Pattern id="minor" x="0" y="0" width={CELL_SIZE} height={CELL_SIZE} patternUnits="userSpaceOnUse">
-                  <Rect x="0" y="0" width={CELL_SIZE} height={CELL_SIZE} fill="transparent" />
-                  <Line x1={CELL_SIZE} y1="0" x2="0" y2="0" stroke="rgba(148,163,184,0.18)" strokeWidth="1" />
-                  <Line x1="0" y1={CELL_SIZE} x2="0" y2="0" stroke="rgba(148,163,184,0.18)" strokeWidth="1" />
-                </Pattern>
-              </Defs>
-              <Rect x="0" y="0" width="100%" height="100%" fill="url(#minor)" />
+              {/* Keep a solid background (no grid pattern). */}
+              <Rect x="0" y="0" width="100%" height="100%" fill="#ffffff" />
             </Svg>
 
             {/* Zones */}
@@ -307,24 +275,38 @@ export function SeatingGridReadonly({
             {/* Tables */}
             {tables.map(t => {
               const sz = tableCellSize(t.type, t.seats, t.orientation);
+              const selected = Boolean(isTableSelected?.(t));
+              const isReserve = t.type === 'reserve';
+              const highlight = isWeb ? (selected || isReserve) : selected;
+              const selectedWeb = isWeb ? selected : false;
+
               const baseDefault = t.type === 'reserve' ? '#F59E0B' : t.type === 'knight' ? '#7C3AED' : '#2563EB';
               const base = (getTableBaseColor?.(t) ?? baseDefault) || baseDefault;
-              const selected = Boolean(isTableSelected?.(t));
               const ringBase = selectedRingColor && String(selectedRingColor).trim() ? String(selectedRingColor).trim() : base;
 
               const bgAlpha = getTableBackgroundAlpha?.(t);
               const borderAlpha = getTableBorderAlpha?.(t);
               const borderOn = showTableBorder !== false;
 
-              const bg =
-                typeof bgAlpha === 'number' && isHex6(base)
+              // Web palette:
+              // - regular tables: #06173d
+              // - reserve tables: #06173d with transparency
+              // - selected tables: indicated mainly by ring/shadow
+              const webBg = isReserve ? 'rgba(124, 58, 237, 0.55)' : 'rgba(6, 23, 61, 0.82)';
+              const webAccent = 'rgba(255,255,255,0.95)';
+              const onDarkWeb = true;
+
+              const bg = isWeb
+                ? webBg
+                : typeof bgAlpha === 'number' && isHex6(base)
                   ? hexToRgba(base, clampAlpha(bgAlpha))
                   : isHex6(base)
                     ? `${base}22`
                     : base;
 
-              const borderColor =
-                typeof borderAlpha === 'number' && isHex6(base)
+              const borderColor = isWeb
+                ? '#FFFFFF'
+                : typeof borderAlpha === 'number' && isHex6(base)
                   ? hexToRgba(base, clampAlpha(borderAlpha))
                   : isHex6(base)
                     ? `${base}55`
@@ -362,13 +344,14 @@ export function SeatingGridReadonly({
                     : null)}
                   style={({ pressed }) => [
                     styles.table,
-                    selected ? styles.tableSelected : null,
-                    selected
+                    !isWeb && selected ? styles.tableSelected : null,
+                    isWeb
                       ? ({
-                          borderWidth: 0,
-                          ...(Platform.OS === 'web'
-                            ? ({ boxShadow: `0 0 0 3px ${hexToRgba(isHex6(ringBase) ? ringBase : '#06173e', 0.35)}` } as any)
-                            : null),
+                          boxShadow: selected
+                            ? `0 12px 26px rgba(245,158,11,0.18), 0 0 0 3px ${hexToRgba(isHex6(ringBase) ? ringBase : '#F59E0B', 0.22)}`
+                            : isReserve
+                              ? '0 12px 26px rgba(124,58,237,0.18)'
+                              : '0 12px 26px rgba(15,23,42,0.06)',
                         } as any)
                       : null,
                     {
@@ -377,15 +360,27 @@ export function SeatingGridReadonly({
                       width: sz.w * CELL_SIZE,
                       height: sz.h * CELL_SIZE,
                       backgroundColor: bg,
-                      borderWidth: borderOn ? 1 : 0,
-                      borderColor: borderOn ? borderColor : 'transparent',
+                      borderWidth: isWeb ? 2 : borderOn ? 1 : 0,
+                      borderColor: isWeb ? borderColor : borderOn ? borderColor : 'transparent',
                       opacity: pressed ? 0.9 : 1,
                     },
                   ]}
                 >
-                  <Text style={[styles.tableNum, { color: base }]}>{t.number ?? ''}</Text>
-                  {!hideTableType ? <Text style={styles.tableType}>{TABLE_LABELS[t.type]}</Text> : null}
-                  {sub ? <Text style={styles.tableSub}>{sub}</Text> : null}
+                  <Text style={[styles.tableNum, { color: isWeb ? webAccent : base }]}>{t.number ?? ''}</Text>
+                  {!hideTableType ? (
+                    <Text style={[styles.tableType, isWeb && onDarkWeb ? styles.tableTextOnDark : null]}>{TABLE_LABELS[t.type]}</Text>
+                  ) : null}
+                  {sub ? (
+                    <Text
+                      style={[
+                        styles.tableSub,
+                        isWeb && onDarkWeb ? styles.tableTextOnDark : null,
+                        selectedWeb ? styles.tableSubSelected : null,
+                      ]}
+                    >
+                      {sub}
+                    </Text>
+                  ) : null}
                 </Pressable>
               );
             })}
@@ -413,9 +408,9 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: 'transparent' },
   workArea: {
     flex: 1,
-    alignItems: 'flex-start',
-    justifyContent: 'flex-start',
-    padding: 18,
+    alignItems: 'center',
+    justifyContent: Platform.OS === 'web' ? 'flex-start' : 'center',
+    padding: 0,
     ...(Platform.OS === 'web' ? ({ overflow: 'auto', userSelect: 'none', WebkitUserSelect: 'none' } as any) : null),
   },
   tooltip: {
@@ -463,8 +458,10 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 10 },
   },
   tableNum: { fontSize: 16, fontWeight: '900' },
-  tableType: { marginTop: 2, fontSize: 11, fontWeight: '800', color: 'rgba(17,24,39,0.60)' },
-  tableSub: { marginTop: 3, fontSize: 11, fontWeight: '900', color: 'rgba(17,24,39,0.78)' },
+  tableType: { marginTop: 2, fontSize: 11, fontWeight: '800', color: 'rgba(51,65,85,0.55)' },
+  tableSub: { marginTop: 3, fontSize: 11, fontWeight: '900', color: 'rgba(51,65,85,0.55)' },
+  tableSubSelected: { color: 'rgba(180,83,9,0.78)' },
+  tableTextOnDark: { color: 'rgba(255,255,255,0.92)' },
 
   zone: {
     position: 'absolute',

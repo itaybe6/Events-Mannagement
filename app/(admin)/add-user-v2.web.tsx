@@ -1,5 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 
@@ -11,11 +21,29 @@ import { userService, type UserWithMetadata } from '@/lib/services/userService';
 
 type UserType = 'event_owner' | 'admin' | 'employee';
 
+const BRAND_RGB = {
+  primary: '6,23,62', // colors.primary = #06173e
+  secondary: '204,160,0', // colors.secondary = #CCA000
+  accent: '240,203,70', // colors.accent = #F0CB46
+} as const;
+
+const ROLE_OPTIONS: Array<{
+  value: UserType;
+  title: string;
+  subtitle: string;
+  icon: keyof typeof MaterialIcons.glyphMap;
+}> = [
+  { value: 'admin', title: 'מנהל', subtitle: 'ניהול משתמשים, אירועים והגדרות', icon: 'admin-panel-settings' },
+  { value: 'employee', title: 'עובד', subtitle: 'גישה לתפעול בלבד (לפי הרשאות)', icon: 'badge' },
+  { value: 'event_owner', title: 'בעל אירוע', subtitle: 'ניהול אירועים ותוכן לפי הרשאה', icon: 'emoji-events' },
+];
+
 export default function AddUserV2WebScreen() {
   const router = useRouter();
   const { isLoggedIn, userType } = useUserStore();
   const addDemoUser = useDemoUsersStore((s) => s.addUser);
   const { width } = useWindowDimensions();
+
   const isTwoCol = Platform.OS === 'web' && width >= 860;
 
   const [isDemoMode, setIsDemoMode] = useState(false);
@@ -23,6 +51,9 @@ export default function AddUserV2WebScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
   const [successText, setSuccessText] = useState<string | null>(null);
+
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const [form, setForm] = useState({
     name: '',
@@ -122,41 +153,47 @@ export default function AddUserV2WebScreen() {
     }
   }, [addDemoUser, form, isDemoMode, submitting]);
 
-  const RoleChip = ({ value, label }: { value: UserType; label: string }) => {
+  const RoleCard = ({
+    value,
+    title,
+    subtitle,
+    icon,
+  }: {
+    value: UserType;
+    title: string;
+    subtitle: string;
+    icon: keyof typeof MaterialIcons.glyphMap;
+  }) => {
     const active = form.user_type === value;
-    const iconName =
-      value === 'admin'
-        ? 'admin-panel-settings'
-        : value === 'employee'
-          ? 'badge'
-          : 'emoji-events';
     return (
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={label}
+        accessibilityLabel={`בחירת תפקיד ${title}`}
         onPress={() => setForm((p) => ({ ...p, user_type: value }))}
         style={({ hovered, pressed }: any) => [
-          styles.roleChip,
-          active ? styles.roleChipActive : null,
-          Platform.OS === 'web' && hovered ? styles.roleChipHover : null,
-          pressed ? { opacity: 0.92 } : null,
+          styles.roleCard,
+          active ? styles.roleCardActive : null,
+          Platform.OS === 'web' && hovered ? styles.roleCardHover : null,
+          pressed ? styles.roleCardPressed : null,
         ]}
       >
-        <MaterialIcons
-          // @ts-expect-error - icon names are runtime validated by the library
-          name={iconName as any}
-          size={18}
-          color={active ? colors.primary : '#475569'}
-          style={styles.roleChipIcon}
-        />
-        <Text style={[styles.roleChipText, active ? styles.roleChipTextActive : null]}>{label}</Text>
+        <View style={[styles.roleIconWrap, active ? styles.roleIconWrapActive : null]}>
+          <MaterialIcons name={icon} size={22} color={active ? colors.white : colors.primary} />
+        </View>
+        <Text style={[styles.roleTitle, active ? styles.roleTitleActive : null]}>{title}</Text>
+        <Text style={styles.roleSubtitle}>{subtitle}</Text>
+        {active ? (
+          <View style={styles.roleCheck}>
+            <MaterialIcons name="check-circle" size={18} color={colors.secondary} />
+          </View>
+        ) : null}
       </Pressable>
     );
   };
 
   return (
     <View style={styles.page}>
-      <View style={styles.topNav}>
+      <View style={styles.topBar}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="חזרה לרשימה"
@@ -167,19 +204,35 @@ export default function AddUserV2WebScreen() {
             pressed ? styles.backBtnPressed : null,
           ]}
         >
-          <MaterialIcons name="arrow-forward" size={18} color={colors.gray[600]} style={styles.backBtnIcon} />
+          <MaterialIcons name="arrow-forward" size={18} color={colors.gray[700]} style={styles.backBtnIcon} />
           <Text style={styles.backBtnText}>חזרה לרשימה</Text>
         </Pressable>
       </View>
 
-      <View style={styles.main}>
+      <ScrollView
+        style={styles.main}
+        contentContainerStyle={styles.mainContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.card}>
-          <View style={styles.cardTopLine} />
+          <View style={styles.cardHeader}>
+            <View style={styles.headerGlow} pointerEvents="none" />
+            <View style={styles.headerGlow2} pointerEvents="none" />
 
-          <View style={styles.cardInner}>
-            <Text style={styles.title}>הוספת משתמש חדש</Text>
-            <Text style={styles.subtitle}>מלא/י את הפרטים ובחר/י תפקיד. לאחר השמירה ניתן לעדכן פרטים והרשאות.</Text>
+            <View style={styles.headerText}>
+              <Text style={styles.title}>יצירת משתמש חדש</Text>
+              <Text style={styles.subtitle}>הוספת משתמש למערכת וניהול תפקידים והרשאות — הכל לפי צבעי המותג.</Text>
+            </View>
 
+            <View style={styles.headerIcon} pointerEvents="none">
+              <View style={styles.headerIconInner}>
+                <MaterialIcons name="person-add-alt-1" size={42} color={colors.primary} />
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.cardBody}>
             {checking ? (
               <View style={styles.bannerInfo}>
                 <ActivityIndicator size="small" color={colors.primary} />
@@ -192,126 +245,176 @@ export default function AddUserV2WebScreen() {
               </View>
             ) : null}
 
-            <View style={styles.form}>
-              <View style={[styles.formGrid, isTwoCol ? styles.formGrid2 : styles.formGrid1]}>
-                <Field label="שם מלא" value={form.name} onChangeText={(t) => setField('name', t)} textAlign="right" />
-                <Field
-                  label="אימייל"
-                  value={form.email}
-                  onChangeText={(t) => setField('email', t)}
-                  textAlign="left"
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                />
-                <View style={styles.gridSpan2}>
-                  <Field
-                    label="טלפון"
-                    value={form.phone}
-                    onChangeText={(t) => setField('phone', t)}
-                    textAlign="left"
-                    keyboardType="phone-pad"
-                  />
-                </View>
-                <Field
-                  label="סיסמה"
-                  value={form.password}
-                  onChangeText={(t) => setField('password', t)}
-                  secureTextEntry
-                  textAlign="right"
-                />
-                <Field
-                  label="אימות סיסמה"
-                  value={form.confirmPassword}
-                  onChangeText={(t) => setField('confirmPassword', t)}
-                  secureTextEntry
-                  textAlign="right"
-                />
-              </View>
-
-              <View style={styles.roleRow}>
-                <Text style={styles.roleLabel}>תפקיד</Text>
-                <View style={styles.roleChipsRow}>
-                  <RoleChip value="event_owner" label="בעל אירוע" />
-                  <RoleChip value="employee" label="עובד" />
-                  <RoleChip value="admin" label="מנהל" />
-                </View>
-              </View>
-
-              {errorText ? <Text style={styles.errorText}>{errorText}</Text> : null}
-              {successText ? <Text style={styles.successText}>{successText}</Text> : null}
-
-              <View style={styles.actionsRow}>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="שמור משתמש"
-                  onPress={onSubmit}
-                  disabled={!canSubmit || submitting}
-                  style={({ hovered, pressed }: any) => [
-                    styles.primaryBtn,
-                    (!canSubmit || submitting) ? { opacity: 0.6 } : null,
-                    Platform.OS === 'web' && hovered ? styles.primaryBtnHover : null,
-                    pressed ? styles.primaryBtnPressed : null,
-                  ]}
-                >
-                  {submitting ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <>
-                      <Text style={styles.primaryBtnText}>שמור משתמש</Text>
-                      <MaterialIcons name="arrow-forward" size={20} color="#fff" style={styles.primaryBtnArrow} />
-                    </>
-                  )}
-                </Pressable>
-
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="חזרה"
-                  onPress={() => router.back()}
-                  style={({ hovered, pressed }: any) => [
-                    styles.secondaryBtn,
-                    Platform.OS === 'web' && hovered ? styles.secondaryBtnHover : null,
-                    pressed ? styles.secondaryBtnPressed : null,
-                  ]}
-                >
-                  <Text style={styles.secondaryBtnText}>ביטול</Text>
-                </Pressable>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>בחר/י סוג משתמש</Text>
+              <View style={[styles.roleGrid, isTwoCol ? styles.roleGrid3 : styles.roleGrid1]}>
+                {ROLE_OPTIONS.map((opt) => (
+                  <RoleCard key={opt.value} {...opt} />
+                ))}
               </View>
             </View>
-          </View>
 
-          <View style={styles.cardBottomFade} />
+            <View style={styles.divider} />
+
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>פרטים אישיים</Text>
+              <View style={[styles.formGrid, isTwoCol ? styles.formGrid2 : styles.formGrid1]}>
+                <InputField
+                  label="שם מלא"
+                  icon="person"
+                  value={form.name}
+                  onChangeText={(t) => setField('name', t)}
+                  placeholder="הכנס/י שם מלא"
+                  textAlign="right"
+                />
+                <InputField
+                  label="מספר טלפון"
+                  icon="call"
+                  value={form.phone}
+                  onChangeText={(t) => setField('phone', t)}
+                  placeholder="050-0000000"
+                  keyboardType="phone-pad"
+                  textAlign="right"
+                  writingDirection="ltr"
+                />
+                <View style={styles.gridSpan2}>
+                  <InputField
+                    label="אימייל"
+                    icon="mail"
+                    value={form.email}
+                    onChangeText={(t) => setField('email', t)}
+                    placeholder="your@email.com"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    textAlign="right"
+                    writingDirection="ltr"
+                  />
+                </View>
+                <InputField
+                  label="סיסמה"
+                  icon="lock"
+                  value={form.password}
+                  onChangeText={(t) => setField('password', t)}
+                  placeholder="******"
+                  secureTextEntry={!showPassword}
+                  textAlign="right"
+                  rightAction={{
+                    accessibilityLabel: showPassword ? 'הסתר סיסמה' : 'הצג סיסמה',
+                    icon: showPassword ? 'visibility-off' : 'visibility',
+                    onPress: () => setShowPassword((v) => !v),
+                  }}
+                />
+                <InputField
+                  label="אימות סיסמה"
+                  icon="verified-user"
+                  value={form.confirmPassword}
+                  onChangeText={(t) => setField('confirmPassword', t)}
+                  placeholder="******"
+                  secureTextEntry={!showConfirmPassword}
+                  textAlign="right"
+                  rightAction={{
+                    accessibilityLabel: showConfirmPassword ? 'הסתר אימות סיסמה' : 'הצג אימות סיסמה',
+                    icon: showConfirmPassword ? 'visibility-off' : 'visibility',
+                    onPress: () => setShowConfirmPassword((v) => !v),
+                  }}
+                />
+              </View>
+            </View>
+
+            {errorText ? <Text style={styles.errorText}>{errorText}</Text> : null}
+            {successText ? <Text style={styles.successText}>{successText}</Text> : null}
+
+            <View style={styles.actions}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="ביטול"
+                onPress={() => router.back()}
+                style={({ hovered, pressed }: any) => [
+                  styles.cancelBtn,
+                  Platform.OS === 'web' && hovered ? styles.cancelBtnHover : null,
+                  pressed ? { opacity: 0.9 } : null,
+                ]}
+              >
+                <Text style={styles.cancelText}>ביטול</Text>
+              </Pressable>
+
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="שמור משתמש"
+                onPress={onSubmit}
+                disabled={!canSubmit || submitting}
+                style={({ hovered, pressed }: any) => [
+                  styles.primaryBtn,
+                  (!canSubmit || submitting) ? styles.primaryBtnDisabled : null,
+                  Platform.OS === 'web' && hovered ? styles.primaryBtnHover : null,
+                  pressed ? styles.primaryBtnPressed : null,
+                ]}
+              >
+                <View style={styles.primaryBtnShine} pointerEvents="none" />
+                {submitting ? (
+                  <ActivityIndicator color={colors.white} />
+                ) : (
+                  <>
+                    <MaterialIcons name="add" size={20} color={colors.white} />
+                    <Text style={styles.primaryBtnText}>הוסף משתמש</Text>
+                  </>
+                )}
+              </Pressable>
+            </View>
+          </View>
         </View>
-      </View>
+      </ScrollView>
     </View>
   );
 }
 
-function Field(props: {
+function InputField(props: {
   label: string;
+  icon: keyof typeof MaterialIcons.glyphMap;
   value: string;
   onChangeText: (t: string) => void;
+  placeholder: string;
   secureTextEntry?: boolean;
   textAlign: 'right' | 'left';
+  writingDirection?: 'rtl' | 'ltr';
   keyboardType?: any;
   autoCapitalize?: any;
+  rightAction?: { accessibilityLabel: string; icon: keyof typeof MaterialIcons.glyphMap; onPress: () => void };
 }) {
   const [focused, setFocused] = useState(false);
   return (
     <View style={styles.field}>
-      <Text style={styles.fieldLabel}>{props.label}</Text>
-      <TextInput
-        value={props.value}
-        onChangeText={props.onChangeText}
-        placeholder=" "
-        placeholderTextColor="transparent"
-        secureTextEntry={props.secureTextEntry}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        style={[styles.input, focused ? styles.inputFocused : null, { textAlign: props.textAlign }]}
-        keyboardType={props.keyboardType}
-        autoCapitalize={props.autoCapitalize}
-        autoCorrect={false}
-      />
+      <Text style={[styles.fieldLabel, focused ? styles.fieldLabelFocused : null]}>{props.label}</Text>
+      <View style={[styles.inputWrap, focused ? styles.inputWrapFocused : null]}>
+        <MaterialIcons name={props.icon} size={20} color={focused ? colors.primary : colors.gray[500]} style={styles.inputIcon} />
+        <TextInput
+          value={props.value}
+          onChangeText={props.onChangeText}
+          placeholder={props.placeholder}
+          placeholderTextColor={colors.gray[500]}
+          secureTextEntry={props.secureTextEntry}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          style={[
+            styles.input,
+            { textAlign: props.textAlign, writingDirection: props.writingDirection as any },
+            props.rightAction ? styles.inputWithRightAction : null,
+          ]}
+          keyboardType={props.keyboardType}
+          autoCapitalize={props.autoCapitalize}
+          autoCorrect={false}
+        />
+        {props.rightAction ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={props.rightAction.accessibilityLabel}
+            onPress={props.rightAction.onPress}
+            style={({ pressed }: any) => [styles.inputRightAction, pressed ? { opacity: 0.85 } : null]}
+          >
+            <MaterialIcons name={props.rightAction.icon} size={20} color={focused ? colors.primary : colors.gray[500]} />
+          </Pressable>
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -319,86 +422,123 @@ function Field(props: {
 const styles = StyleSheet.create({
   page: {
     flex: 1,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: colors.gray[50],
     ...(Platform.OS === 'web'
       ? ({
-          backgroundImage:
-            'radial-gradient(1200px 600px at 20% 10%, rgba(15,69,230,0.10) 0%, rgba(15,69,230,0.00) 60%), linear-gradient(135deg, #f8f9fa 0%, #eef2f6 100%)',
           minHeight: '100vh',
           direction: 'rtl',
+          backgroundImage: `radial-gradient(1000px 520px at 18% 12%, rgba(${BRAND_RGB.secondary}, 0.14) 0%, rgba(${BRAND_RGB.secondary}, 0.00) 62%),
+            radial-gradient(1200px 640px at 90% 18%, rgba(${BRAND_RGB.primary}, 0.12) 0%, rgba(${BRAND_RGB.primary}, 0.00) 60%),
+            linear-gradient(135deg, ${colors.gray[50]} 0%, ${colors.gray[100]} 100%)`,
         } as any)
       : null),
   },
-  topNav: {
+
+  topBar: {
     width: '100%',
     paddingHorizontal: 18,
-    paddingTop: 10,
+    paddingTop: 14,
     paddingBottom: 6,
-    flexDirection: 'row',
+    flexDirection: 'row-reverse',
     alignItems: 'center',
-    justifyContent: 'flex-end',
+    justifyContent: 'flex-start',
+    gap: 12,
   },
+
   backBtn: {
-    flexDirection: 'row',
+    flexDirection: 'row-reverse',
     alignItems: 'center',
     gap: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.7)',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.80)',
     borderWidth: 1,
-    borderColor: 'rgba(15, 23, 42, 0.06)',
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+    borderColor: `rgba(${BRAND_RGB.primary}, 0.10)`,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer', backdropFilter: 'blur(6px)' } as any) : null),
   } as any,
-  backBtnHover: { backgroundColor: 'rgba(15, 23, 42, 0.04)' },
-  backBtnPressed: { opacity: 0.9, transform: [{ scale: 0.99 }] },
-  backBtnText: { fontSize: 12, fontWeight: '900', color: colors.gray[600], writingDirection: 'rtl' },
+  backBtnHover: { backgroundColor: 'rgba(255,255,255,0.92)' },
+  backBtnPressed: { opacity: 0.92, transform: [{ scale: 0.99 }] },
+  backBtnText: { fontSize: 12, fontWeight: '900', color: colors.gray[700], writingDirection: 'rtl' },
   backBtnIcon: { transform: [{ rotate: '180deg' }] },
 
-  main: { flex: 1, paddingHorizontal: 16, paddingBottom: 32, alignItems: 'center', justifyContent: 'center' },
-  card: {
-    width: '100%',
-    maxWidth: 720,
-    backgroundColor: '#ffffff',
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: 'rgba(15, 23, 42, 0.06)',
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.06,
-    shadowRadius: 40,
-    elevation: 8,
-  },
-  cardTopLine: {
-    height: 4,
-    backgroundColor: colors.primary,
-    ...(Platform.OS === 'web'
-      ? ({
-          backgroundImage: 'linear-gradient(90deg, rgba(6,23,62,0.85), rgba(6,23,62,1), rgba(6,23,62,0.85))',
-        } as any)
-      : null),
-  },
-  cardInner: { padding: 22, gap: 12 },
-  cardBottomFade: {
-    height: 8,
-    backgroundColor: '#ffffff',
-    ...(Platform.OS === 'web'
-      ? ({
-          backgroundImage: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
-        } as any)
-      : null),
+  main: { flex: 1 },
+  mainContent: {
+    paddingHorizontal: Platform.OS === 'web' ? 28 : 16,
+    paddingTop: 10,
+    paddingBottom: 34,
+    flexGrow: 1,
+    alignItems: 'stretch',
+    justifyContent: 'flex-start',
   },
 
-  title: { fontSize: 24, fontWeight: '900', color: '#06173e', textAlign: 'center', writingDirection: 'rtl' },
-  subtitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#64748b',
-    textAlign: 'center',
-    writingDirection: 'rtl',
-    marginBottom: 6,
+  card: {
+    width: '100%',
+    maxWidth: '100%' as any,
+    backgroundColor: colors.white,
+    borderRadius: 26,
+    borderWidth: 1,
+    borderColor: `rgba(${BRAND_RGB.primary}, 0.10)`,
+    overflow: 'hidden',
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 18 },
+    shadowOpacity: 0.08,
+    shadowRadius: 40,
+    elevation: 10,
   },
+
+  cardHeader: {
+    position: 'relative',
+    paddingHorizontal: 22,
+    paddingTop: 22,
+    paddingBottom: 18,
+    borderBottomWidth: 1,
+    borderBottomColor: `rgba(${BRAND_RGB.primary}, 0.08)`,
+    ...(Platform.OS === 'web'
+      ? ({
+          backgroundImage: `linear-gradient(90deg, rgba(${BRAND_RGB.primary}, 0.06) 0%, rgba(${BRAND_RGB.secondary}, 0.10) 50%, rgba(255,255,255, 1) 100%)`,
+        } as any)
+      : ({ backgroundColor: 'rgba(6,23,62,0.04)' } as any)),
+  } as any,
+  headerGlow: {
+    position: 'absolute',
+    top: -30,
+    right: -40,
+    width: 160,
+    height: 160,
+    borderRadius: 999,
+    backgroundColor: `rgba(${BRAND_RGB.secondary}, 0.22)`,
+    ...(Platform.OS === 'web' ? ({ filter: 'blur(34px)' } as any) : null),
+  } as any,
+  headerGlow2: {
+    position: 'absolute',
+    bottom: -40,
+    left: -60,
+    width: 220,
+    height: 220,
+    borderRadius: 999,
+    backgroundColor: `rgba(${BRAND_RGB.primary}, 0.14)`,
+    ...(Platform.OS === 'web' ? ({ filter: 'blur(42px)' } as any) : null),
+  } as any,
+  headerText: { gap: 6, paddingLeft: 110 },
+  title: { fontSize: 28, fontWeight: '900', color: colors.text, textAlign: 'right', writingDirection: 'rtl' },
+  subtitle: { fontSize: 14, fontWeight: '700', color: colors.gray[700], textAlign: 'right', writingDirection: 'rtl', maxWidth: 560 },
+  headerIcon: { position: 'absolute', left: 18, top: 22 },
+  headerIconInner: {
+    width: 86,
+    height: 86,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.70)',
+    borderWidth: 1,
+    borderColor: `rgba(${BRAND_RGB.primary}, 0.10)`,
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: `0 18px 38px rgba(${BRAND_RGB.primary}, 0.10)`, transform: 'rotate(6deg)' } as any)
+      : null),
+  } as any,
+
+  cardBody: { padding: 22, gap: 16 },
 
   bannerInfo: {
     flexDirection: 'row-reverse',
@@ -407,26 +547,106 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingVertical: 10,
     paddingHorizontal: 12,
-    borderRadius: 16,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: 'rgba(6, 23, 62, 0.12)',
-    backgroundColor: 'rgba(6, 23, 62, 0.06)',
+    borderColor: `rgba(${BRAND_RGB.primary}, 0.14)`,
+    backgroundColor: `rgba(${BRAND_RGB.primary}, 0.06)`,
   },
-  bannerInfoText: { fontSize: 12, fontWeight: '800', color: '#0f172a', writingDirection: 'rtl' },
+  bannerInfoText: { fontSize: 12, fontWeight: '900', color: colors.text, writingDirection: 'rtl' },
   bannerWarn: {
     flexDirection: 'row-reverse',
     alignItems: 'flex-start',
     gap: 8,
     paddingVertical: 10,
     paddingHorizontal: 12,
-    borderRadius: 16,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: 'rgba(6, 23, 62, 0.18)',
-    backgroundColor: 'rgba(6, 23, 62, 0.08)',
+    borderColor: `rgba(${BRAND_RGB.secondary}, 0.30)`,
+    backgroundColor: `rgba(${BRAND_RGB.secondary}, 0.14)`,
   },
-  bannerWarnText: { flex: 1, fontSize: 12, fontWeight: '800', color: '#0f172a', writingDirection: 'rtl' },
+  bannerWarnText: { flex: 1, fontSize: 12, fontWeight: '900', color: colors.text, writingDirection: 'rtl' },
 
-  form: { gap: 12, marginTop: 2 },
+  section: { gap: 10 },
+  sectionTitle: { fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'right', writingDirection: 'rtl' },
+  divider: { height: 1, width: '100%', backgroundColor: `rgba(${BRAND_RGB.primary}, 0.08)` },
+
+  roleGrid: {
+    gap: 10,
+    ...(Platform.OS === 'web'
+      ? ({
+          display: 'grid',
+          alignItems: 'stretch',
+        } as any)
+      : null),
+  } as any,
+  roleGrid1: {
+    ...(Platform.OS === 'web'
+      ? ({
+          gridTemplateColumns: '1fr',
+        } as any)
+      : null),
+  } as any,
+  roleGrid3: {
+    ...(Platform.OS === 'web'
+      ? ({
+          gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+        } as any)
+      : null),
+  } as any,
+
+  roleCard: {
+    position: 'relative',
+    minHeight: 122,
+    borderRadius: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: `rgba(${BRAND_RGB.primary}, 0.10)`,
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    textAlign: 'center' as any,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer', transitionProperty: 'transform, box-shadow, border-color, background-color', transitionDuration: '180ms' } as any) : null),
+  } as any,
+  roleCardHover: {
+    borderColor: `rgba(${BRAND_RGB.primary}, 0.16)`,
+    backgroundColor: `rgba(${BRAND_RGB.primary}, 0.03)`,
+    ...(Platform.OS === 'web' ? ({ boxShadow: `0 18px 46px rgba(${BRAND_RGB.primary}, 0.10)` } as any) : null),
+  } as any,
+  roleCardPressed: { transform: [{ scale: 0.995 }], opacity: 0.98 },
+  roleCardActive: {
+    borderWidth: 2,
+    borderColor: `rgba(${BRAND_RGB.primary}, 0.92)`,
+    backgroundColor: `rgba(${BRAND_RGB.primary}, 0.05)`,
+    ...(Platform.OS === 'web' ? ({ boxShadow: `0 22px 58px rgba(${BRAND_RGB.primary}, 0.14)` } as any) : null),
+  } as any,
+  roleIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: `rgba(${BRAND_RGB.secondary}, 0.12)`,
+    borderWidth: 1,
+    borderColor: `rgba(${BRAND_RGB.secondary}, 0.22)`,
+    marginBottom: 10,
+  },
+  roleIconWrapActive: {
+    backgroundColor: colors.primary,
+    borderColor: `rgba(${BRAND_RGB.primary}, 0.30)`,
+  },
+  roleTitle: { fontSize: 14, fontWeight: '900', color: colors.text, marginBottom: 4, writingDirection: 'rtl' },
+  roleTitleActive: { color: colors.text },
+  roleSubtitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.gray[700],
+    textAlign: 'center',
+    writingDirection: 'rtl',
+    lineHeight: 16,
+  },
+  roleCheck: { position: 'absolute', top: 10, right: 10 },
+
   formGrid: {
     gap: 12,
     ...(Platform.OS === 'web'
@@ -457,114 +677,109 @@ const styles = StyleSheet.create({
         } as any)
       : null),
   } as any,
-  field: { gap: 6 },
-  fieldLabel: { fontSize: 12, fontWeight: '900', color: '#334155', textAlign: 'right', writingDirection: 'rtl' },
-  input: {
-    height: 48,
-    borderRadius: 14,
+
+  field: { gap: 8 },
+  fieldLabel: { fontSize: 12, fontWeight: '900', color: colors.gray[700], textAlign: 'right', writingDirection: 'rtl' },
+  fieldLabelFocused: { color: colors.primary },
+  inputWrap: {
+    position: 'relative',
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
-    backgroundColor: '#fbfdff',
-    paddingHorizontal: 14,
+    borderColor: `rgba(${BRAND_RGB.primary}, 0.12)`,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    ...(Platform.OS === 'web' ? ({ backdropFilter: 'blur(8px)' } as any) : null),
+  } as any,
+  inputWrapFocused: {
+    borderColor: `rgba(${BRAND_RGB.primary}, 0.40)`,
+    ...(Platform.OS === 'web' ? ({ boxShadow: `0 0 0 4px rgba(${BRAND_RGB.primary}, 0.10)` } as any) : null),
+  } as any,
+  inputIcon: { position: 'absolute', right: 12, top: 16 },
+  input: {
+    height: 52,
+    paddingRight: 42,
+    paddingLeft: 14,
+    borderRadius: 16,
     fontSize: 15,
     fontWeight: '800',
-    color: '#0f172a',
+    color: colors.text,
     ...(Platform.OS === 'web'
       ? ({
           outlineStyle: 'none',
-          transitionProperty: 'box-shadow, border-color, background-color',
-          transitionDuration: '140ms',
-        } as any)
-      : null),
-  },
-  inputFocused: {
-    borderColor: 'rgba(15,69,230,0.55)',
-    backgroundColor: '#ffffff',
-    ...(Platform.OS === 'web'
-      ? ({
-          boxShadow: '0 0 0 4px rgba(15,69,230,0.10)',
-        } as any)
-      : null),
-  },
-
-  roleRow: { marginTop: 4, gap: 8 },
-  roleLabel: { fontSize: 12, fontWeight: '900', color: '#334155', textAlign: 'right', writingDirection: 'rtl' },
-  roleChipsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    ...(Platform.OS === 'web'
-      ? ({
-          display: 'grid',
-          gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-          alignItems: 'stretch',
         } as any)
       : null),
   } as any,
-  roleChip: {
+  inputWithRightAction: { paddingLeft: 44 },
+  inputRightAction: {
+    position: 'absolute',
+    left: 8,
+    top: 8,
+    width: 40,
+    height: 36,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  } as any,
+
+  errorText: { color: colors.error, fontSize: 12, fontWeight: '900', writingDirection: 'rtl', textAlign: 'right' },
+  successText: { color: colors.success, fontSize: 12, fontWeight: '900', writingDirection: 'rtl', textAlign: 'right' },
+
+  actions: {
+    marginTop: 4,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: `rgba(${BRAND_RGB.primary}, 0.08)`,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    gap: 12,
+  },
+  cancelBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    borderRadius: 14,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  } as any,
+  cancelBtnHover: { backgroundColor: `rgba(${BRAND_RGB.primary}, 0.04)` },
+  cancelText: { fontSize: 13, fontWeight: '900', color: colors.gray[700], writingDirection: 'rtl' },
+
+  primaryBtn: {
+    position: 'relative',
     height: 54,
     borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.10)',
+    paddingHorizontal: 18,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row-reverse',
-    gap: 8,
-    paddingHorizontal: 12,
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
-  },
-  roleChipIcon: { opacity: 0.95 },
-  roleChipHover: {
-    backgroundColor: 'rgba(255,255,255,1)',
-    borderColor: 'rgba(15,69,230,0.18)',
-    ...(Platform.OS === 'web' ? ({ boxShadow: '0 10px 26px rgba(6,23,62,0.10)' } as any) : null),
-  } as any,
-  roleChipActive: {
-    backgroundColor: 'rgba(15,69,230,0.08)',
-    borderColor: 'rgba(15,69,230,0.35)',
-    ...(Platform.OS === 'web' ? ({ boxShadow: '0 14px 34px rgba(15,69,230,0.16)' } as any) : null),
-  } as any,
-  roleChipText: { fontSize: 13, fontWeight: '900', color: '#0f172a', writingDirection: 'rtl' },
-  roleChipTextActive: { color: colors.primary },
-
-  errorText: { color: '#dc2626', fontSize: 12, fontWeight: '800', writingDirection: 'rtl', textAlign: 'right' },
-  successText: { color: '#16a34a', fontSize: 12, fontWeight: '800', writingDirection: 'rtl', textAlign: 'right' },
-
-  actionsRow: { marginTop: 4, gap: 10 },
-  primaryBtn: {
-    height: 52,
-    borderRadius: 18,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
     gap: 10,
+    backgroundColor: colors.primary,
+    borderWidth: 1,
+    borderColor: `rgba(${BRAND_RGB.secondary}, 0.22)`,
     ...(Platform.OS === 'web'
       ? ({
           cursor: 'pointer',
-          boxShadow: '0 14px 30px rgba(6, 23, 62, 0.22)',
+          boxShadow: `0 20px 48px rgba(${BRAND_RGB.primary}, 0.22)`,
+          backgroundImage: `linear-gradient(90deg, ${colors.primary} 0%, ${colors.oxfordBlue} 55%, ${colors.primary} 100%)`,
         } as any)
       : null),
   } as any,
-  primaryBtnHover: { backgroundColor: 'rgba(15,69,230,0.92)' },
+  primaryBtnDisabled: { opacity: 0.65 },
+  primaryBtnHover: { opacity: 0.98 },
   primaryBtnPressed: { transform: [{ translateY: -1 }], opacity: 0.98 },
-  primaryBtnText: { color: '#ffffff', fontSize: 15, fontWeight: '800', writingDirection: 'rtl' },
-  primaryBtnArrow: { transform: [{ rotate: '180deg' }] },
-
-  secondaryBtn: {
-    height: 44,
-    borderRadius: 16,
-    backgroundColor: '#f8fafc',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    alignItems: 'center',
-    justifyContent: 'center',
-    alignSelf: 'center',
-    paddingHorizontal: 18,
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  primaryBtnText: { color: colors.white, fontSize: 15, fontWeight: '900', writingDirection: 'rtl' },
+  primaryBtnShine: {
+    position: 'absolute',
+    left: -40,
+    top: -10,
+    width: 60,
+    height: 80,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    transform: [{ skewX: '-18deg' }],
+    ...(Platform.OS === 'web'
+      ? ({
+          transitionProperty: 'transform',
+          transitionDuration: '600ms',
+        } as any)
+      : null),
   } as any,
-  secondaryBtnHover: { backgroundColor: '#f1f5f9' },
-  secondaryBtnPressed: { opacity: 0.95 },
-  secondaryBtnText: { fontSize: 13, fontWeight: '900', color: '#0f172a', writingDirection: 'rtl' },
 });

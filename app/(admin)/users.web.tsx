@@ -1,7 +1,9 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -17,7 +19,7 @@ import { Image } from 'expo-image';
 import { colors } from '@/constants/colors';
 import { useDemoUsersStore } from '@/store/demoUsersStore';
 import { useUsersModel, type UserFilter } from '@/features/users/useUsersModel';
-import type { UserWithMetadata } from '@/lib/services/userService';
+import { userService, type UserWithMetadata } from '@/lib/services/userService';
 
 type RoleFilter = Exclude<UserFilter, 'all'>;
 
@@ -54,6 +56,7 @@ export default function UsersWebScreen() {
 
   const {
     users,
+    setUsers,
     loading,
     isDemoMode,
     userFilter,
@@ -71,10 +74,33 @@ export default function UsersWebScreen() {
     deleteUserNow,
   } = useUsersModel({ demoUsers });
 
+  const [editOpen, setEditOpen] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editForm, setEditForm] = useState<{
+    name: string;
+    email: string;
+    phone: string;
+    userType: UserWithMetadata['userType'];
+    password: string;
+    confirmPassword: string;
+  }>({ name: '', email: '', phone: '', userType: 'event_owner', password: '', confirmPassword: '' });
+
   useEffect(() => {
     void refreshUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!selectedUser) return;
+    setEditForm({
+      name: selectedUser.name ?? '',
+      email: selectedUser.email ?? '',
+      phone: selectedUser.phone ?? '',
+      userType: selectedUser.userType ?? 'event_owner',
+      password: '',
+      confirmPassword: '',
+    });
+  }, [selectedUser?.id]);
 
   const counts = useMemo(() => {
     const base = { all: users.length, admin: 0, event_owner: 0, employee: 0 } as Record<UserFilter, number>;
@@ -105,6 +131,88 @@ export default function UsersWebScreen() {
       },
     ]);
   };
+
+  const openEdit = useCallback(() => {
+    if (!selectedUser) return;
+    setEditForm({
+      name: selectedUser.name ?? '',
+      email: selectedUser.email ?? '',
+      phone: selectedUser.phone ?? '',
+      userType: selectedUser.userType ?? 'event_owner',
+      password: '',
+      confirmPassword: '',
+    });
+    setEditOpen(true);
+  }, [selectedUser]);
+
+  const saveEdit = useCallback(async () => {
+    if (!selectedUser) return;
+    if (editSaving) return;
+
+    const nextName = editForm.name.trim();
+    const nextEmail = editForm.email.trim();
+    const nextPhone = editForm.phone.trim();
+    const nextRole = editForm.userType;
+    const nextPassword = editForm.password;
+    const confirm = editForm.confirmPassword;
+
+    if (!nextName || !nextEmail) {
+      Alert.alert('שגיאה', 'יש למלא שם ואימייל.');
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(nextEmail)) {
+      Alert.alert('שגיאה', 'כתובת אימייל לא תקינה.');
+      return;
+    }
+
+    if (nextPassword || confirm) {
+      if (nextPassword.length < 6) {
+        Alert.alert('שגיאה', 'הסיסמה חייבת להכיל לפחות 6 תווים.');
+        return;
+      }
+      if (nextPassword !== confirm) {
+        Alert.alert('שגיאה', 'הסיסמאות אינן תואמות.');
+        return;
+      }
+    }
+
+    setEditSaving(true);
+    try {
+      const updates: Parameters<typeof userService.adminUpdateUser>[1] = {
+        name: nextName,
+        email: nextEmail,
+        phone: nextPhone || undefined,
+        userType: nextRole,
+        ...(nextPassword ? { password: nextPassword } : null),
+      };
+
+      if (!isDemoMode) {
+        await userService.adminUpdateUser(selectedUser.id, updates);
+      }
+
+      const mergedUser: UserWithMetadata = {
+        ...selectedUser,
+        name: nextName,
+        email: nextEmail,
+        phone: nextPhone || undefined,
+        userType: nextRole,
+        updated_at: new Date().toISOString(),
+      };
+
+      setUsers((prev) => prev.map((u) => (u.id === selectedUser.id ? mergedUser : u)));
+      setSelectedUser(mergedUser);
+      setEditOpen(false);
+      setEditForm((f) => ({ ...f, password: '', confirmPassword: '' }));
+      Alert.alert('נשמר', isDemoMode ? 'מצב דמו: הפרטים עודכנו מקומית.' : 'פרטי המשתמש עודכנו בהצלחה.');
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'שגיאה לא ידועה';
+      Alert.alert('שגיאה', `לא ניתן לעדכן משתמש.\n\n${msg}`);
+    } finally {
+      setEditSaving(false);
+    }
+  }, [editForm, editSaving, isDemoMode, selectedUser, setSelectedUser, setUsers]);
 
   return (
     <View style={styles.page}>
@@ -299,6 +407,20 @@ export default function UsersWebScreen() {
             <View style={styles.sideActions}>
               <Pressable
                 accessibilityRole="button"
+                accessibilityLabel="עריכת משתמש"
+                onPress={openEdit}
+                style={({ hovered, pressed }: any) => [
+                  styles.sideActionBtn,
+                  Platform.OS === 'web' && hovered ? styles.sideActionBtnHover : null,
+                  pressed ? { opacity: 0.92 } : null,
+                ]}
+              >
+                <Ionicons name="create-outline" size={16} color={colors.primary} />
+                <Text style={styles.sideActionText}>ערוך</Text>
+              </Pressable>
+
+              <Pressable
+                accessibilityRole="button"
                 accessibilityLabel="החלפת תמונה"
                 onPress={() => void pickAvatarForSelectedUser()}
                 disabled={avatarUploading}
@@ -357,6 +479,129 @@ export default function UsersWebScreen() {
         <Ionicons name="add" size={20} color={colors.white} />
         <Text style={styles.fabCreateText}>משתמש חדש</Text>
       </Pressable>
+
+      {/* Edit modal */}
+      <Modal transparent visible={editOpen} animationType="fade" onRequestClose={() => setEditOpen(false)}>
+        <Pressable style={styles.editBackdrop} onPress={() => setEditOpen(false)}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ width: '100%' }}>
+            <Pressable style={styles.editCard} onPress={(e) => e.stopPropagation()}>
+              <Text style={styles.editTitle}>עריכת משתמש</Text>
+
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.editContent} bounces={false}>
+                <TextInput
+                  value={editForm.name}
+                  onChangeText={(t) => setEditForm((p) => ({ ...p, name: t }))}
+                  placeholder="שם מלא"
+                  placeholderTextColor={colors.gray[500]}
+                  style={styles.editInput}
+                  textAlign="right"
+                />
+
+                <TextInput
+                  value={editForm.email}
+                  onChangeText={(t) => setEditForm((p) => ({ ...p, email: t }))}
+                  placeholder="אימייל"
+                  placeholderTextColor={colors.gray[500]}
+                  style={[styles.editInput, styles.editInputLtr]}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  textAlign="left"
+                />
+
+                <TextInput
+                  value={editForm.phone}
+                  onChangeText={(t) => setEditForm((p) => ({ ...p, phone: t }))}
+                  placeholder="טלפון (אופציונלי)"
+                  placeholderTextColor={colors.gray[500]}
+                  style={[styles.editInput, styles.editInputLtr]}
+                  keyboardType="phone-pad"
+                  textAlign="left"
+                />
+
+                <View style={styles.roleRow}>
+                  {(['event_owner', 'employee', 'admin'] as Array<UserWithMetadata['userType']>).map((role) => {
+                    const active = editForm.userType === role;
+                    return (
+                      <Pressable
+                        key={role}
+                        accessibilityRole="button"
+                        accessibilityLabel={`בחירת תפקיד ${getUserTypeLabel(role)}`}
+                        onPress={() => setEditForm((p) => ({ ...p, userType: role }))}
+                        style={({ hovered, pressed }: any) => [
+                          styles.roleBtn,
+                          active ? styles.roleBtnActive : null,
+                          Platform.OS === 'web' && hovered ? styles.roleBtnHover : null,
+                          pressed ? { opacity: 0.92 } : null,
+                        ]}
+                      >
+                        <Text style={[styles.roleBtnText, active ? styles.roleBtnTextActive : null]}>
+                          {getUserTypeLabel(role)}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+
+                <TextInput
+                  value={editForm.password}
+                  onChangeText={(t) => setEditForm((p) => ({ ...p, password: t }))}
+                  placeholder="סיסמה חדשה (אופציונלי)"
+                  placeholderTextColor={colors.gray[500]}
+                  style={styles.editInput}
+                  secureTextEntry
+                  textAlign="right"
+                />
+
+                <TextInput
+                  value={editForm.confirmPassword}
+                  onChangeText={(t) => setEditForm((p) => ({ ...p, confirmPassword: t }))}
+                  placeholder="אישור סיסמה"
+                  placeholderTextColor={colors.gray[500]}
+                  style={styles.editInput}
+                  secureTextEntry
+                  textAlign="right"
+                />
+              </ScrollView>
+
+              <View style={styles.editActions}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="ביטול עריכה"
+                  onPress={() => setEditOpen(false)}
+                  style={({ hovered, pressed }: any) => [
+                    styles.editBtn,
+                    styles.editBtnGhost,
+                    Platform.OS === 'web' && hovered ? styles.editBtnHover : null,
+                    pressed ? { opacity: 0.92 } : null,
+                  ]}
+                >
+                  <Text style={styles.editBtnGhostText}>ביטול</Text>
+                </Pressable>
+
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="שמירת עריכה"
+                  onPress={() => void saveEdit()}
+                  disabled={editSaving}
+                  style={({ hovered, pressed }: any) => [
+                    styles.editBtn,
+                    styles.editBtnPrimary,
+                    Platform.OS === 'web' && hovered ? styles.editBtnPrimaryHover : null,
+                    pressed ? { opacity: 0.92 } : null,
+                    editSaving ? { opacity: 0.8 } : null,
+                  ]}
+                >
+                  {editSaving ? (
+                    <ActivityIndicator color={colors.white} />
+                  ) : (
+                    <Text style={styles.editBtnPrimaryText}>שמור</Text>
+                  )}
+                </Pressable>
+              </View>
+            </Pressable>
+          </KeyboardAvoidingView>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -593,5 +838,57 @@ const styles = StyleSheet.create({
 
   demoNoteRow: { flexDirection: 'row-reverse', alignItems: 'flex-start', gap: 8, marginTop: 2 },
   demoNote: { flex: 1, fontSize: 12, fontWeight: '700', textAlign: 'right', color: colors.gray[600] },
+
+  editBackdrop: { flex: 1, backgroundColor: 'rgba(2, 6, 23, 0.40)', padding: 16, justifyContent: 'center' },
+  editCard: {
+    width: '100%',
+    maxWidth: 640,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(255,255,255,0.98)',
+    borderRadius: 22,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.65)',
+    gap: 12,
+  },
+  editTitle: { fontSize: 16, fontWeight: '900', color: colors.text, textAlign: 'right' },
+  editContent: { gap: 10, paddingBottom: 4 },
+  editInput: {
+    height: 46,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.10)',
+    backgroundColor: 'rgba(244, 247, 251, 0.9)',
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '700',
+    textAlign: 'right',
+  },
+  editInputLtr: { writingDirection: 'ltr' as any },
+  roleRow: { flexDirection: 'row-reverse', gap: 8, flexWrap: 'wrap' },
+  roleBtn: {
+    height: 40,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: 'rgba(15,23,42,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  roleBtnHover: { backgroundColor: 'rgba(15,23,42,0.06)' },
+  roleBtnActive: { backgroundColor: 'rgba(15,69,230,0.10)', borderColor: 'rgba(15,69,230,0.22)' },
+  roleBtnText: { fontSize: 12, fontWeight: '900', color: colors.gray[700], textAlign: 'right' },
+  roleBtnTextActive: { color: colors.primary },
+  editActions: { flexDirection: 'row-reverse', gap: 10 },
+  editBtn: { flex: 1, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  editBtnGhost: { backgroundColor: 'rgba(15,23,42,0.05)', borderWidth: 1, borderColor: 'rgba(15,23,42,0.10)' },
+  editBtnHover: { backgroundColor: 'rgba(15,23,42,0.07)' },
+  editBtnGhostText: { fontSize: 14, fontWeight: '900', color: colors.gray[700] },
+  editBtnPrimary: { backgroundColor: colors.primary, borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)' },
+  editBtnPrimaryHover: { opacity: 0.96 },
+  editBtnPrimaryText: { fontSize: 14, fontWeight: '900', color: colors.white },
 });
 

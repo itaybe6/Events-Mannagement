@@ -78,9 +78,22 @@ export const userService = {
   // Update user profile
   updateUser: async (userId: string, updates: Partial<Pick<AuthUser, 'name' | 'email' | 'phone'>>): Promise<void> => {
     try {
-      await authService.updateProfile(updates);
+      await authService.adminUpdateUser(userId, updates);
     } catch (error) {
       console.error('UserService - updateUser error:', error);
+      throw error;
+    }
+  },
+
+  // Update any user (admin only) - includes role and optional password
+  adminUpdateUser: async (
+    userId: string,
+    updates: Partial<Pick<AuthUser, 'name' | 'email' | 'phone' | 'userType'>> & { password?: string }
+  ): Promise<void> => {
+    try {
+      await authService.adminUpdateUser(userId, updates);
+    } catch (error) {
+      console.error('UserService - adminUpdateUser error:', error);
       throw error;
     }
   },
