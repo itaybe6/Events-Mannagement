@@ -4,6 +4,7 @@ import { colors } from '@/constants/colors';
 
 interface CountdownTimerProps {
   targetDate: Date;
+  mode?: 'full' | 'days';
 }
 
 interface TimeLeft {
@@ -13,7 +14,7 @@ interface TimeLeft {
   seconds: number;
 }
 
-export const CountdownTimer: React.FC<CountdownTimerProps> = ({ targetDate }) => {
+export const CountdownTimer: React.FC<CountdownTimerProps> = ({ targetDate, mode = 'full' }) => {
   const [timeLeft, setTimeLeft] = useState<TimeLeft>({
     days: 0,
     hours: 0,
@@ -44,6 +45,26 @@ export const CountdownTimer: React.FC<CountdownTimerProps> = ({ targetDate }) =>
 
     return () => clearInterval(timer);
   }, [targetDate]);
+
+  const daysOnly = (() => {
+    const difference = +new Date(targetDate) - +new Date();
+    if (!(difference > 0)) return 0;
+    const msPerDay = 1000 * 60 * 60 * 24;
+    return Math.max(0, Math.ceil(difference / msPerDay));
+  })();
+
+  if (mode === 'days') {
+    return (
+      <View style={styles.container}>
+        <View style={styles.timerContainer}>
+          <View style={styles.timeUnit}>
+            <Text style={styles.timeValue}>{pad2(daysOnly)}</Text>
+            <Text style={styles.timeLabel}>ימים</Text>
+          </View>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>

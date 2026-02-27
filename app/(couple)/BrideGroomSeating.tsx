@@ -3,6 +3,8 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated, Pressab
 import Svg, { Defs, Line, Pattern, Rect } from 'react-native-svg';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Reanimated, { cancelAnimation, runOnUI, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Image } from 'expo-image';
 import { supabase } from '@/lib/supabase';
 import { useUserStore } from '@/store/userStore';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
@@ -921,6 +923,54 @@ export default function BrideGroomSeating() {
   // Keep these hooks ABOVE early returns (loading / no event) to preserve hook order.
   const unseatedGuestsList = guests.filter((g) => g.status === 'מגיע' && !g.table_id);
 
+  const dashboardStats = useMemo(() => {
+    const seatedById = new Map<string, number>();
+    for (const g of guests || []) {
+      const tid = g?.table_id ? String(g.table_id) : null;
+      if (!tid) continue;
+      const ppl = Number(g?.numberOfPeople ?? g?.number_of_people ?? 1) || 1;
+      seatedById.set(tid, (seatedById.get(tid) ?? 0) + ppl);
+    }
+
+    const totalTables = (tables || []).length;
+    const fullTables = (tables || []).filter((t) => {
+      const seated = seatedById.get(String(t.id)) ?? 0;
+      const cap = Number((t as any)?.capacity ?? t.capacity ?? 0) || 0;
+      return cap > 0 && seated >= cap;
+    }).length;
+
+    const coming = (guests || []).filter((g) => g?.status === 'מגיע');
+    const totalComingPeople = coming.reduce((sum, g) => sum + (Number(g?.numberOfPeople ?? g?.number_of_people ?? 1) || 1), 0);
+    const seatedComingPeople = coming
+      .filter((g) => Boolean(g?.table_id))
+      .reduce((sum, g) => sum + (Number(g?.numberOfPeople ?? g?.number_of_people ?? 1) || 1), 0);
+    const unseatedPeople = Math.max(0, totalComingPeople - seatedComingPeople);
+
+    const totalCapacity = (tables || []).reduce((sum, t) => sum + (Number((t as any)?.capacity ?? t.capacity ?? 0) || 0), 0);
+    const occupancyPct = totalCapacity > 0 ? seatedComingPeople / totalCapacity : 0;
+
+    return { totalTables, fullTables, totalComingPeople, seatedComingPeople, unseatedPeople, totalCapacity, occupancyPct };
+  }, [guests, tables]);
+
+  const avatarUri = useMemo(() => {
+    const direct = String((userData as any)?.avatar_url ?? '').trim();
+    if (direct) return direct;
+    const seed = encodeURIComponent(String((userData as any)?.email ?? 'user'));
+    return `https://i.pravatar.cc/256?u=${seed}`;
+  }, [userData]);
+
+  const initials = useMemo(() => {
+    const name = String((userData as any)?.name ?? '').trim();
+    if (!name) return 'U';
+    return name
+      .split(/\s+/g)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((p) => p[0])
+      .join('')
+      .toUpperCase();
+  }, [userData]);
+
   const mapNode = webSketch ? (
     <View style={styles.canvasScroll}>
       {Platform.OS === 'web' ? (
@@ -1116,9 +1166,23 @@ export default function BrideGroomSeating() {
 
   // (landscape hooks already computed above)
 
+  const topBarTop = Math.max(insets.top || 0, Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) : 0) + 10;
+
   return (
     <View style={styles.container}>
       <Stack.Screen options={{ headerShown: false }} />
+
+      {/* Organic header background (design inspired by provided HTML) */}
+      <View pointerEvents="none" style={[styles.heroBg, { height: 320 }]}>
+        <LinearGradient
+          colors={[colors.primary, colors.yaleBlue, colors.secondary]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFill as any}
+        />
+        <View style={styles.heroBlobA} />
+        <View style={styles.heroBlobB} />
+      </View>
 
       {/* Full-screen map frame */}
       <View style={styles.mapFrame}>{mapNode}</View>
@@ -1129,7 +1193,7 @@ export default function BrideGroomSeating() {
         style={[
           styles.floatingTopBar,
           {
-            top: Math.max(insets.top || 0, Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) : 0) + 10,
+            top: topBarTop,
           },
         ]}
       >
@@ -1140,7 +1204,7 @@ export default function BrideGroomSeating() {
           accessibilityRole="button"
           accessibilityLabel="חזרה"
         >
-          <Ionicons name="chevron-up" size={20} color={colors.text} />
+          <Ionicons name="chevron-forward" size={20} color={colors.text} />
         </TouchableOpacity>
 
         <View style={{ flex: 1 }} />
@@ -1155,9 +1219,91 @@ export default function BrideGroomSeating() {
         </View>
       </View>
 
+      {/* Header content + KPI cards */}
+      <View
+        pointerEvents="box-none"
+        style={[
+          styles.heroContent,
+          {
+            top: topBarTop + 54,
+          },
+        ]}
+      >
+        <View style={styles.heroHeaderRow}>
+          <View style={styles.heroHeaderText}>
+            <Text style={styles.heroWelcome} numberOfLines={1}>
+              ברוכים השבים,
+            </Text>
+            <Text style={styles.heroTitle} numberOfLines={1}>
+              {String((userData as any)?.name || 'זוג יקר')}
+            </Text>
+            <Text style={styles.heroSub} numberOfLines={1}>
+              מפת הושבה · {dashboardStats.seatedComingPeople}/{dashboardStats.totalComingPeople} הושבו
+            </Text>
+          </View>
+
+          <View style={styles.heroAvatarWrap}>
+            <View style={styles.heroAvatarRing}>
+              {avatarUri ? (
+                <Image source={{ uri: avatarUri }} style={styles.heroAvatarImg} contentFit="cover" transition={0} />
+              ) : (
+                <View style={styles.heroAvatarFallback}>
+                  <Text style={styles.heroAvatarInitials}>{initials}</Text>
+                </View>
+              )}
+            </View>
+            <View style={styles.heroOnlineDot} />
+          </View>
+        </View>
+
+        <View style={styles.heroKpisRow}>
+          <View style={styles.heroKpiWrap}>
+            <LinearGradient
+              colors={['#003566', '#06173e']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.heroKpiCard}
+            >
+              <View style={styles.heroKpiDecor} pointerEvents="none" />
+              <View style={styles.heroKpiTopRow}>
+                <Text style={styles.heroKpiLabel}>לא הושבו</Text>
+                <Ionicons name="people-outline" size={22} color="rgba(255,255,255,0.85)" />
+              </View>
+              <View style={styles.heroKpiValueRow}>
+                <Text style={styles.heroKpiValue}>{dashboardStats.unseatedPeople}</Text>
+                <View style={styles.heroKpiBadge}>
+                  <Text style={styles.heroKpiBadgeText}>אנשים</Text>
+                </View>
+              </View>
+            </LinearGradient>
+          </View>
+
+          <View style={styles.heroKpiWrap}>
+            <LinearGradient
+              colors={['#CCA000', '#F0CB46']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.heroKpiCard}
+            >
+              <View style={[styles.heroKpiDecor, { backgroundColor: 'rgba(255,255,255,0.14)' }]} pointerEvents="none" />
+              <View style={styles.heroKpiTopRow}>
+                <Text style={styles.heroKpiLabelDark}>שולחנות מלאים</Text>
+                <Ionicons name="grid-outline" size={22} color="rgba(6,23,62,0.90)" />
+              </View>
+              <View style={styles.heroKpiValueRow}>
+                <Text style={styles.heroKpiValueDark}>{dashboardStats.fullTables}</Text>
+                <View style={[styles.heroKpiBadge, styles.heroKpiBadgeDark]}>
+                  <Text style={[styles.heroKpiBadgeText, styles.heroKpiBadgeTextDark]}>{`/ ${dashboardStats.totalTables}`}</Text>
+                </View>
+              </View>
+            </LinearGradient>
+          </View>
+        </View>
+      </View>
+
       {dragMode && (
         <TouchableOpacity
-          style={styles.dragModePill}
+          style={[styles.dragModePill, { top: topBarTop + 6 }]}
           onPress={() => setDragMode(false)}
           activeOpacity={0.85}
         >
@@ -1684,13 +1830,42 @@ function MobileSeatingMap({
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
+  container: { flex: 1, backgroundColor: colors.gray[100] },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  heroBg: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    borderBottomLeftRadius: 44,
+    borderBottomRightRadius: 44,
+    overflow: 'hidden',
+    zIndex: 0,
+  },
+  heroBlobA: {
+    position: 'absolute',
+    top: -90,
+    right: -90,
+    width: 260,
+    height: 260,
+    borderRadius: 260,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+  },
+  heroBlobB: {
+    position: 'absolute',
+    top: 90,
+    left: -120,
+    width: 220,
+    height: 220,
+    borderRadius: 220,
+    backgroundColor: 'rgba(240,203,70,0.18)',
+  },
   mapFrame: {
     flex: 1,
     backgroundColor: colors.white,
-    borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.10)',
+    margin: 12,
+    borderRadius: 28,
+    borderWidth: 0,
     overflow: 'hidden',
   },
   floatingTopBar: {
@@ -1700,22 +1875,103 @@ const styles = StyleSheet.create({
     flexDirection: 'row-reverse',
     alignItems: 'center',
     gap: 10,
+    zIndex: 30,
   },
   backFab: {
     width: 44,
     height: 44,
     borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.94)',
+    backgroundColor: 'rgba(255,255,255,0.82)',
     borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.12)',
+    borderColor: 'rgba(255,255,255,0.60)',
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: colors.richBlack,
+    shadowOpacity: 0.10,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 4,
   },
   eventSwitcherWrap: {
     flexShrink: 1,
     minWidth: 0,
     maxWidth: '78%',
   },
+  heroContent: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    zIndex: 20,
+    gap: 12,
+  },
+  heroHeaderRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  heroHeaderText: { flex: 1, minWidth: 0, alignItems: 'flex-end' },
+  heroWelcome: { fontSize: 12, fontWeight: '800', color: 'rgba(255,255,255,0.82)', textAlign: 'right', writingDirection: 'rtl' },
+  heroTitle: { marginTop: 3, fontSize: 22, fontWeight: '900', color: '#fff', textAlign: 'right', writingDirection: 'rtl' },
+  heroSub: { marginTop: 6, fontSize: 12, fontWeight: '800', color: 'rgba(255,255,255,0.85)', textAlign: 'right', writingDirection: 'rtl' },
+  heroAvatarWrap: { width: 56, alignItems: 'flex-start', justifyContent: 'center' },
+  heroAvatarRing: {
+    width: 52,
+    height: 52,
+    borderRadius: 999,
+    padding: 2,
+    backgroundColor: 'rgba(255,255,255,0.20)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.35)',
+  },
+  heroAvatarImg: { width: '100%', height: '100%', borderRadius: 999 },
+  heroAvatarFallback: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  heroAvatarInitials: { fontSize: 14, fontWeight: '900', color: '#fff' },
+  heroOnlineDot: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    width: 12,
+    height: 12,
+    borderRadius: 999,
+    backgroundColor: '#4ade80',
+    borderWidth: 2,
+    borderColor: colors.primary,
+  },
+  heroKpisRow: { flexDirection: 'row-reverse', gap: 12 },
+  heroKpiWrap: { flex: 1, minWidth: 0 },
+  heroKpiCard: {
+    borderRadius: 22,
+    padding: 14,
+    overflow: 'hidden',
+    shadowColor: colors.richBlack,
+    shadowOpacity: 0.16,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 14 },
+    elevation: 6,
+    minHeight: 96,
+  },
+  heroKpiDecor: {
+    position: 'absolute',
+    top: -60,
+    right: -60,
+    width: 160,
+    height: 160,
+    borderRadius: 160,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+  },
+  heroKpiTopRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  heroKpiLabel: { fontSize: 12, fontWeight: '900', color: 'rgba(255,255,255,0.84)', textAlign: 'right', writingDirection: 'rtl' },
+  heroKpiLabelDark: { fontSize: 12, fontWeight: '900', color: 'rgba(6,23,62,0.92)', textAlign: 'right', writingDirection: 'rtl' },
+  heroKpiValueRow: { flexDirection: 'row-reverse', alignItems: 'flex-end', justifyContent: 'flex-start', gap: 10, marginTop: 10 },
+  heroKpiValue: { fontSize: 28, fontWeight: '900', color: '#fff', letterSpacing: -0.6 },
+  heroKpiValueDark: { fontSize: 28, fontWeight: '900', color: colors.primary, letterSpacing: -0.6 },
+  heroKpiBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.22)',
+  },
+  heroKpiBadgeDark: { backgroundColor: 'rgba(6,23,62,0.08)', borderColor: 'rgba(6,23,62,0.12)' },
+  heroKpiBadgeText: { fontSize: 11, fontWeight: '900', color: '#fff', textAlign: 'right', writingDirection: 'rtl' },
+  heroKpiBadgeTextDark: { color: colors.primary },
   statsContainer: {
     flexDirection: 'row',
     justifyContent: 'center',

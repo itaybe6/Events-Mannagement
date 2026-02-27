@@ -1,10 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ScrollView, View, Text, StyleSheet, Platform, Pressable, Image, useWindowDimensions } from 'react-native';
 import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useUserStore } from '@/store/userStore';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import { colors } from '@/constants/colors';
-import { CountdownTimer } from '@/components/CountdownTimer';
 import { Ionicons } from '@expo/vector-icons';
 import { eventService } from '@/lib/services/eventService';
 import { guestService } from '@/lib/services/guestService';
@@ -22,6 +21,7 @@ export default function HomeScreen() {
   const [currentEvent, setCurrentEvent] = useState<any>(null);
   const [guests, setGuests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [now, setNow] = useState(() => new Date());
   const isWeb = Platform.OS === 'web';
   const isDesktopWeb = isWeb && windowWidth >= 1024;
 
@@ -102,6 +102,20 @@ export default function HomeScreen() {
       }
     }, [isLoggedIn, resolvedEventId])
   );
+
+  useEffect(() => {
+    // Keep "days left" accurate without heavy countdown UI
+    const t = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(t);
+  }, []);
+
+  const daysToWedding = useMemo(() => {
+    const target = currentEvent?.date ? new Date(currentEvent.date).getTime() : NaN;
+    const diffMs = target - now.getTime();
+    if (!Number.isFinite(diffMs)) return null;
+    const msPerDay = 1000 * 60 * 60 * 24;
+    return Math.max(0, Math.ceil(diffMs / msPerDay));
+  }, [currentEvent?.date, now]);
 
   if (!isLoggedIn) {
     return (
@@ -224,19 +238,26 @@ export default function HomeScreen() {
         contentContainerStyle={[styles.contentContainer, isWeb && styles.contentContainerWeb]}
       >
         <View style={styles.hero}>
-          <View style={styles.heroAvatar}>
-            {userData?.avatar_url ? (
-              <Image source={{ uri: userData.avatar_url }} style={styles.avatarImage} />
-            ) : (
-              <View style={styles.avatarFallback}>
-                {getInitials(userData?.name) ? (
-                  <Text style={styles.avatarInitials}>{getInitials(userData?.name)}</Text>
-                ) : (
-                  <Ionicons name="person" size={28} color={stylesVars.primaryBlue} />
-                )}
-              </View>
-            )}
-          </View>
+          {currentEvent?.invitationImageUrl ? (
+            <View style={styles.heroBanner}>
+              <Image source={{ uri: currentEvent.invitationImageUrl }} style={styles.heroBannerImage} resizeMode="cover" />
+              <View style={styles.heroBannerFrame} />
+            </View>
+          ) : (
+            <View style={styles.heroAvatar}>
+              {userData?.avatar_url ? (
+                <Image source={{ uri: userData.avatar_url }} style={styles.avatarImage} />
+              ) : (
+                <View style={styles.avatarFallback}>
+                  {getInitials(userData?.name) ? (
+                    <Text style={styles.avatarInitials}>{getInitials(userData?.name)}</Text>
+                  ) : (
+                    <Ionicons name="person" size={28} color={stylesVars.primaryBlue} />
+                  )}
+                </View>
+              )}
+            </View>
+          )}
           <Text style={styles.heroDate}>{formatDate(currentEvent.date)}</Text>
 
           <View style={{ width: '100%', marginTop: 12 }}>
@@ -254,12 +275,18 @@ export default function HomeScreen() {
           </BlurView>
         </View>
 
-        <View style={styles.countdownSection}>
-          <CountdownTimer targetDate={currentEvent.date} />
-          <View style={styles.countdownCaption}>
-            <Ionicons name="heart" size={14} color={stylesVars.primaryBlue} />
-            <Text style={styles.countdownCaptionText}>עד החופה</Text>
-          </View>
+        <View style={styles.daysSection}>
+          <BlurView intensity={26} tint="light" style={styles.daysCard}>
+            <View style={styles.daysCardIcon}>
+              <Ionicons name="calendar-outline" size={18} color={stylesVars.primaryBlue} />
+            </View>
+            <View style={styles.daysCardText}>
+              <Text style={styles.daysCardTitle}>כמה ימים לאירוע</Text>
+              <Text style={styles.daysCardValue}>
+                {daysToWedding === null ? '—' : daysToWedding === 0 ? 'היום' : `${daysToWedding} ימים`}
+              </Text>
+            </View>
+          </BlurView>
         </View>
 
         <ScrollView
@@ -387,8 +414,33 @@ const styles = StyleSheet.create({
 
   hero: {
     alignItems: 'center',
-    paddingTop: 10,
+    paddingTop: 0,
     paddingBottom: 16,
+  },
+  heroBanner: {
+    width: '100%',
+    height: 260,
+    marginHorizontal: -24,
+    marginTop: -6,
+    borderRadius: 28,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    shadowColor: colors.black,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.12,
+    shadowRadius: 22,
+    elevation: 5,
+  },
+  heroBannerImage: {
+    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
+  },
+  heroBannerFrame: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 28,
+    borderWidth: 3,
+    borderColor: 'rgba(255,255,255,0.92)',
   },
   heroAvatar: {
     width: 110,
@@ -448,22 +500,49 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
 
-  countdownSection: {
-    marginTop: 4,
+  daysSection: {
+    marginTop: 6,
     marginBottom: 18,
     alignItems: 'center',
   },
-  countdownCaption: {
-    marginTop: 10,
+  daysCard: {
+    width: '100%',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 20,
     flexDirection: 'row-reverse',
     alignItems: 'center',
-    gap: 6,
-    opacity: 0.85,
+    gap: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.60)',
+    backgroundColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.35)' : 'transparent',
   },
-  countdownCaptionText: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: stylesVars.primaryBlue,
+  daysCardIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(19, 91, 236, 0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(19, 91, 236, 0.18)',
+  },
+  daysCardText: {
+    flex: 1,
+    alignItems: 'flex-end',
+  },
+  daysCardTitle: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: colors.gray[600],
+    textAlign: 'right',
+  },
+  daysCardValue: {
+    marginTop: 2,
+    fontSize: 18,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'right',
   },
 
   statsScroll: {
