@@ -3,8 +3,6 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated, Pressab
 import Svg, { Defs, Line, Pattern, Rect } from 'react-native-svg';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Reanimated, { cancelAnimation, runOnUI, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Image } from 'expo-image';
 import { supabase } from '@/lib/supabase';
 import { useUserStore } from '@/store/userStore';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
@@ -619,6 +617,8 @@ export default function BrideGroomSeating() {
         const type: TableType = normalizeTableType(t?.type ?? t);
         const seats =
           toFiniteNumber(t?.seats ?? t?.capacity) ?? (type === 'knight' ? 20 : 12);
+        const nameRaw = t?.name ?? t?.tableName ?? t?.label ?? t?.title ?? '';
+        const name = String(nameRaw ?? '').trim() || null;
         const gridX =
           toFiniteNumber(
             t?.gridX ??
@@ -648,6 +648,7 @@ export default function BrideGroomSeating() {
           orientation,
           gridX,
           gridY,
+          ...(name ? { name } : {}),
           ...(number != null ? { number: Math.round(number) } : {}),
         };
       })
@@ -776,7 +777,7 @@ export default function BrideGroomSeating() {
       if (!finalTables.length) {
         const { data: publicTables, error: publicTablesError } = await supabase
           .from('tables')
-          .select('id,number,capacity,shape,x,y')
+          .select('id,number,name,capacity,shape,x,y')
           .eq('event_id', resolvedEventId);
         if (!publicTablesError && Array.isArray(publicTables) && publicTables.length) {
           const px = publicTables.map((t: any) => ({
@@ -801,6 +802,7 @@ export default function BrideGroomSeating() {
               gridX,
               gridY,
               number: typeof t.number === 'number' ? t.number : undefined,
+              name: String(t?.name ?? '').trim() || null,
             };
           });
           finalTables = normalizeWebV2Tables(mapped);
@@ -923,63 +925,52 @@ export default function BrideGroomSeating() {
   // Keep these hooks ABOVE early returns (loading / no event) to preserve hook order.
   const unseatedGuestsList = guests.filter((g) => g.status === 'מגיע' && !g.table_id);
 
-  const dashboardStats = useMemo(() => {
-    const seatedById = new Map<string, number>();
-    for (const g of guests || []) {
-      const tid = g?.table_id ? String(g.table_id) : null;
-      if (!tid) continue;
-      const ppl = Number(g?.numberOfPeople ?? g?.number_of_people ?? 1) || 1;
-      seatedById.set(tid, (seatedById.get(tid) ?? 0) + ppl);
+  // (dashboardStats removed: this screen is map-only)
+
+  const webSketchWithNames = useMemo(() => {
+    if (!webSketch) return null;
+    const byNumber = new Map<number, string | null>();
+    const byRawId = new Map<string, string | null>();
+
+    for (const t of tables || []) {
+      const name = String((t as any)?.name ?? '').trim() || null;
+      byRawId.set(String((t as any)?.id ?? ''), name);
+      const num = Number((t as any)?.number);
+      if (Number.isFinite(num)) byNumber.set(num, name);
     }
 
-    const totalTables = (tables || []).length;
-    const fullTables = (tables || []).filter((t) => {
-      const seated = seatedById.get(String(t.id)) ?? 0;
-      const cap = Number((t as any)?.capacity ?? t.capacity ?? 0) || 0;
-      return cap > 0 && seated >= cap;
-    }).length;
+    const mergedTables = (webSketch.tables || []).map((t: any) => {
+      const existing = String(t?.name ?? '').trim() || null;
+      if (existing) return t;
+      const num = Number(t?.number);
+      const fromNum = Number.isFinite(num) ? (byNumber.get(num) ?? null) : null;
+      // In some fallbacks we prefix the id (e.g. table-public-<uuid>), so try to strip prefixes.
+      const rawId = String(t?.id ?? '');
+      const stripped =
+        rawId.startsWith('table-public-')
+          ? rawId.replace('table-public-', '')
+          : rawId.startsWith('table-live-')
+            ? rawId.replace('table-live-', '')
+            : rawId;
+      const fromId = (byRawId.get(rawId) ?? byRawId.get(stripped) ?? null);
+      const name = fromNum ?? fromId;
+      return name ? { ...t, name } : t;
+    });
 
-    const coming = (guests || []).filter((g) => g?.status === 'מגיע');
-    const totalComingPeople = coming.reduce((sum, g) => sum + (Number(g?.numberOfPeople ?? g?.number_of_people ?? 1) || 1), 0);
-    const seatedComingPeople = coming
-      .filter((g) => Boolean(g?.table_id))
-      .reduce((sum, g) => sum + (Number(g?.numberOfPeople ?? g?.number_of_people ?? 1) || 1), 0);
-    const unseatedPeople = Math.max(0, totalComingPeople - seatedComingPeople);
-
-    const totalCapacity = (tables || []).reduce((sum, t) => sum + (Number((t as any)?.capacity ?? t.capacity ?? 0) || 0), 0);
-    const occupancyPct = totalCapacity > 0 ? seatedComingPeople / totalCapacity : 0;
-
-    return { totalTables, fullTables, totalComingPeople, seatedComingPeople, unseatedPeople, totalCapacity, occupancyPct };
-  }, [guests, tables]);
-
-  const avatarUri = useMemo(() => {
-    const direct = String((userData as any)?.avatar_url ?? '').trim();
-    if (direct) return direct;
-    const seed = encodeURIComponent(String((userData as any)?.email ?? 'user'));
-    return `https://i.pravatar.cc/256?u=${seed}`;
-  }, [userData]);
-
-  const initials = useMemo(() => {
-    const name = String((userData as any)?.name ?? '').trim();
-    if (!name) return 'U';
-    return name
-      .split(/\s+/g)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((p) => p[0])
-      .join('')
-      .toUpperCase();
-  }, [userData]);
+    return { ...webSketch, tables: mergedTables };
+  }, [tables, webSketch]);
 
   const mapNode = webSketch ? (
     <View style={styles.canvasScroll}>
       {Platform.OS === 'web' ? (
         <SeatingGridReadonly
-          gridCols={webSketch.gridCols}
-          gridRows={webSketch.gridRows}
-          tables={webSketch.tables}
-          zones={webSketch.zones}
-          labels={webSketch.labels}
+          gridCols={webSketchWithNames?.gridCols ?? webSketch.gridCols}
+          gridRows={webSketchWithNames?.gridRows ?? webSketch.gridRows}
+          tables={webSketchWithNames?.tables ?? webSketch.tables}
+          zones={webSketchWithNames?.zones ?? webSketch.zones}
+          labels={webSketchWithNames?.labels ?? webSketch.labels}
+          hideTableType
+          cellSizeMultiplier={2}
           getTableTooltip={(t: any) => {
             const num = t?.number;
             if (!num) return null;
@@ -1002,7 +993,7 @@ export default function BrideGroomSeating() {
         />
       ) : (
         <MobileSeatingMap
-          sketch={webSketch}
+          sketch={(webSketchWithNames ?? webSketch) as any}
           onPressTableNumber={(num) => {
             if (!num) return;
             const t = tables.find((x) => x.number === num);
@@ -1172,18 +1163,6 @@ export default function BrideGroomSeating() {
     <View style={styles.container}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      {/* Organic header background (design inspired by provided HTML) */}
-      <View pointerEvents="none" style={[styles.heroBg, { height: 320 }]}>
-        <LinearGradient
-          colors={[colors.primary, colors.yaleBlue, colors.secondary]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={StyleSheet.absoluteFill as any}
-        />
-        <View style={styles.heroBlobA} />
-        <View style={styles.heroBlobB} />
-      </View>
-
       {/* Full-screen map frame */}
       <View style={styles.mapFrame}>{mapNode}</View>
 
@@ -1216,88 +1195,6 @@ export default function BrideGroomSeating() {
             onSelectEventId={handleSelectEventId}
             label="אירוע פעיל"
           />
-        </View>
-      </View>
-
-      {/* Header content + KPI cards */}
-      <View
-        pointerEvents="box-none"
-        style={[
-          styles.heroContent,
-          {
-            top: topBarTop + 54,
-          },
-        ]}
-      >
-        <View style={styles.heroHeaderRow}>
-          <View style={styles.heroHeaderText}>
-            <Text style={styles.heroWelcome} numberOfLines={1}>
-              ברוכים השבים,
-            </Text>
-            <Text style={styles.heroTitle} numberOfLines={1}>
-              {String((userData as any)?.name || 'זוג יקר')}
-            </Text>
-            <Text style={styles.heroSub} numberOfLines={1}>
-              מפת הושבה · {dashboardStats.seatedComingPeople}/{dashboardStats.totalComingPeople} הושבו
-            </Text>
-          </View>
-
-          <View style={styles.heroAvatarWrap}>
-            <View style={styles.heroAvatarRing}>
-              {avatarUri ? (
-                <Image source={{ uri: avatarUri }} style={styles.heroAvatarImg} contentFit="cover" transition={0} />
-              ) : (
-                <View style={styles.heroAvatarFallback}>
-                  <Text style={styles.heroAvatarInitials}>{initials}</Text>
-                </View>
-              )}
-            </View>
-            <View style={styles.heroOnlineDot} />
-          </View>
-        </View>
-
-        <View style={styles.heroKpisRow}>
-          <View style={styles.heroKpiWrap}>
-            <LinearGradient
-              colors={['#003566', '#06173e']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.heroKpiCard}
-            >
-              <View style={styles.heroKpiDecor} pointerEvents="none" />
-              <View style={styles.heroKpiTopRow}>
-                <Text style={styles.heroKpiLabel}>לא הושבו</Text>
-                <Ionicons name="people-outline" size={22} color="rgba(255,255,255,0.85)" />
-              </View>
-              <View style={styles.heroKpiValueRow}>
-                <Text style={styles.heroKpiValue}>{dashboardStats.unseatedPeople}</Text>
-                <View style={styles.heroKpiBadge}>
-                  <Text style={styles.heroKpiBadgeText}>אנשים</Text>
-                </View>
-              </View>
-            </LinearGradient>
-          </View>
-
-          <View style={styles.heroKpiWrap}>
-            <LinearGradient
-              colors={['#CCA000', '#F0CB46']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.heroKpiCard}
-            >
-              <View style={[styles.heroKpiDecor, { backgroundColor: 'rgba(255,255,255,0.14)' }]} pointerEvents="none" />
-              <View style={styles.heroKpiTopRow}>
-                <Text style={styles.heroKpiLabelDark}>שולחנות מלאים</Text>
-                <Ionicons name="grid-outline" size={22} color="rgba(6,23,62,0.90)" />
-              </View>
-              <View style={styles.heroKpiValueRow}>
-                <Text style={styles.heroKpiValueDark}>{dashboardStats.fullTables}</Text>
-                <View style={[styles.heroKpiBadge, styles.heroKpiBadgeDark]}>
-                  <Text style={[styles.heroKpiBadgeText, styles.heroKpiBadgeTextDark]}>{`/ ${dashboardStats.totalTables}`}</Text>
-                </View>
-              </View>
-            </LinearGradient>
-          </View>
         </View>
       </View>
 
@@ -1554,6 +1451,9 @@ function clampNumber(n: number, min: number, max: number) {
   return Math.min(max, Math.max(min, n));
 }
 
+// Larger cell size for the map-only view so table names are readable.
+const MAP_CELL = 36;
+
 function MobileSeatingMap({
   sketch,
   onPressTableNumber,
@@ -1591,8 +1491,8 @@ function MobileSeatingMap({
     };
   }, [sketch.gridCols, sketch.gridRows, sketch.labels, sketch.tables, sketch.zones]);
 
-  const baseW = contentRect.cols * CELL_SIZE;
-  const baseH = contentRect.rows * CELL_SIZE;
+  const baseW = contentRect.cols * MAP_CELL;
+  const baseH = contentRect.rows * MAP_CELL;
 
   // ── Shared values (all on the UI thread) ─────────────────────────────────
   // tx/ty are PAN offsets in SCREEN pixels from the centered position.
@@ -1621,7 +1521,7 @@ function MobileSeatingMap({
     // Sync shared values immediately so worklets see up-to-date viewport
     vW.value = vw; vH.value = vh;
     cW.value = bw; cH.value = bh;
-    const s = clampNumber(Math.min(vw / bw, vh / bh), 0.1, 10);
+    const s = clampNumber(Math.min(vw / bw, vh / bh) * 1.12, 0.1, 10);
     cancelAnimation(scale); cancelAnimation(tx); cancelAnimation(ty);
     scale.value = withTiming(s, { duration: 260 });
     tx.value    = withTiming(0, { duration: 260 });
@@ -1717,10 +1617,10 @@ function MobileSeatingMap({
       {/* Full-screen grid background so no white space outside map */}
       <Svg width="100%" height="100%" style={StyleSheet.absoluteFill as any}>
         <Defs>
-          <Pattern id="bg-grid" x="0" y="0" width={CELL_SIZE} height={CELL_SIZE} patternUnits="userSpaceOnUse">
-            <Rect x="0" y="0" width={CELL_SIZE} height={CELL_SIZE} fill="transparent" />
-            <Line x1={CELL_SIZE} y1="0" x2="0" y2="0" stroke="rgba(148,163,184,0.18)" strokeWidth="1" />
-            <Line x1="0" y1={CELL_SIZE} x2="0" y2="0" stroke="rgba(148,163,184,0.18)" strokeWidth="1" />
+          <Pattern id="bg-grid" x="0" y="0" width={MAP_CELL} height={MAP_CELL} patternUnits="userSpaceOnUse">
+            <Rect x="0" y="0" width={MAP_CELL} height={MAP_CELL} fill="transparent" />
+            <Line x1={MAP_CELL} y1="0" x2="0" y2="0" stroke="rgba(148,163,184,0.18)" strokeWidth="1" />
+            <Line x1="0" y1={MAP_CELL} x2="0" y2="0" stroke="rgba(148,163,184,0.18)" strokeWidth="1" />
           </Pattern>
         </Defs>
         <Rect x="0" y="0" width="100%" height="100%" fill="url(#bg-grid)" />
@@ -1733,14 +1633,14 @@ function MobileSeatingMap({
 
             {/* Zones */}
             {(sketch.zones || []).map((z: any) => {
-              const left = (Number(z.gridX) - contentRect.originX) * CELL_SIZE;
-              const top  = (Number(z.gridY) - contentRect.originY) * CELL_SIZE;
+              const left = (Number(z.gridX) - contentRect.originX) * MAP_CELL;
+              const top  = (Number(z.gridY) - contentRect.originY) * MAP_CELL;
               return (
                 <View
                   key={String(z.id)}
                   style={[styles.mobileZone, {
-                    width:  (Number(z.widthCells)  || 1) * CELL_SIZE,
-                    height: (Number(z.heightCells) || 1) * CELL_SIZE,
+                    width:  (Number(z.widthCells)  || 1) * MAP_CELL,
+                    height: (Number(z.heightCells) || 1) * MAP_CELL,
                     transform: [{ translateX: left }, { translateY: top }],
                   }]}
                 >
@@ -1752,22 +1652,15 @@ function MobileSeatingMap({
             {/* Tables */}
             {(sketch.tables || []).map((t: any) => {
               const sz   = tableCellSize(t.type, t.seats, t.orientation);
-              const left = (Number(t.gridX) - contentRect.originX) * CELL_SIZE;
-              const top  = (Number(t.gridY) - contentRect.originY) * CELL_SIZE;
+              const left = (Number(t.gridX) - contentRect.originX) * MAP_CELL;
+              const top  = (Number(t.gridY) - contentRect.originY) * MAP_CELL;
               const isReserve = t.type === 'reserve';
               const base = isReserve ? '#F59E0B' : '#06173d';
-              // Regular tables: slightly more transparent blue (subtle).
-              // Reserve tables: keep current styling.
               const bg = isReserve ? `${base}22` : 'rgba(6, 23, 61, 0.76)';
               const border = isReserve ? `${base}55` : 'rgba(6, 23, 61, 1)';
               const textColor = isReserve ? base : '#FFFFFF';
-              const tableScale = 1.1;
-              const w0 = sz.w * CELL_SIZE;
-              const h0 = sz.h * CELL_SIZE;
-              const w = w0 * tableScale;
-              const h = h0 * tableScale;
-              const dx = (w - w0) / 2;
-              const dy = (h - h0) / 2;
+              const w = sz.w * MAP_CELL;
+              const h = sz.h * MAP_CELL;
               const tableName = String(t?.name ?? '').trim();
               const sub  = getTableSubLabel?.(t) ?? null;
               return (
@@ -1777,7 +1670,7 @@ function MobileSeatingMap({
                   style={[styles.mobileTable, {
                     width: w, height: h,
                     backgroundColor: bg, borderColor: border,
-                    transform: [{ translateX: left - dx }, { translateY: top - dy }],
+                    transform: [{ translateX: left }, { translateY: top }],
                   }]}
                 >
                   <Text style={[styles.mobileTableNum, { color: textColor }]}>{t.number ?? ''}</Text>
@@ -1787,7 +1680,7 @@ function MobileSeatingMap({
                         styles.mobileTableName,
                         { color: isReserve ? base : 'rgba(255,255,255,0.92)' },
                       ]}
-                      numberOfLines={1}
+                      numberOfLines={2}
                     >
                       {tableName}
                     </Text>
@@ -1803,8 +1696,8 @@ function MobileSeatingMap({
 
             {/* Labels */}
             {(sketch.labels || []).map((l: any) => {
-              const left = (Number(l.gridX) - contentRect.originX) * CELL_SIZE;
-              const top  = (Number(l.gridY) - contentRect.originY) * CELL_SIZE;
+              const left = (Number(l.gridX) - contentRect.originX) * MAP_CELL;
+              const top  = (Number(l.gridY) - contentRect.originY) * MAP_CELL;
               return (
                 <View key={String(l.id)} style={[styles.mobileLabelWrap, { transform: [{ translateX: left }, { translateY: top }] }]}>
                   <Text style={styles.mobileLabelText} numberOfLines={1}>{String(l.text ?? '')}</Text>
@@ -1832,39 +1725,11 @@ function MobileSeatingMap({
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.gray[100] },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  heroBg: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    borderBottomLeftRadius: 44,
-    borderBottomRightRadius: 44,
-    overflow: 'hidden',
-    zIndex: 0,
-  },
-  heroBlobA: {
-    position: 'absolute',
-    top: -90,
-    right: -90,
-    width: 260,
-    height: 260,
-    borderRadius: 260,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-  },
-  heroBlobB: {
-    position: 'absolute',
-    top: 90,
-    left: -120,
-    width: 220,
-    height: 220,
-    borderRadius: 220,
-    backgroundColor: 'rgba(240,203,70,0.18)',
-  },
   mapFrame: {
     flex: 1,
     backgroundColor: colors.white,
-    margin: 12,
-    borderRadius: 28,
+    margin: 0,
+    borderRadius: 0,
     borderWidth: 0,
     overflow: 'hidden',
   },
@@ -1897,81 +1762,6 @@ const styles = StyleSheet.create({
     minWidth: 0,
     maxWidth: '78%',
   },
-  heroContent: {
-    position: 'absolute',
-    left: 16,
-    right: 16,
-    zIndex: 20,
-    gap: 12,
-  },
-  heroHeaderRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  heroHeaderText: { flex: 1, minWidth: 0, alignItems: 'flex-end' },
-  heroWelcome: { fontSize: 12, fontWeight: '800', color: 'rgba(255,255,255,0.82)', textAlign: 'right', writingDirection: 'rtl' },
-  heroTitle: { marginTop: 3, fontSize: 22, fontWeight: '900', color: '#fff', textAlign: 'right', writingDirection: 'rtl' },
-  heroSub: { marginTop: 6, fontSize: 12, fontWeight: '800', color: 'rgba(255,255,255,0.85)', textAlign: 'right', writingDirection: 'rtl' },
-  heroAvatarWrap: { width: 56, alignItems: 'flex-start', justifyContent: 'center' },
-  heroAvatarRing: {
-    width: 52,
-    height: 52,
-    borderRadius: 999,
-    padding: 2,
-    backgroundColor: 'rgba(255,255,255,0.20)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.35)',
-  },
-  heroAvatarImg: { width: '100%', height: '100%', borderRadius: 999 },
-  heroAvatarFallback: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  heroAvatarInitials: { fontSize: 14, fontWeight: '900', color: '#fff' },
-  heroOnlineDot: {
-    position: 'absolute',
-    top: 2,
-    right: 2,
-    width: 12,
-    height: 12,
-    borderRadius: 999,
-    backgroundColor: '#4ade80',
-    borderWidth: 2,
-    borderColor: colors.primary,
-  },
-  heroKpisRow: { flexDirection: 'row-reverse', gap: 12 },
-  heroKpiWrap: { flex: 1, minWidth: 0 },
-  heroKpiCard: {
-    borderRadius: 22,
-    padding: 14,
-    overflow: 'hidden',
-    shadowColor: colors.richBlack,
-    shadowOpacity: 0.16,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 14 },
-    elevation: 6,
-    minHeight: 96,
-  },
-  heroKpiDecor: {
-    position: 'absolute',
-    top: -60,
-    right: -60,
-    width: 160,
-    height: 160,
-    borderRadius: 160,
-    backgroundColor: 'rgba(255,255,255,0.10)',
-  },
-  heroKpiTopRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  heroKpiLabel: { fontSize: 12, fontWeight: '900', color: 'rgba(255,255,255,0.84)', textAlign: 'right', writingDirection: 'rtl' },
-  heroKpiLabelDark: { fontSize: 12, fontWeight: '900', color: 'rgba(6,23,62,0.92)', textAlign: 'right', writingDirection: 'rtl' },
-  heroKpiValueRow: { flexDirection: 'row-reverse', alignItems: 'flex-end', justifyContent: 'flex-start', gap: 10, marginTop: 10 },
-  heroKpiValue: { fontSize: 28, fontWeight: '900', color: '#fff', letterSpacing: -0.6 },
-  heroKpiValueDark: { fontSize: 28, fontWeight: '900', color: colors.primary, letterSpacing: -0.6 },
-  heroKpiBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.22)',
-  },
-  heroKpiBadgeDark: { backgroundColor: 'rgba(6,23,62,0.08)', borderColor: 'rgba(6,23,62,0.12)' },
-  heroKpiBadgeText: { fontSize: 11, fontWeight: '900', color: '#fff', textAlign: 'right', writingDirection: 'rtl' },
-  heroKpiBadgeTextDark: { color: colors.primary },
   statsContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -2070,9 +1860,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 4,
   },
-  mobileTableNum: { fontSize: 16, fontWeight: '900' },
-  mobileTableName: { marginTop: 2, fontSize: 10, fontWeight: '900', textAlign: 'center' },
-  mobileTableSub: { marginTop: 3, fontSize: 11, fontWeight: '900', color: 'rgba(17,24,39,0.78)' },
+  mobileTableNum: { fontSize: 20, fontWeight: '900' },
+  mobileTableName: { marginTop: 3, fontSize: 13, fontWeight: '900', textAlign: 'center', paddingHorizontal: 4 },
+  mobileTableSub: { marginTop: 3, fontSize: 13, fontWeight: '900', color: 'rgba(17,24,39,0.78)' },
   mobileZone: {
     position: 'absolute',
     borderRadius: 16,
@@ -2135,20 +1925,20 @@ const styles = StyleSheet.create({
     borderWidth: 1, 
     borderColor: colors.gray[300] 
   },
-  tableSquare: { width: 80, height: 80 },
+  tableSquare: { width: 92, height: 92 },
   // Knight table: vertical rectangle ("מלבן לאורך")
-  tableRect: { width: 66, height: 132 },
+  tableRect: { width: 74, height: 150 },
   tableSelected: {
     borderColor: colors.primary,
     borderWidth: 2,
   },
-  tableName: { fontWeight: 'bold', fontSize: 16, color: colors.text },
+  tableName: { fontWeight: 'bold', fontSize: 18, color: colors.text },
   tableCustomName: {
-    fontSize: 11,
+    fontSize: 12,
     color: colors.textLight,
     marginTop: 2,
   },
-  tableCap: { fontSize: 14, color: colors.textLight },
+  tableCap: { fontSize: 15, color: colors.textLight },
   tableFullStyle: {
     backgroundColor: colors.success,
     borderColor: colors.success,

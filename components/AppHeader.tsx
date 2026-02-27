@@ -6,21 +6,24 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // Base header height (excluding safe-area top inset)
 export const APP_HEADER_HEIGHT = 90;
+export const APP_HEADER_HEIGHT_COMPACT = 72;
 
-export const getAppHeaderTotalHeight = (topInset: number) =>
-  APP_HEADER_HEIGHT + Math.max(0, topInset || 0);
+export const getAppHeaderTotalHeight = (topInset: number, baseHeight: number = APP_HEADER_HEIGHT) =>
+  baseHeight + Math.max(0, topInset || 0);
 
 type Props = {
   onPressNotifications?: () => void;
   onPressBack?: () => void;
   canGoBack?: boolean;
+  variant?: 'default' | 'compact';
 };
 
 export default function AppHeader(props: Props) {
-  const { onPressNotifications, onPressBack, canGoBack } = props;
+  const { onPressNotifications, onPressBack, canGoBack, variant = 'default' } = props;
   const insets = useSafeAreaInsets();
   const topInset = Math.max(0, insets.top || 0);
-  const totalHeight = getAppHeaderTotalHeight(topInset);
+  const baseHeight = variant === 'compact' ? APP_HEADER_HEIGHT_COMPACT : APP_HEADER_HEIGHT;
+  const totalHeight = getAppHeaderTotalHeight(topInset, baseHeight);
 
   return (
     <View style={[styles.wrap, { height: totalHeight, paddingTop: topInset }]}>
@@ -43,7 +46,7 @@ export default function AppHeader(props: Props) {
       <View style={styles.center}>
         <Image
           source={require('../assets/images/logoMoon.png')}
-          style={styles.logo}
+          style={[styles.logo, variant === 'compact' && styles.logoCompact]}
           resizeMode="contain"
         />
       </View>
@@ -93,6 +96,10 @@ const styles = StyleSheet.create({
   logo: {
     width: 320,
     height: 80,
+  },
+  logoCompact: {
+    width: 260,
+    height: 62,
   },
   iconButton: {
     width: 40,

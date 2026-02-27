@@ -354,6 +354,7 @@ export default function BrideGroomSeatingWebScreen() {
             gridX: Math.round((Number(t.x) || 0) / 40),
             gridY: Math.round((Number(t.y) || 0) / 40),
             number: typeof (t as any).number === 'number' ? (t as any).number : Number((t as any).number) || undefined,
+            name: String((t as any)?.name ?? '').trim() || null,
           };
         });
 
@@ -416,6 +417,7 @@ export default function BrideGroomSeatingWebScreen() {
                 gridX,
                 gridY,
                 number: num,
+                name: String(t?.name ?? '').trim() || null,
               };
             });
           const maxX = mapped.reduce(
@@ -436,7 +438,7 @@ export default function BrideGroomSeatingWebScreen() {
       if (!finalTables.length) {
         const { data: publicTables, error: publicTablesError } = await supabase
           .from('tables')
-          .select('id,number,capacity,shape,x,y')
+          .select('id,number,name,capacity,shape,x,y')
           .eq('event_id', resolvedEventId);
         if (!publicTablesError && Array.isArray(publicTables) && publicTables.length) {
           const mapped = publicTables.map((t: any) => {
@@ -451,6 +453,7 @@ export default function BrideGroomSeatingWebScreen() {
               gridX,
               gridY,
               number: typeof t.number === 'number' ? t.number : Number(t.number) || undefined,
+              name: String(t?.name ?? '').trim() || null,
             };
           });
           const maxX = mapped.reduce(
@@ -549,6 +552,36 @@ export default function BrideGroomSeatingWebScreen() {
     }
     return map;
   }, [guests, tables]);
+
+  const webSketchWithNames = useMemo(() => {
+    if (!webSketch) return null;
+    const byNumber = new Map<number, string | null>();
+    const byId = new Map<string, string | null>();
+    for (const t of tables || []) {
+      const name = String((t as any)?.name ?? '').trim() || null;
+      const id = String((t as any)?.id ?? '');
+      if (id) byId.set(id, name);
+      const num = Number((t as any)?.number);
+      if (Number.isFinite(num)) byNumber.set(num, name);
+    }
+    const mergedTables = (webSketch.tables || []).map((t: any) => {
+      const existing = String(t?.name ?? '').trim() || null;
+      if (existing) return t;
+      const num = Number(t?.number);
+      const fromNum = Number.isFinite(num) ? (byNumber.get(num) ?? null) : null;
+      const rawId = String(t?.id ?? '');
+      const stripped =
+        rawId.startsWith('table-public-')
+          ? rawId.replace('table-public-', '')
+          : rawId.startsWith('table-live-')
+            ? rawId.replace('table-live-', '')
+            : rawId;
+      const fromId = byId.get(rawId) ?? byId.get(stripped) ?? null;
+      const name = fromNum ?? fromId;
+      return name ? { ...t, name } : t;
+    });
+    return { ...webSketch, tables: mergedTables };
+  }, [tables, webSketch]);
 
   const openGuestModalWithGuests = useCallback((title: string, list: GuestRow[]) => {
     setGuestModalTitle(title);
@@ -1399,12 +1432,13 @@ export default function BrideGroomSeatingWebScreen() {
               <View style={{ flex: 1, minHeight: mapCardHeight }}>
                 {webSketch ? (
                   <SeatingGridReadonly
-                    gridCols={webSketch.gridCols}
-                    gridRows={webSketch.gridRows}
-                    tables={webSketch.tables}
-                    zones={webSketch.zones}
-                    labels={webSketch.labels}
+                    gridCols={webSketchWithNames?.gridCols ?? webSketch.gridCols}
+                    gridRows={webSketchWithNames?.gridRows ?? webSketch.gridRows}
+                    tables={webSketchWithNames?.tables ?? webSketch.tables}
+                    zones={webSketchWithNames?.zones ?? webSketch.zones}
+                    labels={webSketchWithNames?.labels ?? webSketch.labels}
                     hideTableType
+                    autoFitZoomMultiplier={1.12}
                     showTableBorder={false}
                     getTableBaseColor={(t: any) => {
                       const selectedNumber =

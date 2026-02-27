@@ -29,6 +29,7 @@ type TableItem = {
   gridX: number;
   gridY: number;
   number?: number;
+  name?: string | null;
 };
 
 type ZoneItem = {
@@ -56,6 +57,8 @@ export function SeatingGridReadonly({
   onPressTableNumber,
   getTableTooltip,
   getTableSubLabel,
+  autoFitZoomMultiplier,
+  cellSizeMultiplier,
   hideTableType,
   getTableBaseColor,
   getTableBackgroundAlpha,
@@ -72,6 +75,8 @@ export function SeatingGridReadonly({
   onPressTableNumber?: (num: number | undefined) => void;
   getTableTooltip?: (t: TableItem) => string | null;
   getTableSubLabel?: (t: TableItem) => string | null;
+  autoFitZoomMultiplier?: number;
+  cellSizeMultiplier?: number;
   hideTableType?: boolean;
   getTableBaseColor?: (t: TableItem) => string | null;
   getTableBackgroundAlpha?: (t: TableItem) => number | null;
@@ -81,6 +86,8 @@ export function SeatingGridReadonly({
   selectedRingColor?: string;
 }) {
   const isWeb = Platform.OS === 'web';
+  const fitBoost = Number.isFinite(autoFitZoomMultiplier as any) ? Math.max(0.6, Math.min(2, Number(autoFitZoomMultiplier))) : 1;
+  const CS = CELL_SIZE * (Number.isFinite(cellSizeMultiplier as any) ? Math.max(0.5, Math.min(4, Number(cellSizeMultiplier))) : 1);
 
   // Compute content bounds so we "fit" to content, not to an oversized empty grid.
   const contentRect = useMemo(() => {
@@ -123,8 +130,8 @@ export function SeatingGridReadonly({
     return { originX: ox, originY: oy, cols, rows };
   }, [gridCols, gridRows, labels, tables, zones]);
 
-  const baseW = contentRect.cols * CELL_SIZE;
-  const baseH = contentRect.rows * CELL_SIZE;
+  const baseW = contentRect.cols * CS;
+  const baseH = contentRect.rows * CS;
 
   const workAreaRef = useRef<any>(null);
   const stageRef = useRef<any>(null);
@@ -141,14 +148,16 @@ export function SeatingGridReadonly({
     return clamp(Math.min(sx, sy), 0.2, 12);
   }, [baseH, baseW, viewport?.h, viewport?.w]);
 
+  const fitZoomAdjusted = useMemo(() => clamp(fitZoom * fitBoost, 0.2, 12), [fitBoost, fitZoom]);
+
   const [zoom, setZoom] = useState(1);
   const zoomRef = useRef(1);
   const fitZoomRef = useRef(1);
   const lastAutoFitTokenRef = useRef<string>('');
 
   useEffect(() => {
-    fitZoomRef.current = fitZoom;
-  }, [fitZoom]);
+    fitZoomRef.current = fitZoomAdjusted;
+  }, [fitZoomAdjusted]);
 
   // Auto-fit when content OR viewport changes so the map fills the window.
   const autoFitToken = useMemo(
@@ -182,8 +191,8 @@ export function SeatingGridReadonly({
     if (lastAutoFitTokenRef.current === autoFitToken) return;
     lastAutoFitTokenRef.current = autoFitToken;
 
-    setZoom(fitZoom);
-    zoomRef.current = fitZoom;
+    setZoom(fitZoomAdjusted);
+    zoomRef.current = fitZoomAdjusted;
 
     if (isWeb) {
       const el = workAreaRef.current as any;
@@ -197,7 +206,7 @@ export function SeatingGridReadonly({
         // ignore
       }
     }
-  }, [autoFitToken, fitZoom, isWeb, viewport?.h, viewport?.w]);
+  }, [autoFitToken, fitZoomAdjusted, isWeb, viewport?.h, viewport?.w]);
 
   const stageW = baseW * zoom;
   const stageH = baseH * zoom;
@@ -255,10 +264,10 @@ export function SeatingGridReadonly({
 
             {/* Zones */}
             {zones.map(z => {
-              const left = (z.gridX - contentRect.originX) * CELL_SIZE;
-              const top = (z.gridY - contentRect.originY) * CELL_SIZE;
-              const w = z.widthCells * CELL_SIZE;
-              const h = z.heightCells * CELL_SIZE;
+              const left = (z.gridX - contentRect.originX) * CS;
+              const top = (z.gridY - contentRect.originY) * CS;
+              const w = z.widthCells * CS;
+              const h = z.heightCells * CS;
               return (
                 <View
                   key={z.id}
@@ -314,6 +323,7 @@ export function SeatingGridReadonly({
 
               const tip = getTableTooltip?.(t) ?? null;
               const sub = getTableSubLabel?.(t) ?? null;
+              const name = String((t as any)?.name ?? '').trim();
               return (
                 <Pressable
                   key={t.id}
@@ -355,10 +365,10 @@ export function SeatingGridReadonly({
                         } as any)
                       : null,
                     {
-                      left: (t.gridX - contentRect.originX) * CELL_SIZE,
-                      top: (t.gridY - contentRect.originY) * CELL_SIZE,
-                      width: sz.w * CELL_SIZE,
-                      height: sz.h * CELL_SIZE,
+                      left: (t.gridX - contentRect.originX) * CS,
+                      top: (t.gridY - contentRect.originY) * CS,
+                      width: sz.w * CS,
+                      height: sz.h * CS,
                       backgroundColor: bg,
                       borderWidth: isWeb ? 2 : borderOn ? 1 : 0,
                       borderColor: isWeb ? borderColor : borderOn ? borderColor : 'transparent',
@@ -367,6 +377,17 @@ export function SeatingGridReadonly({
                   ]}
                 >
                   <Text style={[styles.tableNum, { color: isWeb ? webAccent : base }]}>{t.number ?? ''}</Text>
+                  {name ? (
+                    <Text
+                      style={[
+                        styles.tableName,
+                        isWeb && onDarkWeb ? styles.tableTextOnDark : null,
+                      ]}
+                      numberOfLines={2}
+                    >
+                      {name}
+                    </Text>
+                  ) : null}
                   {!hideTableType ? (
                     <Text style={[styles.tableType, isWeb && onDarkWeb ? styles.tableTextOnDark : null]}>{TABLE_LABELS[t.type]}</Text>
                   ) : null}
@@ -391,7 +412,7 @@ export function SeatingGridReadonly({
                 key={l.id}
                 style={[
                   styles.labelWrap,
-                  { left: (l.gridX - contentRect.originX) * CELL_SIZE, top: (l.gridY - contentRect.originY) * CELL_SIZE },
+                  { left: (l.gridX - contentRect.originX) * CS, top: (l.gridY - contentRect.originY) * CS },
                 ]}
               >
                 <Text style={styles.labelText}>{l.text}</Text>
@@ -457,9 +478,10 @@ const styles = StyleSheet.create({
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 10 },
   },
-  tableNum: { fontSize: 16, fontWeight: '900' },
+  tableNum: { fontSize: 18, fontWeight: '900' },
+  tableName: { marginTop: 3, fontSize: 12, fontWeight: '900', color: 'rgba(51,65,85,0.55)', textAlign: 'center' },
   tableType: { marginTop: 2, fontSize: 11, fontWeight: '800', color: 'rgba(51,65,85,0.55)' },
-  tableSub: { marginTop: 3, fontSize: 11, fontWeight: '900', color: 'rgba(51,65,85,0.55)' },
+  tableSub: { marginTop: 3, fontSize: 12, fontWeight: '900', color: 'rgba(51,65,85,0.55)' },
   tableSubSelected: { color: 'rgba(180,83,9,0.78)' },
   tableTextOnDark: { color: 'rgba(255,255,255,0.92)' },
 

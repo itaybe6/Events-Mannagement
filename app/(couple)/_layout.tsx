@@ -1,51 +1,56 @@
 import React, { useEffect } from "react";
+import { StatusBar } from "expo-status-bar";
 import { Tabs, useRouter } from "expo-router";
 import { colors } from "@/constants/colors";
 import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
-import { Platform, StyleSheet, View } from "react-native";
+import { Platform, StyleSheet, Text, View } from "react-native";
 import { Image as ExpoImage } from 'expo-image';
 
 import { useLayoutStore } from '@/store/layoutStore';
 import { useUserStore } from '@/store/userStore';
-import AppHeader from "@/components/AppHeader";
+import AppHeader, { APP_HEADER_HEIGHT_COMPACT, getAppHeaderTotalHeight } from "@/components/AppHeader";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { getAppHeaderTotalHeight } from "@/components/AppHeader";
 
 function ProfileTabIcon({ focused }: { focused: boolean }) {
   const avatarUrl = useUserStore(s => s.userData?.avatar_url);
 
   return (
-    <View style={[styles.iconCircle, focused && styles.iconCircleActive]}>
-      <LinearGradient
-        pointerEvents="none"
-        colors={[
-          "rgba(255,255,255,0.55)",
-          "rgba(255,255,255,0.18)",
-          "rgba(255,255,255,0)",
-        ]}
-        locations={[0, 0.55, 1]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.iconGloss}
-      />
-      {avatarUrl ? (
-        <ExpoImage
-          key={avatarUrl}
-          source={{ uri: avatarUrl }}
-          style={[styles.tabAvatar, { borderColor: focused ? "rgba(255,255,255,0.85)" : "rgba(0,0,0,0.14)" }]}
-          contentFit="cover"
-          cachePolicy="none"
-          transition={0}
+    <View style={styles.tabItem}>
+      <View style={[styles.iconCircle, focused && styles.iconCircleActive]}>
+        <LinearGradient
+          pointerEvents="none"
+          colors={[
+            "rgba(255,255,255,0.55)",
+            "rgba(255,255,255,0.18)",
+            "rgba(255,255,255,0)",
+          ]}
+          locations={[0, 0.55, 1]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.iconGloss}
         />
-      ) : (
-        <Ionicons
-          name={focused ? "person" : "person-outline"}
-          size={22}
-          color={focused ? colors.white : colors.gray[700]}
-        />
-      )}
+        {avatarUrl ? (
+          <ExpoImage
+            key={avatarUrl}
+            source={{ uri: avatarUrl }}
+            style={[styles.tabAvatar, { borderColor: focused ? "rgba(255,255,255,0.85)" : "rgba(0,0,0,0.14)" }]}
+            contentFit="cover"
+            cachePolicy="none"
+            transition={0}
+          />
+        ) : (
+          <Ionicons
+            name={focused ? "person" : "person-outline"}
+            size={22}
+            color={focused ? colors.white : colors.gray[700]}
+          />
+        )}
+      </View>
+      <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65} style={[styles.tabLabel, focused && styles.tabLabelActive]}>
+        פרופיל
+      </Text>
     </View>
   );
 }
@@ -55,7 +60,7 @@ export default function CoupleTabsLayout() {
   const { isTabBarVisible, setTabBarVisible } = useLayoutStore();
   const { userType, isLoggedIn, loading } = useUserStore();
   const insets = useSafeAreaInsets();
-  const headerTotalHeight = getAppHeaderTotalHeight(insets.top);
+  const headerTotalHeight = getAppHeaderTotalHeight(insets.top, APP_HEADER_HEIGHT_COMPACT);
 
   useEffect(() => {
     setTabBarVisible(true);
@@ -77,229 +82,254 @@ export default function CoupleTabsLayout() {
   }, [isLoggedIn, userType, loading, router]);
 
   return (
-    <Tabs
-      screenOptions={{
-        tabBarActiveTintColor: colors.white,
-        tabBarInactiveTintColor: colors.gray[500],
-        headerShown: true,
-        headerStyle: {
-          height: headerTotalHeight,
-          backgroundColor: "#FFFFFF",
-        },
-        headerShadowVisible: false,
-        header: ({ navigation }) => (
-          <AppHeader
-            canGoBack={navigation.canGoBack()}
-            onPressBack={() => navigation.goBack()}
-          />
-        ),
-        tabBarShowLabel: false,
-        tabBarBackground: () => (
-          <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-            <BlurView intensity={28} tint="light" style={styles.tabBarBlur} />
-            <View style={styles.tabBarFrame} />
-            <LinearGradient
-              pointerEvents="none"
-              colors={[
-                "rgba(255,255,255,0.65)",
-                "rgba(255,255,255,0.18)",
-                "rgba(255,255,255,0)",
-              ]}
-              locations={[0, 0.35, 1]}
-              start={{ x: 0.5, y: 0 }}
-              end={{ x: 0.5, y: 1 }}
-              style={styles.tabBarTopShine}
+    <>
+      <StatusBar style="dark" backgroundColor="#FFFFFF" />
+
+      <Tabs
+        screenOptions={{
+          tabBarActiveTintColor: colors.white,
+          tabBarInactiveTintColor: colors.gray[500],
+          headerShown: true,
+          headerStyle: {
+            height: headerTotalHeight,
+            backgroundColor: "#FFFFFF",
+          },
+          headerShadowVisible: false,
+          header: ({ navigation }) => (
+            <AppHeader
+              variant="compact"
+              canGoBack={navigation.canGoBack()}
+              onPressBack={() => navigation.goBack()}
             />
-            <LinearGradient
-              pointerEvents="none"
-              colors={["rgba(255,255,255,0.28)", "rgba(255,255,255,0)"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.tabBarSheen}
-            />
-            <LinearGradient
-              pointerEvents="none"
-              colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.06)"]}
-              start={{ x: 0.5, y: 0.5 }}
-              end={{ x: 0.5, y: 1 }}
-              style={styles.tabBarBottomShade}
-            />
-          </View>
-        ),
-        tabBarStyle: {
-          position: 'absolute',
-          bottom: Platform.OS === 'ios' ? 28 : 22,
-          left: 20,
-          right: 20,
-          height: 60,
+          ),
+          tabBarShowLabel: false,
+          tabBarBackground: () => (
+            <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+              <BlurView intensity={28} tint="light" style={styles.tabBarBlur} />
+              <View style={styles.tabBarFrame} />
+              <LinearGradient
+                pointerEvents="none"
+                colors={[
+                  "rgba(255,255,255,0.65)",
+                  "rgba(255,255,255,0.18)",
+                  "rgba(255,255,255,0)",
+                ]}
+                locations={[0, 0.35, 1]}
+                start={{ x: 0.5, y: 0 }}
+                end={{ x: 0.5, y: 1 }}
+                style={styles.tabBarTopShine}
+              />
+              <LinearGradient
+                pointerEvents="none"
+                colors={["rgba(255,255,255,0.28)", "rgba(255,255,255,0)"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.tabBarSheen}
+              />
+              <LinearGradient
+                pointerEvents="none"
+                colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.06)"]}
+                start={{ x: 0.5, y: 0.5 }}
+                end={{ x: 0.5, y: 1 }}
+                style={styles.tabBarBottomShade}
+              />
+            </View>
+          ),
+          tabBarStyle: {
+            position: 'absolute',
+            bottom: Platform.OS === 'ios' ? 0: 8,
+            left: 20,
+            right: 20,
+          height: 74,
           backgroundColor: 'transparent',
           borderRadius: 32,
           paddingHorizontal: 8,
           paddingVertical: 0,
-          paddingTop: 0,
+          paddingTop: 16,
           paddingBottom: 0,
-          overflow: 'hidden',
-          shadowColor: colors.richBlack,
-          shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.12,
-          shadowRadius: 16,
-          elevation: 14,
-          borderTopWidth: 0,
-          borderWidth: 0,
-          display: isTabBarVisible ? 'flex' : 'none',
-        },
-        tabBarItemStyle: {
-          flex: 1,
-          marginHorizontal: 2,
-          paddingVertical: 0,
-          paddingHorizontal: 0,
-          justifyContent: 'center',
-          alignItems: 'center',
-        },
+          overflow: 'visible',
+            shadowColor: colors.richBlack,
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.12,
+            shadowRadius: 16,
+            elevation: 14,
+            borderTopWidth: 0,
+            borderWidth: 0,
+            display: isTabBarVisible ? 'flex' : 'none',
+          },
+          tabBarItemStyle: {
+            flex: 1,
+            marginHorizontal: 2,
+            paddingVertical: 0,
+            paddingHorizontal: 0,
+            justifyContent: 'center',
+            alignItems: 'center',
+          },
         tabBarIconStyle: {
           marginRight: 0,
           marginLeft: 0,
-          marginTop: 10,
+          marginTop: 0,
           marginBottom: 0,
         },
-      }}
-    >
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: "בית",
-          tabBarIcon: ({ focused }) => (
-            <View style={[styles.iconCircle, focused && styles.iconCircleActive]}>
-              <LinearGradient
-                pointerEvents="none"
-                colors={[
-                  "rgba(255,255,255,0.55)",
-                  "rgba(255,255,255,0.18)",
-                  "rgba(255,255,255,0)",
-                ]}
-                locations={[0, 0.55, 1]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.iconGloss}
-              />
-              <Ionicons
-                name={focused ? "home" : "home-outline"}
-                size={22}
-                color={focused ? colors.white : colors.gray[700]}
-              />
-            </View>
-          ),
         }}
-      />
-      <Tabs.Screen
-        name="guests"
-        options={{
-          title: "אורחים",
-          tabBarIcon: ({ focused }) => (
-            <View style={[styles.iconCircle, focused && styles.iconCircleActive]}>
-              <LinearGradient
-                pointerEvents="none"
-                colors={[
-                  "rgba(255,255,255,0.55)",
-                  "rgba(255,255,255,0.18)",
-                  "rgba(255,255,255,0)",
-                ]}
-                locations={[0, 0.55, 1]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.iconGloss}
-              />
-              <Ionicons
-                name={focused ? "people" : "people-outline"}
-                size={22}
-                color={focused ? colors.white : colors.gray[700]}
-              />
-            </View>
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="BrideGroomSeating"
-        options={{
-          title: "הושבה",
-          tabBarIcon: ({ focused }) => (
-            <View style={[styles.iconCircle, styles.centerCircle, focused && styles.iconCircleActive]}>
-              <LinearGradient
-                pointerEvents="none"
-                colors={[
-                  "rgba(255,255,255,0.55)",
-                  "rgba(255,255,255,0.18)",
-                  "rgba(255,255,255,0)",
-                ]}
-                locations={[0, 0.55, 1]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.iconGloss}
-              />
-              <Ionicons
-                name={focused ? "grid" : "grid-outline"}
-                size={22}
-                color={focused ? colors.white : colors.gray[700]}
-              />
-            </View>
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="TablesList"
-        options={{
-          title: "שולחנות",
-          tabBarIcon: ({ focused }) => (
-            <View style={[styles.iconCircle, focused && styles.iconCircleActive]}>
-              <LinearGradient
-                pointerEvents="none"
-                colors={[
-                  "rgba(255,255,255,0.55)",
-                  "rgba(255,255,255,0.18)",
-                  "rgba(255,255,255,0)",
-                ]}
-                locations={[0, 0.55, 1]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.iconGloss}
-              />
-              <Ionicons
-                name={focused ? "list" : "list-outline"}
-                size={22}
-                color={focused ? colors.white : colors.gray[700]}
-              />
-            </View>
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="brideGroomProfile"
-        options={{
-          title: "פרופיל",
-          tabBarIcon: ({ focused }) => <ProfileTabIcon focused={focused} />,
-        }}
-      />
+      >
+        <Tabs.Screen
+          name="index"
+          options={{
+            title: "בית",
+            tabBarIcon: ({ focused }) => (
+              <View style={styles.tabItem}>
+                <View style={[styles.iconCircle, focused && styles.iconCircleActive]}>
+                  <LinearGradient
+                    pointerEvents="none"
+                    colors={[
+                      "rgba(255,255,255,0.55)",
+                      "rgba(255,255,255,0.18)",
+                      "rgba(255,255,255,0)",
+                    ]}
+                    locations={[0, 0.55, 1]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.iconGloss}
+                  />
+                  <Ionicons
+                    name={focused ? "home" : "home-outline"}
+                    size={22}
+                    color={focused ? colors.white : colors.gray[700]}
+                  />
+                </View>
+                <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65} style={[styles.tabLabel, focused && styles.tabLabelActive]}>
+                  בית
+                </Text>
+              </View>
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="guests"
+          options={{
+            title: "אורחים",
+            tabBarIcon: ({ focused }) => (
+              <View style={styles.tabItem}>
+                <View style={[styles.iconCircle, focused && styles.iconCircleActive]}>
+                  <LinearGradient
+                    pointerEvents="none"
+                    colors={[
+                      "rgba(255,255,255,0.55)",
+                      "rgba(255,255,255,0.18)",
+                      "rgba(255,255,255,0)",
+                    ]}
+                    locations={[0, 0.55, 1]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.iconGloss}
+                  />
+                  <Ionicons
+                    name={focused ? "people" : "people-outline"}
+                    size={22}
+                    color={focused ? colors.white : colors.gray[700]}
+                  />
+                </View>
+                <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65} style={[styles.tabLabel, focused && styles.tabLabelActive]}>
+                  אורחים
+                </Text>
+              </View>
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="BrideGroomSeating"
+          options={{
+            title: "הושבה",
+            tabBarIcon: ({ focused }) => (
+              <View style={styles.tabItem}>
+                <View style={[styles.iconCircle, styles.centerCircle, focused && styles.iconCircleActive]}>
+                  <LinearGradient
+                    pointerEvents="none"
+                    colors={[
+                      "rgba(255,255,255,0.55)",
+                      "rgba(255,255,255,0.18)",
+                      "rgba(255,255,255,0)",
+                    ]}
+                    locations={[0, 0.55, 1]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.iconGloss}
+                  />
+                  <Ionicons
+                    name={focused ? "grid" : "grid-outline"}
+                    size={22}
+                    color={focused ? colors.white : colors.gray[700]}
+                  />
+                </View>
+                <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65} style={[styles.tabLabel, focused && styles.tabLabelActive]}>
+                  הושבה
+                </Text>
+              </View>
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="TablesList"
+          options={{
+            title: "שולחנות",
+            tabBarIcon: ({ focused }) => (
+              <View style={styles.tabItem}>
+                <View style={[styles.iconCircle, focused && styles.iconCircleActive]}>
+                  <LinearGradient
+                    pointerEvents="none"
+                    colors={[
+                      "rgba(255,255,255,0.55)",
+                      "rgba(255,255,255,0.18)",
+                      "rgba(255,255,255,0)",
+                    ]}
+                    locations={[0, 0.55, 1]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.iconGloss}
+                  />
+                  <Ionicons
+                    name={focused ? "list" : "list-outline"}
+                    size={22}
+                    color={focused ? colors.white : colors.gray[700]}
+                  />
+                </View>
+                <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65} style={[styles.tabLabel, focused && styles.tabLabelActive]}>
+                  שולחנות
+                </Text>
+              </View>
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="brideGroomProfile"
+          options={{
+            title: "פרופיל",
+            tabBarIcon: ({ focused }) => <ProfileTabIcon focused={focused} />,
+          }}
+        />
 
-      {/* Hidden couple internal routes */}
-      <Tabs.Screen
-        name="edit-category"
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="automatic-notifications"
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="notification-editor"
-        options={{
-          href: null,
-        }}
-      />
-    </Tabs>
+        {/* Hidden couple internal routes */}
+        <Tabs.Screen
+          name="edit-category"
+          options={{
+            href: null,
+          }}
+        />
+        <Tabs.Screen
+          name="automatic-notifications"
+          options={{
+            href: null,
+          }}
+        />
+        <Tabs.Screen
+          name="notification-editor"
+          options={{
+            href: null,
+          }}
+        />
+      </Tabs>
+    </>
   );
 }
 
@@ -327,6 +357,27 @@ const styles = StyleSheet.create({
   tabBarBottomShade: {
     ...StyleSheet.absoluteFillObject,
     borderRadius: 32,
+  },
+  tabItem: {
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 3,
+    width: "100%",
+    paddingHorizontal: 2,
+  },
+  tabLabel: {
+    fontSize: 10,
+    lineHeight: 12,
+    fontWeight: "600",
+    color: "rgba(0,0,0,0.42)",
+    textAlign: "center",
+    writingDirection: "rtl",
+    includeFontPadding: false,
+    width: "100%",
+  },
+  tabLabelActive: {
+    color: colors.primary,
+    fontWeight: "700",
   },
   iconCircle: {
     width: 40,

@@ -4,7 +4,7 @@ import { colors } from "@/constants/colors";
 import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
-import { Platform, StyleSheet, View } from "react-native";
+import { Platform, StyleSheet, Text, View } from "react-native";
 import { useLayoutStore } from '@/store/layoutStore';
 import { useUserStore } from '@/store/userStore';
 import AppHeader, { getAppHeaderTotalHeight } from "@/components/AppHeader";
@@ -47,24 +47,29 @@ export default function AdminTabsLayout() {
         options={{
           title: "ניהול משתמשים",
           tabBarIcon: ({ focused }) => (
-            <View style={[styles.iconCircle, focused && styles.iconCircleActive]}>
-              <LinearGradient
-                pointerEvents="none"
-                colors={[
-                  "rgba(255,255,255,0.55)",
-                  "rgba(255,255,255,0.18)",
-                  "rgba(255,255,255,0)",
-                ]}
-                locations={[0, 0.55, 1]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.iconGloss}
-              />
-              <Ionicons
-                name={focused ? "people" : "people-outline"}
-                size={22}
-                color={focused ? colors.white : colors.gray[700]}
-              />
+            <View style={styles.tabItem}>
+              <View style={[styles.iconCircle, focused && styles.iconCircleActive]}>
+                <LinearGradient
+                  pointerEvents="none"
+                  colors={[
+                    "rgba(255,255,255,0.55)",
+                    "rgba(255,255,255,0.18)",
+                    "rgba(255,255,255,0)",
+                  ]}
+                  locations={[0, 0.55, 1]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.iconGloss}
+                />
+                <Ionicons
+                  name={focused ? "people" : "people-outline"}
+                  size={22}
+                  color={focused ? colors.white : colors.gray[700]}
+                />
+              </View>
+              <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65} style={[styles.tabLabel, focused && styles.tabLabelActive]}>
+                משתמשים
+              </Text>
             </View>
           ),
         }}
@@ -79,24 +84,29 @@ export default function AdminTabsLayout() {
       options={{
         title: "אירועים",
         tabBarIcon: ({ focused }) => (
-          <View style={[styles.iconCircle, styles.centerCircle, focused && styles.iconCircleActive]}>
-            <LinearGradient
-              pointerEvents="none"
-              colors={[
-                "rgba(255,255,255,0.55)",
-                "rgba(255,255,255,0.18)",
-                "rgba(255,255,255,0)",
-              ]}
-              locations={[0, 0.55, 1]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.iconGloss}
-            />
-            <Ionicons
-              name={focused ? "calendar" : "calendar-outline"}
-              size={22}
-              color={focused ? colors.white : colors.gray[700]}
-            />
+          <View style={styles.tabItem}>
+            <View style={[styles.iconCircle, styles.centerCircle, focused && styles.iconCircleActive]}>
+              <LinearGradient
+                pointerEvents="none"
+                colors={[
+                  "rgba(255,255,255,0.55)",
+                  "rgba(255,255,255,0.18)",
+                  "rgba(255,255,255,0)",
+                ]}
+                locations={[0, 0.55, 1]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.iconGloss}
+              />
+              <Ionicons
+                name={focused ? "calendar" : "calendar-outline"}
+                size={22}
+                color={focused ? colors.white : colors.gray[700]}
+              />
+            </View>
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65} style={[styles.tabLabel, focused && styles.tabLabelActive]}>
+              אירועים
+            </Text>
           </View>
         ),
       }}
@@ -111,24 +121,29 @@ export default function AdminTabsLayout() {
         options={{
           title: "פרופיל",
           tabBarIcon: ({ focused }) => (
-            <View style={[styles.iconCircle, focused && styles.iconCircleActive]}>
-              <LinearGradient
-                pointerEvents="none"
-                colors={[
-                  "rgba(255,255,255,0.55)",
-                  "rgba(255,255,255,0.18)",
-                  "rgba(255,255,255,0)",
-                ]}
-                locations={[0, 0.55, 1]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.iconGloss}
-              />
-              <Ionicons
-                name={focused ? "person" : "person-outline"}
-                size={22}
-                color={focused ? colors.white : colors.gray[700]}
-              />
+            <View style={styles.tabItem}>
+              <View style={[styles.iconCircle, focused && styles.iconCircleActive]}>
+                <LinearGradient
+                  pointerEvents="none"
+                  colors={[
+                    "rgba(255,255,255,0.55)",
+                    "rgba(255,255,255,0.18)",
+                    "rgba(255,255,255,0)",
+                  ]}
+                  locations={[0, 0.55, 1]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.iconGloss}
+                />
+                <Ionicons
+                  name={focused ? "person" : "person-outline"}
+                  size={22}
+                  color={focused ? colors.white : colors.gray[700]}
+                />
+              </View>
+              <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65} style={[styles.tabLabel, focused && styles.tabLabelActive]}>
+                פרופיל
+              </Text>
             </View>
           ),
         }}
@@ -216,17 +231,17 @@ export default function AdminTabsLayout() {
         ),
         tabBarStyle: {
           position: 'absolute',
-          bottom: Platform.OS === 'ios' ? 28 : 22,
+          bottom: Platform.OS === 'ios' ? 12 : 8,
           left: 20,
           right: 20,
-          height: 60,
+          height: 74,
           backgroundColor: 'transparent',
           borderRadius: 32,
           paddingHorizontal: 8,
           paddingVertical: 0,
-          paddingTop: 0,
+          paddingTop: 16,
           paddingBottom: 0,
-          overflow: 'hidden',
+          overflow: 'visible',
           shadowColor: colors.richBlack,
           shadowOffset: { width: 0, height: 4 },
           shadowOpacity: 0.12,
@@ -247,7 +262,7 @@ export default function AdminTabsLayout() {
         tabBarIconStyle: {
           marginRight: 0,
           marginLeft: 0,
-          marginTop: 10,
+          marginTop: 0,
           marginBottom: 0,
         },
       }}
@@ -281,6 +296,27 @@ const styles = StyleSheet.create({
   tabBarBottomShade: {
     ...StyleSheet.absoluteFillObject,
     borderRadius: 32,
+  },
+  tabItem: {
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 3,
+    width: "100%",
+    paddingHorizontal: 2,
+  },
+  tabLabel: {
+    fontSize: 10,
+    lineHeight: 12,
+    fontWeight: "600",
+    color: "rgba(0,0,0,0.42)",
+    textAlign: "center",
+    writingDirection: "rtl",
+    includeFontPadding: false,
+    width: "100%",
+  },
+  tabLabelActive: {
+    color: colors.primary,
+    fontWeight: "700",
   },
   iconCircle: {
     width: 40,
