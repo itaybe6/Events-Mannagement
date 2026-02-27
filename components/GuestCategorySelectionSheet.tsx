@@ -236,9 +236,11 @@ export function GuestCategorySelectionSheet({
         <Pressable style={styles.backdropPressArea} onPress={requestClose} />
 
         <KeyboardAvoidingView
-          // Using 'height' prevents the sheet from being pushed too high on iOS
-          // when the keyboard opens (common with large bottom-sheets).
-          behavior={Platform.OS === 'ios' ? 'height' : undefined}
+          // Keep the bottom confirm button visible when the keyboard opens.
+          // On Android, leaving behavior undefined often causes the keyboard to cover
+          // the bottom action area inside a Modal.
+          // Using 'height' keeps the sheet stable for large bottom-sheets.
+          behavior={Platform.OS === 'web' ? undefined : 'height'}
           style={styles.sheetWrap}
         >
           <Animated.View
@@ -455,80 +457,34 @@ export function GuestCategorySelectionSheet({
 
               {/* Bottom action */}
               <View pointerEvents="box-none" style={styles.bottomArea}>
-                {Platform.OS === 'web' ? (
-                  // On web, LinearGradient inside Modal can fail to render on some setups.
-                  // Use a plain surface so the confirm button is always visible.
-                  <View style={[styles.bottomGradient, styles.bottomGradientWeb, { paddingBottom: bottomPadding }]}>
-                    <Pressable
-                      onPress={handleConfirm}
-                      disabled={
-                        creating ||
-                        (mode === 'existing' && !selectedCategory) ||
-                        (mode === 'new' && !newName.trim())
-                      }
-                      style={({ pressed }) => [
-                        styles.primaryBtn,
-                        {
-                          backgroundColor:
-                            creating ||
-                            (mode === 'existing' && !selectedCategory) ||
-                            (mode === 'new' && !newName.trim())
-                              ? 'rgba(19,91,236,0.45)'
-                              : sheetPrimary,
-                          transform: [{ scale: pressed ? 0.99 : 1 }],
-                        },
-                      ]}
-                    >
-                      <Ionicons name="checkmark" size={20} color="#fff" style={{ marginLeft: 8 }} />
-                      <Text style={styles.primaryBtnText}>
-                        {mode === 'new'
-                          ? creating
-                            ? 'מוסיף...'
-                            : enableSides
-                              ? 'הוסף קטגוריה'
-                              : 'שמור קטגוריה'
-                          : 'בחירה'}
-                      </Text>
-                    </Pressable>
-                  </View>
-                ) : (
-                  <LinearGradient
-                    colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.92)', 'rgba(255,255,255,1)']}
-                    style={[styles.bottomGradient, { paddingBottom: bottomPadding }]}
+                {/* Use a plain surface: gradients inside BlurView+Modal can disappear on some iOS setups. */}
+                <View style={[styles.bottomGradient, styles.bottomGradientWeb, { paddingBottom: bottomPadding }]}>
+                  <Pressable
+                    onPress={handleConfirm}
+                    disabled={creating || (mode === 'existing' && !selectedCategory) || (mode === 'new' && !newName.trim())}
+                    style={({ pressed }) => [
+                      styles.primaryBtn,
+                      {
+                        backgroundColor:
+                          creating || (mode === 'existing' && !selectedCategory) || (mode === 'new' && !newName.trim())
+                            ? 'rgba(19,91,236,0.45)'
+                            : sheetPrimary,
+                        transform: [{ scale: pressed ? 0.99 : 1 }],
+                      },
+                    ]}
                   >
-                    <Pressable
-                      onPress={handleConfirm}
-                      disabled={
-                        creating ||
-                        (mode === 'existing' && !selectedCategory) ||
-                        (mode === 'new' && !newName.trim())
-                      }
-                      style={({ pressed }) => [
-                        styles.primaryBtn,
-                        {
-                          backgroundColor:
-                            creating ||
-                            (mode === 'existing' && !selectedCategory) ||
-                            (mode === 'new' && !newName.trim())
-                              ? 'rgba(19,91,236,0.45)'
-                              : sheetPrimary,
-                          transform: [{ scale: pressed ? 0.99 : 1 }],
-                        },
-                      ]}
-                    >
-                      <Ionicons name="checkmark" size={20} color="#fff" style={{ marginLeft: 8 }} />
-                      <Text style={styles.primaryBtnText}>
-                        {mode === 'new'
-                          ? creating
-                            ? 'מוסיף...'
-                            : enableSides
-                              ? 'הוסף קטגוריה'
-                              : 'שמור קטגוריה'
-                          : 'בחירה'}
-                      </Text>
-                    </Pressable>
-                  </LinearGradient>
-                )}
+                    <Ionicons name="checkmark" size={20} color="#fff" style={{ marginLeft: 8 }} />
+                    <Text style={styles.primaryBtnText}>
+                      {mode === 'new'
+                        ? creating
+                          ? 'מוסיף...'
+                          : enableSides
+                            ? 'הוסף קטגוריה'
+                            : 'שמור קטגוריה'
+                        : 'בחירה'}
+                    </Text>
+                  </Pressable>
+                </View>
               </View>
             </BlurView>
           </Animated.View>

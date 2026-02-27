@@ -212,9 +212,7 @@ export default function GuestsScreen() {
   const importContacts = async () => {
     try {
       if (!resolvedEventId) return;
-      // Navigate immediately and auto-open the category selector there.
-      // Contacts permissions + loading are handled in `/contacts-list`.
-      router.push({ pathname: '/contacts-list', params: { eventId: resolvedEventId, autoOpenCategory: '1' } });
+      router.push({ pathname: '/(couple)/select-category', params: { eventId: resolvedEventId } });
     } catch (error) {
       Alert.alert('שגיאה', 'לא ניתן לפתוח את רשימת אנשי הקשר');
     }

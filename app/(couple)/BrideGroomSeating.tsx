@@ -89,6 +89,29 @@ export default function BrideGroomSeating() {
   const [tableName, setTableName] = useState('');
   const [seatedEditMode, setSeatedEditMode] = useState(false);
   const [selectedSeatedGuestsToRemove, setSelectedSeatedGuestsToRemove] = useState<Set<string>>(new Set());
+  const [removeConfirmVisible, setRemoveConfirmVisible] = useState(false);
+  const [removeConfirmIds, setRemoveConfirmIds] = useState<string[]>([]);
+  const [removeConfirmBusy, setRemoveConfirmBusy] = useState(false);
+  const [successVisible, setSuccessVisible] = useState(false);
+  const [successTitle, setSuccessTitle] = useState('הצלחה');
+  const [successMessage, setSuccessMessage] = useState('');
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showSuccess = useCallback((title: string, message: string) => {
+    if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    setSuccessTitle(title);
+    setSuccessMessage(message);
+    setSuccessVisible(true);
+    successTimerRef.current = setTimeout(() => {
+      setSuccessVisible(false);
+    }, 1800);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    };
+  }, []);
 
   const handleToggleGuestSelection = (guestId: string) => {
     const newSelection = new Set(selectedGuestsToAdd);
@@ -142,9 +165,21 @@ export default function BrideGroomSeating() {
     await fetchGuests();
     await fetchTables();
     
-    // Close modal and clear selection
-    await closeModalAndShowTabBar();
+    // Keep table modal open: go back to "seated" tab and clear selection.
+    setTableModalView('seated');
     setSelectedGuestsToAdd(new Set());
+
+    const tableNum = selectedTableForModal?.number ?? '';
+    const peopleText = totalPeopleToAdd > 0 ? ` (${totalPeopleToAdd} אנשים)` : '';
+
+    // Update the seated list immediately (so the UI reflects the change right away).
+    setSeatedGuestsForTable((prev) => {
+      const existingIds = new Set((prev || []).map((g: any) => String(g?.id)));
+      const added = guestsToAdd.map((g: any) => ({ ...g, table_id: tableId }));
+      return [...prev, ...added.filter((g: any) => !existingIds.has(String(g?.id)))];
+    });
+
+    showSuccess('נוסף לשולחן', `נוספו ${guestIds.length} אורחים${peopleText} לשולחן ${tableNum}`);
   };
 
   const toggleSeatedGuestRemovalSelection = useCallback((guestId: string) => {
@@ -162,60 +197,61 @@ export default function BrideGroomSeating() {
     setSelectedSeatedGuestsToRemove(new Set());
   }, []);
 
+  const performBulkRemoveGuestsFromTable = useCallback(
+    async (ids: string[]) => {
+      if (!selectedTableForModal) return;
+      if (!ids.length) return;
+
+      setRemoveConfirmBusy(true);
+      try {
+        const { error: guestUpdateError } = await supabase
+          .from('guests')
+          .update({ table_id: null })
+          .in('id', ids);
+
+        if (guestUpdateError) {
+          console.error('Error removing guests from table:', guestUpdateError);
+          Alert.alert('שגיאה', 'אירעה שגיאה בהסרת האורחים מהשולחן');
+          return;
+        }
+
+        const selectedSet = new Set(ids.map(String));
+        const remainingGuestsAtTable = seatedGuestsForTable.filter((g) => !selectedSet.has(String(g.id)));
+        const newTotalPeople = remainingGuestsAtTable.reduce((sum, g) => sum + (g.numberOfPeople || 1), 0);
+
+        const { error: tableUpdateError } = await supabase
+          .from('tables')
+          .update({ seated_guests: newTotalPeople })
+          .eq('id', selectedTableForModal.id);
+
+        if (tableUpdateError) {
+          console.error('Error updating table count:', tableUpdateError);
+          Alert.alert('שגיאה', 'אירעה שגיאה בעדכון השולחן');
+          return;
+        }
+
+        await fetchGuests();
+        await fetchTables();
+        setSeatedGuestsForTable(remainingGuestsAtTable);
+        clearSeatedEditState();
+      } catch (e) {
+        console.error('Error in bulk remove guests:', e);
+        Alert.alert('שגיאה', 'אירעה שגיאה בהסרת האורחים מהשולחן');
+      } finally {
+        setRemoveConfirmBusy(false);
+      }
+    },
+    [clearSeatedEditState, fetchGuests, fetchTables, seatedGuestsForTable, selectedTableForModal]
+  );
+
   const handleRemoveSelectedGuestsFromTable = useCallback(() => {
     if (!selectedTableForModal) return;
     const ids = Array.from(selectedSeatedGuestsToRemove);
     if (ids.length === 0) return;
 
-    Alert.alert(
-      'הסרת אורחים מהשולחן',
-      `האם להסיר ${ids.length} אורחים מהשולחן?`,
-      [
-        { text: 'ביטול', style: 'cancel' },
-        {
-          text: 'הסר',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const { error: guestUpdateError } = await supabase
-                .from('guests')
-                .update({ table_id: null })
-                .in('id', ids);
-
-              if (guestUpdateError) {
-                console.error('Error removing guests from table:', guestUpdateError);
-                Alert.alert('שגיאה', 'אירעה שגיאה בהסרת האורחים מהשולחן');
-                return;
-              }
-
-              const selectedSet = new Set(ids.map(String));
-              const remainingGuestsAtTable = seatedGuestsForTable.filter((g) => !selectedSet.has(String(g.id)));
-              const newTotalPeople = remainingGuestsAtTable.reduce((sum, g) => sum + (g.numberOfPeople || 1), 0);
-
-              const { error: tableUpdateError } = await supabase
-                .from('tables')
-                .update({ seated_guests: newTotalPeople })
-                .eq('id', selectedTableForModal.id);
-
-              if (tableUpdateError) {
-                console.error('Error updating table count:', tableUpdateError);
-                Alert.alert('שגיאה', 'אירעה שגיאה בעדכון השולחן');
-                return;
-              }
-
-              await fetchGuests();
-              await fetchTables();
-              setSeatedGuestsForTable(remainingGuestsAtTable);
-              clearSeatedEditState();
-            } catch (e) {
-              console.error('Error in bulk remove guests:', e);
-              Alert.alert('שגיאה', 'אירעה שגיאה בהסרת האורחים מהשולחן');
-            }
-          },
-        },
-      ]
-    );
-  }, [clearSeatedEditState, fetchGuests, fetchTables, seatedGuestsForTable, selectedSeatedGuestsToRemove, selectedTableForModal]);
+    setRemoveConfirmIds(ids);
+    setRemoveConfirmVisible(true);
+  }, [selectedSeatedGuestsToRemove, selectedTableForModal]);
 
   const handleSaveTableName = async () => {
     if (!selectedTableForModal) {
@@ -286,6 +322,12 @@ export default function BrideGroomSeating() {
     setTableModalVisible(false);
     setTabBarVisible(false);
     clearSeatedEditState();
+    setSuccessVisible(false);
+    setSuccessMessage('');
+    if (successTimerRef.current) {
+      clearTimeout(successTimerRef.current);
+      successTimerRef.current = null;
+    }
   };
 
   const handleRemoveGuestFromTable = async (guestId: string) => {
@@ -971,6 +1013,28 @@ export default function BrideGroomSeating() {
           labels={webSketchWithNames?.labels ?? webSketch.labels}
           hideTableType
           cellSizeMultiplier={2}
+          useBaseColorAsWebBackground
+          showTableBorder={false}
+          getTableBaseColor={(t: any) => {
+            const num = Number(t?.number);
+            const cap = Number(t?.seats ?? 0) || 0;
+            const seated = Number.isFinite(num) ? (seatedByNumber.get(num) ?? 0) : 0;
+            const full = cap > 0 && seated >= cap;
+            const over = cap > 0 && seated > cap;
+            if (over) return '#059669';
+            if (full) return '#10B981';
+            return t?.type === 'reserve' ? '#F59E0B' : '#06173d';
+          }}
+          getTableBackgroundAlpha={(t: any) => {
+            const num = Number(t?.number);
+            const cap = Number(t?.seats ?? 0) || 0;
+            const seated = Number.isFinite(num) ? (seatedByNumber.get(num) ?? 0) : 0;
+            const full = cap > 0 && seated >= cap;
+            const over = cap > 0 && seated > cap;
+            if (over) return 0.34;
+            if (full) return 0.24;
+            return t?.type === 'reserve' ? 0.18 : 0.82;
+          }}
           getTableTooltip={(t: any) => {
             const num = t?.number;
             if (!num) return null;
@@ -998,6 +1062,12 @@ export default function BrideGroomSeating() {
             if (!num) return;
             const t = tables.find((x) => x.number === num);
             if (t) handleTablePress(t);
+          }}
+          getTableOccupancy={(t: any) => {
+            const num = Number(t?.number);
+            const cap = Number(t?.seats ?? 0) || 0;
+            if (!Number.isFinite(num)) return { seated: 0, capacity: cap };
+            return { seated: seatedByNumber.get(num) ?? 0, capacity: cap };
           }}
           getTableSubLabel={(t: any) => {
             const num = t?.number;
@@ -1048,16 +1118,19 @@ export default function BrideGroomSeating() {
           // Calculate total people seated at this table
           const guestsAtTable = guests.filter((g) => g.table_id === table.id);
           const totalPeopleSeated = guestsAtTable.reduce((sum, guest) => sum + (guest.numberOfPeople || 1), 0);
-          const isTableFull = totalPeopleSeated >= table.capacity;
           const isReserveTable = table.shape === 'reserve';
+          const cap = Number(table.capacity ?? 0) || 0;
+          const isTableFull = cap > 0 && totalPeopleSeated >= cap;
+          const isTableOverFull = cap > 0 && totalPeopleSeated > cap;
           return (
             <Animated.View
               key={table.id}
               style={[
                 styles.table,
                 table.shape === 'rectangle' ? styles.tableRect : styles.tableSquare,
-                isTableFull && styles.tableFullStyle,
                 isReserveTable && styles.reserveTableStyle,
+                isTableFull && styles.tableFullStyle,
+                isTableOverFull && styles.tableOverFullStyle,
                 selectedTableForDrag === table.id && styles.tableSelected,
                 {
                   transform: [
@@ -1099,8 +1172,9 @@ export default function BrideGroomSeating() {
                 <Text
                   style={[
                     styles.tableName,
-                    isTableFull && styles.tableFullText,
                     isReserveTable && styles.reserveTableText,
+                    isTableFull && styles.tableFullText,
+                    isTableOverFull && styles.tableOverFullText,
                     pressedTable === table.id && { color: isTableFull ? colors.white : colors.textLight },
                   ]}
                 >
@@ -1110,8 +1184,9 @@ export default function BrideGroomSeating() {
                   <Text
                     style={[
                       styles.tableCustomName,
-                      isTableFull && styles.tableFullCapText,
                       isReserveTable && styles.reserveTableCapText,
+                      isTableFull && styles.tableFullCapText,
+                      isTableOverFull && styles.tableOverFullCapText,
                     ]}
                     numberOfLines={1}
                   >
@@ -1121,8 +1196,9 @@ export default function BrideGroomSeating() {
                 <Text
                   style={[
                     styles.tableCap,
-                    isTableFull && styles.tableFullCapText,
                     isReserveTable && styles.reserveTableCapText,
+                    isTableFull && styles.tableFullCapText,
+                    isTableOverFull && styles.tableOverFullCapText,
                     pressedTable === table.id && { color: isTableFull ? colors.white : colors.gray[500] },
                   ]}
                 >
@@ -1213,7 +1289,15 @@ export default function BrideGroomSeating() {
         animationType="slide"
         transparent={true}
         visible={tableModalVisible}
-        onRequestClose={closeModalAndShowTabBar}
+        onRequestClose={() => {
+          if (removeConfirmVisible) {
+            if (removeConfirmBusy) return;
+            setRemoveConfirmVisible(false);
+            setRemoveConfirmIds([]);
+            return;
+          }
+          closeModalAndShowTabBar();
+        }}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -1438,6 +1522,80 @@ export default function BrideGroomSeating() {
             )}
             
           </View>
+
+          {/* RTL Confirm Remove Guests (rendered INSIDE the table modal to avoid stacked Modals bugs) */}
+          {removeConfirmVisible ? (
+            <View style={styles.confirmOverlay}>
+              <Pressable
+                style={StyleSheet.absoluteFill as any}
+                onPress={() => {
+                  if (removeConfirmBusy) return;
+                  setRemoveConfirmVisible(false);
+                  setRemoveConfirmIds([]);
+                }}
+              />
+              <View style={styles.confirmCard}>
+                <Text style={styles.confirmTitle}>הסרת אורחים מהשולחן</Text>
+                <Text style={styles.confirmMessage}>האם להסיר {removeConfirmIds.length} אורחים מהשולחן?</Text>
+
+                <View style={styles.confirmButtonsRow}>
+                  <TouchableOpacity
+                    activeOpacity={0.85}
+                    style={[styles.confirmBtn, styles.confirmBtnCancel]}
+                    disabled={removeConfirmBusy}
+                    onPress={() => {
+                      if (removeConfirmBusy) return;
+                      setRemoveConfirmVisible(false);
+                      setRemoveConfirmIds([]);
+                    }}
+                  >
+                    <Text style={styles.confirmBtnText}>ביטול</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    activeOpacity={0.85}
+                    style={[
+                      styles.confirmBtn,
+                      styles.confirmBtnDanger,
+                      removeConfirmBusy && styles.confirmBtnDisabled,
+                    ]}
+                    disabled={removeConfirmBusy}
+                    onPress={async () => {
+                      const ids = [...removeConfirmIds];
+                      await performBulkRemoveGuestsFromTable(ids);
+                      setRemoveConfirmVisible(false);
+                      setRemoveConfirmIds([]);
+                    }}
+                  >
+                    {removeConfirmBusy ? (
+                      <ActivityIndicator color={colors.white} />
+                    ) : (
+                      <Text style={[styles.confirmBtnText, styles.confirmBtnTextDanger]}>הסר</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          ) : null}
+
+          {/* Success (styled, RTL) - keep table modal open */}
+          {successVisible ? (
+            <View style={styles.successOverlay}>
+              <Pressable style={StyleSheet.absoluteFill as any} onPress={() => setSuccessVisible(false)} />
+              <View style={styles.successCard}>
+                <View style={styles.successHeaderRow}>
+                  <View style={styles.successIconWrap}>
+                    <Ionicons name="checkmark" size={18} color="rgba(6,95,70,1)" />
+                  </View>
+                  <Text style={styles.successTitle}>{successTitle}</Text>
+                </View>
+                <Text style={styles.successMessage}>{successMessage}</Text>
+                <TouchableOpacity activeOpacity={0.86} style={styles.successBtn} onPress={() => setSuccessVisible(false)}>
+                  <Text style={styles.successBtnText}>הבנתי</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : null}
         </View>
       </Modal>
 
@@ -1458,10 +1616,12 @@ function MobileSeatingMap({
   sketch,
   onPressTableNumber,
   getTableSubLabel,
+  getTableOccupancy,
 }: {
   sketch: { gridCols: number; gridRows: number; tables: any[]; zones: any[]; labels: any[] };
   onPressTableNumber?: (num: number | undefined) => void;
   getTableSubLabel?: (t: any) => string | null;
+  getTableOccupancy?: (t: any) => { seated: number; capacity: number } | null;
 }) {
   // useWindowDimensions gives us rotation events for free.
   const { width: winW, height: winH } = useWindowDimensions();
@@ -1655,10 +1815,21 @@ function MobileSeatingMap({
               const left = (Number(t.gridX) - contentRect.originX) * MAP_CELL;
               const top  = (Number(t.gridY) - contentRect.originY) * MAP_CELL;
               const isReserve = t.type === 'reserve';
+              const occ = getTableOccupancy?.(t) ?? null;
+              const cap = Number(occ?.capacity ?? t?.seats ?? 0) || 0;
+              const seated = Number(occ?.seated ?? 0) || 0;
+              const isFull = cap > 0 && seated >= cap;
+              const isOver = cap > 0 && seated > cap;
+
+              const greenFull = 'rgba(16, 185, 129, 0.24)'; // emerald-500
+              const greenOver = 'rgba(5, 150, 105, 0.34)';  // emerald-600 (darker)
+              const greenBorderFull = 'rgba(16, 185, 129, 0.70)';
+              const greenBorderOver = 'rgba(5, 150, 105, 0.86)';
+
               const base = isReserve ? '#F59E0B' : '#06173d';
-              const bg = isReserve ? `${base}22` : 'rgba(6, 23, 61, 0.76)';
-              const border = isReserve ? `${base}55` : 'rgba(6, 23, 61, 1)';
-              const textColor = isReserve ? base : '#FFFFFF';
+              const bg = isOver ? greenOver : isFull ? greenFull : isReserve ? `${base}22` : 'rgba(6, 23, 61, 0.76)';
+              const border = isOver ? greenBorderOver : isFull ? greenBorderFull : isReserve ? `${base}55` : 'rgba(6, 23, 61, 1)';
+              const textColor = isOver || isFull ? 'rgba(6, 95, 70, 1)' : isReserve ? base : '#FFFFFF';
               const w = sz.w * MAP_CELL;
               const h = sz.h * MAP_CELL;
               const tableName = String(t?.name ?? '').trim();
@@ -1678,7 +1849,7 @@ function MobileSeatingMap({
                     <Text
                       style={[
                         styles.mobileTableName,
-                        { color: isReserve ? base : 'rgba(255,255,255,0.92)' },
+                        { color: isOver || isFull ? textColor : isReserve ? base : 'rgba(255,255,255,0.92)' },
                       ]}
                       numberOfLines={2}
                     >
@@ -1686,7 +1857,12 @@ function MobileSeatingMap({
                     </Text>
                   ) : null}
                   {sub ? (
-                    <Text style={[styles.mobileTableSub, !isReserve && { color: 'rgba(255,255,255,0.92)' }]}>
+                    <Text
+                      style={[
+                        styles.mobileTableSub,
+                        isOver || isFull ? { color: textColor } : !isReserve ? { color: 'rgba(255,255,255,0.92)' } : null,
+                      ]}
+                    >
                       {sub}
                     </Text>
                   ) : null}
@@ -1940,21 +2116,38 @@ const styles = StyleSheet.create({
   },
   tableCap: { fontSize: 15, color: colors.textLight },
   tableFullStyle: {
-    backgroundColor: colors.success,
-    borderColor: colors.success,
-    shadowColor: colors.success,
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 8,
+    backgroundColor: 'rgba(16, 185, 129, 0.24)',
+    borderColor: 'rgba(16, 185, 129, 0.70)',
+    shadowColor: 'rgba(16, 185, 129, 1)',
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 7,
+  },
+  tableOverFullStyle: {
+    backgroundColor: 'rgba(5, 150, 105, 0.34)',
+    borderColor: 'rgba(5, 150, 105, 0.86)',
+    shadowColor: 'rgba(5, 150, 105, 1)',
+    shadowOpacity: 0.16,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 7 },
+    elevation: 9,
   },
   tableFullText: {
-    color: colors.white,
-    fontWeight: '700',
+    color: 'rgba(6, 95, 70, 1)',
+    fontWeight: '800',
+  },
+  tableOverFullText: {
+    color: 'rgba(6, 78, 59, 1)',
+    fontWeight: '900',
   },
   tableFullCapText: {
-    color: colors.white,
-    fontWeight: '600',
+    color: 'rgba(6, 95, 70, 1)',
+    fontWeight: '800',
+  },
+  tableOverFullCapText: {
+    color: 'rgba(6, 78, 59, 1)',
+    fontWeight: '900',
   },
 
   textArea: { 
@@ -2461,5 +2654,155 @@ const styles = StyleSheet.create({
   reserveTableCapText: {
     color: colors.gray[300],
     fontWeight: '600',
+  },
+
+  confirmOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 18,
+  },
+  confirmCard: {
+    width: '100%',
+    maxWidth: 420,
+    borderRadius: 18,
+    padding: 16,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+    shadowColor: colors.richBlack,
+    shadowOpacity: 0.18,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 14 },
+    elevation: 8,
+  },
+  confirmTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  confirmMessage: {
+    marginTop: 8,
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.gray[700],
+    textAlign: 'right',
+    writingDirection: 'rtl',
+    lineHeight: 20,
+  },
+  confirmButtonsRow: {
+    marginTop: 14,
+    flexDirection: 'row-reverse',
+    gap: 10,
+  },
+  confirmBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  confirmBtnCancel: {
+    backgroundColor: 'rgba(15,23,42,0.04)',
+    borderColor: 'rgba(15,23,42,0.10)',
+  },
+  confirmBtnDanger: {
+    backgroundColor: colors.error,
+    borderColor: 'rgba(0,0,0,0.08)',
+  },
+  confirmBtnDisabled: {
+    opacity: 0.65,
+  },
+  confirmBtnText: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: colors.text,
+    writingDirection: 'rtl',
+  },
+  confirmBtnTextDanger: {
+    color: colors.white,
+  },
+
+  successOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 18,
+  },
+  successCard: {
+    width: '100%',
+    maxWidth: 440,
+    borderRadius: 18,
+    padding: 16,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: 'rgba(16,185,129,0.28)',
+    shadowColor: 'rgba(6,95,70,1)',
+    shadowOpacity: 0.14,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 14 },
+    elevation: 8,
+  },
+  successHeaderRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    gap: 10,
+  },
+  successIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    backgroundColor: 'rgba(16,185,129,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(16,185,129,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  successTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: 'rgba(6,95,70,1)',
+    textAlign: 'right',
+    writingDirection: 'rtl',
+    flex: 1,
+  },
+  successMessage: {
+    marginTop: 10,
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.gray[700],
+    textAlign: 'right',
+    writingDirection: 'rtl',
+    lineHeight: 20,
+  },
+  successBtn: {
+    marginTop: 14,
+    height: 44,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(16,185,129,0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(16,185,129,0.32)',
+  },
+  successBtnText: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: 'rgba(6,95,70,1)',
+    writingDirection: 'rtl',
   },
 }); 

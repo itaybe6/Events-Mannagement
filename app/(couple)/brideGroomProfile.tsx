@@ -1,7 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Modal, Pressable, TextInput, Platform } from 'react-native';
 import { useUserStore } from '@/store/userStore';
-import { useGlobalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useGlobalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
@@ -21,6 +21,7 @@ export default function BrideGroomSettings() {
     groomName?: string;
     brideName?: string;
     rsvpLink?: string;
+    invitationImageUrl?: string;
   } | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -63,7 +64,7 @@ export default function BrideGroomSettings() {
   const [draftEnabled, setDraftEnabled] = useState(true);
   const [draftMessage, setDraftMessage] = useState('');
 
-  useEffect(() => {
+  const loadProfile = useCallback(() => {
     let active = true;
 
     const load = async () => {
@@ -95,7 +96,7 @@ export default function BrideGroomSettings() {
 
         const { data: eventRow, error } = await supabase
           .from('events')
-          .select('id, title, date, groom_name, bride_name, rsvp_link')
+          .select('id, title, date, groom_name, bride_name, rsvp_link, invitation_image_url')
           .eq('id', resolvedEventId)
           .maybeSingle();
 
@@ -117,6 +118,7 @@ export default function BrideGroomSettings() {
           groomName: (eventRow as any).groom_name ?? undefined,
           brideName: (eventRow as any).bride_name ?? undefined,
           rsvpLink: (eventRow as any).rsvp_link ?? undefined,
+          invitationImageUrl: (eventRow as any).invitation_image_url ?? undefined,
         });
       } catch (e) {
         console.error('Error loading couple profile:', e);
@@ -131,7 +133,10 @@ export default function BrideGroomSettings() {
     return () => {
       active = false;
     };
-  }, [userData?.id, resolvedEventId]);
+  }, [resolvedEventId, userData?.avatar_url, userData?.id]);
+
+  useEffect(() => loadProfile(), [loadProfile]);
+  useFocusEffect(loadProfile);
 
   useEffect(() => {
     let cancelled = false;
@@ -187,6 +192,7 @@ export default function BrideGroomSettings() {
   const groomName = String(eventMeta?.groomName ?? '').trim();
   const brideName = String(eventMeta?.brideName ?? '').trim();
   const weddingNames = groomName && brideName ? `${groomName} ו${brideName}` : '';
+  const invitationImageUrl = String(eventMeta?.invitationImageUrl ?? '').trim();
 
   const openSettingsEditor = () => {
     setEditingSetting(null);
@@ -313,11 +319,26 @@ export default function BrideGroomSettings() {
 
           <View style={styles.eventCoverWrap}>
             <Image
-              source={getEventCoverSource()}
+              source={invitationImageUrl ? { uri: invitationImageUrl } : getEventCoverSource()}
               style={styles.eventCoverImg}
               contentFit="cover"
               transition={150}
+              cachePolicy="none"
+              recyclingKey={invitationImageUrl || 'fallback-cover'}
             />
+
+            {!invitationImageUrl ? (
+              <TouchableOpacity
+                style={styles.inviteCoverCta}
+                onPress={() => router.push('/profile-editor')}
+                activeOpacity={0.9}
+                accessibilityRole="button"
+                accessibilityLabel="העלאת תמונת הזמנה"
+              >
+                <Ionicons name="cloud-upload-outline" size={16} color={colors.white} />
+                <Text style={styles.inviteCoverCtaText}>העלה תמונת הזמנה</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
 
           <View style={styles.profileContent}>
@@ -654,6 +675,29 @@ const styles = StyleSheet.create({
   eventCoverImg: {
     width: '100%',
     height: '100%',
+  },
+  inviteCoverCta: {
+    position: 'absolute',
+    left: 12,
+    bottom: 12,
+    height: 34,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: 'rgba(15,69,230,0.92)',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    shadowColor: colors.black,
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
+  },
+  inviteCoverCtaText: {
+    color: colors.white,
+    fontSize: 12,
+    fontWeight: '800',
   },
   profileContent: {
     width: '100%',

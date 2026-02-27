@@ -231,7 +231,7 @@ export default function AdminTabsLayout() {
         ),
         tabBarStyle: {
           position: 'absolute',
-          bottom: Platform.OS === 'ios' ? 12 : 8,
+          bottom: Platform.OS === 'ios' ? 22 : 16,
           left: 20,
           right: 20,
           height: 74,

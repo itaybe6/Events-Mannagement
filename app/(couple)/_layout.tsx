@@ -137,17 +137,17 @@ export default function CoupleTabsLayout() {
           ),
           tabBarStyle: {
             position: 'absolute',
-            bottom: Platform.OS === 'ios' ? 0: 8,
+            bottom: Platform.OS === 'ios' ? 22 : 16,
             left: 20,
             right: 20,
-          height: 74,
-          backgroundColor: 'transparent',
-          borderRadius: 32,
-          paddingHorizontal: 8,
-          paddingVertical: 0,
-          paddingTop: 16,
-          paddingBottom: 0,
-          overflow: 'visible',
+            height: 74,
+            backgroundColor: 'transparent',
+            borderRadius: 32,
+            paddingHorizontal: 8,
+            paddingVertical: 0,
+            paddingTop: 16,
+            paddingBottom: 0,
+            overflow: 'visible',
             shadowColor: colors.richBlack,
             shadowOffset: { width: 0, height: 4 },
             shadowOpacity: 0.12,
@@ -312,6 +312,12 @@ export default function CoupleTabsLayout() {
         {/* Hidden couple internal routes */}
         <Tabs.Screen
           name="edit-category"
+          options={{
+            href: null,
+          }}
+        />
+        <Tabs.Screen
+          name="select-category"
           options={{
             href: null,
           }}

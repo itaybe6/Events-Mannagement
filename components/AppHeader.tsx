@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // Base header height (excluding safe-area top inset)
 export const APP_HEADER_HEIGHT = 90;
-export const APP_HEADER_HEIGHT_COMPACT = 72;
+export const APP_HEADER_HEIGHT_COMPACT = 50;
 
 export const getAppHeaderTotalHeight = (topInset: number, baseHeight: number = APP_HEADER_HEIGHT) =>
   baseHeight + Math.max(0, topInset || 0);
@@ -98,8 +98,8 @@ const styles = StyleSheet.create({
     height: 80,
   },
   logoCompact: {
-    width: 260,
-    height: 62,
+    width: 335,
+    height: 74,
   },
   iconButton: {
     width: 40,

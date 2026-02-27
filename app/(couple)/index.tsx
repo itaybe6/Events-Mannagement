@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ScrollView, View, Text, StyleSheet, Platform, Pressable, Image, useWindowDimensions } from 'react-native';
+import { Animated, ScrollView, View, Text, StyleSheet, Platform, Pressable, Image, useWindowDimensions } from 'react-native';
 import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useUserStore } from '@/store/userStore';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
@@ -24,6 +24,7 @@ export default function HomeScreen() {
   const [now, setNow] = useState(() => new Date());
   const isWeb = Platform.OS === 'web';
   const isDesktopWeb = isWeb && windowWidth >= 1024;
+  const AnimatedPressable = useMemo(() => Animated.createAnimatedComponent(Pressable), []);
 
   const resolvedEventId =
     String(
@@ -199,32 +200,79 @@ export default function HomeScreen() {
     title: string;
     subtitle: string;
     iconName: keyof typeof Ionicons.glyphMap;
-    variant?: 'square' | 'wide';
+    variant?: 'square' | 'wide' | 'round';
     onPress?: () => void;
-  }) => (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      style={({ hovered, pressed }) => [
-        styles.actionTile,
-        variant === 'wide' && styles.actionTileWide,
-        (hovered || pressed) && styles.actionTilePressed,
-      ]}
-    >
-      <BlurView intensity={24} tint="light" style={styles.actionTileInner}>
-        <View style={styles.actionTileTopRow}>
-          <View style={styles.actionTileIconBox}>
-            <Ionicons name={iconName} size={22} color={colors.text} />
+  }) => {
+    const isRound = variant === 'round';
+    const scale = React.useRef(new Animated.Value(1)).current;
+
+    const springTo = (toValue: number) => {
+      Animated.spring(scale, {
+        toValue,
+        useNativeDriver: true,
+        speed: 18,
+        bounciness: 6,
+      }).start();
+    };
+
+    const Common = isRound ? (AnimatedPressable as any) : Pressable;
+
+    const inner = (
+      <Common
+        onPress={onPress}
+        accessibilityRole="button"
+        onPressIn={() => (isRound ? springTo(0.97) : undefined)}
+        onPressOut={() => (isRound ? springTo(1) : undefined)}
+        // Hover events exist only on web; safe to pass on native.
+        onHoverIn={() => (isRound ? springTo(1.03) : undefined)}
+        onHoverOut={() => (isRound ? springTo(1) : undefined)}
+        style={({ hovered, pressed }: any) => [
+          styles.actionTile,
+          variant === 'wide' && styles.actionTileWide,
+          isRound && styles.actionTileRound,
+          !isRound && (hovered || pressed) && styles.actionTilePressed,
+          isRound && { transform: [{ scale }] },
+          pressed && { opacity: 0.98 },
+        ]}
+      >
+        {isRound ? (
+          <View style={styles.actionTileFrameRound}>
+            <BlurView
+              intensity={24}
+              tint="light"
+              style={[styles.actionTileInner, styles.actionTileInnerNoBorder, styles.actionTileInnerRound]}
+            >
+              <View style={styles.actionTileTopRow}>
+                <View style={styles.actionTileIconBox}>
+                  <Ionicons name={iconName} size={22} color={colors.text} />
+                </View>
+                <View style={styles.actionTileDot} />
+              </View>
+              <View>
+                <Text style={styles.actionTileTitle}>{title}</Text>
+                <Text style={styles.actionTileSubtitle}>{subtitle}</Text>
+              </View>
+            </BlurView>
           </View>
-          <View style={styles.actionTileDot} />
-        </View>
-        <View>
-          <Text style={styles.actionTileTitle}>{title}</Text>
-          <Text style={styles.actionTileSubtitle}>{subtitle}</Text>
-        </View>
-      </BlurView>
-    </Pressable>
-  );
+        ) : (
+          <BlurView intensity={24} tint="light" style={styles.actionTileInner}>
+            <View style={styles.actionTileTopRow}>
+              <View style={styles.actionTileIconBox}>
+                <Ionicons name={iconName} size={22} color={colors.text} />
+              </View>
+              <View style={styles.actionTileDot} />
+            </View>
+            <View>
+              <Text style={styles.actionTileTitle}>{title}</Text>
+              <Text style={styles.actionTileSubtitle}>{subtitle}</Text>
+            </View>
+          </BlurView>
+        )}
+      </Common>
+    );
+
+    return inner;
+  };
 
   return (
     <View style={styles.screen}>
@@ -268,14 +316,21 @@ export default function HomeScreen() {
               label="אירוע פעיל"
             />
           </View>
-
-          <BlurView intensity={28} tint="light" style={styles.locationPill}>
-            <Ionicons name="location" size={16} color={stylesVars.primaryBlue} />
-            <Text style={styles.locationPillText}>{currentEvent.location}</Text>
-          </BlurView>
         </View>
 
-        <View style={styles.daysSection}>
+        <View style={styles.quickInfoRow}>
+          <BlurView intensity={26} tint="light" style={styles.locationCard}>
+            <View style={styles.locationCardIcon}>
+              <Ionicons name="location" size={18} color={stylesVars.primaryBlue} />
+            </View>
+            <View style={styles.locationCardText}>
+              <Text style={styles.locationCardTitle}>מיקום</Text>
+              <Text style={styles.locationCardValue} numberOfLines={1}>
+                {String(currentEvent.location || '').trim() || '—'}
+              </Text>
+            </View>
+          </BlurView>
+
           <BlurView intensity={26} tint="light" style={styles.daysCard}>
             <View style={styles.daysCardIcon}>
               <Ionicons name="calendar-outline" size={18} color={stylesVars.primaryBlue} />
@@ -324,6 +379,7 @@ export default function HomeScreen() {
               title={'רשימת\nמוזמנים'}
               subtitle="נהל אישורי הגעה"
               iconName="list"
+              variant="round"
               onPress={() =>
                 router.push({
                   pathname: '/(couple)/guests',
@@ -338,6 +394,7 @@ export default function HomeScreen() {
               title={'סידור\nהושבה'}
               subtitle="גרור ושחרר אורחים"
               iconName="grid"
+              variant="round"
               onPress={() =>
                 router.push({
                   pathname: '/(couple)/BrideGroomSeating',
@@ -354,6 +411,7 @@ export default function HomeScreen() {
 
 const stylesVars = {
   primaryBlue: '#135bec',
+  darkBlue: '#0B1C41',
   red: '#ef4444',
   amber: '#f59e0b',
 };
@@ -439,8 +497,8 @@ const styles = StyleSheet.create({
   heroBannerFrame: {
     ...StyleSheet.absoluteFillObject,
     borderRadius: 28,
-    borderWidth: 3,
-    borderColor: 'rgba(255,255,255,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(11, 28, 65, 0.35)',
   },
   heroAvatar: {
     width: 110,
@@ -448,7 +506,7 @@ const styles = StyleSheet.create({
     borderRadius: 55,
     backgroundColor: 'rgba(255,255,255,0.9)',
     borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.8)',
+    borderColor: 'rgba(11, 28, 65, 0.22)',
     shadowColor: colors.black,
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.08,
@@ -481,32 +539,19 @@ const styles = StyleSheet.create({
     color: colors.gray[600],
     textAlign: 'center',
   },
-  locationPill: {
-    marginTop: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 999,
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.55)',
-    backgroundColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.35)' : 'transparent',
-  },
-  locationPillText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: colors.gray[600],
-    textAlign: 'right',
-  },
-
-  daysSection: {
-    marginTop: 6,
+  quickInfoRow: {
+    marginTop: 10,
     marginBottom: 18,
-    alignItems: 'center',
-  },
-  daysCard: {
     width: '100%',
+    flexDirection: 'row',
+    gap: 12,
+    flexWrap: 'nowrap',
+    alignItems: 'stretch',
+  },
+  locationCard: {
+    flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
     paddingVertical: 12,
     paddingHorizontal: 14,
     borderRadius: 20,
@@ -514,7 +559,49 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.60)',
+    borderColor: 'rgba(11, 28, 65, 0.18)',
+    backgroundColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.35)' : 'transparent',
+  },
+  locationCardIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(19, 91, 236, 0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(19, 91, 236, 0.18)',
+  },
+  locationCardText: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'flex-end',
+  },
+  locationCardTitle: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: colors.gray[600],
+    textAlign: 'right',
+  },
+  locationCardValue: {
+    marginTop: 2,
+    fontSize: 14,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'right',
+  },
+  daysCard: {
+    flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(11, 28, 65, 0.18)',
     backgroundColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.35)' : 'transparent',
   },
   daysCardIcon: {
@@ -529,6 +616,7 @@ const styles = StyleSheet.create({
   },
   daysCardText: {
     flex: 1,
+    minWidth: 0,
     alignItems: 'flex-end',
   },
   daysCardTitle: {
@@ -565,7 +653,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.60)',
+    borderColor: 'rgba(11, 28, 65, 0.14)',
     backgroundColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.35)' : 'transparent',
   },
   statIconWrap: {
@@ -634,6 +722,23 @@ const styles = StyleSheet.create({
     aspectRatio: undefined,
     minHeight: 110,
   },
+  actionTileRound: {
+    borderRadius: 34,
+  },
+  actionTileFrameRound: {
+    flex: 1,
+    borderRadius: 34,
+    borderWidth: 1,
+    borderColor: 'rgba(11, 28, 65, 0.22)',
+    overflow: 'hidden',
+    // Help prevent tiny border gaps on web during transforms
+    ...(Platform.OS === 'web'
+      ? ({
+          backfaceVisibility: 'hidden',
+          willChange: 'transform',
+        } as any)
+      : null),
+  },
   actionTilePressed: {
     transform: [{ scale: 0.99 }],
     opacity: 0.98,
@@ -642,9 +747,15 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 18,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.55)',
+    borderColor: 'rgba(11, 28, 65, 0.14)',
     backgroundColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.55)' : 'transparent',
     justifyContent: 'space-between',
+  },
+  actionTileInnerNoBorder: {
+    borderWidth: 0,
+  },
+  actionTileInnerRound: {
+    borderRadius: 34,
   },
   actionTileTopRow: {
     flexDirection: 'row-reverse',
@@ -659,7 +770,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.06)',
+    borderColor: 'rgba(11, 28, 65, 0.14)',
   },
   actionTileDot: {
     width: 8,

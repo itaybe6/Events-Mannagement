@@ -286,7 +286,7 @@ export default function CoupleGuestsWebScreen() {
 
   const importContacts = async () => {
     if (!resolvedEventId) return;
-    router.push({ pathname: '/contacts-list', params: { eventId: resolvedEventId, autoOpenCategory: '1' } });
+    router.push({ pathname: '/(couple)/select-category', params: { eventId: resolvedEventId } });
   };
 
   const openAdd = () => {

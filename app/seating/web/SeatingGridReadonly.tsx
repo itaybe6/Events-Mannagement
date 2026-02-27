@@ -59,6 +59,7 @@ export function SeatingGridReadonly({
   getTableSubLabel,
   autoFitZoomMultiplier,
   cellSizeMultiplier,
+  useBaseColorAsWebBackground,
   hideTableType,
   getTableBaseColor,
   getTableBackgroundAlpha,
@@ -77,6 +78,7 @@ export function SeatingGridReadonly({
   getTableSubLabel?: (t: TableItem) => string | null;
   autoFitZoomMultiplier?: number;
   cellSizeMultiplier?: number;
+  useBaseColorAsWebBackground?: boolean;
   hideTableType?: boolean;
   getTableBaseColor?: (t: TableItem) => string | null;
   getTableBackgroundAlpha?: (t: TableItem) => number | null;
@@ -297,16 +299,19 @@ export function SeatingGridReadonly({
               const borderAlpha = getTableBorderAlpha?.(t);
               const borderOn = showTableBorder !== false;
 
-              // Web palette:
-              // - regular tables: #06173d
-              // - reserve tables: #06173d with transparency
-              // - selected tables: indicated mainly by ring/shadow
-              const webBg = isReserve ? 'rgba(124, 58, 237, 0.55)' : 'rgba(6, 23, 61, 0.82)';
               const webAccent = 'rgba(255,255,255,0.95)';
               const onDarkWeb = true;
 
+              // Web palette default (when not explicitly using base-color background).
+              const webBgDefault = isReserve ? 'rgba(124, 58, 237, 0.55)' : 'rgba(6, 23, 61, 0.82)';
+              const wantWebBaseBg = Boolean(useBaseColorAsWebBackground);
+              const effectiveWebBgAlpha =
+                typeof bgAlpha === 'number' ? clampAlpha(bgAlpha) : isReserve ? 0.18 : 0.82;
+
               const bg = isWeb
-                ? webBg
+                ? wantWebBaseBg && isHex6(base)
+                  ? hexToRgba(base, effectiveWebBgAlpha)
+                  : webBgDefault
                 : typeof bgAlpha === 'number' && isHex6(base)
                   ? hexToRgba(base, clampAlpha(bgAlpha))
                   : isHex6(base)

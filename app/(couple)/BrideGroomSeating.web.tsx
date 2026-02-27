@@ -1439,6 +1439,7 @@ export default function BrideGroomSeatingWebScreen() {
                     labels={webSketchWithNames?.labels ?? webSketch.labels}
                     hideTableType
                     autoFitZoomMultiplier={1.12}
+                    useBaseColorAsWebBackground
                     showTableBorder={false}
                     getTableBaseColor={(t: any) => {
                       const selectedNumber =
@@ -1446,6 +1447,13 @@ export default function BrideGroomSeatingWebScreen() {
                         (selectedTableForModal ? Number((selectedTableForModal as any).number) : null);
                       const selected = Number.isFinite(selectedNumber as any) && Number(t?.number) === Number(selectedNumber);
                       if (selected) return '#10B981';
+                      const num = Number(t?.number);
+                      const cap = Number(t?.seats ?? 0) || 0;
+                      const seated = Number.isFinite(num) ? (seatedByNumber.get(num) ?? 0) : 0;
+                      const full = cap > 0 && seated >= cap;
+                      const over = cap > 0 && seated > cap;
+                      if (over) return '#059669';
+                      if (full) return '#10B981';
                       return t?.type === 'reserve' ? colors.secondary : colors.primary;
                     }}
                     getTableBackgroundAlpha={(t: any) => {
@@ -1454,6 +1462,13 @@ export default function BrideGroomSeatingWebScreen() {
                         (selectedTableForModal ? Number((selectedTableForModal as any).number) : null);
                       const selected = Number.isFinite(selectedNumber as any) && Number(t?.number) === Number(selectedNumber);
                       if (selected) return 0.28;
+                      const num = Number(t?.number);
+                      const cap = Number(t?.seats ?? 0) || 0;
+                      const seated = Number.isFinite(num) ? (seatedByNumber.get(num) ?? 0) : 0;
+                      const full = cap > 0 && seated >= cap;
+                      const over = cap > 0 && seated > cap;
+                      if (over) return 0.34;
+                      if (full) return 0.24;
                       return t?.type === 'reserve' ? 0.18 : 0.42;
                     }}
                     selectedRingColor="#10B981"

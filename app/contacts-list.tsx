@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -14,7 +14,6 @@ import * as Contacts from 'expo-contacts';
 import { guestService } from '@/lib/services/guestService';
 import { eventService } from '@/lib/services/eventService';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
-import { GuestCategorySelectionSheet } from '@/components/GuestCategorySelectionSheet';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -27,7 +26,6 @@ export default function ContactsListScreen() {
   const [search, setSearch] = useState('');
   const [categories, setCategories] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<any>(null);
-  const [categoryModalVisible, setCategoryModalVisible] = useState(false);
   const [existingGuests, setExistingGuests] = useState<any[]>([]);
   const [searchFocused, setSearchFocused] = useState(false);
   const [enableSides, setEnableSides] = useState(true);
@@ -37,9 +35,7 @@ export default function ContactsListScreen() {
   // קבל eventId מהניווט
   const params = useLocalSearchParams();
   const eventId = params.eventId as string | undefined;
-  const autoOpenCategory =
-    params.autoOpenCategory === '1' || params.autoOpenCategory === 'true' || params.autoOpenCategory === true;
-  const didAutoOpenRef = useRef(false);
+  const categoryIdParam = params.categoryId as string | undefined;
 
   // Local palette - clean white design
   const ui = useMemo(
@@ -88,6 +84,14 @@ export default function ContactsListScreen() {
       if (eventId) {
         const cats = await guestService.getGuestCategories(eventId);
         setCategories(cats);
+
+        const cid = String(categoryIdParam || '').trim();
+        if (cid) {
+          const picked = (cats || []).find((c: any) => String(c?.id) === cid) || null;
+          setSelectedCategory(picked);
+        } else {
+          setSelectedCategory(null);
+        }
         
         // טען את כל האורחים הקיימים לבדיקת כפילויות
         const guests = await guestService.getGuests(eventId);
@@ -128,19 +132,16 @@ export default function ContactsListScreen() {
       setLoading(false);
     };
     fetchData();
-  }, [eventId]);
+  }, [categoryIdParam, eventId]);
 
-  // If navigated from "+" on Guests screen, open category selector immediately.
+  // If opened without a selected category, redirect to the new category screen.
   useEffect(() => {
-    if (!autoOpenCategory) return;
-    if (didAutoOpenRef.current) return;
-    if (loading) return;
-    if (categoryModalVisible) return;
-    if (selectedCategory) return;
-    // Open even if categories is empty, so user can create one.
-    didAutoOpenRef.current = true;
-    setCategoryModalVisible(true);
-  }, [autoOpenCategory, categoryModalVisible, loading, selectedCategory]);
+    if (!eventId) return;
+    const cid = String(categoryIdParam || '').trim();
+    if (cid) return;
+    // Replace so Back doesn't bounce between screens.
+    router.replace({ pathname: '/(couple)/select-category', params: { eventId } });
+  }, [categoryIdParam, eventId, router]);
 
   const normalizePhoneNumber = (phone: string) => {
     // הסרת כל הרווחים, מקפים וסימנים מיוחדים ושמירה על מספרים בלבד
@@ -293,22 +294,6 @@ export default function ContactsListScreen() {
       <View style={[styles.container, { backgroundColor: ui.bg }]}>
         <Stack.Screen options={{ headerShown: false }} />
 
-      <GuestCategorySelectionSheet
-        visible={categoryModalVisible}
-        categories={categories}
-        selectedCategoryId={selectedCategory?.id ?? null}
-        enableSides={enableSides}
-        onClose={() => setCategoryModalVisible(false)}
-        onSelect={(cat) => setSelectedCategory(cat)}
-        onCreateCategory={async (name, side) => {
-          if (!eventId) throw new Error('Missing eventId');
-          const created = await guestService.addGuestCategory(eventId, name, side);
-          setCategories(prev => [...prev, created]);
-          setSelectedCategory(created);
-          return created;
-        }}
-      />
-
       <FlatList
         data={filteredContacts}
         extraData={selectedContacts}
@@ -359,7 +344,10 @@ export default function ContactsListScreen() {
               <View style={styles.topButtonsGrid}>
                 <View style={styles.topButtonCol}>
                   <Pressable
-                    onPress={() => setCategoryModalVisible(true)}
+                    onPress={() => {
+                      if (!eventId) return;
+                      router.push({ pathname: '/(couple)/select-category', params: { eventId, categoryId: selectedCategory?.id } });
+                    }}
                     accessibilityRole="button"
                     accessibilityLabel="בחר קטגוריה"
                     style={({ pressed }) => [
@@ -405,7 +393,10 @@ export default function ContactsListScreen() {
 
                 <View style={styles.topButtonCol}>
                   <Pressable
-                    onPress={() => setCategoryModalVisible(true)}
+                    onPress={() => {
+                      if (!eventId) return;
+                      router.push({ pathname: '/(couple)/select-category', params: { eventId, categoryId: selectedCategory?.id } });
+                    }}
                     accessibilityRole="button"
                     accessibilityLabel="החלף קטגוריה"
                     style={({ pressed }) => [

@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Alert, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useGlobalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
@@ -9,12 +9,32 @@ import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { avatarService } from '@/lib/services/avatarService';
 import BackSwipe from '@/components/BackSwipe';
+import { useEventSelectionStore } from '@/store/eventSelectionStore';
+import { invitationAssetService } from '@/lib/services/invitationAssetService';
 
 export default function ProfileEditor() {
   const router = useRouter();
+  const globalParams = useGlobalSearchParams<{ eventId?: string | string[] }>();
   const { userData, updateUserData } = useUserStore();
+  const activeUserId = useEventSelectionStore((s) => s.activeUserId);
+  const activeEventId = useEventSelectionStore((s) => s.activeEventId);
+
+  const queryEventId = Array.isArray(globalParams.eventId) ? globalParams.eventId[0] : globalParams.eventId;
+  const resolvedEventId = useMemo(() => {
+    return (
+      String(
+        queryEventId ||
+          (userData?.id && activeUserId === userData.id ? activeEventId : null) ||
+          userData?.event_id ||
+          ''
+      ).trim() || null
+    );
+  }, [activeEventId, activeUserId, queryEventId, userData?.event_id, userData?.id]);
+
   const [loading, setLoading] = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
+  const [invitationUploading, setInvitationUploading] = useState(false);
+  const [invitationImageUrl, setInvitationImageUrl] = useState('');
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -32,6 +52,33 @@ export default function ProfileEditor() {
       }));
     }
   }, [userData]);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadInvitationImage = async () => {
+      const eventId = String(resolvedEventId || '').trim();
+      if (!eventId) {
+        if (active) setInvitationImageUrl('');
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase.from('events').select('invitation_image_url').eq('id', eventId).maybeSingle();
+        if (error) throw error;
+        const url = data?.invitation_image_url ? String((data as any).invitation_image_url).trim() : '';
+        if (active) setInvitationImageUrl(url);
+      } catch (e) {
+        // Best-effort: keep UI usable even if event fetch fails
+        if (active) setInvitationImageUrl('');
+      }
+    };
+
+    void loadInvitationImage();
+    return () => {
+      active = false;
+    };
+  }, [resolvedEventId]);
 
   const guessImageExt = (asset: any): string => {
     const fileName = String(asset?.fileName ?? '');
@@ -141,6 +188,82 @@ export default function ProfileEditor() {
     } finally {
       setAvatarUploading(false);
     }
+  };
+
+  const pickAndUploadInvitationImage = async () => {
+    const eventId = String(resolvedEventId || '').trim();
+    if (!eventId) {
+      Alert.alert('שימו לב', 'לא נבחר אירוע. כדי לערוך תמונת הזמנה צריך לבחור/להיות משויך לאירוע.');
+      return;
+    }
+    if (invitationUploading) return;
+
+    try {
+      if (Platform.OS !== 'web') {
+        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!permission.granted) {
+          Alert.alert('הרשאה נדרשת', 'כדי לבחור תמונה יש לאשר גישה לגלריה');
+          return;
+        }
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 5],
+        quality: 0.9,
+        base64: true,
+      });
+
+      if (result.canceled || !result.assets?.[0]) return;
+      const asset = result.assets[0] as any;
+
+      setInvitationUploading(true);
+      const url = await invitationAssetService.uploadInvitationImage(eventId, {
+        uri: asset.uri,
+        fileName: asset.fileName,
+        mimeType: asset.mimeType,
+        file: asset.file,
+        base64: asset.base64,
+      });
+
+      const { error } = await supabase.from('events').update({ invitation_image_url: url }).eq('id', eventId);
+      if (error) throw error;
+
+      setInvitationImageUrl(url);
+      Alert.alert('נשמר', 'תמונת ההזמנה עודכנה');
+    } catch (e: any) {
+      const message = e?.message ? String(e.message) : 'שגיאה לא ידועה';
+      Alert.alert('שגיאה', `לא ניתן לעדכן תמונת הזמנה.\n\n${message}`);
+    } finally {
+      setInvitationUploading(false);
+    }
+  };
+
+  const removeInvitationImage = async () => {
+    const eventId = String(resolvedEventId || '').trim();
+    if (!eventId) return;
+
+    Alert.alert('הסרת תמונה', 'להסיר את תמונת ההזמנה מהאירוע?', [
+      { text: 'ביטול', style: 'cancel' },
+      {
+        text: 'הסר',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            setInvitationUploading(true);
+            const { error } = await supabase.from('events').update({ invitation_image_url: null }).eq('id', eventId);
+            if (error) throw error;
+            setInvitationImageUrl('');
+          } catch (e: any) {
+            const message = e?.message ? String(e.message) : 'שגיאה לא ידועה';
+            Alert.alert('שגיאה', `לא ניתן להסיר תמונה.\n\n${message}`);
+          } finally {
+            setInvitationUploading(false);
+          }
+        },
+      },
+    ]);
   };
 
   const validateForm = () => {
@@ -298,6 +421,59 @@ export default function ProfileEditor() {
           </View>
 
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+        {/* Invitation Image Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>תמונת הזמנה</Text>
+          <View style={styles.inviteRow}>
+            <View style={styles.invitePreview}>
+              {invitationImageUrl ? (
+                <Image
+                  source={{ uri: invitationImageUrl }}
+                  style={styles.invitePreviewImg}
+                  contentFit="cover"
+                  transition={120}
+                  cachePolicy="none"
+                  recyclingKey={invitationImageUrl}
+                />
+              ) : (
+                <View style={styles.invitePlaceholder}>
+                  <Ionicons name="image-outline" size={26} color={colors.gray[500]} />
+                  <Text style={styles.invitePlaceholderText}>אין תמונה</Text>
+                </View>
+              )}
+            </View>
+
+            <View style={styles.inviteMeta}>
+              <Text style={styles.avatarHint} numberOfLines={3}>
+                התמונה הזו תוצג למעלה במסך הפרופיל של הזוג, וגם בדף ההזמנה.
+              </Text>
+
+              <View style={styles.inviteActionsRow}>
+                <TouchableOpacity
+                  style={[styles.avatarActionBtn, invitationUploading && styles.avatarActionBtnDisabled]}
+                  onPress={pickAndUploadInvitationImage}
+                  disabled={invitationUploading}
+                  accessibilityRole="button"
+                  accessibilityLabel="בחירת תמונת הזמנה"
+                >
+                  <Text style={styles.avatarActionText}>{invitationUploading ? 'מעלה...' : invitationImageUrl ? 'החלף תמונה' : 'בחר תמונה'}</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.removeBtn, (!invitationImageUrl || invitationUploading) && styles.avatarActionBtnDisabled]}
+                  onPress={removeInvitationImage}
+                  disabled={!invitationImageUrl || invitationUploading}
+                  accessibilityRole="button"
+                  accessibilityLabel="הסרת תמונת הזמנה"
+                >
+                  <Ionicons name="trash-outline" size={16} color={colors.error} />
+                  <Text style={styles.removeBtnText}>הסר</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </View>
+
         {/* Avatar Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>תמונת פרופיל</Text>
@@ -601,5 +777,62 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: colors.primary,
+  },
+
+  inviteRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 14,
+    paddingTop: 6,
+  },
+  invitePreview: {
+    width: 84,
+    height: 110,
+    borderRadius: 14,
+    overflow: 'hidden',
+    backgroundColor: colors.gray[100],
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.08)',
+  },
+  invitePreviewImg: {
+    width: '100%',
+    height: '100%',
+  },
+  invitePlaceholder: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  invitePlaceholderText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.gray[600],
+    textAlign: 'center',
+  },
+  inviteMeta: {
+    flex: 1,
+    alignItems: 'flex-end',
+  },
+  inviteActionsRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 10,
+  },
+  removeBtn: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(239,68,68,0.10)',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(239,68,68,0.18)',
+  },
+  removeBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.error,
   },
 }); 
