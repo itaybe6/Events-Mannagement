@@ -312,6 +312,7 @@ export default function SelectCategoryScreen() {
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.chipsRow}
+          contentInsetAdjustmentBehavior="never"
         >
           {chips.map((chip) => {
             const active = filter === chip.key;
@@ -430,6 +431,8 @@ export default function SelectCategoryScreen() {
             keyExtractor={(item) => item.id}
             numColumns={2}
             columnWrapperStyle={[styles.gridRow, { gap: gridGap }]}
+            style={styles.gridList}
+            contentInsetAdjustmentBehavior="never"
             contentContainerStyle={[
               styles.gridContent,
               { paddingBottom: bottomPadding + 128, paddingHorizontal: colPad },
@@ -649,6 +652,8 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     gap: 12,
     paddingTop: 10,
+    flexGrow: 1,
+    justifyContent: 'flex-end',
   },
   chip: {
     paddingVertical: 12,
@@ -719,6 +724,7 @@ const styles = StyleSheet.create({
   },
 
   /* grid */
+  gridList: { flex: 1 },
   gridContent: { paddingTop: 12 },
   gridRow: { marginBottom: 16, justifyContent: 'space-between' },
   cardOuter: {
@@ -900,6 +906,8 @@ const styles = StyleSheet.create({
     bottom: 0,
     height: 128,
     justifyContent: 'flex-end',
+    zIndex: 50,
+    elevation: 50,
   },
   bottomGradient: {
     position: 'absolute',
