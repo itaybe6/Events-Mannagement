@@ -12,12 +12,15 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
 
 import { colors } from '@/constants/colors';
 import { useUserStore } from '@/store/userStore';
 import { useDemoUsersStore } from '@/store/demoUsersStore';
 import { authService } from '@/lib/services/authService';
 import { userService, type UserWithMetadata } from '@/lib/services/userService';
+import { avatarService, type UploadableImage } from '@/lib/services/avatarService';
 
 type UserType = 'event_owner' | 'admin' | 'employee';
 
@@ -54,6 +57,7 @@ export default function AddUserV2WebScreen() {
 
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [avatarImage, setAvatarImage] = useState<UploadableImage | null>(null);
 
   const [form, setForm] = useState({
     name: '',
@@ -99,6 +103,42 @@ export default function AddUserV2WebScreen() {
     setForm((prev) => ({ ...prev, [key]: value }));
   }, []);
 
+  const pickAvatarImage = useCallback(async () => {
+    try {
+      if (Platform.OS !== 'web') {
+        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!permission.granted) {
+          setErrorText('כדי לבחור תמונה יש לאשר גישה לגלריה.');
+          return;
+        }
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.85,
+        base64: true,
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+      const asset = result.assets[0];
+      setAvatarImage({
+        uri: asset.uri,
+        fileName: asset.fileName ?? undefined,
+        mimeType: asset.mimeType ?? undefined,
+        file: (asset as any)?.file,
+        base64: asset.base64,
+      });
+      setErrorText(null);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'שגיאה לא ידועה';
+      setErrorText(`לא ניתן לבחור תמונה.\n${msg}`);
+    }
+  }, []);
+
+  const removeAvatarImage = useCallback(() => {
+    setAvatarImage(null);
+  }, []);
+
   const onSubmit = useCallback(async () => {
     if (submitting) return;
     setErrorText(null);
@@ -131,7 +171,7 @@ export default function AddUserV2WebScreen() {
           name: `${name} (דמו)`,
           email,
           phone: phone || undefined,
-          avatar_url: undefined,
+          avatar_url: avatarImage?.uri,
           userType: form.user_type,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
@@ -140,18 +180,23 @@ export default function AddUserV2WebScreen() {
         };
         addDemoUser(demoUser);
         setSuccessText('מצב דמו: המשתמש נוסף מקומית (לא נשמר בדאטאבייס).');
+        setTimeout(() => router.replace('/users'), 800);
         return;
       }
 
-      await userService.createUser(email, password, name, form.user_type, phone || undefined);
+      const createdUser = await userService.createUser(email, password, name, form.user_type, phone || undefined);
+      if (avatarImage) {
+        await avatarService.uploadUserAvatar(createdUser.id, avatarImage);
+      }
       setSuccessText('המשתמש נוסף בהצלחה.');
+      setTimeout(() => router.replace('/users'), 800);
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'שגיאה לא ידועה';
       setErrorText(`לא ניתן להוסיף משתמש.\n${msg}`);
     } finally {
       setSubmitting(false);
     }
-  }, [addDemoUser, form, isDemoMode, submitting]);
+  }, [addDemoUser, form, isDemoMode, submitting, avatarImage]);
 
   const RoleCard = ({
     value,
@@ -255,6 +300,63 @@ export default function AddUserV2WebScreen() {
             </View>
 
             <View style={styles.divider} />
+
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>תמונת פרופיל</Text>
+              <View style={styles.avatarRow}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="בחר תמונת פרופיל"
+                  onPress={pickAvatarImage}
+                  style={({ hovered, pressed }: any) => [
+                    styles.avatarPreviewWrap,
+                    Platform.OS === 'web' && hovered ? styles.avatarPreviewWrapHover : null,
+                    pressed ? { opacity: 0.9 } : null,
+                  ]}
+                >
+                  {avatarImage ? (
+                    <Image source={{ uri: avatarImage.uri }} style={styles.avatarPreviewImg} contentFit="cover" />
+                  ) : (
+                    <View style={styles.avatarPlaceholder}>
+                      <MaterialIcons name="add-a-photo" size={32} color={colors.gray[500]} />
+                    </View>
+                  )}
+                </Pressable>
+                <View style={styles.avatarActions}>
+                  <Text style={styles.avatarHint}>תמונה אופציונלית. בחר/י מתמונות המכשיר.</Text>
+                  <View style={styles.avatarBtnRow}>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="בחר תמונה"
+                      onPress={pickAvatarImage}
+                      style={({ hovered, pressed }: any) => [
+                        styles.avatarActionBtn,
+                        Platform.OS === 'web' && hovered ? styles.avatarActionBtnHover : null,
+                        pressed ? { opacity: 0.9 } : null,
+                      ]}
+                    >
+                      <MaterialIcons name="photo-library" size={18} color={colors.primary} />
+                      <Text style={styles.avatarActionText}>בחר תמונה</Text>
+                    </Pressable>
+                    {avatarImage ? (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="הסר תמונה"
+                        onPress={removeAvatarImage}
+                        style={({ hovered, pressed }: any) => [
+                          styles.avatarRemoveBtn,
+                          Platform.OS === 'web' && hovered ? styles.avatarRemoveBtnHover : null,
+                          pressed ? { opacity: 0.9 } : null,
+                        ]}
+                      >
+                        <MaterialIcons name="close" size={18} color={colors.gray[700]} />
+                        <Text style={styles.avatarRemoveText}>הסר</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                </View>
+              </View>
+            </View>
 
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>פרטים אישיים</Text>
@@ -569,6 +671,58 @@ const styles = StyleSheet.create({
   section: { gap: 10 },
   sectionTitle: { fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'right', writingDirection: 'rtl' },
   divider: { height: 1, width: '100%', backgroundColor: `rgba(${BRAND_RGB.primary}, 0.08)` },
+
+  avatarRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 16,
+  },
+  avatarPreviewWrap: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: `rgba(${BRAND_RGB.primary}, 0.14)`,
+    backgroundColor: colors.gray[100],
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  } as any,
+  avatarPreviewWrapHover: { borderColor: `rgba(${BRAND_RGB.primary}, 0.28)` },
+  avatarPreviewImg: { width: '100%', height: '100%', borderRadius: 44 },
+  avatarPlaceholder: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarActions: { flex: 1, gap: 8 },
+  avatarHint: { fontSize: 12, fontWeight: '700', color: colors.gray[700], textAlign: 'right', writingDirection: 'rtl' },
+  avatarBtnRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
+  avatarActionBtn: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: `rgba(${BRAND_RGB.primary}, 0.18)`,
+    backgroundColor: `rgba(${BRAND_RGB.primary}, 0.04)`,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  } as any,
+  avatarActionBtnHover: { backgroundColor: `rgba(${BRAND_RGB.primary}, 0.08)` },
+  avatarActionText: { fontSize: 13, fontWeight: '800', color: colors.primary, writingDirection: 'rtl' },
+  avatarRemoveBtn: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  } as any,
+  avatarRemoveBtnHover: { backgroundColor: `rgba(${BRAND_RGB.primary}, 0.06)` },
+  avatarRemoveText: { fontSize: 12, fontWeight: '800', color: colors.gray[700], writingDirection: 'rtl' },
 
   roleGrid: {
     gap: 10,

@@ -1,6 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Slot, useGlobalSearchParams, usePathname, useRouter } from 'expo-router';
 import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+
+function getWebPathname() {
+  if (Platform.OS === 'web' && typeof (globalThis as any)?.location?.pathname === 'string') {
+    return String((globalThis as any).location.pathname);
+  }
+  return '';
+}
 import DesktopSidebar from '@/components/desktop/DesktopSidebar';
 import { EventSwitcher } from '@/components/EventSwitcher';
 import { useUserStore } from '@/store/userStore';
@@ -95,10 +102,33 @@ export default function CoupleWebLayout() {
     .join('')
     .toUpperCase();
 
+  const [effectivePath, setEffectivePath] = useState(() =>
+    Platform.OS === 'web' ? ((getWebPathname() || pathname) ?? '') : (pathname ?? '')
+  );
+  useEffect(() => {
+    const sync = () => {
+      const next = Platform.OS === 'web' ? ((getWebPathname() || pathname) ?? '') : (pathname ?? '');
+      setEffectivePath((prev) => (prev !== next ? next : prev));
+    };
+    sync();
+    const t0 = setTimeout(sync, 0);
+    let interval: ReturnType<typeof setInterval> | null = null;
+    if (Platform.OS === 'web') {
+      interval = setInterval(sync, 250);
+    }
+    return () => {
+      clearTimeout(t0);
+      if (interval) clearInterval(interval);
+    };
+  }, [pathname]);
+
+  const isSeatingPage = (effectivePath ?? '').toLowerCase().includes('bridegroomseating');
+
   return (
     <View style={styles.container}>
-      <View style={styles.sidebarWrap}>
-        <DesktopSidebar
+      {!isSeatingPage ? (
+        <View style={styles.sidebarWrap}>
+          <DesktopSidebar
           title=""
           navItems={[
             { href: '/(couple)', label: 'בית', icon: 'home' },
@@ -154,7 +184,8 @@ export default function CoupleWebLayout() {
             </View>
           }
         />
-      </View>
+        </View>
+      ) : null}
       <View style={styles.content}>
         <Slot />
       </View>

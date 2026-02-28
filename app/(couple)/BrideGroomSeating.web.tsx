@@ -1034,8 +1034,30 @@ export default function BrideGroomSeatingWebScreen() {
     windowWidth >= 1900 ? 1720 : windowWidth >= 1600 ? 1520 : windowWidth >= 1400 ? 1320 : undefined;
   const contentPaddingH = windowWidth >= 1100 ? 24 : 16;
 
+  const goToEventPage = () => {
+    router.replace({
+      pathname: '/(couple)' as const,
+      params: resolvedEventId ? { eventId: resolvedEventId } : {},
+    });
+  };
+
   return (
     <View style={styles.page}>
+      {Platform.OS === 'web' ? (
+        <Pressable
+          onPress={goToEventPage}
+          accessibilityRole="button"
+          accessibilityLabel="חזרה לעמוד אירוע"
+          style={({ hovered, pressed }: any) => [
+            styles.backToEventBtn,
+            Platform.OS === 'web' && hovered ? styles.backToEventBtnHover : null,
+            pressed ? styles.backToEventBtnPressed : null,
+          ]}
+        >
+          <Ionicons name="arrow-back" size={22} color={colors.primary} />
+          <Text style={styles.backToEventBtnText}>חזרה לאירוע</Text>
+        </Pressable>
+      ) : null}
       <View pointerEvents="none" style={styles.bgShapes}>
         <View style={styles.shapeTopRight} />
         <View style={styles.shapeBottomLeft} />
@@ -1446,14 +1468,14 @@ export default function BrideGroomSeatingWebScreen() {
                         (seatConfirmOpen && seatConfirmTable ? Number((seatConfirmTable as any).number) : null) ??
                         (selectedTableForModal ? Number((selectedTableForModal as any).number) : null);
                       const selected = Number.isFinite(selectedNumber as any) && Number(t?.number) === Number(selectedNumber);
-                      if (selected) return '#10B981';
+                      if (selected) return '#047857';
                       const num = Number(t?.number);
                       const cap = Number(t?.seats ?? 0) || 0;
                       const seated = Number.isFinite(num) ? (seatedByNumber.get(num) ?? 0) : 0;
                       const full = cap > 0 && seated >= cap;
                       const over = cap > 0 && seated > cap;
-                      if (over) return '#059669';
-                      if (full) return '#10B981';
+                      if (over) return '#065f46';
+                      if (full) return '#047857';
                       return t?.type === 'reserve' ? colors.secondary : colors.primary;
                     }}
                     getTableBackgroundAlpha={(t: any) => {
@@ -1461,17 +1483,17 @@ export default function BrideGroomSeatingWebScreen() {
                         (seatConfirmOpen && seatConfirmTable ? Number((seatConfirmTable as any).number) : null) ??
                         (selectedTableForModal ? Number((selectedTableForModal as any).number) : null);
                       const selected = Number.isFinite(selectedNumber as any) && Number(t?.number) === Number(selectedNumber);
-                      if (selected) return 0.28;
+                      if (selected) return 0.52;
                       const num = Number(t?.number);
                       const cap = Number(t?.seats ?? 0) || 0;
                       const seated = Number.isFinite(num) ? (seatedByNumber.get(num) ?? 0) : 0;
                       const full = cap > 0 && seated >= cap;
                       const over = cap > 0 && seated > cap;
-                      if (over) return 0.34;
-                      if (full) return 0.24;
-                      return t?.type === 'reserve' ? 0.18 : 0.42;
+                      if (over) return 0.58;
+                      if (full) return 0.48;
+                      return t?.type === 'reserve' ? 0.38 : 0.62;
                     }}
-                    selectedRingColor="#10B981"
+                    selectedRingColor="#047857"
                     isTableSelected={(t: any) => {
                       const selectedNumber =
                         (seatConfirmOpen && seatConfirmTable ? Number((seatConfirmTable as any).number) : null) ??
@@ -2257,6 +2279,34 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F6F7F8',
     direction: 'rtl',
+  },
+  backToEventBtn: {
+    position: 'absolute',
+    left: 16,
+    top: 16,
+    zIndex: 100,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.10)',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  backToEventBtnHover: {
+    backgroundColor: colors.gray[50],
+    borderColor: 'rgba(15,23,42,0.14)',
+  },
+  backToEventBtnPressed: {
+    opacity: 0.9,
+  },
+  backToEventBtnText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.primary,
   },
   scroll: { flex: 1, backgroundColor: 'transparent' },
   container: {

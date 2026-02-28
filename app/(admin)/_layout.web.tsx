@@ -1,5 +1,12 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Slot, usePathname, useRouter, useSegments } from 'expo-router';
+
+function getWebPathname() {
+  if (Platform.OS === 'web' && typeof (globalThis as any)?.location?.pathname === 'string') {
+    return String((globalThis as any).location.pathname);
+  }
+  return '';
+}
 import { ActivityIndicator, StyleSheet, Text, View, Pressable, Platform } from 'react-native';
 import DesktopSidebar from '@/components/desktop/DesktopSidebar';
 import { useUserStore } from '@/store/userStore';
@@ -53,15 +60,39 @@ export default function AdminWebLayout() {
     .join('')
     .toUpperCase();
 
+  const [effectivePath, setEffectivePath] = useState(() => {
+    const p = pathname ?? '';
+    const loc = Platform.OS === 'web' ? getWebPathname() : '';
+    return loc || p;
+  });
+  useEffect(() => {
+    const sync = () => {
+      const next = Platform.OS === 'web' ? ((getWebPathname() || pathname) ?? '') : (pathname ?? '');
+      setEffectivePath((prev) => (prev !== next ? next : prev));
+    };
+    sync();
+    const t0 = setTimeout(sync, 0);
+    let interval: ReturnType<typeof setInterval> | null = null;
+    if (Platform.OS === 'web') {
+      interval = setInterval(sync, 250);
+    }
+    return () => {
+      clearTimeout(t0);
+      if (interval) clearInterval(interval);
+    };
+  }, [pathname, segments]);
+
   const topNav = useMemo(() => {
     const seg = Array.isArray(segments) ? segments.map((s) => String(s)) : [];
     const segStr = seg.join('/');
     const pFromHook = String(pathname || '');
-    const pFromLocation = Platform.OS === 'web' ? String((globalThis as any)?.location?.pathname || '') : '';
-    const hay = `${segStr} ${pFromHook} ${pFromLocation}`.toLowerCase();
+    const pFromLocation = Platform.OS === 'web' ? getWebPathname() : '';
+    const pEffective = String(effectivePath || '');
+    const hay = `${segStr} ${pFromHook} ${pFromLocation} ${pEffective}`.toLowerCase();
     // Admin guest check-in page should use top navigation on web.
-    return hay.includes('admin-guest-checkin') || hay.includes('guest-checkin');
-  }, [pathname, segments]);
+    // Hide sidebar on seating map page so the map has more space.
+    return hay.includes('admin-guest-checkin') || hay.includes('guest-checkin') || hay.includes('bridegroomseating');
+  }, [pathname, segments, effectivePath]);
 
   return (
     <View style={[styles.container, topNav ? styles.containerTopNav : null]}>
