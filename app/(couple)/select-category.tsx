@@ -152,11 +152,11 @@ export default function SelectCategoryScreen() {
 
   const bottomPadding = Math.max(20, insets.bottom + 16);
 
-  const gridGap = 16;
-  const colPad = 20;
+  const gridGap = 14;
+  const colPad = 16;
   const gridWidth = windowWidth - colPad * 2;
-  const cardWidth = Math.max(150, Math.floor((gridWidth - gridGap) / 2));
-  const cardHeight = Math.round(cardWidth / 0.8); // aspect 4/5 => width/height = 0.8
+  const cardWidth = Math.floor((gridWidth - gridGap) / 2);
+  const cardHeight = Math.round(cardWidth * 1.15); // slightly taller than square
 
   const goBack = () => {
     const canGoBackFn = (router as any)?.canGoBack;
@@ -307,10 +307,11 @@ export default function SelectCategoryScreen() {
       </View>
 
       {/* ─── chips ────────────────────────────────────── */}
-      {mode === 'existing' ? (
+      {mode === 'existing' && enableSides ? (
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
+          style={styles.chipsScroll}
           contentContainerStyle={styles.chipsRow}
           contentInsetAdjustmentBehavior="never"
         >
@@ -430,12 +431,12 @@ export default function SelectCategoryScreen() {
             data={filteredCategories}
             keyExtractor={(item) => item.id}
             numColumns={2}
-            columnWrapperStyle={[styles.gridRow, { gap: gridGap }]}
+            columnWrapperStyle={styles.gridRow}
             style={styles.gridList}
             contentInsetAdjustmentBehavior="never"
             contentContainerStyle={[
               styles.gridContent,
-              { paddingBottom: bottomPadding + 128, paddingHorizontal: colPad },
+              { paddingBottom: bottomPadding + 280, paddingHorizontal: colPad },
             ]}
             showsVerticalScrollIndicator={false}
             renderItem={({ item }) => {
@@ -513,7 +514,7 @@ export default function SelectCategoryScreen() {
           locations={[0, 0.55, 1]}
           start={{ x: 0.5, y: 0 }}
           end={{ x: 0.5, y: 1 }}
-          style={[styles.bottomGradient, { paddingBottom: bottomPadding }]}
+          style={StyleSheet.absoluteFillObject}
           pointerEvents="none"
         />
         <View style={[styles.bottomButtonWrap, { paddingBottom: bottomPadding }]} pointerEvents="box-none">
@@ -530,11 +531,7 @@ export default function SelectCategoryScreen() {
               <Text style={[styles.nextBtnText, isNextDisabled && styles.nextBtnTextDisabled]}>
                 {__DEV__ ? `${nextLabel}*` : nextLabel}
               </Text>
-              <Ionicons
-                name="arrow-back"
-                size={20}
-                color={isNextDisabled ? 'rgba(255,255,255,0.70)' : '#fff'}
-              />
+              <Ionicons name="arrow-back" size={20} color={isNextDisabled ? 'rgba(255,255,255,0.70)' : '#fff'} />
             </View>
           </Pressable>
         </View>
@@ -645,6 +642,11 @@ const styles = StyleSheet.create({
   segmentTextActiveDark: { color: TEXT_DARK },
 
   /* chips */
+  chipsScroll: {
+    flexGrow: 0,
+    flexShrink: 0,
+    height: 70,
+  },
   chipsRow: {
     flexDirection: 'row-reverse',
     paddingHorizontal: 20,
@@ -652,8 +654,6 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     gap: 12,
     paddingTop: 10,
-    flexGrow: 1,
-    justifyContent: 'flex-end',
   },
   chip: {
     paddingVertical: 12,
@@ -726,7 +726,7 @@ const styles = StyleSheet.create({
   /* grid */
   gridList: { flex: 1 },
   gridContent: { paddingTop: 12 },
-  gridRow: { marginBottom: 16, justifyContent: 'space-between' },
+  gridRow: { marginBottom: 14, gap: 14 },
   cardOuter: {
     borderRadius: 24,
     shadowColor: '#000',
@@ -746,9 +746,11 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     overflow: 'hidden',
     backgroundColor: '#FFFFFF',
-    padding: 24,
+    paddingHorizontal: 52,
+    paddingVertical: 20,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 20,
     borderWidth: 2.5,
     borderColor: 'transparent',
   },
@@ -906,33 +908,30 @@ const styles = StyleSheet.create({
     bottom: 0,
     height: 128,
     justifyContent: 'flex-end',
-    zIndex: 50,
-    elevation: 50,
+    zIndex: 100,
+    elevation: 100,
   },
-  bottomGradient: {
+  bottomButtonWrap: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    top: 0,
-  },
-  bottomButtonWrap: {
     paddingHorizontal: 24,
     paddingTop: 12,
-    alignItems: 'stretch',
+    alignItems: 'center',
   },
   nextBtn: {
     width: '100%',
     maxWidth: 384,
-    height: 64,
+    height: 56,
     borderRadius: 16,
     justifyContent: 'center',
     backgroundColor: NAVY,
     shadowColor: '#000',
-    shadowOpacity: 0.10,
-    shadowRadius: 25,
-    shadowOffset: { width: 0, height: 20 },
-    elevation: 10,
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 12,
     alignSelf: 'center',
   },
   nextBtnDisabled: {
