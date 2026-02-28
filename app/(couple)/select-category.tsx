@@ -81,6 +81,11 @@ export default function SelectCategoryScreen() {
   );
 
   useEffect(() => {
+    setTabBarVisible(false);
+    return () => setTabBarVisible(true);
+  }, [setTabBarVisible]);
+
+  useEffect(() => {
     const load = async () => {
       if (!eventId) { setLoading(false); return; }
       setLoading(true);
@@ -252,16 +257,32 @@ export default function SelectCategoryScreen() {
           onPress={goBack}
           accessibilityRole="button"
           accessibilityLabel="חזרה"
-          style={({ pressed }) => [styles.backBtn, pressed && { opacity: 0.75 }]}
+          style={({ pressed }) => [styles.backBtn, pressed && { opacity: 0.70 }]}
         >
-          <Ionicons name="chevron-forward" size={18} color={isDark ? SUBTEXT_DARK : SUBTEXT} />
+          <Ionicons name="chevron-back" size={16} color={NAVY} />
           <Text style={[styles.backBtnText, isDark && styles.backBtnTextDark]}>חזרה</Text>
         </Pressable>
 
         <Text style={[styles.headerTitle, isDark && styles.headerTitleDark]}>בחירת קטגוריה</Text>
 
-        {/* spacer to center title */}
-        <View style={styles.headerSpacer} />
+        <Pressable
+          onPress={handleNext}
+          disabled={isNextDisabled}
+          accessibilityRole="button"
+          accessibilityLabel="הבא"
+          style={({ pressed }) => [
+            styles.nextTopBtn,
+            isNextDisabled && styles.nextTopBtnDisabled,
+            !isNextDisabled && pressed && { opacity: 0.78 },
+          ]}
+        >
+          <View style={styles.nextTopBtnContent}>
+            <Text style={[styles.nextTopBtnText, isNextDisabled && styles.nextTopBtnTextDisabled]}>
+              {saving ? 'שומר...' : 'הבא'}
+            </Text>
+            <Ionicons name="chevron-forward" size={16} color="#fff" />
+          </View>
+        </Pressable>
       </View>
 
       {/* ─── segment ──────────────────────────────────── */}
@@ -364,7 +385,7 @@ export default function SelectCategoryScreen() {
           <ScrollView
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
-            contentContainerStyle={[styles.createScroll, { paddingBottom: bottomPadding + 90 }]}
+            contentContainerStyle={[styles.createScroll, { paddingBottom: bottomPadding + 24 }]}
           >
             {/* name field */}
             <Text style={[styles.fieldLabel, isDark && styles.fieldLabelDark]}>שם הקטגוריה</Text>
@@ -431,7 +452,7 @@ export default function SelectCategoryScreen() {
             contentInsetAdjustmentBehavior="never"
             contentContainerStyle={[
               styles.gridContent,
-              { paddingBottom: bottomPadding + 280, paddingHorizontal: colPad },
+              { paddingBottom: bottomPadding + 24, paddingHorizontal: colPad },
             ]}
             showsVerticalScrollIndicator={false}
             renderItem={({ item }) => {
@@ -501,36 +522,6 @@ export default function SelectCategoryScreen() {
           />
         )}
       </KeyboardAvoidingView>
-
-      {/* ─── bottom action bar ────────────────────────── */}
-      <View style={styles.bottomOverlay} pointerEvents="box-none">
-        <LinearGradient
-          colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.90)', '#FFFFFF']}
-          locations={[0, 0.55, 1]}
-          start={{ x: 0.5, y: 0 }}
-          end={{ x: 0.5, y: 1 }}
-          style={StyleSheet.absoluteFillObject}
-          pointerEvents="none"
-        />
-        <View style={[styles.bottomButtonWrap, { paddingBottom: bottomPadding }]} pointerEvents="box-none">
-          <Pressable
-            onPress={handleNext}
-            disabled={isNextDisabled}
-            style={({ pressed }) => [
-              styles.nextBtn,
-              isNextDisabled && styles.nextBtnDisabled,
-              !isNextDisabled && pressed && { transform: [{ scale: 0.98 }] },
-            ]}
-          >
-            <View style={styles.nextBtnContent}>
-              <Text style={[styles.nextBtnText, isNextDisabled && styles.nextBtnTextDisabled]}>
-                {__DEV__ ? `${nextLabel}*` : nextLabel}
-              </Text>
-              <Ionicons name="arrow-back" size={20} color={isNextDisabled ? 'rgba(255,255,255,0.70)' : '#fff'} />
-            </View>
-          </Pressable>
-        </View>
-      </View>
     </View>
   );
 }
@@ -546,7 +537,7 @@ const styles = StyleSheet.create({
 
   /* header */
   header: {
-    flexDirection: 'row-reverse',
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
@@ -567,24 +558,74 @@ const styles = StyleSheet.create({
     color: TEXT_DARK,
   },
   backBtn: {
-    flexDirection: 'row-reverse',
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 4,
-    paddingVertical: 6,
+    gap: 5,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
     zIndex: 2,
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#CBD5E1',
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 2px 10px rgba(0,0,0,0.10)' } as any)
+      : {
+          shadowColor: '#000',
+          shadowOpacity: 0.10,
+          shadowRadius: 8,
+          shadowOffset: { width: 0, height: 3 },
+          elevation: 3,
+        }),
   },
   backBtnText: {
     fontSize: 14,
-    fontWeight: '600',
-    color: SUBTEXT,
+    fontWeight: '800',
+    color: NAVY,
   },
   backBtnTextDark: {
-    color: SUBTEXT_DARK,
+    color: TEXT_DARK,
   },
-  headerSpacer: {
-    width: 76,
+  nextTopBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
     zIndex: 2,
+    borderRadius: 14,
+    backgroundColor: PRIMARY,
+    borderWidth: 1.5,
+    borderColor: '#1E40AF',
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 3px 12px rgba(29,78,216,0.40)' } as any)
+      : {
+          shadowColor: PRIMARY,
+          shadowOpacity: 0.38,
+          shadowRadius: 12,
+          shadowOffset: { width: 0, height: 5 },
+          elevation: 6,
+        }),
+  },
+  nextTopBtnDisabled: {
+    backgroundColor: '#94A3B8',
+    borderColor: '#94A3B8',
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: 'none' } as any)
+      : { shadowOpacity: 0, elevation: 0 }),
+  },
+  nextTopBtnContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  nextTopBtnText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: 0.3,
+  },
+  nextTopBtnTextDisabled: {
+    color: 'rgba(255,255,255,0.80)',
   },
 
   /* segment */
@@ -880,56 +921,5 @@ const styles = StyleSheet.create({
     color: PRIMARY,
   },
 
-  /* bottom bar */
-  bottomOverlay: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: 128,
-    justifyContent: 'flex-end',
-    zIndex: 100,
-    elevation: 100,
-  },
-  bottomButtonWrap: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingHorizontal: 24,
-    paddingTop: 12,
-    alignItems: 'center',
-  },
-  nextBtn: {
-    width: '100%',
-    maxWidth: 384,
-    height: 56,
-    borderRadius: 16,
-    justifyContent: 'center',
-    backgroundColor: NAVY,
-    shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 12,
-    alignSelf: 'center',
-  },
-  nextBtnDisabled: {
-    opacity: 0.5,
-  },
-  nextBtnContent: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-  },
-  nextBtnText: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#fff',
-    letterSpacing: 0.4,
-  },
-  nextBtnTextDisabled: {
-    color: 'rgba(255,255,255,0.60)',
-  },
+  // bottom bar removed (button moved to header)
 });

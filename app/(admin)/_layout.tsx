@@ -38,7 +38,7 @@ export default function AdminTabsLayout() {
   if (userType === "employee") {
     // Hide admin-only tabs for employee.
     screens.push(<Tabs.Screen key="emp-users-hidden" name="users" options={{ href: null }} />);
-    screens.push(<Tabs.Screen key="emp-admin-profile-hidden" name="admin-profile" options={{ href: null }} />);
+    screens.push(<Tabs.Screen key="emp-admin-profile-hidden" name="admin-profile" options={{ href: null, headerShown: false }} />);
   } else {
     screens.push(
       <Tabs.Screen
@@ -120,6 +120,7 @@ export default function AdminTabsLayout() {
         name="admin-profile"
         options={{
           title: "פרופיל",
+          headerShown: false,
           tabBarIcon: ({ focused }) => (
             <View style={styles.tabItem}>
               <View style={[styles.iconCircle, focused && styles.iconCircleActive]}>
@@ -152,7 +153,7 @@ export default function AdminTabsLayout() {
   }
 
   // Hidden routes in admin group
-  screens.push(<Tabs.Screen key="add-user-v2" name="add-user-v2" options={{ href: null }} />);
+  screens.push(<Tabs.Screen key="add-user-v2" name="add-user-v2" options={{ href: null, headerShown: false }} />);
   screens.push(<Tabs.Screen key="admin-guest-checkin" name="admin-guest-checkin" options={{ href: null }} />);
   screens.push(<Tabs.Screen key="admin-invitation-links" name="admin-invitation-links" options={{ href: null }} />);
   screens.push(<Tabs.Screen key="admin-events-create" name="admin-events-create" options={{ href: null }} />);
@@ -169,7 +170,7 @@ export default function AdminTabsLayout() {
     />
   );
   screens.push(<Tabs.Screen key="admin-event-messages" name="admin-event-messages" options={{ href: null }} />);
-  screens.push(<Tabs.Screen key="notification-editor" name="notification-editor" options={{ href: null }} />);
+  screens.push(<Tabs.Screen key="notification-editor" name="notification-editor" options={{ href: null, headerShown: false }} />);
   screens.push(<Tabs.Screen key="admin-rsvp-approvals" name="admin-rsvp-approvals" options={{ href: null }} />);
   screens.push(<Tabs.Screen key="automatic-notifications" name="automatic-notifications" options={{ href: null }} />);
   screens.push(<Tabs.Screen key="guests" name="guests" options={{ href: null }} />);

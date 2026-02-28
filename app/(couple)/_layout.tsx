@@ -241,6 +241,7 @@ export default function CoupleTabsLayout() {
           name="BrideGroomSeating"
           options={{
             title: "הושבה",
+            headerShown: false,
             tabBarIcon: ({ focused }) => (
               <View style={styles.tabItem}>
                 <View style={[styles.iconCircle, styles.centerCircle, focused && styles.iconCircleActive]}>
@@ -314,12 +315,14 @@ export default function CoupleTabsLayout() {
           name="edit-category"
           options={{
             href: null,
+            headerShown: false,
           }}
         />
         <Tabs.Screen
           name="select-category"
           options={{
             href: null,
+            headerShown: false,
           }}
         />
         <Tabs.Screen
@@ -332,6 +335,7 @@ export default function CoupleTabsLayout() {
           name="notification-editor"
           options={{
             href: null,
+            headerShown: false,
           }}
         />
       </Tabs>

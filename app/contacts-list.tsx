@@ -9,6 +9,7 @@ import {
   TextInput,
   Pressable,
   Platform,
+  Modal,
 } from 'react-native';
 import * as Contacts from 'expo-contacts';
 import { guestService } from '@/lib/services/guestService';
@@ -29,6 +30,7 @@ export default function ContactsListScreen() {
   const [existingGuests, setExistingGuests] = useState<any[]>([]);
   const [searchFocused, setSearchFocused] = useState(false);
   const [enableSides, setEnableSides] = useState(true);
+  const [successModal, setSuccessModal] = useState<{ visible: boolean; count: number }>({ visible: false, count: 0 });
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
@@ -231,6 +233,15 @@ export default function ContactsListScreen() {
     addGuestsToDatabase(newGuests);
   };
 
+  const safeBack = () => {
+    const canGoBackFn = (router as any)?.canGoBack;
+    if (typeof canGoBackFn === 'function' && canGoBackFn()) {
+      router.back();
+    } else {
+      router.replace('/(couple)/guests');
+    }
+  };
+
   const addGuestsToDatabase = async (guestsToAdd: any[]) => {
     let added = 0;
     for (const contact of guestsToAdd) {
@@ -245,14 +256,14 @@ export default function ContactsListScreen() {
           gift: 0,
           message: '',
           category_id: selectedCategory.id,
+          numberOfPeople: 1,
         });
         added++;
       } catch (e) {
         console.error('Error adding guest:', e);
       }
     }
-    Alert.alert('הוספה הושלמה', `נוספו ${added} אורחים חדשים לקטגוריה!`);
-    router.back();
+    setSuccessModal({ visible: true, count: added });
   };
 
   const toggleContact = (id: string) => {
@@ -604,6 +615,56 @@ export default function ContactsListScreen() {
         </Pressable>
       </View>
       </View>
+
+      {/* ─── Success Modal ─────────────────────────────── */}
+      <Modal
+        visible={successModal.visible}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => { setSuccessModal({ visible: false, count: 0 }); router.replace('/(couple)/guests'); }}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            {/* top row: X on the left */}
+            <View style={styles.modalTopRow}>
+              <Pressable
+                onPress={() => { setSuccessModal({ visible: false, count: 0 }); router.replace('/(couple)/guests'); }}
+                style={({ pressed }) => [styles.modalCloseBtn, pressed && { opacity: 0.65 }]}
+                accessibilityRole="button"
+                accessibilityLabel="סגור"
+              >
+                <Ionicons name="close" size={20} color="#64748B" />
+              </Pressable>
+            </View>
+
+            {/* Green circle icon */}
+            <View style={styles.modalIconWrap}>
+              <LinearGradient
+                colors={['#34D399', '#059669']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.modalIconCircle}
+              >
+                <Ionicons name="checkmark" size={38} color="#fff" />
+              </LinearGradient>
+            </View>
+
+            <Text style={styles.modalTitle}>נוספו בהצלחה! 🎉</Text>
+            <Text style={styles.modalBody}>
+              <Text style={styles.modalCount}>{successModal.count}</Text>
+              {' '}אורחים חדשים נוספו לקטגוריה
+            </Text>
+            {selectedCategory?.name ? (
+              <View style={styles.modalCategoryPill}>
+                <Ionicons name="people" size={15} color="#1d4ed8" />
+                <Text style={styles.modalCategoryText}>{selectedCategory.name}</Text>
+              </View>
+            ) : null}
+          </View>
+        </View>
+      </Modal>
+
     </BackSwipe>
   );
 }
@@ -928,5 +989,98 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '800',
     textAlign: 'right',
+  },
+
+  /* ─── Success Modal ─────────────────────────────── */
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15,23,42,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 28,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 28,
+    paddingHorizontal: 28,
+    paddingTop: 14,
+    paddingBottom: 28,
+    alignItems: 'center',
+    gap: 12,
+    ...Platform.select({
+      web: ({ boxShadow: '0 24px 64px rgba(0,0,0,0.22)' } as any),
+      default: {
+        shadowColor: '#000',
+        shadowOpacity: 0.20,
+        shadowRadius: 40,
+        shadowOffset: { width: 0, height: 16 },
+        elevation: 20,
+      },
+    }),
+  },
+  modalIconWrap: {
+    marginBottom: 6,
+  },
+  modalIconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#0F172A',
+    textAlign: 'center',
+    letterSpacing: -0.3,
+  },
+  modalBody: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#475569',
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  modalCount: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#059669',
+  },
+  modalCategoryPill: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#EEF2FF',
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 7,
+    marginTop: 2,
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+  },
+  modalCategoryText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1d4ed8',
+  },
+  modalTopRow: {
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  modalCloseBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 999,
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 }); 
