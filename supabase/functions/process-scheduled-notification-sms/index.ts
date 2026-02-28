@@ -161,6 +161,21 @@ async function upsertRecipientRunRows(adminClient: any, rows: RecipientRunRow[])
   }
 }
 
+async function finalizeCatchupQueueForRun(adminClient: any, runId: string) {
+  const id = String(runId || "").trim();
+  if (!id) return;
+  try {
+    const { error } = await adminClient.rpc("finalize_sms_catchup_queue_for_run", { p_run_id: id });
+    if (error) {
+      // If the migration wasn't applied yet, environments may not have this RPC.
+      // Keep scheduler backward-compatible.
+      console.warn("Failed to finalize catchup queue:", { runId: id, error });
+    }
+  } catch (e) {
+    console.warn("Failed to finalize catchup queue (exception):", { runId: id, e });
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, { status: 405 });
@@ -517,6 +532,9 @@ serve(async (req) => {
         result: resultToStore,
         error: failed === 0 ? null : "some_messages_failed",
       });
+
+      // If this run was a catch-up batch for "reminder_1", update the queue rows accordingly.
+      await finalizeCatchupQueueForRun(adminClient, runId);
     }
 
     return json({ ok: true, processed, totalSent, totalFailed, dryRun });

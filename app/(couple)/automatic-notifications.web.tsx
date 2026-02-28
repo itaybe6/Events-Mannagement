@@ -9,6 +9,7 @@ import { eventService } from '@/lib/services/eventService';
 import { useUserStore } from '@/store/userStore';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import { Event } from '@/types';
+import IPhoneMockup from '@/components/ui/iphone-mockup';
 
 type NotificationTemplate = {
   notification_type: string;
@@ -33,9 +34,15 @@ type NotificationSettingRow = {
   flow_id?: string | null;
   sort_order?: number | null;
   depends_on_setting_id?: string | null;
-  recipient_mode?: 'manual' | 'pending' | 'prev_pending' | null;
+  recipient_mode?: 'manual' | 'all' | 'pending' | 'prev_pending' | null;
   recipient_rule?: any;
   ui_hidden?: boolean | null;
+  // Catch-up queue scheduling (reminder_1 only; may be missing in older DB envs)
+  late_catchup_enabled?: boolean | null;
+  late_catchup_send_time?: string | null; // time
+  late_catchup_weekdays?: number[] | null; // 0=Sun ... 6=Sat
+  late_catchup_schedule_mode?: 'weekdays' | 'dates' | null;
+  late_catchup_dates?: string[] | null; // YYYY-MM-DD
 };
 
 type SmsRunSummary = {
@@ -218,6 +225,14 @@ function parseTimeHm(value: string): { h: number; m: number } | null {
   return { h, m: min };
 }
 
+function normalizeTimeToDb(value: string) {
+  const hm = parseTimeHm(value);
+  if (!hm) return null;
+  const hh = String(hm.h).padStart(2, '0');
+  const mm = String(hm.m).padStart(2, '0');
+  return `${hh}:${mm}:00`;
+}
+
 function parseYmd(ymd: string): { y: number; m: number; d: number } | null {
   const s = String(ymd || '').trim();
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
@@ -327,6 +342,9 @@ export default function AutomaticNotificationsWebScreen() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorType, setEditorType] = useState<string | null>(null);
   const [editorKind, setEditorKind] = useState<'template' | 'flow'>('template');
+  type EditorWizardStepId = 'schedule' | 'recipients' | 'catchup' | 'message';
+  const [editorWizardStepIdx, setEditorWizardStepIdx] = useState(0);
+  const [recipientsWizardManual, setRecipientsWizardManual] = useState(false);
   const [flowDraft, setFlowDraft] = useState<{
     title: string;
     recipientMode: 'manual' | 'pending' | 'prev_pending';
@@ -341,6 +359,13 @@ export default function AutomaticNotificationsWebScreen() {
   const [timeDialogOpen, setTimeDialogOpen] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(() => new Date());
   const [timeDraft, setTimeDraft] = useState<{ h: number; m: number }>({ h: 11, m: 0 });
+  const [catchupScheduleMode, setCatchupScheduleMode] = useState<'weekdays' | 'dates'>('weekdays');
+  const [catchupEnabled, setCatchupEnabled] = useState<boolean>(true);
+  const [catchupTimeHm, setCatchupTimeHm] = useState<string>('12:00');
+  const [catchupWeekdays, setCatchupWeekdays] = useState<Set<number>>(() => new Set([0, 1, 2, 3, 4])); // Sun-Thu
+  const [catchupDates, setCatchupDates] = useState<Set<string>>(() => new Set());
+  const [catchupDatesDialogOpen, setCatchupDatesDialogOpen] = useState(false);
+  const [catchupCalendarMonth, setCatchupCalendarMonth] = useState(() => new Date());
 
   const [recipientsPreviewOpen, setRecipientsPreviewOpen] = useState(false);
   const [recipientsPreviewTitle, setRecipientsPreviewTitle] = useState('מוזמנים');
@@ -351,6 +376,20 @@ export default function AutomaticNotificationsWebScreen() {
   const [recipientsPreviewSearch, setRecipientsPreviewSearch] = useState('');
 
   const [lastSmsRunBySettingId, setLastSmsRunBySettingId] = useState<Record<string, SmsRunSummary | undefined>>({});
+  const [queuedCatchupBySettingId, setQueuedCatchupBySettingId] = useState<
+    Record<string, { count: number; nextDueAt?: string | null }>
+  >({});
+  const [catchupOpen, setCatchupOpen] = useState(false);
+  const [catchupLoading, setCatchupLoading] = useState(false);
+  const [catchupTitle, setCatchupTitle] = useState('אורחים חדשים בתור');
+  const [catchupSearch, setCatchupSearch] = useState('');
+  const [catchupRows, setCatchupRows] = useState<
+    Array<{ guestId: string; name: string; phone?: string; dueAt: string; lastError?: string | null }>
+  >([]);
+  const [stepCatchupRows, setStepCatchupRows] = useState<
+    Array<{ guestId: string; name: string; phone?: string; dueAt: string; status: 'queued' | 'sent' | 'cancelled'; lastError?: string | null }>
+  >([]);
+  const [stepCatchupLoading, setStepCatchupLoading] = useState(false);
   const [sendStatusOpen, setSendStatusOpen] = useState(false);
   const [sendStatusLoading, setSendStatusLoading] = useState(false);
   const [sendStatusTitle, setSendStatusTitle] = useState('סטטוס שליחה');
@@ -375,6 +414,20 @@ export default function AutomaticNotificationsWebScreen() {
     const date = d.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' });
     const time = d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
     return `${date} ${time}`;
+  };
+
+  const formatDueAtQueue = (dueAt: string) => {
+    const d = new Date(String(dueAt ?? ''));
+    if (!Number.isFinite(d.getTime())) return '—';
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const dueDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const diff = Math.round((dueDay.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
+    const time = d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+    if (diff === 0) return `היום, ${time}`;
+    if (diff === 1) return `מחר, ${time}`;
+    const date = d.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' });
+    return `${date}, ${time}`;
   };
 
   const statusLabel = (s: string) => {
@@ -493,6 +546,70 @@ export default function AutomaticNotificationsWebScreen() {
       setSendStatusOpen(false);
     } finally {
       setSendStatusLoading(false);
+    }
+  };
+
+  const openCatchupQueue = async (row: NotificationSettingRow) => {
+    if (!row?.id || !resolvedEventId) {
+      showToast('אין תור להצגה עדיין');
+      return;
+    }
+    setCatchupTitle(`אורחים חדשים בתור · ${getDisplayTitle(row)}`);
+    setCatchupSearch('');
+    setCatchupRows([]);
+    setCatchupOpen(true);
+    setCatchupLoading(true);
+    try {
+      const { data: qRows, error: qError } = await supabase
+        .from('notification_sms_catchup_queue')
+        .select('guest_id, due_at, last_error')
+        .eq('event_id', resolvedEventId)
+        .eq('notification_setting_id', String(row.id))
+        .eq('status', 'queued')
+        .order('due_at', { ascending: true });
+      if (qError) throw qError;
+
+      const base = ((qRows as any[]) || []).map((r) => ({
+        guestId: String((r as any).guest_id),
+        dueAt: String((r as any).due_at),
+        lastError: (r as any).last_error ? String((r as any).last_error) : null,
+      }));
+      const ids = base.map((x) => x.guestId).filter(Boolean);
+      const byId = new Map<string, { name: string; phone?: string }>();
+      if (ids.length > 0) {
+        const { data: gRows, error: gError } = await supabase
+          .from('guests')
+          .select('id, name, phone')
+          .eq('event_id', resolvedEventId)
+          .in('id', ids);
+        if (!gError) {
+          for (const g of (gRows as any[]) || []) {
+            byId.set(String((g as any).id), {
+              name: String((g as any).name ?? ''),
+              phone: (g as any).phone ? String((g as any).phone) : undefined,
+            });
+          }
+        }
+      }
+
+      setCatchupRows(
+        base.map((r) => {
+          const g = byId.get(r.guestId);
+          return {
+            guestId: r.guestId,
+            name: g?.name || '—',
+            phone: g?.phone,
+            dueAt: r.dueAt,
+            lastError: r.lastError,
+          };
+        })
+      );
+    } catch (e) {
+      console.warn('Failed to load catchup queue:', e);
+      showToast('לא ניתן לטעון את התור');
+      setCatchupOpen(false);
+    } finally {
+      setCatchupLoading(false);
     }
   };
 
@@ -628,6 +745,21 @@ export default function AutomaticNotificationsWebScreen() {
           recipient_guest_ids: Array.isArray((existing as any).recipient_guest_ids)
             ? ((existing as any).recipient_guest_ids as any[]).map((x) => String(x))
             : [],
+          recipient_mode: (existing as any)?.recipient_mode ? String((existing as any).recipient_mode) : null,
+          late_catchup_enabled:
+            (existing as any)?.late_catchup_enabled === null || (existing as any)?.late_catchup_enabled === undefined
+              ? null
+              : Boolean((existing as any).late_catchup_enabled),
+          late_catchup_send_time: (existing as any)?.late_catchup_send_time ? String((existing as any).late_catchup_send_time) : null,
+          late_catchup_weekdays: Array.isArray((existing as any)?.late_catchup_weekdays)
+            ? ((existing as any).late_catchup_weekdays as any[]).map((x) => Number(x)).filter((n) => Number.isFinite(n))
+            : null,
+          late_catchup_schedule_mode: (existing as any)?.late_catchup_schedule_mode
+            ? (String((existing as any).late_catchup_schedule_mode).trim() as any)
+            : null,
+          late_catchup_dates: Array.isArray((existing as any)?.late_catchup_dates)
+            ? ((existing as any).late_catchup_dates as any[]).map((x) => String(x)).filter(Boolean)
+            : null,
           ui_hidden: Boolean((existing as any)?.ui_hidden),
         };
       }
@@ -641,6 +773,12 @@ export default function AutomaticNotificationsWebScreen() {
         channel: tpl.channel,
         notification_date: null,
         recipient_guest_ids: [],
+        recipient_mode: tpl.notification_type === 'reminder_1' ? 'all' : null,
+        late_catchup_enabled: tpl.notification_type === 'reminder_1' ? true : null,
+        late_catchup_send_time: tpl.notification_type === 'reminder_1' ? '12:00:00' : null,
+        late_catchup_weekdays: tpl.notification_type === 'reminder_1' ? [0, 1, 2, 3, 4] : null,
+        late_catchup_schedule_mode: tpl.notification_type === 'reminder_1' ? 'weekdays' : null,
+        late_catchup_dates: tpl.notification_type === 'reminder_1' ? [] : null,
         ui_hidden: false,
       };
     }).filter(Boolean) as any;
@@ -732,6 +870,41 @@ export default function AutomaticNotificationsWebScreen() {
     } catch (e) {
       console.warn('Failed to fetch last sms runs:', e);
     }
+
+    // Fetch queued catch-up counts for reminder_1 (best-effort; DB might not have the table yet).
+    try {
+      const reminder1 = merged.find((r) => r.notification_type === 'reminder_1' && r.id && (r.channel || 'SMS') === 'SMS');
+      if (!reminder1?.id) {
+        setQueuedCatchupBySettingId({});
+      } else {
+        const { data: qRows, error: qError } = await supabase
+          .from('notification_sms_catchup_queue')
+          .select('notification_setting_id, due_at')
+          .eq('event_id', evtId)
+          .eq('notification_setting_id', String(reminder1.id))
+          .eq('status', 'queued')
+          .order('due_at', { ascending: true });
+        if (qError) {
+          const msg = String((qError as any)?.message ?? '').toLowerCase();
+          if (msg.includes('does not exist') || msg.includes('notification_sms_catchup_queue')) {
+            setQueuedCatchupBySettingId({});
+          } else {
+            console.warn('Failed to load catch-up queue:', qError);
+            setQueuedCatchupBySettingId({});
+          }
+        } else {
+          const list = (qRows as any[]) || [];
+          const count = list.length;
+          const nextDueAt = count > 0 ? String((list[0] as any)?.due_at ?? '') : null;
+          setQueuedCatchupBySettingId({
+            [String(reminder1.id)]: { count, nextDueAt: nextDueAt || null },
+          });
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to load catch-up queue (exception):', e);
+      setQueuedCatchupBySettingId({});
+    }
   };
 
   useEffect(() => {
@@ -805,6 +978,130 @@ export default function AutomaticNotificationsWebScreen() {
     return flowSteps.find((r) => r.notification_type === nt) || null;
   }, [editorType, flowSteps, notificationSettings]);
 
+  const loadStepCatchupQueue = useCallback(async () => {
+    if (!editorRow?.id || !resolvedEventId) {
+      setStepCatchupRows([]);
+      return;
+    }
+    setStepCatchupLoading(true);
+    try {
+      const { data: qRows, error: qError } = await supabase
+        .from('notification_sms_catchup_queue')
+        .select('guest_id, due_at, last_error, status')
+        .eq('event_id', resolvedEventId)
+        .eq('notification_setting_id', String(editorRow.id))
+        .in('status', ['queued', 'sent'])
+        .order('due_at', { ascending: true });
+      if (qError) throw qError;
+
+      const base = ((qRows as any[]) || []).map((r) => ({
+        guestId: String((r as any).guest_id),
+        dueAt: String((r as any).due_at),
+        lastError: (r as any).last_error ? String((r as any).last_error) : null,
+        status: String((r as any).status || 'queued') as 'queued' | 'sent' | 'cancelled',
+      }));
+      const ids = base.map((x) => x.guestId).filter(Boolean);
+      const byId = new Map<string, { name: string; phone?: string }>();
+      if (ids.length > 0) {
+        const { data: gRows, error: gError } = await supabase
+          .from('guests')
+          .select('id, name, phone')
+          .eq('event_id', resolvedEventId)
+          .in('id', ids);
+        if (!gError) {
+          for (const g of (gRows as any[]) || []) {
+            byId.set(String((g as any).id), {
+              name: String((g as any).name ?? ''),
+              phone: (g as any).phone ? String((g as any).phone) : undefined,
+            });
+          }
+        }
+      }
+
+      setStepCatchupRows(
+        base.map((r) => {
+          const g = byId.get(r.guestId);
+          return {
+            guestId: r.guestId,
+            name: g?.name || '—',
+            phone: g?.phone,
+            dueAt: r.dueAt,
+            status: r.status,
+            lastError: r.lastError,
+          };
+        })
+      );
+    } catch (e) {
+      console.warn('Failed to load step catchup queue:', e);
+      setStepCatchupRows([]);
+    } finally {
+      setStepCatchupLoading(false);
+    }
+  }, [editorRow?.id, resolvedEventId]);
+
+  const editorWizardSteps = useMemo<EditorWizardStepId[]>(() => {
+    if (!editorOpen || !editorRow || editorKind !== 'template') return ['message'];
+    const nt = String(editorRow.notification_type || '').trim();
+    const channel = String((editorRow as any)?.channel || 'SMS');
+    const steps: EditorWizardStepId[] = ['schedule'];
+    if (channel === 'SMS' && (nt === 'reminder_1' || nt === 'reminder_2')) steps.push('recipients');
+    if (nt === 'reminder_1' && channel === 'SMS') steps.push('catchup');
+    steps.push('message');
+    return steps;
+  }, [editorKind, editorOpen, editorRow]);
+
+  const editorWizardStepId =
+    editorWizardSteps[Math.min(editorWizardStepIdx, Math.max(0, editorWizardSteps.length - 1))] ?? 'schedule';
+  const editorWizardIsLast = editorWizardStepIdx >= editorWizardSteps.length - 1;
+
+  useEffect(() => {
+    if (!editorOpen) return;
+    setEditorWizardStepIdx(0);
+  }, [editorKind, editorOpen, editorType]);
+
+  useEffect(() => {
+    if (
+      editorOpen &&
+      editorKind === 'template' &&
+      editorWizardStepId === 'catchup' &&
+      String(editorRow?.notification_type || '') === 'reminder_1' &&
+      editorRow?.id
+    ) {
+      void loadStepCatchupQueue();
+    }
+  }, [editorOpen, editorKind, editorWizardStepId, editorRow?.id, editorRow?.notification_type, loadStepCatchupQueue]);
+
+  const runCatchupBackfill = useCallback(async () => {
+    if (!resolvedEventId) {
+      showToast('אין אירוע פעיל');
+      return;
+    }
+    try {
+      const { error } = await supabase.rpc('backfill_first_message_catchup_queue', { p_event_id: resolvedEventId });
+      if (error) throw error;
+      showToast('התור עודכן');
+      await loadStepCatchupQueue();
+      const reminder1 = (notificationSettings || []).find((r) => r.notification_type === 'reminder_1' && r.id);
+      if (reminder1?.id) {
+        const { data: qRows } = await supabase
+          .from('notification_sms_catchup_queue')
+          .select('due_at')
+          .eq('event_id', resolvedEventId)
+          .eq('notification_setting_id', String(reminder1.id))
+          .eq('status', 'queued')
+          .order('due_at', { ascending: true });
+        const list = (qRows as any[]) || [];
+        setQueuedCatchupBySettingId((prev) => ({
+          ...prev,
+          [String(reminder1.id)]: { count: list.length, nextDueAt: list[0] ? String((list[0] as any).due_at) : null },
+        }));
+      }
+    } catch (e) {
+      console.warn('Backfill catchup queue:', e);
+      showToast('לא ניתן לעדכן את התור');
+    }
+  }, [resolvedEventId, loadStepCatchupQueue, notificationSettings, showToast]);
+
   const demoInvitation = useMemo(() => {
     const pickFrom = (list: any[]) => {
       for (const g of list) {
@@ -852,6 +1149,8 @@ export default function AutomaticNotificationsWebScreen() {
     }
   }, [demoUrl, showToast]);
 
+  const MESSAGE_MAX_CHARS = 250;
+
   const normalizeTemplateToSingleBraces = (raw: string) => {
     const stripMarks = (s: string) => String(s || '').replace(/[\u200E\u200F\u202A-\u202E]/g, '').trim();
     return String(raw || '').replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (_m, inner) => `{${stripMarks(inner)}}`);
@@ -865,11 +1164,44 @@ export default function AutomaticNotificationsWebScreen() {
     const abs = Math.abs(days);
     const normalizedDays = -(abs || 30); // always "before"
     setEditDraft({
-      message: normalizeTemplateToSingleBraces(String(row.message_content || '')),
+      message: normalizeTemplateToSingleBraces(String(row.message_content || '')).slice(0, MESSAGE_MAX_CHARS),
       days: normalizedDays,
       timeHm: inferTimeHmFromExisting((row as any).notification_date),
     });
+
+    // Initialize catch-up schedule editor for reminder_1
+    if (String(row.notification_type || '').trim() === 'reminder_1') {
+      setCatchupEnabled(Boolean((row as any)?.late_catchup_enabled ?? true));
+      const tRaw = String((row as any)?.late_catchup_send_time ?? '12:00:00');
+      setCatchupTimeHm(tRaw.includes(':') ? tRaw.split(':').slice(0, 2).join(':') : '12:00');
+      const modeRaw = String((row as any)?.late_catchup_schedule_mode ?? 'weekdays').trim();
+      setCatchupScheduleMode(modeRaw === 'dates' ? 'dates' : 'weekdays');
+      const wd = Array.isArray((row as any)?.late_catchup_weekdays)
+        ? ((row as any).late_catchup_weekdays as any[]).map((x) => Number(x)).filter((n) => Number.isFinite(n))
+        : [0, 1, 2, 3, 4];
+      setCatchupWeekdays(new Set(wd.map((n) => Math.max(0, Math.min(6, Number(n) || 0)))));
+      const dates = Array.isArray((row as any)?.late_catchup_dates)
+        ? ((row as any).late_catchup_dates as any[]).map((x) => String(x)).filter(Boolean)
+        : [];
+      setCatchupDates(new Set(dates));
+    }
+
+    // Initialize recipients wizard state for template editor
+    {
+      const nt = String(row.notification_type || '').trim();
+      const ids = Array.isArray((row as any).recipient_guest_ids)
+        ? ((row as any).recipient_guest_ids as any[]).map((x) => String(x)).filter(Boolean)
+        : [];
+      const mode = String((row as any)?.recipient_mode ?? '').trim();
+      const isAutoAll = nt === 'reminder_1' && mode !== 'manual';
+      setPickerTargetType(nt);
+      setPickerSelectedIds(new Set(ids));
+      setPickerSearch('');
+      setPickerFilter(nt === 'reminder_2' ? 'pending' : 'all');
+      setRecipientsWizardManual(!isAutoAll || ids.length > 0);
+    }
     setFlowDraft(null);
+    setEditorWizardStepIdx(0);
     setEditorOpen(true);
   };
 
@@ -882,7 +1214,7 @@ export default function AutomaticNotificationsWebScreen() {
     const hasValidDt = dt && Number.isFinite(dt.getTime());
     const days = typeof row.days_from_wedding === 'number' ? Number(row.days_from_wedding) : 0;
     setEditDraft({
-      message: normalizeTemplateToSingleBraces(String(row.message_content || '')),
+      message: normalizeTemplateToSingleBraces(String(row.message_content || '')).slice(0, MESSAGE_MAX_CHARS),
       days,
       timeHm: hasValidDt ? formatTime(dt as any) : '11:00',
     });
@@ -891,6 +1223,7 @@ export default function AutomaticNotificationsWebScreen() {
       recipientMode: (String((row as any)?.recipient_mode || 'manual') as any) || 'manual',
       dependsOnSettingId: (row as any)?.depends_on_setting_id ? String((row as any).depends_on_setting_id) : null,
     });
+    setEditorWizardStepIdx(0);
     setEditorOpen(true);
   };
 
@@ -917,6 +1250,18 @@ export default function AutomaticNotificationsWebScreen() {
       const isFlow = nt.startsWith('flow_step:');
       const recipientMode = isFlow ? String((row as any)?.recipient_mode || 'manual') : null;
       const isAutoPending = nt === 'reminder_2' || (isFlow && recipientMode === 'pending');
+      const isAutoAll = !isFlow && nt === 'reminder_1' && String((row as any)?.recipient_mode ?? '').trim() !== 'manual';
+
+      if (isAutoAll && ids.length === 0) {
+        setRecipientsPreviewTitle('מוזמנים (כל האורחים)');
+        setRecipientsPreviewHint('הבחירה היא אוטומטית — ההודעה תישלח לכל האורחים באירוע.');
+        setRecipientsPreviewRows(
+          allGuests.map((g) => ({ id: String(g.id), name: String(g.name || ''), phone: g.phone, status: g.status }))
+        );
+        setRecipientsPreviewSearch('');
+        setRecipientsPreviewOpen(true);
+        return;
+      }
 
       if (isAutoPending && ids.length === 0) {
         const pending = allGuests.filter((g) => String(g.status || '').trim() === 'ממתין');
@@ -1252,6 +1597,10 @@ export default function AutomaticNotificationsWebScreen() {
 
   const saveDraft = async (opts?: { recipientGuestIds?: string[]; closeOnSuccess?: boolean; toastOnSuccess?: boolean }) => {
     if (!event?.id || !editorRow || !editDraft) return;
+    if ((editDraft.message ?? '').length > MESSAGE_MAX_CHARS) {
+      alert(`תוכן ההודעה מוגבל ל־${MESSAGE_MAX_CHARS} תווים. קיצר את ההודעה ושמור שוב.`);
+      return;
+    }
     setSaving(true);
     try {
       const isFlow = editorKind === 'flow' && String(editorRow.notification_type || '').startsWith('flow_step:');
@@ -1272,6 +1621,34 @@ export default function AutomaticNotificationsWebScreen() {
         return;
       }
       payload.notification_date = dt.toISOString();
+
+      // Templates: reminder_1 defaults to "all guests" unless a manual list is provided.
+      if (!isFlow && String(editorRow.notification_type || '').trim() === 'reminder_1') {
+        // Catch-up schedule (queue after the first-message scheduled time has passed)
+        payload.late_catchup_enabled = Boolean(catchupEnabled);
+        const tt = normalizeTimeToDb(String(catchupTimeHm || '').trim());
+        if (tt) payload.late_catchup_send_time = tt;
+        payload.late_catchup_schedule_mode = catchupScheduleMode;
+        if (catchupScheduleMode === 'dates') {
+          payload.late_catchup_dates = Array.from(catchupDates).sort();
+        } else {
+          payload.late_catchup_weekdays = Array.from(catchupWeekdays).sort((a, b) => a - b);
+        }
+
+        // Only override recipients when explicitly provided by the caller.
+        // (Avoid clobbering an existing manual list when saving other fields.)
+        const hasRecipientsOverride = Boolean(opts && Object.prototype.hasOwnProperty.call(opts, 'recipientGuestIds'));
+        if (hasRecipientsOverride) {
+          const ids = Array.isArray(opts?.recipientGuestIds) ? opts?.recipientGuestIds || [] : [];
+          if (ids.length > 0) {
+            payload.recipient_mode = 'manual';
+            payload.recipient_guest_ids = ids;
+          } else {
+            payload.recipient_mode = 'all';
+            payload.recipient_guest_ids = [];
+          }
+        }
+      }
 
       if (isFlow) {
         const mode = String(flowDraft?.recipientMode || 'manual');
@@ -1302,6 +1679,15 @@ export default function AutomaticNotificationsWebScreen() {
           delete payload.recipient_mode;
           delete payload.recipient_rule;
           delete payload.depends_on_setting_id;
+          const retry = await supabase.from('notification_settings').update(payload).eq('id', editorRow.id);
+          error = retry.error as any;
+        }
+        if (error && isMissingColumn(error, 'late_catchup_enabled')) {
+          delete payload.late_catchup_enabled;
+          delete payload.late_catchup_send_time;
+          delete payload.late_catchup_weekdays;
+          delete payload.late_catchup_schedule_mode;
+          delete payload.late_catchup_dates;
           const retry = await supabase.from('notification_settings').update(payload).eq('id', editorRow.id);
           error = retry.error as any;
         }
@@ -1359,6 +1745,16 @@ export default function AutomaticNotificationsWebScreen() {
         data = retry.data as any;
         error = retry.error as any;
       }
+      if (error && isMissingColumn(error, 'late_catchup_enabled')) {
+        delete insertPayload.late_catchup_enabled;
+        delete insertPayload.late_catchup_send_time;
+        delete insertPayload.late_catchup_weekdays;
+        delete insertPayload.late_catchup_schedule_mode;
+        delete insertPayload.late_catchup_dates;
+        const retry = await supabase.from('notification_settings').insert(insertPayload).select().single();
+        data = retry.data as any;
+        error = retry.error as any;
+      }
       if (error) throw error;
       setNotificationSettings((p) =>
         p.map((r) => (r.notification_type === editorRow.notification_type ? { ...(r as any), ...(data as any) } : r))
@@ -1392,7 +1788,11 @@ export default function AutomaticNotificationsWebScreen() {
       );
     } else {
       setNotificationSettings((prev) =>
-        prev.map((r) => (r.notification_type === nt ? ({ ...(r as any), recipient_guest_ids: ids } as any) : r))
+        prev.map((r) =>
+          r.notification_type === nt
+            ? ({ ...(r as any), recipient_guest_ids: ids, ...(nt === 'reminder_1' ? { recipient_mode: 'manual' } : null) } as any)
+            : r
+        )
       );
     }
 
@@ -1400,10 +1800,16 @@ export default function AutomaticNotificationsWebScreen() {
     try {
       if (row.id) {
         const updatePayload: any = { recipient_guest_ids: ids };
+        if (!isFlow && nt === 'reminder_1') updatePayload.recipient_mode = 'manual';
         let { error } = await supabase.from('notification_settings').update(updatePayload).eq('id', row.id);
         if (error && isMissingColumn(error, 'recipient_guest_ids')) {
           // environment without migration
           throw error;
+        }
+        if (error && isMissingColumn(error, 'recipient_mode')) {
+          delete updatePayload.recipient_mode;
+          const retry = await supabase.from('notification_settings').update(updatePayload).eq('id', row.id);
+          error = retry.error as any;
         }
         if (error) throw error;
         return;
@@ -1425,6 +1831,7 @@ export default function AutomaticNotificationsWebScreen() {
         channel: (row.channel as any) || tpl?.channel || 'SMS',
         recipient_guest_ids: ids,
       };
+      if (!isFlow && nt === 'reminder_1') insertPayload.recipient_mode = 'manual';
       const dt = computeNotificationDateTime((event as any)?.date, insertPayload.days_from_wedding, '11:00');
       if (dt) insertPayload.notification_date = dt.toISOString();
 
@@ -1447,6 +1854,12 @@ export default function AutomaticNotificationsWebScreen() {
         data = retry.data as any;
         error = retry.error as any;
       }
+      if (error && isMissingColumn(error, 'recipient_mode')) {
+        delete insertPayload.recipient_mode;
+        const retry = await supabase.from('notification_settings').insert(insertPayload).select().single();
+        data = retry.data as any;
+        error = retry.error as any;
+      }
       if (error) throw error;
 
       setNotificationSettings((p) =>
@@ -1465,6 +1878,10 @@ export default function AutomaticNotificationsWebScreen() {
       alert('יש למלא תוכן הודעה');
       return;
     }
+    if (editDraft.message.length > MESSAGE_MAX_CHARS) {
+      alert(`תוכן ההודעה מוגבל ל־${MESSAGE_MAX_CHARS} תווים. קיצר את ההודעה לפני שליחה.`);
+      return;
+    }
 
     setSendingNow(true);
     try {
@@ -1477,10 +1894,20 @@ export default function AutomaticNotificationsWebScreen() {
       const isFlow = nt.startsWith('flow_step:');
       const flowMode = isFlow ? String((editorRow as any)?.recipient_mode || flowDraft?.recipientMode || 'manual') : null;
       const shouldAutoPending = nt === 'reminder_2' || (isFlow && flowMode === 'pending');
-      const isRequiredList = nt === 'reminder_1' || (isFlow && flowMode === 'manual');
-      let ids = Array.isArray((editorRow as any).recipient_guest_ids)
+      const rowIds = Array.isArray((editorRow as any).recipient_guest_ids)
         ? ((editorRow as any).recipient_guest_ids as any[]).map((x) => String(x))
         : [];
+      let ids =
+        editorKind === 'template' && (nt === 'reminder_1' || nt === 'reminder_2') && !isFlow
+          ? Array.from(pickerSelectedIds)
+          : rowIds;
+      const isAutoAll =
+        !isFlow &&
+        nt === 'reminder_1' &&
+        String((editorRow as any)?.recipient_mode ?? '').trim() !== 'manual' &&
+        !recipientsWizardManual &&
+        ids.length === 0;
+      const isRequiredList = (nt === 'reminder_1' && !isAutoAll) || (isFlow && flowMode === 'manual');
 
       if (isRequiredList && ids.length === 0) {
         alert(isFlow ? 'במצב "בחירה ידנית" צריך לבחור מוזמנים.' : 'להודעה הראשונה צריך לבחור מוזמנים (לחץ "הוסף מוזמנים")');
@@ -1521,8 +1948,12 @@ export default function AutomaticNotificationsWebScreen() {
       }
 
       // Persist current editor draft before sending
-      if (ids.length > 0) await saveDraft({ recipientGuestIds: ids });
-      else await saveDraft();
+      if (!isFlow && (nt === 'reminder_1' || nt === 'reminder_2')) {
+        await saveDraft({ recipientGuestIds: ids });
+      } else {
+        if (ids.length > 0) await saveDraft({ recipientGuestIds: ids });
+        else await saveDraft();
+      }
 
       const sessionRes = await supabase.auth.getSession();
       const accessToken = sessionRes.data.session?.access_token;
@@ -1747,6 +2178,15 @@ export default function AutomaticNotificationsWebScreen() {
     return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
   }, [scheduledSendDateTime]);
 
+  useEffect(() => {
+    if (!editorOpen) return;
+    if (editorKind !== 'template') return;
+    if (editorWizardStepId !== 'schedule') return;
+    const seed = calendarSelected ?? scheduledSendDateTime ?? new Date(String((event as any)?.date ?? ''));
+    if (!seed || !Number.isFinite(seed.getTime())) return;
+    setCalendarMonth(new Date(seed.getFullYear(), seed.getMonth(), 1));
+  }, [calendarSelected, editorKind, editorOpen, editorWizardStepId, event, scheduledSendDateTime]);
+
   const calendarGrid = useMemo(() => {
     const base = calendarMonth instanceof Date ? calendarMonth : new Date();
     const y = base.getFullYear();
@@ -1762,6 +2202,22 @@ export default function AutomaticNotificationsWebScreen() {
 
     return { y, m, cells };
   }, [calendarMonth]);
+
+  const catchupCalendarGrid = useMemo(() => {
+    const base = catchupCalendarMonth instanceof Date ? catchupCalendarMonth : new Date();
+    const y = base.getFullYear();
+    const m = base.getMonth();
+    const first = new Date(y, m, 1);
+    const firstDow = first.getDay(); // 0=Sun
+    const daysInMonth = new Date(y, m + 1, 0).getDate();
+
+    const cells: Array<{ day: number | null; date: Date | null }> = [];
+    for (let i = 0; i < firstDow; i++) cells.push({ day: null, date: null });
+    for (let d = 1; d <= daysInMonth; d++) cells.push({ day: d, date: new Date(y, m, d, 0, 0, 0, 0) });
+    while (cells.length % 7 !== 0) cells.push({ day: null, date: null });
+
+    return { y, m, cells };
+  }, [catchupCalendarMonth]);
 
   const openDateDialog = useCallback(() => {
     const seed = calendarSelected ?? scheduledSendDateTime ?? new Date(String((event as any)?.date ?? ''));
@@ -1933,6 +2389,14 @@ export default function AutomaticNotificationsWebScreen() {
                   row.id && (row.channel || 'SMS') === 'SMS' ? lastSmsRunBySettingId[String(row.id)] : undefined;
                 const lastRunLabel = lastRun ? statusLabel(String(lastRun.status)) : null;
                 const lastRunAt = lastRun?.claimed_at ? formatHeDateTimeShort(lastRun.claimed_at) : '';
+                const catchup = row.id ? queuedCatchupBySettingId[String(row.id)] : undefined;
+                const showCatchup =
+                  String(row.notification_type || '').trim() === 'reminder_1' &&
+                  (row.channel || 'SMS') === 'SMS' &&
+                  (catchup?.count || 0) > 0;
+                const catchupText = showCatchup
+                  ? `אורחים חדשים בתור: ${catchup?.count || 0}${catchup?.nextDueAt ? ` · הבא: ${formatHeDateTimeShort(catchup.nextDueAt)}` : ''}`
+                  : '';
 
                 const isFlow = item.kind === 'flow';
                 const mode = isFlow ? String((row as any)?.recipient_mode || 'manual') : null;
@@ -1940,6 +2404,7 @@ export default function AutomaticNotificationsWebScreen() {
                 const recipientsLabel = !isFlow
                   ? (() => {
                       const nt = String(row.notification_type || '').trim();
+                      if (nt === 'reminder_1' && String((row as any)?.recipient_mode || '').trim() === 'all') return 'כל האורחים';
                       if (nt === 'reminder_2' && ids.length === 0) return 'כל הממתינים';
                       if (nt === 'reminder_1' || nt === 'reminder_2') return `${ids.length} מוזמנים${nt === 'reminder_1' ? '' : ' (אופציונלי)'}`;
                       return '';
@@ -1949,6 +2414,9 @@ export default function AutomaticNotificationsWebScreen() {
                     : mode === 'prev_pending'
                       ? 'ממתינים מהשלב הקודם'
                       : `${ids.length} מוזמנים`;
+                const isAutoAllRecipients =
+                  !isFlow && String(row.notification_type || '').trim() === 'reminder_1' && String((row as any)?.recipient_mode || '').trim() === 'all';
+                const autoAllCountText = isAutoAllRecipients ? `סה״כ אורחים: ${allGuests.length}` : '';
 
                 return (
                   <Pressable
@@ -1991,48 +2459,70 @@ export default function AutomaticNotificationsWebScreen() {
                     </View>
 
                     {(row.channel || 'SMS') === 'SMS' ? (
-                      <Pressable
-                        onPress={(e: any) => {
-                          e?.stopPropagation?.();
-                          e?.preventDefault?.();
-                          void openSendStatus(row);
-                        }}
-                        style={({ pressed }: any) => [styles.sendStatusPill, pressed ? { opacity: 0.9 } : null]}
-                      >
-                        <Ionicons name="checkmark-done-outline" size={14} color={lastRunLabel?.color || 'rgba(100,116,139,1)'} />
-                        <Text style={[styles.sendStatusText, { color: lastRunLabel?.color || 'rgba(100,116,139,1)' }]} numberOfLines={1}>
-                          {lastRunLabel ? `${lastRunLabel.text}${lastRunAt ? ` · ${lastRunAt}` : ''}` : 'סטטוס: לא נשלח עדיין'}
-                        </Text>
-                      </Pressable>
-                    ) : null}
+                      <View style={{ alignSelf: 'stretch', gap: 8 }}>
+                        <Pressable
+                          onPress={(e: any) => {
+                            e?.stopPropagation?.();
+                            e?.preventDefault?.();
+                            void openSendStatus(row);
+                          }}
+                          style={({ pressed }: any) => [styles.sendStatusPill, pressed ? { opacity: 0.9 } : null]}
+                        >
+                          <Ionicons name="checkmark-done-outline" size={14} color={lastRunLabel?.color || 'rgba(100,116,139,1)'} />
+                          <Text style={[styles.sendStatusText, { color: lastRunLabel?.color || 'rgba(100,116,139,1)' }]} numberOfLines={1}>
+                            {lastRunLabel ? `${lastRunLabel.text}${lastRunAt ? ` · ${lastRunAt}` : ''}` : 'סטטוס: לא נשלח עדיין'}
+                          </Text>
+                        </Pressable>
 
-                    {recipientsLabel ? (
-                      <View style={styles.cardInlineRow}>
-                        <View style={styles.cardInlineMeta}>
-                          <Ionicons name="people-outline" size={14} color="rgba(2,6,23,0.55)" />
-                          <Text style={styles.cardInlineMetaText}>{recipientsLabel}</Text>
-                        </View>
-
-                        {isFlow ? (
+                        {showCatchup ? (
                           <Pressable
                             onPress={(e: any) => {
                               e?.stopPropagation?.();
                               e?.preventDefault?.();
-                              void toggleNotification(row);
+                              void openCatchupQueue(row);
                             }}
-                            accessibilityRole="switch"
-                            accessibilityState={{ checked: !!row.enabled }}
-                            style={({ pressed }: any) => [styles.toggleBtn, pressed ? { opacity: 0.92 } : null]}
+                            style={({ pressed }: any) => [styles.sendStatusPill, pressed ? { opacity: 0.9 } : null]}
                           >
-                            <View style={[styles.toggleTrack, row.enabled ? styles.toggleTrackOn : styles.toggleTrackOff]}>
-                              <View style={[styles.toggleThumb, row.enabled ? styles.toggleThumbOn : styles.toggleThumbOff]} />
-                            </View>
-                            <Text style={[styles.toggleLabel, row.enabled ? styles.toggleLabelOn : styles.toggleLabelOff]}>
-                              {row.enabled ? 'פעילה' : 'כבויה'}
+                            <Ionicons name="time-outline" size={14} color={'rgba(2,6,23,0.75)'} />
+                            <Text style={[styles.sendStatusText, { color: 'rgba(2,6,23,0.75)' }]} numberOfLines={1}>
+                              {catchupText}
                             </Text>
                           </Pressable>
                         ) : null}
                       </View>
+                    ) : null}
+
+                    {recipientsLabel ? (
+                      <>
+                        <View style={styles.cardInlineRow}>
+                          <View style={styles.cardInlineMeta}>
+                            <Ionicons name="people-outline" size={14} color="rgba(2,6,23,0.55)" />
+                            <Text style={styles.cardInlineMetaText}>{recipientsLabel}</Text>
+                          </View>
+
+                          {isFlow ? (
+                            <Pressable
+                              onPress={(e: any) => {
+                                e?.stopPropagation?.();
+                                e?.preventDefault?.();
+                                void toggleNotification(row);
+                              }}
+                              accessibilityRole="switch"
+                              accessibilityState={{ checked: !!row.enabled }}
+                              style={({ pressed }: any) => [styles.toggleBtn, pressed ? { opacity: 0.92 } : null]}
+                            >
+                              <View style={[styles.toggleTrack, row.enabled ? styles.toggleTrackOn : styles.toggleTrackOff]}>
+                                <View style={[styles.toggleThumb, row.enabled ? styles.toggleThumbOn : styles.toggleThumbOff]} />
+                              </View>
+                              <Text style={[styles.toggleLabel, row.enabled ? styles.toggleLabelOn : styles.toggleLabelOff]}>
+                                {row.enabled ? 'פעילה' : 'כבויה'}
+                              </Text>
+                            </Pressable>
+                          ) : null}
+                        </View>
+
+                        {autoAllCountText ? <Text style={styles.cardInlineSubText}>{autoAllCountText}</Text> : null}
+                      </>
                     ) : null}
 
                     <View style={styles.cardBottomRow}>
@@ -2418,6 +2908,58 @@ export default function AutomaticNotificationsWebScreen() {
             </View>
 
             <ScrollView style={styles.editorBody} contentContainerStyle={styles.editorBodyContent} showsVerticalScrollIndicator={false}>
+              {editorKind === 'template' ? (
+                <View style={styles.editorWizardTop}>
+                  {(() => {
+                    const stepId =
+                      editorWizardSteps[Math.min(editorWizardStepIdx, Math.max(0, editorWizardSteps.length - 1))] ?? 'schedule';
+                    const label =
+                      stepId === 'schedule'
+                        ? 'הגדרות'
+                        : stepId === 'recipients'
+                          ? 'נמענים'
+                          : stepId === 'catchup'
+                            ? 'תור אורחים חדשים'
+                            : 'תוכן';
+                    const sub =
+                      stepId === 'recipients'
+                        ? 'בחירת מוזמנים להודעה'
+                        : stepId === 'schedule'
+                          ? 'בחירת זמנים להודעה'
+                          : stepId === 'catchup'
+                            ? 'הגדרת הודעות לאורחים שנוספו לאחרונה למערכת'
+                            : 'עריכת תוכן הודעה';
+                    const pct = Math.max(
+                      0,
+                      Math.min(100, Math.round(((editorWizardStepIdx + 1) / Math.max(1, editorWizardSteps.length)) * 100))
+                    );
+
+                    return (
+                      <>
+                        <View style={styles.wizardTopTitlesRow}>
+                          <View style={{ flex: 1 }} />
+                          <View style={{ alignItems: 'flex-start', justifyContent: 'flex-start', minWidth: 0 }}>
+                            <Text style={styles.wizardTopTitle} numberOfLines={1}>
+                              {`שלב ${editorWizardStepIdx + 1} מתוך ${editorWizardSteps.length}: ${label}`}
+                            </Text>
+                            <Text style={styles.wizardTopSub} numberOfLines={1}>
+                              {sub}
+                            </Text>
+                          </View>
+                        </View>
+
+                        <View style={styles.wizardProgressMetaRow}>
+                          <Text style={styles.wizardProgressPct}>{`${pct}%`}</Text>
+                          <Text style={styles.wizardProgressLabel}>{label}</Text>
+                        </View>
+                        <View style={styles.wizardProgressTrack}>
+                          <View style={[styles.wizardProgressFill, { width: `${pct}%` }]} />
+                        </View>
+                      </>
+                    );
+                  })()}
+                </View>
+              ) : null}
               {editorKind === 'flow' ? (
                 <View style={styles.editorSection}>
                   <View style={styles.editorSectionHeader}>
@@ -2545,105 +3087,319 @@ export default function AutomaticNotificationsWebScreen() {
                 </View>
               ) : null}
 
-              <View style={styles.editorSection}>
-                <View style={styles.editorSectionHeader}>
-                  <Ionicons name="time-outline" size={16} color="rgba(79,70,229,1)" />
-                  <Text style={styles.editorSectionTitle}>תזמון</Text>
-                </View>
+              {editorKind === 'template' ? (
+                editorWizardStepId === 'schedule' ? (
+                  <View style={styles.scheduleStepWrap}>
+                    <View style={styles.scheduleStepHeader}>
+                      <Text style={styles.scheduleStepTitle}>{`עריכת הודעה - ${getDisplayTitle(editorRow)}`}</Text>
+                      <Text style={styles.scheduleStepSubTitle}>{`שלב ${editorWizardStepIdx + 1} מתוך ${editorWizardSteps.length}: תזמון הודעה`}</Text>
+                    </View>
 
-                <View style={styles.timingRow}>
-                  <View style={styles.dateInlineCol}>
-                    <Pressable onPress={openDateDialog} style={({ pressed }: any) => [styles.datePillInline, pressed ? { opacity: 0.95 } : null]}>
-                      <View style={styles.datePillMeta}>
-                        <Ionicons name="calendar-outline" size={14} color="rgba(79,70,229,1)" />
-                        <Text style={styles.datePillLabel}>תאריך שליחה</Text>
-                      </View>
-                      <View style={styles.dateValueChip}>
-                        <Text style={styles.dateValueChipText}>
-                          {scheduledSendDateTime ? formatDmyFromYmd(toLocalYmd(scheduledSendDateTime) || '') : 'בחר תאריך'}
+                    <View style={styles.scheduleStepGrid}>
+                      <View style={styles.scheduleLeftCol}>
+                        <View style={styles.scheduleChoiceCard}>
+                          <View style={styles.scheduleChoiceTopRow}>
+                            <Text style={styles.scheduleChoiceTitle}>הבחירה שלך:</Text>
+                            <Ionicons name="calendar-outline" size={18} color="#1D4ED8" />
+                          </View>
+                          <Text style={styles.scheduleChoiceValue}>{formatOffsetLabel(Number(editDraft?.days ?? 0) || 0)}</Text>
+                        </View>
+
+                        <View style={styles.scheduleFieldBlock}>
+                          <Text style={styles.scheduleFieldLabel}>תאריך שליחה</Text>
+                          <View style={styles.scheduleInputRow}>
+                            <Ionicons name="calendar-outline" size={16} color="rgba(71,85,105,1)" />
+                            <Text style={styles.scheduleInputText}>
+                              {scheduledSendDateTime ? formatDmyFromYmd(toLocalYmd(scheduledSendDateTime) || '') : 'בחר תאריך'}
+                            </Text>
+                          </View>
+                        </View>
+
+                        <View style={styles.scheduleFieldBlock}>
+                          <Text style={styles.scheduleFieldLabel}>שעה</Text>
+                          <Pressable onPress={openTimeDialog} style={({ pressed }: any) => [styles.scheduleInputRow, pressed ? { opacity: 0.96 } : null]}>
+                            <Ionicons name="time-outline" size={16} color="rgba(71,85,105,1)" />
+                            <Text style={styles.scheduleInputText}>{String(editDraft?.timeHm || '11:00')}</Text>
+                          </Pressable>
+                        </View>
+
+                        <Text style={styles.scheduleHintText}>
+                          זמן השליחה הוא לפי שעון ישראל (GMT+3). הודעות ייכנסו לתור שליחה במועד שנבחר.
                         </Text>
-                      </View>
-                    </Pressable>
 
-                    <Text style={styles.scheduledHintText}>{formatOffsetLabel(Number(editDraft?.days ?? 0) || 0)}</Text>
+                        <View style={styles.scheduleSummaryCard}>
+                          <Text style={styles.scheduleSummaryLabel}>מועד שליחה סופי</Text>
+                          <Text style={styles.scheduleSummaryValue}>
+                            {scheduledSendDateTime ? `${String(editDraft?.timeHm || '')}, ${formatDmyFromYmd(toLocalYmd(scheduledSendDateTime) || '')}` : '—'}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <View style={styles.scheduleCalendarCard}>
+                        <View style={styles.calendarHeaderRow}>
+                          <Pressable onPress={() => setCalendarMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))} style={styles.navBtn}>
+                            <Ionicons name="chevron-forward" size={18} color="#111827" />
+                          </Pressable>
+                          <Text style={styles.calendarMonthText}>
+                            {new Date(calendarGrid.y, calendarGrid.m, 1).toLocaleDateString('he-IL', { month: 'long', year: 'numeric' })}
+                          </Text>
+                          <Pressable onPress={() => setCalendarMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))} style={styles.navBtn}>
+                            <Ionicons name="chevron-back" size={18} color="#111827" />
+                          </Pressable>
+                        </View>
+
+                        <View style={styles.calendarDowRow}>
+                          {['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ש'].map((w) => (
+                            <Text key={w} style={styles.dowText}>
+                              {w}
+                            </Text>
+                          ))}
+                        </View>
+
+                        <View style={styles.calendarGrid}>
+                          {calendarGrid.cells.map((c, idx) => {
+                            const isSelected =
+                              c.date &&
+                              calendarSelected &&
+                              c.date.getFullYear() === calendarSelected.getFullYear() &&
+                              c.date.getMonth() === calendarSelected.getMonth() &&
+                              c.date.getDate() === calendarSelected.getDate();
+
+                            return (
+                              <Pressable
+                                key={idx}
+                                disabled={!c.date}
+                                onPress={() => {
+                                  const ev = new Date(String((event as any)?.date ?? ''));
+                                  if (!Number.isFinite(ev.getTime()) || !c.date) return;
+                                  const days = diffDaysLocal(c.date, ev);
+                                  setEditDraft((d) => (d ? { ...d, days } : d));
+                                }}
+                                style={({ pressed }: any) => [
+                                  styles.dayCell,
+                                  isSelected ? styles.dayCellSelected : null,
+                                  pressed && c.date ? { opacity: 0.9 } : null,
+                                ]}
+                              >
+                                <Text style={[styles.dayText, isSelected ? styles.dayTextSelected : null]}>{c.day ?? ''}</Text>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
+                      </View>
+                    </View>
+                  </View>
+                ) : null
+              ) : (
+                <View style={styles.editorSection}>
+                  <View style={styles.editorSectionHeader}>
+                    <Ionicons name="time-outline" size={16} color="rgba(79,70,229,1)" />
+                    <Text style={styles.editorSectionTitle}>תזמון</Text>
                   </View>
 
-                  <Pressable onPress={openTimeDialog} style={({ pressed }: any) => [styles.timePillInline, pressed ? { opacity: 0.95 } : null]}>
-                    <View style={styles.datePillMeta}>
-                      <Ionicons name="alarm-outline" size={14} color="rgba(79,70,229,1)" />
-                      <Text style={styles.datePillLabel}>שעה</Text>
+                  <View style={styles.timingRow}>
+                    <View style={styles.dateInlineCol}>
+                      <Pressable onPress={openDateDialog} style={({ pressed }: any) => [styles.datePillInline, pressed ? { opacity: 0.95 } : null]}>
+                        <View style={styles.datePillMeta}>
+                          <Ionicons name="calendar-outline" size={14} color="rgba(79,70,229,1)" />
+                          <Text style={styles.datePillLabel}>תאריך שליחה</Text>
+                        </View>
+                        <View style={styles.dateValueChip}>
+                          <Text style={styles.dateValueChipText}>
+                            {scheduledSendDateTime ? formatDmyFromYmd(toLocalYmd(scheduledSendDateTime) || '') : 'בחר תאריך'}
+                          </Text>
+                        </View>
+                      </Pressable>
+
+                      <Text style={styles.scheduledHintText}>{formatOffsetLabel(Number(editDraft?.days ?? 0) || 0)}</Text>
                     </View>
-                    <View style={styles.timeValueChip}>
-                      <Text style={styles.timeValueInput}>{editDraft?.timeHm ?? '11:00'}</Text>
+
+                    <Pressable onPress={openTimeDialog} style={({ pressed }: any) => [styles.timePillInline, pressed ? { opacity: 0.95 } : null]}>
+                      <View style={styles.datePillMeta}>
+                        <Ionicons name="alarm-outline" size={14} color="rgba(79,70,229,1)" />
+                        <Text style={styles.datePillLabel}>שעה</Text>
+                      </View>
+                      <View style={styles.timeValueChip}>
+                        <Text style={styles.timeValueInput}>{editDraft?.timeHm ?? '11:00'}</Text>
+                      </View>
+                    </Pressable>
+                  </View>
+                </View>
+              )}
+
+              {editorKind === 'template' && editorWizardStepId === 'message' ? null : editorKind !== 'template' ? (
+                <View style={styles.editorSection}>
+                  <View style={styles.editorSectionHeader}>
+                    <Ionicons name="pricetag-outline" size={16} color="rgba(79,70,229,1)" />
+                    <Text style={styles.editorSectionTitle}>משתנים</Text>
+                  </View>
+                  <Text style={styles.editorSectionHint}>הוספת משתנים תחליף אותם אוטומטית בזמן שליחה.</Text>
+
+                  <View style={styles.chips}>
+                      <Pressable onPress={() => insertVariable('{שם_פרטי}')} style={({ pressed }: any) => [styles.chip, pressed ? { opacity: 0.85 } : null]}>
+                        <Text style={[styles.chipText, { color: ui.primary }]}>{'{שם_פרטי}'}</Text>
+                      </Pressable>
+                      <Pressable onPress={() => insertVariable('{שם_אירוע}')} style={({ pressed }: any) => [styles.chip, pressed ? { opacity: 0.85 } : null]}>
+                        <Text style={[styles.chipText, { color: ui.primary }]}>{'{שם_אירוע}'}</Text>
+                      </Pressable>
+                      {groomName ? (
+                        <Pressable onPress={() => insertVariable('{שם_חתן}')} style={({ pressed }: any) => [styles.chip, pressed ? { opacity: 0.85 } : null]}>
+                          <Text style={[styles.chipText, { color: ui.primary }]}>{'{שם_חתן}'}</Text>
+                        </Pressable>
+                      ) : null}
+                      {brideName ? (
+                        <Pressable onPress={() => insertVariable('{שם_כלה}')} style={({ pressed }: any) => [styles.chip, pressed ? { opacity: 0.85 } : null]}>
+                          <Text style={[styles.chipText, { color: ui.primary }]}>{'{שם_כלה}'}</Text>
+                        </Pressable>
+                      ) : null}
+                      {coupleNames ? (
+                        <Pressable onPress={() => insertVariable('{שמות_חתן_כלה}')} style={({ pressed }: any) => [styles.chip, pressed ? { opacity: 0.85 } : null]}>
+                          <Text style={[styles.chipText, { color: ui.primary }]}>{'{שמות_חתן_כלה}'}</Text>
+                        </Pressable>
+                      ) : null}
+                      <Pressable onPress={() => insertVariable('{תאריך}')} style={({ pressed }: any) => [styles.chip, pressed ? { opacity: 0.85 } : null]}>
+                        <Text style={[styles.chipText, { color: ui.primary }]}>{'{תאריך}'}</Text>
+                      </Pressable>
+                      <Pressable onPress={() => insertVariable('{מיקום}')} style={({ pressed }: any) => [styles.chip, pressed ? { opacity: 0.85 } : null]}>
+                        <Text style={[styles.chipText, { color: ui.primary }]}>{'{מיקום}'}</Text>
+                      </Pressable>
+                      <Pressable onPress={() => insertVariable('{name}')} style={({ pressed }: any) => [styles.chip, pressed ? { opacity: 0.85 } : null]}>
+                        <Text style={[styles.chipText, { color: ui.primary }]}>{'{name}'}</Text>
+                      </Pressable>
+                      <Pressable onPress={() => insertVariable('{link}')} style={({ pressed }: any) => [styles.chip, pressed ? { opacity: 0.85 } : null]}>
+                        <Text style={[styles.chipText, { color: ui.primary }]}>{'{link}'}</Text>
+                      </Pressable>
+                  </View>
+                </View>
+              ) : null}
+
+              {editorKind === 'template' && editorWizardStepId === 'message' ? (
+                <View style={styles.step4TwoCol}>
+                  <View style={[styles.step4PreviewCol, { backgroundColor: ui.surface, borderColor: ui.border }]}>
+                    <Text style={[styles.step4PreviewTitle, { color: ui.text }]}>תצוגה מקדימה</Text>
+                    <Text style={[styles.step4PreviewSubtitle, { color: ui.sub }]}>כך ההודעה תראה במכשיר הנייד</Text>
+                    <View style={styles.step4PhoneMockupWrap}>
+                      <IPhoneMockup
+                        model="14-pro"
+                        color="space-black"
+                        fitWidth={300}
+                        fitHeight={631}
+                        screenBg="#f8fafc"
+                        showHomeIndicator={true}
+                      >
+                        <View style={styles.step4PhoneScreenContent}>
+                          <Text style={styles.step4PhoneTime}>היום 14:30</Text>
+                          <View style={[styles.step4BubbleIn, { backgroundColor: 'rgba(226,232,240,1)' }]}>
+                            <Text style={[styles.step4BubbleText, { color: ui.text }]}>
+                              {renderPreviewText(editDraft?.message || getDefaultMessageContent(ownerTitle)).replace(/\n/g, '\n')}
+                            </Text>
+                            <Text style={styles.step4BubbleTime}>14:31</Text>
+                          </View>
+                          <View style={[styles.step4BubbleOut, { backgroundColor: 'rgba(59,130,246,1)' }]}>
+                            <Text style={styles.step4BubbleTextOut}>תודה רבה! אגיע בזמן.</Text>
+                            <Text style={styles.step4BubbleTimeOut}>14:35</Text>
+                          </View>
+                        </View>
+                      </IPhoneMockup>
                     </View>
-                  </Pressable>
-                </View>
-              </View>
-
-              <View style={styles.editorSection}>
-                <View style={styles.editorSectionHeader}>
-                  <Ionicons name="pricetag-outline" size={16} color="rgba(79,70,229,1)" />
-                  <Text style={styles.editorSectionTitle}>משתנים</Text>
-                </View>
-                <Text style={styles.editorSectionHint}>הוספת משתנים תחליף אותם אוטומטית בזמן שליחה.</Text>
-
-                <View style={styles.chips}>
-                  <Pressable onPress={() => insertVariable('{שם_פרטי}')} style={({ pressed }: any) => [styles.chip, pressed ? { opacity: 0.85 } : null]}>
-                    <Text style={[styles.chipText, { color: ui.primary }]}>{'{שם_פרטי}'}</Text>
-                  </Pressable>
-                  <Pressable onPress={() => insertVariable('{שם_אירוע}')} style={({ pressed }: any) => [styles.chip, pressed ? { opacity: 0.85 } : null]}>
-                    <Text style={[styles.chipText, { color: ui.primary }]}>{'{שם_אירוע}'}</Text>
-                  </Pressable>
-                  {groomName ? (
-                    <Pressable onPress={() => insertVariable('{שם_חתן}')} style={({ pressed }: any) => [styles.chip, pressed ? { opacity: 0.85 } : null]}>
-                      <Text style={[styles.chipText, { color: ui.primary }]}>{'{שם_חתן}'}</Text>
+                  </View>
+                  <View style={styles.step4ContentCol}>
+                    <Text style={[styles.editorSectionTitle, { color: ui.text }]}>תוכן ותצוגה מקדימה</Text>
+                    <Text style={[styles.step4Instruction, { color: ui.sub }]}>
+                      הכנס את תוכן ההודעה שלך והשתמש במשתנים כדי להתאים אותה אישית.
+                    </Text>
+                    <Text style={[styles.step4VarsLabel, { color: ui.text }]}>משתנים זמינים</Text>
+                    <View style={styles.step4VarsRow}>
+                      {[
+                        { label: 'שם_פרטי', token: '{שם_פרטי}' },
+                        { label: 'שם_משפחה', token: '{name}' },
+                        { label: 'תאריך_אירוע', token: '{תאריך}' },
+                        { label: 'מיקום', token: '{מיקום}' },
+                      ].map((v) => (
+                        <Pressable
+                          key={v.token}
+                          onPress={() => insertVariable(v.token)}
+                          style={({ pressed }: any) => [styles.step4VarTag, { backgroundColor: ui.surfaceMuted, borderColor: ui.border }, pressed ? { opacity: 0.92 } : null]}
+                        >
+                          <Ionicons name="add" size={14} color={ui.primary} />
+                          <Text style={[styles.step4VarTagText, { color: ui.text }]}>({v.label})</Text>
+                        </Pressable>
+                      ))}
+                      {groomName ? (
+                        <Pressable onPress={() => insertVariable('{שם_חתן}')} style={({ pressed }: any) => [styles.step4VarTag, { backgroundColor: ui.surfaceMuted, borderColor: ui.border }, pressed ? { opacity: 0.92 } : null]}>
+                          <Ionicons name="add" size={14} color={ui.primary} />
+                          <Text style={[styles.step4VarTagText, { color: ui.text }]}>(שם_חתן)</Text>
+                        </Pressable>
+                      ) : null}
+                      {brideName ? (
+                        <Pressable onPress={() => insertVariable('{שם_כלה}')} style={({ pressed }: any) => [styles.step4VarTag, { backgroundColor: ui.surfaceMuted, borderColor: ui.border }, pressed ? { opacity: 0.92 } : null]}>
+                          <Ionicons name="add" size={14} color={ui.primary} />
+                          <Text style={[styles.step4VarTagText, { color: ui.text }]}>(שם_כלה)</Text>
+                        </Pressable>
+                      ) : null}
+                      <Pressable onPress={() => insertVariable('{link}')} style={({ pressed }: any) => [styles.step4VarTag, { backgroundColor: ui.surfaceMuted, borderColor: ui.border }, pressed ? { opacity: 0.92 } : null]}>
+                        <Ionicons name="add" size={14} color={ui.primary} />
+                        <Text style={[styles.step4VarTagText, { color: ui.text }]}>(link)</Text>
+                      </Pressable>
+                    </View>
+                    <Text style={[styles.editorSectionTitle, { color: ui.text, marginTop: 16 }]}>תוכן ההודעה</Text>
+                    <View style={styles.textareaWrap}>
+                      <TextInput
+                        value={editDraft?.message ?? ''}
+                        onChangeText={(t) => setEditDraft((d) => (d ? { ...d, message: normalizeTemplateToSingleBraces(t).slice(0, MESSAGE_MAX_CHARS) } : d))}
+                        multiline
+                        textAlignVertical="top"
+                        style={styles.textarea}
+                        placeholder={'היי {שם_פרטי},\nתודה שנרשמת לאירוע שלנו ב-{תאריך_אירוע}.\nנשמח לראותך בשעה {שעה}.\nלפרטים נוספים השב להודעה זו.\nנתראה!'}
+                        placeholderTextColor="rgba(100,116,139,0.6)"
+                        maxLength={MESSAGE_MAX_CHARS}
+                      />
+                      <View style={styles.step4CharRow}>
+                        <Text style={[styles.charCount, (editDraft?.message ?? '').length > MESSAGE_MAX_CHARS ? { color: ui.danger } : null]}>
+                          {(editDraft?.message ?? '').length}/{MESSAGE_MAX_CHARS}
+                        </Text>
+                      </View>
+                    </View>
+                    <Pressable
+                      onPress={() => void sendNow()}
+                      disabled={sendingNow || !editDraft}
+                      style={({ pressed }: any) => [
+                        styles.sendNowBtnBelowContent,
+                        sendingNow || !editDraft ? styles.sendNowBtnDisabled : null,
+                        pressed ? { opacity: 0.92 } : null,
+                      ]}
+                    >
+                      <Ionicons name="paper-plane-outline" size={16} color="#fff" />
+                      <Text style={styles.sendNowBtnText}>{sendingNow ? 'שולח...' : 'שלח עכשיו'}</Text>
                     </Pressable>
-                  ) : null}
-                  {brideName ? (
-                    <Pressable onPress={() => insertVariable('{שם_כלה}')} style={({ pressed }: any) => [styles.chip, pressed ? { opacity: 0.85 } : null]}>
-                      <Text style={[styles.chipText, { color: ui.primary }]}>{'{שם_כלה}'}</Text>
-                    </Pressable>
-                  ) : null}
-                  {coupleNames ? (
-                    <Pressable onPress={() => insertVariable('{שמות_חתן_כלה}')} style={({ pressed }: any) => [styles.chip, pressed ? { opacity: 0.85 } : null]}>
-                      <Text style={[styles.chipText, { color: ui.primary }]}>{'{שמות_חתן_כלה}'}</Text>
-                    </Pressable>
-                  ) : null}
-                  <Pressable onPress={() => insertVariable('{תאריך}')} style={({ pressed }: any) => [styles.chip, pressed ? { opacity: 0.85 } : null]}>
-                    <Text style={[styles.chipText, { color: ui.primary }]}>{'{תאריך}'}</Text>
-                  </Pressable>
-                  <Pressable onPress={() => insertVariable('{מיקום}')} style={({ pressed }: any) => [styles.chip, pressed ? { opacity: 0.85 } : null]}>
-                    <Text style={[styles.chipText, { color: ui.primary }]}>{'{מיקום}'}</Text>
-                  </Pressable>
-                  <Pressable onPress={() => insertVariable('{name}')} style={({ pressed }: any) => [styles.chip, pressed ? { opacity: 0.85 } : null]}>
-                    <Text style={[styles.chipText, { color: ui.primary }]}>{'{name}'}</Text>
-                  </Pressable>
-                  <Pressable onPress={() => insertVariable('{link}')} style={({ pressed }: any) => [styles.chip, pressed ? { opacity: 0.85 } : null]}>
-                    <Text style={[styles.chipText, { color: ui.primary }]}>{'{link}'}</Text>
-                  </Pressable>
+                  </View>
                 </View>
-              </View>
+              ) : editorKind === 'template' ? null : (
+                <View style={styles.editorSection}>
+                  <View style={styles.editorSectionHeader}>
+                    <Ionicons name="chatbox-ellipses-outline" size={16} color="rgba(79,70,229,1)" />
+                    <Text style={styles.editorSectionTitle}>תוכן ההודעה</Text>
+                  </View>
+                  <View style={styles.textareaWrap}>
+                    <TextInput
+                      value={editDraft?.message ?? ''}
+                      onChangeText={(t) => setEditDraft((d) => (d ? { ...d, message: normalizeTemplateToSingleBraces(t).slice(0, MESSAGE_MAX_CHARS) } : d))}
+                      multiline
+                      textAlignVertical="top"
+                      style={styles.textarea}
+                      placeholder="כתוב הודעה..."
+                      placeholderTextColor="rgba(100,116,139,0.6)"
+                      maxLength={MESSAGE_MAX_CHARS}
+                    />
+                    <Text style={[styles.charCount, (editDraft?.message ?? '').length > MESSAGE_MAX_CHARS ? { color: ui.danger } : null]}>
+                      {(editDraft?.message ?? '').length}/{MESSAGE_MAX_CHARS} תווים
+                    </Text>
+                  </View>
+                </View>
+              )}
 
-              <View style={styles.editorSection}>
-                <View style={styles.editorSectionHeader}>
-                  <Ionicons name="chatbox-ellipses-outline" size={16} color="rgba(79,70,229,1)" />
-                  <Text style={styles.editorSectionTitle}>תוכן ההודעה</Text>
-                </View>
-                <View style={styles.textareaWrap}>
-                  <TextInput
-                    value={editDraft?.message ?? ''}
-                    onChangeText={(t) => setEditDraft((d) => (d ? { ...d, message: normalizeTemplateToSingleBraces(t) } : d))}
-                    multiline
-                    textAlignVertical="top"
-                    style={styles.textarea}
-                    placeholder="כתוב הודעה..."
-                    placeholderTextColor="rgba(100,116,139,0.6)"
-                  />
-                  <Text style={styles.charCount}>{(editDraft?.message ?? '').length}/160 תווים</Text>
-                </View>
-              </View>
-
-              {editorRow.notification_type === 'reminder_1' || editorRow.notification_type === 'reminder_2' ? (
+              {(editorKind !== 'template' || editorWizardStepId === 'recipients') &&
+              (editorRow.notification_type === 'reminder_1' || editorRow.notification_type === 'reminder_2') ? (
                 <View style={styles.editorSection}>
                   <View style={styles.editorSectionHeader}>
                     <Ionicons name="people-outline" size={16} color="rgba(79,70,229,1)" />
@@ -2656,9 +3412,208 @@ export default function AutomaticNotificationsWebScreen() {
                       : [];
                     const nt = String(editorRow.notification_type || '').trim();
                     const isAutoPending = nt === 'reminder_2';
-                    const isRequired = nt === 'reminder_1';
+                    const isAutoAll = nt === 'reminder_1' && String((editorRow as any)?.recipient_mode ?? '').trim() !== 'manual';
+                    const isRequired = nt === 'reminder_1' && !isAutoAll;
                     const emptyMeansAllPending = isAutoPending && ids.length === 0;
-                    const countLabel = emptyMeansAllPending ? 'כל הממתינים' : `${ids.length} נבחרו`;
+                    const countLabel = isAutoAll ? 'כל האורחים' : emptyMeansAllPending ? 'כל הממתינים' : `${ids.length} נבחרו`;
+
+                    const isTemplateRecipientsStep = editorKind === 'template' && editorWizardStepId === 'recipients';
+
+                    if (isTemplateRecipientsStep) {
+                      const effectiveSelectedIds =
+                        isAutoAll && !recipientsWizardManual ? new Set(allGuests.map((g) => String(g.id))) : pickerSelectedIds;
+                      const selectedCount = effectiveSelectedIds.size;
+
+                      const ensureManual = () => {
+                        if (isAutoAll && !recipientsWizardManual) setRecipientsWizardManual(true);
+                      };
+
+                      const toggleGuest = (guestId: string) => {
+                        const id = String(guestId || '').trim();
+                        if (!id) return;
+                        if (isAutoAll && !recipientsWizardManual) {
+                          setRecipientsWizardManual(true);
+                          const allIds = allGuests.map((g) => String(g.id)).filter(Boolean);
+                          setPickerSelectedIds(new Set(allIds.filter((x) => x !== id)));
+                          return;
+                        }
+                        pickerToggleGuest(id);
+                      };
+
+                      const selectAll = () => {
+                        ensureManual();
+                        pickerSelectAllFiltered();
+                      };
+
+                      const clearAll = () => {
+                        ensureManual();
+                        pickerClear();
+                      };
+
+                      const filterOptions = [
+                        { key: 'all' as const, label: 'הכל', icon: 'checkmark-circle-outline' as const },
+                        { key: 'pending' as const, label: 'ממתין', icon: 'time-outline' as const },
+                        { key: 'confirmed' as const, label: 'מגיע', icon: 'checkmark-outline' as const },
+                        { key: 'declined' as const, label: 'לא מגיע', icon: 'close-outline' as const },
+                      ];
+
+                      const allVisibleSelected =
+                        pickerFilteredGuests.length > 0 && pickerFilteredGuests.every((g) => effectiveSelectedIds.has(String(g.id)));
+
+                      return (
+                        <View style={styles.recipientsStepWrap}>
+                          <View style={styles.recipientsSummaryCard}>
+                            <View style={styles.recipientsSummaryIcon}>
+                              <Ionicons name="people-outline" size={18} color={ui.primary} />
+                            </View>
+                            <View style={{ flex: 1 }} />
+                            <View style={{ justifyContent: 'flex-start', alignItems: 'flex-start' }}>
+                              <Text style={styles.recipientsSummaryLabel}>מוזמנים נבחרו</Text>
+                              <Text style={styles.recipientsSummaryValue}>{selectedCount}</Text>
+                            </View>
+                          </View>
+
+                          <>
+                            <View style={styles.recipientsChipsRow}>
+                              {filterOptions.map((k) => {
+                                const active = pickerFilter === k.key;
+                                return (
+                                  <Pressable
+                                    key={k.key}
+                                    onPress={() => setPickerFilter(k.key)}
+                                    style={({ pressed }: any) => [
+                                      styles.recipientsChip,
+                                      active ? styles.recipientsChipActive : null,
+                                      pressed ? { opacity: 0.92 } : null,
+                                    ]}
+                                  >
+                                    <Ionicons name={k.icon as any} size={16} color={active ? '#fff' : '#111827'} />
+                                    <Text style={[styles.recipientsChipText, active ? styles.recipientsChipTextActive : null]}>{k.label}</Text>
+                                  </Pressable>
+                                );
+                              })}
+                            </View>
+
+                            {isAutoAll && !recipientsWizardManual ? (
+                              <Text style={styles.recipientsHint}>
+                                מצב <Text style={styles.recipientsHintEm}>כל האורחים</Text> — כדי להוציא מוזמנים מהרשימה, בטל סימון שורה בטבלה (המערכת תעבור לבחירה ידנית).
+                              </Text>
+                            ) : null}
+
+                            <View style={styles.recipientsQuickActionsRow}>
+                              <Pressable onPress={selectAll} style={({ pressed }: any) => [styles.recipientsLinkBtn, pressed ? { opacity: 0.92 } : null]}>
+                                <Text style={styles.recipientsLinkText}>בחר הכל</Text>
+                              </Pressable>
+                              <Pressable onPress={clearAll} style={({ pressed }: any) => [styles.recipientsLinkBtn, pressed ? { opacity: 0.92 } : null]}>
+                                <Text style={styles.recipientsLinkText}>נקה בחירה</Text>
+                              </Pressable>
+                            </View>
+
+                            <View style={styles.recipientsTableWrap}>
+                              <View style={styles.recipientsTableHeaderRow}>
+                                <View style={[styles.recipientsTableCell, styles.recipientsCellStatus]}>
+                                  <Text style={styles.recipientsTableHeaderText}>סטטוס</Text>
+                                </View>
+                                <View style={[styles.recipientsTableCell, styles.recipientsCellPhone]}>
+                                  <Text style={styles.recipientsTableHeaderText}>טלפון</Text>
+                                </View>
+                                <View style={[styles.recipientsTableCell, styles.recipientsCellName]}>
+                                  <Text style={styles.recipientsTableHeaderText}>שם מלא</Text>
+                                </View>
+                                <Pressable
+                                  onPress={() => {
+                                    if (allVisibleSelected) {
+                                      ensureManual();
+                                      setPickerSelectedIds((prev) => {
+                                        const base =
+                                          isAutoAll && !recipientsWizardManual
+                                            ? new Set(allGuests.map((x) => String(x.id)).filter(Boolean))
+                                            : new Set(prev);
+                                        for (const g of pickerFilteredGuests) base.delete(String(g.id));
+                                        return base;
+                                      });
+                                    } else {
+                                      selectAll();
+                                    }
+                                  }}
+                                  style={({ pressed }: any) => [styles.recipientsTableCheckboxHead, pressed ? { opacity: 0.92 } : null]}
+                                >
+                                  <Ionicons name={allVisibleSelected ? 'checkbox' : 'square-outline'} size={18} color={ui.primary} />
+                                </Pressable>
+                              </View>
+
+                              {pickerFilteredGuests.map((g) => {
+                                const checked = effectiveSelectedIds.has(String(g.id));
+                                  const rawStatus = String((g as any).status || '').trim();
+                                  const status =
+                                    rawStatus === 'מגיע' || rawStatus === 'אישר'
+                                      ? 'מגיע'
+                                      : rawStatus === 'לא מגיע' || rawStatus === 'לא מגיעים'
+                                        ? 'לא מגיע'
+                                        : 'ממתין';
+                                  const theme =
+                                    status === 'מגיע'
+                                      ? { bg: 'rgba(34,197,94,0.14)', text: 'rgba(22,163,74,1)', dot: 'rgba(34,197,94,1)' }
+                                      : status === 'לא מגיע'
+                                        ? { bg: 'rgba(239,68,68,0.12)', text: 'rgba(220,38,38,1)', dot: 'rgba(239,68,68,1)' }
+                                        : { bg: 'rgba(234,179,8,0.18)', text: 'rgba(161,98,7,1)', dot: 'rgba(234,179,8,1)' };
+
+                                  const name = String((g as any).name || '').trim() || '—';
+                                  const initial = name && name !== '—' ? Array.from(name)[0] : '•';
+
+                                  return (
+                                    <Pressable
+                                      key={String((g as any).id)}
+                                      onPress={() => toggleGuest(String((g as any).id))}
+                                      style={({ pressed }: any) => [
+                                        styles.recipientsTableRow,
+                                        checked ? styles.recipientsTableRowActive : null,
+                                        pressed ? { opacity: 0.98 } : null,
+                                      ]}
+                                    >
+                                      <View style={[styles.recipientsTableCell, styles.recipientsCellStatus]}>
+                                        <View style={[styles.recipientsStatusPill, { backgroundColor: theme.bg }]}>
+                                          <View style={[styles.recipientsStatusDot, { backgroundColor: theme.dot }]} />
+                                          <Text style={[styles.recipientsStatusText, { color: theme.text }]}>{status}</Text>
+                                        </View>
+                                      </View>
+
+                                      <View style={[styles.recipientsTableCell, styles.recipientsCellPhone]}>
+                                        <Text style={styles.recipientsCellText} numberOfLines={1}>
+                                          {(g as any).phone ? String((g as any).phone) : '—'}
+                                        </Text>
+                                      </View>
+
+                                      <View style={[styles.recipientsTableCell, styles.recipientsCellName]}>
+                                        <View style={styles.recipientsNameRow}>
+                                          <View style={styles.recipientsAvatar}>
+                                            <Text style={styles.recipientsAvatarText}>{initial}</Text>
+                                          </View>
+                                          <Text style={styles.recipientsNameText} numberOfLines={1}>
+                                            {name}
+                                          </Text>
+                                        </View>
+                                      </View>
+
+                                      <View style={styles.recipientsTableCheckboxCell}>
+                                        <Ionicons
+                                          name={checked ? 'checkbox' : 'square-outline'}
+                                          size={18}
+                                          color={checked ? ui.primary : 'rgba(203,213,225,1)'}
+                                        />
+                                      </View>
+                                    </Pressable>
+                                  );
+                                })}
+                            </View>
+                          </>
+
+                          {isRequired && effectiveSelectedIds.size === 0 ? (
+                            <Text style={styles.recipientsDangerText}>להודעה הראשונה חובה לבחור מוזמנים.</Text>
+                          ) : null}
+                        </View>
+                      );
+                    }
 
                     return (
                       <View
@@ -2690,10 +3645,16 @@ export default function AutomaticNotificationsWebScreen() {
                           >
                             <Ionicons name="person-add-outline" size={16} color="#fff" />
                             <Text style={styles.recipientsPrimaryBtnText}>
-                              {isRequired ? 'הוסף מוזמנים' : 'בחר מוזמנים'}
+                              {isAutoAll ? 'בחירה ידנית' : isRequired ? 'הוסף מוזמנים' : 'בחר מוזמנים'}
                             </Text>
                           </Pressable>
                         </View>
+
+                        {isAutoAll ? (
+                          <Text style={styles.recipientsHint}>
+                            מצב <Text style={styles.recipientsHintEm}>כל האורחים</Text> — כל אורח שנוסף לאירוע נכלל אוטומטית בהודעה הראשונה.
+                          </Text>
+                        ) : null}
 
                         {emptyMeansAllPending ? (
                           <Text style={styles.recipientsHint}>
@@ -2707,6 +3668,247 @@ export default function AutomaticNotificationsWebScreen() {
                       </View>
                     );
                   })()}
+                </View>
+              ) : null}
+
+              {editorKind === 'template' && editorWizardStepId === 'catchup' && String(editorRow.notification_type || '').trim() === 'reminder_1' ? (
+                <View style={styles.catchupStepWrap}>
+                  <View style={styles.queueScheduleCard}>
+                    {/* הפעלת תור אורחים חדשים — טוגל בצד אחד, אייקון+מלל בצד השני (אייקון לפני המלל) */}
+                    <View style={styles.queueCatchupActivationRow}>
+                      <Pressable
+                        onPress={() => setCatchupEnabled((v) => !v)}
+                        style={({ pressed }: any) => [styles.toggleBtnCatchup, pressed ? { opacity: 0.92 } : null]}
+                        accessibilityRole="switch"
+                        accessibilityState={{ checked: catchupEnabled }}
+                        accessibilityLabel={catchupEnabled ? 'פעיל' : 'כבוי'}
+                      >
+                        <View style={[styles.toggleTrack, catchupEnabled ? styles.toggleTrackOnCatchup : styles.toggleTrackOff]}>
+                          <View style={[styles.toggleThumb, catchupEnabled ? styles.toggleThumbOn : styles.toggleThumbOff]} />
+                        </View>
+                      </Pressable>
+                      <View style={styles.queueCatchupActivationRightBlock}>
+                        <Ionicons name="person-add-outline" size={24} color="rgba(79,70,229,1)" />
+                        <View style={styles.queueCatchupActivationTextBlock}>
+                          <Text style={styles.queueCatchupActivationTitleBlue}>הפעלת תור אורחים חדשים</Text>
+                          <Text style={styles.queueCatchupActivationHint}>
+                            שליחת הודעות אוטומטיות לאורחים שיצטרפו לאחר הקמפיין הראשוני
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+
+                    {catchupEnabled ? (
+                      <>
+                        {/* תזמון שליחה יומי + ימי פעילות - שני בלוקים בשורה */}
+                        <View style={styles.queueCatchupScheduleRow}>
+                          {/* תזמון שליחה יומי (מימין) */}
+                          <View style={styles.queueCatchupDailyBlock}>
+                            <View style={styles.queueCatchupDaysLabelRow}>
+                              <Ionicons name="time-outline" size={18} color="rgba(71,85,105,1)" />
+                              <Text style={styles.queueCatchupDailyLabel}>תזמון שליחה יומי</Text>
+                            </View>
+                            <View style={styles.queueCatchupTimeInputWrap}>
+                              <Ionicons name="time-outline" size={18} color="rgba(100,116,139,0.7)" />
+                              <TextInput
+                                value={catchupTimeHm}
+                                onChangeText={setCatchupTimeHm}
+                                placeholder="10:00"
+                                placeholderTextColor="rgba(100,116,139,0.6)"
+                                style={styles.queueCatchupTimeInput}
+                              />
+                            </View>
+                          </View>
+
+                          {/* ימי פעילות (משמאל) */}
+                          <View style={styles.queueCatchupDaysBlock}>
+                            <View style={styles.queueCatchupDaysLabelRow}>
+                              <Ionicons name="calendar-outline" size={18} color="rgba(71,85,105,1)" />
+                              <Text style={styles.queueCatchupDailyLabel}>ימי פעילות</Text>
+                            </View>
+                            <View style={styles.queueDaysRow}>
+                              {[
+                                { d: 0, t: 'א' },
+                                { d: 1, t: 'ב' },
+                                { d: 2, t: 'ג' },
+                                { d: 3, t: 'ד' },
+                                { d: 4, t: 'ה' },
+                                { d: 5, t: 'ו' },
+                                { d: 6, t: 'ש' },
+                              ].map((x) => {
+                                const on = catchupWeekdays.has(x.d);
+                                return (
+                                  <Pressable
+                                    key={x.d}
+                                    onPress={() =>
+                                      setCatchupWeekdays((prev) => {
+                                        const next = new Set(prev);
+                                        if (next.has(x.d)) next.delete(x.d);
+                                        else next.add(x.d);
+                                        return next;
+                                      })
+                                    }
+                                    style={({ pressed }: any) => [
+                                      styles.queueDayPill,
+                                      on ? styles.queueDayPillOn : styles.queueDayPillOff,
+                                      pressed ? { opacity: 0.92 } : null,
+                                    ]}
+                                  >
+                                    <Text style={[styles.queueDayText, on ? styles.queueDayTextOn : styles.queueDayTextOff]}>{x.t}</Text>
+                                  </Pressable>
+                                );
+                              })}
+                            </View>
+                          </View>
+                        </View>
+
+                        <View style={styles.queueModeRow}>
+                          <Pressable
+                            onPress={() => setCatchupScheduleMode('weekdays')}
+                            style={({ pressed }: any) => [
+                              styles.queueModePill,
+                              catchupScheduleMode === 'weekdays' ? styles.queueModePillActive : null,
+                              pressed ? { opacity: 0.92 } : null,
+                            ]}
+                          >
+                            <Text style={[styles.queueModePillText, catchupScheduleMode === 'weekdays' ? styles.queueModePillTextActive : null]}>
+                              ימים
+                            </Text>
+                          </Pressable>
+                          <Pressable
+                            onPress={() => setCatchupScheduleMode('dates')}
+                            style={({ pressed }: any) => [
+                              styles.queueModePill,
+                              catchupScheduleMode === 'dates' ? styles.queueModePillActive : null,
+                              pressed ? { opacity: 0.92 } : null,
+                            ]}
+                          >
+                            <Text style={[styles.queueModePillText, catchupScheduleMode === 'dates' ? styles.queueModePillTextActive : null]}>
+                              תאריכים
+                            </Text>
+                          </Pressable>
+                        </View>
+
+                        {catchupScheduleMode === 'dates' ? (
+                          <View style={{ gap: 10 }}>
+                            <View style={styles.queueDatesTopRow}>
+                              <View style={styles.queueSchedulePill}>
+                                <Text style={styles.queueSchedulePillText}>{`${catchupDates.size} תאריכים נבחרו`}</Text>
+                              </View>
+                              <Pressable
+                                onPress={() => {
+                                  const seed = scheduledSendDateTime ?? new Date(String((event as any)?.date ?? ''));
+                                  const base = Number.isFinite(seed?.getTime?.() ? seed.getTime() : NaN) ? seed : new Date();
+                                  setCatchupCalendarMonth(new Date(base.getFullYear(), base.getMonth(), 1));
+                                  setCatchupDatesDialogOpen(true);
+                                }}
+                                style={({ pressed }: any) => [styles.queueToggleBtn, pressed ? { opacity: 0.92 } : null]}
+                              >
+                                <Text style={styles.queueToggleBtnText}>בחר תאריכים</Text>
+                              </Pressable>
+                              <Pressable
+                                onPress={() => setCatchupDates(new Set())}
+                                style={({ pressed }: any) => [styles.queueClearBtn, pressed ? { opacity: 0.92 } : null]}
+                              >
+                                <Text style={styles.queueClearBtnText}>נקה</Text>
+                              </Pressable>
+                            </View>
+                            {catchupDates.size > 0 ? (
+                              <View style={styles.queueDatesChips}>
+                                {Array.from(catchupDates)
+                                  .sort()
+                                  .slice(0, 12)
+                                  .map((d) => (
+                                    <View key={d} style={styles.queueDateChip}>
+                                      <Text style={styles.queueDateChipText}>{formatDmyFromYmd(d)}</Text>
+                                      <Pressable
+                                        onPress={() =>
+                                          setCatchupDates((prev) => {
+                                            const next = new Set(prev);
+                                            next.delete(d);
+                                            return next;
+                                          })
+                                        }
+                                        style={({ pressed }: any) => [styles.queueChipX, pressed ? { opacity: 0.85 } : null]}
+                                      >
+                                        <Ionicons name="close" size={14} color="rgba(100,116,139,1)" />
+                                      </Pressable>
+                                    </View>
+                                  ))}
+                                {catchupDates.size > 12 ? <Text style={styles.editorSectionHint}>מוצגים 12 ראשונים…</Text> : null}
+                              </View>
+                            ) : null}
+                          </View>
+                        ) : null}
+                      </>
+                    ) : null}
+                  </View>
+
+                  {/* תור ממתינים */}
+                  <View style={styles.queueCatchupTableSection}>
+                    <View style={styles.queueCatchupTableTitleRow}>
+                      <Text style={styles.queueCatchupTableTitle}>תור ממתינים</Text>
+                      <View style={styles.queueCatchupActionsRow}>
+                        <Pressable
+                          onPress={() => void runCatchupBackfill()}
+                          style={({ pressed }: any) => [styles.queueCatchupActionBtn, pressed ? { opacity: 0.92 } : null]}
+                        >
+                          <Ionicons name="add" size={16} color="#2563EB" />
+                          <Text style={styles.queueCatchupActionBtnText}>הכנס לתור</Text>
+                        </Pressable>
+                        <Pressable
+                          onPress={() => void loadStepCatchupQueue()}
+                          style={({ pressed }: any) => [styles.queueCatchupActionBtn, pressed ? { opacity: 0.92 } : null]}
+                        >
+                          <Ionicons name="refresh-outline" size={16} color="#2563EB" />
+                          <Text style={styles.queueCatchupActionBtnText}>רענן</Text>
+                        </Pressable>
+                      </View>
+                    </View>
+
+                    <View style={styles.queueCatchupTableWrap}>
+                      <View style={styles.queueCatchupTableHeader}>
+                        <Text style={[styles.queueCatchupTableHeaderCell, styles.queueCatchupTableHeaderStatusCell]}>סטטוס</Text>
+                        <Text style={styles.queueCatchupTableHeaderCell}>מועד מתוזמן</Text>
+                        <Text style={styles.queueCatchupTableHeaderCell}>טלפון</Text>
+                        <Text style={styles.queueCatchupTableHeaderCell}>שם</Text>
+                      </View>
+                      {stepCatchupLoading ? (
+                        <View style={{ paddingVertical: 24, alignItems: 'center' }}>
+                          <ActivityIndicator size="small" />
+                        </View>
+                      ) : stepCatchupRows.length === 0 ? (
+                        <Text style={styles.queueCatchupTableEmpty}>אין אורחים בתור כרגע</Text>
+                      ) : (
+                        stepCatchupRows.map((r) => {
+                          const statusLabel = r.status === 'sent' ? 'סיומה' : 'ממתין';
+                          const theme =
+                            r.status === 'sent'
+                              ? { bg: 'rgba(241,245,249,1)', text: 'rgba(100,116,139,1)', dot: 'rgba(148,163,184,1)' }
+                              : { bg: 'rgba(234,179,8,0.18)', text: 'rgba(161,98,7,1)', dot: 'rgba(234,179,8,1)' };
+                          return (
+                            <View key={r.guestId} style={styles.queueCatchupTableRow}>
+                              <View style={[styles.queueCatchupTableStatusCell, styles.queueCatchupStatusPillTextOnly, { backgroundColor: theme.bg }]}>
+                                <Text style={[styles.recipientsStatusText, { color: theme.text }]}>{statusLabel}</Text>
+                              </View>
+                              <Text style={styles.queueCatchupTableCell} numberOfLines={1}>
+                                {formatDueAtQueue(r.dueAt)}
+                              </Text>
+                              <Text style={styles.queueCatchupTableCell} numberOfLines={1}>
+                                {r.phone ? String(r.phone) : '—'}
+                              </Text>
+                              <Text style={styles.queueCatchupTableCell} numberOfLines={1}>
+                                {r.name || '—'}
+                              </Text>
+                            </View>
+                          );
+                        })
+                      )}
+                    </View>
+                    <Text style={styles.queueCatchupTableFooter}>
+                      סה״כ {stepCatchupRows.length} אורחים בתור
+                    </Text>
+                  </View>
                 </View>
               ) : null}
 
@@ -2788,85 +3990,162 @@ export default function AutomaticNotificationsWebScreen() {
                 </View>
               ) : null}
 
-              <View style={styles.editorSection}>
-                <View style={styles.editorSectionHeader}>
-                  <Ionicons name="phone-portrait-outline" size={16} color="rgba(79,70,229,1)" />
-                  <Text style={styles.editorSectionTitle}>תצוגה מקדימה</Text>
-                </View>
-                <View style={styles.previewBlock}>
-                <View style={styles.phoneFrame}>
-                  <View style={styles.phoneNotch} />
-                  <View style={styles.phoneScreen}>
-                    <Text style={styles.phoneTime}>09:41</Text>
-                    <View style={styles.phoneStatusLeft}>
-                      <View style={styles.phoneStatusDot} />
-                      <View style={styles.phoneStatusDot} />
-                    </View>
-                    <View style={styles.phoneHeader}>
-                      <View style={styles.phoneAvatar} />
-                      <Text style={styles.phoneHeaderTitle} numberOfLines={1}>
-                        {ownerTitle || 'אירוע'}
-                      </Text>
-                    </View>
-                    <View style={styles.bubble}>
-                      <Text style={styles.bubbleText}>
-                        {renderPreviewText(editDraft?.message || getDefaultMessageContent(ownerTitle)).replace(/\n/g, '\n')}
-                      </Text>
-                      <Text style={styles.bubbleTime}>09:42 PM</Text>
-                    </View>
-                    <View style={styles.datePill}>
-                      <Text style={styles.datePillText}>היום</Text>
+              {editorKind !== 'template' ? (
+                <View style={styles.editorSection}>
+                  <View style={styles.editorSectionHeader}>
+                    <Ionicons name="phone-portrait-outline" size={16} color="rgba(79,70,229,1)" />
+                    <Text style={styles.editorSectionTitle}>תצוגה מקדימה</Text>
+                  </View>
+                  <View style={styles.previewBlock}>
+                  <View style={styles.phoneFrame}>
+                    <View style={styles.phoneNotch} />
+                    <View style={styles.phoneScreen}>
+                      <Text style={styles.phoneTime}>09:41</Text>
+                      <View style={styles.phoneStatusLeft}>
+                        <View style={styles.phoneStatusDot} />
+                        <View style={styles.phoneStatusDot} />
+                      </View>
+                      <View style={styles.phoneHeader}>
+                        <View style={styles.phoneAvatar} />
+                        <Text style={styles.phoneHeaderTitle} numberOfLines={1}>
+                          {ownerTitle || 'אירוע'}
+                        </Text>
+                      </View>
+                      <View style={styles.bubble}>
+                        <Text style={styles.bubbleText}>
+                          {renderPreviewText(editDraft?.message || getDefaultMessageContent(ownerTitle)).replace(/\n/g, '\n')}
+                        </Text>
+                        <Text style={styles.bubbleTime}>09:42 PM</Text>
+                      </View>
+                      <View style={styles.datePill}>
+                        <Text style={styles.datePillText}>היום</Text>
+                      </View>
                     </View>
                   </View>
-                </View>
 
-                <View style={styles.demoCard}>
-                  <View style={styles.demoIconWrap}>
-                    <Ionicons name="globe-outline" size={18} color={ui.primary} />
+                  <View style={styles.demoCard}>
+                    <View style={styles.demoIconWrap}>
+                      <Ionicons name="globe-outline" size={18} color={ui.primary} />
+                    </View>
+                    <View style={styles.demoTextWrap}>
+                      <Text style={styles.demoTitle}>לצפייה בדמו של דף ההזמנה</Text>
+                      <Text style={styles.demoSub} numberOfLines={2}>
+                        {demoInvitation.guestName
+                          ? `ייפתח לפי הקוד של ${demoInvitation.guestName}.`
+                          : 'ייפתח הדמו לפי אחד המוזמנים באירוע.'}
+                      </Text>
+                    </View>
+                    <Pressable
+                      onPress={openDemoUrl}
+                      disabled={!demoUrl}
+                      style={({ pressed }: any) => [
+                        styles.demoBtn,
+                        !demoUrl ? styles.demoBtnDisabled : null,
+                        pressed && demoUrl ? { opacity: 0.92 } : null,
+                      ]}
+                      accessibilityRole="button"
+                      accessibilityLabel="לצפייה בדמו"
+                    >
+                      <Ionicons name="open-outline" size={16} color="#fff" />
+                      <Text style={styles.demoBtnText}>לצפייה בדמו</Text>
+                    </Pressable>
                   </View>
-                  <View style={styles.demoTextWrap}>
-                    <Text style={styles.demoTitle}>לצפייה בדמו של דף ההזמנה</Text>
-                    <Text style={styles.demoSub} numberOfLines={2}>
-                      {demoInvitation.guestName
-                        ? `ייפתח לפי הקוד של ${demoInvitation.guestName}.`
-                        : 'ייפתח הדמו לפי אחד המוזמנים באירוע.'}
-                    </Text>
-                  </View>
-                  <Pressable
-                    onPress={openDemoUrl}
-                    disabled={!demoUrl}
-                    style={({ pressed }: any) => [
-                      styles.demoBtn,
-                      !demoUrl ? styles.demoBtnDisabled : null,
-                      pressed && demoUrl ? { opacity: 0.92 } : null,
-                    ]}
-                    accessibilityRole="button"
-                    accessibilityLabel="לצפייה בדמו"
-                  >
-                    <Ionicons name="open-outline" size={16} color="#fff" />
-                    <Text style={styles.demoBtnText}>לצפייה בדמו</Text>
-                  </Pressable>
                 </View>
-              </View>
-              </View>
+                </View>
+              ) : null}
             </ScrollView>
 
             <View style={styles.editorFooter}>
-              <Pressable
-                onPress={() => void saveDraft({ closeOnSuccess: true, toastOnSuccess: true })}
-                disabled={saving || !editDraft}
-                style={({ pressed }: any) => [styles.saveBtn, saving || !editDraft ? styles.saveBtnDisabled : null, pressed ? { opacity: 0.92 } : null]}
-              >
-                <Text style={styles.saveBtnText}>{saving ? 'שומר...' : 'שמור שינויים'}</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => void sendNow()}
-                disabled={sendingNow || !editDraft}
-                style={({ pressed }: any) => [styles.sendNowBtn, sendingNow || !editDraft ? styles.sendNowBtnDisabled : null, pressed ? { opacity: 0.92 } : null]}
-              >
-                <Ionicons name="paper-plane-outline" size={16} color="#fff" />
-                <Text style={styles.sendNowBtnText}>{sendingNow ? 'שולח...' : 'שלח עכשיו'}</Text>
-              </Pressable>
+              {editorKind === 'template' ? (
+                <>
+                  <Pressable
+                    onPress={() => {
+                      if (editorWizardStepIdx > 0) setEditorWizardStepIdx((i) => Math.max(0, i - 1));
+                      else closeEditor();
+                    }}
+                    style={({ pressed }: any) => [
+                      styles.dialogBtn,
+                      styles.dialogBtnGhost,
+                      pressed ? { opacity: 0.92 } : null,
+                    ]}
+                  >
+                    <Text style={styles.dialogBtnGhostText}>{editorWizardStepIdx > 0 ? 'הקודם' : 'סגור'}</Text>
+                  </Pressable>
+
+                  {editorWizardIsLast ? (
+                    <>
+                      <Pressable
+                        onPress={() =>
+                          void saveDraft({
+                            closeOnSuccess: true,
+                            toastOnSuccess: true,
+                            ...(String(editorRow?.notification_type || '').trim() === 'reminder_1' ||
+                            String(editorRow?.notification_type || '').trim() === 'reminder_2'
+                              ? { recipientGuestIds: Array.from(pickerSelectedIds) }
+                              : null),
+                          })
+                        }
+                        disabled={saving || !editDraft}
+                        style={({ pressed }: any) => [
+                          styles.saveBtn,
+                          saving || !editDraft ? styles.saveBtnDisabled : null,
+                          pressed ? { opacity: 0.92 } : null,
+                        ]}
+                      >
+                        <Text style={styles.saveBtnText}>{saving ? 'שומר...' : 'שמור שינויים'}</Text>
+                      </Pressable>
+                      {editorWizardStepId !== 'message' ? (
+                        <Pressable
+                          onPress={() => void sendNow()}
+                          disabled={sendingNow || !editDraft}
+                          style={({ pressed }: any) => [
+                            styles.sendNowBtn,
+                            sendingNow || !editDraft ? styles.sendNowBtnDisabled : null,
+                            pressed ? { opacity: 0.92 } : null,
+                          ]}
+                        >
+                          <Ionicons name="paper-plane-outline" size={16} color="#fff" />
+                          <Text style={styles.sendNowBtnText}>{sendingNow ? 'שולח...' : 'שלח עכשיו'}</Text>
+                        </Pressable>
+                      ) : null}
+                    </>
+                  ) : (
+                    <Pressable
+                      onPress={() => setEditorWizardStepIdx((i) => Math.min(editorWizardSteps.length - 1, i + 1))}
+                      disabled={!editDraft || editorWizardSteps.length <= 1}
+                      style={({ pressed }: any) => [
+                        styles.dialogBtn,
+                        styles.dialogBtnPrimary,
+                        (!editDraft || editorWizardSteps.length <= 1) ? { opacity: 0.6 } : null,
+                        pressed ? { opacity: 0.92 } : null,
+                      ]}
+                    >
+                      <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8 }}>
+                        <Ionicons name="arrow-back" size={16} color="#fff" />
+                        <Text style={styles.dialogBtnPrimaryText}>הבא</Text>
+                      </View>
+                    </Pressable>
+                  )}
+                </>
+              ) : (
+                <>
+                  <Pressable
+                    onPress={() => void saveDraft({ closeOnSuccess: true, toastOnSuccess: true })}
+                    disabled={saving || !editDraft}
+                    style={({ pressed }: any) => [styles.saveBtn, saving || !editDraft ? styles.saveBtnDisabled : null, pressed ? { opacity: 0.92 } : null]}
+                  >
+                    <Text style={styles.saveBtnText}>{saving ? 'שומר...' : 'שמור שינויים'}</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => void sendNow()}
+                    disabled={sendingNow || !editDraft}
+                    style={({ pressed }: any) => [styles.sendNowBtn, sendingNow || !editDraft ? styles.sendNowBtnDisabled : null, pressed ? { opacity: 0.92 } : null]}
+                  >
+                    <Ionicons name="paper-plane-outline" size={16} color="#fff" />
+                    <Text style={styles.sendNowBtnText}>{sendingNow ? 'שולח...' : 'שלח עכשיו'}</Text>
+                  </Pressable>
+                </>
+              )}
             </View>
           </View>
 
@@ -3011,6 +4290,83 @@ export default function AutomaticNotificationsWebScreen() {
                       </Pressable>
                     );
                   })}
+                </View>
+              </View>
+            </View>
+          ) : null}
+
+          {catchupDatesDialogOpen ? (
+            <View style={styles.dialogOverlay}>
+              <Pressable style={styles.pickerBackdrop} onPress={() => setCatchupDatesDialogOpen(false)} />
+              <View style={styles.dialogCard}>
+                <View style={styles.dialogHeader}>
+                  <Text style={styles.dialogTitle}>בחירת תאריכים לתור</Text>
+                  <Pressable onPress={() => setCatchupDatesDialogOpen(false)} style={styles.dialogClose}>
+                    <Ionicons name="close" size={18} color="#111827" />
+                  </Pressable>
+                </View>
+
+                <View style={styles.calendarHeaderRow}>
+                  <Pressable onPress={() => setCatchupCalendarMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))} style={styles.navBtn}>
+                    <Ionicons name="chevron-forward" size={18} color="#111827" />
+                  </Pressable>
+                  <Text style={styles.calendarMonthText}>
+                    {new Date(catchupCalendarGrid.y, catchupCalendarGrid.m, 1).toLocaleDateString('he-IL', { month: 'long', year: 'numeric' })}
+                  </Text>
+                  <Pressable onPress={() => setCatchupCalendarMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))} style={styles.navBtn}>
+                    <Ionicons name="chevron-back" size={18} color="#111827" />
+                  </Pressable>
+                </View>
+
+                <View style={styles.calendarDowRow}>
+                  {['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ש'].map((w) => (
+                    <Text key={w} style={styles.dowText}>
+                      {w}
+                    </Text>
+                  ))}
+                </View>
+
+                <View style={styles.calendarGrid}>
+                  {catchupCalendarGrid.cells.map((c, idx) => {
+                    const ymd = c.date ? toLocalYmd(c.date) : null;
+                    const selected = ymd ? catchupDates.has(ymd) : false;
+                    const ev = new Date(String((event as any)?.date ?? ''));
+                    const evDate = Number.isFinite(ev.getTime()) ? new Date(ev.getFullYear(), ev.getMonth(), ev.getDate(), 0, 0, 0, 0) : null;
+                    const disabled =
+                      !c.date ||
+                      (evDate ? c.date.getTime() > evDate.getTime() : false) ||
+                      c.date.getTime() < new Date().getTime() - 3650 * 24 * 60 * 60 * 1000;
+
+                    return (
+                      <Pressable
+                        key={idx}
+                        disabled={disabled}
+                        onPress={() => {
+                          if (!ymd) return;
+                          setCatchupDates((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(ymd)) next.delete(ymd);
+                            else next.add(ymd);
+                            return next;
+                          });
+                        }}
+                        style={({ pressed }: any) => [
+                          styles.dayCell,
+                          selected ? styles.dayCellSelected : null,
+                          pressed && !disabled ? { opacity: 0.9 } : null,
+                          disabled ? { opacity: 0.35 } : null,
+                        ]}
+                      >
+                        <Text style={[styles.dayText, selected ? styles.dayTextSelected : null]}>{c.day ?? ''}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+
+                <View style={{ padding: 14, paddingTop: 0, flexDirection: 'row', justifyContent: 'flex-end', gap: 10 }}>
+                  <Pressable onPress={() => setCatchupDatesDialogOpen(false)} style={[styles.dialogBtn, styles.dialogBtnPrimary]}>
+                    <Text style={styles.dialogBtnPrimaryText}>סיום</Text>
+                  </Pressable>
                 </View>
               </View>
             </View>
@@ -3213,6 +4569,68 @@ export default function AutomaticNotificationsWebScreen() {
                         </View>
                       );
                     })}
+                </ScrollView>
+              )}
+            </View>
+          </View>
+        </View>
+      ) : null}
+
+      {catchupOpen ? (
+        <View style={styles.dialogOverlay}>
+          <Pressable style={styles.pickerBackdrop} onPress={() => setCatchupOpen(false)} />
+          <View style={styles.dialogCard}>
+            <View style={styles.dialogHeader}>
+              <Text style={styles.dialogTitle}>{catchupTitle}</Text>
+              <Pressable onPress={() => setCatchupOpen(false)} style={styles.dialogClose}>
+                <Ionicons name="close" size={18} color="#111827" />
+              </Pressable>
+            </View>
+
+            <View style={{ padding: 14, gap: 10 }}>
+              <View style={styles.recipientsPreviewSearchRow}>
+                <Ionicons name="search-outline" size={16} color="#64748B" />
+                <TextInput
+                  value={catchupSearch}
+                  onChangeText={setCatchupSearch}
+                  placeholder="חיפוש לפי שם או טלפון..."
+                  placeholderTextColor="rgba(100,116,139,0.6)"
+                  style={styles.recipientsPreviewSearchInput}
+                />
+              </View>
+
+              {catchupLoading ? (
+                <View style={{ paddingVertical: 18, alignItems: 'center', justifyContent: 'center' }}>
+                  <ActivityIndicator />
+                </View>
+              ) : catchupRows.length === 0 ? (
+                <Text style={styles.recipientsPreviewEmpty}>אין אורחים בתור כרגע.</Text>
+              ) : (
+                <ScrollView style={{ maxHeight: 420 }} contentContainerStyle={{ gap: 8, paddingBottom: 6 }}>
+                  {catchupRows
+                    .filter((g) => {
+                      const q = String(catchupSearch || '').trim().toLowerCase();
+                      if (!q) return true;
+                      const name = String(g.name || '').toLowerCase();
+                      const phone = String(g.phone || '').toLowerCase();
+                      return name.includes(q) || phone.includes(q);
+                    })
+                    .map((g) => (
+                      <View key={g.guestId} style={styles.sendStatusRow}>
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text style={styles.recipientsPreviewName} numberOfLines={1}>
+                            {g.name || '—'}
+                          </Text>
+                          <Text style={styles.sendStatusMeta} numberOfLines={2}>
+                            {(g.phone ? g.phone : 'אין טלפון') + (g.dueAt ? ` · מתוזמן ל־${formatHeDateTimeShort(g.dueAt)}` : '')}
+                            {g.lastError ? ` · ${g.lastError}` : ''}
+                          </Text>
+                        </View>
+                        <View style={styles.sendStatusBadge}>
+                          <Text style={[styles.sendStatusBadgeText, { color: 'rgba(2,6,23,0.75)' }]}>בתור</Text>
+                        </View>
+                      </View>
+                    ))}
                 </ScrollView>
               )}
             </View>
@@ -3620,7 +5038,7 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : null),
   },
 
-  chips: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8 },
+  chips: { flexDirection: 'row', flexWrap: 'nowrap', gap: 8 },
   chip: {
     paddingHorizontal: 10,
     paddingVertical: 5,
@@ -3636,7 +5054,7 @@ const styles = StyleSheet.create({
 
   textareaWrap: { position: 'relative', width: '100%' },
   textarea: {
-    height: 132,
+    height: 200,
     borderRadius: 8,
     backgroundColor: '#F9FAFB',
     borderWidth: 1,
@@ -3652,6 +5070,32 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : null),
   },
   charCount: { position: 'absolute', left: 12, bottom: 10, fontSize: 12, fontWeight: '800', color: '#9CA3AF' },
+
+  step4TwoCol: { flexDirection: 'row-reverse', width: '100%', gap: 24 },
+  step4PreviewCol: { flex: 1, minWidth: 0, maxWidth: 460, minHeight: 700, borderRadius: 20, borderWidth: 0, padding: 18, gap: 12, alignItems: 'center', backgroundColor: '#f2f2f2' },
+  step4PreviewTitle: { fontSize: 15, fontWeight: '900', textAlign: 'right', alignSelf: 'stretch' },
+  step4PreviewSubtitle: { fontSize: 12, fontWeight: '700', textAlign: 'right', alignSelf: 'stretch', marginBottom: 8 },
+  step4PhoneMockupWrap: { width: 300, height: 631, minHeight: 631, overflow: 'hidden' as const, alignSelf: 'center', flexShrink: 0 },
+  step4PhoneMockup: { width: '100%', maxWidth: 340, borderRadius: 28, borderWidth: 10, borderColor: '#1f2937', backgroundColor: '#111827', padding: 12, alignItems: 'center' },
+  step4PhoneScreenContent: { flex: 1, minHeight: 0, backgroundColor: '#f8fafc', padding: 16, gap: 12 },
+  step4PhoneScreen: { width: '100%', minHeight: 380, backgroundColor: '#f8fafc', borderRadius: 18, padding: 16, gap: 12 },
+  step4PhoneTime: { fontSize: 15, fontWeight: '800', color: 'rgba(71,85,105,1)', textAlign: 'center' },
+  step4BubbleIn: { alignSelf: 'flex-start', maxWidth: '90%', padding: 14, borderRadius: 16, borderTopRightRadius: 4, gap: 4 },
+  step4BubbleOut: { alignSelf: 'flex-end', maxWidth: '90%', padding: 14, borderRadius: 16, borderTopLeftRadius: 4, gap: 4 },
+  step4BubbleText: { fontSize: 16, fontWeight: '700', textAlign: 'right', lineHeight: 24 },
+  step4BubbleTextOut: { fontSize: 16, fontWeight: '700', color: '#fff', textAlign: 'right', lineHeight: 24 },
+  step4BubbleTime: { fontSize: 12, fontWeight: '800', color: 'rgba(100,116,139,1)', textAlign: 'left' },
+  step4BubbleTimeOut: { fontSize: 12, fontWeight: '800', color: 'rgba(255,255,255,0.85)', textAlign: 'left' },
+  step4ContentCol: { flex: 1.2, minWidth: 0, gap: 10 },
+  step4Instruction: { fontSize: 13, fontWeight: '700', textAlign: 'right', lineHeight: 20 },
+  step4VarsLabel: { fontSize: 13, fontWeight: '900', textAlign: 'right' },
+  step4VarsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  step4VarTag: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, borderWidth: 1 },
+  step4VarTagText: { fontSize: 12, fontWeight: '800', textAlign: 'right' },
+  step4CharRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 10 },
+  step4CharPill: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.86)', borderWidth: 1 },
+  step4CharDot: { width: 8, height: 8, borderRadius: 4 },
+  step4SmsHint: { fontSize: 12, fontWeight: '700', textAlign: 'right' },
 
   recipientsHeaderRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   recipientsBadge: { flexDirection: 'row-reverse', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(2,6,23,0.04)' },
@@ -3707,6 +5151,120 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
   recipientsPrimaryBtnText: { fontSize: 12, fontWeight: '900', color: '#fff', textAlign: 'right' },
+  recipientsStepWrap: { width: '100%', gap: 14 },
+  recipientsSummaryCard: {
+    width: '100%',
+    height: 86,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(226,232,240,1)',
+    backgroundColor: '#fff',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    gap: 12,
+  },
+  recipientsSummaryIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(37,99,235,0.10)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recipientsSummaryLabel: { fontSize: 12, fontWeight: '800', color: 'rgba(100,116,139,1)', textAlign: 'right' },
+  recipientsSummaryValue: { marginTop: 2, fontSize: 26, fontWeight: '900', color: '#111827', textAlign: 'right', writingDirection: 'ltr' },
+
+  recipientsAutoAllCard: {
+    width: '100%',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(226,232,240,1)',
+    backgroundColor: 'rgba(248,250,252,1)',
+    padding: 14,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 12,
+  },
+  recipientsAutoAllTitle: { fontSize: 13, fontWeight: '900', color: '#111827', textAlign: 'right' },
+  recipientsAutoAllHint: { marginTop: 4, fontSize: 12, fontWeight: '700', color: 'rgba(100,116,139,1)', textAlign: 'right', lineHeight: 18 },
+  recipientsManualBtn: {
+    height: 40,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: '#2563EB',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  recipientsManualBtnText: { fontSize: 12, fontWeight: '900', color: '#fff', textAlign: 'right' },
+
+  recipientsChipsRow: { flexDirection: 'row', flexWrap: 'nowrap', gap: 10, alignItems: 'flex-start', justifyContent: 'flex-start' },
+  recipientsChip: {
+    height: 36,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(226,232,240,1)',
+    backgroundColor: '#fff',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  recipientsChipActive: { backgroundColor: '#2563EB', borderColor: '#2563EB' },
+  recipientsChipText: { fontSize: 12, fontWeight: '900', color: '#111827', textAlign: 'right' },
+  recipientsChipTextActive: { color: '#fff' },
+
+  recipientsQuickActionsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', gap: 14, flexWrap: 'wrap' },
+  recipientsLinkBtn: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
+  recipientsLinkText: { fontSize: 12, fontWeight: '900', color: '#2563EB', textAlign: 'right' },
+
+  recipientsTableWrap: {
+    width: '100%',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(226,232,240,1)',
+    backgroundColor: '#fff',
+    overflow: 'hidden',
+  },
+  recipientsTableHeaderRow: {
+    height: 44,
+    backgroundColor: 'rgba(248,250,252,1)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(226,232,240,1)',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+  },
+  recipientsTableHeaderText: { fontSize: 12, fontWeight: '800', color: 'rgba(100,116,139,1)', textAlign: 'right' },
+  recipientsTableCell: { paddingHorizontal: 10, justifyContent: 'center' },
+  recipientsCellStatus: { width: 120, flexDirection: 'row' },
+  recipientsCellPhone: { width: 170 },
+  recipientsCellName: { flex: 1, minWidth: 0 },
+  recipientsTableCheckboxHead: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center', ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
+  recipientsTableRow: {
+    minHeight: 54,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(241,245,249,1)',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  recipientsTableRowActive: { backgroundColor: 'rgba(37,99,235,0.05)' },
+  recipientsTableCheckboxCell: { width: 38, height: 44, alignItems: 'center', justifyContent: 'center' },
+  recipientsCellText: { fontSize: 13, fontWeight: '800', color: 'rgba(100,116,139,1)', textAlign: 'right' },
+  recipientsNameRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 10, minWidth: 0 },
+  recipientsAvatar: { width: 30, height: 30, borderRadius: 15, backgroundColor: 'rgba(226,232,240,1)', alignItems: 'center', justifyContent: 'center' },
+  recipientsAvatarText: { fontSize: 12, fontWeight: '900', color: '#111827', textAlign: 'center' },
+  recipientsNameText: { fontSize: 13, fontWeight: '900', color: '#111827', textAlign: 'right' },
+  recipientsStatusPill: { height: 22, paddingHorizontal: 10, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', gap: 8, flexWrap: 'nowrap' },
+  recipientsStatusDot: { width: 6, height: 6, borderRadius: 3 },
+  recipientsStatusText: { fontSize: 12, fontWeight: '900', textAlign: 'right' },
+
   recipientsHintEm: { fontWeight: '900', color: '#4F46E5' },
   recipientsDangerText: { marginTop: 10, fontSize: 12, fontWeight: '900', color: '#EF4444', textAlign: 'right' },
   recipientsPreviewHint: { fontSize: 12, fontWeight: '800', color: 'rgba(2,6,23,0.62)', textAlign: 'right', lineHeight: 18 },
@@ -3776,7 +5334,7 @@ const styles = StyleSheet.create({
   sendStatusBadgeText: { fontSize: 12, fontWeight: '900', textAlign: 'center' },
 
   recipientsToolsRow: { marginTop: 6, flexDirection: 'row-reverse', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
-  recipientsFiltersRow: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8 },
+  recipientsFiltersRow: { flexDirection: 'row', flexWrap: 'nowrap', gap: 8 },
   recipientsPill: {
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -4037,12 +5595,75 @@ const styles = StyleSheet.create({
   },
   editorBody: { flex: 1, minHeight: 0 },
   editorBodyContent: { padding: 12, paddingBottom: 12, gap: 10 },
+  editorWizardTop: {
+    paddingHorizontal: 2,
+    paddingTop: 6,
+    paddingBottom: 8,
+    borderRadius: 12,
+    backgroundColor: 'rgba(79,70,229,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(79,70,229,0.10)',
+  },
+  wizardTopTitlesRow: { paddingHorizontal: 10, paddingTop: 8, paddingBottom: 6, flexDirection: 'row-reverse', alignItems: 'flex-start', gap: 10 },
+  wizardTopTitle: { fontSize: 16, fontWeight: '900', color: '#111827', textAlign: 'right' },
+  wizardTopSub: { marginTop: 2, fontSize: 12, fontWeight: '700', color: 'rgba(100,116,139,1)', textAlign: 'right' },
+  wizardProgressMetaRow: { paddingHorizontal: 10, paddingBottom: 8, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
+  wizardProgressPct: { fontSize: 12, fontWeight: '800', color: 'rgba(100,116,139,1)' },
+  wizardProgressLabel: { fontSize: 12, fontWeight: '800', color: 'rgba(100,116,139,1)' },
+  wizardProgressTrack: {
+    marginHorizontal: 10,
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(148,163,184,0.25)',
+    overflow: 'hidden',
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+  },
+  wizardProgressFill: { height: 6, borderRadius: 999, backgroundColor: '#2563EB' },
+  editorStepperRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  editorStepperItem: { flex: 1, minWidth: 0, alignItems: 'center', justifyContent: 'center', gap: 6 },
+  editorStepDot: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.18)',
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editorStepDotDone: { backgroundColor: '#4F46E5', borderColor: '#4F46E5' },
+  editorStepDotActive: { borderColor: '#4F46E5' },
+  editorStepDotText: { fontSize: 12, fontWeight: '900', color: 'rgba(15,23,42,0.72)' },
+  editorStepLabel: { fontSize: 11, fontWeight: '900', color: 'rgba(100,116,139,1)', textAlign: 'center' },
+  editorStepLabelActive: { color: '#111827' },
+
+  scheduleStepWrap: { padding: 14, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.96)', borderWidth: 1, borderColor: 'rgba(2,6,23,0.08)', gap: 14 },
+  scheduleStepHeader: { width: '100%', gap: 4 },
+  scheduleStepTitle: { fontSize: 18, fontWeight: '900', color: '#111827', textAlign: 'right' },
+  scheduleStepSubTitle: { fontSize: 12, fontWeight: '800', color: 'rgba(100,116,139,1)', textAlign: 'right' },
+  scheduleStepGrid: { width: '100%', flexDirection: 'row-reverse', alignItems: 'stretch', gap: 16, flexWrap: 'wrap' },
+  scheduleLeftCol: { width: 320, maxWidth: '100%', gap: 12 },
+  scheduleChoiceCard: { borderRadius: 10, padding: 12, backgroundColor: 'rgba(37,99,235,0.08)', borderWidth: 1, borderColor: 'rgba(37,99,235,0.22)' },
+  scheduleChoiceTopRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' },
+  scheduleChoiceTitle: { fontSize: 12, fontWeight: '900', color: 'rgba(30,64,175,1)', textAlign: 'right' },
+  scheduleChoiceValue: { marginTop: 6, fontSize: 13, fontWeight: '900', color: '#111827', textAlign: 'right' },
+  scheduleFieldBlock: { gap: 6 },
+  scheduleFieldLabel: { fontSize: 12, fontWeight: '900', color: 'rgba(71,85,105,1)', textAlign: 'right' },
+  scheduleInputRow: { height: 44, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(2,6,23,0.12)', backgroundColor: '#fff', paddingHorizontal: 12, flexDirection: 'row-reverse', alignItems: 'center', gap: 10, justifyContent: 'flex-end' },
+  scheduleInputText: { fontSize: 14, fontWeight: '900', color: '#111827', textAlign: 'right', flex: 1, writingDirection: 'ltr' },
+  scheduleHintText: { fontSize: 11, fontWeight: '800', color: 'rgba(100,116,139,1)', textAlign: 'right', lineHeight: 16 },
+  scheduleSummaryCard: { display: 'grid', marginTop: 6, borderRadius: 10, padding: 12, borderWidth: 1, borderColor: 'rgba(148,163,184,0.30)', backgroundColor: 'rgba(248,250,252,1)', alignItems: 'flex-end', gap: 6 },
+  scheduleSummaryLabel: { fontSize: 12, fontWeight: '900', color: 'rgba(15,23,42,0.72)', textAlign: 'right' },
+  scheduleSummaryValue: { fontSize: 18, fontWeight: '900', color: '#111827', textAlign: 'right', writingDirection: 'ltr' },
+  scheduleCalendarCard: { flex: 1, minWidth: 360, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(2,6,23,0.08)', backgroundColor: '#fff', paddingTop: 10, overflow: 'hidden' },
   editorFooter: {
     padding: 14,
     borderTopWidth: 1,
     borderTopColor: '#E5E7EB',
     backgroundColor: '#F9FAFB',
-    flexDirection: 'row-reverse',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 10,
   },
   saveBtn: {
@@ -4084,6 +5705,18 @@ const styles = StyleSheet.create({
   sendNowBtn: {
     flex: 1,
     height: 44,
+    borderRadius: 10,
+    backgroundColor: '#111827',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row-reverse',
+    gap: 8,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer', boxShadow: '0 12px 28px rgba(2,6,23,0.16)' } as any) : null),
+  },
+  sendNowBtnBelowContent: {
+    width: '100%',
+    height: 44,
+    marginTop: 14,
     borderRadius: 10,
     backgroundColor: '#111827',
     alignItems: 'center',
@@ -4282,12 +5915,12 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : null),
   },
-  modeRow: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8 },
+  modeRow: { flexDirection: 'row', flexWrap: 'nowrap', gap: 8 },
   modePill: { paddingHorizontal: 10, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(2,6,23,0.10)', backgroundColor: '#fff', ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
   modePillActive: { backgroundColor: 'rgba(79,70,229,0.10)', borderColor: 'rgba(79,70,229,0.26)' },
   modePillText: { fontSize: 12, fontWeight: '900', color: 'rgba(2,6,23,0.70)', textAlign: 'right' },
   modePillTextActive: { color: '#4F46E5' },
-  dependsRow: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8 },
+  dependsRow: { flexDirection: 'row', flexWrap: 'nowrap', gap: 8 },
   dependsPill: { maxWidth: 220, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(2,6,23,0.10)', backgroundColor: '#fff', ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
   dependsPillActive: { backgroundColor: 'rgba(79,70,229,0.10)', borderColor: 'rgba(79,70,229,0.26)' },
   dependsText: { fontSize: 12, fontWeight: '900', color: 'rgba(2,6,23,0.70)', textAlign: 'right' },
@@ -4434,6 +6067,95 @@ const styles = StyleSheet.create({
   cardInlineRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 12 },
   cardInlineMeta: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
   cardInlineMetaText: { fontSize: 12, fontWeight: '900', color: 'rgba(2,6,23,0.55)', textAlign: 'right', flexShrink: 1 },
+  cardInlineSubText: { marginTop: -6, marginBottom: 12, fontSize: 12, fontWeight: '900', color: 'rgba(2,6,23,0.45)', textAlign: 'right' },
+
+  catchupStepWrap: { width: '100%', flexDirection: 'column', gap: 16 },
+  queueScheduleCard: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+    borderRadius: 16,
+    padding: 12,
+    gap: 12,
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 1px 3px rgba(15,23,42,0.06)' } as any) : null),
+  },
+  queueCatchupStatusPillTextOnly: { height: 22, paddingHorizontal: 10, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
+  queueScheduleTopRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  queueSchedulePill: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(79,70,229,0.10)', borderWidth: 1, borderColor: 'rgba(79,70,229,0.18)' },
+  queueSchedulePillText: { fontSize: 12, fontWeight: '900', color: 'rgba(79,70,229,1)' },
+  queueToggleBtn: { height: 34, paddingHorizontal: 12, borderRadius: 12, backgroundColor: 'rgba(2,6,23,0.06)', borderWidth: 1, borderColor: 'rgba(2,6,23,0.10)', alignItems: 'center', justifyContent: 'center' },
+  queueToggleBtnText: { fontSize: 12, fontWeight: '900', color: 'rgba(2,6,23,0.85)' },
+  queueClearBtn: { height: 34, paddingHorizontal: 12, borderRadius: 12, backgroundColor: 'rgba(239,68,68,0.08)', borderWidth: 1, borderColor: 'rgba(239,68,68,0.14)', alignItems: 'center', justifyContent: 'center' },
+  queueClearBtnText: { fontSize: 12, fontWeight: '900', color: 'rgba(239,68,68,1)' },
+
+  queueCatchupActivationRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' },
+  queueCatchupActivationRightBlock: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, minWidth: 0, justifyContent: 'flex-end' },
+  queueCatchupActivationTextBlock: { flex: 1, minWidth: 0, justifyContent: 'flex-start', alignItems: 'flex-start', gap: 2 },
+  queueCatchupActivationTitle: { fontSize: 15, fontWeight: '900', color: '#111827', textAlign: 'right' },
+  queueCatchupActivationTitleBlue: { fontSize: 15, fontWeight: '900', color: 'rgba(79,70,229,1)', textAlign: 'right' },
+  queueCatchupActivationHint: { fontSize: 12, fontWeight: '700', color: 'rgba(100,116,139,1)', textAlign: 'right', marginTop: 2 },
+  toggleBtnCatchup: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 4,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer', userSelect: 'none' } as any) : null),
+  },
+  toggleTrackOnCatchup: { backgroundColor: 'rgba(79,70,229,1)', borderColor: 'rgba(79,70,229,0.60)' },
+
+  queueCatchupScheduleRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 24, alignItems: 'flex-start' },
+  queueCatchupDailyBlock: { gap: 8, minWidth: 0 },
+  queueCatchupTimeInputWrap: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, height: 40, paddingLeft: 12, paddingRight: 10, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(2,6,23,0.12)', backgroundColor: '#fff' },
+  queueCatchupDailyRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
+  queueCatchupDailyLabel: { fontSize: 13, fontWeight: '800', color: 'rgba(71,85,105,1)', textAlign: 'right' },
+  queueCatchupTimeInput: { flex: 1, minWidth: 56, height: 40, paddingVertical: 0, paddingHorizontal: 0, borderWidth: 0, backgroundColor: 'transparent', fontSize: 14, fontWeight: '800', color: '#111827', textAlign: 'right' },
+  queueCatchupDaysBlock: { gap: 8, flex: 1, minWidth: 200 },
+  queueCatchupDaysLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  queueCatchupTableSection: { marginTop: 16, backgroundColor: '#fff', borderWidth: 1, borderColor: 'rgba(15,23,42,0.08)', borderRadius: 16, overflow: 'hidden' },
+  queueCatchupTableTitleRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(15,23,42,0.06)' },
+  queueCatchupTableTitle: { fontSize: 15, fontWeight: '900', color: '#111827', textAlign: 'right' },
+  queueCatchupActionsRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
+  queueCatchupActionBtn: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  queueCatchupActionBtnText: { fontSize: 13, fontWeight: '800', color: '#2563EB', textAlign: 'right' },
+  queueCatchupTableWrap: { minHeight: 80 },
+  queueCatchupTableHeader: { flexDirection: 'row-reverse', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10, backgroundColor: 'rgba(248,250,252,1)', borderBottomWidth: 1, borderBottomColor: 'rgba(15,23,42,0.06)' },
+  queueCatchupTableHeaderCell: { fontSize: 12, fontWeight: '900', color: 'rgba(100,116,139,1)', textAlign: 'right', flex: 1, minWidth: 0 },
+  queueCatchupTableHeaderStatusCell: { flex: 0, minWidth: 88, maxWidth: 100 },
+  queueCatchupTableRow: { flexDirection: 'row-reverse', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(15,23,42,0.05)' },
+  queueCatchupTableStatusCell: { flex: 0, minWidth: 88, maxWidth: 100 },
+  queueCatchupTableCell: { fontSize: 13, fontWeight: '800', color: '#111827', textAlign: 'right', flex: 1, minWidth: 0 },
+  queueCatchupTableEmpty: { fontSize: 13, fontWeight: '800', color: 'rgba(100,116,139,0.8)', textAlign: 'center', paddingVertical: 24 },
+  queueCatchupTableFooter: { fontSize: 12, fontWeight: '800', color: 'rgba(100,116,139,1)', textAlign: 'right', paddingHorizontal: 14, paddingVertical: 10, backgroundColor: 'rgba(248,250,252,0.8)' },
+
+  queueModeRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 10, flexWrap: 'nowrap' },
+  queueModePill: { height: 34, paddingHorizontal: 12, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(2,6,23,0.10)', backgroundColor: 'rgba(255,255,255,0.92)', alignItems: 'center', justifyContent: 'center' },
+  queueModePillActive: { backgroundColor: 'rgba(79,70,229,0.10)', borderColor: 'rgba(79,70,229,0.22)' },
+  queueModePillText: { fontSize: 12, fontWeight: '900', color: 'rgba(2,6,23,0.72)' },
+  queueModePillTextActive: { color: 'rgba(79,70,229,1)' },
+
+  queueTimeWrap: { minWidth: 120, alignItems: 'flex-end', gap: 6 },
+  queueTimeLabel: { fontSize: 11, fontWeight: '900', color: 'rgba(100,116,139,1)' },
+  queueTimeInput: { height: 36, minWidth: 110, paddingHorizontal: 10, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(2,6,23,0.10)', backgroundColor: 'rgba(255,255,255,0.92)', fontSize: 12, fontWeight: '900', color: '#111827', textAlign: 'center' },
+
+  queueDaysRow: { flexDirection: 'row', flexWrap: 'nowrap', gap: 8 },
+  queueDayPill: { height: 36, minWidth: 36, paddingHorizontal: 8, borderRadius: 999, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  queueDayPillOn: { backgroundColor: 'rgba(79,70,229,0.12)', borderColor: 'rgba(79,70,229,0.25)' },
+  queueDayPillOff: { backgroundColor: 'rgba(255,255,255,0.92)', borderColor: 'rgba(2,6,23,0.12)' },
+  queueDayText: { fontSize: 13, fontWeight: '900' },
+  queueDayTextOn: { color: 'rgba(79,70,229,1)' },
+  queueDayTextOff: { color: 'rgba(79,70,229,0.85)' },
+
+  queueDatesTopRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' },
+  queueDatesChips: { flexDirection: 'row', flexWrap: 'nowrap', gap: 8 },
+  queueDateChip: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(2,6,23,0.04)', borderWidth: 1, borderColor: 'rgba(2,6,23,0.08)' },
+  queueDateChipText: { fontSize: 12, fontWeight: '900', color: 'rgba(2,6,23,0.80)' },
+  queueChipX: { width: 22, height: 22, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.85)', borderWidth: 1, borderColor: 'rgba(2,6,23,0.08)' },
   cardInlineBtn: {
     paddingHorizontal: 10,
     paddingVertical: 7,

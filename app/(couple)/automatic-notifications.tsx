@@ -168,6 +168,13 @@ export default function AutomaticNotificationsScreen(props?: { editorPathname?: 
 
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettingRow[]>([]);
   const [lastSmsRunBySettingId, setLastSmsRunBySettingId] = useState<Record<string, SmsRunSummary | undefined>>({});
+  const [queuedCatchupBySettingId, setQueuedCatchupBySettingId] = useState<
+    Record<string, { count: number; nextDueAt?: string | null }>
+  >({});
+  const [catchupOpen, setCatchupOpen] = useState(false);
+  const [catchupLoading, setCatchupLoading] = useState(false);
+  const [catchupTitle, setCatchupTitle] = useState('אורחים חדשים בתור');
+  const [catchupRows, setCatchupRows] = useState<Array<{ guestId: string; name: string; phone?: string; dueAt: string; lastError?: string | null }>>([]);
   const [sendStatusOpen, setSendStatusOpen] = useState(false);
   const [sendStatusLoading, setSendStatusLoading] = useState(false);
   const [sendStatusTitle, setSendStatusTitle] = useState('סטטוס שליחה');
@@ -345,6 +352,66 @@ export default function AutomaticNotificationsScreen(props?: { editorPathname?: 
     }
   };
 
+  const openCatchupQueue = async (row: NotificationSettingRow) => {
+    if (!row?.id || !resolvedEventId) return;
+    setCatchupTitle(`אורחים חדשים בתור · ${row.title}`);
+    setCatchupRows([]);
+    setCatchupOpen(true);
+    setCatchupLoading(true);
+    try {
+      const { data: qRows, error: qError } = await supabase
+        .from('notification_sms_catchup_queue')
+        .select('guest_id, due_at, last_error')
+        .eq('event_id', resolvedEventId)
+        .eq('notification_setting_id', String(row.id))
+        .eq('status', 'queued')
+        .order('due_at', { ascending: true });
+      if (qError) throw qError;
+
+      const base = ((qRows as any[]) || []).map((r) => ({
+        guestId: String((r as any).guest_id),
+        dueAt: String((r as any).due_at),
+        lastError: (r as any).last_error ? String((r as any).last_error) : null,
+      }));
+
+      const ids = base.map((x) => x.guestId).filter(Boolean);
+      const byId = new Map<string, { name: string; phone?: string }>();
+      if (ids.length > 0) {
+        const { data: gRows, error: gError } = await supabase
+          .from('guests')
+          .select('id, name, phone')
+          .eq('event_id', resolvedEventId)
+          .in('id', ids);
+        if (!gError) {
+          for (const g of (gRows as any[]) || []) {
+            byId.set(String((g as any).id), {
+              name: String((g as any).name ?? ''),
+              phone: (g as any).phone ? String((g as any).phone) : undefined,
+            });
+          }
+        }
+      }
+
+      setCatchupRows(
+        base.map((r) => {
+          const g = byId.get(r.guestId);
+          return {
+            guestId: r.guestId,
+            name: g?.name || '—',
+            phone: g?.phone,
+            dueAt: r.dueAt,
+            lastError: r.lastError,
+          };
+        })
+      );
+    } catch (e) {
+      console.warn('Failed to load catchup queue:', e);
+      setCatchupOpen(false);
+    } finally {
+      setCatchupLoading(false);
+    }
+  };
+
   const isMissingColumn = (err: any, column: string) =>
     String(err?.code) === '42703' && String(err?.message || '').toLowerCase().includes(column.toLowerCase());
 
@@ -436,6 +503,41 @@ export default function AutomaticNotificationsScreen(props?: { editorPathname?: 
       }
     } catch (e) {
       console.warn('Failed to fetch last sms runs:', e);
+    }
+
+    // Fetch queued catch-up counts for reminder_1 (best-effort; older DBs may not have the table).
+    try {
+      const reminder1 = merged.find((r) => r.notification_type === 'reminder_1' && r.id && (r.channel || 'SMS') === 'SMS');
+      if (!reminder1?.id) {
+        setQueuedCatchupBySettingId({});
+      } else {
+        const { data: qRows, error: qError } = await supabase
+          .from('notification_sms_catchup_queue')
+          .select('notification_setting_id, due_at')
+          .eq('event_id', event_id)
+          .eq('notification_setting_id', String(reminder1.id))
+          .eq('status', 'queued')
+          .order('due_at', { ascending: true });
+        if (qError) {
+          const msg = String((qError as any)?.message ?? '').toLowerCase();
+          if (msg.includes('does not exist') || msg.includes('notification_sms_catchup_queue')) {
+            setQueuedCatchupBySettingId({});
+          } else {
+            console.warn('Failed to load catch-up queue:', qError);
+            setQueuedCatchupBySettingId({});
+          }
+        } else {
+          const list = (qRows as any[]) || [];
+          const count = list.length;
+          const nextDueAt = count > 0 ? String((list[0] as any)?.due_at ?? '') : null;
+          setQueuedCatchupBySettingId({
+            [String(reminder1.id)]: { count, nextDueAt: nextDueAt || null },
+          });
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to load catch-up queue (exception):', e);
+      setQueuedCatchupBySettingId({});
     }
   };
 
@@ -552,6 +654,11 @@ export default function AutomaticNotificationsScreen(props?: { editorPathname?: 
       row.id && (row.channel || 'SMS') === 'SMS' ? lastSmsRunBySettingId[String(row.id)] : undefined;
     const lastRunLabel = lastRun ? statusLabel(String(lastRun.status)) : null;
     const lastRunAt = lastRun?.claimed_at ? formatHeDateTimeShort(lastRun.claimed_at) : '';
+    const catchup = row.id ? queuedCatchupBySettingId[String(row.id)] : undefined;
+    const showCatchup = row.notification_type === 'reminder_1' && (row.channel || 'SMS') === 'SMS' && (catchup?.count || 0) > 0;
+    const catchupText = showCatchup
+      ? `אורחים חדשים בתור: ${catchup?.count || 0}${catchup?.nextDueAt ? ` · הבא: ${formatHeDateTimeShort(catchup.nextDueAt)}` : ''}`
+      : '';
 
     const borderColor =
       variant === 'whatsapp'
@@ -595,18 +702,35 @@ export default function AutomaticNotificationsScreen(props?: { editorPathname?: 
           </View>
 
           {(row.channel || 'SMS') === 'SMS' ? (
-            <TouchableOpacity
-              activeOpacity={0.9}
-              onPress={() => openSendStatus(row)}
-              style={styles.sendStatusPill}
-              accessibilityRole="button"
-              accessibilityLabel="סטטוס שליחה"
-            >
-              <Ionicons name="checkmark-done-outline" size={14} color={lastRunLabel?.color || '#64748b'} />
-              <Text style={[styles.sendStatusText, { color: lastRunLabel?.color || '#64748b' }]} numberOfLines={1}>
-                {lastRunLabel ? `${lastRunLabel.text}${lastRunAt ? ` · ${lastRunAt}` : ''}` : 'סטטוס: לא נשלח עדיין'}
-              </Text>
-            </TouchableOpacity>
+            <View style={{ gap: 8, alignItems: 'flex-end' }}>
+              <TouchableOpacity
+                activeOpacity={0.9}
+                onPress={() => openSendStatus(row)}
+                style={styles.sendStatusPill}
+                accessibilityRole="button"
+                accessibilityLabel="סטטוס שליחה"
+              >
+                <Ionicons name="checkmark-done-outline" size={14} color={lastRunLabel?.color || '#64748b'} />
+                <Text style={[styles.sendStatusText, { color: lastRunLabel?.color || '#64748b' }]} numberOfLines={1}>
+                  {lastRunLabel ? `${lastRunLabel.text}${lastRunAt ? ` · ${lastRunAt}` : ''}` : 'סטטוס: לא נשלח עדיין'}
+                </Text>
+              </TouchableOpacity>
+
+              {showCatchup ? (
+                <TouchableOpacity
+                  activeOpacity={0.9}
+                  onPress={() => openCatchupQueue(row)}
+                  style={styles.sendStatusPill}
+                  accessibilityRole="button"
+                  accessibilityLabel="אורחים חדשים בתור"
+                >
+                  <Ionicons name="time-outline" size={14} color={'#0f172a'} />
+                  <Text style={[styles.sendStatusText, { color: '#0f172a' }]} numberOfLines={1}>
+                    {catchupText}
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
           ) : null}
         </View>
 
@@ -767,6 +891,56 @@ export default function AutomaticNotificationsScreen(props?: { editorPathname?: 
                         </View>
                         <View style={styles.modalBadge}>
                           <Text style={[styles.modalBadgeText, { color: st.color }]}>{st.text}</Text>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </ScrollView>
+              )}
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={catchupOpen} transparent animationType="fade" onRequestClose={() => setCatchupOpen(false)}>
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setCatchupOpen(false)} />
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle} numberOfLines={1}>
+                {catchupTitle}
+              </Text>
+              <TouchableOpacity onPress={() => setCatchupOpen(false)} style={styles.modalCloseBtn}>
+                <Ionicons name="close" size={18} color="#111827" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.modalBody}>
+              {catchupLoading ? (
+                <View style={styles.modalCenter}>
+                  <ActivityIndicator />
+                </View>
+              ) : catchupRows.length === 0 ? (
+                <Text style={styles.modalEmpty}>אין אורחים בתור כרגע.</Text>
+              ) : (
+                <ScrollView style={{ maxHeight: 420 }} contentContainerStyle={{ gap: 10, paddingBottom: 6 }}>
+                  {catchupRows.map((g) => {
+                    const line =
+                      `${g.phone ? g.phone : 'אין טלפון'}` +
+                      `${g.dueAt ? ` · מתוזמן ל־${formatHeDateTimeShort(g.dueAt)}` : ''}` +
+                      `${g.lastError ? ` · ${g.lastError}` : ''}`;
+                    return (
+                      <View key={g.guestId} style={styles.modalRow}>
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text style={styles.modalRowName} numberOfLines={1}>
+                            {g.name || '—'}
+                          </Text>
+                          <Text style={styles.modalRowMeta} numberOfLines={2}>
+                            {line}
+                          </Text>
+                        </View>
+                        <View style={styles.modalBadge}>
+                          <Text style={[styles.modalBadgeText, { color: '#0f172a' }]}>בתור</Text>
                         </View>
                       </View>
                     );
