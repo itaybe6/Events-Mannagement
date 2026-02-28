@@ -1,6 +1,12 @@
-import 'dotenv/config';
+try {
+  require('dotenv/config');
+} catch (e) {
+  // Allow config evaluation even when dependencies aren't installed locally.
+  // EAS Build env vars should be provided via secrets/variables.
+  if (e?.code !== 'MODULE_NOT_FOUND') throw e;
+}
 
-export default {
+module.exports = {
   expo: {
     name: "Moon",
     slug: "euroe-nitgmal-eiroom-mekapim",
