@@ -1,5 +1,18 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Alert, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  TextInput,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ActivityIndicator,
+  SafeAreaView,
+  Pressable,
+} from 'react-native';
 import { Stack, useGlobalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/colors';
@@ -11,6 +24,7 @@ import { avatarService } from '@/lib/services/avatarService';
 import BackSwipe from '@/components/BackSwipe';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import { invitationAssetService } from '@/lib/services/invitationAssetService';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function ProfileEditor() {
   const router = useRouter();
@@ -18,6 +32,7 @@ export default function ProfileEditor() {
   const { userData, updateUserData } = useUserStore();
   const activeUserId = useEventSelectionStore((s) => s.activeUserId);
   const activeEventId = useEventSelectionStore((s) => s.activeEventId);
+  const insets = useSafeAreaInsets();
 
   const queryEventId = Array.isArray(globalParams.eventId) ? globalParams.eventId[0] : globalParams.eventId;
   const resolvedEventId = useMemo(() => {
@@ -35,6 +50,7 @@ export default function ProfileEditor() {
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [invitationUploading, setInvitationUploading] = useState(false);
   const [invitationImageUrl, setInvitationImageUrl] = useState('');
+  const [focusedField, setFocusedField] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     email: '',

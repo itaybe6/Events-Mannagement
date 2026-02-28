@@ -326,19 +326,6 @@ export default function BrideGroomSettings() {
               cachePolicy="none"
               recyclingKey={invitationImageUrl || 'fallback-cover'}
             />
-
-            {!invitationImageUrl ? (
-              <TouchableOpacity
-                style={styles.inviteCoverCta}
-                onPress={() => router.push('/profile-editor')}
-                activeOpacity={0.9}
-                accessibilityRole="button"
-                accessibilityLabel="העלאת תמונת הזמנה"
-              >
-                <Ionicons name="cloud-upload-outline" size={16} color={colors.white} />
-                <Text style={styles.inviteCoverCtaText}>העלה תמונת הזמנה</Text>
-              </TouchableOpacity>
-            ) : null}
           </View>
 
           <View style={styles.profileContent}>
@@ -675,29 +662,6 @@ const styles = StyleSheet.create({
   eventCoverImg: {
     width: '100%',
     height: '100%',
-  },
-  inviteCoverCta: {
-    position: 'absolute',
-    left: 12,
-    bottom: 12,
-    height: 34,
-    paddingHorizontal: 12,
-    borderRadius: 999,
-    backgroundColor: 'rgba(15,69,230,0.92)',
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    shadowColor: colors.black,
-    shadowOpacity: 0.18,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 3,
-  },
-  inviteCoverCtaText: {
-    color: colors.white,
-    fontSize: 12,
-    fontWeight: '800',
   },
   profileContent: {
     width: '100%',

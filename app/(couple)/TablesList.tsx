@@ -532,11 +532,23 @@ export default function TablesList() {
                     </Text>
                   </View>
                   <View style={styles.tableTitleWrap}>
-                    <Text style={[styles.tableTitle, isTableFull && styles.tableTitleFull]}>
-                      שולחן {table.number}
-                    </Text>
+                    {!isEditing && (
+                      <Text style={[styles.tableTitle, isTableFull && styles.tableTitleFull]}>
+                        שולחן {table.number}
+                      </Text>
+                    )}
                     {isEditing ? (
                       <View style={styles.tableNameEditWrap}>
+                        <TouchableOpacity
+                          style={[styles.saveNameBtn, savingTableName ? styles.disabledButton : null]}
+                          onPress={() => handleSaveTableName(String(table.id))}
+                          disabled={savingTableName}
+                          activeOpacity={0.85}
+                          accessibilityRole="button"
+                          accessibilityLabel="שמירת שם שולחן"
+                        >
+                          <Ionicons name="checkmark" size={18} color="#FFFFFF" />
+                        </TouchableOpacity>
                         <TextInput
                           value={editingTableName}
                           onChangeText={(t) => setEditingTableName(String(t || '').slice(0, 20))}
@@ -546,24 +558,6 @@ export default function TablesList() {
                           textAlign="right"
                           maxLength={20}
                         />
-                        {/* Bottom-left save button (absolute), bottom-right char count */}
-                        <Text style={styles.tableNameCharCountFloating}>
-                          {`${String(editingTableName || '').length}/20`}
-                        </Text>
-                        <TouchableOpacity
-                          style={[
-                            styles.saveNameBtn,
-                            styles.saveNameBtnFloating,
-                            savingTableName ? styles.disabledButton : null,
-                          ]}
-                          onPress={() => handleSaveTableName(String(table.id))}
-                          disabled={savingTableName}
-                          activeOpacity={0.85}
-                          accessibilityRole="button"
-                          accessibilityLabel="שמירת שם שולחן"
-                        >
-                          <Ionicons name="checkmark" size={18} color="#FFFFFF" />
-                        </TouchableOpacity>
                       </View>
                     ) : table.name ? (
                       <Text style={styles.tableSubtitle}>{table.name}</Text>
@@ -996,10 +990,10 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   tableNameEditWrap: {
-    marginTop: 6,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
     width: '100%',
-    position: 'relative',
-    paddingBottom: 44,
   },
   tableNameInput: {
     flex: 1,
@@ -1014,13 +1008,9 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   tableNameCharCountFloating: {
-    position: 'absolute',
-    right: 0,
-    bottom: 10,
     fontSize: 12,
     fontWeight: '500',
     color: '#9CA3AF',
-    textAlign: 'right',
   },
   saveNameBtn: {
     width: 36,
@@ -1029,12 +1019,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#10B981',
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
-  saveNameBtnFloating: {
-    position: 'absolute',
-    left: 0,
-    bottom: 0,
-  },
+  saveNameBtnFloating: {},
   tableRight: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
