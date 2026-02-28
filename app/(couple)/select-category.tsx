@@ -263,11 +263,6 @@ export default function SelectCategoryScreen() {
         {/* spacer to center title */}
         <View style={styles.headerSpacer} />
       </View>
-      {__DEV__ ? (
-        <Text style={styles.devStamp} selectable>
-          {UI_REV}
-        </Text>
-      ) : null}
 
       {/* ─── segment ──────────────────────────────────── */}
       <View style={styles.segmentContainer}>
@@ -590,21 +585,6 @@ const styles = StyleSheet.create({
   headerSpacer: {
     width: 76,
     zIndex: 2,
-  },
-  devStamp: {
-    position: 'absolute',
-    top: 6,
-    left: 8,
-    fontSize: 12,
-    fontWeight: '900',
-    color: 'rgba(15,23,42,0.55)',
-    backgroundColor: 'rgba(255,255,255,0.85)',
-    borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.10)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 10,
-    zIndex: 999,
   },
 
   /* segment */
