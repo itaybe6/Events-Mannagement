@@ -243,6 +243,9 @@ export default function BrideGroomSeating() {
   const [removeConfirmVisible, setRemoveConfirmVisible] = useState(false);
   const [removeConfirmIds, setRemoveConfirmIds] = useState<string[]>([]);
   const [removeConfirmBusy, setRemoveConfirmBusy] = useState(false);
+  const [movePickerVisible, setMovePickerVisible] = useState(false);
+  const [moveTargetTableId, setMoveTargetTableId] = useState<string | null>(null);
+  const [moveBusy, setMoveBusy] = useState(false);
   const [successVisible, setSuccessVisible] = useState(false);
   const [successTitle, setSuccessTitle] = useState('הצלחה');
   const [successMessage, setSuccessMessage] = useState('');
@@ -400,7 +403,102 @@ export default function BrideGroomSeating() {
   const clearSeatedEditState = useCallback(() => {
     setSeatedEditMode(false);
     setSelectedSeatedGuestsToRemove(new Set());
+    setMovePickerVisible(false);
+    setMoveTargetTableId(null);
   }, []);
+
+  const movedPeopleCount = useMemo(() => {
+    if (!selectedSeatedGuestsToRemove.size) return 0;
+    const selectedSet = new Set(Array.from(selectedSeatedGuestsToRemove).map(String));
+    return (seatedGuestsForTable || []).reduce((sum, g) => {
+      if (!selectedSet.has(String(g?.id))) return sum;
+      return sum + (Number(g?.numberOfPeople ?? 1) || 1);
+    }, 0);
+  }, [seatedGuestsForTable, selectedSeatedGuestsToRemove]);
+
+  const peopleByTableId = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const g of guests || []) {
+      const tid = g?.table_id ? String(g.table_id) : null;
+      if (!tid) continue;
+      const ppl = Number(g?.numberOfPeople ?? g?.number_of_people ?? 1) || 1;
+      map.set(tid, (map.get(tid) ?? 0) + ppl);
+    }
+    return map;
+  }, [guests]);
+
+  const openMovePicker = useCallback(() => {
+    setMoveTargetTableId(null);
+    setMovePickerVisible(true);
+  }, []);
+
+  const performBulkMoveGuestsToTable = useCallback(
+    async (ids: string[], destTableId: string) => {
+      if (!selectedTableForModal) return;
+      if (!ids.length) return;
+      const fromTableId = String(selectedTableForModal.id);
+      const toTableId = String(destTableId);
+      if (!toTableId || toTableId === fromTableId) return;
+
+      const dest = (tables || []).find((t) => String(t?.id) === toTableId) ?? null;
+      if (!dest) {
+        Alert.alert('שגיאה', 'לא נמצא שולחן יעד');
+        return;
+      }
+
+      setMoveBusy(true);
+      try {
+        const selectedSet = new Set(ids.map(String));
+        const guestsToMove = seatedGuestsForTable.filter((g) => selectedSet.has(String(g?.id)));
+        const totalPeopleMoved = guestsToMove.reduce((sum, g) => sum + (g?.numberOfPeople || 1), 0);
+
+        const { error: guestUpdateError } = await supabase
+          .from('guests')
+          .update({ table_id: toTableId })
+          .in('id', ids);
+
+        if (guestUpdateError) {
+          console.error('Error moving guests:', guestUpdateError);
+          Alert.alert('שגיאה', 'אירעה שגיאה בהעברת האורחים לשולחן אחר');
+          return;
+        }
+
+        const remainingGuestsAtSource = seatedGuestsForTable.filter((g) => !selectedSet.has(String(g?.id)));
+        const newSourceTotalPeople = remainingGuestsAtSource.reduce((sum, g) => sum + (g?.numberOfPeople || 1), 0);
+
+        const currentGuestsAtDest = (guests || []).filter((g) => String(g?.table_id ?? '') === toTableId);
+        const currentDestTotalPeople = currentGuestsAtDest.reduce((sum, g) => sum + (g?.numberOfPeople || 1), 0);
+        const newDestTotalPeople = currentDestTotalPeople + totalPeopleMoved;
+
+        const [sourceRes, destRes] = await Promise.all([
+          supabase.from('tables').update({ seated_guests: newSourceTotalPeople }).eq('id', fromTableId),
+          supabase.from('tables').update({ seated_guests: newDestTotalPeople }).eq('id', toTableId),
+        ]);
+
+        if (sourceRes.error || destRes.error) {
+          console.error('Error updating table counts:', sourceRes.error || destRes.error);
+          Alert.alert('שגיאה', 'אירעה שגיאה בעדכון השולחנות');
+          // Continue: we still refresh state.
+        }
+
+        await fetchGuests();
+        await fetchTables();
+        setSeatedGuestsForTable(remainingGuestsAtSource);
+        setSelectedSeatedGuestsToRemove(new Set());
+        setMovePickerVisible(false);
+        setMoveTargetTableId(null);
+
+        const peopleText = totalPeopleMoved > 0 ? ` (${totalPeopleMoved} אנשים)` : '';
+        showSuccess('הועבר לשולחן', `הועברו ${ids.length} אורחים${peopleText} לשולחן ${dest.number ?? ''}`);
+      } catch (e) {
+        console.error('Error in bulk move guests:', e);
+        Alert.alert('שגיאה', 'אירעה שגיאה בהעברת האורחים לשולחן אחר');
+      } finally {
+        setMoveBusy(false);
+      }
+    },
+    [fetchGuests, fetchTables, guests, seatedGuestsForTable, selectedTableForModal, showSuccess, tables]
+  );
 
   const performBulkRemoveGuestsFromTable = useCallback(
     async (ids: string[]) => {
@@ -457,6 +555,13 @@ export default function BrideGroomSeating() {
     setRemoveConfirmIds(ids);
     setRemoveConfirmVisible(true);
   }, [selectedSeatedGuestsToRemove, selectedTableForModal]);
+
+  const handleMoveSelectedGuests = useCallback(() => {
+    if (!selectedTableForModal) return;
+    const ids = Array.from(selectedSeatedGuestsToRemove);
+    if (ids.length === 0) return;
+    openMovePicker();
+  }, [openMovePicker, selectedSeatedGuestsToRemove, selectedTableForModal]);
 
   const handleSaveTableName = async () => {
     if (!selectedTableForModal) {
@@ -545,6 +650,10 @@ export default function BrideGroomSeating() {
     panelProgress.value = withTiming(0, { duration: TABLE_PANEL_DURATION });
 
     // Clear transient overlays/state immediately.
+    if (movePickerVisible) {
+      setMovePickerVisible(false);
+      setMoveTargetTableId(null);
+    }
     if (removeConfirmVisible) {
       setRemoveConfirmVisible(false);
       setRemoveConfirmIds([]);
@@ -1526,6 +1635,12 @@ export default function BrideGroomSeating() {
         transparent={true}
         visible={tableModalVisible}
         onRequestClose={() => {
+          if (movePickerVisible) {
+            if (moveBusy) return;
+            setMovePickerVisible(false);
+            setMoveTargetTableId(null);
+            return;
+          }
           if (removeConfirmVisible) {
             if (removeConfirmBusy) return;
             setRemoveConfirmVisible(false);
@@ -1546,6 +1661,12 @@ export default function BrideGroomSeating() {
           >
             <Pressable
               onPress={() => {
+                if (movePickerVisible) {
+                  if (moveBusy) return;
+                  setMovePickerVisible(false);
+                  setMoveTargetTableId(null);
+                  return;
+                }
                 if (removeConfirmVisible) {
                   if (removeConfirmBusy) return;
                   setRemoveConfirmVisible(false);
@@ -1573,6 +1694,12 @@ export default function BrideGroomSeating() {
           >
             <Pressable
               onPress={() => {
+                if (movePickerVisible) {
+                  if (moveBusy) return;
+                  setMovePickerVisible(false);
+                  setMoveTargetTableId(null);
+                  return;
+                }
                 if (removeConfirmVisible) {
                   if (removeConfirmBusy) return;
                   setRemoveConfirmVisible(false);
@@ -1683,30 +1810,40 @@ export default function BrideGroomSeating() {
                             toggleSeatedGuestRemovalSelection(id);
                           }}
                         >
-                          <View style={styles.guestCardTopRow}>
-                            <Text style={styles.guestName} numberOfLines={1}>
-                              {item.name}
-                            </Text>
-
-                            <View style={[styles.guestStatusPill, { backgroundColor: tone.bg, borderColor: tone.border }]}>
-                              <Text style={[styles.guestStatusText, { color: tone.text }]} numberOfLines={1}>
-                                {tone.label}
+                          <View style={styles.seatedGuestMain}>
+                            <View style={styles.seatedGuestTopRow}>
+                              <Text
+                                style={[styles.guestName, seatedEditMode && styles.guestNameEditMode]}
+                                numberOfLines={2}
+                              >
+                                {item.name}
                               </Text>
                             </View>
 
-                            <View style={styles.peopleCountBadge}>
-                              <Ionicons name="person" size={10} color={colors.richBlack} />
-                              <Text style={styles.peopleCountText}>{item.numberOfPeople || 1}</Text>
+                            <View style={styles.seatedGuestMetaRow}>
+                              {!seatedEditMode ? (
+                                <View style={[styles.guestStatusPill, { backgroundColor: tone.bg, borderColor: tone.border }]}>
+                                  <Text style={[styles.guestStatusText, { color: tone.text }]} numberOfLines={1}>
+                                    {tone.label}
+                                  </Text>
+                                </View>
+                              ) : null}
+
+                              <View style={styles.peopleCountBadge}>
+                                <Ionicons name="person" size={10} color={colors.richBlack} />
+                                <Text style={styles.peopleCountText}>{item.numberOfPeople || 1}</Text>
+                              </View>
                             </View>
                           </View>
 
                           {seatedEditMode ? (
-                            <Ionicons
-                              name={selected ? 'checkbox' : 'square-outline'}
-                              size={20}
-                              color={selected ? colors.primary : colors.gray[300]}
-                              style={{ marginLeft: 6 }}
-                            />
+                            <View style={styles.seatedGuestCheckboxWrap}>
+                              <Ionicons
+                                name={selected ? 'checkbox' : 'square-outline'}
+                                size={20}
+                                color={selected ? colors.primary : colors.gray[300]}
+                              />
+                            </View>
                           ) : null}
                         </TouchableOpacity>
                       );
@@ -1717,21 +1854,39 @@ export default function BrideGroomSeating() {
                   />
 
                   {seatedEditMode ? (
-                    <TouchableOpacity
-                      style={[
-                        styles.bulkRemoveButton,
-                        selectedSeatedGuestsToRemove.size === 0 && styles.disabledButton,
-                      ]}
-                      activeOpacity={0.9}
-                      disabled={selectedSeatedGuestsToRemove.size === 0}
-                      onPress={handleRemoveSelectedGuestsFromTable}
-                    >
-                      <Text style={styles.bulkRemoveButtonText}>
-                        {selectedSeatedGuestsToRemove.size > 0
-                          ? `הסר ${selectedSeatedGuestsToRemove.size} אורחים מהשולחן`
-                          : 'בחר אורחים להסרה'}
-                      </Text>
-                    </TouchableOpacity>
+                    <View style={styles.bulkActionsRow}>
+                      <TouchableOpacity
+                        style={[
+                          styles.bulkMoveButton,
+                          selectedSeatedGuestsToRemove.size === 0 && styles.disabledButton,
+                        ]}
+                        activeOpacity={0.9}
+                        disabled={selectedSeatedGuestsToRemove.size === 0}
+                        onPress={handleMoveSelectedGuests}
+                      >
+                        <Text style={styles.bulkMoveButtonText}>
+                          {selectedSeatedGuestsToRemove.size > 0
+                            ? `העבר (${selectedSeatedGuestsToRemove.size})`
+                            : 'העבר'}
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[
+                          styles.bulkRemoveButton,
+                          selectedSeatedGuestsToRemove.size === 0 && styles.disabledButton,
+                        ]}
+                        activeOpacity={0.9}
+                        disabled={selectedSeatedGuestsToRemove.size === 0}
+                        onPress={handleRemoveSelectedGuestsFromTable}
+                      >
+                        <Text style={styles.bulkRemoveButtonText}>
+                          {selectedSeatedGuestsToRemove.size > 0
+                            ? `הסר (${selectedSeatedGuestsToRemove.size})`
+                            : 'הסר'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
                   ) : null}
                 </View>
               )}
@@ -1801,12 +1956,22 @@ export default function BrideGroomSeating() {
                           }}
                           activeOpacity={seatable ? 0.85 : 1}
                         >
-                          <View style={{ flex: 1, minWidth: 0 }}>
-                            <View style={styles.guestCardTopRow}>
-                              <Text style={styles.guestName} numberOfLines={1}>
+                          <View style={styles.selectableGuestMain}>
+                            <View style={styles.selectableGuestTopRow}>
+                              <Text style={styles.selectableGuestName} numberOfLines={2}>
                                 {item.name}
                               </Text>
 
+                              <View style={styles.selectableGuestCheckboxWrap}>
+                                <Ionicons
+                                  name={selected ? 'checkbox' : 'square-outline'}
+                                  size={20}
+                                  color={!seatable ? colors.gray[300] : selected ? colors.primary : colors.gray[300]}
+                                />
+                              </View>
+                            </View>
+
+                            <View style={styles.selectableGuestMetaRow}>
                               <View style={[styles.guestStatusPill, { backgroundColor: tone.bg, borderColor: tone.border }]}>
                                 <Text style={[styles.guestStatusText, { color: tone.text }]} numberOfLines={1}>
                                   {tone.label}
@@ -1819,13 +1984,6 @@ export default function BrideGroomSeating() {
                               </View>
                             </View>
                           </View>
-
-                          <Ionicons
-                            name={selected ? 'checkbox' : 'square-outline'}
-                            size={20}
-                            color={!seatable ? colors.gray[300] : selected ? colors.primary : colors.gray[300]}
-                            style={{ marginLeft: 4 }}
-                          />
                         </TouchableOpacity>
                       );
                     }}
@@ -1896,6 +2054,147 @@ export default function BrideGroomSeating() {
                       <ActivityIndicator color={colors.white} />
                     ) : (
                       <Text style={[styles.confirmBtnText, styles.confirmBtnTextDanger]}>הסר</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          ) : null}
+
+          {/* Move guests picker (RTL) */}
+          {movePickerVisible ? (
+            <View style={styles.confirmOverlay}>
+              <Pressable
+                style={StyleSheet.absoluteFill as any}
+                onPress={() => {
+                  if (moveBusy) return;
+                  setMovePickerVisible(false);
+                  setMoveTargetTableId(null);
+                }}
+              />
+              <View style={styles.moveCard}>
+                {/* Header */}
+                <View style={styles.moveCardHeader}>
+                  <View style={styles.moveCardIconWrap}>
+                    <Ionicons name="swap-horizontal" size={18} color={colors.primary} />
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.moveCardTitle}>העברת אורחים</Text>
+                    <Text style={styles.moveCardSub} numberOfLines={1}>
+                      {selectedSeatedGuestsToRemove.size} אורח{selectedSeatedGuestsToRemove.size !== 1 ? 'ים' : ''}
+                      {movedPeopleCount > 0 ? ` · ${movedPeopleCount} אנשים` : ''}
+                      {' '}מ׳ שולחן {selectedTableForModal?.number ?? ''}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.moveDivider} />
+
+                <Text style={styles.movePickerLabel}>בחר שולחן יעד</Text>
+
+                <View style={styles.moveListWrap}>
+                  <ScrollView contentContainerStyle={styles.moveListContent} showsVerticalScrollIndicator={false}>
+                    {(tables || [])
+                      .filter((t) => String(t?.id) !== String(selectedTableForModal?.id))
+                      .slice()
+                      .sort((a: any, b: any) => (Number(a?.number ?? 0) || 0) - (Number(b?.number ?? 0) || 0))
+                      .map((t: any) => {
+                        const active = String(moveTargetTableId ?? '') === String(t?.id ?? '');
+                        const tid = String(t?.id ?? '');
+                        const seatedNow = peopleByTableId.get(tid) ?? 0;
+                        const afterMove = seatedNow + (movedPeopleCount || 0);
+                        const cap = Number(t?.capacity ?? 0) || 0;
+                        const pct = cap > 0 ? Math.min(1, afterMove / cap) : 0;
+                        const barColor = pct >= 1 ? '#10B981' : pct >= 0.8 ? '#F59E0B' : colors.primary;
+                        return (
+                          <TouchableOpacity
+                            key={String(t?.id ?? '')}
+                            activeOpacity={0.86}
+                            style={[styles.moveTableOption, active && styles.moveTableOptionActive]}
+                            onPress={() => setMoveTargetTableId(String(t?.id ?? ''))}
+                            disabled={moveBusy}
+                          >
+                            {/* Radio circle */}
+                            <View style={[styles.moveRadioCircle, active && styles.moveRadioCircleActive]}>
+                              {active ? (
+                                <View style={styles.moveRadioInner} />
+                              ) : null}
+                            </View>
+
+                            <View style={{ flex: 1, minWidth: 0 }}>
+                              <Text style={[styles.moveTableTitle, active && styles.moveTableTitleActive]} numberOfLines={1}>
+                                שולחן {t?.number ?? ''}
+                                {t?.name ? ` · ${String(t.name).trim()}` : ''}
+                              </Text>
+
+                              {/* Occupancy row */}
+                              <View style={styles.moveOccRow}>
+                                <Text style={[styles.moveTableSub, active && { color: colors.primary }]}>
+                                  {seatedNow}{cap > 0 ? ` / ${cap}` : ''}
+                                </Text>
+                                {active && movedPeopleCount > 0 ? (
+                                  <>
+                                    <Ionicons name="arrow-forward" size={11} color={colors.primary} />
+                                    <Text style={styles.moveTableAfter}>
+                                      {afterMove}{cap > 0 ? ` / ${cap}` : ''}
+                                    </Text>
+                                  </>
+                                ) : null}
+                              </View>
+
+                              {/* Progress bar */}
+                              {cap > 0 ? (
+                                <View style={styles.moveBarTrack}>
+                                  <View style={[styles.moveBarFill, {
+                                    width: `${Math.min(100, Math.round((active && movedPeopleCount > 0 ? afterMove : seatedNow) / cap * 100))}%` as any,
+                                    backgroundColor: barColor,
+                                  }]} />
+                                </View>
+                              ) : null}
+                            </View>
+                          </TouchableOpacity>
+                        );
+                      })}
+                  </ScrollView>
+                </View>
+
+                {/* Action buttons */}
+                <View style={styles.moveActionsRow}>
+                  <TouchableOpacity
+                    activeOpacity={0.85}
+                    style={styles.moveBtnCancel}
+                    disabled={moveBusy}
+                    onPress={() => {
+                      if (moveBusy) return;
+                      setMovePickerVisible(false);
+                      setMoveTargetTableId(null);
+                    }}
+                  >
+                    <Text style={styles.moveBtnCancelText}>ביטול</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    activeOpacity={0.85}
+                    style={[
+                      styles.moveBtnConfirm,
+                      (!moveTargetTableId || moveBusy) && styles.moveBtnConfirmDisabled,
+                    ]}
+                    disabled={!moveTargetTableId || moveBusy}
+                    onPress={async () => {
+                      const ids = Array.from(selectedSeatedGuestsToRemove);
+                      const destId = String(moveTargetTableId ?? '');
+                      await performBulkMoveGuestsToTable(ids, destId);
+                    }}
+                  >
+                    {moveBusy ? (
+                      <ActivityIndicator color={colors.white} size="small" />
+                    ) : (
+                      <>
+                        <Ionicons name="swap-horizontal" size={16} color={colors.white} style={{ marginLeft: 6 }} />
+                        <Text style={styles.moveBtnConfirmText}>
+                          העבר {selectedSeatedGuestsToRemove.size > 0 ? `(${selectedSeatedGuestsToRemove.size})` : ''}
+                        </Text>
+                      </>
                     )}
                   </TouchableOpacity>
                 </View>
@@ -2595,7 +2894,22 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.96)',
   },
   guestRowTop: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  guestName: { flex: 1, minWidth: 0, fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'right', writingDirection: 'rtl' },
+  guestName: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: 13,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+    lineHeight: 17,
+    flexShrink: 1,
+  },
+  guestNameEditMode: {
+    fontSize: 12,
+    lineHeight: 16,
+    flexShrink: 1,
+  },
   guestPplPill: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
@@ -2823,6 +3137,7 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 2,
     width: '47%',
+    overflow: 'hidden',
   },
   selectableGuestItemSelected: {
     backgroundColor: 'rgba(43,140,238,0.06)',
@@ -2830,6 +3145,40 @@ const styles = StyleSheet.create({
   },
   selectableGuestItemDisabled: {
     opacity: 0.55,
+  },
+  selectableGuestMain: {
+    flex: 1,
+    minWidth: 0,
+    gap: 6,
+  },
+  selectableGuestTopRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  selectableGuestName: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: 13,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+    lineHeight: 18,
+  },
+  selectableGuestCheckboxWrap: {
+    width: 26,
+    height: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 2,
+  },
+  selectableGuestMetaRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    gap: 8,
   },
   guestCardTopRow: {
     flexDirection: 'row-reverse',
@@ -2853,6 +3202,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 8,
     paddingVertical: 8,
     paddingHorizontal: 12,
     backgroundColor: colors.gray[100],
@@ -2861,12 +3211,37 @@ const styles = StyleSheet.create({
     marginHorizontal: 4,
     borderWidth: 1,
     borderColor: colors.gray[200],
+    overflow: 'hidden',
     shadowColor: colors.richBlack,
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,
     width: '47%',
+  },
+  seatedGuestMain: {
+    flex: 1,
+    minWidth: 0,
+  },
+  seatedGuestTopRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'flex-start',
+    justifyContent: 'flex-start',
+    gap: 8,
+  },
+  seatedGuestMetaRow: {
+    marginTop: 6,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    gap: 8,
+  },
+  seatedGuestCheckboxWrap: {
+    width: 26,
+    height: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 2,
   },
   seatedHeaderRow: {
     flexDirection: 'row-reverse',
@@ -2900,19 +3275,230 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(43,140,238,0.34)',
   },
   bulkRemoveButton: {
+    flex: 1,
     backgroundColor: colors.error,
     padding: 16,
     borderRadius: 12,
     alignItems: 'center',
-    marginTop: 16,
-    marginHorizontal: 4,
-    marginBottom: 12,
   },
   bulkRemoveButtonText: {
     color: colors.white,
     fontSize: 16,
     fontWeight: '700',
     textAlign: 'center',
+    writingDirection: 'rtl',
+  },
+  bulkActionsRow: {
+    marginTop: 16,
+    marginHorizontal: 4,
+    marginBottom: 12,
+    flexDirection: 'row-reverse',
+    gap: 10,
+  },
+  bulkMoveButton: {
+    flex: 1,
+    backgroundColor: colors.primary,
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  bulkMoveButtonText: {
+    color: colors.white,
+    fontSize: 16,
+    fontWeight: '800',
+    textAlign: 'center',
+    writingDirection: 'rtl',
+  },
+  confirmBtnPrimary: {
+    backgroundColor: colors.primary,
+    borderColor: 'rgba(0,0,0,0.08)',
+  },
+  confirmBtnTextPrimary: {
+    color: colors.white,
+  },
+  moveCard: {
+    width: '100%',
+    maxWidth: 520,
+    borderRadius: 20,
+    paddingTop: 18,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    backgroundColor: colors.white,
+    shadowColor: colors.richBlack,
+    shadowOpacity: 0.22,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 16 },
+    elevation: 12,
+  },
+  moveCardHeader: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 0,
+  },
+  moveCardIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: 'rgba(43,140,238,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(43,140,238,0.20)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  moveCardTitle: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  moveCardSub: {
+    marginTop: 2,
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.gray[600],
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  moveDivider: {
+    height: 1,
+    backgroundColor: 'rgba(15,23,42,0.07)',
+    marginVertical: 14,
+  },
+  movePickerLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.gray[500],
+    textAlign: 'right',
+    writingDirection: 'rtl',
+    letterSpacing: 0.4,
+    marginBottom: 8,
+    textTransform: 'uppercase',
+  },
+  moveListWrap: {
+    maxHeight: 320,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+    backgroundColor: 'rgba(248,250,252,0.96)',
+    overflow: 'hidden',
+  },
+  moveListContent: {
+    padding: 8,
+    gap: 8,
+  },
+  moveTableOption: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 11,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.07)',
+    backgroundColor: colors.white,
+  },
+  moveTableOptionActive: {
+    borderColor: colors.primary,
+    backgroundColor: 'rgba(43,140,238,0.06)',
+  },
+  moveRadioCircle: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: colors.gray[300],
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  moveRadioCircleActive: {
+    borderColor: colors.primary,
+  },
+  moveRadioInner: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.primary,
+  },
+  moveTableTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  moveTableTitleActive: {
+    color: colors.primary,
+  },
+  moveOccRow: {
+    marginTop: 4,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 5,
+  },
+  moveTableSub: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.gray[500],
+    textAlign: 'right',
+  },
+  moveTableAfter: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: colors.primary,
+    textAlign: 'right',
+  },
+  moveBarTrack: {
+    marginTop: 6,
+    height: 4,
+    borderRadius: 99,
+    backgroundColor: 'rgba(15,23,42,0.08)',
+    overflow: 'hidden',
+  },
+  moveBarFill: {
+    height: '100%',
+    borderRadius: 99,
+  },
+  moveActionsRow: {
+    marginTop: 16,
+    flexDirection: 'row-reverse',
+    gap: 10,
+  },
+  moveBtnCancel: {
+    flex: 1,
+    height: 46,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(15,23,42,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.10)',
+  },
+  moveBtnCancelText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: colors.text,
+    writingDirection: 'rtl',
+  },
+  moveBtnConfirm: {
+    flex: 2,
+    height: 46,
+    borderRadius: 14,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+    gap: 6,
+  },
+  moveBtnConfirmDisabled: {
+    opacity: 0.45,
+  },
+  moveBtnConfirmText: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: colors.white,
     writingDirection: 'rtl',
   },
   divider: {
@@ -3057,6 +3643,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: 18,
+    zIndex: 20000,
+    elevation: 20,
   },
   confirmCard: {
     width: '100%',
@@ -3132,6 +3720,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: 18,
+    zIndex: 20000,
+    elevation: 20,
   },
   successCard: {
     width: '100%',

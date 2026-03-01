@@ -751,7 +751,7 @@ export default function GuestsScreen() {
                             </Text>
                           </View>
                           <View style={styles.guestInfo}>
-                            <Text style={styles.guestName} numberOfLines={1}>
+                            <Text style={styles.guestName} numberOfLines={2}>
                               {guest.name}
                             </Text>
                             <Text style={styles.guestPhone} numberOfLines={1}>
@@ -1913,6 +1913,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row-reverse',
     alignItems: 'center',
     flex: 1,
+    minWidth: 0,
     gap: 12,
   },
   guestAvatar: {
@@ -1925,12 +1926,16 @@ const styles = StyleSheet.create({
   },
   guestInfo: {
     flex: 1,
+    minWidth: 0,
   },
   guestName: {
     fontSize: 15,
     fontWeight: '700',
     color: colors.text,
     textAlign: 'right',
+    writingDirection: 'rtl',
+    lineHeight: 20,
+    flexShrink: 1,
   },
   guestPhone: {
     fontSize: 13,

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
@@ -42,14 +42,6 @@ function startOfDay(d: Date) {
   const x = new Date(d);
   x.setHours(0, 0, 0, 0);
   return x;
-}
-
-function formatCurrencyILS(n: number) {
-  try {
-    return new Intl.NumberFormat("he-IL", { style: "currency", currency: "ILS", maximumFractionDigits: 0 }).format(n);
-  } catch {
-    return `₪${Math.round(n).toLocaleString("he-IL")}`;
-  }
 }
 
 function formatDateHeShort(d: Date) {
@@ -191,13 +183,12 @@ export default function AdminProfileScreen() {
 
   const [loading, setLoading] = useState(true);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [logoutModalOpen, setLogoutModalOpen] = useState(false);
 
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [availableYears, setAvailableYears] = useState<number[]>([]);
   const [bars12, setBars12] = useState<MonthBar[]>([]);
   const [yearTotalEvents, setYearTotalEvents] = useState<number>(0);
-  const [yearTotalGuests, setYearTotalGuests] = useState<number>(0);
-  const [yearTotalBudget, setYearTotalBudget] = useState<number>(0);
 
   const [events, setEvents] = useState<Event[]>([]);
   const [clientsCount, setClientsCount] = useState<number>(0);
@@ -235,10 +226,7 @@ export default function AdminProfileScreen() {
   };
 
   const askLogout = () => {
-    Alert.alert("התנתקות", "בטוח שברצונך להתנתק?", [
-      { text: "ביטול", style: "cancel" },
-      { text: "התנתק", style: "destructive", onPress: () => void performLogout() },
-    ]);
+    setLogoutModalOpen(true);
   };
 
   const loadDashboard = async () => {
@@ -279,18 +267,12 @@ export default function AdminProfileScreen() {
       setBars12(bars);
 
       const totalEvents = bars.reduce((sum, b) => sum + b.value, 0);
-      const totalGuests = inYear.reduce((sum, e) => sum + (Number((e as any).guests) || 0), 0);
-      const totalBudget = inYear.reduce((sum, e) => sum + (Number((e as any).budget) || 0), 0);
       setYearTotalEvents(totalEvents);
-      setYearTotalGuests(totalGuests);
-      setYearTotalBudget(totalBudget);
     } catch (e) {
       console.error("Admin dashboard load error:", e);
       setAvailableYears([]);
       setBars12([]);
       setYearTotalEvents(0);
-      setYearTotalGuests(0);
-      setYearTotalBudget(0);
       setEvents([]);
       setClientsCount(0);
     } finally {
@@ -549,17 +531,6 @@ export default function AdminProfileScreen() {
             </View>
           </View>
 
-          <View style={styles.yearSummaryRow}>
-            <View style={styles.yearSummaryPill}>
-              <Ionicons name="people-outline" size={16} color={ui.primary} />
-              <Text style={styles.yearSummaryText}>{`${yearTotalGuests.toLocaleString("he-IL")} מוזמנים`}</Text>
-            </View>
-            <View style={styles.yearSummaryPill}>
-              <Ionicons name="cash-outline" size={16} color={ui.primary} />
-              <Text style={styles.yearSummaryText}>{formatCurrencyILS(yearTotalBudget)}</Text>
-            </View>
-          </View>
-
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chartRow}>
             {bars12.map((b) => {
               const isCurrentMonth = isCurrentYear && b.monthIndex === now.getMonth();
@@ -616,6 +587,57 @@ export default function AdminProfileScreen() {
           </View>
         </View>
       </ScrollView>
+
+      <Modal
+        visible={logoutModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setLogoutModalOpen(false)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setLogoutModalOpen(false)}>
+          <Pressable style={styles.modalCard} onPress={() => {}} accessibilityRole="dialog">
+            <View style={styles.modalHeader}>
+              <View style={styles.modalIcon}>
+                <Ionicons name="log-out-outline" size={18} color="#FFFFFF" />
+              </View>
+              <Text style={styles.modalTitle}>התנתקות</Text>
+            </View>
+
+            <Text style={styles.modalText}>בטוח שברצונך להתנתק?</Text>
+
+            <View style={styles.modalActions}>
+              <Pressable
+                onPress={() => setLogoutModalOpen(false)}
+                style={({ pressed }) => [styles.modalBtn, styles.modalCancelBtn, pressed && styles.modalBtnPressed]}
+                accessibilityRole="button"
+                accessibilityLabel="ביטול"
+              >
+                <Text style={styles.modalCancelText}>ביטול</Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => {
+                  setLogoutModalOpen(false);
+                  void performLogout();
+                }}
+                style={({ pressed }) => [styles.modalBtn, pressed && styles.modalBtnPressed]}
+                accessibilityRole="button"
+                accessibilityLabel="התנתק"
+              >
+                <LinearGradient
+                  colors={["#e53935", "#c62828", "#b71c1c"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.modalLogoutGradient}
+                >
+                  <Ionicons name="log-out-outline" size={18} color="#FFFFFF" />
+                  <Text style={styles.modalLogoutText}>התנתק</Text>
+                </LinearGradient>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -901,20 +923,6 @@ const styles = StyleSheet.create({
   yearPillText: { fontSize: 12, fontWeight: "900", color: ui.primary },
   dot: { width: 4, height: 4, borderRadius: 99, backgroundColor: "rgba(0,0,0,0.25)" },
 
-  yearSummaryRow: { flexDirection: "row-reverse", gap: 10, marginBottom: 10, flexWrap: "wrap" },
-  yearSummaryPill: {
-    height: 34,
-    paddingHorizontal: 12,
-    borderRadius: 999,
-    backgroundColor: "rgba(6,23,62,0.04)",
-    borderWidth: 1,
-    borderColor: ui.border,
-    flexDirection: "row-reverse",
-    alignItems: "center",
-    gap: 8,
-  },
-  yearSummaryText: { fontSize: 12, fontWeight: "900", color: ui.primary },
-
   chartRow: { paddingTop: 8, paddingBottom: 4, paddingHorizontal: 2, gap: 12 },
   barCol: { width: 44, alignItems: "center", gap: 8 },
   barValue: { fontSize: 12, fontWeight: "900", color: ui.muted },
@@ -982,4 +990,58 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
   },
   footerBtnPressed: { opacity: 0.88 },
+
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.42)",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 16,
+  },
+  modalCard: {
+    width: "100%",
+    maxWidth: 420,
+    borderRadius: 22,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.08)",
+    padding: 16,
+    shadowColor: colors.black,
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 10,
+  },
+  modalHeader: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "flex-start", gap: 10 },
+  modalIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "#c62828",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalTitle: { fontSize: 16, fontWeight: "900", color: ui.primary, textAlign: "right", writingDirection: "rtl", flex: 1 },
+  modalText: {
+    marginTop: 10,
+    fontSize: 13,
+    fontWeight: "700",
+    color: "rgba(73,80,87,0.95)",
+    textAlign: "right",
+    writingDirection: "rtl",
+    lineHeight: 18,
+  },
+  modalActions: { marginTop: 14, flexDirection: "row-reverse", gap: 10 },
+  modalBtn: { flex: 1, height: 48, borderRadius: 16, overflow: "hidden" },
+  modalBtnPressed: { opacity: 0.92 },
+  modalCancelBtn: {
+    backgroundColor: "rgba(6,23,62,0.06)",
+    borderWidth: 1,
+    borderColor: ui.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalCancelText: { fontSize: 14, fontWeight: "900", color: ui.primary, textAlign: "center", writingDirection: "rtl" },
+  modalLogoutGradient: { flex: 1, flexDirection: "row-reverse", alignItems: "center", justifyContent: "center", gap: 10 },
+  modalLogoutText: { fontSize: 14, fontWeight: "900", color: "#FFFFFF", textAlign: "center", writingDirection: "rtl" },
 });

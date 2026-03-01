@@ -26,7 +26,7 @@ module.exports = {
     },
     ios: {
       supportsTablet: true,
-      bundleIdentifier: "app.rork.euroe-nitgmal-eiroom-mekapim",
+      bundleIdentifier: "com.moonevents.app",
       icon: "./assets/images/icon.jpg"
     },
     android: {
@@ -34,7 +34,7 @@ module.exports = {
         foregroundImage: "./assets/images/icon.jpg",
         backgroundColor: "#ffffff"
       },
-      package: "app.rork.euroe-nitgmal-eiroom-mekapim"
+      package: "com.moonevents.app"
     },
     web: {
       favicon: "./assets/images/favicon.png",
