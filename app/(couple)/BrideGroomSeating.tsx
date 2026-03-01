@@ -23,7 +23,7 @@ import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import { Entypo, Ionicons } from '@expo/vector-icons';
 import { useLayoutStore } from '@/store/layoutStore';
 import { Table } from '@/types';
-import { Stack, useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { Stack, useRouter, useFocusEffect, useLocalSearchParams, useSegments } from 'expo-router';
 import { colors } from '@/constants/colors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { EventSwitcher } from '@/components/EventSwitcher';
@@ -172,6 +172,7 @@ export default function BrideGroomSeating() {
   const isLandscape = windowWidth > windowHeight;
   const { userData } = useUserStore();
   const { eventId: queryEventId } = useLocalSearchParams<{ eventId?: string }>();
+  const segments = useSegments();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const activeUserId = useEventSelectionStore((s) => s.activeUserId);
@@ -190,6 +191,19 @@ export default function BrideGroomSeating() {
     if (userData?.id) setActiveEvent(userData.id, nextEventId);
     router.replace({ pathname: './', params: { eventId: nextEventId } });
   };
+
+  const handleBackPress = useCallback(() => {
+    const isAdminContext = segments?.[0] === '(admin)';
+    if (isAdminContext) {
+      if (resolvedEventId) {
+        router.replace(`/(admin)/admin-event-details?id=${encodeURIComponent(String(resolvedEventId))}`);
+      } else {
+        router.replace('/(admin)/admin-events');
+      }
+      return;
+    }
+    router.back();
+  }, [resolvedEventId, router, segments]);
   
   const [tables, setTables] = useState<Table[]>([]);
   const [guests, setGuests] = useState<any[]>([]);
@@ -1598,7 +1612,7 @@ export default function BrideGroomSeating() {
         ]}
       >
         <TouchableOpacity
-          onPress={() => router.back()}
+          onPress={handleBackPress}
           activeOpacity={0.85}
           style={styles.backFab}
           accessibilityRole="button"

@@ -620,7 +620,7 @@ export default function AdminProfileScreen() {
                   setLogoutModalOpen(false);
                   void performLogout();
                 }}
-                style={({ pressed }) => [styles.modalBtn, pressed && styles.modalBtnPressed]}
+                style={({ pressed }) => [styles.modalLogoutBtnWrap, pressed && styles.modalBtnPressed]}
                 accessibilityRole="button"
                 accessibilityLabel="התנתק"
               >
@@ -630,7 +630,7 @@ export default function AdminProfileScreen() {
                   end={{ x: 1, y: 0 }}
                   style={styles.modalLogoutGradient}
                 >
-                  <Ionicons name="log-out-outline" size={18} color="#FFFFFF" />
+                  <Ionicons name="log-out-outline" size={20} color="#FFFFFF" />
                   <Text style={styles.modalLogoutText}>התנתק</Text>
                 </LinearGradient>
               </Pressable>
@@ -1042,6 +1042,26 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   modalCancelText: { fontSize: 14, fontWeight: "900", color: ui.primary, textAlign: "center", writingDirection: "rtl" },
-  modalLogoutGradient: { flex: 1, flexDirection: "row-reverse", alignItems: "center", justifyContent: "center", gap: 10 },
+  modalLogoutBtnWrap: {
+    flex: 1,
+    height: 48,
+    borderRadius: 16,
+    overflow: "hidden",
+    shadowColor: "#b71c1c",
+    shadowOpacity: 0.28,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
+  },
+  modalLogoutGradient: {
+    width: "100%",
+    height: "100%",
+    minHeight: 48,
+    borderRadius: 16,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+  },
   modalLogoutText: { fontSize: 14, fontWeight: "900", color: "#FFFFFF", textAlign: "center", writingDirection: "rtl" },
 });

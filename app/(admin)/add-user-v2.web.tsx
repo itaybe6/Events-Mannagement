@@ -68,6 +68,15 @@ export default function AddUserV2WebScreen() {
     user_type: 'event_owner' as UserType,
   });
 
+  const goBackOrUsers = useCallback(() => {
+    const canGoBack = typeof (router as any)?.canGoBack === 'function' ? (router as any).canGoBack() : false;
+    if (canGoBack) {
+      router.back();
+      return;
+    }
+    router.replace('/users');
+  }, [router]);
+
   const canSubmit = useMemo(() => {
     return Boolean(form.name.trim() && form.email.trim() && form.password.trim() && form.confirmPassword.trim());
   }, [form]);
@@ -242,7 +251,7 @@ export default function AddUserV2WebScreen() {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="חזרה לרשימה"
-          onPress={() => router.back()}
+          onPress={goBackOrUsers}
           style={({ hovered, pressed }: any) => [
             styles.backBtn,
             Platform.OS === 'web' && hovered ? styles.backBtnHover : null,
@@ -430,7 +439,7 @@ export default function AddUserV2WebScreen() {
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="ביטול"
-                onPress={() => router.back()}
+                onPress={goBackOrUsers}
                 style={({ hovered, pressed }: any) => [
                   styles.cancelBtn,
                   Platform.OS === 'web' && hovered ? styles.cancelBtnHover : null,

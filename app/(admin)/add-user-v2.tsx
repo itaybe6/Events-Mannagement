@@ -97,6 +97,15 @@ export default function AddUserScreenV2({
     user_type: 'event_owner' as UserType,
   });
 
+  const goBackOrUsers = useCallback(() => {
+    const canGoBack = typeof (router as any)?.canGoBack === 'function' ? (router as any).canGoBack() : false;
+    if (canGoBack) {
+      router.back();
+      return;
+    }
+    router.replace('/(admin)/users');
+  }, [router]);
+
   const theme = useMemo(() => {
     const text = '#0f172a';
     const muted = '#64748b';
@@ -212,7 +221,7 @@ export default function AddUserScreenV2({
           Alert.alert('המשתמש נוסף בהצלחה', message, [
             {
               text: 'אישור',
-              onPress: () => router.back(),
+              onPress: goBackOrUsers,
             },
           ]);
         }
@@ -255,7 +264,7 @@ export default function AddUserScreenV2({
         Alert.alert('המשתמש נוסף בהצלחה', message, [
           {
             text: 'אישור',
-            onPress: () => router.back(),
+            onPress: goBackOrUsers,
           },
         ]);
       }
@@ -451,7 +460,7 @@ export default function AddUserScreenV2({
               <TouchableOpacity
                 accessibilityRole="button"
                 accessibilityLabel="חזרה"
-                onPress={() => router.back()}
+                onPress={goBackOrUsers}
                 activeOpacity={0.85}
                 style={styles.backButton}
               >
@@ -906,7 +915,7 @@ export default function AddUserScreenV2({
                       params: { userId: createdUserId },
                     });
                   } else {
-                    router.back();
+                    goBackOrUsers();
                   }
                 }}
               >
@@ -916,7 +925,7 @@ export default function AddUserScreenV2({
                 style={styles.successSecondaryButton}
                 onPress={() => {
                   setShowSuccessModal(false);
-                  router.back();
+                  goBackOrUsers();
                 }}
               >
                 <Text style={[styles.successSecondaryButtonText, { color: theme.text }]}>חזרה לרשימת משתמשים</Text>
@@ -1212,7 +1221,7 @@ const styles = StyleSheet.create({
   backButton: {
     position: 'absolute',
     left: 18,
-    top: 18,
+    top: 34,
     width: 40,
     height: 40,
     borderRadius: 20,

@@ -297,19 +297,6 @@ export default function AdminEventMessagesScreen() {
       >
         <BlurView intensity={22} tint="light" style={StyleSheet.absoluteFillObject} />
 
-        <Pressable
-          onPress={() => router.back()}
-          style={({ pressed }: any) => [
-            styles.backBtn,
-            { backgroundColor: '#FFFFFF', borderColor: 'rgba(243,244,246,1)' },
-            pressed ? { opacity: 0.92 } : null,
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel="חזרה"
-        >
-          <Ionicons name="chevron-forward" size={20} color={'#4b5563'} />
-        </Pressable>
-
         <View style={styles.headerTitles}>
           <Text style={[styles.headerTitle, { color: '#111827' }]}>הודעות אוטומטיות</Text>
           <Text style={[styles.headerSubtitle, { color: ui.sub }]} numberOfLines={1}>
@@ -385,19 +372,6 @@ const styles = StyleSheet.create({
           backdropFilter: 'blur(14px)',
         } as any)
       : null),
-  },
-  backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 999,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 2,
   },
   headerTitles: { flex: 1, alignItems: 'center', paddingHorizontal: 12 },
   headerTitle: { fontSize: 18, fontWeight: '900', textAlign: 'center' },

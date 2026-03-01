@@ -1,10 +1,13 @@
-import React, { useCallback, useEffect, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   BackHandler,
+  Dimensions,
   Linking,
+  Modal,
   Platform,
+  Pressable,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -12,6 +15,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from "react-native";
 import { Stack, useLocalSearchParams, useRouter, useSegments } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
@@ -22,15 +26,22 @@ import { colors } from "@/constants/colors";
 import BackSwipe from "@/components/BackSwipe";
 import AppHeader from "@/components/AppHeader";
 import { useGuestCheckInModel } from "@/features/guests/useGuestCheckInModel";
+import { useSeatingMapModel } from "@/features/seating/useSeatingMapModel";
 
-export default function EmployeeGuestCheckInScreen() {
+type Props = { hideTopBar?: boolean };
+
+export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const segments = useSegments();
   const { eventId } = useLocalSearchParams<{ eventId?: string }>();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
 
   const resolvedEventId = useMemo(() => String(eventId || "").trim(), [eventId]);
-  const isAdminContext = useMemo(() => segments.includes("(admin)"), [segments]);
+  const isAdminContext = useMemo(() => {
+    const arr = segments as unknown as any[];
+    return Boolean(arr?.find((s) => String(s) === "(admin)"));
+  }, [segments]);
   const fallbackToDetails = useMemo(
     () =>
       resolvedEventId
@@ -60,6 +71,7 @@ export default function EmployeeGuestCheckInScreen() {
 
   const {
     loading,
+    guests,
     query,
     setQuery,
     filter,
@@ -68,18 +80,33 @@ export default function EmployeeGuestCheckInScreen() {
     toggleCollapsed,
     counts,
     sections,
-    refresh,
+    refresh: refreshGuests,
     toggleCheckIn,
     savingId,
+    setCheckedInCount,
+    savingCountId,
   } = useGuestCheckInModel({
     eventId: resolvedEventId ? resolvedEventId : null,
     errorTitle: "שגיאה",
     errorMessage: "לא ניתן לטעון את רשימת האורחים",
   });
 
+  const {
+    loading: mapLoading,
+    tables: mapTables,
+    annotations: mapAnnotations,
+    refresh: refreshMap,
+  } = useSeatingMapModel(resolvedEventId ? resolvedEventId : null);
+
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    void refreshGuests();
+    void refreshMap();
+  }, [refreshGuests, refreshMap]);
+
+  const isTablet = useMemo(() => {
+    // iPad portrait starts at 768dp width. Keep UI tablet-only from that breakpoint.
+    return (Number(windowWidth) || 0) >= 768;
+  }, [windowWidth]);
 
   const phoneToTel = (raw: string) => {
     const cleaned = String(raw || "").replace(/[^\d+]/g, "").trim();
@@ -107,6 +134,99 @@ export default function EmployeeGuestCheckInScreen() {
   const TAB_BAR_HEIGHT = 65;
   const TAB_BAR_BOTTOM_GAP = Platform.OS === "ios" ? 30 : 20;
   const bottomReserve = TAB_BAR_HEIGHT + TAB_BAR_BOTTOM_GAP + 18;
+
+  const invitedPeople = useMemo(() => {
+    return guests.reduce((sum, g) => sum + (Number(g.numberOfPeople) || 1), 0);
+  }, [guests]);
+
+  const arrivedPeople = useMemo(() => {
+    return guests.reduce((sum, g) => {
+      if (!g.checkedIn) return sum;
+      const people = Number(g.numberOfPeople) || 1;
+      const actual = g.checkedInCount === null || g.checkedInCount === undefined ? null : Number(g.checkedInCount);
+      const n = actual !== null && Number.isFinite(actual) ? actual : people;
+      return sum + Math.max(0, n);
+    }, 0);
+  }, [guests]);
+
+  const [tableFilterId, setTableFilterId] = useState<string | null>(null);
+  const [tableModalOpen, setTableModalOpen] = useState(false);
+  const [activeTableId, setActiveTableId] = useState<string | null>(null);
+
+  const tableById = useMemo(() => {
+    return new Map(mapTables.map((t) => [String(t.id), t]));
+  }, [mapTables]);
+
+  const activeTable = useMemo(() => {
+    if (!activeTableId) return null;
+    return tableById.get(activeTableId) ?? null;
+  }, [activeTableId, tableById]);
+
+  const arrivedPeopleByTableId = useMemo(() => {
+    const m = new Map<string, number>();
+    guests.forEach((g) => {
+      const key = String(g.tableId ?? "").trim();
+      if (!key) return;
+      if (!g.checkedIn) return;
+      const people = Number(g.numberOfPeople) || 1;
+      const actual = g.checkedInCount === null || g.checkedInCount === undefined ? null : Number(g.checkedInCount);
+      const n = actual !== null && Number.isFinite(actual) ? actual : people;
+      m.set(key, (m.get(key) || 0) + Math.max(0, n));
+    });
+    return m;
+  }, [guests]);
+
+  const invitedPeopleByTableId = useMemo(() => {
+    const m = new Map<string, number>();
+    guests.forEach((g) => {
+      const key = String(g.tableId ?? "").trim();
+      if (!key) return;
+      const people = Number(g.numberOfPeople) || 1;
+      m.set(key, (m.get(key) || 0) + Math.max(1, people));
+    });
+    return m;
+  }, [guests]);
+
+  const visibleSections = useMemo(() => {
+    const tid = tableFilterId ? String(tableFilterId).trim() : null;
+    if (!tid) return sections;
+    return sections
+      .map((sec) => {
+        const data = sec.data.filter((g) => String(g.tableId ?? "").trim() === tid);
+        const checkedIn = data.filter((g) => Boolean(g.checkedIn)).length;
+        return { ...sec, data, checkedIn, total: data.length };
+      })
+      .filter((sec) => sec.total > 0);
+  }, [sections, tableFilterId]);
+
+  const tableFilterLabel = useMemo(() => {
+    if (!tableFilterId) return null;
+    const t = tableById.get(String(tableFilterId).trim());
+    if (!t) return "שולחן";
+    const n = typeof t.number === "number" ? t.number : null;
+    return n !== null ? `שולחן ${n}` : t.name ? `שולחן ${t.name}` : "שולחן";
+  }, [tableById, tableFilterId]);
+
+  const openTableDetails = useCallback((tableId: string) => {
+    setActiveTableId(tableId);
+    setTableModalOpen(true);
+  }, []);
+
+  const closeTableDetails = useCallback(() => {
+    setTableModalOpen(false);
+    setActiveTableId(null);
+  }, []);
+
+  const guestsForActiveTable = useMemo(() => {
+    if (!activeTableId) return [];
+    const id = String(activeTableId).trim();
+    return guests.filter((g) => String(g.tableId ?? "").trim() === id);
+  }, [activeTableId, guests]);
+
+  const onRefreshAll = useCallback(() => {
+    void refreshGuests();
+    void refreshMap();
+  }, [refreshGuests, refreshMap]);
 
   if (loading) {
     return (
@@ -157,206 +277,670 @@ export default function EmployeeGuestCheckInScreen() {
         }}
       />
       <SafeAreaView style={[styles.screen, { paddingTop: insets.top }]}>
-        {/* Top bar */}
-        <View style={styles.topBar}>
-          <TouchableOpacity
-            onPress={handleBack}
-            style={styles.topIconBtn}
-            activeOpacity={0.85}
-            accessibilityRole="button"
-            accessibilityLabel="חזרה"
-          >
-            <Ionicons name="chevron-back" size={24} color={colors.primary} />
-          </TouchableOpacity>
+        {!hideTopBar ? (
+          <View style={styles.topBar}>
+            <TouchableOpacity
+              onPress={handleBack}
+              style={styles.topIconBtn}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="חזרה"
+            >
+              <Ionicons name="chevron-back" size={24} color={colors.primary} />
+            </TouchableOpacity>
 
-          <View style={styles.topCenter}>
-            <Text style={styles.topTitle} numberOfLines={1}>
-              הזנת מוזמנים
-            </Text>
-            <Text style={styles.topSubtitle} numberOfLines={1}>
-              {`${counts.checkedIn}/${counts.total} הגיעו`}
-            </Text>
+            <View style={styles.topCenter}>
+              <Text style={styles.topTitle} numberOfLines={1}>
+                הזנת מוזמנים
+              </Text>
+              <Text style={styles.topSubtitle} numberOfLines={1}>
+                {`${counts.checkedIn}/${counts.total} הגיעו • ${arrivedPeople}/${invitedPeople} אנשים`}
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              onPress={onRefreshAll}
+              style={styles.topIconBtn}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="רענון"
+            >
+              <Ionicons name="refresh" size={20} color={colors.primary} />
+            </TouchableOpacity>
           </View>
+        ) : null}
 
-          <TouchableOpacity
-            onPress={() => void refresh()}
-            style={styles.topIconBtn}
-            activeOpacity={0.85}
-            accessibilityRole="button"
-            accessibilityLabel="רענון"
-          >
-            <Ionicons name="refresh" size={20} color={colors.primary} />
-          </TouchableOpacity>
-        </View>
-
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={[styles.content, { paddingBottom: bottomReserve + insets.bottom }]}
-        >
-          {/* Search */}
-          <View style={styles.searchCard}>
-            <Text>
-              <Ionicons name="search" size={18} color={colors.gray[500]} />
-            </Text>
-            <TextInput
-              value={query}
-              onChangeText={setQuery}
-              placeholder="חיפוש שם או טלפון..."
-              placeholderTextColor={colors.gray[500]}
-              style={styles.searchInput}
-              textAlign="right"
-              returnKeyType="search"
-            />
-          </View>
-
-          {/* Filters */}
-          <View style={styles.filtersRow}>
-            {[
-              { key: "all" as const, label: "הכל" },
-              { key: "checked_in" as const, label: "הגיעו" },
-              { key: "not_checked_in" as const, label: "לא הגיעו" },
-            ].map((opt) => {
-              const active = filter === opt.key;
-              return (
-                <TouchableOpacity
-                  key={opt.key}
-                  style={[styles.filterChip, active && styles.filterChipActive]}
-                  onPress={() => setFilter(opt.key)}
-                  activeOpacity={0.9}
-                  accessibilityRole="button"
-                  accessibilityLabel={`סינון: ${opt.label}`}
-                >
-                  <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>{opt.label}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          {/* Categories */}
-          <View style={{ gap: 12, marginTop: 12 }}>
-            {sections.map((sec) => {
-              const isCollapsed = collapsed.has(sec.key);
-              const pct = sec.total ? Math.round((sec.checkedIn / sec.total) * 100) : 0;
-              return (
-                <View key={sec.key} style={styles.categoryCard}>
-                  <TouchableOpacity
-                    style={styles.categoryHeader}
-                    onPress={() => toggleCollapsed(sec.key)}
-                    activeOpacity={0.9}
-                    accessibilityRole="button"
-                    accessibilityLabel={`קטגוריה ${sec.name}`}
-                  >
-                    <View style={styles.categoryHeaderLeft}>
-                      <View style={styles.categoryCountPill}>
-                        <Text style={styles.categoryCountText}>{`${sec.checkedIn}/${sec.total}`}</Text>
-                      </View>
-                      <View style={styles.categoryPctPill}>
-                        <Text style={styles.categoryPctText}>{`${pct}%`}</Text>
-                      </View>
-                      <Ionicons
-                        name={isCollapsed ? "chevron-down" : "chevron-up"}
-                        size={18}
-                        color={"rgba(17,24,39,0.55)"}
-                      />
-                    </View>
-
-                    <View style={styles.categoryHeaderRight}>
-                      <Text style={styles.categoryTitle} numberOfLines={1}>
-                        {sec.name}
+        {isTablet ? (
+          <View style={styles.tabletBody}>
+            {/* Guests */}
+            <View style={styles.guestsPane}>
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={[styles.content, { paddingBottom: bottomReserve + insets.bottom }]}
+                keyboardShouldPersistTaps="handled"
+              >
+                {tableFilterId ? (
+                  <View style={styles.tableFilterRow}>
+                    <TouchableOpacity
+                      onPress={() => setTableFilterId(null)}
+                      style={styles.tableFilterClearBtn}
+                      activeOpacity={0.9}
+                      accessibilityRole="button"
+                      accessibilityLabel="נקה סינון שולחן"
+                    >
+                      <Ionicons name="close" size={16} color={colors.primary} />
+                      <Text style={styles.tableFilterClearText}>נקה</Text>
+                    </TouchableOpacity>
+                    <View style={styles.tableFilterPill}>
+                      <Ionicons name="restaurant" size={14} color={colors.primary} />
+                      <Text style={styles.tableFilterText} numberOfLines={1}>
+                        {tableFilterLabel || "שולחן"}
                       </Text>
                     </View>
-                  </TouchableOpacity>
+                  </View>
+                ) : null}
 
-                  {!isCollapsed ? (
-                    <View style={{ gap: 10, marginTop: 12 }}>
-                      {sec.data.map((g) => {
-                        const checkedIn = Boolean(g.checkedIn);
-                        const isSaving = savingId === g.id;
-                        return (
-                          <View key={g.id} style={[styles.guestRow, checkedIn && styles.guestRowChecked]}>
-                            <TouchableOpacity
-                              onPress={() => toggleCheckIn(g)}
-                              style={[styles.checkInPill, checkedIn ? styles.checkInPillOn : styles.checkInPillOff]}
-                              activeOpacity={0.9}
-                              disabled={isSaving}
-                              accessibilityRole="button"
-                              accessibilityLabel={checkedIn ? `סמן שלא הגיע: ${g.name}` : `סמן שהגיע: ${g.name}`}
-                            >
-                              {isSaving ? (
-                                <ActivityIndicator color={checkedIn ? colors.white : colors.primary} />
-                              ) : (
-                                <Ionicons
-                                  name={checkedIn ? "checkmark-circle" : "ellipse-outline"}
-                                  size={16}
-                                  color={checkedIn ? colors.white : colors.primary}
-                                />
-                              )}
-                              <Text style={[styles.checkInText, checkedIn ? { color: colors.white } : { color: colors.primary }]}>
-                                הגיע
-                              </Text>
-                            </TouchableOpacity>
+                {/* Search */}
+                <View style={styles.searchCard}>
+                  <Text>
+                    <Ionicons name="search" size={18} color={colors.gray[500]} />
+                  </Text>
+                  <TextInput
+                    value={query}
+                    onChangeText={setQuery}
+                    placeholder="חיפוש שם או טלפון..."
+                    placeholderTextColor={colors.gray[500]}
+                    style={styles.searchInput}
+                    textAlign="right"
+                    returnKeyType="search"
+                  />
+                </View>
 
-                            <View style={styles.guestMain}>
-                              <Text style={styles.guestName} numberOfLines={1}>
-                                {g.name}
-                              </Text>
-                              <View style={styles.guestMetaRow}>
-                                <TouchableOpacity
-                                  onPress={() => void callGuest(g.phone, g.name)}
-                                  disabled={!phoneToTel(g.phone)}
-                                  activeOpacity={0.85}
-                                  style={[
-                                    styles.phoneBtn,
-                                    !phoneToTel(g.phone) && styles.phoneBtnDisabled,
-                                  ]}
-                                  accessibilityRole="button"
-                                  accessibilityLabel={
-                                    phoneToTel(g.phone) ? `התקשר ל-${g.name}` : `אין מספר טלפון עבור ${g.name}`
-                                  }
-                                >
-                                  <Ionicons
-                                    name="call-outline"
-                                    size={14}
-                                    color={phoneToTel(g.phone) ? colors.primary : "rgba(17,24,39,0.35)"}
-                                  />
-                                </TouchableOpacity>
-                                <View style={styles.peoplePill}>
-                                  <Ionicons name="person" size={12} color={"rgba(17,24,39,0.65)"} />
-                                  <Text style={styles.peopleText}>{Number(g.numberOfPeople) || 1}</Text>
-                                </View>
-                              </View>
+                {/* Filters */}
+                <View style={styles.filtersRow}>
+                  {[
+                    { key: "all" as const, label: "הכל" },
+                    { key: "checked_in" as const, label: "הגיעו" },
+                    { key: "not_checked_in" as const, label: "לא הגיעו" },
+                  ].map((opt) => {
+                    const active = filter === opt.key;
+                    return (
+                      <TouchableOpacity
+                        key={opt.key}
+                        style={[styles.filterChip, active && styles.filterChipActive]}
+                        onPress={() => setFilter(opt.key)}
+                        activeOpacity={0.9}
+                        accessibilityRole="button"
+                        accessibilityLabel={`סינון: ${opt.label}`}
+                      >
+                        <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>{opt.label}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                {/* Categories */}
+                <View style={{ gap: 12, marginTop: 12 }}>
+                  {visibleSections.map((sec) => {
+                    const isCollapsed = collapsed.has(sec.key);
+                    const pct = sec.total ? Math.round((sec.checkedIn / sec.total) * 100) : 0;
+                    return (
+                      <View key={sec.key} style={styles.categoryCard}>
+                        <TouchableOpacity
+                          style={styles.categoryHeader}
+                          onPress={() => toggleCollapsed(sec.key)}
+                          activeOpacity={0.9}
+                          accessibilityRole="button"
+                          accessibilityLabel={`קטגוריה ${sec.name}`}
+                        >
+                          <View style={styles.categoryHeaderLeft}>
+                            <View style={styles.categoryCountPill}>
+                              <Text style={styles.categoryCountText}>{`${sec.checkedIn}/${sec.total}`}</Text>
                             </View>
-
-                            <View
-                              style={[
-                                styles.statusPill,
-                                g.status === "מגיע"
-                                  ? styles.statusComing
-                                  : g.status === "לא מגיע"
-                                  ? styles.statusNot
-                                  : styles.statusPending,
-                              ]}
-                            >
-                              <Text style={styles.statusText}>{g.status}</Text>
+                            <View style={styles.categoryPctPill}>
+                              <Text style={styles.categoryPctText}>{`${pct}%`}</Text>
                             </View>
+                            <Ionicons
+                              name={isCollapsed ? "chevron-down" : "chevron-up"}
+                              size={18}
+                              color={"rgba(17,24,39,0.55)"}
+                            />
                           </View>
-                        );
-                      })}
+
+                          <View style={styles.categoryHeaderRight}>
+                            <Text style={styles.categoryTitle} numberOfLines={1}>
+                              {sec.name}
+                            </Text>
+                          </View>
+                        </TouchableOpacity>
+
+                        {!isCollapsed ? (
+                          <View style={{ gap: 10, marginTop: 12 }}>
+                            {sec.data.map((g) => {
+                              const checkedIn = Boolean(g.checkedIn);
+                              const isSaving = savingId === g.id;
+                              const people = Number(g.numberOfPeople) || 1;
+                              const arrivedCount =
+                                g.checkedInCount === null || g.checkedInCount === undefined
+                                  ? people
+                                  : Number(g.checkedInCount) || 0;
+                              const isSavingCount = savingCountId === g.id;
+                              return (
+                                <View key={g.id} style={[styles.guestRow, checkedIn && styles.guestRowChecked]}>
+                                  <View style={styles.arrivalSlot}>
+                                    {checkedIn ? (
+                                      <View style={styles.compactStepper}>
+                                        <Pressable
+                                          accessibilityRole="button"
+                                          accessibilityLabel={`הפחת כמות שהגיעה עבור ${g.name}`}
+                                          onPress={() => void setCheckedInCount(g, Math.max(0, arrivedCount - 1))}
+                                          disabled={isSavingCount || arrivedCount <= 0}
+                                          style={[
+                                            styles.stepBtnCompact,
+                                            (isSavingCount || arrivedCount <= 0) && styles.stepBtnDisabled,
+                                          ]}
+                                        >
+                                          <Text style={styles.stepBtnText}>-</Text>
+                                        </Pressable>
+
+                                        <View style={styles.compactCountWrap}>
+                                          {isSavingCount ? (
+                                            <ActivityIndicator size={12} color={colors.primary} />
+                                          ) : (
+                                            <Text style={styles.compactCountText}>{arrivedCount}</Text>
+                                          )}
+                                        </View>
+
+                                        <Pressable
+                                          accessibilityRole="button"
+                                          accessibilityLabel={`הגדל כמות שהגיעה עבור ${g.name}`}
+                                          onPress={() => void setCheckedInCount(g, arrivedCount + 1)}
+                                          disabled={isSavingCount}
+                                          style={[styles.stepBtnCompact, isSavingCount && styles.stepBtnDisabled]}
+                                        >
+                                          <Text style={styles.stepBtnText}>+</Text>
+                                        </Pressable>
+                                      </View>
+                                    ) : (
+                                      <View style={styles.peoplePill}>
+                                        <Ionicons name="person" size={12} color={"rgba(17,24,39,0.65)"} />
+                                        <Text style={styles.peopleText}>{people}</Text>
+                                      </View>
+                                    )}
+                                  </View>
+
+                                  <TouchableOpacity
+                                    onPress={() => toggleCheckIn(g)}
+                                    style={[styles.checkInPill, checkedIn ? styles.checkInPillOn : styles.checkInPillOff]}
+                                    activeOpacity={0.9}
+                                    disabled={isSaving}
+                                    accessibilityRole="button"
+                                    accessibilityLabel={checkedIn ? `סמן שלא הגיע: ${g.name}` : `סמן שהגיע: ${g.name}`}
+                                  >
+                                    {isSaving ? (
+                                      <ActivityIndicator color={checkedIn ? colors.white : colors.primary} />
+                                    ) : (
+                                      <Ionicons
+                                        name={checkedIn ? "checkmark-circle" : "ellipse-outline"}
+                                        size={16}
+                                        color={checkedIn ? colors.white : colors.primary}
+                                      />
+                                    )}
+                                    <Text
+                                      style={[
+                                        styles.checkInText,
+                                        checkedIn ? { color: colors.white } : { color: colors.primary },
+                                      ]}
+                                    >
+                                      הגיע
+                                    </Text>
+                                  </TouchableOpacity>
+
+                                  <View style={styles.guestMain}>
+                                    <Text style={styles.guestName} numberOfLines={1}>
+                                      {g.name}
+                                    </Text>
+                                    <View style={styles.guestMetaRow}>
+                                      <TouchableOpacity
+                                        onPress={() => void callGuest(g.phone, g.name)}
+                                        disabled={!phoneToTel(g.phone)}
+                                        activeOpacity={0.85}
+                                        style={[styles.phoneBtn, !phoneToTel(g.phone) && styles.phoneBtnDisabled]}
+                                        accessibilityRole="button"
+                                        accessibilityLabel={
+                                          phoneToTel(g.phone) ? `התקשר ל-${g.name}` : `אין מספר טלפון עבור ${g.name}`
+                                        }
+                                      >
+                                        <Ionicons
+                                          name="call-outline"
+                                          size={14}
+                                          color={phoneToTel(g.phone) ? colors.primary : "rgba(17,24,39,0.35)"}
+                                        />
+                                      </TouchableOpacity>
+
+                                      <View
+                                        style={[
+                                          styles.statusPill,
+                                          g.status === "מגיע"
+                                            ? styles.statusComing
+                                            : g.status === "לא מגיע"
+                                            ? styles.statusNot
+                                            : styles.statusPending,
+                                        ]}
+                                      >
+                                        <Text style={styles.statusText}>{g.status}</Text>
+                                      </View>
+                                    </View>
+                                  </View>
+                                </View>
+                              );
+                            })}
+                          </View>
+                        ) : null}
+                      </View>
+                    );
+                  })}
+
+                  {visibleSections.length === 0 ? (
+                    <View style={styles.emptyCard}>
+                      <Ionicons name="people-outline" size={42} color={colors.gray[500]} />
+                      <Text style={styles.emptyTitle}>לא נמצאו אורחים</Text>
+                      <Text style={styles.emptyText}>נסה לשנות את החיפוש או הפילטר{tableFilterId ? " או לנקות שולחן" : ""}</Text>
                     </View>
                   ) : null}
                 </View>
-              );
-            })}
+              </ScrollView>
+            </View>
 
-            {sections.length === 0 ? (
-              <View style={styles.emptyCard}>
-                <Ionicons name="people-outline" size={42} color={colors.gray[500]} />
-                <Text style={styles.emptyTitle}>לא נמצאו אורחים</Text>
-                <Text style={styles.emptyText}>נסה לשנות את החיפוש או הפילטר</Text>
+            {/* Map */}
+            <View style={styles.mapPane}>
+              <View style={styles.mapCard}>
+                <View style={styles.mapHeaderRow}>
+                  <Text style={styles.mapTitle}>מפת ישיבה</Text>
+                  <Text style={styles.mapHint} numberOfLines={1}>
+                    לחץ על שולחן לסינון
+                  </Text>
+                </View>
+
+                {mapLoading ? (
+                  <View style={styles.mapLoadingWrap}>
+                    <ActivityIndicator size="large" color={colors.primary} />
+                    <Text style={styles.loadingText}>טוען מפה...</Text>
+                  </View>
+                ) : mapTables.length === 0 && mapAnnotations.length === 0 ? (
+                  <View style={styles.mapEmptyWrap}>
+                    <Ionicons name="map-outline" size={42} color={colors.gray[500]} />
+                    <Text style={styles.emptyTitle}>אין מפה עדיין</Text>
+                    <Text style={styles.emptyText}>כשתהיה סקיצה לאירוע, היא תופיע כאן.</Text>
+                  </View>
+                ) : (
+                  (() => {
+                    const { width: screenW, height: screenH } = Dimensions.get("window");
+                    const minX =
+                      mapTables.length > 0
+                        ? Math.min(...mapTables.map((t) => (typeof t.x === "number" ? t.x : 0)))
+                        : 0;
+                    const maxX =
+                      mapTables.length > 0
+                        ? Math.max(...mapTables.map((t) => (typeof t.x === "number" ? t.x : screenW)))
+                        : screenW;
+                    const minY =
+                      mapTables.length > 0
+                        ? Math.min(...mapTables.map((t) => (typeof t.y === "number" ? t.y : 0)))
+                        : 0;
+                    const maxY =
+                      mapTables.length > 0
+                        ? Math.max(...mapTables.map((t) => (typeof t.y === "number" ? t.y : screenH)))
+                        : screenH;
+
+                    const padding = 120;
+                    const canvasWidth = Math.max(Math.round(windowWidth * 0.5), maxX - minX + padding * 2);
+                    const canvasHeight = Math.max(Math.round(windowHeight * 0.78), maxY - minY + padding * 2, 900);
+
+                    return (
+                      <ScrollView
+                        style={styles.canvasScroll}
+                        contentContainerStyle={{ width: canvasWidth, height: canvasHeight }}
+                        maximumZoomScale={3}
+                        minimumZoomScale={0.5}
+                        bounces={false}
+                        bouncesZoom={false}
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        showsVerticalScrollIndicator={false}
+                      >
+                        <View style={[styles.canvas, { width: canvasWidth, height: canvasHeight }]}>
+                          {/* Grid */}
+                          {[...Array(Math.ceil(canvasHeight / 60))].map((_, i) => (
+                            <View key={`h-${i}`} style={[styles.gridLine, { top: i * 60 }]} />
+                          ))}
+                          {[...Array(Math.ceil(canvasWidth / 90))].map((_, i) => (
+                            <View key={`v-${i}`} style={[styles.gridLineV, { left: i * 90 }]} />
+                          ))}
+
+                          {/* Tables */}
+                          {mapTables.map((t) => {
+                            const id = String(t.id);
+                            const x = (typeof t.x === "number" ? t.x : 40) - minX + padding;
+                            const y = (typeof t.y === "number" ? t.y : 60) - minY + padding;
+                            const cap = Number(t.capacity) || 0;
+                            const arrived = arrivedPeopleByTableId.get(id) || 0;
+                            const invited = invitedPeopleByTableId.get(id) || 0;
+                            const isReserve = t.shape === "reserve";
+                            const isFull = !isReserve && cap > 0 && arrived >= cap;
+                            const selected = Boolean(tableFilterId) && String(tableFilterId) === id;
+
+                            return (
+                              <TouchableOpacity
+                                key={id}
+                                style={[
+                                  styles.table,
+                                  t.shape === "rectangle" ? styles.tableRect : styles.tableSquare,
+                                  isFull && styles.tableFullStyle,
+                                  isReserve && styles.reserveTableStyle,
+                                  selected && styles.tableSelectedStyle,
+                                  { left: x, top: y },
+                                ]}
+                                activeOpacity={0.9}
+                                onPress={() => setTableFilterId((prev) => (prev === id ? null : id))}
+                                onLongPress={() => openTableDetails(id)}
+                                accessibilityRole="button"
+                                accessibilityLabel={`שולחן ${t.number ?? ""}`}
+                              >
+                                <Text
+                                  style={[
+                                    styles.tableNumber,
+                                    isFull && styles.tableFullText,
+                                    isReserve && styles.reserveTableText,
+                                    selected && styles.tableSelectedText,
+                                  ]}
+                                >
+                                  {t.number ?? "?"}
+                                </Text>
+                                <Text
+                                  style={[
+                                    styles.tableCap,
+                                    isFull && styles.tableFullCapText,
+                                    isReserve && styles.reserveTableCapText,
+                                    selected && styles.tableSelectedCapText,
+                                  ]}
+                                >
+                                  {cap > 0 ? `${arrived} / ${cap}` : `${arrived}${invited ? ` / ${invited}` : ""}`}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+
+                          {/* Annotations */}
+                          {mapAnnotations.map((a, idx) => (
+                            <View
+                              key={String(a.id || idx)}
+                              style={[
+                                styles.textArea,
+                                {
+                                  left: (typeof a.x === "number" ? a.x : 200) - minX + padding,
+                                  top: (typeof a.y === "number" ? a.y : 200 + idx * 40) - minY + padding,
+                                },
+                              ]}
+                            >
+                              <Text style={styles.textAreaText}>{String(a.text || "").trim()}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      </ScrollView>
+                    );
+                  })()
+                )}
               </View>
-            ) : null}
+            </View>
+
+            {/* Table modal */}
+            <Modal visible={tableModalOpen} transparent animationType="fade" onRequestClose={closeTableDetails}>
+              <Pressable style={styles.modalOverlay} onPress={closeTableDetails}>
+                <Pressable style={styles.modalCard} onPress={() => null}>
+                  <View style={styles.modalHeader}>
+                    <TouchableOpacity
+                      onPress={closeTableDetails}
+                      style={styles.modalCloseBtn}
+                      activeOpacity={0.85}
+                      accessibilityRole="button"
+                      accessibilityLabel="סגירה"
+                    >
+                      <Ionicons name="close" size={18} color={"rgba(17,24,39,0.70)"} />
+                    </TouchableOpacity>
+
+                    <View style={{ flex: 1, alignItems: "center" }}>
+                      <Text style={styles.modalTitle} numberOfLines={1}>
+                        {activeTable ? `שולחן ${activeTable.number ?? ""}` : "שולחן"}
+                      </Text>
+                      <Text style={styles.modalSubtitle} numberOfLines={1}>
+                        {activeTable
+                          ? `${arrivedPeopleByTableId.get(String(activeTable.id)) || 0} / ${Number(activeTable.capacity) || 0}`
+                          : ""}
+                      </Text>
+                    </View>
+
+                    <View style={{ width: 40 }} />
+                  </View>
+
+                  <View style={styles.modalDivider} />
+
+                  <ScrollView contentContainerStyle={styles.modalBody} showsVerticalScrollIndicator={false}>
+                    {guestsForActiveTable.length === 0 ? (
+                      <View style={styles.emptyBox}>
+                        <Ionicons name="people-outline" size={38} color={"rgba(17,24,39,0.45)"} />
+                        <Text style={styles.emptyTitle}>אין אורחים בשולחן</Text>
+                        <Text style={styles.emptyText}>לחץ על שולחן אחר או נקה סינון</Text>
+                      </View>
+                    ) : (
+                      guestsForActiveTable.map((g) => {
+                        const checkedIn = Boolean(g.checkedIn);
+                        const people = Number(g.numberOfPeople) || 1;
+                        const arrivedCount =
+                          g.checkedInCount === null || g.checkedInCount === undefined
+                            ? people
+                            : Number(g.checkedInCount) || 0;
+                        return (
+                          <View key={g.id} style={[styles.modalGuestRow, checkedIn && styles.modalGuestRowOn]}>
+                            <View style={styles.modalGuestMeta}>
+                              <Text style={styles.modalGuestCount}>{checkedIn ? arrivedCount : 0}</Text>
+                              <Text style={styles.modalGuestCountDim}>{`/ ${people}`}</Text>
+                            </View>
+                            <Text style={styles.modalGuestName} numberOfLines={1}>
+                              {g.name}
+                            </Text>
+                            <TouchableOpacity
+                              onPress={() => toggleCheckIn(g)}
+                              style={[styles.modalToggleBtn, checkedIn && styles.modalToggleBtnOn]}
+                              activeOpacity={0.9}
+                              disabled={savingId === g.id}
+                              accessibilityRole="button"
+                              accessibilityLabel={checkedIn ? `סמן שלא הגיע: ${g.name}` : `סמן שהגיע: ${g.name}`}
+                            >
+                              {savingId === g.id ? (
+                                <ActivityIndicator size={14} color={checkedIn ? colors.white : colors.primary} />
+                              ) : (
+                                <Ionicons
+                                  name={checkedIn ? "checkmark-circle" : "ellipse-outline"}
+                                  size={18}
+                                  color={checkedIn ? colors.white : colors.primary}
+                                />
+                              )}
+                            </TouchableOpacity>
+                          </View>
+                        );
+                      })
+                    )}
+                  </ScrollView>
+                </Pressable>
+              </Pressable>
+            </Modal>
           </View>
-        </ScrollView>
+        ) : (
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={[styles.content, { paddingBottom: bottomReserve + insets.bottom }]}
+          >
+            {/* Search */}
+            <View style={styles.searchCard}>
+              <Text>
+                <Ionicons name="search" size={18} color={colors.gray[500]} />
+              </Text>
+              <TextInput
+                value={query}
+                onChangeText={setQuery}
+                placeholder="חיפוש שם או טלפון..."
+                placeholderTextColor={colors.gray[500]}
+                style={styles.searchInput}
+                textAlign="right"
+                returnKeyType="search"
+              />
+            </View>
+
+            {/* Filters */}
+            <View style={styles.filtersRow}>
+              {[
+                { key: "all" as const, label: "הכל" },
+                { key: "checked_in" as const, label: "הגיעו" },
+                { key: "not_checked_in" as const, label: "לא הגיעו" },
+              ].map((opt) => {
+                const active = filter === opt.key;
+                return (
+                  <TouchableOpacity
+                    key={opt.key}
+                    style={[styles.filterChip, active && styles.filterChipActive]}
+                    onPress={() => setFilter(opt.key)}
+                    activeOpacity={0.9}
+                    accessibilityRole="button"
+                    accessibilityLabel={`סינון: ${opt.label}`}
+                  >
+                    <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>{opt.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* Categories */}
+            <View style={{ gap: 12, marginTop: 12 }}>
+              {sections.map((sec) => {
+                const isCollapsed = collapsed.has(sec.key);
+                const pct = sec.total ? Math.round((sec.checkedIn / sec.total) * 100) : 0;
+                return (
+                  <View key={sec.key} style={styles.categoryCard}>
+                    <TouchableOpacity
+                      style={styles.categoryHeader}
+                      onPress={() => toggleCollapsed(sec.key)}
+                      activeOpacity={0.9}
+                      accessibilityRole="button"
+                      accessibilityLabel={`קטגוריה ${sec.name}`}
+                    >
+                      <View style={styles.categoryHeaderLeft}>
+                        <View style={styles.categoryCountPill}>
+                          <Text style={styles.categoryCountText}>{`${sec.checkedIn}/${sec.total}`}</Text>
+                        </View>
+                        <View style={styles.categoryPctPill}>
+                          <Text style={styles.categoryPctText}>{`${pct}%`}</Text>
+                        </View>
+                        <Ionicons
+                          name={isCollapsed ? "chevron-down" : "chevron-up"}
+                          size={18}
+                          color={"rgba(17,24,39,0.55)"}
+                        />
+                      </View>
+
+                      <View style={styles.categoryHeaderRight}>
+                        <Text style={styles.categoryTitle} numberOfLines={1}>
+                          {sec.name}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+
+                    {!isCollapsed ? (
+                      <View style={{ gap: 10, marginTop: 12 }}>
+                        {sec.data.map((g) => {
+                          const checkedIn = Boolean(g.checkedIn);
+                          const isSaving = savingId === g.id;
+                          return (
+                            <View key={g.id} style={[styles.guestRow, checkedIn && styles.guestRowChecked]}>
+                              <TouchableOpacity
+                                onPress={() => toggleCheckIn(g)}
+                                style={[styles.checkInPill, checkedIn ? styles.checkInPillOn : styles.checkInPillOff]}
+                                activeOpacity={0.9}
+                                disabled={isSaving}
+                                accessibilityRole="button"
+                                accessibilityLabel={checkedIn ? `סמן שלא הגיע: ${g.name}` : `סמן שהגיע: ${g.name}`}
+                              >
+                                {isSaving ? (
+                                  <ActivityIndicator color={checkedIn ? colors.white : colors.primary} />
+                                ) : (
+                                  <Ionicons
+                                    name={checkedIn ? "checkmark-circle" : "ellipse-outline"}
+                                    size={16}
+                                    color={checkedIn ? colors.white : colors.primary}
+                                  />
+                                )}
+                                <Text style={[styles.checkInText, checkedIn ? { color: colors.white } : { color: colors.primary }]}>
+                                  הגיע
+                                </Text>
+                              </TouchableOpacity>
+
+                              <View style={styles.guestMain}>
+                                <Text style={styles.guestName} numberOfLines={1}>
+                                  {g.name}
+                                </Text>
+                                <View style={styles.guestMetaRow}>
+                                  <TouchableOpacity
+                                    onPress={() => void callGuest(g.phone, g.name)}
+                                    disabled={!phoneToTel(g.phone)}
+                                    activeOpacity={0.85}
+                                    style={[styles.phoneBtn, !phoneToTel(g.phone) && styles.phoneBtnDisabled]}
+                                    accessibilityRole="button"
+                                    accessibilityLabel={phoneToTel(g.phone) ? `התקשר ל-${g.name}` : `אין מספר טלפון עבור ${g.name}`}
+                                  >
+                                    <Ionicons
+                                      name="call-outline"
+                                      size={14}
+                                      color={phoneToTel(g.phone) ? colors.primary : "rgba(17,24,39,0.35)"}
+                                    />
+                                  </TouchableOpacity>
+                                  <View style={styles.peoplePill}>
+                                    <Ionicons name="person" size={12} color={"rgba(17,24,39,0.65)"} />
+                                    <Text style={styles.peopleText}>{Number(g.numberOfPeople) || 1}</Text>
+                                  </View>
+                                </View>
+                              </View>
+
+                              <View
+                                style={[
+                                  styles.statusPill,
+                                  g.status === "מגיע"
+                                    ? styles.statusComing
+                                    : g.status === "לא מגיע"
+                                    ? styles.statusNot
+                                    : styles.statusPending,
+                                ]}
+                              >
+                                <Text style={styles.statusText}>{g.status}</Text>
+                              </View>
+                            </View>
+                          );
+                        })}
+                      </View>
+                    ) : null}
+                  </View>
+                );
+              })}
+
+              {sections.length === 0 ? (
+                <View style={styles.emptyCard}>
+                  <Ionicons name="people-outline" size={42} color={colors.gray[500]} />
+                  <Text style={styles.emptyTitle}>לא נמצאו אורחים</Text>
+                  <Text style={styles.emptyText}>נסה לשנות את החיפוש או הפילטר</Text>
+                </View>
+              ) : null}
+            </View>
+          </ScrollView>
+        )}
       </SafeAreaView>
     </BackSwipe>
   );
@@ -398,6 +982,43 @@ const styles = StyleSheet.create({
   topSubtitle: { marginTop: 2, fontSize: 12, fontWeight: "800", color: colors.gray[600], textAlign: "center" },
 
   content: { padding: 16, paddingTop: 6 },
+
+  tabletBody: { flex: 1, flexDirection: "row-reverse", alignItems: "stretch" },
+  guestsPane: {
+    width: 460,
+    maxWidth: 520,
+    minWidth: 420,
+    borderLeftWidth: 1,
+    borderLeftColor: "rgba(0,0,0,0.06)",
+  },
+  mapPane: { flex: 1, padding: 16, paddingTop: 6 },
+
+  tableFilterRow: { marginTop: 8, flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", gap: 10 },
+  tableFilterPill: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: "rgba(17, 82, 212, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(17, 82, 212, 0.18)",
+    flex: 1,
+  },
+  tableFilterText: { fontSize: 12, fontWeight: "900", color: colors.primary, textAlign: "right", flex: 1 },
+  tableFilterClearBtn: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.06)",
+  },
+  tableFilterClearText: { fontSize: 12, fontWeight: "900", color: colors.primary },
 
   searchCard: {
     marginTop: 8,
@@ -534,6 +1155,33 @@ const styles = StyleSheet.create({
   statusPending: { backgroundColor: "rgba(255, 193, 7, 0.10)", borderColor: "rgba(255, 193, 7, 0.22)" },
   statusNot: { backgroundColor: "rgba(255, 59, 48, 0.08)", borderColor: "rgba(255, 59, 48, 0.22)" },
 
+  arrivalSlot: { width: 126, alignItems: "center", justifyContent: "center" },
+  compactStepper: {
+    height: 36,
+    borderRadius: 14,
+    backgroundColor: "rgba(0,0,0,0.04)",
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.06)",
+    paddingHorizontal: 6,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 8,
+  },
+  stepBtnCompact: {
+    width: 28,
+    height: 28,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.9)",
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.08)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stepBtnDisabled: { opacity: 0.55 },
+  stepBtnText: { fontSize: 16, fontWeight: "900", color: colors.primary, textAlign: "center" },
+  compactCountWrap: { minWidth: 26, alignItems: "center", justifyContent: "center" },
+  compactCountText: { fontSize: 12, fontWeight: "900", color: colors.text, textAlign: "center" },
+
   checkInPill: {
     height: 36,
     paddingHorizontal: 10,
@@ -560,5 +1208,165 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { marginTop: 10, fontSize: 16, fontWeight: "900", color: colors.text, textAlign: "center" },
   emptyText: { marginTop: 6, fontSize: 13, fontWeight: "700", color: colors.gray[600], textAlign: "center" },
+
+  mapCard: {
+    flex: 1,
+    backgroundColor: colors.white,
+    borderRadius: 22,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.06)",
+    shadowColor: colors.black,
+    shadowOpacity: 0.06,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 2,
+    overflow: "hidden",
+  },
+  mapHeaderRow: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", gap: 12 },
+  mapTitle: { fontSize: 16, fontWeight: "900", color: colors.text, textAlign: "right" },
+  mapHint: { fontSize: 12, fontWeight: "800", color: colors.gray[600], textAlign: "left" },
+  mapLoadingWrap: { flex: 1, alignItems: "center", justifyContent: "center", gap: 10 },
+  mapEmptyWrap: { flex: 1, alignItems: "center", justifyContent: "center", gap: 8, padding: 18 },
+
+  canvasScroll: { flex: 1, marginTop: 12 },
+  canvas: { backgroundColor: colors.white, overflow: "hidden" },
+  gridLine: { position: "absolute", left: 0, right: 0, height: 1, backgroundColor: colors.gray[200] },
+  gridLineV: { position: "absolute", top: 0, bottom: 0, width: 1, backgroundColor: colors.gray[200] },
+
+  table: {
+    position: "absolute",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.gray[50],
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.gray[300],
+    shadowColor: colors.richBlack,
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
+  },
+  tableSquare: { width: 76, height: 76 },
+  tableRect: { width: 62, height: 128 },
+  tableNumber: { fontWeight: "900", fontSize: 16, color: colors.text },
+  tableCap: { fontSize: 13, fontWeight: "800", color: colors.gray[600], marginTop: 2 },
+  tableFullStyle: {
+    backgroundColor: colors.success,
+    borderColor: colors.success,
+    shadowColor: colors.success,
+    shadowOpacity: 0.22,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
+  },
+  tableFullText: { color: colors.white },
+  tableFullCapText: { color: "rgba(255,255,255,0.92)" },
+  reserveTableStyle: { backgroundColor: "rgba(0,0,0,0.72)", borderColor: colors.gray[800] },
+  reserveTableText: { color: colors.white },
+  reserveTableCapText: { color: "rgba(255,255,255,0.70)" },
+  tableSelectedStyle: {
+    borderColor: "#10B981",
+    borderWidth: 2,
+    backgroundColor: "rgba(16, 185, 129, 0.14)",
+    shadowColor: "#10B981",
+    shadowOpacity: 0.20,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
+  },
+  tableSelectedText: { color: "#047857" },
+  tableSelectedCapText: { color: "#047857" },
+
+  textArea: {
+    position: "absolute",
+    backgroundColor: colors.gray[100],
+    borderRadius: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: colors.gray[300],
+  },
+  textAreaText: { fontSize: 14, fontWeight: "800", color: colors.text },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 18,
+  },
+  modalCard: {
+    width: "100%",
+    maxWidth: 620,
+    borderRadius: 24,
+    backgroundColor: "rgba(255,255,255,0.98)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.70)",
+    shadowColor: colors.black,
+    shadowOpacity: 0.20,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 14 },
+    elevation: 10,
+    overflow: "hidden",
+    maxHeight: Platform.OS === "web" ? 680 : "84%",
+  },
+  modalHeader: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 12,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  modalCloseBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 999,
+    backgroundColor: "rgba(17,24,39,0.06)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalTitle: { fontSize: 18, fontWeight: "900", color: "#111827", textAlign: "center" },
+  modalSubtitle: { marginTop: 4, fontSize: 12, fontWeight: "800", color: "rgba(17,24,39,0.55)", textAlign: "center" },
+  modalDivider: { height: 1, backgroundColor: "rgba(17,24,39,0.08)", marginHorizontal: 16 },
+  modalBody: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 14, gap: 10 },
+
+  modalGuestRow: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    backgroundColor: "rgba(17,24,39,0.04)",
+    borderWidth: 1,
+    borderColor: "rgba(17,24,39,0.06)",
+    gap: 10,
+  },
+  modalGuestRowOn: { backgroundColor: "rgba(52, 199, 89, 0.10)", borderColor: "rgba(52, 199, 89, 0.22)" },
+  modalGuestName: { flex: 1, textAlign: "right", fontSize: 14, fontWeight: "900", color: colors.text },
+  modalGuestMeta: { width: 74, flexDirection: "row-reverse", alignItems: "center", justifyContent: "flex-start", gap: 4 },
+  modalGuestCount: { fontSize: 13, fontWeight: "900", color: colors.primary },
+  modalGuestCountDim: { fontSize: 12, fontWeight: "900", color: colors.gray[600] },
+  modalToggleBtn: {
+    width: 44,
+    height: 40,
+    borderRadius: 14,
+    backgroundColor: "rgba(17, 82, 212, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(17, 82, 212, 0.16)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalToggleBtnOn: { backgroundColor: colors.success, borderColor: "rgba(0,0,0,0.08)" },
+
+  emptyBox: {
+    paddingVertical: 26,
+    paddingHorizontal: 18,
+    alignItems: "center",
+    gap: 8,
+  },
 });
 

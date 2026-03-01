@@ -1,4 +1,6 @@
 import EmployeeGuestCheckInScreen from '../(employee)/employee-guest-checkin';
 
-export default EmployeeGuestCheckInScreen;
+export default function AdminGuestCheckInScreen() {
+  return <EmployeeGuestCheckInScreen hideTopBar />;
+}
 

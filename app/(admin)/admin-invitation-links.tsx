@@ -324,10 +324,6 @@ export default function AdminInvitationLinksScreen() {
       <View style={styles.center}>
         <Ionicons name="alert-circle-outline" size={34} color={colors.gray[600]} />
         <Text style={styles.centerText}>{error || 'האירוע לא נמצא'}</Text>
-        <Pressable onPress={() => router.back()} style={styles.primaryBtn}>
-          <Ionicons name="arrow-forward" size={18} color={colors.white} />
-          <Text style={styles.primaryBtnText}>חזרה</Text>
-        </Pressable>
       </View>
     );
   }
@@ -342,10 +338,6 @@ export default function AdminInvitationLinksScreen() {
             <Text style={styles.h1}>לינק להזמנה</Text>
             <Text style={styles.sub}>הגדרת תצוגת הזמנה + קישורים אישיים למוזמנים</Text>
           </View>
-
-          <Pressable onPress={() => router.back()} style={styles.iconBtn} accessibilityRole="button" accessibilityLabel="חזרה">
-            <Ionicons name="arrow-forward" size={18} color={colors.primary} />
-          </Pressable>
         </View>
 
         <View style={[styles.topGrid, isDesktop ? styles.topGridDesktop : null]}>

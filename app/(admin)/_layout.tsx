@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { Tabs, useRouter, useSegments } from "expo-router";
+import { Tabs, useGlobalSearchParams, useRouter, useSegments } from "expo-router";
 import { colors } from "@/constants/colors";
 import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 export default function AdminTabsLayout() {
   const router = useRouter();
   const segments = useSegments();
+  const globalParams = useGlobalSearchParams<{ id?: string; eventId?: string }>();
   const { isTabBarVisible, setTabBarVisible } = useLayoutStore();
   const { userType, isLoggedIn, loading } = useUserStore();
   const insets = useSafeAreaInsets();
@@ -20,6 +21,26 @@ export default function AdminTabsLayout() {
 
   const hideBackOnThisRoute =
     segments?.[0] === "(admin)" && (segments?.[1] === "admin-profile" || segments?.[1] === "admin-events");
+
+  const handleAdminHeaderBack = (canGoBack: boolean, goBack: () => void) => {
+    if (!canGoBack || hideBackOnThisRoute) return;
+
+    const route = segments?.[1] || "";
+    const eventId = String(globalParams?.eventId || globalParams?.id || "").trim();
+
+    // For screens that conceptually belong to a specific event, always return to event details
+    // instead of history (history can jump to the Users tab).
+    if (route === "admin-invitation-links" || route === "BrideGroomSeating") {
+      if (eventId) {
+        router.replace(`/(admin)/admin-event-details?id=${encodeURIComponent(eventId)}`);
+      } else {
+        router.replace("/(admin)/admin-events");
+      }
+      return;
+    }
+
+    goBack();
+  };
 
   useEffect(() => {
     setTabBarVisible(true);
@@ -197,7 +218,7 @@ export default function AdminTabsLayout() {
         header: ({ navigation }) => (
           <AppHeader
             canGoBack={navigation.canGoBack() && !hideBackOnThisRoute}
-            onPressBack={() => navigation.goBack()}
+            onPressBack={() => handleAdminHeaderBack(navigation.canGoBack(), () => navigation.goBack())}
           />
         ),
         tabBarShowLabel: false,
