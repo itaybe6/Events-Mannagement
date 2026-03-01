@@ -1,12 +1,26 @@
 import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated, Pressable, ActivityIndicator, Modal, TextInput, FlatList, useWindowDimensions, Alert, PanResponder, Platform, StatusBar } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated, Pressable, ActivityIndicator, Modal, TextInput, FlatList, useWindowDimensions, Alert, PanResponder, Platform, StatusBar, ViewStyle } from 'react-native';
 import Svg, { Defs, Line, Pattern, Rect } from 'react-native-svg';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Reanimated, { cancelAnimation, runOnUI, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Reanimated, {
+  cancelAnimation,
+  FadeIn,
+  FadeInDown,
+  FadeOut,
+  FadeOutDown,
+  interpolate,
+  KeyboardState,
+  LinearTransition,
+  runOnUI,
+  useAnimatedKeyboard,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { supabase } from '@/lib/supabase';
 import { useUserStore } from '@/store/userStore';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
-import { Ionicons } from '@expo/vector-icons';
+import { Entypo, Ionicons } from '@expo/vector-icons';
 import { useLayoutStore } from '@/store/layoutStore';
 import { Table } from '@/types';
 import { Stack, useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
@@ -15,6 +29,143 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { EventSwitcher } from '@/components/EventSwitcher';
 import { SeatingGridReadonly } from '../seating/web/SeatingGridReadonly';
 import { CELL_SIZE, DEFAULT_GRID_COLS, DEFAULT_GRID_ROWS, tableCellSize, type Orientation, type TableType } from '../seating/web/_types';
+import { BlurView } from 'expo-blur';
+
+const TABLE_PANEL_DURATION = 500;
+const AnimatedEntypo = Reanimated.createAnimatedComponent(Entypo);
+const AnimatedBlurView = Reanimated.createAnimatedComponent(BlurView);
+
+function Backdrop({
+  onPress,
+  duration = TABLE_PANEL_DURATION,
+}: {
+  onPress: () => void;
+  duration?: number;
+}) {
+  return (
+    <Reanimated.View
+      style={[
+        StyleSheet.absoluteFillObject,
+        { backgroundColor: 'rgba(0,0,0,0.45)', zIndex: 2 },
+      ]}
+      entering={FadeIn.duration(duration)}
+      exiting={FadeOut.duration(duration)}
+    >
+      <Pressable onPress={onPress} style={{ flex: 1 }}>
+        <AnimatedBlurView style={{ flex: 1 }} intensity={55} />
+      </Pressable>
+    </Reanimated.View>
+  );
+}
+
+export type FabButtonProps = {
+  onPress: () => void;
+  isOpen: boolean;
+  children: React.ReactNode;
+  panelStyle?: ViewStyle;
+  duration?: number;
+  openedSize?: number;
+  closedSize?: number;
+  openedHeight?: number | string;
+  openedBorderRadius?: number;
+  openedPadding?: number;
+  iconColor?: string;
+};
+
+export function FabButton({
+  onPress,
+  isOpen,
+  panelStyle,
+  children,
+  duration = TABLE_PANEL_DURATION,
+  openedSize,
+  closedSize = 64,
+  openedHeight = '75%',
+  openedBorderRadius = 20,
+  openedPadding = 0,
+  iconColor = colors.text,
+}: FabButtonProps) {
+  const { width } = useWindowDimensions();
+  const resolvedOpenedSize = openedSize ?? width;
+  const spacing = closedSize * 0.2;
+  const closeIconSize = closedSize * 0.34;
+  const openIconSize = closedSize * 0.52;
+  const { height: keyboardHeight, state } = useAnimatedKeyboard();
+
+  const keyboardHeightStyle = useAnimatedStyle(() => {
+    return {
+      marginBottom:
+        state.value === KeyboardState.OPEN ? keyboardHeight.value - 80 + spacing : 0,
+    };
+  });
+
+  return (
+    <Reanimated.View
+      style={[
+        tablePanelStyles.panel,
+        panelStyle,
+        {
+          width: isOpen ? resolvedOpenedSize : closedSize,
+          height: isOpen ? openedHeight : closedSize,
+          borderRadius: isOpen ? openedBorderRadius : closedSize / 2,
+          padding: isOpen ? openedPadding : spacing,
+        },
+        keyboardHeightStyle,
+      ]}
+      layout={LinearTransition.duration(duration)}
+    >
+      <Pressable onPress={onPress} style={{ position: 'absolute', right: 0, top: 0, width: closedSize, height: closedSize, zIndex: 3, justifyContent: 'center', alignItems: 'center' }}>
+        {isOpen ? (
+          <AnimatedEntypo
+            key="close"
+            name="cross"
+            size={closeIconSize}
+            color={iconColor}
+            entering={FadeIn.duration(duration)}
+            exiting={FadeOut.duration(duration)}
+          />
+        ) : (
+          <AnimatedEntypo
+            key="open"
+            name="plus"
+            size={openIconSize}
+            color={iconColor}
+            entering={FadeIn.duration(duration)}
+            exiting={FadeOut.duration(duration)}
+          />
+        )}
+      </Pressable>
+
+      {isOpen ? (
+        <Reanimated.View
+          entering={FadeInDown.duration(duration)}
+          exiting={FadeOutDown.duration(duration)}
+          style={{ flex: 1 }}
+        >
+          {children}
+        </Reanimated.View>
+      ) : null}
+    </Reanimated.View>
+  );
+}
+
+const tablePanelStyles = StyleSheet.create({
+  panel: {
+    position: 'absolute',
+    overflow: 'hidden',
+    bottom: 12,
+    alignSelf: 'center',
+    backgroundColor: colors.white,
+    zIndex: 9999,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.10)',
+    shadowColor: colors.richBlack,
+    shadowOpacity: 0.22,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 10,
+  },
+});
 
 export default function BrideGroomSeating() {
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
@@ -96,6 +247,22 @@ export default function BrideGroomSeating() {
   const [successTitle, setSuccessTitle] = useState('הצלחה');
   const [successMessage, setSuccessMessage] = useState('');
   const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const closePanelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Origin-based open/close animation for the table panel.
+  const panelProgress = useSharedValue(0);
+  const panelOriginX = useSharedValue(windowWidth / 2);
+  const panelOriginY = useSharedValue(windowHeight / 2);
+  const panelTargetX = useSharedValue(windowWidth / 2);
+  const panelTargetY = useSharedValue(windowHeight / 2);
+
+  const panelBottom = Math.max(12, insets.bottom + 12);
+  const panelHeight = Math.round(windowHeight * 0.75);
+
+  useEffect(() => {
+    panelTargetX.value = windowWidth / 2;
+    panelTargetY.value = windowHeight - panelBottom - panelHeight / 2;
+  }, [panelBottom, panelHeight, panelTargetX, panelTargetY, windowHeight, windowWidth]);
 
   const isGuestSeatable = (g: any) => {
     const status = String(g?.status ?? '').trim();
@@ -130,8 +297,26 @@ export default function BrideGroomSeating() {
   useEffect(() => {
     return () => {
       if (successTimerRef.current) clearTimeout(successTimerRef.current);
+      if (closePanelTimerRef.current) clearTimeout(closePanelTimerRef.current);
     };
   }, []);
+
+  const panelBackdropStyle = useAnimatedStyle(() => {
+    return {
+      opacity: interpolate(panelProgress.value, [0, 0.12, 1], [0, 1, 1]),
+    };
+  });
+
+  const panelAnimatedStyle = useAnimatedStyle(() => {
+    const p = panelProgress.value;
+    const s = interpolate(p, [0, 1], [0.08, 1]);
+    const tx = interpolate(p, [0, 1], [panelOriginX.value - panelTargetX.value, 0]);
+    const ty = interpolate(p, [0, 1], [panelOriginY.value - panelTargetY.value, 0]);
+    return {
+      opacity: interpolate(p, [0, 0.08, 1], [0, 1, 1]),
+      transform: [{ translateX: tx }, { translateY: ty }, { scale: s }],
+    };
+  });
 
   const handleToggleGuestSelection = (guestId: string) => {
     const newSelection = new Set(selectedGuestsToAdd);
@@ -318,7 +503,19 @@ export default function BrideGroomSeating() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLandscape]);
 
-  const handleTablePress = (table: Table) => {
+  const handleTablePress = (table: Table, origin?: { x: number; y: number }) => {
+    if (closePanelTimerRef.current) {
+      clearTimeout(closePanelTimerRef.current);
+      closePanelTimerRef.current = null;
+    }
+
+    // Seed the origin for the animation (fallback: screen center).
+    const ox = Number(origin?.x);
+    const oy = Number(origin?.y);
+    panelOriginX.value = Number.isFinite(ox) ? ox : windowWidth / 2;
+    panelOriginY.value = Number.isFinite(oy) ? oy : windowHeight / 2;
+    panelProgress.value = 0;
+
     setSelectedTableForModal(table);
     setTableName(table.name || '');
     const guestsForTable = guests.filter(g => g.table_id === table.id);
@@ -335,12 +532,23 @@ export default function BrideGroomSeating() {
     setTableModalVisible(true);
     setTabBarVisible(false);
     clearSeatedEditState();
+
+    requestAnimationFrame(() => {
+      panelProgress.value = withTiming(1, { duration: TABLE_PANEL_DURATION });
+    });
   };
 
   const closeModalAndShowTabBar = async () => {
-    await handleSaveTableName();
-    setTableModalVisible(false);
-    setTabBarVisible(false);
+    // Save table name best-effort (don't block the close animation).
+    void handleSaveTableName();
+
+    panelProgress.value = withTiming(0, { duration: TABLE_PANEL_DURATION });
+
+    // Clear transient overlays/state immediately.
+    if (removeConfirmVisible) {
+      setRemoveConfirmVisible(false);
+      setRemoveConfirmIds([]);
+    }
     clearSeatedEditState();
     setSuccessVisible(false);
     setSuccessMessage('');
@@ -348,6 +556,11 @@ export default function BrideGroomSeating() {
       clearTimeout(successTimerRef.current);
       successTimerRef.current = null;
     }
+    if (closePanelTimerRef.current) clearTimeout(closePanelTimerRef.current);
+    closePanelTimerRef.current = setTimeout(() => {
+      setTableModalVisible(false);
+      setTabBarVisible(false);
+    }, TABLE_PANEL_DURATION);
   };
 
   const handleRemoveGuestFromTable = async (guestId: string) => {
@@ -1069,19 +1282,19 @@ export default function BrideGroomSeating() {
             const cap = Number(t?.seats ?? 0) || 0;
             return cap ? `${seated} / ${cap}` : String(seated);
           }}
-          onPressTableNumber={(num) => {
+          onPressTableNumber={(num, origin) => {
             if (!num) return;
             const t = tables.find((x) => x.number === num);
-            if (t) handleTablePress(t);
+            if (t) handleTablePress(t, origin);
           }}
         />
       ) : (
         <MobileSeatingMap
           sketch={(webSketchWithNames ?? webSketch) as any}
-          onPressTableNumber={(num) => {
+          onPressTableNumber={(num, origin) => {
             if (!num) return;
             const t = tables.find((x) => x.number === num);
-            if (t) handleTablePress(t);
+            if (t) handleTablePress(t, origin);
           }}
           getTableOccupancy={(t: any) => {
             const num = Number(t?.number);
@@ -1180,11 +1393,14 @@ export default function BrideGroomSeating() {
                   setSelectedTableForDrag(table.id);
                 }}
                 delayLongPress={320}
-                onPress={() => {
+                onPress={(e) => {
                   // Tap opens modal only when not in drag mode
                   if (draggingTableIdRef.current === table.id) return;
                   if (!dragMode) {
-                    handleTablePress(table);
+                    handleTablePress(table, {
+                      x: e?.nativeEvent?.pageX ?? windowWidth / 2,
+                      y: e?.nativeEvent?.pageY ?? windowHeight / 2,
+                    });
                   }
                 }}
                 style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
@@ -1306,7 +1522,7 @@ export default function BrideGroomSeating() {
 
       {/* Table Guests Modal */}
       <Modal
-        animationType="slide"
+        animationType="none"
         transparent={true}
         visible={tableModalVisible}
         onRequestClose={() => {
@@ -1319,219 +1535,154 @@ export default function BrideGroomSeating() {
           closeModalAndShowTabBar();
         }}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <TouchableOpacity style={styles.closeModalButton} onPress={closeModalAndShowTabBar}>
-              <Ionicons name="close-circle" size={30} color={colors.gray[200]} />
-            </TouchableOpacity>
+        <View style={{ flex: 1 }}>
+          {/* Backdrop + blur (animated together with the panel) */}
+          <Reanimated.View
+            style={[
+              StyleSheet.absoluteFillObject,
+              { backgroundColor: 'rgba(0,0,0,0.45)', zIndex: 2 },
+              panelBackdropStyle,
+            ]}
+          >
+            <Pressable
+              onPress={() => {
+                if (removeConfirmVisible) {
+                  if (removeConfirmBusy) return;
+                  setRemoveConfirmVisible(false);
+                  setRemoveConfirmIds([]);
+                  return;
+                }
+                closeModalAndShowTabBar();
+              }}
+              style={{ flex: 1 }}
+            >
+              <AnimatedBlurView style={{ flex: 1 }} intensity={55} />
+            </Pressable>
+          </Reanimated.View>
 
-            <Text style={styles.modalTitle}>
-              שולחן {selectedTableForModal?.number}
-              {selectedTableForModal?.name && ` - ${selectedTableForModal.name}`}
-            </Text>
-            
-            <View style={styles.tableNameContainer}>
-              <View style={styles.tableNameRow}>
-                <TouchableOpacity style={styles.saveNameButton} onPress={handleSaveTableName}>
-                  <Ionicons name="checkmark" size={20} color={colors.primary} />
-                </TouchableOpacity>
-                <TextInput
-                  style={styles.tableNameInput}
-                  value={tableName}
-                  onChangeText={setTableName}
-                  placeholder="הוסף שם לשולחן (אופציונלי)"
-                  placeholderTextColor={colors.gray[500]}
-                  onBlur={handleSaveTableName} // Save when input loses focus
-                  onSubmitEditing={handleSaveTableName} // Save when pressing Enter/Done
-                  returnKeyType="done"
-                  blurOnSubmit={true}
-                />
-              </View>
-            </View>
+          {/* Panel (animates from/to the pressed table position) */}
+          <Reanimated.View
+            style={[
+              styles.tablePanel,
+              {
+                height: panelHeight,
+                bottom: panelBottom,
+              },
+              panelAnimatedStyle,
+            ]}
+          >
+            <Pressable
+              onPress={() => {
+                if (removeConfirmVisible) {
+                  if (removeConfirmBusy) return;
+                  setRemoveConfirmVisible(false);
+                  setRemoveConfirmIds([]);
+                  return;
+                }
+                closeModalAndShowTabBar();
+              }}
+              style={styles.tablePanelCloseBtn}
+              accessibilityRole="button"
+              accessibilityLabel="סגירה"
+            >
+              <AnimatedEntypo name="cross" size={22} color={colors.text} />
+            </Pressable>
 
-            <View style={styles.toggleContainer}>
-              <TouchableOpacity
-                style={[styles.toggleButton, tableModalView === 'seated' && styles.toggleButtonActive]}
-                onPress={() => {
-                  setTableModalView('seated');
-                }}
-              >
-                <Text style={[styles.toggleButtonText, tableModalView === 'seated' && styles.toggleButtonTextActive]}>
-                  אורחים ({seatedGuestsForTable.length})
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.toggleButton, tableModalView === 'add' && styles.toggleButtonActive]}
-                onPress={() => {
-                  setTableModalView('add');
-                  clearSeatedEditState();
-                }}
-              >
-                <Text style={[styles.toggleButtonText, tableModalView === 'add' && styles.toggleButtonTextActive]}>
-                  הוספת אורחים
-                </Text>
-              </TouchableOpacity>
-            </View>
+            <View style={styles.modalSheetContent}>
+              <Text style={styles.modalTitle}>
+                שולחן {selectedTableForModal?.number}
+                {selectedTableForModal?.name && ` - ${selectedTableForModal.name}`}
+              </Text>
 
-            {tableModalView === 'seated' && (
-              <View style={{ flex: 1 }}>
-                <View style={styles.seatedHeaderRow}>
-                  <TouchableOpacity
-                    style={styles.seatedEditButton}
-                    activeOpacity={0.85}
-                    onPress={() => {
-                      if (seatedEditMode) clearSeatedEditState();
-                      else {
-                        setSelectedSeatedGuestsToRemove(new Set());
-                        setSeatedEditMode(true);
-                      }
-                    }}
-                  >
-                    <Ionicons
-                      name={seatedEditMode ? 'close' : 'create-outline'}
-                      size={18}
-                      color={colors.text}
-                      style={{ marginLeft: 6 }}
-                    />
-                    <Text style={styles.seatedEditButtonText}>{seatedEditMode ? 'ביטול' : 'עריכה'}</Text>
+              <View style={styles.tableNameContainer}>
+                <View style={styles.tableNameRow}>
+                  <TouchableOpacity style={styles.saveNameButton} onPress={handleSaveTableName}>
+                    <Ionicons name="checkmark" size={20} color={colors.primary} />
                   </TouchableOpacity>
-                </View>
-
-                <FlatList
-                  data={seatedGuestsForTable}
-                  keyExtractor={(item) => String(item.id)}
-                  numColumns={2}
-                  columnWrapperStyle={{ justifyContent: 'space-between' }}
-                  renderItem={({ item }) => {
-                    const id = String(item.id);
-                    const selected = selectedSeatedGuestsToRemove.has(id);
-                    const tone = getGuestStatusTone(item?.status);
-                    return (
-                      <TouchableOpacity
-                        style={[
-                          styles.seatedGuestItem,
-                          seatedEditMode && styles.seatedGuestItemEditMode,
-                          seatedEditMode && selected && styles.seatedGuestItemSelected,
-                        ]}
-                        activeOpacity={seatedEditMode ? 0.85 : 1}
-                        onPress={() => {
-                          if (!seatedEditMode) return;
-                          toggleSeatedGuestRemovalSelection(id);
-                        }}
-                      >
-                        <View style={styles.guestCardTopRow}>
-                          <Text style={styles.guestName} numberOfLines={1}>
-                            {item.name}
-                          </Text>
-
-                          <View style={[styles.guestStatusPill, { backgroundColor: tone.bg, borderColor: tone.border }]}>
-                            <Text style={[styles.guestStatusText, { color: tone.text }]} numberOfLines={1}>
-                              {tone.label}
-                            </Text>
-                          </View>
-
-                          <View style={styles.peopleCountBadge}>
-                            <Ionicons name="person" size={10} color={colors.richBlack} />
-                            <Text style={styles.peopleCountText}>{item.numberOfPeople || 1}</Text>
-                          </View>
-                        </View>
-
-                        {seatedEditMode ? (
-                          <Ionicons
-                            name={selected ? 'checkbox' : 'square-outline'}
-                            size={20}
-                            color={selected ? colors.primary : colors.gray[300]}
-                            style={{ marginLeft: 6 }}
-                          />
-                        ) : null}
-                      </TouchableOpacity>
-                    );
-                  }}
-                  nestedScrollEnabled
-                  style={{ flex: 1, marginTop: 12 }}
-                  ListEmptyComponent={<Text style={styles.emptyListText}>אין אורחים יושבים בשולחן זה</Text>}
-                />
-
-                {seatedEditMode ? (
-                  <TouchableOpacity
-                    style={[
-                      styles.bulkRemoveButton,
-                      selectedSeatedGuestsToRemove.size === 0 && styles.disabledButton,
-                    ]}
-                    activeOpacity={0.9}
-                    disabled={selectedSeatedGuestsToRemove.size === 0}
-                    onPress={handleRemoveSelectedGuestsFromTable}
-                  >
-                    <Text style={styles.bulkRemoveButtonText}>
-                      {selectedSeatedGuestsToRemove.size > 0
-                        ? `הסר ${selectedSeatedGuestsToRemove.size} אורחים מהשולחן`
-                        : 'בחר אורחים להסרה'}
-                    </Text>
-                  </TouchableOpacity>
-                ) : null}
-              </View>
-            )}
-            
-            {tableModalView === 'add' && (
-              <>
-                <View style={styles.filterContainer}>
                   <TextInput
-                    style={styles.searchInput}
-                    placeholder="חיפוש לפי שם..."
-                    value={searchQueryTable}
-                    onChangeText={setSearchQueryTable}
+                    style={styles.tableNameInput}
+                    value={tableName}
+                    onChangeText={setTableName}
+                    placeholder="הוסף שם לשולחן (אופציונלי)"
                     placeholderTextColor={colors.gray[500]}
+                    onBlur={handleSaveTableName}
+                    onSubmitEditing={handleSaveTableName}
+                    returnKeyType="done"
+                    blurOnSubmit={true}
                   />
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScrollView}>
-                      <View style={styles.categoryContainer}>
-                          {categoriesForTable.map(category => (
-                              <TouchableOpacity
-                                  key={category}
-                                  style={[
-                                      styles.categoryButton,
-                                      categoryFilterTable === category && styles.categoryButtonActive
-                                  ]}
-                                  onPress={() => setCategoryFilterTable(category)}
-                              >
-                                  <Text style={[
-                                      styles.categoryButtonText,
-                                      categoryFilterTable === category && styles.categoryButtonTextActive
-                                  ]}>{category}</Text>
-          </TouchableOpacity>
-        ))}
-                      </View>
-                  </ScrollView>
                 </View>
+              </View>
 
-                <FlatList
-                  data={unseatedGuestsList.filter(g => {
-                    const categoryMatch = categoryFilterTable === 'הכל' || (g.guest_categories?.name || 'ללא קטגוריה') === categoryFilterTable;
-                    const searchMatch = g.name.toLowerCase().includes(searchQueryTable.toLowerCase());
-                    return categoryMatch && searchMatch;
-                  })}
-                  keyExtractor={(item) => item.id.toString()}
-                  numColumns={2}
-                  columnWrapperStyle={{ justifyContent: 'space-between' }}
-                  renderItem={({ item }) => {
-                    const id = String(item?.id ?? '');
-                    const seatable = isGuestSeatable(item);
-                    const tone = getGuestStatusTone(item?.status);
-                    const selected = selectedGuestsToAdd.has(id);
+              <View style={styles.toggleContainer}>
+                <TouchableOpacity
+                  style={[styles.toggleButton, tableModalView === 'seated' && styles.toggleButtonActive]}
+                  onPress={() => {
+                    setTableModalView('seated');
+                  }}
+                >
+                  <Text style={[styles.toggleButtonText, tableModalView === 'seated' && styles.toggleButtonTextActive]}>
+                    אורחים ({seatedGuestsForTable.length})
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.toggleButton, tableModalView === 'add' && styles.toggleButtonActive]}
+                  onPress={() => {
+                    setTableModalView('add');
+                    clearSeatedEditState();
+                  }}
+                >
+                  <Text style={[styles.toggleButtonText, tableModalView === 'add' && styles.toggleButtonTextActive]}>
+                    הוספת אורחים
+                  </Text>
+                </TouchableOpacity>
+              </View>
 
-                    return (
-                      <TouchableOpacity
-                        style={[
-                          styles.selectableGuestItem,
-                          selected && styles.selectableGuestItemSelected,
-                          !seatable && styles.selectableGuestItemDisabled,
-                        ]}
-                        onPress={() => {
-                          if (!seatable) return;
-                          handleToggleGuestSelection(item.id);
-                        }}
-                        activeOpacity={seatable ? 0.85 : 1}
-                      >
-                        <View style={{ flex: 1, minWidth: 0 }}>
+              {tableModalView === 'seated' && (
+                <View style={{ flex: 1 }}>
+                  <View style={styles.seatedHeaderRow}>
+                    <TouchableOpacity
+                      style={styles.seatedEditButton}
+                      activeOpacity={0.85}
+                      onPress={() => {
+                        if (seatedEditMode) clearSeatedEditState();
+                        else {
+                          setSelectedSeatedGuestsToRemove(new Set());
+                          setSeatedEditMode(true);
+                        }
+                      }}
+                    >
+                      <Ionicons
+                        name={seatedEditMode ? 'close' : 'create-outline'}
+                        size={18}
+                        color={colors.text}
+                        style={{ marginLeft: 6 }}
+                      />
+                      <Text style={styles.seatedEditButtonText}>{seatedEditMode ? 'ביטול' : 'עריכה'}</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <FlatList
+                    data={seatedGuestsForTable}
+                    keyExtractor={(item) => String(item.id)}
+                    numColumns={2}
+                    columnWrapperStyle={{ justifyContent: 'space-between' }}
+                    renderItem={({ item }) => {
+                      const id = String(item.id);
+                      const selected = selectedSeatedGuestsToRemove.has(id);
+                      const tone = getGuestStatusTone(item?.status);
+                      return (
+                        <TouchableOpacity
+                          style={[
+                            styles.seatedGuestItem,
+                            seatedEditMode && styles.seatedGuestItemEditMode,
+                            seatedEditMode && selected && styles.seatedGuestItemSelected,
+                          ]}
+                          activeOpacity={seatedEditMode ? 0.85 : 1}
+                          onPress={() => {
+                            if (!seatedEditMode) return;
+                            toggleSeatedGuestRemovalSelection(id);
+                          }}
+                        >
                           <View style={styles.guestCardTopRow}>
                             <Text style={styles.guestName} numberOfLines={1}>
                               {item.name}
@@ -1548,37 +1699,156 @@ export default function BrideGroomSeating() {
                               <Text style={styles.peopleCountText}>{item.numberOfPeople || 1}</Text>
                             </View>
                           </View>
-                        </View>
 
-                        <Ionicons
-                          name={selected ? 'checkbox' : 'square-outline'}
-                          size={20}
-                          color={!seatable ? colors.gray[300] : selected ? colors.primary : colors.gray[300]}
-                          style={{ marginLeft: 4 }}
-                        />
-                      </TouchableOpacity>
-                    );
-                  }}
-                  nestedScrollEnabled
-                  style={{ flex: 1 }}
-                  ListEmptyComponent={<Text style={styles.emptyListText}>אין אורחים לא משובצים</Text>}
-                />
-                
-                <TouchableOpacity
-                  style={[styles.finalAddButton, selectedGuestsToAdd.size === 0 && styles.disabledButton]}
-                  onPress={handleAddGuestsToTable}
-                  disabled={selectedGuestsToAdd.size === 0}
-                >
-                  <Text style={styles.finalAddButtonText}>
-                    {selectedGuestsToAdd.size > 0 ? `הוסף ${selectedGuestsToAdd.size} אורחים` : 'בחר אורחים להוספה'}
-                  </Text>
-                </TouchableOpacity>
-              </>
-            )}
-            
-          </View>
+                          {seatedEditMode ? (
+                            <Ionicons
+                              name={selected ? 'checkbox' : 'square-outline'}
+                              size={20}
+                              color={selected ? colors.primary : colors.gray[300]}
+                              style={{ marginLeft: 6 }}
+                            />
+                          ) : null}
+                        </TouchableOpacity>
+                      );
+                    }}
+                    nestedScrollEnabled
+                    style={{ flex: 1, marginTop: 12 }}
+                    ListEmptyComponent={<Text style={styles.emptyListText}>אין אורחים יושבים בשולחן זה</Text>}
+                  />
 
-          {/* RTL Confirm Remove Guests (rendered INSIDE the table modal to avoid stacked Modals bugs) */}
+                  {seatedEditMode ? (
+                    <TouchableOpacity
+                      style={[
+                        styles.bulkRemoveButton,
+                        selectedSeatedGuestsToRemove.size === 0 && styles.disabledButton,
+                      ]}
+                      activeOpacity={0.9}
+                      disabled={selectedSeatedGuestsToRemove.size === 0}
+                      onPress={handleRemoveSelectedGuestsFromTable}
+                    >
+                      <Text style={styles.bulkRemoveButtonText}>
+                        {selectedSeatedGuestsToRemove.size > 0
+                          ? `הסר ${selectedSeatedGuestsToRemove.size} אורחים מהשולחן`
+                          : 'בחר אורחים להסרה'}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+              )}
+
+              {tableModalView === 'add' && (
+                <>
+                  <View style={styles.filterContainer}>
+                    <TextInput
+                      style={styles.searchInput}
+                      placeholder="חיפוש לפי שם..."
+                      value={searchQueryTable}
+                      onChangeText={setSearchQueryTable}
+                      placeholderTextColor={colors.gray[500]}
+                    />
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScrollView}>
+                      <View style={styles.categoryContainer}>
+                        {categoriesForTable.map((category) => (
+                          <TouchableOpacity
+                            key={category}
+                            style={[
+                              styles.categoryButton,
+                              categoryFilterTable === category && styles.categoryButtonActive,
+                            ]}
+                            onPress={() => setCategoryFilterTable(category)}
+                          >
+                            <Text
+                              style={[
+                                styles.categoryButtonText,
+                                categoryFilterTable === category && styles.categoryButtonTextActive,
+                              ]}
+                            >
+                              {category}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </ScrollView>
+                  </View>
+
+                  <FlatList
+                    data={unseatedGuestsList.filter((g) => {
+                      const categoryMatch =
+                        categoryFilterTable === 'הכל' ||
+                        (g.guest_categories?.name || 'ללא קטגוריה') === categoryFilterTable;
+                      const searchMatch = g.name.toLowerCase().includes(searchQueryTable.toLowerCase());
+                      return categoryMatch && searchMatch;
+                    })}
+                    keyExtractor={(item) => item.id.toString()}
+                    numColumns={2}
+                    columnWrapperStyle={{ justifyContent: 'space-between' }}
+                    renderItem={({ item }) => {
+                      const id = String(item?.id ?? '');
+                      const seatable = isGuestSeatable(item);
+                      const tone = getGuestStatusTone(item?.status);
+                      const selected = selectedGuestsToAdd.has(id);
+
+                      return (
+                        <TouchableOpacity
+                          style={[
+                            styles.selectableGuestItem,
+                            selected && styles.selectableGuestItemSelected,
+                            !seatable && styles.selectableGuestItemDisabled,
+                          ]}
+                          onPress={() => {
+                            if (!seatable) return;
+                            handleToggleGuestSelection(item.id);
+                          }}
+                          activeOpacity={seatable ? 0.85 : 1}
+                        >
+                          <View style={{ flex: 1, minWidth: 0 }}>
+                            <View style={styles.guestCardTopRow}>
+                              <Text style={styles.guestName} numberOfLines={1}>
+                                {item.name}
+                              </Text>
+
+                              <View style={[styles.guestStatusPill, { backgroundColor: tone.bg, borderColor: tone.border }]}>
+                                <Text style={[styles.guestStatusText, { color: tone.text }]} numberOfLines={1}>
+                                  {tone.label}
+                                </Text>
+                              </View>
+
+                              <View style={styles.peopleCountBadge}>
+                                <Ionicons name="person" size={10} color={colors.richBlack} />
+                                <Text style={styles.peopleCountText}>{item.numberOfPeople || 1}</Text>
+                              </View>
+                            </View>
+                          </View>
+
+                          <Ionicons
+                            name={selected ? 'checkbox' : 'square-outline'}
+                            size={20}
+                            color={!seatable ? colors.gray[300] : selected ? colors.primary : colors.gray[300]}
+                            style={{ marginLeft: 4 }}
+                          />
+                        </TouchableOpacity>
+                      );
+                    }}
+                    nestedScrollEnabled
+                    style={{ flex: 1 }}
+                    ListEmptyComponent={<Text style={styles.emptyListText}>אין אורחים לא משובצים</Text>}
+                  />
+
+                  <TouchableOpacity
+                    style={[styles.finalAddButton, selectedGuestsToAdd.size === 0 && styles.disabledButton]}
+                    onPress={handleAddGuestsToTable}
+                    disabled={selectedGuestsToAdd.size === 0}
+                  >
+                    <Text style={styles.finalAddButtonText}>
+                      {selectedGuestsToAdd.size > 0 ? `הוסף ${selectedGuestsToAdd.size} אורחים` : 'בחר אורחים להוספה'}
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
+          </Reanimated.View>
+
+          {/* RTL Confirm Remove Guests (keep inside the same overlay layer) */}
           {removeConfirmVisible ? (
             <View style={styles.confirmOverlay}>
               <Pressable
@@ -1633,7 +1903,7 @@ export default function BrideGroomSeating() {
             </View>
           ) : null}
 
-          {/* Success (styled, RTL) - keep table modal open */}
+          {/* Success (styled, RTL) - keep table panel open */}
           {successVisible ? (
             <View style={styles.successOverlay}>
               <Pressable style={StyleSheet.absoluteFill as any} onPress={() => setSuccessVisible(false)} />
@@ -1674,7 +1944,7 @@ function MobileSeatingMap({
   getTableOccupancy,
 }: {
   sketch: { gridCols: number; gridRows: number; tables: any[]; zones: any[]; labels: any[] };
-  onPressTableNumber?: (num: number | undefined) => void;
+  onPressTableNumber?: (num: number | undefined, origin?: { x: number; y: number }) => void;
   getTableSubLabel?: (t: any) => string | null;
   getTableOccupancy?: (t: any) => { seated: number; capacity: number } | null;
 }) {
@@ -1892,7 +2162,12 @@ function MobileSeatingMap({
               return (
                 <Pressable
                   key={String(t.id)}
-                  onPress={() => onPressTableNumber?.(t.number)}
+                  onPress={(e) =>
+                    onPressTableNumber?.(t.number, {
+                      x: e?.nativeEvent?.pageX ?? 0,
+                      y: e?.nativeEvent?.pageY ?? 0,
+                    })
+                  }
                   style={[styles.mobileTable, {
                     width: w, height: h,
                     backgroundColor: bg, borderColor: border,
@@ -2351,6 +2626,46 @@ const styles = StyleSheet.create({
     padding: 20,
     height: '75%',
     width: '100%',
+  },
+  modalSheetContent: {
+    flex: 1,
+    padding: 20,
+    paddingTop: 22,
+    backgroundColor: 'transparent',
+  },
+  tablePanel: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    alignSelf: 'center',
+    width: '100%',
+    backgroundColor: colors.white,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderRadius: 20,
+    overflow: 'hidden',
+    zIndex: 9999,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.10)',
+    shadowColor: colors.richBlack,
+    shadowOpacity: 0.22,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 10,
+  },
+  tablePanelCloseBtn: {
+    position: 'absolute',
+    right: 14,
+    top: 12,
+    width: 40,
+    height: 40,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 3,
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.10)',
   },
   modalTitle: {
     fontSize: 24,

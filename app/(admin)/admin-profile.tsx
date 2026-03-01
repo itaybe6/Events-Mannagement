@@ -318,9 +318,6 @@ export default function AdminProfileScreen() {
       return diffDays >= 0 && diffDays <= 7;
     });
 
-    const nextActiveSorted = [...activeEvents].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    const topActive = nextActiveSorted.slice(0, 6);
-
     const typesCount = new Map<string, number>();
     all.forEach((e) => {
       const t = inferEventType(String(e.title || "")) || "אחר";
@@ -336,7 +333,6 @@ export default function AdminProfileScreen() {
       activeEventsCount: activeEvents.length,
       completedEventsCount: completedEvents.length,
       upcoming7DaysCount: in7.length,
-      topActive,
       byType,
     };
   }, [events, today0]);
@@ -354,6 +350,10 @@ export default function AdminProfileScreen() {
 
   const donutSize = Math.max(168, Math.min(220, Math.floor(width * 0.52)));
   const donutPalette = ["#06173e", "#CCA000", "#F0CB46", "#003566", "#4CAF50", "#6C757D"];
+  const typesGap = 10;
+  const typeCols = width >= 420 ? 4 : width >= 360 ? 3 : 2;
+  const typeInnerWidth = Math.max(260, width - 16 * 2 - 16 * 2); // content padding + card padding
+  const typeItemWidth = Math.floor((typeInnerWidth - typesGap * (typeCols - 1)) / typeCols);
 
   // Bottom padding for content above tab bar
   const TAB_BAR_HEIGHT = 65;
@@ -485,26 +485,22 @@ export default function AdminProfileScreen() {
                   const meta = EVENT_BADGE_META[type];
                   const iconColor = donutPalette[(idx >= 0 ? idx : 0) % donutPalette.length] ?? ui.primary;
                   return (
-                    <View key={row.type} style={styles.typeItem}>
-                      <View style={styles.typeItemTop}>
-                        <Text style={styles.typeItemCount}>{row.count}</Text>
-                        <View style={styles.typeItemRight}>
-                          <View
-                            style={[
-                              styles.typeIconPill,
-                              {
-                                backgroundColor: rgbaFromHex(iconColor, 0.14),
-                                borderColor: rgbaFromHex(iconColor, 0.32),
-                              },
-                            ]}
-                          >
-                            <Ionicons name={meta?.icon ?? "sparkles"} size={16} color={iconColor} />
-                          </View>
-                          <Text style={styles.typeItemLabel} numberOfLines={1}>
-                            {row.type}
-                          </Text>
-                        </View>
+                    <View key={row.type} style={[styles.typeItem, { width: typeItemWidth }]}>
+                      <View
+                        style={[
+                          styles.typeIconPill,
+                          {
+                            backgroundColor: rgbaFromHex(iconColor, 0.14),
+                            borderColor: rgbaFromHex(iconColor, 0.32),
+                          },
+                        ]}
+                      >
+                        <Ionicons name={meta?.icon ?? "sparkles"} size={20} color={iconColor} />
                       </View>
+                      <Text style={styles.typeItemName} numberOfLines={1}>
+                        {row.type}
+                      </Text>
+                      <Text style={styles.typeItemCount}>{row.count}</Text>
                     </View>
                   );
                 })}
@@ -580,104 +576,6 @@ export default function AdminProfileScreen() {
               );
             })}
           </ScrollView>
-        </View>
-
-        {/* ACTIVE EVENTS LIST */}
-        <View style={styles.card}>
-          <View style={styles.cardHeaderRow}>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={styles.cardTitle}>אירועים פעילים</Text>
-              <Text style={styles.cardSubtitle}>לחץ על כרטיס כדי לפתוח פרטי אירוע</Text>
-            </View>
-            <Pressable
-              onPress={() => router.push("/(admin)/admin-events")}
-              style={({ pressed }) => [styles.linkPill, pressed && { opacity: 0.92 }]}
-              accessibilityRole="button"
-              accessibilityLabel="לכל האירועים"
-            >
-              <Text style={styles.linkPillText}>כל האירועים</Text>
-              <Ionicons name="chevron-back" size={16} color={ui.primary} />
-            </Pressable>
-          </View>
-
-          {loading ? (
-            <View style={styles.loadingBox}>
-              <ActivityIndicator color={ui.primary} />
-            </View>
-          ) : computed.topActive.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Ionicons name="calendar-outline" size={34} color={colors.gray[500]} />
-              <Text style={styles.emptyTitle}>לא נמצאו אירועים עתידיים</Text>
-              <Text style={styles.emptyText}>צור אירוע חדש כדי להתחיל.</Text>
-              <Pressable
-                onPress={() => router.push("/(admin)/admin-events-create")}
-                style={({ pressed }) => [styles.inlineCta, pressed && { opacity: 0.92 }]}
-                accessibilityRole="button"
-                accessibilityLabel="יצירת אירוע חדש"
-              >
-                <Ionicons name="add" size={18} color={colors.white} />
-                <Text style={styles.inlineCtaText}>יצירת אירוע</Text>
-              </Pressable>
-            </View>
-          ) : (
-            <View style={{ gap: 10 }}>
-              {computed.topActive.map((e) => {
-                const date = new Date((e as any).date);
-                const type = (inferEventType(String(e.title || "")) || "חתונה") as EventType;
-                const badge = EVENT_BADGE_META[type];
-                const owner = String((e as any).userName || "").trim();
-                const ownerAvatar = String((e as any).userAvatarUrl || "").trim();
-                return (
-                  <Pressable
-                    key={String(e.id)}
-                    onPress={() => router.push({ pathname: "/(admin)/admin-event-details", params: { id: String(e.id) } })}
-                    style={({ pressed }) => [styles.eventCard, pressed && { opacity: 0.96, transform: [{ scale: 0.995 }] }]}
-                    accessibilityRole="button"
-                    accessibilityLabel={`פתח אירוע ${String(e.title || "")}`}
-                  >
-                    <View style={styles.eventTop}>
-                      <View style={styles.eventLeft}>
-                        <View style={[styles.typePill, { borderColor: badge?.tint ?? "rgba(0,0,0,0.08)" }]}>
-                          <Ionicons name={badge?.icon ?? "sparkles"} size={14} color={colors.white} />
-                          <Text style={styles.typePillText}>{type}</Text>
-                        </View>
-                        <Text style={styles.eventDate}>{formatDateHeShort(date)}</Text>
-                      </View>
-
-                      <View style={styles.eventRight}>
-                        <Text style={styles.eventTitle} numberOfLines={2}>
-                          {String(e.title || "")}
-                        </Text>
-                        <View style={styles.eventMetaRow}>
-                          <Text style={styles.eventMeta} numberOfLines={1}>
-                            {String((e as any).location || "")}
-                            {String((e as any).city || "").trim() ? `, ${(e as any).city}` : ""}
-                          </Text>
-                          {owner ? (
-                            <View style={styles.ownerPill}>
-                              <View style={styles.ownerAvatarWrap}>
-                                {ownerAvatar ? (
-                                  <Image source={{ uri: ownerAvatar }} style={styles.ownerAvatarImg} contentFit="cover" />
-                                ) : (
-                                  <Ionicons name="person" size={14} color={colors.white} />
-                                )}
-                              </View>
-                              <Text style={styles.ownerName} numberOfLines={1}>
-                                {owner}
-                              </Text>
-                            </View>
-                          ) : null}
-                        </View>
-                      </View>
-                    </View>
-                    <View style={styles.eventChevron}>
-                      <Ionicons name="chevron-back" size={18} color={"rgba(6,23,62,0.55)"} />
-                    </View>
-                  </Pressable>
-                );
-              })}
-            </View>
-          )}
         </View>
 
         {/* כפתור התנתק בתחתית העמוד */}
@@ -947,33 +845,29 @@ const styles = StyleSheet.create({
   donutCenterBig: { fontSize: 28, fontWeight: "900", color: ui.primary },
   donutCenterSmall: { marginTop: 4, fontSize: 12, fontWeight: "800", color: ui.muted },
 
-  typeList: {
-    flexDirection: "row-reverse",
-    flexWrap: "wrap",
-    gap: 10,
-  },
+  typeList: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 10 },
   typeItem: {
-    flexGrow: 1,
-    flexBasis: "48%",
+    flexGrow: 0,
     borderRadius: 18,
     backgroundColor: "rgba(255,255,255,0.92)",
     borderWidth: 1,
     borderColor: ui.border,
-    padding: 12,
-    gap: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 8,
+    gap: 8,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  typeItemTop: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", gap: 12 },
-  typeItemRight: { flexDirection: "row-reverse", alignItems: "center", gap: 10, flex: 1, minWidth: 0, justifyContent: "flex-start" },
   typeIconPill: {
-    width: 30,
-    height: 30,
-    borderRadius: 999,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
   },
-  typeItemLabel: { fontSize: 13, fontWeight: "900", color: ui.primary, textAlign: "right", flex: 1, minWidth: 0 },
-  typeItemCount: { fontSize: 12, fontWeight: "900", color: ui.muted, width: 44, textAlign: "left" },
+  typeItemCount: { fontSize: 13, fontWeight: "900", color: ui.muted, textAlign: "center" },
+  typeItemName: { fontSize: 11, fontWeight: "900", color: ui.primary, textAlign: "center" },
 
   miniList: { marginTop: 4, gap: 8 },
   miniTitle: { fontSize: 12, fontWeight: "900", color: ui.muted, textAlign: "right" },
@@ -1042,49 +936,6 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   linkPillText: { fontSize: 12, fontWeight: "900", color: ui.primary },
-
-  eventCard: {
-    backgroundColor: "rgba(255,255,255,0.92)",
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: ui.border,
-    padding: 14,
-    gap: 12,
-  },
-  eventTop: { flexDirection: "row-reverse", alignItems: "flex-start", justifyContent: "space-between", gap: 12 },
-  eventRight: { flex: 1, minWidth: 0, alignItems: "flex-end", gap: 6 },
-  eventTitle: { fontSize: 15, fontWeight: "900", color: ui.primary, textAlign: "right", lineHeight: 20 },
-  eventMeta: { fontSize: 12, fontWeight: "700", color: ui.muted, textAlign: "right" },
-  eventMetaRow: { width: "100%", flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", gap: 10 },
-  ownerPill: { flexDirection: "row-reverse", alignItems: "center", gap: 8, maxWidth: 190 },
-  ownerAvatarWrap: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    overflow: "hidden",
-    backgroundColor: ui.primary,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.65)",
-  },
-  ownerAvatarImg: { width: "100%", height: "100%" },
-  ownerName: { fontSize: 12, fontWeight: "900", color: ui.primary, textAlign: "right" },
-  eventLeft: { alignItems: "flex-start", gap: 8 },
-  eventDate: { fontSize: 12, fontWeight: "900", color: ui.muted, textAlign: "left" },
-  typePill: {
-    height: 28,
-    paddingHorizontal: 10,
-    borderRadius: 999,
-    backgroundColor: ui.primary,
-    flexDirection: "row-reverse",
-    alignItems: "center",
-    gap: 8,
-    borderWidth: 1,
-  },
-  typePillText: { fontSize: 12, fontWeight: "900", color: colors.white },
-
-  eventChevron: { position: "absolute", left: 12, top: 12 },
 
   footerSection: {
     marginTop: 24,

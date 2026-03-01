@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { Tabs, useRouter } from "expo-router";
+import { Tabs, useRouter, useSegments } from "expo-router";
 import { colors } from "@/constants/colors";
 import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
@@ -12,10 +12,14 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function AdminTabsLayout() {
   const router = useRouter();
+  const segments = useSegments();
   const { isTabBarVisible, setTabBarVisible } = useLayoutStore();
   const { userType, isLoggedIn, loading } = useUserStore();
   const insets = useSafeAreaInsets();
   const headerTotalHeight = getAppHeaderTotalHeight(insets.top);
+
+  const hideBackOnThisRoute =
+    segments?.[0] === "(admin)" && (segments?.[1] === "admin-profile" || segments?.[1] === "admin-events");
 
   useEffect(() => {
     setTabBarVisible(true);
@@ -192,7 +196,7 @@ export default function AdminTabsLayout() {
         headerShadowVisible: false,
         header: ({ navigation }) => (
           <AppHeader
-            canGoBack={navigation.canGoBack()}
+            canGoBack={navigation.canGoBack() && !hideBackOnThisRoute}
             onPressBack={() => navigation.goBack()}
           />
         ),
