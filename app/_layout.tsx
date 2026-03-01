@@ -164,9 +164,6 @@ Text.defaultProps.style = [baseFontStyle, rtlTextStyle, Text.defaultProps.style]
 TextInput.defaultProps = TextInput.defaultProps || {};
 TextInput.defaultProps.style = [baseFontStyle, rtlTextStyle, TextInput.defaultProps.style].filter(Boolean);
 
-// Prevent the splash screen from auto-hiding before asset loading is complete.
-SplashScreen.preventAutoHideAsync();
-
 export default function RootLayout() {
   const [loaded, error] = useFonts({
     ...FontAwesome.font,
@@ -225,27 +222,37 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
+    // Prevent native splash from hiding until we're ready.
+    // Do this in an effect (not module scope) to avoid edge cases on fast refresh.
+    void SplashScreen.preventAutoHideAsync().catch(() => {
+      // ignore
+    });
+  }, []);
+
+  useEffect(() => {
+    // Never let the splash screen block the app forever.
+    // We render immediately; fonts can continue loading in the background.
+    const t = setTimeout(() => {
+      void SplashScreen.hideAsync().catch(() => {
+        // ignore
+      });
+    }, 600);
+    return () => clearTimeout(t);
+  }, []);
+
+  useEffect(() => {
     if (error) {
-      // Keep throwing to surface font loading errors without logging
-      throw error;
+      console.error('Font loading error:', error);
     }
   }, [error]);
 
   useEffect(() => {
     if (loaded) {
-      SplashScreen.hideAsync();
+      void SplashScreen.hideAsync().catch(() => {
+        // ignore
+      });
     }
   }, [loaded]);
-
-  if (!loaded) {
-    // Keep a visible loading UI (avoid "black screen" during font load)
-    return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff' }}>
-        <ActivityIndicator size="large" />
-        <Text style={{ marginTop: 12, fontSize: 16 }}>טוען...</Text>
-      </View>
-    );
-  }
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
