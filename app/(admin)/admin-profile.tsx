@@ -495,10 +495,10 @@ export default function AdminProfileScreen() {
 
   const donutSize = Math.max(168, Math.min(220, Math.floor(width * 0.52)));
 
-  // Keep content above the custom tab bar, and place bottom action panel above it.
+  // Bottom padding for content above tab bar
   const TAB_BAR_HEIGHT = 65;
   const TAB_BAR_BOTTOM_GAP = Platform.OS === "ios" ? 30 : 20;
-  const footerBottomOffset = TAB_BAR_HEIGHT + TAB_BAR_BOTTOM_GAP + 12;
+  const contentBottomPadding = TAB_BAR_HEIGHT + TAB_BAR_BOTTOM_GAP + 20;
 
   if (!userData) {
     return (
@@ -531,7 +531,7 @@ export default function AdminProfileScreen() {
 
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={[styles.content, { paddingBottom: footerBottomOffset + insets.bottom + 96 }]}
+        contentContainerStyle={[styles.content, { paddingBottom: contentBottomPadding + insets.bottom }]}
         showsVerticalScrollIndicator={false}
       >
         {/* HERO */}
@@ -883,39 +883,43 @@ export default function AdminProfileScreen() {
             </View>
           )}
         </View>
-      </ScrollView>
 
-      {/* Bottom actions */}
-      <View style={[styles.footerWrap, { bottom: footerBottomOffset + insets.bottom }]}>
-        <View style={styles.footerPanel}>
-          <Pressable
-            onPress={() => router.push("/profile-editor")}
-            style={({ pressed }) => [styles.footerPrimaryBtn, pressed && { opacity: 0.92 }]}
-            accessibilityRole="button"
-            accessibilityLabel="עריכת פרופיל"
-          >
-            <Ionicons name="create-outline" size={18} color={colors.white} />
-            <Text style={styles.footerPrimaryText}>עריכת פרופיל</Text>
-          </Pressable>
+        {/* כפתורי פעולה בתחתית העמוד */}
+        <View style={[styles.footerSection, { marginBottom: insets.bottom + 12 }]}>
+          <View style={styles.footerPanel}>
+            <Pressable
+              onPress={() => router.push("/profile-editor")}
+              style={({ pressed }) => [styles.footerPrimaryBtn, pressed && styles.footerBtnPressed]}
+              accessibilityRole="button"
+              accessibilityLabel="עריכת פרופיל"
+            >
+              <Ionicons name="create-outline" size={20} color={colors.white} />
+              <Text style={styles.footerPrimaryText}>עריכה</Text>
+            </Pressable>
 
-          <Pressable
-            onPress={askLogout}
-            disabled={loggingOut}
-            style={({ pressed }) => [styles.footerDangerBtn, (pressed || loggingOut) && { opacity: 0.92 }]}
-            accessibilityRole="button"
-            accessibilityLabel="התנתקות"
-          >
-            {loggingOut ? (
-              <ActivityIndicator color={ui.danger} />
-            ) : (
-              <>
-                <Ionicons name="log-out-outline" size={18} color={ui.danger} />
-                <Text style={styles.footerDangerText}>התנתק</Text>
-              </>
-            )}
-          </Pressable>
+            <Pressable
+              onPress={askLogout}
+              disabled={loggingOut}
+              style={({ pressed }) => [
+                styles.footerDangerBtn,
+                (pressed || loggingOut) && styles.footerBtnPressed,
+                loggingOut && { opacity: 0.7 },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="התנתקות"
+            >
+              {loggingOut ? (
+                <ActivityIndicator size="small" color={ui.danger} />
+              ) : (
+                <>
+                  <Ionicons name="log-out-outline" size={20} color={ui.danger} />
+                  <Text style={styles.footerDangerText}>התנתק</Text>
+                </>
+              )}
+            </Pressable>
+          </View>
         </View>
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -1251,51 +1255,56 @@ const styles = StyleSheet.create({
 
   eventChevron: { position: "absolute", left: 12, top: 12 },
 
-  footerWrap: {
-    position: Platform.OS === "web" ? ("fixed" as any) : "absolute",
-    left: 0,
-    right: 0,
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    zIndex: 50,
-    elevation: 50,
+  footerSection: {
+    marginTop: 24,
+    paddingHorizontal: 0,
   },
   footerPanel: {
     width: "100%",
-    maxWidth: 520,
-    alignSelf: "center",
     flexDirection: "row-reverse",
     gap: 12,
-    backgroundColor: "rgba(255,255,255,0.86)",
+    backgroundColor: ui.card,
     borderRadius: 22,
-    padding: 12,
+    padding: 14,
     borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.06)",
+    borderColor: ui.border,
+    shadowColor: colors.black,
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
   },
   footerPrimaryBtn: {
     flex: 2,
-    height: 52,
+    height: 54,
     borderRadius: 18,
     backgroundColor: ui.primary,
     flexDirection: "row-reverse",
     alignItems: "center",
     justifyContent: "center",
     gap: 10,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.16)",
   },
-  footerPrimaryText: { fontSize: 14, fontWeight: "900", color: colors.white },
+  footerPrimaryText: {
+    fontSize: 16,
+    fontWeight: "900",
+    color: colors.white,
+  },
   footerDangerBtn: {
     flex: 1,
-    height: 52,
+    height: 54,
     borderRadius: 18,
-    backgroundColor: "rgba(255,255,255,0.95)",
-    borderWidth: 1,
-    borderColor: "rgba(244,67,54,0.30)",
+    backgroundColor: "rgba(244,67,54,0.08)",
+    borderWidth: 2,
+    borderColor: "rgba(244,67,54,0.4)",
     flexDirection: "row-reverse",
     alignItems: "center",
     justifyContent: "center",
     gap: 10,
   },
-  footerDangerText: { fontSize: 14, fontWeight: "900", color: ui.danger },
+  footerDangerText: {
+    fontSize: 16,
+    fontWeight: "900",
+    color: ui.danger,
+  },
+  footerBtnPressed: { opacity: 0.88 },
 });

@@ -1,5 +1,7 @@
 import React from 'react';
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Image, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { colors } from '@/constants/colors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -27,6 +29,27 @@ export default function AppHeader(props: Props) {
 
   return (
     <View style={[styles.wrap, { height: totalHeight, paddingTop: topInset }]}>
+      <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+        <BlurView intensity={26} tint="light" style={styles.headerBlur} />
+        <View style={styles.headerFrame} />
+        <LinearGradient
+          pointerEvents="none"
+          colors={['rgba(255,255,255,0.65)', 'rgba(255,255,255,0)']}
+          locations={[0, 1]}
+          start={{ x: 0.5, y: 0 }}
+          end={{ x: 0.5, y: 1 }}
+          style={styles.headerTopShine}
+        />
+        <LinearGradient
+          pointerEvents="none"
+          colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.05)']}
+          locations={[0, 1]}
+          start={{ x: 0.5, y: 0 }}
+          end={{ x: 0.5, y: 1 }}
+          style={styles.headerBottomShade}
+        />
+      </View>
+
       <View style={styles.sideLeft}>
         {canGoBack ? (
           <TouchableOpacity
@@ -72,11 +95,29 @@ export default function AppHeader(props: Props) {
 
 const styles = StyleSheet.create({
   wrap: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: 'transparent',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 12,
+    overflow: 'hidden',
+  },
+  headerBlur: {
+    flex: 1,
+  },
+  headerFrame: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.06)',
+  },
+  headerTopShine: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.75,
+  },
+  headerBottomShade: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 1,
   },
   sideLeft: {
     width: 56,

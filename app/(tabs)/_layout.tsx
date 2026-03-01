@@ -67,7 +67,7 @@ export default function TabLayout() {
         headerShown: true,
         headerStyle: {
           height: headerTotalHeight,
-          backgroundColor: "#FFFFFF",
+          backgroundColor: "transparent",
         },
         headerShadowVisible: false,
         header: ({ navigation }) => (
