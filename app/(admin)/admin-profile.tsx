@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
-import { Stack, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
@@ -11,7 +11,6 @@ import { colors } from "@/constants/colors";
 import { useUserStore } from "@/store/userStore";
 import { userService } from "@/lib/services/userService";
 import { eventService } from "@/lib/services/eventService";
-import { supabase } from "@/lib/supabase";
 import { EVENT_BADGE_META, inferEventType, type EventType } from "@/features/events/eventsConstants";
 import type { Event } from "@/types";
 
@@ -29,15 +28,6 @@ const ui = {
 };
 
 type MonthBar = { monthIndex: number; label: string; value: number };
-type GuestRowLite = {
-  event_id: string;
-  status: "מגיע" | "לא מגיע" | "ממתין";
-  table_id: string | null;
-  number_of_people: number | null;
-  checked_in: boolean | null;
-  checked_in_count: number | null;
-};
-type TableRowLite = { event_id: string; capacity: number | null };
 
 function monthLabelHe(monthIndex0: number) {
   const months = ["ינו", "פבר", "מרץ", "אפר", "מאי", "יונ", "יול", "אוג", "ספט", "אוק", "נוב", "דצמ"];
@@ -80,14 +70,13 @@ function k(n: number) {
   return `${x}`;
 }
 
-function sumPeopleFromGuestRow(r: GuestRowLite) {
-  const base = Number(r.number_of_people) || 1;
-  if (r.checked_in) {
-    const cnt = r.checked_in_count;
-    if (cnt === null || cnt === undefined) return base;
-    return Math.max(0, Number(cnt) || 0);
-  }
-  return 0;
+function rgbaFromHex(hex: string, alpha: number) {
+  const h = String(hex || "").replace("#", "").trim();
+  if (h.length !== 6) return `rgba(6,23,62,${alpha})`;
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
 }
 
 function KpiCard({
@@ -143,26 +132,6 @@ function KpiCard({
           {subtitle}
         </Text>
       ) : null}
-    </View>
-  );
-}
-
-function ProgressRow({ label, valueText, pct, tone }: { label: string; valueText: string; pct: number; tone?: "primary" | "success" | "danger" | "gold" }) {
-  const color =
-    tone === "success" ? ui.success : tone === "danger" ? ui.danger : tone === "gold" ? ui.gold : ui.primary;
-  return (
-    <View style={styles.progressRow}>
-      <View style={styles.progressRowTop}>
-        <Text style={styles.progressLabel} numberOfLines={1}>
-          {label}
-        </Text>
-        <Text style={styles.progressValue} numberOfLines={1}>
-          {valueText}
-        </Text>
-      </View>
-      <View style={styles.progressTrack}>
-        <View style={[styles.progressFill, { width: `${Math.round(clamp01(pct) * 100)}%`, backgroundColor: color } as any]} />
-      </View>
     </View>
   );
 }
@@ -232,17 +201,6 @@ export default function AdminProfileScreen() {
 
   const [events, setEvents] = useState<Event[]>([]);
   const [clientsCount, setClientsCount] = useState<number>(0);
-
-  const [activeEventIds, setActiveEventIds] = useState<string[]>([]);
-  const [rsvpTotals, setRsvpTotals] = useState({
-    invitedPeople: 0,
-    comingPeople: 0,
-    pendingPeople: 0,
-    notComingPeople: 0,
-    seatedComingPeople: 0,
-    checkedInPeople: 0,
-    totalCapacity: 0,
-  });
 
   const avatarUri = useMemo(() => {
     const direct = String(userData?.avatar_url ?? "").trim();
@@ -326,72 +284,6 @@ export default function AdminProfileScreen() {
       setYearTotalEvents(totalEvents);
       setYearTotalGuests(totalGuests);
       setYearTotalBudget(totalBudget);
-
-      // Active events (actionable)
-      const today0 = startOfDay(new Date());
-      const active = allEvents.filter((e) => {
-        const d = new Date((e as any).date);
-        return Number.isFinite(d.getTime()) && d.getTime() >= today0.getTime();
-      });
-      const ids = active.map((e) => String(e.id)).filter(Boolean);
-      setActiveEventIds(ids);
-
-      if (ids.length === 0) {
-        setRsvpTotals({
-          invitedPeople: 0,
-          comingPeople: 0,
-          pendingPeople: 0,
-          notComingPeople: 0,
-          seatedComingPeople: 0,
-          checkedInPeople: 0,
-          totalCapacity: 0,
-        });
-        return;
-      }
-
-      const [{ data: guestRows, error: guestsError }, { data: tableRows, error: tablesError }] = await Promise.all([
-        supabase
-          .from("guests")
-          .select("event_id,status,table_id,number_of_people,checked_in,checked_in_count")
-          .in("event_id", ids),
-        supabase.from("tables").select("event_id,capacity").in("event_id", ids),
-      ]);
-
-      if (guestsError) throw guestsError;
-      if (tablesError) throw tablesError;
-
-      const guests = (guestRows || []) as any as GuestRowLite[];
-      const tables = (tableRows || []) as any as TableRowLite[];
-
-      let invitedPeople = 0;
-      let comingPeople = 0;
-      let pendingPeople = 0;
-      let notComingPeople = 0;
-      let seatedComingPeople = 0;
-      let checkedInPeople = 0;
-
-      guests.forEach((g) => {
-        const n = Math.max(1, Number(g.number_of_people) || 1);
-        invitedPeople += n;
-        if (g.status === "מגיע") comingPeople += n;
-        else if (g.status === "ממתין") pendingPeople += n;
-        else if (g.status === "לא מגיע") notComingPeople += n;
-
-        if (g.status === "מגיע" && g.table_id) seatedComingPeople += n;
-        checkedInPeople += sumPeopleFromGuestRow(g);
-      });
-
-      const totalCapacity = tables.reduce((sum, t) => sum + (Number(t.capacity) || 0), 0);
-
-      setRsvpTotals({
-        invitedPeople,
-        comingPeople,
-        pendingPeople,
-        notComingPeople,
-        seatedComingPeople,
-        checkedInPeople,
-        totalCapacity,
-      });
     } catch (e) {
       console.error("Admin dashboard load error:", e);
       setAvailableYears([]);
@@ -401,16 +293,6 @@ export default function AdminProfileScreen() {
       setYearTotalBudget(0);
       setEvents([]);
       setClientsCount(0);
-      setActiveEventIds([]);
-      setRsvpTotals({
-        invitedPeople: 0,
-        comingPeople: 0,
-        pendingPeople: 0,
-        notComingPeople: 0,
-        seatedComingPeople: 0,
-        checkedInPeople: 0,
-        totalCapacity: 0,
-      });
     } finally {
       setLoading(false);
     }
@@ -449,27 +331,6 @@ export default function AdminProfileScreen() {
       .map(([type, count]) => ({ type, count }))
       .sort((a, b) => b.count - a.count);
 
-    const byCityMap = new Map<string, number>();
-    all.forEach((e) => {
-      const city = String((e as any).city || "").trim() || "לא הוגדר";
-      byCityMap.set(city, (byCityMap.get(city) || 0) + 1);
-    });
-    const byCity = Array.from(byCityMap.entries())
-      .map(([city, count]) => ({ city, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 4);
-
-    const byOwnerMap = new Map<string, number>();
-    all.forEach((e) => {
-      const owner = String((e as any).userName || "").trim() || "—";
-      if (owner === "—") return;
-      byOwnerMap.set(owner, (byOwnerMap.get(owner) || 0) + 1);
-    });
-    const byOwner = Array.from(byOwnerMap.entries())
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 4);
-
     return {
       totalEvents: all.length,
       activeEventsCount: activeEvents.length,
@@ -477,8 +338,6 @@ export default function AdminProfileScreen() {
       upcoming7DaysCount: in7.length,
       topActive,
       byType,
-      byCity,
-      byOwner,
     };
   }, [events, today0]);
 
@@ -494,6 +353,7 @@ export default function AdminProfileScreen() {
   }, [computed.byType, computed.totalEvents]);
 
   const donutSize = Math.max(168, Math.min(220, Math.floor(width * 0.52)));
+  const donutPalette = ["#06173e", "#CCA000", "#F0CB46", "#003566", "#4CAF50", "#6C757D"];
 
   // Bottom padding for content above tab bar
   const TAB_BAR_HEIGHT = 65;
@@ -511,19 +371,8 @@ export default function AdminProfileScreen() {
   const maxBar = Math.max(1, ...bars12.map((b) => b.value));
   const isCurrentYear = selectedYear === now.getFullYear();
 
-  const seatingPct = rsvpTotals.comingPeople > 0 ? rsvpTotals.seatedComingPeople / rsvpTotals.comingPeople : 0;
-  const capacityDelta = rsvpTotals.totalCapacity - rsvpTotals.comingPeople;
-  const capacityDeltaText =
-    rsvpTotals.totalCapacity === 0
-      ? "אין נתוני שולחנות"
-      : capacityDelta >= 0
-        ? `עוד ${capacityDelta} מקומות`
-        : `חסר ${Math.abs(capacityDelta)} מקומות`;
-
   return (
-    <View style={[styles.root, { paddingTop: insets.top }]}>
-      <Stack.Screen options={{ headerShown: false }} />
-
+    <View style={styles.root}>
       <View style={styles.bg} pointerEvents="none">
         <View style={styles.bgBlobA} />
         <View style={styles.bgBlobB} />
@@ -539,6 +388,25 @@ export default function AdminProfileScreen() {
           <LinearGradient colors={[ui.primary, ui.gold, ui.primary]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.heroTopLine} />
           <View style={styles.heroDecor1} pointerEvents="none" />
           <View style={styles.heroDecor2} pointerEvents="none" />
+
+          <View style={styles.heroEditSlot} pointerEvents="box-none">
+            <Pressable
+              onPress={() => router.push("/profile-editor")}
+              style={({ pressed }) => [styles.heroEditBtn, pressed && { opacity: 0.85 }]}
+              accessibilityRole="button"
+              accessibilityLabel="עריכת פרופיל"
+            >
+              <LinearGradient
+                pointerEvents="none"
+                colors={["rgba(255,255,255,0.98)", "rgba(240,203,70,0.22)", "rgba(6,23,62,0.06)"]}
+                locations={[0, 0.55, 1]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.heroEditBtnBg}
+              />
+              <Ionicons name="create-outline" size={20} color={ui.primary} />
+            </Pressable>
+          </View>
 
           <View style={styles.heroIdentity}>
             <View style={styles.avatarRing}>
@@ -558,9 +426,6 @@ export default function AdminProfileScreen() {
               <Text style={styles.heroEmail} numberOfLines={1}>
                 {String(userData.email || "")}
               </Text>
-              <Text style={styles.heroHint} numberOfLines={2}>
-                דשבורד ניהול: אירועים, RSVP, הושבה וצ׳ק-אין במקום אחד.
-              </Text>
             </View>
           </View>
         </View>
@@ -573,71 +438,28 @@ export default function AdminProfileScreen() {
           <KpiCard title="לקוחות פעילים" value={loading ? "..." : String(clientsCount)} subtitle="בעלי אירוע" icon="people-outline" tone="dark" />
         </View>
 
-        {/* RSVP / SEATING */}
-        <View style={styles.card}>
-          <View style={styles.cardHeaderRow}>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={styles.cardTitle}>RSVP והושבה (אירועים פעילים)</Text>
-              <Text style={styles.cardSubtitle}>תמונה תפעולית מהירה כדי לדעת מה עוד “בוער”</Text>
-            </View>
-            <View style={styles.pill}>
-              <Ionicons name="pulse-outline" size={14} color={ui.primary} />
-              <Text style={styles.pillText}>{activeEventIds.length ? `${activeEventIds.length} אירועים` : "אין אירועים פעילים"}</Text>
-            </View>
-          </View>
-
-          {loading ? (
-            <View style={styles.loadingBox}>
-              <ActivityIndicator color={ui.primary} />
-            </View>
-          ) : activeEventIds.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Ionicons name="calendar-clear-outline" size={34} color={colors.gray[500]} />
-              <Text style={styles.emptyTitle}>אין אירועים פעילים</Text>
-              <Text style={styles.emptyText}>כשתיצור אירוע חדש או שתאריך האירוע יתקרב, תראה כאן סטטיסטיקות RSVP והושבה.</Text>
-              <Pressable
-                onPress={() => router.push("/(admin)/admin-events-create")}
-                style={({ pressed }) => [styles.inlineCta, pressed && { opacity: 0.92 }]}
-                accessibilityRole="button"
-                accessibilityLabel="יצירת אירוע חדש"
-              >
-                <Ionicons name="add" size={18} color={colors.white} />
-                <Text style={styles.inlineCtaText}>יצירת אירוע</Text>
-              </Pressable>
-            </View>
-          ) : (
-            <>
-              <View style={styles.rsvpGrid}>
-                <KpiCard title="צפויים להגיע" value={k(rsvpTotals.comingPeople)} subtitle="סה״כ אנשים" icon="checkmark-circle-outline" tone="success" />
-                <KpiCard title="ממתינים" value={k(rsvpTotals.pendingPeople)} subtitle="עוד לא אישרו" icon="hourglass-outline" tone="gold" />
-                <KpiCard title="לא מגיעים" value={k(rsvpTotals.notComingPeople)} subtitle="סה״כ אנשים" icon="close-circle-outline" tone="danger" />
-                <KpiCard title="צ׳ק-אין" value={k(rsvpTotals.checkedInPeople)} subtitle="נכנסו לאולם" icon="enter-outline" tone="default" />
-              </View>
-
-              <View style={styles.divider} />
-
-              <ProgressRow label="הושבו (מתוך מגיעים)" valueText={`${rsvpTotals.seatedComingPeople}/${rsvpTotals.comingPeople}`} pct={seatingPct} tone="primary" />
-              <ProgressRow
-                label="קיבולת שולחנות מול צפויים"
-                valueText={`${rsvpTotals.totalCapacity}/${rsvpTotals.comingPeople} · ${capacityDeltaText}`}
-                pct={rsvpTotals.totalCapacity > 0 ? clamp01(rsvpTotals.comingPeople / Math.max(1, rsvpTotals.totalCapacity)) : 0}
-                tone={capacityDelta >= 0 ? "success" : "danger"}
-              />
-            </>
-          )}
-        </View>
-
         {/* EVENT TYPE BREAKDOWN */}
         <View style={styles.card}>
           <View style={styles.cardHeaderRow}>
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={styles.cardTitle}>חלוקה לפי סוג אירוע</Text>
-              <Text style={styles.cardSubtitle}>מבוסס על שם האירוע (לדוגמה: “חתונה …”)</Text>
             </View>
-            <View style={styles.pill}>
+            <LinearGradient
+              colors={["rgba(240,203,70,0.26)", "rgba(6,23,62,0.06)"]}
+              start={{ x: 1, y: 0 }}
+              end={{ x: 0, y: 1 }}
+              style={styles.totalPill}
+            >
               <Ionicons name="pie-chart-outline" size={14} color={ui.primary} />
-              <Text style={styles.pillText}>{computed.totalEvents ? `${computed.totalEvents} סה״כ` : "אין נתונים"}</Text>
-            </View>
+              {computed.totalEvents ? (
+                <View style={styles.totalPillTextRow}>
+                  <Text style={styles.totalPillNumber}>{computed.totalEvents}</Text>
+                  <Text style={styles.totalPillLabel}>סה״כ</Text>
+                </View>
+              ) : (
+                <Text style={styles.totalPillEmpty}>אין נתונים</Text>
+              )}
+            </LinearGradient>
           </View>
 
           {computed.totalEvents === 0 ? (
@@ -658,62 +480,36 @@ export default function AdminProfileScreen() {
 
               <View style={styles.typeList}>
                 {computed.byType.slice(0, 6).map((row) => {
+                  const idx = Math.max(0, computed.byType.findIndex((x) => x.type === row.type));
                   const type = row.type as EventType;
                   const meta = EVENT_BADGE_META[type];
-                  const max = Math.max(1, ...(computed.byType.map((x) => x.count) || [1]));
-                  const pct = row.count / max;
+                  const iconColor = donutPalette[(idx >= 0 ? idx : 0) % donutPalette.length] ?? ui.primary;
                   return (
                     <View key={row.type} style={styles.typeItem}>
                       <View style={styles.typeItemTop}>
                         <Text style={styles.typeItemCount}>{row.count}</Text>
                         <View style={styles.typeItemRight}>
-                          <View style={[styles.typeIconPill, { backgroundColor: meta?.tint ?? "rgba(6,23,62,0.22)" }]}>
-                            <Ionicons name={meta?.icon ?? "sparkles"} size={14} color={colors.white} />
+                          <View
+                            style={[
+                              styles.typeIconPill,
+                              {
+                                backgroundColor: rgbaFromHex(iconColor, 0.14),
+                                borderColor: rgbaFromHex(iconColor, 0.32),
+                              },
+                            ]}
+                          >
+                            <Ionicons name={meta?.icon ?? "sparkles"} size={16} color={iconColor} />
                           </View>
                           <Text style={styles.typeItemLabel} numberOfLines={1}>
                             {row.type}
                           </Text>
                         </View>
                       </View>
-                      <View style={styles.typeItemTrack}>
-                        <LinearGradient
-                          colors={[ui.primary, ui.gold]}
-                          start={{ x: 1, y: 0 }}
-                          end={{ x: 0, y: 0 }}
-                          style={[styles.typeItemFill, { width: `${Math.round(clamp01(pct) * 100)}%` } as any]}
-                        />
-                      </View>
                     </View>
                   );
                 })}
 
-                {computed.byCity.length ? (
-                  <View style={styles.miniList}>
-                    <Text style={styles.miniTitle}>ערים מובילות</Text>
-                    {computed.byCity.map((c) => (
-                      <View key={c.city} style={styles.miniRow}>
-                        <Text style={styles.miniCount}>{c.count}</Text>
-                        <Text style={styles.miniLabel} numberOfLines={1}>
-                          {c.city}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                ) : null}
-
-                {computed.byOwner.length ? (
-                  <View style={styles.miniList}>
-                    <Text style={styles.miniTitle}>לקוחות מובילים</Text>
-                    {computed.byOwner.map((o) => (
-                      <View key={o.name} style={styles.miniRow}>
-                        <Text style={styles.miniCount}>{o.count}</Text>
-                        <Text style={styles.miniLabel} numberOfLines={1}>
-                          {o.name}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                ) : null}
+                {/* הוסר: ערים מובילות / לקוחות מובילים */}
               </View>
             </View>
           )}
@@ -884,19 +680,9 @@ export default function AdminProfileScreen() {
           )}
         </View>
 
-        {/* כפתורי פעולה בתחתית העמוד */}
+        {/* כפתור התנתק בתחתית העמוד */}
         <View style={[styles.footerSection, { marginBottom: insets.bottom + 12 }]}>
           <View style={styles.footerPanel}>
-            <Pressable
-              onPress={() => router.push("/profile-editor")}
-              style={({ pressed }) => [styles.footerPrimaryBtn, pressed && styles.footerBtnPressed]}
-              accessibilityRole="button"
-              accessibilityLabel="עריכת פרופיל"
-            >
-              <Ionicons name="create-outline" size={20} color={colors.white} />
-              <Text style={styles.footerPrimaryText}>עריכה</Text>
-            </Pressable>
-
             <Pressable
               onPress={askLogout}
               disabled={loggingOut}
@@ -909,12 +695,24 @@ export default function AdminProfileScreen() {
               accessibilityLabel="התנתקות"
             >
               {loggingOut ? (
-                <ActivityIndicator size="small" color={ui.danger} />
+                <LinearGradient
+                  colors={["#e53935", "#c62828", "#b71c1c"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.footerDangerGradient}
+                >
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                </LinearGradient>
               ) : (
-                <>
-                  <Ionicons name="log-out-outline" size={20} color={ui.danger} />
+                <LinearGradient
+                  colors={["#e53935", "#c62828", "#b71c1c"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.footerDangerGradient}
+                >
+                  <Ionicons name="log-out-outline" size={24} color="#FFFFFF" />
                   <Text style={styles.footerDangerText}>התנתק</Text>
-                </>
+                </LinearGradient>
               )}
             </Pressable>
           </View>
@@ -1000,6 +798,15 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(6,23,62,0.05)",
   },
   heroIdentity: { flex: 1, flexDirection: "row-reverse", alignItems: "center", gap: 14, minWidth: 0 },
+  heroEditSlot: {
+    position: "absolute",
+    left: 14,
+    top: 0,
+    bottom: 0,
+    zIndex: 6,
+    justifyContent: "center",
+    alignItems: "center",
+  },
   avatarRing: {
     width: 78,
     height: 78,
@@ -1026,7 +833,25 @@ const styles = StyleSheet.create({
   },
   rolePillText: { fontSize: 12, fontWeight: "900", color: "rgba(161,98,7,0.98)", textAlign: "right" },
   heroEmail: { fontSize: 13, fontWeight: "800", color: ui.muted, textAlign: "right" },
-  heroHint: { marginTop: 4, fontSize: 12, fontWeight: "700", color: "rgba(73,80,87,0.95)", textAlign: "right", lineHeight: 18 },
+  heroEditBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.92)",
+    borderWidth: 1,
+    borderColor: ui.border,
+    overflow: "hidden",
+    shadowColor: ui.primary,
+    shadowOpacity: 0.14,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
+  },
+  heroEditBtnBg: {
+    ...StyleSheet.absoluteFillObject,
+  },
 
   kpisGrid: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 12 },
   kpiCard: {
@@ -1067,25 +892,27 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   pillText: { fontSize: 12, fontWeight: "900", color: ui.primary },
+  totalPill: {
+    minHeight: 34,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(204,160,0,0.22)",
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 8,
+    shadowColor: ui.primary,
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
+  },
+  totalPillTextRow: { flexDirection: "row-reverse", alignItems: "baseline", gap: 6 },
+  totalPillNumber: { fontSize: 14, fontWeight: "900", color: ui.primary },
+  totalPillLabel: { fontSize: 11, fontWeight: "900", color: "rgba(6,23,62,0.72)" },
+  totalPillEmpty: { fontSize: 12, fontWeight: "900", color: "rgba(6,23,62,0.72)" },
 
   loadingBox: { height: 140, alignItems: "center", justifyContent: "center" },
-  divider: { height: 1, backgroundColor: "rgba(0,0,0,0.06)", marginVertical: 12 },
-
-  rsvpGrid: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 12 },
-
-  progressRow: { gap: 8, marginTop: 8 },
-  progressRowTop: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", gap: 12 },
-  progressLabel: { fontSize: 12, fontWeight: "900", color: ui.muted, textAlign: "right", flex: 1 },
-  progressValue: { fontSize: 12, fontWeight: "900", color: ui.primary, textAlign: "left" },
-  progressTrack: {
-    height: 10,
-    borderRadius: 999,
-    backgroundColor: "rgba(6,23,62,0.06)",
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: ui.border,
-  },
-  progressFill: { height: "100%", borderRadius: 999 },
 
   emptyState: { alignItems: "center", gap: 8, paddingVertical: 10 },
   emptyTitle: { fontSize: 15, fontWeight: "900", color: ui.primary, textAlign: "center", marginTop: 4 },
@@ -1120,8 +947,14 @@ const styles = StyleSheet.create({
   donutCenterBig: { fontSize: 28, fontWeight: "900", color: ui.primary },
   donutCenterSmall: { marginTop: 4, fontSize: 12, fontWeight: "800", color: ui.muted },
 
-  typeList: { gap: 10 },
+  typeList: {
+    flexDirection: "row-reverse",
+    flexWrap: "wrap",
+    gap: 10,
+  },
   typeItem: {
+    flexGrow: 1,
+    flexBasis: "48%",
     borderRadius: 18,
     backgroundColor: "rgba(255,255,255,0.92)",
     borderWidth: 1,
@@ -1131,18 +964,16 @@ const styles = StyleSheet.create({
   },
   typeItemTop: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", gap: 12 },
   typeItemRight: { flexDirection: "row-reverse", alignItems: "center", gap: 10, flex: 1, minWidth: 0, justifyContent: "flex-start" },
-  typeIconPill: { width: 28, height: 28, borderRadius: 999, alignItems: "center", justifyContent: "center" },
+  typeIconPill: {
+    width: 30,
+    height: 30,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+  },
   typeItemLabel: { fontSize: 13, fontWeight: "900", color: ui.primary, textAlign: "right", flex: 1, minWidth: 0 },
   typeItemCount: { fontSize: 12, fontWeight: "900", color: ui.muted, width: 44, textAlign: "left" },
-  typeItemTrack: {
-    height: 10,
-    borderRadius: 999,
-    backgroundColor: "rgba(6,23,62,0.06)",
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: ui.border,
-  },
-  typeItemFill: { height: "100%", borderRadius: 999 },
 
   miniList: { marginTop: 4, gap: 8 },
   miniTitle: { fontSize: 12, fontWeight: "900", color: ui.muted, textAlign: "right" },
@@ -1261,50 +1092,43 @@ const styles = StyleSheet.create({
   },
   footerPanel: {
     width: "100%",
-    flexDirection: "row-reverse",
-    gap: 12,
     backgroundColor: ui.card,
-    borderRadius: 22,
-    padding: 14,
+    borderRadius: 24,
+    padding: 18,
     borderWidth: 1,
     borderColor: ui.border,
     shadowColor: colors.black,
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 4,
-  },
-  footerPrimaryBtn: {
-    flex: 2,
-    height: 54,
-    borderRadius: 18,
-    backgroundColor: ui.primary,
-    flexDirection: "row-reverse",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-  },
-  footerPrimaryText: {
-    fontSize: 16,
-    fontWeight: "900",
-    color: colors.white,
+    shadowOpacity: 0.1,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 6,
   },
   footerDangerBtn: {
+    width: "100%",
+    minHeight: 62,
+    height: 62,
+    borderRadius: 22,
+    overflow: "hidden",
+    shadowColor: "#c62828",
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
+  },
+  footerDangerGradient: {
     flex: 1,
-    height: 54,
-    borderRadius: 18,
-    backgroundColor: "rgba(244,67,54,0.08)",
-    borderWidth: 2,
-    borderColor: "rgba(244,67,54,0.4)",
+    width: "100%",
+    minHeight: 62,
+    borderRadius: 22,
     flexDirection: "row-reverse",
     alignItems: "center",
     justifyContent: "center",
-    gap: 10,
+    gap: 12,
   },
   footerDangerText: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: "900",
-    color: ui.danger,
+    color: "#FFFFFF",
   },
   footerBtnPressed: { opacity: 0.88 },
 });

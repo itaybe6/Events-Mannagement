@@ -203,8 +203,8 @@ export default function AdminEventsScreen() {
               const monthName = MONTHS[dateObj.getMonth()];
               const eventType = inferEventType(event.title) || 'חתונה';
               const badge = EVENT_BADGE_META[eventType];
-              const cover = EVENT_IMAGE_BY_TYPE[eventType];
-              const coverSource: any = cover;
+              const invitationImageUrl = String(event.invitationImageUrl ?? '').trim();
+              const coverSource: any = invitationImageUrl ? { uri: invitationImageUrl } : EVENT_IMAGE_BY_TYPE[eventType];
 
               return (
                 <View key={event.id} style={styles.eventBlock}>

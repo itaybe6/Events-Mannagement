@@ -322,10 +322,11 @@ export default function AdminEventsWebScreen() {
             >
               {filteredEvents.map((e) => {
                 const ownerName = String((e as any).userName || e.userName || '').trim();
-                const ownerAvatar = String((e as any).userAvatarUrl || e.userAvatarUrl || '').trim();
+                const invitationImageUrl = String((e as any).invitationImageUrl ?? e.invitationImageUrl ?? '').trim();
                 const subtitle = getEventSubtitle(e);
                 const status = getStatusMeta(e.date);
                 const guestStats = guestStatsByEventId[String(e.id)] || null;
+                const coverSource: any = invitationImageUrl ? { uri: invitationImageUrl } : getHeroImageSource(e.title);
                 const statusToneStyle =
                   status.tone === 'active'
                     ? styles.statusPillActive
@@ -349,22 +350,7 @@ export default function AdminEventsWebScreen() {
                   >
                     <View style={[styles.cell, { width: 64, alignItems: 'center' }]}>
                       <View style={styles.avatarRing}>
-                        {ownerAvatar ? (
-                          <Image
-                            source={{ uri: ownerAvatar }}
-                            style={styles.avatarImg}
-                            contentFit="cover"
-                            transition={0}
-                          />
-                        ) : ownerName ? (
-                          <View style={styles.avatarFallback}>
-                            <Text style={styles.avatarInitials}>{initialsLabel(ownerName)}</Text>
-                          </View>
-                        ) : (
-                          <View style={styles.avatarFallback}>
-                            <Ionicons name="person" size={16} color={'rgba(13,17,28,0.65)'} />
-                          </View>
-                        )}
+                        <Image source={coverSource} style={styles.avatarImg} contentFit="cover" transition={0} />
                       </View>
                     </View>
 

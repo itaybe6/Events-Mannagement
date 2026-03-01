@@ -120,7 +120,6 @@ export default function AdminTabsLayout() {
         name="admin-profile"
         options={{
           title: "פרופיל",
-          headerShown: false,
           tabBarIcon: ({ focused }) => (
             <View style={styles.tabItem}>
               <View style={[styles.iconCircle, focused && styles.iconCircleActive]}>
