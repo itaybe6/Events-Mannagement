@@ -309,7 +309,7 @@ function RootLayoutNav() {
           // User signed out or token is invalid
           resetAuth();
           if (isMountedRef.current) {
-            router.replace('/login');
+            router.replace('/onboarding');
           }
         } else if (event === 'TOKEN_REFRESHED') {
           // Token was refreshed successfully, reinitialize (with timeout guard)
@@ -343,9 +343,12 @@ function RootLayoutNav() {
     if (initializing || loading) return;
 
     const isPublicInvitation = segments[0] === 'invitation' || segments[0] === 'i';
+    const isOnboarding = segments[0] === 'onboarding';
+    const isLogin = segments[0] === 'login';
+    const isIndex = segments[0] === 'index';
 
-    // אם המשתמש מחובר והוא בעמוד ההתחברות - העבר לקבוצת הטאבים לפי תפקיד
-    if (isLoggedIn && segments[0] === 'login') {
+    // אם המשתמש מחובר והוא בעמוד public (index/login/onboarding) - העבר לקבוצת הטאבים לפי תפקיד
+    if (isLoggedIn && (isLogin || isIndex || isOnboarding)) {
       const { userType } = useUserStore.getState();
       if (userType === 'admin') {
         router.replace('/(admin)/admin-events');
@@ -355,9 +358,11 @@ function RootLayoutNav() {
         router.replace('/(couple)');
       }
     }
-    // אם המשתמש לא מחובר ולא בעמוד ההתחברות - העבר להתחברות
-    else if (!isLoggedIn && segments[0] !== 'login' && !isPublicInvitation) {
-      router.replace('/login');
+    // אם המשתמש לא מחובר - ברירת מחדל היא onboarding (גם אחרי התנתקות).
+    // את login נציג רק אם המשתמש כבר נמצא שם (למשל אחרי לחיצה על הכפתור ב-onboarding).
+    else if (!isLoggedIn && !isPublicInvitation) {
+      if (isOnboarding || isLogin) return;
+      router.replace('/onboarding');
     }
   }, [isLoggedIn, segments, initializing, loading]);
 
@@ -402,8 +407,10 @@ function RootLayoutNav() {
       screenOptions={{
         headerBackTitle: "חזרה",
       }}
-      initialRouteName="login"
+      initialRouteName="index"
     >
+      <Stack.Screen name="index" options={{ headerShown: false }} />
+      <Stack.Screen name="onboarding" options={{ headerShown: false }} />
       <Stack.Screen name="login" options={{ headerShown: false }} />
       {/* Legacy mixed tabs kept for backward compatibility */}
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />

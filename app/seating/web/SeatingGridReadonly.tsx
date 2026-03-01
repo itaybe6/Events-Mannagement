@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Rect } from 'react-native-svg';
 import { CELL_SIZE, TABLE_LABELS, clamp, tableCellSize, type Orientation, type TableType } from './_types';
+import { colors } from '@/constants/colors';
 
 function hexToRgba(hex: string, alpha: number) {
   const raw = String(hex || '').trim().replace('#', '');
@@ -386,7 +387,7 @@ export function SeatingGridReadonly({
                     <Text
                       style={[
                         styles.tableName,
-                        isWeb && onDarkWeb ? styles.tableTextOnDark : null,
+                        isWeb && onDarkWeb ? styles.tableNameOnDark : null,
                       ]}
                       numberOfLines={2}
                     >
@@ -484,7 +485,8 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 10 },
   },
   tableNum: { fontSize: 18, fontWeight: '900' },
-  tableName: { marginTop: 3, fontSize: 12, fontWeight: '900', color: 'rgba(51,65,85,0.55)', textAlign: 'center' },
+  tableName: { marginTop: 3, fontSize: 12, fontWeight: '900', color: colors.gold, textAlign: 'center' },
+  tableNameOnDark: { color: colors.gold },
   tableType: { marginTop: 2, fontSize: 11, fontWeight: '800', color: 'rgba(51,65,85,0.55)' },
   tableSub: { marginTop: 3, fontSize: 12, fontWeight: '900', color: 'rgba(51,65,85,0.55)' },
   tableSubSelected: { color: 'rgba(180,83,9,0.78)' },

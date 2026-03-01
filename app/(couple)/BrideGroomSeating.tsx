@@ -103,6 +103,20 @@ export default function BrideGroomSeating() {
     return status !== 'לא מגיע';
   };
 
+  const getGuestStatusTone = (statusRaw: any) => {
+    const status = String(statusRaw ?? '').trim();
+    if (status === 'מגיע') {
+      return { bg: 'rgba(76,175,80,0.12)', border: 'rgba(76,175,80,0.35)', text: 'rgba(46,125,50,1)', label: status };
+    }
+    if (status === 'לא מגיע') {
+      return { bg: 'rgba(244,67,54,0.10)', border: 'rgba(244,67,54,0.35)', text: 'rgba(183,28,28,1)', label: status };
+    }
+    if (status === 'ממתין') {
+      return { bg: 'rgba(240,203,70,0.18)', border: 'rgba(204,160,0,0.35)', text: colors.gold, label: status };
+    }
+    return { bg: 'rgba(15,23,42,0.05)', border: 'rgba(15,23,42,0.10)', text: colors.textLight, label: status || '—' };
+  };
+
   const showSuccess = useCallback((title: string, message: string) => {
     if (successTimerRef.current) clearTimeout(successTimerRef.current);
     setSuccessTitle(title);
@@ -313,7 +327,7 @@ export default function BrideGroomSeating() {
     // Reset filters and view
     setTableModalView('seated');
     setSearchQueryTable('');
-    const unseated = guests.filter((g) => isGuestSeatable(g) && !g.table_id);
+    const unseated = guests.filter((g) => !g.table_id);
     const categories = ['הכל', ...Array.from(new Set(unseated.map(g => g.guest_categories?.name || 'ללא קטגוריה')))];
     setCategoriesForTable(categories);
     setCategoryFilterTable('הכל');
@@ -971,7 +985,7 @@ export default function BrideGroomSeating() {
   }, [guests, tables]);
 
   // Keep these hooks ABOVE early returns (loading / no event) to preserve hook order.
-  const unseatedGuestsList = guests.filter((g) => isGuestSeatable(g) && !g.table_id);
+  const unseatedGuestsList = guests.filter((g) => !g.table_id);
 
   // (dashboardStats removed: this screen is map-only)
 
@@ -1391,6 +1405,7 @@ export default function BrideGroomSeating() {
                   renderItem={({ item }) => {
                     const id = String(item.id);
                     const selected = selectedSeatedGuestsToRemove.has(id);
+                    const tone = getGuestStatusTone(item?.status);
                     return (
                       <TouchableOpacity
                         style={[
@@ -1404,13 +1419,20 @@ export default function BrideGroomSeating() {
                           toggleSeatedGuestRemovalSelection(id);
                         }}
                       >
-                        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 }}>
-                          <Text style={[styles.guestName, { fontSize: 14, flex: 1 }]} numberOfLines={1}>
+                        <View style={styles.guestCardTopRow}>
+                          <Text style={styles.guestName} numberOfLines={1}>
                             {item.name}
                           </Text>
-                          <View style={[styles.peopleCountBadge, { marginLeft: 4 }]}>
+
+                          <View style={[styles.guestStatusPill, { backgroundColor: tone.bg, borderColor: tone.border }]}>
+                            <Text style={[styles.guestStatusText, { color: tone.text }]} numberOfLines={1}>
+                              {tone.label}
+                            </Text>
+                          </View>
+
+                          <View style={styles.peopleCountBadge}>
                             <Ionicons name="person" size={10} color={colors.richBlack} />
-                            <Text style={[styles.peopleCountText, { fontSize: 10 }]}>{item.numberOfPeople || 1}</Text>
+                            <Text style={styles.peopleCountText}>{item.numberOfPeople || 1}</Text>
                           </View>
                         </View>
 
@@ -1490,29 +1512,56 @@ export default function BrideGroomSeating() {
                   keyExtractor={(item) => item.id.toString()}
                   numColumns={2}
                   columnWrapperStyle={{ justifyContent: 'space-between' }}
-                  renderItem={({ item }) => (
-                    <TouchableOpacity
-                      style={styles.selectableGuestItem}
-                      onPress={() => handleToggleGuestSelection(item.id)}
-                    >
-                      <View style={{flexDirection: 'row', alignItems: 'center', flex: 1}}>
-                        <Text style={[styles.guestName, {fontSize: 14, flex: 1}]} numberOfLines={1}>{item.name}</Text>
-                        <View style={[styles.peopleCountBadge, {marginLeft: 4}]}>
-                            <Ionicons name="person" size={10} color={colors.richBlack} />
-                            <Text style={[styles.peopleCountText, {fontSize: 10}]}>{item.numberOfPeople || 1}</Text>
+                  renderItem={({ item }) => {
+                    const id = String(item?.id ?? '');
+                    const seatable = isGuestSeatable(item);
+                    const tone = getGuestStatusTone(item?.status);
+                    const selected = selectedGuestsToAdd.has(id);
+
+                    return (
+                      <TouchableOpacity
+                        style={[
+                          styles.selectableGuestItem,
+                          selected && styles.selectableGuestItemSelected,
+                          !seatable && styles.selectableGuestItemDisabled,
+                        ]}
+                        onPress={() => {
+                          if (!seatable) return;
+                          handleToggleGuestSelection(item.id);
+                        }}
+                        activeOpacity={seatable ? 0.85 : 1}
+                      >
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <View style={styles.guestCardTopRow}>
+                            <Text style={styles.guestName} numberOfLines={1}>
+                              {item.name}
+                            </Text>
+
+                            <View style={[styles.guestStatusPill, { backgroundColor: tone.bg, borderColor: tone.border }]}>
+                              <Text style={[styles.guestStatusText, { color: tone.text }]} numberOfLines={1}>
+                                {tone.label}
+                              </Text>
+                            </View>
+
+                            <View style={styles.peopleCountBadge}>
+                              <Ionicons name="person" size={10} color={colors.richBlack} />
+                              <Text style={styles.peopleCountText}>{item.numberOfPeople || 1}</Text>
+                            </View>
+                          </View>
                         </View>
-                      </View>
-                      <Ionicons
-                        name={selectedGuestsToAdd.has(item.id) ? "checkbox" : "square-outline"}
-                        size={20}
-                        color={selectedGuestsToAdd.has(item.id) ? colors.primary : colors.gray[300]}
-                        style={{marginLeft: 4}}
-                      />
-                    </TouchableOpacity>
-                  )}
+
+                        <Ionicons
+                          name={selected ? 'checkbox' : 'square-outline'}
+                          size={20}
+                          color={!seatable ? colors.gray[300] : selected ? colors.primary : colors.gray[300]}
+                          style={{ marginLeft: 4 }}
+                        />
+                      </TouchableOpacity>
+                    );
+                  }}
                   nestedScrollEnabled
                   style={{ flex: 1 }}
-                  ListEmptyComponent={<Text style={styles.emptyListText}>כל האורחים שניתן להושיב כבר הושבו</Text>}
+                  ListEmptyComponent={<Text style={styles.emptyListText}>אין אורחים לא משובצים</Text>}
                 />
                 
                 <TouchableOpacity
@@ -1853,10 +1902,7 @@ function MobileSeatingMap({
                   <Text style={[styles.mobileTableNum, { color: textColor }]}>{t.number ?? ''}</Text>
                   {tableName ? (
                     <Text
-                      style={[
-                        styles.mobileTableName,
-                        { color: isOver || isFull ? textColor : isReserve ? base : 'rgba(255,255,255,0.92)' },
-                      ]}
+                      style={styles.mobileTableName}
                       numberOfLines={2}
                     >
                       {tableName}
@@ -2043,7 +2089,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   mobileTableNum: { fontSize: 20, fontWeight: '900' },
-  mobileTableName: { marginTop: 3, fontSize: 13, fontWeight: '900', textAlign: 'center', paddingHorizontal: 4 },
+  mobileTableName: { marginTop: 3, fontSize: 13, fontWeight: '900', textAlign: 'center', paddingHorizontal: 4, color: colors.gold },
   mobileTableSub: { marginTop: 3, fontSize: 13, fontWeight: '900', color: 'rgba(17,24,39,0.78)' },
   mobileZone: {
     position: 'absolute',
@@ -2117,7 +2163,7 @@ const styles = StyleSheet.create({
   tableName: { fontWeight: 'bold', fontSize: 18, color: colors.text },
   tableCustomName: {
     fontSize: 12,
-    color: colors.textLight,
+    color: colors.gold,
     marginTop: 2,
   },
   tableCap: { fontSize: 15, color: colors.textLight },
@@ -2448,11 +2494,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     backgroundColor: colors.gray[100],
-    borderRadius: 12,
-    marginBottom: 8,
+    borderRadius: 10,
+    marginBottom: 6,
     marginHorizontal: 4,
     borderWidth: 1,
     borderColor: colors.gray[200],
@@ -2463,15 +2509,40 @@ const styles = StyleSheet.create({
     elevation: 2,
     width: '47%',
   },
+  selectableGuestItemSelected: {
+    backgroundColor: 'rgba(43,140,238,0.06)',
+    borderColor: 'rgba(43,140,238,0.30)',
+  },
+  selectableGuestItemDisabled: {
+    opacity: 0.55,
+  },
+  guestCardTopRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+  },
+  guestStatusPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    borderWidth: 1,
+    maxWidth: 92,
+  },
+  guestStatusText: {
+    fontSize: 10,
+    fontWeight: '800',
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
   seatedGuestItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     backgroundColor: colors.gray[100],
-    borderRadius: 12,
-    marginBottom: 8,
+    borderRadius: 10,
+    marginBottom: 6,
     marginHorizontal: 4,
     borderWidth: 1,
     borderColor: colors.gray[200],
@@ -2637,15 +2708,14 @@ const styles = StyleSheet.create({
   peopleCountBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.gray[300],
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    marginLeft: 10,
+    backgroundColor: 'rgba(15,23,42,0.06)',
+    borderRadius: 999,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
   },
   peopleCountText: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 10,
+    fontWeight: '900',
     color: colors.richBlack,
     marginLeft: 4,
   },

@@ -185,7 +185,7 @@ export default function TablesList() {
   };
 
   const getUnseatedGuests = () => {
-    return guests.filter(guest => guest.status === 'מגיע' && !guest.table_id);
+    return guests.filter(guest => !guest.table_id);
   };
 
   const handleToggleGuestSelection = (guestId: string) => {
@@ -712,7 +712,14 @@ export default function TablesList() {
               keyExtractor={(item) => item.id.toString()}
               numColumns={2}
               columnWrapperStyle={{ justifyContent: 'space-between' }}
-              renderItem={({ item }) => (
+              renderItem={({ item }) => {
+                const status = item.status || 'ממתין';
+                const statusConfig = status === 'מגיע'
+                  ? { icon: 'checkmark-circle' as const, color: '#4CAF50', label: 'מגיע' }
+                  : status === 'לא מגיע'
+                    ? { icon: 'close-circle' as const, color: '#F44336', label: 'לא מגיע' }
+                    : { icon: 'time-outline' as const, color: '#F59E0B', label: 'ממתין' };
+                return (
                 <TouchableOpacity
                   style={styles.selectableGuestItem}
                   onPress={() => handleToggleGuestSelection(item.id)}
@@ -725,6 +732,10 @@ export default function TablesList() {
                         {item.guest_categories.name}
                       </Text>
                     )}
+                    <View style={[styles.statusBadge, { backgroundColor: statusConfig.color + '20' }]}>
+                      <Ionicons name={statusConfig.icon} size={12} color={statusConfig.color} />
+                      <Text style={[styles.statusBadgeText, { color: statusConfig.color }]}>{statusConfig.label}</Text>
+                    </View>
                     {item.numberOfPeople > 1 && (
                       <View style={styles.peopleCountBadge}>
                         <Ionicons name="people" size={12} color="#6B7280" />
@@ -741,11 +752,12 @@ export default function TablesList() {
                     )}
                   </View>
                 </TouchableOpacity>
-              )}
+                );
+              }}
               style={{ flex: 1, marginTop: 16 }}
               ListEmptyComponent={
                 <Text style={styles.emptyText}>
-                  כל האורחים שהגיעו כבר הושבו
+                  אין אורחים ללא שולחן
                 </Text>
               }
             />
@@ -1329,6 +1341,20 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     marginTop: 2,
     textAlign: 'right',
+  },
+  statusBadge: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    alignSelf: 'flex-end',
+    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginTop: 4,
+  },
+  statusBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
   },
   checkbox: {
     width: 22,

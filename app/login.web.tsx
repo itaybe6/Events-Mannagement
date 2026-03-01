@@ -50,8 +50,8 @@ export default function LoginWebScreen() {
 
   const theme = useMemo(
     () => ({
-      primary: '#11224D',
-      primaryLight: '#0B1630',
+      primary: '#010c21',
+      primaryLight: '#010c21',
       accent: '#C6A85B',
       bgLight: '#F0F4F8',
       bgDark: '#121620',

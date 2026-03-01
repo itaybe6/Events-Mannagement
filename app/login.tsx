@@ -25,7 +25,7 @@ import Svg, { Path } from 'react-native-svg';
 
 const { height } = Dimensions.get('window');
 
-const NAVY_DEEP = '#0B1F3A';
+const NAVY_DEEP = '#010c21';
 
 function RingsHeroIcon() {
   return (

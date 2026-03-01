@@ -40,6 +40,15 @@ export default function GuestsScreen() {
         ''
     ).trim() || null;
 
+  const [eventTitle, setEventTitle] = useState<string>('');
+  const isWeddingEvent = React.useMemo(() => {
+    const t = String(eventTitle ?? '').trim();
+    if (!t) return false;
+    const parts = t.split(/(?:\s*[–—-]\s*)/g).map((p: string) => p.trim()).filter(Boolean);
+    const label = parts[0] || t;
+    return label === 'חתונה' || t.includes('חתונה');
+  }, [eventTitle]);
+
   const handleSelectEventId = (nextEventId: string) => {
     if (userData?.id) setActiveEvent(userData.id, nextEventId);
     router.replace({ pathname: './', params: { eventId: nextEventId } });
@@ -54,16 +63,21 @@ export default function GuestsScreen() {
     if (!resolvedEventId) {
       setGuests([]);
       setCategories([]);
+      setEventTitle('');
       return;
     }
 
     if (userData?.id) setActiveEvent(userData.id, resolvedEventId);
 
-    // טען אורחים וקטגוריות לאירוע הנבחר
+    // טען אורחים, קטגוריות ופרטי אירוע (לבדיקת סוג אירוע)
     const fetchGuestsAndCategories = async () => {
       if (resolvedEventId) {
-        const data = await guestService.getGuests(resolvedEventId);
-        setGuests(data);
+        const [guestsData, event] = await Promise.all([
+          guestService.getGuests(resolvedEventId),
+          eventService.getEvent(resolvedEventId),
+        ]);
+        setGuests(guestsData);
+        setEventTitle(event?.title ?? '');
         await loadCategories(resolvedEventId);
       }
     };
@@ -75,8 +89,12 @@ export default function GuestsScreen() {
     React.useCallback(() => {
       if (resolvedEventId) {
         const reloadGuests = async () => {
-          const data = await guestService.getGuests(resolvedEventId);
-          setGuests(data);
+          const [guestsData, event] = await Promise.all([
+            guestService.getGuests(resolvedEventId),
+            eventService.getEvent(resolvedEventId),
+          ]);
+          setGuests(guestsData);
+          setEventTitle(event?.title ?? '');
           await loadCategories(resolvedEventId);
         };
         reloadGuests();
@@ -176,16 +194,21 @@ export default function GuestsScreen() {
     }
   }, [resolvedEventId]);
 
-  // אורחים מסוננים לפי כל הפילטרים
+  useEffect(() => {
+    if (!isWeddingEvent) setSideFilter(null);
+  }, [isWeddingEvent]);
+
+  // אורחים מסוננים לפי כל הפילטרים (סינון לפי צד רק בחתונות)
+  const effectiveSideFilter = isWeddingEvent ? sideFilter : null;
   const filteredGuests = guests.filter(guest => {
     const matchesSearch = guest.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          guest.phone.includes(searchQuery);
     const matchesStatus = statusFilter ? guest.status === statusFilter : true;
     
-    // סינון לפי צד
+    // סינון לפי צד – רק באירוע חתונה
     let matchesSide = true;
-    if (sideFilter) {
-      const sideCategories = getCategoriesBySide(sideFilter);
+    if (effectiveSideFilter) {
+      const sideCategories = getCategoriesBySide(effectiveSideFilter);
       const sideCategoryIds = sideCategories.map(cat => cat.id);
       matchesSide = sideCategoryIds.includes(guest.category_id);
     }
@@ -208,7 +231,7 @@ export default function GuestsScreen() {
     pending: guests.filter(g => g.status === 'ממתין').reduce((sum, guest) => sum + (guest.numberOfPeople || 1), 0),
   };
 
-  const hasFilters = Boolean(statusFilter || sideFilter);
+  const hasFilters = Boolean(statusFilter || effectiveSideFilter);
   const importContacts = async () => {
     try {
       if (!resolvedEventId) return;
@@ -506,6 +529,7 @@ export default function GuestsScreen() {
                   </View>
                 </View>
 
+                {isWeddingEvent && (
                 <View style={{ marginTop: 18 }}>
                   <Text style={styles.filterSectionTitleApple}>צד</Text>
                   <View style={styles.filterSideStack}>
@@ -546,6 +570,7 @@ export default function GuestsScreen() {
                     })}
                   </View>
                 </View>
+                )}
 
                 {/* bottom padding so content doesn't hide behind action bar */}
                 <View style={{ height: 120 }} />
@@ -683,7 +708,7 @@ export default function GuestsScreen() {
       >
         {categories.length > 0 ? (
           categories
-            .filter(cat => !sideFilter || cat.side === sideFilter) // סינון קטגוריות לפי צד
+            .filter(cat => !effectiveSideFilter || cat.side === effectiveSideFilter) // סינון קטגוריות לפי צד (רק בחתונה)
             .map(cat => {
             const guestsInCat = filteredGuests.filter(g => g.category_id === cat.id);
             return (
@@ -829,55 +854,76 @@ export default function GuestsScreen() {
       onRequestClose={() => setEditModalVisible(false)}
     >
       <KeyboardAvoidingView 
-        style={styles.modalContainer} 
+        style={styles.editModalOverlay} 
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        <View style={styles.modalContent}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>עריכת אורח</Text>
-            <TouchableOpacity 
-              onPress={() => {
-                setEditModalVisible(false);
-                setSelectedGuest(null);
-                setEditGuestName('');
-                setEditGuestPhone('');
-                setEditGuestStatus('ממתין');
-                setEditGuestPeopleCount('1');
-              }}
-              style={styles.closeButton}
-            >
-              <Text>
-                <Ionicons name="close" size={24} color={colors.text} />
-              </Text>
-            </TouchableOpacity>
-          </View>
+        <Pressable style={styles.editModalBackdrop} onPress={() => setEditModalVisible(false)} />
+        <Pressable onPress={() => {}} style={styles.editModalSheet}>
+          <BlurView intensity={20} tint="light" style={styles.editModalBlur} />
+          <View style={styles.editModalContent}>
+            <View style={styles.editModalHeader}>
+              <View style={styles.editModalHeaderCenter}>
+                <View style={styles.editModalTitleRow}>
+                  <View style={styles.editModalIconWrap}>
+                    <Text>
+                      <Ionicons name="person-circle" size={24} color={stylesApple.primary} />
+                    </Text>
+                  </View>
+                  <Text style={styles.editModalTitle}>עריכת אורח</Text>
+                </View>
+                {selectedGuest && (
+                  <Text style={styles.editModalSubtitle} numberOfLines={1}>
+                    {selectedGuest.name}
+                  </Text>
+                )}
+              </View>
+              <TouchableOpacity 
+                onPress={() => {
+                  setEditModalVisible(false);
+                  setSelectedGuest(null);
+                  setEditGuestName('');
+                  setEditGuestPhone('');
+                  setEditGuestStatus('ממתין');
+                  setEditGuestPeopleCount('1');
+                }}
+                style={styles.editModalCloseBtn}
+                accessibilityRole="button"
+                accessibilityLabel="סגור"
+              >
+                <Text>
+                  <Ionicons name="close" size={22} color={stylesApple.textMuted} />
+                </Text>
+              </TouchableOpacity>
+            </View>
           
           <ScrollView style={styles.editForm} showsVerticalScrollIndicator={false}>
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>שם:</Text>
+            <View style={styles.editInputGroup}>
+              <Text style={styles.editInputLabel}>שם</Text>
               <TextInput
-                style={styles.editInput}
+                style={styles.editInputField}
                 value={editGuestName}
                 onChangeText={setEditGuestName}
                 placeholder="הזן שם"
+                placeholderTextColor={stylesApple.textMuted}
                 textAlign="right"
               />
             </View>
             
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>טלפון:</Text>
+            <View style={styles.editInputGroup}>
+              <Text style={styles.editInputLabel}>טלפון</Text>
               <TextInput
-                style={styles.editInput}
+                style={styles.editInputField}
                 value={editGuestPhone}
                 onChangeText={setEditGuestPhone}
                 placeholder="הזן מספר טלפון"
+                placeholderTextColor={stylesApple.textMuted}
                 textAlign="right"
                 keyboardType="phone-pad"
               />
             </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>סטטוס:</Text>
+            <View style={styles.editInputGroup}>
+              <Text style={styles.editInputLabel}>סטטוס</Text>
               <View style={styles.statusSelector}>
                 <TouchableOpacity
                   style={[styles.statusOption, editGuestStatus === 'ממתין' && styles.statusOptionActive]}
@@ -921,41 +967,53 @@ export default function GuestsScreen() {
               </View>
             </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>מספר אנשים:</Text>
+            <View style={styles.editInputGroup}>
+              <Text style={styles.editInputLabel}>מספר אנשים</Text>
               <TextInput
-                style={styles.editInput}
+                style={styles.editInputField}
                 value={editGuestPeopleCount}
                 onChangeText={setEditGuestPeopleCount}
                 placeholder="הזן מספר אנשים"
+                placeholderTextColor={stylesApple.textMuted}
                 textAlign="right"
                 keyboardType="numeric"
               />
             </View>
           </ScrollView>
           
-          <View style={styles.modalActions}>
+          <View style={styles.editModalActions}>
             <TouchableOpacity 
-              style={[styles.actionButton, styles.deleteButton]} 
+              style={[styles.editActionButton, styles.editDeleteButton]} 
               onPress={handleDeleteGuest}
+              accessibilityRole="button"
+              accessibilityLabel="מחק אורח"
             >
               <Text>
-                <Ionicons name="trash" size={20} color={colors.white} />
+                <Ionicons name="trash-outline" size={20} color={colors.white} />
               </Text>
-              <Text style={styles.deleteButtonText}>מחק</Text>
+              <Text style={styles.editActionButtonText}>מחק</Text>
             </TouchableOpacity>
             
             <TouchableOpacity 
-              style={[styles.actionButton, styles.saveButton]} 
+              style={[styles.editActionButton, styles.editSaveButton]} 
               onPress={handleEditGuest}
+              accessibilityRole="button"
+              accessibilityLabel="שמור שינויים"
             >
+              <LinearGradient
+                colors={[colors.primary, colors.oxfordBlue]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.editSaveButtonBg}
+              />
               <Text>
-                <Ionicons name="checkmark" size={20} color={colors.white} />
+                <Ionicons name="checkmark-circle" size={20} color={colors.white} />
               </Text>
-              <Text style={styles.saveButtonText}>שמור</Text>
+              <Text style={styles.editActionButtonText}>שמור</Text>
             </TouchableOpacity>
           </View>
-        </View>
+          </View>
+        </Pressable>
       </KeyboardAvoidingView>
     </Modal>
 
@@ -1381,6 +1439,124 @@ const styles = StyleSheet.create({
     maxHeight: '60%',
     minHeight: 300,
   },
+  editModalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  editModalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+  },
+  editModalSheet: {
+    position: 'relative',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    overflow: 'hidden',
+    maxHeight: '75%',
+    minHeight: 380,
+    shadowColor: colors.black,
+    shadowOpacity: 0.2,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: -8 },
+    elevation: 16,
+  },
+  editModalBlur: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: stylesApple.backgroundLight,
+  },
+  editModalContent: {
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    overflow: 'hidden',
+  },
+  editModalHeader: {
+    flexDirection: 'row-reverse',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0, 0, 0, 0.06)',
+  },
+  editModalHeaderCenter: {
+    flex: 1,
+    alignItems: 'flex-end',
+    marginLeft: 12,
+  },
+  editModalTitleRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 10,
+  },
+  editModalIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: stylesApple.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editModalTitle: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: stylesApple.text,
+    letterSpacing: -0.3,
+  },
+  editModalSubtitle: {
+    fontSize: 14,
+    color: stylesApple.textMuted,
+    marginTop: 4,
+    fontWeight: '600',
+  },
+  editModalCloseBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editModalActions: {
+    flexDirection: 'row-reverse',
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: Platform.OS === 'ios' ? 28 : 20,
+    gap: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0, 0, 0, 0.06)',
+    backgroundColor: 'rgba(255, 255, 255, 0.7)',
+  },
+  editActionButton: {
+    flex: 1,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  editDeleteButton: {
+    backgroundColor: colors.error,
+  },
+  editSaveButton: {
+    position: 'relative',
+    shadowColor: colors.primary,
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
+  },
+  editSaveButtonBg: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  editActionButtonText: {
+    color: colors.white,
+    fontSize: 16,
+    fontWeight: '800',
+    marginRight: 8,
+  },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1783,8 +1959,31 @@ const styles = StyleSheet.create({
   },
   editForm: {
     paddingHorizontal: 20,
-    paddingBottom: 20,
+    paddingTop: 20,
+    paddingBottom: 24,
     flexGrow: 0,
+  },
+  editInputGroup: {
+    marginBottom: 18,
+  },
+  editInputLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: stylesApple.textMuted,
+    marginBottom: 8,
+    textAlign: 'right',
+    letterSpacing: -0.1,
+  },
+  editInputField: {
+    borderWidth: 1,
+    borderColor: 'rgba(0, 0, 0, 0.08)',
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
+    color: stylesApple.text,
+    backgroundColor: stylesApple.surfaceLight,
+    textAlign: 'right',
   },
   inputGroup: {
     marginBottom: 16,
