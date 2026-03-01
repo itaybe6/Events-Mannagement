@@ -21,6 +21,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { guestService } from '@/lib/services/guestService';
 import { eventService } from '@/lib/services/eventService';
 import { useLayoutStore } from '@/store/layoutStore';
+import { colors } from '@/constants/colors';
 
 type Side = 'groom' | 'bride';
 type SideFilter = 'all' | Side | 'other';
@@ -253,33 +254,31 @@ export default function SelectCategoryScreen() {
 
       {/* ─── header ───────────────────────────────────── */}
       <View style={[styles.header, { paddingTop: Math.max(14, insets.top + 10) }]}>
+        {/* כפתור חזרה - View עוטף עם העיצוב (NativeWind דורס style על Pressable) */}
         <Pressable
           onPress={goBack}
           accessibilityRole="button"
           accessibilityLabel="חזרה"
-          style={({ pressed }) => [styles.backBtn, pressed && { opacity: 0.70 }]}
+          style={({ pressed }) => ({ opacity: pressed ? 0.70 : 1 })}
         >
-          <Ionicons name="chevron-back" size={16} color={NAVY} />
-          <Text style={[styles.backBtnText, isDark && styles.backBtnTextDark]}>חזרה</Text>
+          <View style={styles.headerBackBtn}>
+            <Ionicons name="chevron-back" size={16} color={NAVY} />
+            <Text style={styles.headerBackBtnText}>חזרה</Text>
+          </View>
         </Pressable>
 
         <Text style={[styles.headerTitle, isDark && styles.headerTitleDark]}>בחירת קטגוריה</Text>
 
+        {/* כפתור הבא - View עוטף עם העיצוב (NativeWind דורס style על Pressable) */}
         <Pressable
           onPress={handleNext}
           disabled={isNextDisabled}
           accessibilityRole="button"
           accessibilityLabel="הבא"
-          style={({ pressed }) => [
-            styles.nextTopBtn,
-            isNextDisabled && styles.nextTopBtnDisabled,
-            !isNextDisabled && pressed && { opacity: 0.78 },
-          ]}
+          style={({ pressed }) => ({ opacity: !isNextDisabled && pressed ? 0.78 : 1 })}
         >
-          <View style={styles.nextTopBtnContent}>
-            <Text style={[styles.nextTopBtnText, isNextDisabled && styles.nextTopBtnTextDisabled]}>
-              {saving ? 'שומר...' : 'הבא'}
-            </Text>
+          <View style={[styles.headerNextBtn, isNextDisabled && styles.headerNextBtnDisabled]}>
+            <Text style={styles.headerNextBtnText}>{saving ? 'שומר...' : 'הבא'}</Text>
             <Ionicons name="chevron-forward" size={16} color="#fff" />
           </View>
         </Pressable>
@@ -557,17 +556,18 @@ const styles = StyleSheet.create({
   headerTitleDark: {
     color: TEXT_DARK,
   },
-  backBtn: {
+  /* כפתורי header - העיצוב על View (NativeWind דורס style על Pressable) */
+  headerBackBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
     paddingHorizontal: 14,
     paddingVertical: 9,
     zIndex: 2,
-    borderRadius: 14,
+    borderRadius: 999,
     backgroundColor: '#FFFFFF',
-    borderWidth: 1.5,
-    borderColor: '#CBD5E1',
+    borderWidth: 2,
+    borderColor: 'rgba(29,78,216,0.40)',
     ...(Platform.OS === 'web'
       ? ({ boxShadow: '0 2px 10px rgba(0,0,0,0.10)' } as any)
       : {
@@ -578,54 +578,44 @@ const styles = StyleSheet.create({
           elevation: 3,
         }),
   },
-  backBtnText: {
+  headerBackBtnText: {
     fontSize: 14,
     fontWeight: '800',
     color: NAVY,
   },
-  backBtnTextDark: {
-    color: TEXT_DARK,
-  },
-  nextTopBtn: {
+  headerNextBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     paddingHorizontal: 16,
     paddingVertical: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
     zIndex: 2,
-    borderRadius: 14,
-    backgroundColor: PRIMARY,
-    borderWidth: 1.5,
-    borderColor: '#1E40AF',
+    borderRadius: 999,
+    backgroundColor: colors.primary,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.4)',
     ...(Platform.OS === 'web'
-      ? ({ boxShadow: '0 3px 12px rgba(29,78,216,0.40)' } as any)
+      ? ({ boxShadow: '0 3px 12px rgba(6,23,62,0.45)' } as any)
       : {
-          shadowColor: PRIMARY,
+          shadowColor: colors.primary,
           shadowOpacity: 0.38,
           shadowRadius: 12,
           shadowOffset: { width: 0, height: 5 },
           elevation: 6,
         }),
   },
-  nextTopBtnDisabled: {
+  headerNextBtnDisabled: {
     backgroundColor: '#94A3B8',
     borderColor: '#94A3B8',
     ...(Platform.OS === 'web'
       ? ({ boxShadow: 'none' } as any)
       : { shadowOpacity: 0, elevation: 0 }),
   },
-  nextTopBtnContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  nextTopBtnText: {
+  headerNextBtnText: {
     fontSize: 14,
     fontWeight: '800',
     color: '#FFFFFF',
     letterSpacing: 0.3,
-  },
-  nextTopBtnTextDisabled: {
-    color: 'rgba(255,255,255,0.80)',
   },
 
   /* segment */

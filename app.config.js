@@ -15,7 +15,7 @@ module.exports = {
     // If you want only specific screens to rotate, lock/unlock at runtime via expo-screen-orientation,
     // but the app must still support the orientations at build time.
     orientation: "default",
-    icon: "./assets/images/icon.png",
+    icon: "./assets/images/icon.jpg",
     scheme: "myapp",
     userInterfaceStyle: "automatic",
     newArchEnabled: true,
@@ -26,11 +26,12 @@ module.exports = {
     },
     ios: {
       supportsTablet: true,
-      bundleIdentifier: "app.rork.euroe-nitgmal-eiroom-mekapim"
+      bundleIdentifier: "app.rork.euroe-nitgmal-eiroom-mekapim",
+      icon: "./assets/images/icon.jpg"
     },
     android: {
       adaptiveIcon: {
-        foregroundImage: "./assets/images/adaptive-icon.png",
+        foregroundImage: "./assets/images/icon.jpg",
         backgroundColor: "#ffffff"
       },
       package: "app.rork.euroe-nitgmal-eiroom-mekapim"
@@ -47,7 +48,9 @@ module.exports = {
           origin: "https://rork.com/"
         }
       ],
-      ["expo-contacts"]
+      ["expo-contacts"],
+      "@react-native-community/datetimepicker",
+      "expo-web-browser"
     ],
     experiments: {
       typedRoutes: true

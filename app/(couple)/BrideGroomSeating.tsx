@@ -97,6 +97,12 @@ export default function BrideGroomSeating() {
   const [successMessage, setSuccessMessage] = useState('');
   const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const isGuestSeatable = (g: any) => {
+    const status = String(g?.status ?? '').trim();
+    // Allow seating for all statuses except explicit "not coming".
+    return status !== 'לא מגיע';
+  };
+
   const showSuccess = useCallback((title: string, message: string) => {
     if (successTimerRef.current) clearTimeout(successTimerRef.current);
     setSuccessTitle(title);
@@ -307,7 +313,7 @@ export default function BrideGroomSeating() {
     // Reset filters and view
     setTableModalView('seated');
     setSearchQueryTable('');
-    const unseated = guests.filter(g => g.status === 'מגיע' && !g.table_id);
+    const unseated = guests.filter((g) => isGuestSeatable(g) && !g.table_id);
     const categories = ['הכל', ...Array.from(new Set(unseated.map(g => g.guest_categories?.name || 'ללא קטגוריה')))];
     setCategoriesForTable(categories);
     setCategoryFilterTable('הכל');
@@ -965,7 +971,7 @@ export default function BrideGroomSeating() {
   }, [guests, tables]);
 
   // Keep these hooks ABOVE early returns (loading / no event) to preserve hook order.
-  const unseatedGuestsList = guests.filter((g) => g.status === 'מגיע' && !g.table_id);
+  const unseatedGuestsList = guests.filter((g) => isGuestSeatable(g) && !g.table_id);
 
   // (dashboardStats removed: this screen is map-only)
 
@@ -1506,7 +1512,7 @@ export default function BrideGroomSeating() {
                   )}
                   nestedScrollEnabled
                   style={{ flex: 1 }}
-                  ListEmptyComponent={<Text style={styles.emptyListText}>כל האורחים שהגיעו כבר הושבו</Text>}
+                  ListEmptyComponent={<Text style={styles.emptyListText}>כל האורחים שניתן להושיב כבר הושבו</Text>}
                 />
                 
                 <TouchableOpacity
