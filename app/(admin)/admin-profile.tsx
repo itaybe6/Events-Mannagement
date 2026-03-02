@@ -594,47 +594,52 @@ export default function AdminProfileScreen() {
         animationType="fade"
         onRequestClose={() => setLogoutModalOpen(false)}
       >
-        <Pressable style={styles.modalBackdrop} onPress={() => setLogoutModalOpen(false)}>
-          <Pressable style={styles.modalCard} onPress={() => {}} accessibilityRole="dialog">
-            <View style={styles.modalHeader}>
-              <View style={styles.modalIcon}>
-                <Ionicons name="log-out-outline" size={18} color="#FFFFFF" />
+        <Pressable style={styles.loBackdrop} onPress={() => setLogoutModalOpen(false)}>
+          <Pressable style={styles.loSheet} onPress={() => {}} accessibilityRole="dialog">
+
+            {/* אייקון מרכזי */}
+            <View style={styles.loIconWrap}>
+              <View style={styles.loIconRing}>
+                <Ionicons name="log-out-outline" size={26} color="#c62828" />
               </View>
-              <Text style={styles.modalTitle}>התנתקות</Text>
             </View>
 
-            <Text style={styles.modalText}>בטוח שברצונך להתנתק?</Text>
+            {/* כותרת + גוף */}
+            <Text style={styles.loTitle}>התנתקות</Text>
+            <Text style={styles.loBody}>בטוח שברצונך להתנתק?</Text>
 
-            <View style={styles.modalActions}>
-              <Pressable
-                onPress={() => setLogoutModalOpen(false)}
-                style={({ pressed }) => [styles.modalBtn, styles.modalCancelBtn, pressed && styles.modalBtnPressed]}
-                accessibilityRole="button"
-                accessibilityLabel="ביטול"
-              >
-                <Text style={styles.modalCancelText}>ביטול</Text>
-              </Pressable>
-
-              <Pressable
-                onPress={() => {
-                  setLogoutModalOpen(false);
-                  void performLogout();
-                }}
-                style={({ pressed }) => [styles.modalLogoutBtnWrap, pressed && styles.modalBtnPressed]}
-                accessibilityRole="button"
-                accessibilityLabel="התנתק"
-              >
-                <LinearGradient
-                  colors={["#e53935", "#c62828", "#b71c1c"]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.modalLogoutGradient}
+            {/* כפתורים - View חיצוני מכריח גובה (NativeWind דורס style על Pressable) */}
+            <View style={styles.loActions}>
+              <View style={styles.loBtnOuter}>
+                <Pressable
+                  onPress={() => setLogoutModalOpen(false)}
+                  style={({ pressed }) => ({ flex: 1, opacity: pressed ? 0.78 : 1 })}
+                  accessibilityRole="button"
+                  accessibilityLabel="ביטול"
                 >
-                  <Ionicons name="log-out-outline" size={20} color="#FFFFFF" />
-                  <Text style={styles.modalLogoutText}>התנתק</Text>
-                </LinearGradient>
-              </Pressable>
+                  <View style={styles.loCancelBtn}>
+                    <Text style={styles.loCancelText}>ביטול</Text>
+                  </View>
+                </Pressable>
+              </View>
+              <View style={styles.loBtnOuter}>
+                <Pressable
+                  onPress={() => {
+                    setLogoutModalOpen(false);
+                    void performLogout();
+                  }}
+                  style={({ pressed }) => ({ flex: 1, opacity: pressed ? 0.78 : 1 })}
+                  accessibilityRole="button"
+                  accessibilityLabel="התנתק"
+                >
+                  <View style={styles.loConfirmBtn}>
+                    <Ionicons name="log-out-outline" size={18} color="#FFFFFF" />
+                    <Text style={styles.loConfirmText}>התנתק</Text>
+                  </View>
+                </Pressable>
+              </View>
             </View>
+
           </Pressable>
         </Pressable>
       </Modal>
@@ -991,77 +996,103 @@ const styles = StyleSheet.create({
   },
   footerBtnPressed: { opacity: 0.88 },
 
-  modalBackdrop: {
+  loBackdrop: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.42)",
+    backgroundColor: "rgba(0,0,0,0.45)",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 16,
+    paddingHorizontal: 28,
   },
-  modalCard: {
+  loSheet: {
     width: "100%",
-    maxWidth: 420,
-    borderRadius: 22,
+    maxWidth: 360,
+    borderRadius: 28,
     backgroundColor: colors.white,
-    borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.08)",
-    padding: 16,
-    shadowColor: colors.black,
-    shadowOpacity: 0.18,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 10,
+    paddingHorizontal: 24,
+    paddingTop: 32,
+    paddingBottom: 24,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.15,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 12,
   },
-  modalHeader: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "flex-start", gap: 10 },
-  modalIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: "#c62828",
+  loIconWrap: {
+    marginBottom: 18,
+  },
+  loIconRing: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "rgba(198,40,40,0.08)",
+    borderWidth: 1.5,
+    borderColor: "rgba(198,40,40,0.18)",
     alignItems: "center",
     justifyContent: "center",
   },
-  modalTitle: { fontSize: 16, fontWeight: "900", color: ui.primary, textAlign: "right", writingDirection: "rtl", flex: 1 },
-  modalText: {
-    marginTop: 10,
-    fontSize: 13,
-    fontWeight: "700",
-    color: "rgba(73,80,87,0.95)",
-    textAlign: "right",
+  loTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: ui.primary,
+    textAlign: "center",
     writingDirection: "rtl",
-    lineHeight: 18,
+    marginBottom: 8,
   },
-  modalActions: { marginTop: 14, flexDirection: "row-reverse", gap: 10 },
-  modalBtn: { flex: 1, height: 48, borderRadius: 16, overflow: "hidden" },
-  modalBtnPressed: { opacity: 0.92 },
-  modalCancelBtn: {
-    backgroundColor: "rgba(6,23,62,0.06)",
-    borderWidth: 1,
-    borderColor: ui.border,
+  loBody: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: ui.muted,
+    textAlign: "center",
+    writingDirection: "rtl",
+    lineHeight: 21,
+    marginBottom: 28,
+  },
+  loActions: {
+    width: "100%",
+    flexDirection: "row-reverse",
+    gap: 12,
+  },
+  loBtnOuter: {
+    flex: 1,
+    minHeight: 50,
+    height: 50,
+  },
+  loCancelBtn: {
+    flex: 1,
+    minHeight: 50,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: "rgba(6,23,62,0.14)",
+    backgroundColor: "rgba(6,23,62,0.04)",
     alignItems: "center",
     justifyContent: "center",
   },
-  modalCancelText: { fontSize: 14, fontWeight: "900", color: ui.primary, textAlign: "center", writingDirection: "rtl" },
-  modalLogoutBtnWrap: {
-    flex: 1,
-    height: 48,
-    borderRadius: 16,
-    overflow: "hidden",
-    shadowColor: "#b71c1c",
-    shadowOpacity: 0.28,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 8,
+  loCancelText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: ui.primary,
+    writingDirection: "rtl",
   },
-  modalLogoutGradient: {
-    width: "100%",
-    height: "100%",
-    minHeight: 48,
+  loConfirmBtn: {
+    flex: 1,
+    minHeight: 50,
     borderRadius: 16,
+    backgroundColor: "#c62828",
     flexDirection: "row-reverse",
     alignItems: "center",
     justifyContent: "center",
-    gap: 10,
+    gap: 8,
+    shadowColor: "#c62828",
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 5,
   },
-  modalLogoutText: { fontSize: 14, fontWeight: "900", color: "#FFFFFF", textAlign: "center", writingDirection: "rtl" },
+  loConfirmText: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#FFFFFF",
+    writingDirection: "rtl",
+  },
 });

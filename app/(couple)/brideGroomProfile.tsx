@@ -431,22 +431,6 @@ export default function BrideGroomSettings() {
                 })}
               </View>
             )}
-
-            <TouchableOpacity
-              style={[styles.editMessagesButton, !settingsSupported ? { opacity: 0.5 } : null]}
-              onPress={() => {
-                if (!resolvedEventId) return;
-                router.push({
-                  pathname: '/(couple)/automatic-notifications',
-                  params: { eventId: resolvedEventId },
-                } as any);
-              }}
-              disabled={!settingsSupported}
-              activeOpacity={0.9}
-            >
-              <Ionicons name="chatbubble-ellipses-outline" size={18} color={colors.white} />
-              <Text style={styles.editMessagesText}>הודעות אוטומטיות</Text>
-            </TouchableOpacity>
           </View>
         )}
 
@@ -718,28 +702,6 @@ const styles = StyleSheet.create({
     elevation: 2,
     zIndex: 1,
   },
-  editMessagesButton: {
-    backgroundColor: colors.primary,
-    marginHorizontal: 20,
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 32,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  editMessagesText: {
-    color: colors.white,
-    fontSize: 17,
-    fontWeight: '600',
-    marginRight: 8,
-  },
   notificationsSection: {
     marginHorizontal: 20,
     marginBottom: 32,
@@ -824,9 +786,9 @@ const styles = StyleSheet.create({
   whatsappAccent: {
     position: 'absolute',
     top: 0,
+    bottom: 0,
     right: 0,
     width: 4,
-    height: '100%',
     borderTopRightRadius: 16,
     borderBottomRightRadius: 16,
   },
