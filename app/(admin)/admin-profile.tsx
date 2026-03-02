@@ -742,7 +742,7 @@ const styles = StyleSheet.create({
     borderColor: ui.border,
   },
   avatar: { width: "100%", height: "100%", borderRadius: 999 },
-  heroTextCol: { flex: 1, minWidth: 0, alignItems: "flex-end", gap: 4 },
+  heroTextCol: { flex: 1, minWidth: 0, justifyContent: "flex-start", alignItems: "flex-start", gap: 4 },
   heroTitleRow: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" },
   heroName: { fontSize: 20, fontWeight: "900", color: ui.primary, textAlign: "right" },
   rolePill: {
@@ -778,7 +778,7 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
   },
 
-  kpisGrid: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 12 },
+  kpisGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
   kpiCard: {
     flexGrow: 1,
     flexBasis: 160,

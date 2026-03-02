@@ -2371,7 +2371,7 @@ const styles = StyleSheet.create({
   topBtnText: { fontSize: 12, fontWeight: '900', color: '#0d1c2b', textAlign: 'right' },
   btnPressed: { opacity: 0.92, transform: [{ scale: 0.99 }] },
 
-  statsRow: { marginTop: 14, flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 12 },
+  statsRow: { marginTop: 14, flexDirection: 'row', flexWrap: 'nowrap', gap: 12 },
   statBtn: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -2546,7 +2546,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 12,
   },
-  tableModalHeaderText: { flex: 1, minWidth: 0, alignItems: 'flex-end', gap: 4 },
+  tableModalHeaderText: { flex: 1, minWidth: 0, justifyContent: 'flex-start', alignItems: 'flex-start', gap: 4 },
   tableModalTitle: {
     fontSize: 20,
     fontWeight: '900',
@@ -3121,7 +3121,7 @@ const styles = StyleSheet.create({
         } as any)
       : null),
   },
-  guestEditHeaderText: { flex: 1, minWidth: 0, alignItems: 'flex-end', gap: 4 },
+  guestEditHeaderText: { flex: 1, minWidth: 0, justifyContent: 'flex-start', alignItems: 'flex-start', gap: 4 },
   guestEditTitle: { fontSize: 18, fontWeight: '900', color: colors.text, textAlign: 'right', writingDirection: 'rtl' },
   guestEditSubtitle: { fontSize: 13, fontWeight: '800', color: colors.gray[600], textAlign: 'right', writingDirection: 'rtl' },
   guestEditBody: {

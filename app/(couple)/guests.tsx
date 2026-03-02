@@ -1228,8 +1228,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 2,
   },
   filterStatusGrid: {
-    flexDirection: 'row-reverse',
-    flexWrap: 'wrap',
+    flexDirection: 'row',
+    flexWrap: 'nowrap',
+    justifyContent: 'flex-start',
+    alignItems: 'flex-end',
     gap: 12,
   },
   filterSideStack: {

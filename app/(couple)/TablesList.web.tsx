@@ -2207,7 +2207,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 12,
   },
-  modalTitleWrap: { flex: 1, minWidth: 0, alignItems: 'flex-end', gap: 4 },
+  modalTitleWrap: { flex: 1, minWidth: 0, justifyContent: 'flex-start', alignItems: 'flex-start', gap: 4 },
   modalTitle: { fontSize: 16, fontWeight: '900', color: colors.text, textAlign: 'right', writingDirection: 'rtl' },
   modalSubtitle: { fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'right', writingDirection: 'rtl' },
   modalWarning: { fontSize: 12, fontWeight: '900', color: '#9F1239', textAlign: 'right', writingDirection: 'rtl' },

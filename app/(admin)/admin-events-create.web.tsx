@@ -849,7 +849,7 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
 
-  typeGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 12 },
+  typeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   typeGridDesktop: { flexWrap: 'nowrap' },
   typeCard: {
     position: 'relative',
