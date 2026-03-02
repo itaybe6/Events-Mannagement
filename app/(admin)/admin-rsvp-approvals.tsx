@@ -21,7 +21,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "@/constants/colors";
 import { Guest, GuestCategory } from "@/types";
 import BackSwipe from "@/components/BackSwipe";
-import AppHeader from "@/components/AppHeader";
+import AppHeader, { APP_HEADER_HEIGHT_COMPACT, getAppHeaderTotalHeight } from "@/components/AppHeader";
 import { useRsvpApprovalsModel } from "@/features/rsvp/useRsvpApprovalsModel";
 
 const sanitizePhone = (raw: string) => (raw || "").replace(/[^\d+]/g, "");
@@ -30,6 +30,7 @@ export default function AdminRsvpApprovalsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { eventId } = useLocalSearchParams<{ eventId?: string }>();
+  const headerTotalHeight = getAppHeaderTotalHeight(insets.top, APP_HEADER_HEIGHT_COMPACT);
 
   const resolvedEventId = useMemo(() => String(eventId || "").trim(), [eventId]);
   const fallbackToDetails = useMemo(
@@ -82,7 +83,8 @@ export default function AdminRsvpApprovalsScreen() {
       <BackSwipe fallbackHref={fallbackToDetails} onBack={handleBack}>
         <Stack.Screen
           options={{
-            header: () => <AppHeader canGoBack onPressBack={handleBack} />,
+            headerStyle: { height: headerTotalHeight },
+            header: () => <AppHeader variant="compact" canGoBack onPressBack={handleBack} />,
           }}
         />
         <SafeAreaView style={[styles.center, { paddingTop: insets.top }]}>
@@ -98,7 +100,8 @@ export default function AdminRsvpApprovalsScreen() {
       <BackSwipe fallbackHref="/(admin)/admin-events" onBack={handleBack}>
         <Stack.Screen
           options={{
-            header: () => <AppHeader canGoBack onPressBack={handleBack} />,
+            headerStyle: { height: headerTotalHeight },
+            header: () => <AppHeader variant="compact" canGoBack onPressBack={handleBack} />,
           }}
         />
         <SafeAreaView style={[styles.center, { paddingTop: insets.top, paddingHorizontal: 20 }]}>
@@ -121,7 +124,8 @@ export default function AdminRsvpApprovalsScreen() {
     <BackSwipe fallbackHref={fallbackToDetails} onBack={handleBack}>
       <Stack.Screen
         options={{
-          header: () => <AppHeader canGoBack onPressBack={handleBack} />,
+          headerStyle: { height: headerTotalHeight },
+          header: () => <AppHeader variant="compact" canGoBack onPressBack={handleBack} />,
         }}
       />
       <SafeAreaView style={[styles.screen, { paddingTop: insets.top }]}>

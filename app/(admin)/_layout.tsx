@@ -7,7 +7,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Platform, StyleSheet, Text, View } from "react-native";
 import { useLayoutStore } from '@/store/layoutStore';
 import { useUserStore } from '@/store/userStore';
-import AppHeader, { getAppHeaderTotalHeight } from "@/components/AppHeader";
+import AppHeader, { APP_HEADER_HEIGHT_COMPACT, getAppHeaderTotalHeight } from "@/components/AppHeader";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function AdminTabsLayout() {
@@ -17,7 +17,7 @@ export default function AdminTabsLayout() {
   const { isTabBarVisible, setTabBarVisible } = useLayoutStore();
   const { userType, isLoggedIn, loading } = useUserStore();
   const insets = useSafeAreaInsets();
-  const headerTotalHeight = getAppHeaderTotalHeight(insets.top);
+  const headerTotalHeight = getAppHeaderTotalHeight(insets.top, APP_HEADER_HEIGHT_COMPACT);
 
   const hideBackOnThisRoute =
     segments?.[0] === "(admin)" && (segments?.[1] === "admin-profile" || segments?.[1] === "admin-events");
@@ -217,6 +217,7 @@ export default function AdminTabsLayout() {
         headerShadowVisible: false,
         header: ({ navigation }) => (
           <AppHeader
+            variant="compact"
             canGoBack={navigation.canGoBack() && !hideBackOnThisRoute}
             onPressBack={() => handleAdminHeaderBack(navigation.canGoBack(), () => navigation.goBack())}
           />

@@ -5,7 +5,7 @@ import { colors } from "@/constants/colors";
 import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
-import { Platform, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { Image as ExpoImage } from 'expo-image';
 
 import { useLayoutStore } from '@/store/layoutStore';
@@ -13,9 +13,7 @@ import { useUserStore } from '@/store/userStore';
 import AppHeader, { APP_HEADER_HEIGHT_COMPACT, getAppHeaderTotalHeight } from "@/components/AppHeader";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-function ProfileTabIcon({ focused }: { focused: boolean }) {
-  const avatarUrl = useUserStore(s => s.userData?.avatar_url);
-
+function MessagesTabIcon({ focused }: { focused: boolean }) {
   return (
     <View style={styles.tabItem}>
       <View style={[styles.iconCircle, focused && styles.iconCircleActive]}>
@@ -31,25 +29,14 @@ function ProfileTabIcon({ focused }: { focused: boolean }) {
           end={{ x: 1, y: 1 }}
           style={styles.iconGloss}
         />
-        {avatarUrl ? (
-          <ExpoImage
-            key={avatarUrl}
-            source={{ uri: avatarUrl }}
-            style={[styles.tabAvatar, { borderColor: focused ? "rgba(255,255,255,0.85)" : "rgba(0,0,0,0.14)" }]}
-            contentFit="cover"
-            cachePolicy="none"
-            transition={0}
-          />
-        ) : (
-          <Ionicons
-            name={focused ? "person" : "person-outline"}
-            size={22}
-            color={focused ? colors.white : colors.gray[700]}
-          />
-        )}
+        <Ionicons
+          name={focused ? "chatbubble-ellipses" : "chatbubble-ellipses-outline"}
+          size={22}
+          color={focused ? colors.white : colors.gray[700]}
+        />
       </View>
       <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65} style={[styles.tabLabel, focused && styles.tabLabelActive]}>
-        פרופיל
+        הודעות
       </Text>
     </View>
   );
@@ -61,6 +48,8 @@ export default function CoupleTabsLayout() {
   const { userType, isLoggedIn, loading } = useUserStore();
   const insets = useSafeAreaInsets();
   const headerTotalHeight = getAppHeaderTotalHeight(insets.top, APP_HEADER_HEIGHT_COMPACT);
+  const userName = useUserStore(s => String(s.userData?.name || '').trim());
+  const avatarUrl = useUserStore(s => s.userData?.avatar_url);
 
   useEffect(() => {
     setTabBarVisible(true);
@@ -95,11 +84,47 @@ export default function CoupleTabsLayout() {
             backgroundColor: "#FFFFFF",
           },
           headerShadowVisible: false,
-          header: ({ navigation }) => (
+          header: ({ navigation, route }) => (
             <AppHeader
               variant="compact"
               canGoBack={navigation.canGoBack()}
               onPressBack={() => navigation.goBack()}
+              logoOffsetX={route?.name === "index" ? -12 : 0}
+              logoStyle={route?.name === "index" ? styles.homeLogoTweaks : undefined}
+              rightContent={(
+                <Pressable
+                  onPress={() => router.push('/(couple)/brideGroomProfile')}
+                  accessibilityRole="button"
+                  accessibilityLabel="פרופיל"
+                  style={({ pressed }) => [
+                    styles.userHeaderBtn,
+                    pressed ? { opacity: 0.85 } : null,
+                  ]}
+                >
+                  {avatarUrl ? (
+                    <ExpoImage
+                      key={avatarUrl}
+                      source={{ uri: avatarUrl }}
+                      style={[
+                        styles.userHeaderAvatarBase,
+                        styles.userHeaderAvatarSize,
+                      ]}
+                      contentFit="cover"
+                      cachePolicy="none"
+                      transition={0}
+                    />
+                  ) : (
+                    <View
+                      style={[
+                        styles.userHeaderAvatarFallbackBase,
+                        styles.userHeaderAvatarSize,
+                      ]}
+                    >
+                      <Ionicons name="person" size={20} color={colors.primary} />
+                    </View>
+                  )}
+                </Pressable>
+              )}
             />
           ),
           tabBarShowLabel: false,
@@ -306,7 +331,7 @@ export default function CoupleTabsLayout() {
           name="brideGroomProfile"
           options={{
             title: "פרופיל",
-            tabBarIcon: ({ focused }) => <ProfileTabIcon focused={focused} />,
+            href: null,
           }}
         />
 
@@ -328,7 +353,8 @@ export default function CoupleTabsLayout() {
         <Tabs.Screen
           name="automatic-notifications"
           options={{
-            href: null,
+            title: "הודעות",
+            tabBarIcon: ({ focused }) => <MessagesTabIcon focused={focused} />,
           }}
         />
         <Tabs.Screen
@@ -344,6 +370,36 @@ export default function CoupleTabsLayout() {
 }
 
 const styles = StyleSheet.create({
+  homeLogoTweaks: {
+    width: 350,
+    height: 80,
+  },
+  userHeaderBtn: {
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 14,
+    maxWidth: 140,
+  },
+  userHeaderAvatarBase: {
+    borderWidth: 2,
+    borderColor: "#0B1C41",
+    backgroundColor: "#FFFFFF",
+  },
+  userHeaderAvatarFallbackBase: {
+    borderWidth: 2,
+    borderColor: "#0B1C41",
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  userHeaderAvatarSize: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+  },
   tabBarBlur: {
     flex: 1,
     borderRadius: 32,

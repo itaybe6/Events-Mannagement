@@ -23,10 +23,13 @@ import { useLayoutStore } from '@/store/layoutStore';
 import { colors } from '@/constants/colors';
 import { EventSwitcher } from '@/components/EventSwitcher';
 import BackSwipe from '@/components/BackSwipe';
-import AppHeader from '@/components/AppHeader';
+import { Image as ExpoImage } from 'expo-image';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AppHeader, { APP_HEADER_HEIGHT_COMPACT, getAppHeaderTotalHeight } from '@/components/AppHeader';
 
 export default function TablesList() {
   const userData = useUserStore((s) => s.userData);
+  const avatarUrl = useUserStore((s) => s.userData?.avatar_url);
   const router = useRouter();
   const segments = useSegments();
   const { eventId: queryEventId } = useLocalSearchParams<{ eventId?: string }>();
@@ -34,6 +37,8 @@ export default function TablesList() {
   const activeEventId = useEventSelectionStore((s) => s.activeEventId);
   const setActiveEvent = useEventSelectionStore((s) => s.setActiveEvent);
   const { setTabBarVisible } = useLayoutStore();
+  const insets = useSafeAreaInsets();
+  const headerTotalHeight = getAppHeaderTotalHeight(insets.top, APP_HEADER_HEIGHT_COMPACT);
   const [tables, setTables] = useState<Table[]>([]);
   const [guests, setGuests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,6 +75,45 @@ export default function TablesList() {
   const handleBack = useCallback(() => {
     router.replace(backHref as any);
   }, [backHref, router]);
+
+  const renderHeader = useCallback(() => {
+    if (isAdminContext) {
+      return <AppHeader canGoBack onPressBack={handleBack} />;
+    }
+
+    return (
+      <AppHeader
+        variant="compact"
+        canGoBack
+        onPressBack={handleBack}
+        logoOffsetX={0}
+        rightContent={
+          <TouchableOpacity
+            onPress={() => router.push('/(couple)/brideGroomProfile')}
+            accessibilityRole="button"
+            accessibilityLabel="פרופיל"
+            activeOpacity={0.85}
+            style={styles.headerAvatarBtn}
+          >
+            {avatarUrl ? (
+              <ExpoImage
+                key={avatarUrl}
+                source={{ uri: avatarUrl }}
+                style={styles.headerAvatar}
+                contentFit="cover"
+                cachePolicy="none"
+                transition={0}
+              />
+            ) : (
+              <View style={styles.headerAvatarFallback}>
+                <Ionicons name="person" size={20} color={colors.primary} />
+              </View>
+            )}
+          </TouchableOpacity>
+        }
+      />
+    );
+  }, [avatarUrl, handleBack, isAdminContext, router]);
 
   useFocusEffect(
     useCallback(() => {
@@ -417,7 +461,16 @@ export default function TablesList() {
       <BackSwipe fallbackHref={backHref} onBack={handleBack}>
         <Stack.Screen
           options={{
-            header: () => <AppHeader canGoBack onPressBack={handleBack} />,
+            header: renderHeader,
+            headerShadowVisible: false,
+            ...(isAdminContext
+              ? null
+              : {
+                  headerStyle: {
+                    height: headerTotalHeight,
+                    backgroundColor: '#FFFFFF',
+                  },
+                }),
           }}
         />
         <View style={styles.centered}>
@@ -432,7 +485,16 @@ export default function TablesList() {
       <BackSwipe fallbackHref={backHref} onBack={handleBack}>
         <Stack.Screen
           options={{
-            header: () => <AppHeader canGoBack onPressBack={handleBack} />,
+            header: renderHeader,
+            headerShadowVisible: false,
+            ...(isAdminContext
+              ? null
+              : {
+                  headerStyle: {
+                    height: headerTotalHeight,
+                    backgroundColor: '#FFFFFF',
+                  },
+                }),
           }}
         />
         <View style={styles.centered}>
@@ -460,7 +522,16 @@ export default function TablesList() {
     <BackSwipe fallbackHref={backHref} onBack={handleBack}>
       <Stack.Screen
         options={{
-          header: () => <AppHeader canGoBack onPressBack={handleBack} />,
+          header: renderHeader,
+          headerShadowVisible: false,
+          ...(isAdminContext
+            ? null
+            : {
+                headerStyle: {
+                  height: headerTotalHeight,
+                  backgroundColor: '#FFFFFF',
+                },
+              }),
         }}
       />
       <View style={styles.container}>
@@ -856,6 +927,30 @@ export default function TablesList() {
 }
 
 const styles = StyleSheet.create({
+  headerAvatarBtn: {
+    width: 48,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    borderWidth: 2,
+    borderColor: '#0B1C41',
+    backgroundColor: '#FFFFFF',
+  },
+  headerAvatarFallback: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    borderWidth: 2,
+    borderColor: '#0B1C41',
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   container: {
     flex: 1,
     backgroundColor: '#F9FAFB',

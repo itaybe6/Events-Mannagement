@@ -7,6 +7,8 @@ import { colors } from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
 import { Image } from 'expo-image';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
+import * as ImagePicker from 'expo-image-picker';
+import { invitationAssetService } from '@/lib/services/invitationAssetService';
 
 export default function BrideGroomSettings() {
   const { userData, logout } = useUserStore();
@@ -40,30 +42,23 @@ export default function BrideGroomSettings() {
     );
   }, [activeEventId, activeUserId, queryEventId, userData?.event_id, userData?.id]);
 
-  // =============================
-  // Message / notification settings (SMS / WhatsApp templates)
-  // =============================
-  type NotificationSettingRow = {
-    id: string;
-    event_id: string;
-    notification_type: string;
-    title: string;
-    days_from_wedding?: number | null;
-    channel?: 'SMS' | 'WHATSAPP' | null;
-    enabled: boolean;
-    message_content?: string | null;
-  };
-
-  const [settingsSupported, setSettingsSupported] = useState(true);
-  const [settingsLoading, setSettingsLoading] = useState(false);
-  const [settings, setSettings] = useState<NotificationSettingRow[]>([]);
-  const [settingsEditorOpen, setSettingsEditorOpen] = useState(false);
-  const [editingSetting, setEditingSetting] = useState<NotificationSettingRow | null>(null);
   const [logoutModalOpen, setLogoutModalOpen] = useState(false);
-  const [draftChannel, setDraftChannel] = useState<'WHATSAPP' | 'SMS'>('WHATSAPP');
-  const [draftDays, setDraftDays] = useState('0');
-  const [draftEnabled, setDraftEnabled] = useState(true);
-  const [draftMessage, setDraftMessage] = useState('');
+
+  // =============================
+  // Profile edit shortcuts (event / invitation)
+  // =============================
+  const [eventEditorOpen, setEventEditorOpen] = useState(false);
+  const [invitationEditorOpen, setInvitationEditorOpen] = useState(false);
+
+  const [draftEventTitle, setDraftEventTitle] = useState('');
+  const [draftGroomName, setDraftGroomName] = useState('');
+  const [draftBrideName, setDraftBrideName] = useState('');
+  const [draftEventDate, setDraftEventDate] = useState(''); // yyyy-mm-dd (best-effort)
+
+  const [draftRsvpLink, setDraftRsvpLink] = useState('');
+  const [draftInvitationImageUrl, setDraftInvitationImageUrl] = useState('');
+  const [invitationUploading, setInvitationUploading] = useState(false);
+  const [removeInvitationConfirmOpen, setRemoveInvitationConfirmOpen] = useState(false);
 
   const loadProfile = useCallback(() => {
     let active = true;
@@ -139,52 +134,6 @@ export default function BrideGroomSettings() {
   useEffect(() => loadProfile(), [loadProfile]);
   useFocusEffect(loadProfile);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadSettings = async () => {
-      const eventId = String(resolvedEventId || '').trim();
-      if (!eventId) {
-        setSettings([]);
-        return;
-      }
-
-      setSettingsLoading(true);
-      try {
-        const { data, error } = await supabase
-          .from('notification_settings')
-          .select('id,event_id,notification_type,title,days_from_wedding,channel,enabled,message_content')
-          .eq('event_id', eventId)
-          .order('days_from_wedding', { ascending: true });
-
-        if (error) {
-          const msg = String((error as any)?.message || '');
-          // If the table/feature isn't available in the connected Supabase env, fail gracefully.
-          if (msg.toLowerCase().includes('does not exist') || String((error as any)?.code || '') === '42P01') {
-            if (!cancelled) setSettingsSupported(false);
-            return;
-          }
-          throw error;
-        }
-
-        if (!cancelled) {
-          setSettingsSupported(true);
-          setSettings(((data as any) || []) as NotificationSettingRow[]);
-        }
-      } catch (e) {
-        console.warn('Failed to load notification settings:', e);
-        if (!cancelled) setSettings([]);
-      } finally {
-        if (!cancelled) setSettingsLoading(false);
-      }
-    };
-
-    void loadSettings();
-    return () => {
-      cancelled = true;
-    };
-  }, [resolvedEventId]);
-
   const performLogout = async () => {
     try {
       await logout();
@@ -201,92 +150,185 @@ export default function BrideGroomSettings() {
   const weddingNames = groomName && brideName ? `${groomName} ו${brideName}` : '';
   const invitationImageUrl = String(eventMeta?.invitationImageUrl ?? '').trim();
 
-  const openSettingsEditor = () => {
-    setEditingSetting(null);
-    setDraftChannel('WHATSAPP');
-    setDraftDays('0');
-    setDraftEnabled(true);
-    setDraftMessage('');
-    setSettingsEditorOpen(true);
+  const openEventEditor = () => {
+    setDraftEventTitle(String(eventMeta?.title ?? ''));
+    setDraftGroomName(String(eventMeta?.groomName ?? ''));
+    setDraftBrideName(String(eventMeta?.brideName ?? ''));
+    setDraftEventDate(eventMeta?.date ? eventMeta.date.toISOString().slice(0, 10) : '');
+    setEventEditorOpen(true);
   };
 
-  const openEditSetting = (s: NotificationSettingRow) => {
-    setEditingSetting(s);
-    setDraftChannel((s.channel === 'SMS' ? 'SMS' : 'WHATSAPP') as any);
-    setDraftDays(String(s.days_from_wedding ?? 0));
-    setDraftEnabled(Boolean(s.enabled));
-    setDraftMessage(String(s.message_content ?? ''));
-    setSettingsEditorOpen(true);
+  const openInvitationEditor = () => {
+    setDraftRsvpLink(String(eventMeta?.rsvpLink ?? ''));
+    setDraftInvitationImageUrl(String(eventMeta?.invitationImageUrl ?? ''));
+    setInvitationEditorOpen(true);
   };
 
-  const closeSettingsEditor = () => {
-    setSettingsEditorOpen(false);
-    setEditingSetting(null);
-  };
-
-  const toggleSettingEnabled = async (s: NotificationSettingRow) => {
-    const nextEnabled = !s.enabled;
-    setSettings((prev) => prev.map((x) => (x.id === s.id ? { ...x, enabled: nextEnabled } : x)));
-    try {
-      const { error } = await supabase.from('notification_settings').update({ enabled: nextEnabled }).eq('id', s.id);
-      if (error) throw error;
-    } catch (e) {
-      // rollback
-      setSettings((prev) => prev.map((x) => (x.id === s.id ? { ...x, enabled: s.enabled } : x)));
-      Alert.alert('שגיאה', 'לא ניתן לעדכן את מצב ההודעה כרגע.');
-    }
-  };
-
-  const saveSettingDraft = async () => {
-    if (!editingSetting) {
-      Alert.alert('שימו לב', 'בחרו הודעה לעריכה מהרשימה.');
+  const pickAndUploadInvitationImage = async () => {
+    const eventId = String(resolvedEventId || '').trim();
+    if (!eventId) {
+      Alert.alert('שימו לב', 'לא נבחר אירוע. כדי לערוך תמונת הזמנה צריך לבחור/להיות משויך לאירוע.');
       return;
     }
-
-    const days = Number.parseInt(draftDays || '0', 10);
-    const safeDays = Number.isFinite(days) ? days : 0;
-    const msg = String(draftMessage || '').trim();
+    if (invitationUploading) return;
 
     try {
-      const updates: any = {
-        channel: draftChannel,
-        days_from_wedding: safeDays,
-        enabled: Boolean(draftEnabled),
-        message_content: msg,
-      };
+      if (Platform.OS !== 'web') {
+        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!permission.granted) {
+          Alert.alert('הרשאה נדרשת', 'כדי לבחור תמונה יש לאשר גישה לגלריה');
+          return;
+        }
+      }
 
-      const { data, error } = await supabase
-        .from('notification_settings')
-        .update(updates)
-        .eq('id', editingSetting.id)
-        .select('id,event_id,notification_type,title,days_from_wedding,channel,enabled,message_content')
-        .single();
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 5],
+        quality: 0.9,
+        base64: true,
+      });
 
+      if (result.canceled || !result.assets?.[0]) return;
+      const asset = result.assets[0] as any;
+
+      setInvitationUploading(true);
+      const url = await invitationAssetService.uploadInvitationImage(eventId, {
+        uri: asset.uri,
+        fileName: asset.fileName,
+        mimeType: asset.mimeType,
+        file: asset.file,
+        base64: asset.base64,
+      });
+
+      const { error } = await supabase.from('events').update({ invitation_image_url: url }).eq('id', eventId);
       if (error) throw error;
 
-      setSettings((prev) => prev.map((x) => (x.id === editingSetting.id ? ((data as any) as NotificationSettingRow) : x)));
-      closeSettingsEditor();
-    } catch (e) {
-      console.error('Save notification setting error:', e);
-      Alert.alert('שגיאה', 'לא ניתן לשמור את ההגדרות כרגע.');
+      setDraftInvitationImageUrl(url);
+      setEventMeta((prev) =>
+        prev ? { ...prev, invitationImageUrl: url || undefined } : prev
+      );
+      Alert.alert('נשמר', 'תמונת ההזמנה עודכנה');
+    } catch (e: any) {
+      const message = e?.message ? String(e.message) : 'שגיאה לא ידועה';
+      Alert.alert('שגיאה', `לא ניתן לעדכן תמונת הזמנה.\n\n${message}`);
+    } finally {
+      setInvitationUploading(false);
     }
   };
 
-  const computedSendDateLabel = (() => {
-    const base = eventMeta?.date ? new Date(eventMeta.date) : null;
-    const days = Number.parseInt(draftDays || '0', 10);
-    if (!base || !Number.isFinite(base.getTime()) || !Number.isFinite(days)) return null;
-    const d = new Date(base.getTime() + days * 24 * 60 * 60 * 1000);
-    return d.toLocaleDateString('he-IL', { year: 'numeric', month: 'long', day: 'numeric' });
-  })();
+  const removeInvitationImage = async () => {
+    if (!draftInvitationImageUrl) return;
+    setRemoveInvitationConfirmOpen(true);
+  };
 
-  const logoutPillLabel = (() => {
-    if (!settingsSupported) return 'לא זמין';
-    if (settingsLoading) return 'טוען...';
-    const total = settings.length;
-    const enabled = settings.reduce((acc, s) => acc + (s.enabled ? 1 : 0), 0);
-    return total === 0 ? '0 הודעות' : `${enabled}/${total} פעיל`;
-  })();
+  const confirmRemoveInvitationImage = async () => {
+    const eventId = String(resolvedEventId || '').trim();
+    if (!eventId) return;
+
+    try {
+      setInvitationUploading(true);
+      const { error } = await supabase.from('events').update({ invitation_image_url: null }).eq('id', eventId);
+      if (error) throw error;
+      setDraftInvitationImageUrl('');
+      setEventMeta((prev) => (prev ? { ...prev, invitationImageUrl: undefined } : prev));
+      setRemoveInvitationConfirmOpen(false);
+    } catch (e: any) {
+      const message = e?.message ? String(e.message) : 'שגיאה לא ידועה';
+      Alert.alert('שגיאה', `לא ניתן להסיר הזמנה.\n\n${message}`);
+    } finally {
+      setInvitationUploading(false);
+    }
+  };
+
+  const saveEventEdits = async () => {
+    const eventId = String(resolvedEventId || '').trim();
+    if (!eventId) return;
+
+    const title = String(draftEventTitle || '').trim();
+    const groom = String(draftGroomName || '').trim();
+    const bride = String(draftBrideName || '').trim();
+    const dateStr = String(draftEventDate || '').trim();
+
+    const updates: any = {
+      title,
+      groom_name: groom || null,
+      bride_name: bride || null,
+    };
+
+    if (dateStr) {
+      const d = new Date(dateStr);
+      if (!Number.isFinite(d.getTime())) {
+        Alert.alert('שגיאה', 'תאריך לא תקין. השתמשו בפורמט YYYY-MM-DD');
+        return;
+      }
+      updates.date = d.toISOString();
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('events')
+        .update(updates)
+        .eq('id', eventId)
+        .select('id, title, date, groom_name, bride_name, rsvp_link, invitation_image_url')
+        .maybeSingle();
+      if (error) throw error;
+
+      if (data) {
+        setEventMeta({
+          id: (data as any).id,
+          title: String((data as any).title || ''),
+          date: new Date((data as any).date),
+          groomName: (data as any).groom_name ?? undefined,
+          brideName: (data as any).bride_name ?? undefined,
+          rsvpLink: (data as any).rsvp_link ?? undefined,
+          invitationImageUrl: (data as any).invitation_image_url ?? undefined,
+        });
+      }
+      setEventEditorOpen(false);
+    } catch (e) {
+      console.warn('Failed to save event edits:', e);
+      Alert.alert('שגיאה', 'לא ניתן לשמור את פרטי האירוע כרגע.');
+    }
+  };
+
+  const saveInvitationEdits = async () => {
+    const eventId = String(resolvedEventId || '').trim();
+    if (!eventId) return;
+
+    const rsvpLink = String(draftRsvpLink || '').trim();
+
+    const updates: any = {
+      rsvp_link: rsvpLink || null,
+      invitation_image_url: String(draftInvitationImageUrl || '').trim() || null,
+    };
+
+    try {
+      const { data, error } = await supabase
+        .from('events')
+        .update(updates)
+        .eq('id', eventId)
+        .select('id, title, date, groom_name, bride_name, rsvp_link, invitation_image_url')
+        .maybeSingle();
+      if (error) throw error;
+
+      if (data) {
+        setEventMeta({
+          id: (data as any).id,
+          title: String((data as any).title || ''),
+          date: new Date((data as any).date),
+          groomName: (data as any).groom_name ?? undefined,
+          brideName: (data as any).bride_name ?? undefined,
+          rsvpLink: (data as any).rsvp_link ?? undefined,
+          invitationImageUrl: (data as any).invitation_image_url ?? undefined,
+        });
+      }
+      setInvitationEditorOpen(false);
+    } catch (e) {
+      console.warn('Failed to save invitation edits:', e);
+      Alert.alert('שגיאה', 'לא ניתן לשמור את פרטי ההזמנה כרגע.');
+    }
+  };
 
   const getEventCoverSource = () => {
     const title = String(eventMeta?.title ?? '').toLowerCase();
@@ -363,105 +405,88 @@ export default function BrideGroomSettings() {
           </View>
         </View>
 
-        {/* Message settings (from mobile profile screen) */}
-        {Platform.OS === 'web' ? null : (
-          <View style={styles.notificationsSection}>
-            <View style={styles.notifHeader}>
-              <View style={styles.notifIconPill}>
-                <Ionicons name="chatbubbles-outline" size={18} color={colors.primary} />
-              </View>
-              <View style={styles.notifHeaderText}>
-                <Text style={styles.notifTitle}>הגדרות הודעות</Text>
-                <Text style={styles.notifSubtitle}>ניהול הודעות אוטומטיות לאירוע (SMS / וואטסאפ)</Text>
-              </View>
-              <View style={styles.notifPill}>
-                <Text style={styles.notifPillText}>{logoutPillLabel}</Text>
-              </View>
+        {/* Edit section (replaces duplicated message settings) */}
+        <View style={styles.notificationsSection}>
+          <View style={styles.notifHeader}>
+            <View style={styles.notifIconPill}>
+              <Ionicons name="create-outline" size={18} color={colors.primary} />
             </View>
-
-            <View style={styles.notifCallout}>
-              <View style={styles.notifCalloutIcon}>
-                <Ionicons name="information-circle-outline" size={18} color={colors.gray[700]} />
-              </View>
-              <Text style={styles.notifCalloutText}>
-                לחיצה על הודעה פותחת עריכה. אפשר גם להדליק/לכבות הודעה ישירות מהרשימה.
-              </Text>
+            <View style={styles.notifHeaderText}>
+              <Text style={styles.notifTitle}>עריכה וניהול</Text>
+              <Text style={styles.notifSubtitle}>עריכת פרטי האירוע וההזמנה</Text>
             </View>
-
-            {!settingsSupported ? (
-              <View style={[styles.notificationCard, { borderColor: 'rgba(15,23,42,0.08)', backgroundColor: 'rgba(255,255,255,0.85)' }]}>
-                <View style={styles.cardMain}>
-                  <Text style={[styles.cardTitle, { color: colors.gray[800] }]}>הגדרות הודעות לא זמינות</Text>
-                  <View style={styles.cardMetaRow}>
-                    <Text style={[styles.metaText, { color: colors.gray[600] }]}>אין טבלת ״notification_settings״ בשרת המחובר.</Text>
-                  </View>
-                </View>
-              </View>
-            ) : settingsLoading ? (
-              <View style={[styles.notificationCard, { borderColor: 'rgba(15,23,42,0.08)', backgroundColor: 'rgba(255,255,255,0.85)' }]}>
-                <View style={styles.cardMain}>
-                  <Text style={[styles.cardTitle, { color: colors.gray[800] }]}>טוען...</Text>
-                  <View style={styles.cardMetaRow}>
-                    <Text style={[styles.metaText, { color: colors.gray[600] }]}>טוען הגדרות הודעות לאירוע</Text>
-                  </View>
-                </View>
-              </View>
-            ) : settings.length === 0 ? (
-              <View style={[styles.notificationCard, { borderColor: 'rgba(15,23,42,0.08)', backgroundColor: 'rgba(255,255,255,0.85)' }]}>
-                <View style={styles.cardMain}>
-                  <Text style={[styles.cardTitle, { color: colors.gray[800] }]}>אין הודעות מוגדרות</Text>
-                  <View style={styles.cardMetaRow}>
-                    <Text style={[styles.metaText, { color: colors.gray[600] }]}>אפשר להגדיר הודעות דרך ניהול האירוע.</Text>
-                  </View>
-                </View>
-              </View>
-            ) : (
-              <View style={styles.cardsStack}>
-                {settings.map((s) => {
-                  const channel = s.channel === 'SMS' ? 'SMS' : 'WHATSAPP';
-                  const isWhatsapp = channel === 'WHATSAPP';
-                  const accent = isWhatsapp ? 'rgba(37,211,102,0.95)' : 'rgba(59,130,246,0.95)';
-                  const border = isWhatsapp ? 'rgba(37,211,102,0.18)' : 'rgba(59,130,246,0.18)';
-                  const days = typeof s.days_from_wedding === 'number' ? s.days_from_wedding : 0;
-                  const whenLabel = days === 0 ? 'ביום האירוע' : days > 0 ? `${days}+ ימים אחרי האירוע` : `${Math.abs(days)} ימים לפני האירוע`;
-                  return (
-                    <View
-                      key={s.id}
-                      style={[
-                        styles.notificationCard,
-                        { borderColor: border, backgroundColor: 'rgba(255,255,255,0.92)' },
-                        isWhatsapp ? styles.notificationCardWhatsapp : null,
-                      ]}
-                    >
-                      <View style={[styles.whatsappAccent, { backgroundColor: accent }]} />
-
-                      <View style={styles.cardMain}>
-                        <Text style={[styles.cardTitle, { color: colors.gray[900] }]} numberOfLines={1}>
-                          {s.title || 'הודעה'}
-                        </Text>
-                        <View style={styles.cardMetaRow}>
-                          <TouchableOpacity style={styles.statusBtn} onPress={() => toggleSettingEnabled(s)} activeOpacity={0.9}>
-                            <Text style={[styles.statusText, { color: s.enabled ? accent : colors.gray[400] }]}>
-                              {s.enabled ? 'פעיל' : 'כבוי'}
-                            </Text>
-                          </TouchableOpacity>
-                          <Text style={[styles.metaBullet, { color: colors.gray[400] }]}>•</Text>
-                          <Text style={[styles.metaText, { color: colors.gray[700] }]}>{isWhatsapp ? 'וואטסאפ' : 'SMS'}</Text>
-                          <Text style={[styles.metaBullet, { color: colors.gray[400] }]}>•</Text>
-                          <Text style={[styles.metaText, { color: colors.gray[700] }]}>{whenLabel}</Text>
-                        </View>
-                      </View>
-
-                      <TouchableOpacity style={styles.cardChevron} onPress={() => openEditSetting(s)} activeOpacity={0.9}>
-                        <Ionicons name="chevron-back" size={20} color={colors.gray[500]} />
-                      </TouchableOpacity>
-                    </View>
-                  );
-                })}
-              </View>
-            )}
+            <View style={styles.notifPill}>
+              <Text style={styles.notifPillText}>עדכון</Text>
+            </View>
           </View>
-        )}
+
+          <View style={styles.cardsStack}>
+            <TouchableOpacity
+              style={[styles.notificationCard, { borderColor: 'rgba(59,130,246,0.18)', backgroundColor: 'rgba(255,255,255,0.92)' }]}
+              onPress={openEventEditor}
+              activeOpacity={0.9}
+            >
+              <View style={[styles.whatsappAccent, { backgroundColor: 'rgba(59,130,246,0.95)' }]} />
+              <View style={styles.cardMain}>
+                <Text style={[styles.cardTitle, { color: colors.gray[900] }]} numberOfLines={1}>
+                  עריכת פרטי אירוע
+                </Text>
+                <View style={styles.cardMetaRow}>
+                  <Text style={[styles.metaText, { color: colors.gray[700] }]}>כותרת</Text>
+                  <Text style={[styles.metaBullet, { color: colors.gray[400] }]}>•</Text>
+                  <Text style={[styles.metaText, { color: colors.gray[700] }]}>שמות</Text>
+                  <Text style={[styles.metaBullet, { color: colors.gray[400] }]}>•</Text>
+                  <Text style={[styles.metaText, { color: colors.gray[700] }]}>תאריך</Text>
+                </View>
+              </View>
+              <TouchableOpacity style={styles.cardChevron} onPress={openEventEditor} activeOpacity={0.9}>
+                <Ionicons name="chevron-back" size={20} color={colors.gray[500]} />
+              </TouchableOpacity>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.notificationCard, { borderColor: 'rgba(37,211,102,0.18)', backgroundColor: 'rgba(255,255,255,0.92)' }]}
+              onPress={openInvitationEditor}
+              activeOpacity={0.9}
+            >
+              <View style={[styles.whatsappAccent, { backgroundColor: 'rgba(37,211,102,0.95)' }]} />
+              <View style={styles.cardMain}>
+                <Text style={[styles.cardTitle, { color: colors.gray[900] }]} numberOfLines={1}>
+                  עריכת הזמנה
+                </Text>
+                <View style={styles.cardMetaRow}>
+                  <Text style={[styles.metaText, { color: colors.gray[700] }]}>קישור אישור הגעה</Text>
+                  <Text style={[styles.metaBullet, { color: colors.gray[400] }]}>•</Text>
+                  <Text style={[styles.metaText, { color: colors.gray[700] }]}>תמונה</Text>
+                </View>
+              </View>
+              <TouchableOpacity style={styles.cardChevron} onPress={openInvitationEditor} activeOpacity={0.9}>
+                <Ionicons name="chevron-back" size={20} color={colors.gray[500]} />
+              </TouchableOpacity>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.notificationCard, { borderColor: 'rgba(15,23,42,0.10)', backgroundColor: 'rgba(255,255,255,0.92)' }]}
+              onPress={() => router.push('/profile-editor')}
+              activeOpacity={0.9}
+            >
+              <View style={[styles.whatsappAccent, { backgroundColor: 'rgba(15,23,42,0.85)' }]} />
+              <View style={styles.cardMain}>
+                <Text style={[styles.cardTitle, { color: colors.gray[900] }]} numberOfLines={1}>
+                  עריכת פרופיל
+                </Text>
+                <View style={styles.cardMetaRow}>
+                  <Text style={[styles.metaText, { color: colors.gray[700] }]}>שם</Text>
+                  <Text style={[styles.metaBullet, { color: colors.gray[400] }]}>•</Text>
+                  <Text style={[styles.metaText, { color: colors.gray[700] }]}>תמונה</Text>
+                </View>
+              </View>
+              <TouchableOpacity style={styles.cardChevron} onPress={() => router.push('/profile-editor')} activeOpacity={0.9}>
+                <Ionicons name="chevron-back" size={20} color={colors.gray[500]} />
+              </TouchableOpacity>
+            </TouchableOpacity>
+          </View>
+        </View>
 
         {/* Logout Button */}
         <TouchableOpacity style={styles.logoutButton} onPress={askLogout}>
@@ -469,165 +494,237 @@ export default function BrideGroomSettings() {
         </TouchableOpacity>
       </ScrollView>
 
-      {/* Settings editor modal */}
-      {Platform.OS === 'web' ? null : (
-        <Modal visible={settingsEditorOpen} transparent animationType="fade" onRequestClose={closeSettingsEditor}>
-          <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.35)' }]}>
-            <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} showsVerticalScrollIndicator={false}>
-              <Pressable style={styles.modalOverlayTouchable} onPress={closeSettingsEditor} />
+      {/* Event editor modal */}
+      <Modal visible={eventEditorOpen} transparent animationType="fade" onRequestClose={() => setEventEditorOpen(false)}>
+        <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.35)' }]}>
+          <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} showsVerticalScrollIndicator={false}>
+            <Pressable style={styles.modalOverlayTouchable} onPress={() => setEventEditorOpen(false)} />
 
-              <View style={styles.modalCard}>
-                <View style={styles.modalHeader}>
-                  <Pressable onPress={closeSettingsEditor} style={styles.modalCloseBtn} accessibilityRole="button" accessibilityLabel="סגור">
-                    <Ionicons name="close" size={18} color={colors.gray[700]} />
-                  </Pressable>
-                  <View style={styles.modalHeaderTitles}>
-                    <Text style={styles.modalTitle}>עריכת הודעה</Text>
-                    <Text style={styles.modalSubtitle} numberOfLines={2}>
-                      {editingSetting?.title ? editingSetting.title : 'בחר הודעה מהרשימה כדי לערוך'}
-                    </Text>
-                  </View>
-                  <View style={{ width: 40 }} />
+            <View style={styles.modalCard}>
+              <View style={styles.modalHeader}>
+                <Pressable onPress={() => setEventEditorOpen(false)} style={styles.modalCloseBtn} accessibilityRole="button" accessibilityLabel="סגור">
+                  <Ionicons name="close" size={18} color={colors.gray[700]} />
+                </Pressable>
+                <View style={styles.modalHeaderTitles}>
+                  <Text style={styles.modalTitle}>עריכת פרטי אירוע</Text>
+                  <Text style={styles.modalSubtitle} numberOfLines={2}>
+                    עדכון כותרת, שמות ותאריך
+                  </Text>
+                </View>
+                <View style={{ width: 40 }} />
+              </View>
+
+              <View style={styles.modalDivider} />
+
+              <View style={styles.modalBody}>
+                <View style={styles.block}>
+                  <Text style={styles.blockLabel}>כותרת אירוע</Text>
+                  <TextInput
+                    value={draftEventTitle}
+                    onChangeText={setDraftEventTitle}
+                    style={styles.simpleInput}
+                    placeholder="שם האירוע"
+                    placeholderTextColor="#9CA3AF"
+                  />
                 </View>
 
-                <View style={styles.modalDivider} />
-
-                <View style={styles.modalBody}>
-                  {/* Channel */}
-                  <View style={styles.block}>
-                    <Text style={styles.blockLabel}>ערוץ</Text>
-                    <View style={styles.segmentWrap}>
-                      <Pressable
-                        onPress={() => setDraftChannel('WHATSAPP')}
-                        style={[styles.segmentBtn, draftChannel === 'WHATSAPP' ? styles.segmentBtnActive : null]}
-                        accessibilityRole="button"
-                        accessibilityLabel="וואטסאפ"
-                      >
-                        <Text style={[styles.segmentText, draftChannel === 'WHATSAPP' ? styles.segmentTextActive : null]}>וואטסאפ</Text>
-                      </Pressable>
-                      <Pressable
-                        onPress={() => setDraftChannel('SMS')}
-                        style={[styles.segmentBtn, draftChannel === 'SMS' ? styles.segmentBtnActive : null]}
-                        accessibilityRole="button"
-                        accessibilityLabel="SMS"
-                      >
-                        <Text style={[styles.segmentText, draftChannel === 'SMS' ? styles.segmentTextActive : null]}>SMS</Text>
-                      </Pressable>
-                    </View>
-                  </View>
-
-                  {/* Timing */}
-                  <View style={styles.block}>
-                    <Text style={styles.blockLabel}>מתי לשלוח</Text>
-                    <View style={styles.timingRow}>
-                      <View style={styles.daysInputWrap}>
-                        <View style={styles.daysIcon}>
-                          <Ionicons name="time-outline" size={18} color="#6B7280" />
-                        </View>
-                        <TextInput
-                          value={draftDays}
-                          onChangeText={setDraftDays}
-                          keyboardType={Platform.OS === 'web' ? ('default' as any) : 'numeric'}
-                          style={styles.daysInput}
-                          placeholder="0"
-                          placeholderTextColor="#9CA3AF"
-                        />
-                        <Text style={styles.daysSuffix}>ימים</Text>
-                      </View>
-                      {computedSendDateLabel ? (
-                        <View style={styles.computedPill}>
-                          <Text style={styles.computedLabel}>תאריך משוער</Text>
-                          <Text style={styles.computedValue}>{computedSendDateLabel}</Text>
-                        </View>
-                      ) : null}
-                    </View>
-                  </View>
-
-                  {/* Enabled */}
-                  <View style={styles.block}>
-                    <Text style={styles.blockLabel}>סטטוס</Text>
-                    <View style={styles.segmentWrap}>
-                      <Pressable
-                        onPress={() => setDraftEnabled(true)}
-                        style={[styles.segmentBtn, draftEnabled ? styles.segmentBtnActive : null]}
-                        accessibilityRole="button"
-                        accessibilityLabel="פעיל"
-                      >
-                        <Text style={[styles.segmentText, draftEnabled ? styles.segmentTextActive : null]}>פעיל</Text>
-                      </Pressable>
-                      <Pressable
-                        onPress={() => setDraftEnabled(false)}
-                        style={[styles.segmentBtn, !draftEnabled ? styles.segmentBtnActive : null]}
-                        accessibilityRole="button"
-                        accessibilityLabel="כבוי"
-                      >
-                        <Text style={[styles.segmentText, !draftEnabled ? styles.segmentTextActive : null]}>כבוי</Text>
-                      </Pressable>
-                    </View>
-                  </View>
-
-                  {/* Message */}
-                  <View style={styles.block}>
-                    <View style={styles.messageHeaderRow}>
-                      <Text style={styles.blockLabel}>תוכן ההודעה</Text>
-                      <View style={styles.messageTools}>
-                        <Pressable
-                          style={styles.toolBtn}
-                          accessibilityRole="button"
-                          accessibilityLabel="הכנס קישור אישור הגעה"
-                          onPress={() => {
-                            const link = String(eventMeta?.rsvpLink || '').trim();
-                            if (!link) return;
-                            setDraftMessage((prev) => `${prev}${prev ? '\n' : ''}${link}`);
-                          }}
-                        >
-                          <Ionicons name="link-outline" size={16} color={colors.gray[700]} />
-                        </Pressable>
-                      </View>
-                    </View>
-
-                    <View style={styles.textareaWrap}>
-                      <TextInput
-                        value={draftMessage}
-                        onChangeText={setDraftMessage}
-                        placeholder="הקלידו כאן את תוכן ההודעה..."
-                        placeholderTextColor="#9CA3AF"
-                        style={styles.textarea}
-                        multiline
-                        textAlignVertical="top"
-                      />
-                      <View style={styles.charCountPill}>
-                        <Text style={styles.charCountText}>{String(draftMessage || '').length} תווים</Text>
-                      </View>
-                    </View>
-                  </View>
+                <View style={styles.block}>
+                  <Text style={styles.blockLabel}>שם חתן</Text>
+                  <TextInput
+                    value={draftGroomName}
+                    onChangeText={setDraftGroomName}
+                    style={styles.simpleInput}
+                    placeholder="לדוגמה: דניאל"
+                    placeholderTextColor="#9CA3AF"
+                  />
                 </View>
 
-                <View style={styles.modalFooter}>
-                  <Pressable
-                    style={styles.footerBtnSecondary}
-                    onPress={closeSettingsEditor}
-                    accessibilityRole="button"
-                    accessibilityLabel="ביטול"
-                  >
-                    <Text style={styles.footerBtnSecondaryText}>ביטול</Text>
-                  </Pressable>
-                  <Pressable
-                    style={[styles.footerBtnPrimary, !editingSetting ? { opacity: 0.6 } : null]}
-                    onPress={saveSettingDraft}
-                    disabled={!editingSetting}
-                    accessibilityRole="button"
-                    accessibilityLabel="שמור"
-                  >
-                    <Ionicons name="checkmark" size={18} color="#fff" />
-                    <Text style={styles.footerBtnPrimaryText}>שמור</Text>
-                  </Pressable>
+                <View style={styles.block}>
+                  <Text style={styles.blockLabel}>שם כלה</Text>
+                  <TextInput
+                    value={draftBrideName}
+                    onChangeText={setDraftBrideName}
+                    style={styles.simpleInput}
+                    placeholder="לדוגמה: נועה"
+                    placeholderTextColor="#9CA3AF"
+                  />
+                </View>
+
+                <View style={styles.block}>
+                  <Text style={styles.blockLabel}>תאריך (YYYY-MM-DD)</Text>
+                  <TextInput
+                    value={draftEventDate}
+                    onChangeText={setDraftEventDate}
+                    style={styles.simpleInput}
+                    placeholder="2026-03-02"
+                    placeholderTextColor="#9CA3AF"
+                    autoCapitalize="none"
+                  />
                 </View>
               </View>
-            </ScrollView>
-          </View>
-        </Modal>
-      )}
+
+              <View style={styles.modalFooter}>
+                <Pressable style={styles.footerBtnSecondary} onPress={() => setEventEditorOpen(false)} accessibilityRole="button" accessibilityLabel="ביטול">
+                  <Text style={styles.footerBtnSecondaryText}>ביטול</Text>
+                </Pressable>
+                <Pressable style={styles.footerBtnPrimary} onPress={saveEventEdits} accessibilityRole="button" accessibilityLabel="שמור">
+                  <Ionicons name="checkmark" size={18} color="#fff" />
+                  <Text style={styles.footerBtnPrimaryText}>שמור</Text>
+                </Pressable>
+              </View>
+            </View>
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* Invitation editor modal */}
+      <Modal visible={invitationEditorOpen} transparent animationType="fade" onRequestClose={() => setInvitationEditorOpen(false)}>
+        <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.35)' }]}>
+          <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} showsVerticalScrollIndicator={false}>
+            <Pressable style={styles.modalOverlayTouchable} onPress={() => setInvitationEditorOpen(false)} />
+
+            <View style={styles.modalCard}>
+              <View style={styles.modalHeader}>
+                <Pressable onPress={() => setInvitationEditorOpen(false)} style={styles.modalCloseBtn} accessibilityRole="button" accessibilityLabel="סגור">
+                  <Ionicons name="close" size={18} color={colors.gray[700]} />
+                </Pressable>
+                <View style={styles.modalHeaderTitles}>
+                  <Text style={styles.modalTitle}>עריכת הזמנה</Text>
+                  <Text style={styles.modalSubtitle} numberOfLines={2}>
+                    קישור אישור הגעה ותמונה
+                  </Text>
+                </View>
+                <View style={{ width: 40 }} />
+              </View>
+
+              <View style={styles.modalDivider} />
+
+              <View style={styles.modalBody}>
+                <View style={styles.block}>
+                  <Text style={styles.blockLabel}>תמונת הזמנה</Text>
+                  <View style={styles.invitationPreview}>
+                    {draftInvitationImageUrl ? (
+                      <Image
+                        source={{ uri: draftInvitationImageUrl }}
+                        style={styles.invitationPreviewImg}
+                        contentFit="cover"
+                        transition={150}
+                        cachePolicy="none"
+                        recyclingKey={draftInvitationImageUrl}
+                      />
+                    ) : (
+                      <View style={styles.invitationEmpty}>
+                        <Ionicons name="image-outline" size={22} color={colors.gray[600]} />
+                        <Text style={styles.invitationEmptyText}>אין הזמנה</Text>
+                      </View>
+                    )}
+                  </View>
+
+                  <View style={styles.invitationActionsRow}>
+                    <Pressable
+                      style={[styles.invitationActionBtn, invitationUploading ? { opacity: 0.6 } : null]}
+                      onPress={pickAndUploadInvitationImage}
+                      disabled={invitationUploading}
+                      accessibilityRole="button"
+                      accessibilityLabel="העלה הזמנה חדשה"
+                    >
+                      <Ionicons name="cloud-upload-outline" size={16} color={colors.gray[800]} />
+                      <Text style={styles.invitationActionText}>העלה חדשה</Text>
+                    </Pressable>
+
+                    <Pressable
+                      style={[
+                        styles.invitationActionBtn,
+                        styles.invitationActionDanger,
+                        !draftInvitationImageUrl || invitationUploading ? { opacity: 0.5 } : null,
+                      ]}
+                      onPress={removeInvitationImage}
+                      disabled={!draftInvitationImageUrl || invitationUploading}
+                      accessibilityRole="button"
+                      accessibilityLabel="מחק הזמנה"
+                    >
+                      <Ionicons name="trash-outline" size={16} color={'#991b1b'} />
+                      <Text style={[styles.invitationActionText, { color: '#991b1b' }]}>מחק</Text>
+                    </Pressable>
+                  </View>
+                </View>
+
+                <View style={styles.block}>
+                  <Text style={styles.blockLabel}>קישור אישור הגעה</Text>
+                  <TextInput
+                    value={draftRsvpLink}
+                    onChangeText={setDraftRsvpLink}
+                    style={styles.simpleInput}
+                    placeholder="https://..."
+                    placeholderTextColor="#9CA3AF"
+                    autoCapitalize="none"
+                  />
+                </View>
+              </View>
+
+              <View style={styles.modalFooter}>
+                <Pressable style={styles.footerBtnSecondary} onPress={() => setInvitationEditorOpen(false)} accessibilityRole="button" accessibilityLabel="ביטול">
+                  <Text style={styles.footerBtnSecondaryText}>ביטול</Text>
+                </Pressable>
+                <Pressable style={styles.footerBtnPrimary} onPress={saveInvitationEdits} accessibilityRole="button" accessibilityLabel="שמור">
+                  <Ionicons name="checkmark" size={18} color="#fff" />
+                  <Text style={styles.footerBtnPrimaryText}>שמור</Text>
+                </Pressable>
+              </View>
+            </View>
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* RTL confirmation modal for removing invitation */}
+      <Modal
+        visible={removeInvitationConfirmOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setRemoveInvitationConfirmOpen(false)}
+      >
+        <Pressable style={styles.loBackdrop} onPress={() => setRemoveInvitationConfirmOpen(false)}>
+          <Pressable style={styles.loSheet} onPress={() => {}} accessibilityRole="dialog">
+            <View style={styles.loIconWrap}>
+              <View style={styles.loIconRing}>
+                <Ionicons name="trash-outline" size={26} color="#c62828" />
+              </View>
+            </View>
+
+            <Text style={styles.loTitle}>מחיקת הזמנה</Text>
+            <Text style={styles.loBody}>בטוח שברצונך למחוק את ההזמנה הקיימת?</Text>
+
+            <View style={styles.loActions}>
+              <View style={styles.loBtnOuter}>
+                <Pressable
+                  onPress={() => setRemoveInvitationConfirmOpen(false)}
+                  style={({ pressed }) => ({ flex: 1, opacity: pressed ? 0.78 : 1 })}
+                  accessibilityRole="button"
+                  accessibilityLabel="ביטול"
+                >
+                  <View style={styles.loCancelBtn}>
+                    <Text style={styles.loCancelText}>ביטול</Text>
+                  </View>
+                </Pressable>
+              </View>
+              <View style={styles.loBtnOuter}>
+                <Pressable
+                  onPress={() => void confirmRemoveInvitationImage()}
+                  disabled={invitationUploading}
+                  style={({ pressed }) => ({ flex: 1, opacity: invitationUploading ? 0.6 : pressed ? 0.85 : 1 })}
+                  accessibilityRole="button"
+                  accessibilityLabel="מחק"
+                >
+                  <View style={styles.loConfirmBtn}>
+                    <Ionicons name="trash-outline" size={18} color="#fff" />
+                    <Text style={styles.loConfirmText}>מחק</Text>
+                  </View>
+                </Pressable>
+              </View>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* חלון התנתקות - עיצוב זהה ל-admin-profile */}
       <Modal
@@ -1049,6 +1146,65 @@ const styles = StyleSheet.create({
   },
   block: { gap: 10 },
   blockLabel: { fontSize: 13, fontWeight: '900', color: '#111827', textAlign: 'right' },
+  simpleInput: {
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 14,
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#111827',
+    writingDirection: 'rtl',
+  },
+  invitationPreview: {
+    height: 220,
+    borderRadius: 18,
+    overflow: 'hidden',
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+  },
+  invitationPreviewImg: {
+    width: '100%',
+    height: '100%',
+  },
+  invitationEmpty: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  invitationEmptyText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: colors.gray[600],
+  },
+  invitationActionsRow: {
+    marginTop: 10,
+    flexDirection: 'row-reverse',
+    gap: 10,
+  },
+  invitationActionBtn: {
+    flex: 1,
+    height: 46,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.10)',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  invitationActionDanger: {
+    backgroundColor: 'rgba(239,68,68,0.08)',
+    borderColor: 'rgba(239,68,68,0.20)',
+  },
+  invitationActionText: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: '#111827',
+  },
   segmentWrap: {
     flexDirection: 'row-reverse',
     gap: 6,

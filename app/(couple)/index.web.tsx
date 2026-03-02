@@ -251,6 +251,28 @@ export default function CoupleHomeWebScreen() {
 
           <Pressable
             accessibilityRole="button"
+            accessibilityLabel="סידור שולחנות"
+            onPress={() =>
+              router.push({
+                pathname: '/(couple)/TablesList',
+                params: resolvedEventId ? { eventId: resolvedEventId } : {},
+              })
+            }
+            style={({ hovered, pressed }: any) => [
+              styles.bigActionSecondary,
+              Platform.OS === 'web' && hovered ? styles.bigActionSecondaryHover : null,
+              pressed ? { opacity: 0.94 } : null,
+            ]}
+          >
+            <View style={styles.bigActionIconWrapSecondary}>
+              <Ionicons name="restaurant-outline" size={26} color={stylesVars.accentPurple} />
+            </View>
+            <Text style={styles.bigActionTitleSecondary}>סידור שולחנות</Text>
+            <Text style={styles.bigActionSubtitleSecondary}>ניהול שולחנות והושבה</Text>
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
             accessibilityLabel="מפת הושבה"
             onPress={() =>
               router.push({
@@ -354,9 +376,7 @@ function HoverableSurface({
   const webHandlers =
     Platform.OS === 'web'
       ? ({
-          // @ts-expect-error - RN web mouse events
           onMouseEnter: () => setHovered(true),
-          // @ts-expect-error - RN web mouse events
           onMouseLeave: () => setHovered(false),
         } as any)
       : null;
@@ -418,7 +438,6 @@ const styles = StyleSheet.create({
   page: {
     flex: 1,
     backgroundColor: stylesVars.bgLight,
-    // @ts-expect-error - react-native-web supports direction
     direction: 'rtl',
   },
   scroll: { flex: 1, backgroundColor: 'transparent' },

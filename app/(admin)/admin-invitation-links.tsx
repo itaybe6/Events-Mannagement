@@ -21,7 +21,6 @@ import { colors } from '@/constants/colors';
 import { useAdminEventDetailsModel } from '@/features/events/useAdminEventDetailsModel';
 import { eventService } from '@/lib/services/eventService';
 import { invitationAssetService } from '@/lib/services/invitationAssetService';
-import { supabase } from '@/lib/supabase';
 
 function getEventTypeLabel(rawTitle: string) {
   const raw = String(rawTitle ?? '').trim();
@@ -329,13 +328,17 @@ export default function AdminInvitationLinksScreen() {
   }
 
   const isDesktop = Platform.OS === 'web' && width >= 1024;
+  const isNarrow = width < 420;
 
   return (
     <View style={styles.page}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[styles.content, isNarrow ? styles.contentNarrow : null]}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.headerRow}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.h1}>לינק להזמנה</Text>
+            <Text style={[styles.h1, isNarrow ? styles.h1Narrow : null]}>לינק להזמנה</Text>
             <Text style={styles.sub}>הגדרת תצוגת הזמנה + קישורים אישיים למוזמנים</Text>
           </View>
         </View>
@@ -353,9 +356,14 @@ export default function AdminInvitationLinksScreen() {
 
             <View style={styles.previewWrap}>
               {invitationPreviewImage ? (
-                <Image source={{ uri: invitationPreviewImage }} style={styles.previewImg} contentFit="cover" transition={0} />
+                <Image
+                  source={{ uri: invitationPreviewImage }}
+                  style={[styles.previewImg, isNarrow ? styles.previewImgNarrow : null]}
+                  contentFit="cover"
+                  transition={0}
+                />
               ) : (
-                <View style={styles.previewFallback}>
+                <View style={[styles.previewFallback, isNarrow ? styles.previewFallbackNarrow : null]}>
                   <Ionicons name="image-outline" size={26} color={colors.gray[500]} />
                   <Text style={styles.previewFallbackText}>עדיין לא הוגדרה תמונה</Text>
                 </View>
@@ -413,7 +421,7 @@ export default function AdminInvitationLinksScreen() {
             {isWedding ? (
               <>
                 <Text style={styles.sectionTitle}>שמות</Text>
-                <View style={styles.row}>
+                <View style={[styles.row, isNarrow ? styles.rowStack : null]}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.label}>שם החתן *</Text>
                     <TextInput
@@ -439,7 +447,7 @@ export default function AdminInvitationLinksScreen() {
                 </View>
 
                 <Text style={styles.sectionTitle}>זמנים (אופציונלי)</Text>
-                <View style={styles.row}>
+                <View style={[styles.row, isNarrow ? styles.rowStack : null]}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.label}>שעת קבלת פנים</Text>
                     <TextInput
@@ -465,7 +473,7 @@ export default function AdminInvitationLinksScreen() {
                 </View>
 
                 <Text style={styles.sectionTitle}>הורים (אופציונלי)</Text>
-                <View style={styles.row}>
+                <View style={[styles.row, isNarrow ? styles.rowStack : null]}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.label}>הורי הכלה</Text>
                     <TextInput
@@ -505,7 +513,7 @@ export default function AdminInvitationLinksScreen() {
               </>
             )}
 
-            <View style={styles.actionsRow}>
+            <View style={[styles.actionsRow, isNarrow ? styles.actionsRowStack : null]}>
               <Pressable
                 onPress={() => void pickAndUploadInvitationImage()}
                 disabled={uploading}
@@ -573,9 +581,9 @@ export default function AdminInvitationLinksScreen() {
         </View>
 
         {guestPickerOpen ? (
-          <View style={styles.dialogOverlay}>
+          <View style={[styles.dialogOverlay, isNarrow ? styles.dialogOverlayMobile : null]}>
             <Pressable style={styles.dialogBackdrop} onPress={closeGuestPicker} />
-            <View style={styles.dialogCard}>
+            <View style={[styles.dialogCard, isNarrow ? styles.dialogCardMobile : null]}>
               <View style={styles.dialogHeader}>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={styles.dialogTitle} numberOfLines={1}>
@@ -612,7 +620,12 @@ export default function AdminInvitationLinksScreen() {
                 ) : null}
               </View>
 
-              <View style={styles.dialogFiltersRow}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.dialogFiltersRow}
+                style={styles.dialogFiltersScroll}
+              >
                 <Pressable
                   onPress={() => setGuestFilter('all')}
                   style={({ pressed }) => [styles.filterPill, guestFilter === 'all' ? styles.filterPillActive : null, pressed ? { opacity: 0.92 } : null]}
@@ -637,7 +650,7 @@ export default function AdminInvitationLinksScreen() {
                 >
                   <Text style={[styles.filterText, guestFilter === 'לא מגיע' ? styles.filterTextActive : null]}>לא מגיעים ({counts.declined})</Text>
                 </Pressable>
-              </View>
+              </ScrollView>
 
               <ScrollView style={styles.dialogList} contentContainerStyle={styles.dialogListContent} showsVerticalScrollIndicator={false}>
                 {pickerGuests.length === 0 ? (
@@ -655,7 +668,7 @@ export default function AdminInvitationLinksScreen() {
                     const peopleCount = Number(g?.numberOfPeople || 1);
                     const isCopied = copiedGuestId === guestId;
                     return (
-                      <View key={guestId} style={styles.guestRow}>
+                      <View key={guestId} style={[styles.guestRow, isNarrow ? styles.guestRowNarrow : null]}>
                         <View style={styles.avatarIconWrap} pointerEvents="none">
                           <Ionicons name="person-circle-outline" size={34} color={'rgba(17,24,39,0.35)'} />
                         </View>
@@ -688,6 +701,7 @@ export default function AdminInvitationLinksScreen() {
                           disabled={!url || isCopied}
                           style={({ pressed }) => [
                             styles.copyBtn,
+                            isNarrow ? styles.copyBtnNarrow : null,
                             isCopied ? styles.copyBtnCopied : null,
                             pressed ? { opacity: 0.92 } : null,
                             !url ? { opacity: 0.5 } : null,
@@ -716,11 +730,13 @@ export default function AdminInvitationLinksScreen() {
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: '#f6f6f8' },
   content: { padding: 18, paddingBottom: Platform.OS === 'web' ? 40 : 110, gap: 14 },
+  contentNarrow: { padding: 14 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 24 },
   centerText: { fontSize: 14, fontWeight: '800', color: colors.gray[700], textAlign: 'center' },
 
   headerRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
   h1: { fontSize: 18, fontWeight: '900', color: colors.text, textAlign: 'right' },
+  h1Narrow: { fontSize: 20 },
   sub: { marginTop: 4, fontSize: 12, fontWeight: '700', color: colors.gray[600], textAlign: 'right' },
 
   iconBtn: {
@@ -760,7 +776,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(15,23,42,0.03)',
   },
   previewImg: { width: '100%', height: 240 },
+  previewImgNarrow: { height: 210 },
   previewFallback: { height: 240, alignItems: 'center', justifyContent: 'center', gap: 8 },
+  previewFallbackNarrow: { height: 210 },
   previewFallbackText: { fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'center' },
   previewBottom: { padding: 12, gap: 4, backgroundColor: 'rgba(255,255,255,0.92)' },
   previewTitle: { fontSize: 16, fontWeight: '900', color: colors.text, textAlign: 'right' },
@@ -819,7 +837,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   row: { flexDirection: 'row-reverse', gap: 10 },
+  rowStack: { flexDirection: 'column' },
   actionsRow: { flexDirection: 'row-reverse', gap: 10, marginTop: 4 },
+  actionsRowStack: { flexDirection: 'column' },
   primaryBtn: {
     flex: 1,
     height: 46,
@@ -868,6 +888,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(15,23,42,0.08)',
     backgroundColor: 'rgba(255,255,255,0.92)',
   },
+  guestRowNarrow: { flexDirection: 'row-reverse', flexWrap: 'wrap', alignItems: 'flex-start' },
   guestName: { fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'right' },
   guestMetaBlock: { marginTop: 4, gap: 2 },
   statusRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
@@ -905,6 +926,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
   },
+  copyBtnNarrow: { width: '100%', marginTop: 8 },
   copyBtnText: { fontSize: 12, fontWeight: '900', color: '#fff', textAlign: 'right' },
   copyBtnCopied: { backgroundColor: 'rgba(17,24,39,0.10)', borderWidth: 1, borderColor: 'rgba(17,24,39,0.14)' },
   copyBtnTextCopied: { color: 'rgba(17,24,39,0.72)' },
@@ -949,6 +971,7 @@ const styles = StyleSheet.create({
     zIndex: 999,
     ...(Platform.OS === 'web' ? ({ position: 'fixed' } as any) : null),
   },
+  dialogOverlayMobile: { justifyContent: 'flex-end', padding: 0 },
   dialogBackdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(2,6,23,0.45)',
@@ -966,6 +989,7 @@ const styles = StyleSheet.create({
     gap: 10,
     ...(Platform.OS === 'web' ? ({ boxShadow: '0 22px 60px rgba(2,6,23,0.30)' } as any) : null),
   },
+  dialogCardMobile: { maxHeight: '92%', borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
   dialogHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   dialogTitle: { fontSize: 15, fontWeight: '900', color: colors.text, textAlign: 'right' },
   dialogSub: { marginTop: 2, fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'right', lineHeight: 18 },
@@ -1000,7 +1024,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
-  dialogFiltersRow: { flexDirection: 'row', flexWrap: 'nowrap', gap: 8, alignItems: 'center' },
+  dialogFiltersScroll: { maxHeight: 48 },
+  dialogFiltersRow: { flexDirection: 'row-reverse', flexWrap: 'nowrap', gap: 8, alignItems: 'center' },
   dialogList: { flex: 1 },
   dialogListContent: { paddingBottom: 10, gap: 10 },
 

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Ionicons } from '@expo/vector-icons';
+import type { ImageStyle, StyleProp } from 'react-native';
 import { Image, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { colors } from '@/constants/colors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,14 +18,88 @@ type Props = {
   onPressBack?: () => void;
   canGoBack?: boolean;
   variant?: 'default' | 'compact';
+  layout?: 'centerLogo' | 'logoLeft';
+  rightContent?: React.ReactNode;
+  logoOffsetX?: number;
+  logoStyle?: StyleProp<ImageStyle>;
 };
 
 export default function AppHeader(props: Props) {
-  const { onPressNotifications, onPressEdit, onPressBack, canGoBack, variant = 'default' } = props;
+  const {
+    onPressNotifications,
+    onPressEdit,
+    onPressBack,
+    canGoBack,
+    variant = 'default',
+    layout = 'centerLogo',
+    rightContent,
+    logoOffsetX = 0,
+    logoStyle,
+  } = props;
   const insets = useSafeAreaInsets();
   const topInset = Math.max(0, insets.top || 0);
   const baseHeight = variant === 'compact' ? APP_HEADER_HEIGHT_COMPACT : APP_HEADER_HEIGHT;
   const totalHeight = getAppHeaderTotalHeight(topInset, baseHeight);
+
+  const rightNode = rightContent ? (
+    rightContent
+  ) : onPressEdit ? (
+    <TouchableOpacity
+      style={[styles.iconButton, styles.rightBtn]}
+      onPress={onPressEdit}
+      accessibilityRole="button"
+      accessibilityLabel="עריכת פרופיל"
+      activeOpacity={0.85}
+    >
+      <Ionicons name="create-outline" size={24} color={colors.primary} />
+    </TouchableOpacity>
+  ) : onPressNotifications ? (
+    <TouchableOpacity
+      style={[styles.iconButton, styles.rightBtn]}
+      onPress={onPressNotifications}
+      accessibilityRole="button"
+      accessibilityLabel="התראות"
+      activeOpacity={0.85}
+    >
+      <Ionicons name="notifications" size={24} color={colors.primary} />
+    </TouchableOpacity>
+  ) : (
+    <View style={[styles.iconButton, styles.rightBtn, { opacity: 0 }]} />
+  );
+
+  if (layout === 'logoLeft') {
+    return (
+      <View style={[styles.wrap, styles.wrapLogoLeft, { height: totalHeight, paddingTop: topInset }]}>
+        <View style={styles.leftCluster}>
+          {canGoBack ? (
+            <TouchableOpacity
+              style={[styles.iconButton, styles.leftBtn]}
+              onPress={onPressBack}
+              accessibilityRole="button"
+              accessibilityLabel="חזרה"
+              activeOpacity={0.85}
+            >
+              <Ionicons name="chevron-back" size={24} color={colors.primary} />
+            </TouchableOpacity>
+          ) : null}
+
+          <Image
+            source={require('../assets/images/logoMoon.png')}
+            style={[
+              styles.logoLeft,
+              variant === 'compact' && styles.logoLeftCompact,
+              canGoBack ? { marginLeft: 2 } : null,
+            ]}
+            resizeMode="contain"
+          />
+        </View>
+
+        <View style={styles.centerFill} />
+
+        <View style={styles.sideRightAuto}>{rightNode}</View>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.wrap, { height: totalHeight, paddingTop: topInset }]}>
@@ -47,36 +122,17 @@ export default function AppHeader(props: Props) {
       <View style={styles.center}>
         <Image
           source={require('../assets/images/logoMoon.png')}
-          style={[styles.logo, variant === 'compact' && styles.logoCompact]}
+          style={[
+            styles.logo,
+            variant === 'compact' && styles.logoCompact,
+            logoOffsetX ? { transform: [{ translateX: logoOffsetX }] } : null,
+            logoStyle,
+          ]}
           resizeMode="contain"
         />
       </View>
 
-      <View style={styles.sideRight}>
-        {onPressEdit ? (
-          <TouchableOpacity
-            style={[styles.iconButton, styles.rightBtn]}
-            onPress={onPressEdit}
-            accessibilityRole="button"
-            accessibilityLabel="עריכת פרופיל"
-            activeOpacity={0.85}
-          >
-            <Ionicons name="create-outline" size={24} color={colors.primary} />
-          </TouchableOpacity>
-        ) : onPressNotifications ? (
-          <TouchableOpacity
-            style={[styles.iconButton, styles.rightBtn]}
-            onPress={onPressNotifications}
-            accessibilityRole="button"
-            accessibilityLabel="התראות"
-            activeOpacity={0.85}
-          >
-            <Ionicons name="notifications" size={24} color={colors.primary} />
-          </TouchableOpacity>
-        ) : (
-          <View style={[styles.iconButton, styles.rightBtn, { opacity: 0 }]} />
-        )}
-      </View>
+      <View style={rightContent ? styles.sideRightAuto : styles.sideRight}>{rightNode}</View>
     </View>
   );
 }
@@ -89,6 +145,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 12,
   },
+  wrapLogoLeft: {
+    // Override base wrap paddingHorizontal so the logo can hug the screen edge.
+    paddingHorizontal: 0,
+    paddingLeft: 0,
+    paddingRight: 10,
+  },
   sideLeft: {
     width: 56,
     alignItems: 'flex-start',
@@ -99,10 +161,27 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     justifyContent: 'center',
   },
+  sideRightAuto: {
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
   center: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  centerFill: {
+    flex: 1,
+  },
+  leftCluster: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    flexShrink: 0,
+    gap: 8,
+    // Pull the cluster to the very edge (some RN headers still add subtle spacing)
+    marginLeft: -12,
   },
   logo: {
     width: 320,
@@ -111,6 +190,14 @@ const styles = StyleSheet.create({
   logoCompact: {
     width: 335,
     height: 74,
+  },
+  logoLeft: {
+    width: 210,
+    height: 52,
+  },
+  logoLeftCompact: {
+    width: 200,
+    height: 48,
   },
   iconButton: {
     width: 40,

@@ -15,7 +15,7 @@ module.exports = {
     // If you want only specific screens to rotate, lock/unlock at runtime via expo-screen-orientation,
     // but the app must still support the orientations at build time.
     orientation: "default",
-    icon: "./assets/images/icon.jpg",
+    icon: "./assets/images/icon.png",
     scheme: "myapp",
     userInterfaceStyle: "automatic",
     newArchEnabled: true,
@@ -27,11 +27,11 @@ module.exports = {
     ios: {
       supportsTablet: true,
       bundleIdentifier: "com.moonevents.app",
-      icon: "./assets/images/icon.jpg"
+      icon: "./assets/images/icon.png"
     },
     android: {
       adaptiveIcon: {
-        foregroundImage: "./assets/images/icon.jpg",
+        foregroundImage: "./assets/images/icon.png",
         backgroundColor: "#ffffff"
       },
       package: "com.moonevents.app"

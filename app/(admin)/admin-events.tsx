@@ -9,7 +9,7 @@ import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import { Event } from '@/types';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getAppHeaderTotalHeight } from '@/components/AppHeader';
+import { APP_HEADER_HEIGHT_COMPACT, getAppHeaderTotalHeight } from '@/components/AppHeader';
 import { EVENT_BADGE_META, inferEventType, MONTHS, type EventType } from '@/features/events/eventsConstants';
 import { useEventsListModel } from '@/features/events/useEventsListModel';
 
@@ -24,7 +24,7 @@ const EVENT_IMAGE_BY_TYPE: Record<EventType, number> = {
 export default function AdminEventsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const headerTotalHeight = getAppHeaderTotalHeight(insets.top);
+  const headerTotalHeight = getAppHeaderTotalHeight(insets.top, APP_HEADER_HEIGHT_COMPACT);
   const monthsBarHeight = Platform.OS === 'ios' ? 68 : 64;
 
   const [showDatePicker, setShowDatePicker] = useState(false);

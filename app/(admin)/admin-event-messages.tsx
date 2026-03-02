@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { supabase } from '@/lib/supabase';
@@ -280,28 +279,6 @@ export default function AdminEventMessagesScreen() {
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.gray[50] }]}>
-      <View
-        style={[
-          styles.header,
-          {
-            paddingTop: Math.max(12, insets.top + 12),
-            backgroundColor: 'rgba(249,250,251,0.95)',
-            borderBottomColor: 'rgba(243,244,246,1)',
-          },
-        ]}
-      >
-        <BlurView intensity={22} tint="light" style={StyleSheet.absoluteFillObject} />
-
-        <View style={styles.headerTitles}>
-          <Text style={[styles.headerTitle, { color: '#111827' }]}>הודעות אוטומטיות</Text>
-          <Text style={[styles.headerSubtitle, { color: colors.gray[600] }]} numberOfLines={1}>
-            {eventTitle ? `של ${eventTitle}` : eventId ? `של ${eventId}` : ''}
-          </Text>
-        </View>
-
-        <View style={{ width: 40 }} />
-      </View>
-
       {loading ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color={colors.primary} />
@@ -317,6 +294,21 @@ export default function AdminEventMessagesScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.notificationsSection}>
+            <View style={styles.notifHeader}>
+              <View style={styles.notifIconPill}>
+                <Ionicons name="chatbubbles-outline" size={18} color={colors.primary} />
+              </View>
+              <View style={styles.notifHeaderText}>
+                <Text style={styles.notifTitle}>הודעות אוטומטיות</Text>
+                <Text style={styles.notifSubtitle} numberOfLines={1}>
+                  {eventTitle ? `של ${eventTitle}` : eventId ? `של ${eventId}` : 'ניהול הודעות SMS ווואטסאפ'}
+                </Text>
+              </View>
+              <View style={styles.notifPill}>
+                <Text style={styles.notifPillText}>ניהול</Text>
+              </View>
+            </View>
+
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
                 <View style={[styles.sectionIconWrap, { backgroundColor: 'rgba(59,130,246,0.08)' }]}>
@@ -353,26 +345,52 @@ const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   emptyText: { fontSize: 13, fontWeight: '800' },
 
-  header: {
-    position: 'relative',
-    zIndex: 20,
-    borderBottomWidth: 1,
-    paddingHorizontal: 16,
-    paddingBottom: 12,
+  notifHeader: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'space-between',
-    ...(typeof document !== 'undefined'
-      ? ({
-          position: 'sticky',
-          top: 0,
-          backdropFilter: 'blur(14px)',
-        } as any)
-      : null),
+    gap: 12,
+    padding: 14,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+    shadowColor: colors.black,
+    shadowOpacity: 0.05,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 2,
+    marginBottom: 20,
   },
-  headerTitles: { flex: 1, alignItems: 'center', paddingHorizontal: 12 },
-  headerTitle: { fontSize: 18, fontWeight: '900', textAlign: 'center' },
-  headerSubtitle: { marginTop: 3, fontSize: 12, fontWeight: '700', textAlign: 'center' },
+  notifIconPill: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    backgroundColor: 'rgba(6,23,62,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.10)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  notifHeaderText: { flex: 1, alignItems: 'flex-end' },
+  notifTitle: { fontSize: 18, fontWeight: '900', color: colors.text, textAlign: 'right' },
+  notifSubtitle: {
+    marginTop: 4,
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.gray[600],
+    textAlign: 'right',
+    lineHeight: 16,
+  },
+  notifPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(29,78,216,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(29,78,216,0.14)',
+  },
+  notifPillText: { fontSize: 12, fontWeight: '900', color: 'rgba(29,78,216,0.95)' },
 
   scroll: { flex: 1, backgroundColor: colors.gray[50] },
   content: { paddingTop: 20 },

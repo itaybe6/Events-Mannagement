@@ -391,13 +391,43 @@ export default function HomeScreen() {
 
           <View style={[styles.actionTileWrapper, isDesktopWeb && styles.actionTileWrapperWeb]}>
             <ActionTile
-              title={'סידור\nהושבה'}
+              title={'סידור\nשולחנות'}
               subtitle="גרור ושחרר אורחים"
               iconName="grid"
               variant="round"
               onPress={() =>
                 router.push({
                   pathname: '/(couple)/BrideGroomSeating',
+                  params: resolvedEventId ? { eventId: resolvedEventId } : {},
+                })
+              }
+            />
+          </View>
+
+          <View style={[styles.actionTileWrapper, isDesktopWeb && styles.actionTileWrapperWeb]}>
+            <ActionTile
+              title={'הודעות\nאוטומטיות'}
+              subtitle="SMS / וואטסאפ"
+              iconName="chatbubble-ellipses-outline"
+              variant="round"
+              onPress={() =>
+                router.push({
+                  pathname: '/(couple)/automatic-notifications',
+                  params: resolvedEventId ? { eventId: resolvedEventId } : {},
+                })
+              }
+            />
+          </View>
+
+          <View style={[styles.actionTileWrapper, isDesktopWeb && styles.actionTileWrapperWeb]}>
+            <ActionTile
+              title={'סידור\nשולחנות'}
+              subtitle="ניהול שולחנות"
+              iconName="restaurant-outline"
+              variant="round"
+              onPress={() =>
+                router.push({
+                  pathname: '/(couple)/TablesList',
                   params: resolvedEventId ? { eventId: resolvedEventId } : {},
                 })
               }
