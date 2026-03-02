@@ -42,8 +42,9 @@ module.exports = {
     },
     plugins: [
       "expo-font",
+      // Use direct path to avoid plugin resolution issues (e.g. paths with non-ASCII chars on Windows)
       [
-        "expo-router",
+        "./node_modules/expo-router/app.plugin.js",
         {
           origin: "https://rork.com/"
         }

@@ -1273,15 +1273,17 @@ const styles = StyleSheet.create({
   quickActionChevron: {},
 
   statsGrid: {
-    flexDirection: 'row-reverse',
-    flexWrap: 'wrap',
+    flexDirection: 'row',
+    flexWrap: 'nowrap',
+    justifyContent: 'flex-start',
+    alignItems: 'flex-end',
     gap: 12,
   },
   // Force 4 cards in a single row on wide screens (matches design)
   statsGridWide: {
     flexWrap: 'nowrap',
   },
-  cardsRow: { flexDirection: 'row-reverse', gap: 12, flexWrap: 'wrap' },
+  cardsRow: { flexDirection: 'row', gap: 12, flexWrap: 'wrap' },
   statCard: {
     flexGrow: 1,
     flexBasis: 240,
@@ -1339,7 +1341,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   progressHeader: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 },
-  progressHeaderRight: { alignItems: 'flex-end', gap: 4, flex: 1, minWidth: 0 },
+  progressHeaderRight: { justifyContent: 'flex-start', alignItems: 'flex-start', gap: 4, flex: 1, minWidth: 0 },
   progressLabel: { fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'right' },
   progressValue: { fontSize: 22, fontWeight: '900', color: colors.text, textAlign: 'right' },
   progressValueSub: { fontSize: 12, fontWeight: '700', color: colors.gray[500] },
