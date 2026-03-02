@@ -31,6 +31,7 @@ export default function AdminEventDetailsScreen() {
   const { event, setEvent, guests, userName, userAvatarUrl, loading, error, stats } =
     useAdminEventDetailsModel(eventId);
   const [avatarPreviewOpen, setAvatarPreviewOpen] = useState(false);
+  const [noTablesModalOpen, setNoTablesModalOpen] = useState(false);
 
   const [editOpen, setEditOpen] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
@@ -134,21 +135,28 @@ export default function AdminEventDetailsScreen() {
   // פונקציה חדשה: בדוק/צור מפת הושבה
   const handleSeatingMap = async () => {
     if (!event?.id) return;
-    // בדוק אם קיימת מפה
+    // בדוק אם קיימים שולחנות במפה. מפה קיימת תמיד, אבל שולחנות לא תמיד קיימים.
     const { data, error } = await supabase
       .from('seating_maps')
-      .select('*')
+      .select('num_tables, tables')
       .eq('event_id', event.id)
-      .single();
-    if (!data) {
-      // צור מפה חדשה
-      await supabase.from('seating_maps').insert({
-        event_id: event.id,
-        num_tables: 0,
-        tables: [],
-        annotations: [],
-      });
+      .maybeSingle();
+
+    if (error) {
+      Alert.alert('שגיאה', 'לא ניתן לבדוק אם קיימת מפת הושבה כרגע');
+      return;
     }
+
+    const numTables = Number((data as any)?.num_tables ?? 0);
+    const tables = Array.isArray((data as any)?.tables) ? (data as any).tables : [];
+    const hasAtLeastOneTable =
+      (Number.isFinite(numTables) && numTables > 0) || (Array.isArray(tables) && tables.length > 0);
+
+    if (!hasAtLeastOneTable) {
+      setNoTablesModalOpen(true);
+      return;
+    }
+
     // IMPORTANT: Keep admin tab bar by staying inside /(admin) group
     router.push(`/(admin)/BrideGroomSeating?eventId=${event.id}`);
   };
@@ -410,13 +418,13 @@ export default function AdminEventDetailsScreen() {
         accessibilityLabel={accessibilityLabel}
       >
         <View style={styles.actionRowContent}>
+          <View style={[styles.actionRowIconSquare, { backgroundColor: iconBg }]}>
+            <Ionicons name={iconName} size={22} color={iconColor} />
+          </View>
+
           <View style={styles.actionRowTextWrap}>
             <Text style={[styles.actionRowTitle, { color: ui.text }]}>{title}</Text>
             <Text style={[styles.actionRowSubtitle, { color: 'rgba(17, 24, 39, 0.60)' }]}>{subtitle}</Text>
-          </View>
-
-          <View style={[styles.actionRowIconSquare, { backgroundColor: iconBg }]}>
-            <Ionicons name={iconName} size={22} color={iconColor} />
           </View>
         </View>
 
@@ -1065,6 +1073,53 @@ export default function AdminEventDetailsScreen() {
           ) : null}
         </Pressable>
       </Modal>
+
+      {/* No tables modal (RTL, styled) */}
+      <Modal
+        transparent
+        visible={noTablesModalOpen}
+        animationType="fade"
+        onRequestClose={() => setNoTablesModalOpen(false)}
+      >
+        <Pressable style={styles.noTablesOverlay} onPress={() => setNoTablesModalOpen(false)}>
+          <Pressable style={styles.noTablesCard} onPress={() => null}>
+            <View style={styles.noTablesHeaderRow}>
+              <View style={styles.noTablesIconCircle}>
+                <Ionicons name="grid-outline" size={18} color={ui.primary} />
+              </View>
+              <View style={styles.noTablesHeaderText}>
+                <Text style={styles.noTablesTitle}>אין שולחנות במפה</Text>
+                <Text style={styles.noTablesSubtitle} numberOfLines={2}>
+                  כדי להיכנס למפת הושבה צריך ליצור לפחות שולחן אחד.
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.noTablesDivider} />
+
+            <View style={styles.noTablesBody}>
+              <View style={styles.noTablesHintBox}>
+                <Ionicons name="information-circle-outline" size={16} color={'rgba(15,69,230,0.95)'} />
+                <Text style={styles.noTablesHintText}>
+                  צור שולחן אחד ומעלה, ואז נסה שוב ללחוץ על “מפת הושבה”.
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.noTablesFooter}>
+              <TouchableOpacity
+                style={styles.noTablesBtnPrimary}
+                onPress={() => setNoTablesModalOpen(false)}
+                activeOpacity={0.92}
+                accessibilityRole="button"
+                accessibilityLabel="סגירת הודעה"
+              >
+                <Text style={styles.noTablesBtnPrimaryText}>הבנתי</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
       </View>
     </BackSwipe>
   );
@@ -1565,6 +1620,106 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   deleteBtnDangerText: { fontSize: 13, fontWeight: '900', color: '#fff' },
+
+  // No tables modal (RTL, styled)
+  noTablesOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 18,
+    zIndex: 40,
+  },
+  noTablesCard: {
+    width: '100%',
+    maxWidth: 520,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.98)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.72)',
+    shadowColor: colors.black,
+    shadowOpacity: 0.22,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 16 },
+    elevation: 12,
+    overflow: 'hidden',
+  },
+  noTablesHeaderRow: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 12,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 12,
+  },
+  noTablesIconCircle: {
+    width: 42,
+    height: 42,
+    borderRadius: 999,
+    backgroundColor: 'rgba(15, 69, 230, 0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(15, 69, 230, 0.18)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  noTablesHeaderText: { flex: 1, alignItems: 'flex-end' },
+  noTablesTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#111827',
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  noTablesSubtitle: {
+    marginTop: 4,
+    fontSize: 12,
+    fontWeight: '800',
+    color: 'rgba(17,24,39,0.60)',
+    textAlign: 'right',
+    writingDirection: 'rtl',
+    lineHeight: 18,
+  },
+  noTablesDivider: { height: 1, backgroundColor: 'rgba(17,24,39,0.08)', marginHorizontal: 16 },
+  noTablesBody: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10, gap: 12 },
+  noTablesHintBox: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 16,
+    backgroundColor: 'rgba(15, 69, 230, 0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(15, 69, 230, 0.14)',
+  },
+  noTablesHintText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '800',
+    color: 'rgba(17,24,39,0.72)',
+    textAlign: 'right',
+    writingDirection: 'rtl',
+    lineHeight: 18,
+  },
+  noTablesFooter: {
+    padding: 14,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(17,24,39,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.98)',
+  },
+  noTablesBtnPrimary: {
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: '#1d4ed8',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#1d4ed8',
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 4,
+  },
+  noTablesBtnPrimaryText: { fontSize: 14, fontWeight: '900', color: '#fff', writingDirection: 'rtl' },
 
   glassOuter: {
     borderWidth: 1,

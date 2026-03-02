@@ -15,6 +15,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
+import Constants from 'expo-constants';
 import * as Linking from 'expo-linking';
 
 import { colors } from '@/constants/colors';
@@ -50,6 +51,16 @@ function buildInviteUrl(tokenOrCode: string) {
   return Linking.createURL(`/i/${t}`);
 }
 
+function getWebBaseUrl(): string {
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    return window.location.origin;
+  }
+  const fromEnv =
+    process.env.EXPO_PUBLIC_SITE_BASE_URL ?? Constants.expoConfig?.extra?.EXPO_PUBLIC_SITE_BASE_URL;
+  const base = String(fromEnv ?? '').trim().replace(/\/+$/, '');
+  return base || 'https://rork.com';
+}
+
 function buildDemoInviteUrl(eventId: string) {
   const id = String(eventId || '').trim();
   if (!id) return '';
@@ -57,6 +68,13 @@ function buildDemoInviteUrl(eventId: string) {
   if (!base) return '';
   const joiner = base.includes('?') ? '&' : '?';
   return `${base}${joiner}eventId=${encodeURIComponent(id)}`;
+}
+
+function buildDemoInviteUrlWeb(eventId: string): string {
+  const id = String(eventId || '').trim();
+  if (!id) return '';
+  const webBase = getWebBaseUrl();
+  return `${webBase}/i/demo?eventId=${encodeURIComponent(id)}`;
 }
 
 function getStatusDotColor(statusRaw: string) {
@@ -145,19 +163,17 @@ export default function AdminInvitationLinksScreen() {
   }, [event?.id]);
 
   const openDemo = async () => {
-    if (!demoUrl) {
+    if (!event?.id) {
       Alert.alert('דמו', 'חסר מזהה אירוע כדי לפתוח דמו.');
       return;
     }
     try {
+      const webUrl = buildDemoInviteUrlWeb(String(event.id));
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        window.open(demoUrl, '_blank', 'noopener,noreferrer');
+        window.open(webUrl, '_blank', 'noopener,noreferrer');
         return;
       }
-      router.push({
-        pathname: '/i/[token]',
-        params: { token: 'demo', eventId: String(event?.id ?? '') },
-      } as any);
+      await Linking.openURL(webUrl);
     } catch (e: any) {
       const msg = e?.message ? String(e.message) : 'לא ניתן לפתוח קישור';
       Alert.alert('דמו', msg);
@@ -328,15 +344,28 @@ export default function AdminInvitationLinksScreen() {
   }
 
   const isDesktop = Platform.OS === 'web' && width >= 1024;
+  const isMobile = width < 768;
   const isNarrow = width < 420;
 
   return (
     <View style={styles.page}>
       <ScrollView
-        contentContainerStyle={[styles.content, isNarrow ? styles.contentNarrow : null]}
+        contentContainerStyle={[
+          styles.content,
+          isMobile ? styles.contentMobile : null,
+          isNarrow ? styles.contentNarrow : null,
+        ]}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.headerRow}>
+          <Pressable
+            onPress={() => router.back()}
+            style={({ pressed }) => [styles.iconBtn, pressed ? { opacity: 0.92 } : null]}
+            accessibilityRole="button"
+            accessibilityLabel="חזרה"
+          >
+            <Ionicons name="arrow-forward" size={18} color={colors.primary} />
+          </Pressable>
           <View style={{ flex: 1 }}>
             <Text style={[styles.h1, isNarrow ? styles.h1Narrow : null]}>לינק להזמנה</Text>
             <Text style={styles.sub}>הגדרת תצוגת הזמנה + קישורים אישיים למוזמנים</Text>
@@ -345,7 +374,7 @@ export default function AdminInvitationLinksScreen() {
 
         <View style={[styles.topGrid, isDesktop ? styles.topGridDesktop : null]}>
           {/* Preview */}
-          <View style={[styles.card, isDesktop ? styles.previewCardDesktop : null]}>
+          <View style={[styles.card, isMobile ? styles.cardMobile : null, isDesktop ? styles.previewCardDesktop : null]}>
             <View style={styles.cardHeaderRow}>
               <Text style={styles.cardTitle}>תצוגה מקדימה</Text>
               <View style={styles.badge}>
@@ -358,12 +387,12 @@ export default function AdminInvitationLinksScreen() {
               {invitationPreviewImage ? (
                 <Image
                   source={{ uri: invitationPreviewImage }}
-                  style={[styles.previewImg, isNarrow ? styles.previewImgNarrow : null]}
+                  style={[styles.previewImg, isMobile ? styles.previewImgMobile : null, isNarrow ? styles.previewImgNarrow : null]}
                   contentFit="cover"
                   transition={0}
                 />
               ) : (
-                <View style={[styles.previewFallback, isNarrow ? styles.previewFallbackNarrow : null]}>
+                <View style={[styles.previewFallback, isMobile ? styles.previewFallbackMobile : null, isNarrow ? styles.previewFallbackNarrow : null]}>
                   <Ionicons name="image-outline" size={26} color={colors.gray[500]} />
                   <Text style={styles.previewFallbackText}>עדיין לא הוגדרה תמונה</Text>
                 </View>
@@ -381,35 +410,39 @@ export default function AdminInvitationLinksScreen() {
               </View>
             </View>
 
-            <View style={styles.demoCard}>
-              <View style={styles.demoIconWrap}>
-                <Ionicons name="globe-outline" size={18} color={colors.primary} />
-              </View>
-              <View style={styles.demoTextWrap}>
-                <Text style={styles.demoTitle}>לצפייה בדמו של דף ההזמנה</Text>
-                <Text style={styles.demoSub} numberOfLines={2}>
-                  {'ייפתח דמו כללי (לא על שם מוזמן) — כל בחירה נשמרת מקומית בלבד.'}
-                </Text>
+            <View style={[styles.demoCard, isMobile ? styles.demoCardMobile : null]}>
+              <View style={[styles.demoCardTop, isMobile ? styles.demoCardTopMobile : null]}>
+                <View style={styles.demoIconWrap}>
+                  <Ionicons name="globe-outline" size={18} color={colors.primary} />
+                </View>
+                <View style={styles.demoTextWrap}>
+                  <Text style={styles.demoTitle}>לצפייה בדמו של דף ההזמנה</Text>
+                  <Text style={styles.demoSub} numberOfLines={2}>
+                    {'ייפתח דמו כללי (לא על שם מוזמן) — כל בחירה נשמרת מקומית בלבד.'}
+                  </Text>
+                </View>
               </View>
               <Pressable
                 onPress={() => void openDemo()}
                 disabled={!demoUrl}
                 style={({ pressed }) => [
-                  styles.demoBtn,
+                  styles.demoBtnWrap,
                   !demoUrl ? styles.demoBtnDisabled : null,
                   pressed && demoUrl ? { opacity: 0.92 } : null,
                 ]}
                 accessibilityRole="button"
                 accessibilityLabel="לצפייה בדמו"
               >
-                <Ionicons name="open-outline" size={16} color="#fff" />
-                <Text style={styles.demoBtnText}>לצפייה בדמו</Text>
+                <View style={[styles.demoBtn, isMobile ? styles.demoBtnMobile : null]}>
+                  <Ionicons name="open-outline" size={16} color="#fff" />
+                  <Text style={styles.demoBtnText}>לצפייה בדמו</Text>
+                </View>
               </Pressable>
             </View>
           </View>
 
           {/* Form */}
-          <View style={[styles.card, isDesktop ? styles.formCardDesktop : null]}>
+          <View style={[styles.card, isMobile ? styles.cardMobile : null, isDesktop ? styles.formCardDesktop : null]}>
             <View style={styles.cardHeaderRow}>
               <Text style={styles.cardTitle}>הגדרות הזמנה</Text>
               <View style={[styles.badge, { backgroundColor: 'rgba(2,6,23,0.04)' }]}>
@@ -535,55 +568,11 @@ export default function AdminInvitationLinksScreen() {
           </View>
         </View>
 
-        <View style={styles.card}>
-          <View style={styles.cardHeaderRow}>
-            <Text style={styles.cardTitle}>קישורים אישיים למוזמנים</Text>
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>{guests.length}</Text>
-              <Text style={styles.badgeText}>מוזמנים</Text>
-            </View>
-          </View>
-
-          <Pressable
-            onPress={() => setGuestPickerOpen(true)}
-            style={({ pressed }) => [styles.searchOpenBtn, pressed ? { opacity: 0.92 } : null]}
-            accessibilityRole="button"
-            accessibilityLabel="חיפוש מוזמן והעתקת קישור אישי"
-          >
-            <Ionicons name="search-outline" size={18} color={'rgba(17,24,39,0.65)'} />
-            <Text style={styles.searchOpenText} numberOfLines={1}>
-              חיפוש מוזמן והעתקת קישור אישי…
-            </Text>
-            <View style={{ flex: 1 }} />
-            <View style={styles.searchOpenCta}>
-              <Text style={styles.searchOpenCtaText}>פתח</Text>
-              <Ionicons name="chevron-back" size={16} color={colors.primary} />
-            </View>
-          </Pressable>
-
-          <View style={styles.linksStatsRow}>
-            <View style={styles.statPill}>
-              <View style={[styles.statDot, { backgroundColor: '#22c55e' }]} />
-              <Text style={styles.statText}>אישרו</Text>
-              <Text style={styles.statValue}>{counts.confirmed}</Text>
-            </View>
-            <View style={styles.statPill}>
-              <View style={[styles.statDot, { backgroundColor: '#f59e0b' }]} />
-              <Text style={styles.statText}>ממתינים</Text>
-              <Text style={styles.statValue}>{counts.pending}</Text>
-            </View>
-            <View style={styles.statPill}>
-              <View style={[styles.statDot, { backgroundColor: '#ef4444' }]} />
-              <Text style={styles.statText}>לא מגיעים</Text>
-              <Text style={styles.statValue}>{counts.declined}</Text>
-            </View>
-          </View>
-        </View>
-
-        {guestPickerOpen ? (
+        {false ? (
           <View style={[styles.dialogOverlay, isNarrow ? styles.dialogOverlayMobile : null]}>
             <Pressable style={styles.dialogBackdrop} onPress={closeGuestPicker} />
             <View style={[styles.dialogCard, isNarrow ? styles.dialogCardMobile : null]}>
+              {isNarrow ? <View style={styles.sheetHandle} /> : null}
               <View style={styles.dialogHeader}>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={styles.dialogTitle} numberOfLines={1}>
@@ -730,13 +719,14 @@ export default function AdminInvitationLinksScreen() {
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: '#f6f6f8' },
   content: { padding: 18, paddingBottom: Platform.OS === 'web' ? 40 : 110, gap: 14 },
-  contentNarrow: { padding: 14 },
+  contentMobile: { paddingTop: 14 },
+  contentNarrow: { padding: 14, paddingTop: 12, gap: 12 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 24 },
   centerText: { fontSize: 14, fontWeight: '800', color: colors.gray[700], textAlign: 'center' },
 
   headerRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
-  h1: { fontSize: 18, fontWeight: '900', color: colors.text, textAlign: 'right' },
-  h1Narrow: { fontSize: 20 },
+  h1: { fontSize: 20, fontWeight: '900', color: colors.text, textAlign: 'right' },
+  h1Narrow: { fontSize: 22 },
   sub: { marginTop: 4, fontSize: 12, fontWeight: '700', color: colors.gray[600], textAlign: 'right' },
 
   iconBtn: {
@@ -757,12 +747,15 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(15,23,42,0.08)',
     padding: 14,
     gap: 10,
+    ...(Platform.OS === 'android' ? ({ elevation: 1 } as any) : null),
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 10px 26px rgba(2,6,23,0.06)' } as any) : null),
   },
+  cardMobile: { padding: 16, gap: 12 },
   topGrid: { gap: 14 },
   topGridDesktop: { flexDirection: 'row-reverse', alignItems: 'flex-start' },
   previewCardDesktop: { flex: 1, minWidth: 420, maxWidth: 560 },
   formCardDesktop: { flex: 1, minWidth: 520 },
-  cardHeaderRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  cardHeaderRow: { flexDirection: 'row-reverse', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   cardTitle: { fontSize: 15, fontWeight: '900', color: colors.text, textAlign: 'right' },
 
   badge: { flexDirection: 'row-reverse', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(15,69,230,0.08)' },
@@ -776,8 +769,10 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(15,23,42,0.03)',
   },
   previewImg: { width: '100%', height: 240 },
+  previewImgMobile: { height: 220 },
   previewImgNarrow: { height: 210 },
   previewFallback: { height: 240, alignItems: 'center', justifyContent: 'center', gap: 8 },
+  previewFallbackMobile: { height: 220 },
   previewFallbackNarrow: { height: 210 },
   previewFallbackText: { fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'center' },
   previewBottom: { padding: 12, gap: 4, backgroundColor: 'rgba(255,255,255,0.92)' },
@@ -790,10 +785,17 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(15,69,230,0.16)',
     backgroundColor: 'rgba(15,69,230,0.06)',
     padding: 12,
-    flexDirection: 'row',
+    flexDirection: 'row-reverse',
     flexWrap: 'wrap',
     alignItems: 'center',
     gap: 10,
+  },
+  demoCardTop: { flexDirection: 'row-reverse', alignItems: 'center', flex: 1, minWidth: 0, gap: 10 },
+  demoCardTopMobile: { flex: 0 },
+  demoCardMobile: {
+    flexDirection: 'column-reverse',
+    alignItems: 'stretch',
+    gap: 12,
   },
   demoIconWrap: {
     width: 42,
@@ -808,6 +810,7 @@ const styles = StyleSheet.create({
   demoTextWrap: { flex: 1, minWidth: 0, gap: 2 },
   demoTitle: { fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'right' },
   demoSub: { fontSize: 12, fontWeight: '800', color: 'rgba(17,24,39,0.62)', textAlign: 'right', lineHeight: 18 },
+  demoBtnWrap: { alignSelf: 'stretch' },
   demoBtn: {
     height: 36,
     paddingHorizontal: 12,
@@ -818,6 +821,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer', boxShadow: '0 10px 22px rgba(15,69,230,0.22)' } as any) : null),
+  },
+  demoBtnMobile: {
+    width: '100%',
+    minWidth: '100%',
+    height: 44,
+    alignSelf: 'stretch',
+    borderRadius: 14,
+    ...(Platform.OS === 'android' ? ({ elevation: 2 } as any) : null),
   },
   demoBtnDisabled: { opacity: 0.55, ...(Platform.OS === 'web' ? ({ cursor: 'default' } as any) : null) },
   demoBtnText: { fontSize: 12, fontWeight: '900', color: '#fff', textAlign: 'right' },
@@ -938,7 +949,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(17,24,39,0.04)',
     borderWidth: 1,
     borderColor: 'rgba(17,24,39,0.10)',
-    flexDirection: 'row',
+    flexDirection: 'row-reverse',
     alignItems: 'center',
     gap: 10,
   },
@@ -947,6 +958,7 @@ const styles = StyleSheet.create({
   searchOpenCtaText: { fontSize: 13, fontWeight: '900', color: colors.primary, textAlign: 'right' },
 
   linksStatsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' },
+  linksStatsRowScroll: { flexDirection: 'row-reverse', flexWrap: 'nowrap', gap: 8, alignItems: 'center', paddingHorizontal: 2 },
   statPill: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -989,7 +1001,22 @@ const styles = StyleSheet.create({
     gap: 10,
     ...(Platform.OS === 'web' ? ({ boxShadow: '0 22px 60px rgba(2,6,23,0.30)' } as any) : null),
   },
-  dialogCardMobile: { maxHeight: '92%', borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
+  dialogCardMobile: {
+    maxHeight: '92%',
+    paddingTop: 10,
+    paddingBottom: 16,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+  },
+  sheetHandle: {
+    alignSelf: 'center',
+    width: 42,
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: 'rgba(15,23,42,0.16)',
+    marginTop: 2,
+    marginBottom: 6,
+  },
   dialogHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   dialogTitle: { fontSize: 15, fontWeight: '900', color: colors.text, textAlign: 'right' },
   dialogSub: { marginTop: 2, fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'right', lineHeight: 18 },
