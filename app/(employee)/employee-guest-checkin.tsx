@@ -498,30 +498,71 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                                   {/* Accent bar (right edge) */}
                                   <View style={[styles.tabletAccentBar, checkedIn && styles.tabletAccentBarOn]} />
 
-                                  {/* ── Top row (RTL): [phone+status RIGHT] [Name CENTER] [Toggle LEFT] ── */}
-                                  <View style={styles.tabletRow1}>
-                                    {/* Pinned LEFT toggle (independent of RTL/LTR) */}
-                                    <View style={styles.tabletTogglePinned}>
-                                      <CheckInToggle
-                                        checked={checkedIn}
-                                        saving={isSaving}
-                                        disabled={isSaving}
-                                        accessibilityLabel={checkedIn ? `סמן שלא הגיע: ${g.name}` : `סמן שהגיע: ${g.name}`}
-                                        onPress={() => toggleCheckIn(g)}
-                                      />
-                                    </View>
+                                  <View style={styles.tabletGuestInner}>
+                                    {/* LEFT column: all buttons */}
+                                    <View style={styles.tabletButtonsCol}>
+                                      <View style={styles.tabletButtonsRow}>
+                                        <Text style={[styles.tabletToggleLabel, checkedIn && styles.tabletToggleLabelOn]}>
+                                          {checkedIn ? "הגיע" : "לא הגיע"}
+                                        </Text>
+                                        <CheckInToggle
+                                          checked={checkedIn}
+                                          saving={isSaving}
+                                          disabled={isSaving}
+                                          accessibilityLabel={checkedIn ? `סמן שלא הגיע: ${g.name}` : `סמן שהגיע: ${g.name}`}
+                                          onPress={() => toggleCheckIn(g)}
+                                        />
+                                      </View>
 
-                                    {/* RIGHT side in RTL: phone + status */}
-                                    <View style={styles.tabletRow1Right}>
+                                      <View style={styles.tabletButtonsRow}>
+                                        {checkedIn ? (
+                                          <View style={styles.compactStepper}>
+                                            <Pressable
+                                              accessibilityRole="button"
+                                              accessibilityLabel={`הפחת כמות שהגיעה עבור ${g.name}`}
+                                              onPress={() => void setCheckedInCount(g, Math.max(0, arrivedCount - 1))}
+                                              disabled={isSavingCount || arrivedCount <= 0}
+                                              style={[
+                                                styles.stepBtnCompact,
+                                                (isSavingCount || arrivedCount <= 0) && styles.stepBtnDisabled,
+                                              ]}
+                                            >
+                                              <Text style={styles.stepBtnText}>-</Text>
+                                            </Pressable>
+
+                                            <View style={styles.compactCountWrap}>
+                                              {isSavingCount ? (
+                                                <ActivityIndicator size={12} color={colors.primary} />
+                                              ) : (
+                                                <Text style={styles.compactCountText}>{arrivedCount}</Text>
+                                              )}
+                                            </View>
+
+                                            <Pressable
+                                              accessibilityRole="button"
+                                              accessibilityLabel={`הגדל כמות שהגיעה עבור ${g.name}`}
+                                              onPress={() => void setCheckedInCount(g, arrivedCount + 1)}
+                                              disabled={isSavingCount}
+                                              style={[styles.stepBtnCompact, isSavingCount && styles.stepBtnDisabled]}
+                                            >
+                                              <Text style={styles.stepBtnText}>+</Text>
+                                            </Pressable>
+                                          </View>
+                                        ) : (
+                                          <View style={styles.peoplePill}>
+                                            <Ionicons name="person" size={12} color={"rgba(17,24,39,0.65)"} />
+                                            <Text style={styles.peopleText}>{people}</Text>
+                                          </View>
+                                        )}
+                                      </View>
+
                                       <TouchableOpacity
                                         onPress={() => void callGuest(g.phone, g.name)}
                                         disabled={!phoneToTel(g.phone)}
                                         activeOpacity={0.85}
                                         style={[styles.phoneBtn, !phoneToTel(g.phone) && styles.phoneBtnDisabled]}
                                         accessibilityRole="button"
-                                        accessibilityLabel={
-                                          phoneToTel(g.phone) ? `התקשר ל-${g.name}` : `אין מספר טלפון עבור ${g.name}`
-                                        }
+                                        accessibilityLabel={phoneToTel(g.phone) ? `התקשר ל-${g.name}` : `אין מספר טלפון עבור ${g.name}`}
                                       >
                                         <Ionicons
                                           name="call-outline"
@@ -529,74 +570,35 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                                           color={phoneToTel(g.phone) ? colors.primary : "rgba(17,24,39,0.35)"}
                                         />
                                       </TouchableOpacity>
-
-                                      <View
-                                        style={[
-                                          styles.statusPill,
-                                          g.status === "מגיע"
-                                            ? styles.statusComing
-                                            : g.status === "לא מגיע"
-                                            ? styles.statusNot
-                                            : styles.statusPending,
-                                        ]}
-                                      >
-                                        <Text style={styles.statusText} numberOfLines={1}>{g.status}</Text>
-                                      </View>
                                     </View>
 
-                                    {/* CENTER: Name */}
-                                    <Text style={styles.tabletGuestName} numberOfLines={1}>
-                                      {g.name}
-                                    </Text>
-                                  </View>
+                                    {/* RIGHT column: guest info */}
+                                    <View style={styles.tabletInfoCol}>
+                                      <Text style={styles.tabletGuestName} numberOfLines={1}>
+                                        {g.name}
+                                      </Text>
 
-                                  {/* ── Bottom row: arrived label | stepper / people ── */}
-                                  <View style={styles.tabletRow2}>
-                                    {/* LEFT: stepper or people count */}
-                                    {checkedIn ? (
-                                      <View style={styles.compactStepper}>
-                                        <Pressable
-                                          accessibilityRole="button"
-                                          accessibilityLabel={`הפחת כמות שהגיעה עבור ${g.name}`}
-                                          onPress={() => void setCheckedInCount(g, Math.max(0, arrivedCount - 1))}
-                                          disabled={isSavingCount || arrivedCount <= 0}
+                                      <View style={styles.tabletInfoMetaRow}>
+                                        <View
                                           style={[
-                                            styles.stepBtnCompact,
-                                            (isSavingCount || arrivedCount <= 0) && styles.stepBtnDisabled,
+                                            styles.statusPill,
+                                            g.status === "מגיע"
+                                              ? styles.statusComing
+                                              : g.status === "לא מגיע"
+                                              ? styles.statusNot
+                                              : styles.statusPending,
                                           ]}
                                         >
-                                          <Text style={styles.stepBtnText}>-</Text>
-                                        </Pressable>
-
-                                        <View style={styles.compactCountWrap}>
-                                          {isSavingCount ? (
-                                            <ActivityIndicator size={12} color={colors.primary} />
-                                          ) : (
-                                            <Text style={styles.compactCountText}>{arrivedCount}</Text>
-                                          )}
+                                          <Text style={styles.statusText} numberOfLines={1}>
+                                            {g.status}
+                                          </Text>
                                         </View>
 
-                                        <Pressable
-                                          accessibilityRole="button"
-                                          accessibilityLabel={`הגדל כמות שהגיעה עבור ${g.name}`}
-                                          onPress={() => void setCheckedInCount(g, arrivedCount + 1)}
-                                          disabled={isSavingCount}
-                                          style={[styles.stepBtnCompact, isSavingCount && styles.stepBtnDisabled]}
-                                        >
-                                          <Text style={styles.stepBtnText}>+</Text>
-                                        </Pressable>
+                                        <Text style={[styles.tabletArrivedLabel, checkedIn && styles.tabletArrivedLabelOn]} numberOfLines={1}>
+                                          {checkedIn ? `הגיעו ${arrivedCount} מתוך ${people}` : "טרם הגיע"}
+                                        </Text>
                                       </View>
-                                    ) : (
-                                      <View style={styles.peoplePill}>
-                                        <Ionicons name="person" size={12} color={"rgba(17,24,39,0.65)"} />
-                                        <Text style={styles.peopleText}>{people} מוזמנים</Text>
-                                      </View>
-                                    )}
-
-                                    {/* RIGHT: arrived label */}
-                                    <Text style={[styles.tabletArrivedLabel, checkedIn && styles.tabletArrivedLabelOn]}>
-                                      {checkedIn ? `הגיעו ${arrivedCount} מתוך ${people}` : "טרם הגיע"}
-                                    </Text>
+                                    </View>
                                   </View>
                                 </View>
                               );
@@ -1190,23 +1192,46 @@ const styles = StyleSheet.create({
   },
   tabletAccentBarOn: { backgroundColor: "#10B981" },
 
-  /* Row 1: [Toggle] [Name flex] [phone + status] */
-  tabletRow1: {
-    position: "relative",
-    // Keep main content away from the pinned-left toggle
-    paddingLeft: 74,
-    minHeight: 38,
+  tabletGuestInner: {
+    flexDirection: "row",
+    alignItems: "stretch",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  tabletButtonsCol: {
+    width: 172,
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 10,
+    paddingTop: 2,
+  },
+  tabletButtonsRow: {
+    width: "100%",
     flexDirection: "row-reverse",
     alignItems: "center",
+    justifyContent: "space-between",
     gap: 10,
   },
-  tabletTogglePinned: {
-    position: "absolute",
-    left: 0,
-    top: 0,
-    bottom: 0,
+  tabletToggleLabel: {
+    fontSize: 13,
+    fontWeight: "900",
+    color: "rgba(17,24,39,0.55)",
+    textAlign: "left",
+  },
+  tabletToggleLabelOn: { color: "#047857" },
+  tabletInfoCol: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: "flex-end",
     justifyContent: "center",
-    alignItems: "flex-start",
+    gap: 8,
+  },
+  tabletInfoMetaRow: {
+    width: "100%",
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
   },
   tabletGuestName: {
     flex: 1,
@@ -1214,19 +1239,6 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     color: colors.text,
     textAlign: "right",
-  },
-  tabletRow1Right: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
-    flexShrink: 0,
-  },
-
-  /* Row 2: [arrived label]  [stepper / people pill] */
-  tabletRow2: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
   },
   tabletArrivedLabel: {
     fontSize: 12,
