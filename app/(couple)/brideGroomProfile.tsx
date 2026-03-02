@@ -59,6 +59,7 @@ export default function BrideGroomSettings() {
   const [settings, setSettings] = useState<NotificationSettingRow[]>([]);
   const [settingsEditorOpen, setSettingsEditorOpen] = useState(false);
   const [editingSetting, setEditingSetting] = useState<NotificationSettingRow | null>(null);
+  const [logoutModalOpen, setLogoutModalOpen] = useState(false);
   const [draftChannel, setDraftChannel] = useState<'WHATSAPP' | 'SMS'>('WHATSAPP');
   const [draftDays, setDraftDays] = useState('0');
   const [draftEnabled, setDraftEnabled] = useState(true);
@@ -184,10 +185,16 @@ export default function BrideGroomSettings() {
     };
   }, [resolvedEventId]);
 
-  const handleLogout = async () => {
-    await logout();
-    router.replace('/login');
+  const performLogout = async () => {
+    try {
+      await logout();
+      router.replace('/login');
+    } catch {
+      Alert.alert('שגיאה', 'לא ניתן להתנתק כרגע, נסה שוב.');
+    }
   };
+
+  const askLogout = () => setLogoutModalOpen(true);
 
   const groomName = String(eventMeta?.groomName ?? '').trim();
   const brideName = String(eventMeta?.brideName ?? '').trim();
@@ -273,6 +280,14 @@ export default function BrideGroomSettings() {
     return d.toLocaleDateString('he-IL', { year: 'numeric', month: 'long', day: 'numeric' });
   })();
 
+  const logoutPillLabel = (() => {
+    if (!settingsSupported) return 'לא זמין';
+    if (settingsLoading) return 'טוען...';
+    const total = settings.length;
+    const enabled = settings.reduce((acc, s) => acc + (s.enabled ? 1 : 0), 0);
+    return total === 0 ? '0 הודעות' : `${enabled}/${total} פעיל`;
+  })();
+
   const getEventCoverSource = () => {
     const title = String(eventMeta?.title ?? '').toLowerCase();
 
@@ -351,11 +366,25 @@ export default function BrideGroomSettings() {
         {/* Message settings (from mobile profile screen) */}
         {Platform.OS === 'web' ? null : (
           <View style={styles.notificationsSection}>
-            <Text style={styles.sectionTitle}>הגדרות הודעות</Text>
+            <View style={styles.notifHeader}>
+              <View style={styles.notifIconPill}>
+                <Ionicons name="chatbubbles-outline" size={18} color={colors.primary} />
+              </View>
+              <View style={styles.notifHeaderText}>
+                <Text style={styles.notifTitle}>הגדרות הודעות</Text>
+                <Text style={styles.notifSubtitle}>ניהול הודעות אוטומטיות לאירוע (SMS / וואטסאפ)</Text>
+              </View>
+              <View style={styles.notifPill}>
+                <Text style={styles.notifPillText}>{logoutPillLabel}</Text>
+              </View>
+            </View>
 
-            <View style={styles.noteWrap}>
-              <Text style={styles.noteText}>
-                כאן אפשר לנהל הודעות אוטומטיות (SMS / וואטסאפ) שקשורות לאירוע. אם אין תצוגה כאן — ייתכן שהפיצ׳ר לא זמין בסביבת השרת הנוכחית.
+            <View style={styles.notifCallout}>
+              <View style={styles.notifCalloutIcon}>
+                <Ionicons name="information-circle-outline" size={18} color={colors.gray[700]} />
+              </View>
+              <Text style={styles.notifCalloutText}>
+                לחיצה על הודעה פותחת עריכה. אפשר גם להדליק/לכבות הודעה ישירות מהרשימה.
               </Text>
             </View>
 
@@ -435,7 +464,7 @@ export default function BrideGroomSettings() {
         )}
 
         {/* Logout Button */}
-        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+        <TouchableOpacity style={styles.logoutButton} onPress={askLogout}>
           <Text style={styles.logoutButtonText}>התנתק</Text>
         </TouchableOpacity>
       </ScrollView>
@@ -599,6 +628,60 @@ export default function BrideGroomSettings() {
           </View>
         </Modal>
       )}
+
+      {/* חלון התנתקות - עיצוב זהה ל-admin-profile */}
+      <Modal
+        visible={logoutModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setLogoutModalOpen(false)}
+      >
+        <Pressable style={styles.loBackdrop} onPress={() => setLogoutModalOpen(false)}>
+          <Pressable style={styles.loSheet} onPress={() => {}} accessibilityRole="dialog">
+
+            <View style={styles.loIconWrap}>
+              <View style={styles.loIconRing}>
+                <Ionicons name="log-out-outline" size={26} color="#c62828" />
+              </View>
+            </View>
+
+            <Text style={styles.loTitle}>התנתקות</Text>
+            <Text style={styles.loBody}>בטוח שברצונך להתנתק?</Text>
+
+            <View style={styles.loActions}>
+              <View style={styles.loBtnOuter}>
+                <Pressable
+                  onPress={() => setLogoutModalOpen(false)}
+                  style={({ pressed }) => ({ flex: 1, opacity: pressed ? 0.78 : 1 })}
+                  accessibilityRole="button"
+                  accessibilityLabel="ביטול"
+                >
+                  <View style={styles.loCancelBtn}>
+                    <Text style={styles.loCancelText}>ביטול</Text>
+                  </View>
+                </Pressable>
+              </View>
+              <View style={styles.loBtnOuter}>
+                <Pressable
+                  onPress={() => {
+                    setLogoutModalOpen(false);
+                    void performLogout();
+                  }}
+                  style={({ pressed }) => ({ flex: 1, opacity: pressed ? 0.78 : 1 })}
+                  accessibilityRole="button"
+                  accessibilityLabel="התנתק"
+                >
+                  <View style={styles.loConfirmBtn}>
+                    <Ionicons name="log-out-outline" size={18} color="#FFFFFF" />
+                    <Text style={styles.loConfirmText}>התנתק</Text>
+                  </View>
+                </Pressable>
+              </View>
+            </View>
+
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -706,25 +789,79 @@ const styles = StyleSheet.create({
     marginHorizontal: 20,
     marginBottom: 32,
   },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: colors.text,
-    marginBottom: 10,
-    textAlign: 'right',
-  },
-  noteWrap: {
+  notifHeader: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
-    justifyContent: 'flex-start',
-    paddingHorizontal: 6,
+    justifyContent: 'space-between',
+    gap: 12,
+    padding: 14,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+    shadowColor: colors.black,
+    shadowOpacity: 0.05,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 2,
+    marginBottom: 12,
+  },
+  notifIconPill: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    backgroundColor: 'rgba(6,23,62,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.10)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  notifHeaderText: { flex: 1, alignItems: 'flex-end' },
+  notifTitle: { fontSize: 18, fontWeight: '900', color: colors.text, textAlign: 'right' },
+  notifSubtitle: {
+    marginTop: 4,
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.gray[600],
+    textAlign: 'right',
+    lineHeight: 16,
+  },
+  notifPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(29,78,216,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(29,78,216,0.14)',
+  },
+  notifPillText: { fontSize: 12, fontWeight: '900', color: 'rgba(29,78,216,0.95)' },
+  notifCallout: {
+    flexDirection: 'row-reverse',
+    alignItems: 'flex-start',
+    gap: 10,
+    padding: 12,
+    borderRadius: 16,
+    backgroundColor: 'rgba(6,23,62,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.08)',
     marginBottom: 18,
   },
-  noteText: {
+  notifCalloutIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 1,
+  },
+  notifCalloutText: {
     flex: 1,
     fontSize: 12,
     fontWeight: '800',
-    color: '#6B7280',
+    color: colors.gray[700],
     textAlign: 'right',
     lineHeight: 18,
   },
@@ -1064,5 +1201,103 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.text,
   },
-  // (legacy modal styles removed in favor of the new modern editor modal)
+
+  /* חלון התנתקות - עיצוב זהה ל-admin-profile */
+  loBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 28,
+  },
+  loSheet: {
+    width: '100%',
+    maxWidth: 360,
+    borderRadius: 28,
+    backgroundColor: colors.white,
+    paddingHorizontal: 24,
+    paddingTop: 32,
+    paddingBottom: 24,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 12,
+  },
+  loIconWrap: { marginBottom: 18 },
+  loIconRing: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(198,40,40,0.08)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(198,40,40,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: colors.primary,
+    textAlign: 'center',
+    writingDirection: 'rtl',
+    marginBottom: 8,
+  },
+  loBody: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.gray[600],
+    textAlign: 'center',
+    writingDirection: 'rtl',
+    lineHeight: 21,
+    marginBottom: 28,
+  },
+  loActions: {
+    width: '100%',
+    flexDirection: 'row-reverse',
+    gap: 12,
+  },
+  loBtnOuter: {
+    flex: 1,
+    minHeight: 50,
+    height: 50,
+  },
+  loCancelBtn: {
+    flex: 1,
+    minHeight: 50,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: 'rgba(6,23,62,0.14)',
+    backgroundColor: 'rgba(6,23,62,0.04)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loCancelText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.primary,
+    writingDirection: 'rtl',
+  },
+  loConfirmBtn: {
+    flex: 1,
+    minHeight: 50,
+    borderRadius: 16,
+    backgroundColor: '#c62828',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    shadowColor: '#c62828',
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 5,
+  },
+  loConfirmText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    writingDirection: 'rtl',
+  },
 }); 

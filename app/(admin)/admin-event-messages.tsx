@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { supabase } from '@/lib/supabase';
+import { colors } from '@/constants/colors';
 
 type NotificationTemplate = {
   notification_type: string;
@@ -67,12 +68,6 @@ const NOTIFICATION_TEMPLATES: NotificationTemplate[] = [
 const isMissingColumn = (err: any, column: string) =>
   String(err?.code) === '42703' && String(err?.message || '').toLowerCase().includes(column.toLowerCase());
 
-function formatOffsetLabel(days: number) {
-  if (days === 0) return 'ביום האירוע';
-  const abs = Math.abs(days);
-  return days < 0 ? `${abs} ימים לפני האירוע` : `${abs} ימים אחרי האירוע`;
-}
-
 export default function AdminEventMessagesScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -80,18 +75,6 @@ export default function AdminEventMessagesScreen() {
   const eventId = useMemo(
     () => (typeof params.eventId === 'string' ? params.eventId : Array.isArray(params.eventId) ? params.eventId[0] : ''),
     [params.eventId]
-  );
-
-  const ui = useMemo(
-    () => ({
-      primary: '#3b82f6',
-      whatsapp: '#25D366',
-      bg: '#F9FAFB',
-      card: '#FFFFFF',
-      text: '#111827',
-      sub: '#6B7280',
-    }),
-    []
   );
 
   const [loading, setLoading] = useState(true);
@@ -231,60 +214,72 @@ export default function AdminEventMessagesScreen() {
   const whatsapp = useMemo(() => notificationSettings.filter((r) => (r.channel || 'SMS') === 'WHATSAPP'), [notificationSettings]);
 
   const renderCardRow = (row: NotificationSettingRow, variant: 'regular' | 'whatsapp') => {
-    const statusLabel = row.enabled ? 'פעיל' : 'כבוי';
-    const statusColor = row.enabled ? '#16a34a' : '#9ca3af';
-    const meta = formatOffsetLabel(row.days_from_wedding);
+    const channel = (row.channel || (variant === 'whatsapp' ? 'WHATSAPP' : 'SMS')) as 'SMS' | 'WHATSAPP';
+    const isWhatsapp = channel === 'WHATSAPP';
+    const accent = isWhatsapp ? 'rgba(37,211,102,0.95)' : 'rgba(59,130,246,0.95)';
+    const border = isWhatsapp ? 'rgba(37,211,102,0.18)' : 'rgba(59,130,246,0.18)';
 
-    const borderColor = variant === 'whatsapp' ? 'rgba(220,252,231,1)' : 'rgba(243,244,246,1)';
+    const days = typeof row.days_from_wedding === 'number' ? row.days_from_wedding : 0;
+    const whenLabel =
+      days === 0 ? 'ביום האירוע' : days > 0 ? `${days}+ ימים אחרי האירוע` : `${Math.abs(days)} ימים לפני האירוע`;
+
+    const statusLabel = row.enabled ? 'פעיל' : 'כבוי';
 
     return (
-      <Pressable
+      <TouchableOpacity
         key={row.notification_type}
         onPress={() => openEdit(row)}
-        style={({ pressed }: any) => [
-          styles.itemCard,
-          { backgroundColor: ui.card, borderColor },
-          pressed ? { transform: [{ scale: 0.99 }], opacity: 0.98 } : null,
-        ]}
+        activeOpacity={0.9}
         accessibilityRole="button"
         accessibilityLabel={`עריכת ${row.title}`}
       >
-        {variant === 'whatsapp' ? <View style={[styles.whatsappAccent, { backgroundColor: ui.whatsapp }]} /> : null}
+        <View
+          style={[
+            styles.notificationCard,
+            { borderColor: border, backgroundColor: 'rgba(255,255,255,0.92)' },
+            isWhatsapp ? styles.notificationCardWhatsapp : null,
+          ]}
+        >
+          <View style={[styles.whatsappAccent, { backgroundColor: accent }]} />
 
-        <View style={styles.itemMain}>
-          <Text style={[styles.itemTitle, { color: ui.text }]} numberOfLines={1}>
-            {row.title}
-          </Text>
-
-          <View style={styles.itemMetaRow}>
-            <Pressable
-              onPress={(e: any) => {
-                e?.stopPropagation?.();
-                e?.preventDefault?.();
-                void toggleNotification(row);
-              }}
-              accessibilityRole="button"
-              accessibilityLabel={row.enabled ? 'כיבוי הודעה' : 'הפעלת הודעה'}
-              style={styles.statusBtn}
-            >
-              <Text style={[styles.statusText, { color: statusColor }]}>{statusLabel}</Text>
-            </Pressable>
-            <Text style={[styles.metaDot, { color: '#d1d5db' }]}>•</Text>
-            <Text style={[styles.metaText, { color: ui.sub }]} numberOfLines={1}>
-              {meta}
+          <View style={styles.cardMain}>
+            <Text style={[styles.cardTitle, { color: colors.gray[900] }]} numberOfLines={1}>
+              {row.title}
             </Text>
-          </View>
-        </View>
 
-        <View style={styles.chevronWrap}>
-          <Ionicons name="chevron-back" size={18} color={variant === 'whatsapp' ? ui.whatsapp : '#9ca3af'} />
+            <View style={styles.cardMetaRow}>
+              <TouchableOpacity
+                style={styles.statusBtn}
+                onPress={(e: any) => {
+                  e?.stopPropagation?.();
+                  e?.preventDefault?.();
+                  void toggleNotification(row);
+                }}
+                activeOpacity={0.9}
+                accessibilityRole="button"
+                accessibilityLabel={row.enabled ? 'כיבוי הודעה' : 'הפעלת הודעה'}
+              >
+                <Text style={[styles.statusText, { color: row.enabled ? accent : colors.gray[400] }]}>{statusLabel}</Text>
+              </TouchableOpacity>
+              <Text style={[styles.metaBullet, { color: colors.gray[400] }]}>•</Text>
+              <Text style={[styles.metaText, { color: colors.gray[700] }]}>{isWhatsapp ? 'וואטסאפ' : 'SMS'}</Text>
+              <Text style={[styles.metaBullet, { color: colors.gray[400] }]}>•</Text>
+              <Text style={[styles.metaText, { color: colors.gray[700] }]} numberOfLines={1}>
+                {whenLabel}
+              </Text>
+            </View>
+          </View>
+
+          <TouchableOpacity style={styles.cardChevron} onPress={() => openEdit(row)} activeOpacity={0.9}>
+            <Ionicons name="chevron-back" size={20} color={colors.gray[500]} />
+          </TouchableOpacity>
         </View>
-      </Pressable>
+      </TouchableOpacity>
     );
   };
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: ui.bg }]}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: colors.gray[50] }]}>
       <View
         style={[
           styles.header,
@@ -299,7 +294,7 @@ export default function AdminEventMessagesScreen() {
 
         <View style={styles.headerTitles}>
           <Text style={[styles.headerTitle, { color: '#111827' }]}>הודעות אוטומטיות</Text>
-          <Text style={[styles.headerSubtitle, { color: ui.sub }]} numberOfLines={1}>
+          <Text style={[styles.headerSubtitle, { color: colors.gray[600] }]} numberOfLines={1}>
             {eventTitle ? `של ${eventTitle}` : eventId ? `של ${eventId}` : ''}
           </Text>
         </View>
@@ -309,11 +304,11 @@ export default function AdminEventMessagesScreen() {
 
       {loading ? (
         <View style={styles.center}>
-          <ActivityIndicator size="large" color={ui.primary} />
+          <ActivityIndicator size="large" color={colors.primary} />
         </View>
       ) : !eventId ? (
         <View style={styles.center}>
-          <Text style={[styles.emptyText, { color: ui.sub }]}>חסר eventId</Text>
+          <Text style={[styles.emptyText, { color: colors.gray[600] }]}>חסר eventId</Text>
         </View>
       ) : (
         <ScrollView
@@ -321,29 +316,31 @@ export default function AdminEventMessagesScreen() {
           contentContainerStyle={[styles.content, { paddingBottom: 28 + Math.max(90, insets.bottom + 90) }]}
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <View style={[styles.sectionIconWrap, { backgroundColor: 'rgba(59,130,246,0.08)' }]}>
-                <Ionicons name="mail-outline" size={18} color={ui.primary} />
+          <View style={styles.notificationsSection}>
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <View style={[styles.sectionIconWrap, { backgroundColor: 'rgba(59,130,246,0.08)' }]}>
+                  <Ionicons name="mail-outline" size={18} color={colors.primary} />
+                </View>
+                <Text style={[styles.sectionTitle, { color: '#1f2937' }]}>הודעות רגילות</Text>
               </View>
-              <Text style={[styles.sectionTitle, { color: '#1f2937' }]}>הודעות רגילות</Text>
+              <View style={styles.itemsStack}>{regular.map((r) => renderCardRow(r, 'regular'))}</View>
             </View>
-            <View style={styles.itemsStack}>{regular.map((r) => renderCardRow(r, 'regular'))}</View>
-          </View>
 
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <View
-                style={[
-                  styles.sectionIconWrap,
-                  { backgroundColor: 'rgba(34,197,94,0.10)', borderColor: 'rgba(220,252,231,1)', borderWidth: 1 },
-                ]}
-              >
-                <Ionicons name="chatbubble-ellipses-outline" size={18} color={ui.whatsapp} />
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <View
+                  style={[
+                    styles.sectionIconWrap,
+                    { backgroundColor: 'rgba(34,197,94,0.10)', borderColor: 'rgba(220,252,231,1)', borderWidth: 1 },
+                  ]}
+                >
+                  <Ionicons name="chatbubble-ellipses-outline" size={18} color={'#25D366'} />
+                </View>
+                <Text style={[styles.sectionTitle, { color: '#1f2937' }]}>הודעות וואטסאפ</Text>
               </View>
-              <Text style={[styles.sectionTitle, { color: '#1f2937' }]}>הודעות וואטסאפ</Text>
+              <View style={styles.itemsStack}>{whatsapp.map((r) => renderCardRow(r, 'whatsapp'))}</View>
             </View>
-            <View style={styles.itemsStack}>{whatsapp.map((r) => renderCardRow(r, 'whatsapp'))}</View>
           </View>
         </ScrollView>
       )}
@@ -377,46 +374,63 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 18, fontWeight: '900', textAlign: 'center' },
   headerSubtitle: { marginTop: 3, fontSize: 12, fontWeight: '700', textAlign: 'center' },
 
-  scroll: { flex: 1 },
-  content: {
-    paddingHorizontal: 16,
-    paddingTop: 18,
-    width: '100%',
-    maxWidth: 520,
-    alignSelf: 'center',
-    gap: 22,
-  },
+  scroll: { flex: 1, backgroundColor: colors.gray[50] },
+  content: { paddingTop: 20 },
 
-  section: {},
-  sectionHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'flex-start', gap: 10, paddingHorizontal: 6, marginBottom: 12 },
+  notificationsSection: { marginHorizontal: 20, marginBottom: 32 },
+  section: { marginBottom: 28 },
+  sectionHeader: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    gap: 10,
+    paddingHorizontal: 6,
+    marginBottom: 12,
+  },
   sectionIconWrap: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   sectionTitle: { fontSize: 18, fontWeight: '900', textAlign: 'right' },
-  itemsStack: { gap: 14 },
+  itemsStack: { gap: 16 },
 
-  itemCard: {
+  notificationCard: {
     position: 'relative',
-    borderRadius: 12,
-    paddingVertical: 18,
-    paddingHorizontal: 18,
-    borderWidth: 1,
     flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'space-between',
-    shadowColor: '#000',
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingVertical: 20,
+    paddingHorizontal: 20,
+    shadowColor: colors.black,
     shadowOpacity: 0.05,
     shadowRadius: 20,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 2,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3,
     overflow: 'hidden',
   },
-  whatsappAccent: { position: 'absolute', top: 0, right: 0, height: '100%', width: 4 },
-  itemMain: { flex: 1, minWidth: 0, alignItems: 'flex-end' },
-  itemTitle: { fontSize: 18, fontWeight: '900', textAlign: 'right', marginBottom: 8, writingDirection: 'rtl' },
-  itemMetaRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'flex-start' },
+  notificationCardWhatsapp: {
+    borderColor: 'rgba(37,211,102,0.18)',
+  },
+  whatsappAccent: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    right: 0,
+    width: 4,
+    borderTopRightRadius: 16,
+    borderBottomRightRadius: 16,
+  },
+  cardMain: { flex: 1, alignItems: 'flex-end' },
+  cardTitle: { fontSize: 18, fontWeight: '800', textAlign: 'right' },
+  cardMetaRow: {
+    marginTop: 8,
+    alignSelf: 'flex-end',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+  },
   statusBtn: { paddingVertical: 2 },
-  statusText: { fontSize: 14, fontWeight: '900', textAlign: 'right' },
-  metaDot: { marginHorizontal: 10, fontSize: 14, fontWeight: '900' },
-  metaText: { fontSize: 14, fontWeight: '700', textAlign: 'right', writingDirection: 'rtl' },
-  chevronWrap: { paddingRight: 8, paddingLeft: 4, alignItems: 'center', justifyContent: 'center' },
+  statusText: { fontSize: 14, fontWeight: '800' },
+  metaBullet: { marginHorizontal: 10, fontSize: 14, fontWeight: '800' },
+  metaText: { fontSize: 14, fontWeight: '700' },
+  cardChevron: { paddingRight: 4, paddingLeft: 8, justifyContent: 'center', alignItems: 'center' },
 });
 
