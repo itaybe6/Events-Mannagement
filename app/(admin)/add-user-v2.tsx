@@ -467,9 +467,11 @@ export default function AddUserScreenV2({
                 <MaterialIcons name="arrow-back-ios" size={20} color={ui.primary} />
               </TouchableOpacity>
 
-              <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>
+              <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1} pointerEvents="none">
                 הוספת משתמש חדש
               </Text>
+
+              <View style={styles.headerPlaceholder} />
             </View>
           </View>
 
@@ -1214,14 +1216,12 @@ const styles = StyleSheet.create({
   headerRow: {
     alignItems: 'center',
     justifyContent: 'center',
+    flexDirection: isRTL ? 'row-reverse' : 'row',
     paddingHorizontal: 18,
     paddingBottom: 14,
     paddingTop: 18,
   },
   backButton: {
-    position: 'absolute',
-    left: 18,
-    top: 34,
     width: 40,
     height: 40,
     borderRadius: 20,
@@ -1240,8 +1240,7 @@ const styles = StyleSheet.create({
 
   content: {
     width: '100%',
-    maxWidth: 440,
-    alignSelf: 'center',
+    alignSelf: 'stretch',
     paddingHorizontal: 18,
     paddingTop: 20,
     paddingBottom: 40,

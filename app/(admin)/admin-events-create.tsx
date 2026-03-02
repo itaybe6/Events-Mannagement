@@ -128,16 +128,6 @@ export default function AdminEventsCreateScreen() {
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
             >
-            <View style={styles.header}>
-              <TouchableOpacity
-                style={styles.backButton}
-                onPress={() => router.replace('/(admin)/admin-events')}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="arrow-back" size={20} color={colors.primary} />
-              </TouchableOpacity>
-            </View>
-
             <View style={styles.heroCard}>
               <View style={styles.heroSurface} />
               <View style={styles.heroBlobPrimary} />
@@ -378,30 +368,6 @@ const styles = StyleSheet.create({
   contentContainer: {
     padding: 20,
     paddingBottom: 40,
-  },
-  header: {
-    position: 'relative',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: Platform.OS === 'ios' ? 10 : 6,
-    marginBottom: 10,
-  },
-  backButton: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.white,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    shadowColor: colors.black,
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
   },
   heroCard: {
     height: 200,

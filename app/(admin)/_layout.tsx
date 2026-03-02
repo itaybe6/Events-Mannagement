@@ -28,6 +28,20 @@ export default function AdminTabsLayout() {
     const route = segments?.[1] || "";
     const eventId = String(globalParams?.eventId || globalParams?.id || "").trim();
 
+    // Event details should always return to the Events tab.
+    // History can jump to the Users tab depending on how we navigated here.
+    if (route === "admin-event-details") {
+      router.replace("/(admin)/admin-events");
+      return;
+    }
+
+    // Event create should always return to the Events tab (not history),
+    // because history can jump to the Users tab.
+    if (route === "admin-events-create") {
+      router.replace("/(admin)/admin-events");
+      return;
+    }
+
     // For screens that conceptually belong to a specific event, always return to event details
     // instead of history (history can jump to the Users tab).
     if (route === "admin-invitation-links" || route === "BrideGroomSeating") {

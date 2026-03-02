@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, SafeAreaView, TouchableOpacity, Platform, useWindowDimensions, Modal, Alert, Pressable, TextInput, KeyboardAvoidingView } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { BackHandler, View, Text, StyleSheet, ScrollView, ActivityIndicator, SafeAreaView, TouchableOpacity, Platform, useWindowDimensions, Modal, Alert, Pressable, TextInput, KeyboardAvoidingView } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { colors } from '@/constants/colors';
 import { eventService } from '@/lib/services/eventService';
@@ -34,6 +34,8 @@ export default function AdminEventDetailsScreen() {
 
   const [editOpen, setEditOpen] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
+  const [deleteSaving, setDeleteSaving] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [editDatePickerOpen, setEditDatePickerOpen] = useState(false);
   const [editForm, setEditForm] = useState<{
     date: Date;
@@ -51,9 +53,22 @@ export default function AdminEventDetailsScreen() {
   const insets = useSafeAreaInsets();
   const { height: windowHeight, width: windowWidth } = useWindowDimensions();
 
+  // Always go back to admin events list from this screen.
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      router.replace('/(admin)/admin-events');
+      return true;
+    });
+    return () => sub.remove();
+  }, [router]);
+
   if (loading) {
     return (
-      <BackSwipe>
+      <BackSwipe
+        fallbackHref="/(admin)/admin-events"
+        onBack={() => router.replace('/(admin)/admin-events')}
+      >
         <SafeAreaView style={{ flex: 1, backgroundColor: colors.gray[100], justifyContent: 'center', alignItems: 'center' }}>
           <ActivityIndicator size="large" color={colors.primary} />
         </SafeAreaView>
@@ -63,7 +78,10 @@ export default function AdminEventDetailsScreen() {
 
   if (error) {
     return (
-      <BackSwipe>
+      <BackSwipe
+        fallbackHref="/(admin)/admin-events"
+        onBack={() => router.replace('/(admin)/admin-events')}
+      >
         <SafeAreaView style={{ flex: 1, backgroundColor: colors.gray[100], justifyContent: 'center', alignItems: 'center', padding: 24 }}>
           <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text, textAlign: 'center' }}>{error}</Text>
           <TouchableOpacity
@@ -80,7 +98,10 @@ export default function AdminEventDetailsScreen() {
 
   if (!event) {
     return (
-      <BackSwipe>
+      <BackSwipe
+        fallbackHref="/(admin)/admin-events"
+        onBack={() => router.replace('/(admin)/admin-events')}
+      >
         <SafeAreaView style={{ flex: 1, backgroundColor: colors.gray[100], justifyContent: 'center', alignItems: 'center', padding: 24 }}>
           <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text, textAlign: 'center' }}>האירוע לא נמצא</Text>
           <TouchableOpacity
@@ -187,6 +208,50 @@ export default function AdminEventDetailsScreen() {
     } finally {
       setEditSaving(false);
     }
+  };
+
+  const performDeleteEvent = async () => {
+    if (!event?.id) return;
+    if (deleteSaving) return;
+
+    setDeleteSaving(true);
+    try {
+      // Preferred: Edge Function that does a full, server-side delete.
+      const { data, error: fnError } = await supabase.functions.invoke('delete-event', {
+        body: { eventId: event.id },
+      });
+      if (fnError) throw fnError;
+      if (data?.ok !== true) throw new Error(String(data?.error ?? 'Failed to delete event'));
+
+      setDeleteConfirmOpen(false);
+      setEditOpen(false);
+      Alert.alert('נמחק', 'האירוע נמחק בהצלחה');
+      router.replace('/(admin)/admin-events');
+      return;
+    } catch (e) {
+      // Fallback: client-side delete (DB has ON DELETE CASCADE for most tables).
+      try {
+        await supabase.from('notifications').delete().eq('event_id', event.id);
+      } catch {}
+      try {
+        await eventService.deleteEvent(event.id);
+        setDeleteConfirmOpen(false);
+        setEditOpen(false);
+        Alert.alert('נמחק', 'האירוע נמחק בהצלחה');
+        router.replace('/(admin)/admin-events');
+        return;
+      } catch (e2) {
+        console.error('Delete event error:', e2);
+        Alert.alert('שגיאה', 'לא ניתן למחוק את האירוע כרגע');
+      }
+    } finally {
+      setDeleteSaving(false);
+    }
+  };
+
+  const confirmDeleteEvent = () => {
+    if (!event?.id) return;
+    setDeleteConfirmOpen(true);
   };
 
   // Color system inspired by the provided HTML mock (kept local to this screen)
@@ -369,7 +434,10 @@ export default function AdminEventDetailsScreen() {
   const tabBarReserve = tabBarBottomOffset + tabBarHeight + 24;
 
   return (
-    <BackSwipe>
+    <BackSwipe
+      fallbackHref="/(admin)/admin-events"
+      onBack={() => router.replace('/(admin)/admin-events')}
+    >
       <View style={[styles.safeRoot, { backgroundColor: ui.bg }]}>
         <SafeAreaView style={styles.safe}>
         {/* Background blobs */}
@@ -736,7 +804,16 @@ export default function AdminEventDetailsScreen() {
 
       {/* Edit event modal */}
       <Modal transparent visible={editOpen} animationType="fade" onRequestClose={() => setEditOpen(false)}>
-        <Pressable style={styles.editOverlay} onPress={() => setEditOpen(false)}>
+        <Pressable
+          style={styles.editOverlay}
+          onPress={() => {
+            if (deleteConfirmOpen && !deleteSaving) {
+              setDeleteConfirmOpen(false);
+              return;
+            }
+            setEditOpen(false);
+          }}
+        >
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ width: '100%' }}>
             <Pressable style={styles.editCard} onPress={() => null}>
               <View style={styles.editHeader}>
@@ -839,6 +916,26 @@ export default function AdminEventDetailsScreen() {
                 <View style={{ height: 6 }} />
               </ScrollView>
 
+              <View style={styles.editDangerWrap}>
+                <TouchableOpacity
+                  style={[styles.footerBtnDanger, deleteSaving ? { opacity: 0.88 } : null]}
+                  onPress={confirmDeleteEvent}
+                  activeOpacity={0.92}
+                  disabled={deleteSaving || editSaving}
+                  accessibilityRole="button"
+                  accessibilityLabel="מחיקת אירוע"
+                >
+                  {deleteSaving ? (
+                    <ActivityIndicator color={colors.error} />
+                  ) : (
+                    <>
+                      <Ionicons name="trash-outline" size={16} color={colors.error} />
+                      <Text style={styles.footerBtnDangerText}>מחק אירוע</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+
               <View style={styles.editFooter}>
                 <TouchableOpacity
                   style={styles.footerBtnSecondary}
@@ -854,7 +951,7 @@ export default function AdminEventDetailsScreen() {
                   style={[styles.footerBtnPrimary, editSaving ? { opacity: 0.85 } : null]}
                   onPress={saveEditEvent}
                   activeOpacity={0.92}
-                  disabled={editSaving}
+                  disabled={editSaving || deleteSaving}
                   accessibilityRole="button"
                   accessibilityLabel="שמירת שינויים"
                 >
@@ -882,6 +979,90 @@ export default function AdminEventDetailsScreen() {
               />
             </Pressable>
           </KeyboardAvoidingView>
+
+          {/* Delete confirmation overlay (styled, RTL) */}
+          {deleteConfirmOpen ? (
+            <Pressable
+              style={styles.deleteOverlay}
+              onPress={() => {
+                if (!deleteSaving) setDeleteConfirmOpen(false);
+              }}
+            >
+              <Pressable style={styles.deleteCard} onPress={() => null}>
+                <View style={styles.deleteHeaderRow}>
+                  <View style={styles.deleteIconCircle}>
+                    <Ionicons name="trash-outline" size={18} color={colors.error} />
+                  </View>
+                  <View style={styles.deleteHeaderText}>
+                    <Text style={styles.deleteTitle}>מחיקת אירוע</Text>
+                    <Text style={styles.deleteSubtitle} numberOfLines={2}>
+                      פעולה זו בלתי הפיכה
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.deleteDivider} />
+
+                <View style={styles.deleteBody}>
+                  <Text style={styles.deleteBodyText}>
+                    אתה עומד למחוק את האירוע ואת כל הנתונים שמקושרים אליו:
+                  </Text>
+
+                  <View style={styles.deleteList}>
+                    {[
+                      'מוזמנים וסטטוסים',
+                      'קטגוריות מוזמנים',
+                      'שולחנות ומפת הושבה',
+                      'משימות והודעות',
+                    ].map((t) => (
+                      <View key={t} style={styles.deleteListRow}>
+                        <View style={styles.deleteBullet} />
+                        <Text style={styles.deleteListText}>{t}</Text>
+                      </View>
+                    ))}
+                  </View>
+
+                  <View style={styles.deleteHintBox}>
+                    <Ionicons name="alert-circle-outline" size={16} color={'rgba(255, 59, 48, 0.9)'} />
+                    <Text style={styles.deleteHintText}>
+                      מומלץ לוודא שזה האירוע הנכון לפני מחיקה.
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.deleteFooter}>
+                  <TouchableOpacity
+                    style={styles.deleteBtnSecondary}
+                    onPress={() => setDeleteConfirmOpen(false)}
+                    activeOpacity={0.9}
+                    disabled={deleteSaving}
+                    accessibilityRole="button"
+                    accessibilityLabel="ביטול מחיקה"
+                  >
+                    <Text style={styles.deleteBtnSecondaryText}>ביטול</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.deleteBtnDanger, deleteSaving ? { opacity: 0.88 } : null]}
+                    onPress={() => void performDeleteEvent()}
+                    activeOpacity={0.92}
+                    disabled={deleteSaving}
+                    accessibilityRole="button"
+                    accessibilityLabel="אישור מחיקת אירוע"
+                  >
+                    {deleteSaving ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : (
+                      <>
+                        <Ionicons name="trash-outline" size={16} color="#fff" />
+                        <Text style={styles.deleteBtnDangerText}>מחק אירוע</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </Pressable>
+            </Pressable>
+          ) : null}
         </Pressable>
       </Modal>
       </View>
@@ -1220,6 +1401,12 @@ const styles = StyleSheet.create({
     gap: 10,
     backgroundColor: 'rgba(255,255,255,0.98)',
   },
+  editDangerWrap: {
+    paddingHorizontal: 14,
+    paddingTop: 10,
+    paddingBottom: 2,
+    backgroundColor: 'rgba(255,255,255,0.98)',
+  },
   footerBtnSecondary: {
     flex: 1,
     height: 50,
@@ -1229,6 +1416,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   footerBtnSecondaryText: { fontSize: 14, fontWeight: '900', color: '#111827' },
+  footerBtnDanger: {
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 59, 48, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 59, 48, 0.22)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexDirection: 'row-reverse',
+    gap: 8,
+  },
+  footerBtnDangerText: { fontSize: 13, fontWeight: '900', color: colors.error },
   footerBtnPrimary: {
     flex: 2,
     height: 50,
@@ -1245,6 +1444,127 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   footerBtnPrimaryText: { fontSize: 14, fontWeight: '900', color: '#fff' },
+
+  // Delete confirmation modal (RTL)
+  deleteOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 18,
+    zIndex: 30,
+  },
+  deleteCard: {
+    width: '100%',
+    maxWidth: 520,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.98)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.72)',
+    shadowColor: colors.black,
+    shadowOpacity: 0.22,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 16 },
+    elevation: 12,
+    overflow: 'hidden',
+  },
+  deleteHeaderRow: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 12,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 12,
+  },
+  deleteIconCircle: {
+    width: 42,
+    height: 42,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 59, 48, 0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 59, 48, 0.18)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deleteHeaderText: { flex: 1, alignItems: 'flex-end' },
+  deleteTitle: { fontSize: 18, fontWeight: '900', color: '#111827', textAlign: 'right' },
+  deleteSubtitle: {
+    marginTop: 4,
+    fontSize: 12,
+    fontWeight: '800',
+    color: 'rgba(17,24,39,0.55)',
+    textAlign: 'right',
+  },
+  deleteDivider: { height: 1, backgroundColor: 'rgba(17,24,39,0.08)', marginHorizontal: 16 },
+  deleteBody: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10, gap: 12 },
+  deleteBodyText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: 'rgba(17,24,39,0.78)',
+    textAlign: 'right',
+    lineHeight: 20,
+  },
+  deleteList: { gap: 10, paddingTop: 4 },
+  deleteListRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
+  deleteBullet: {
+    width: 8,
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 59, 48, 0.85)',
+  },
+  deleteListText: { flex: 1, fontSize: 13, fontWeight: '900', color: '#111827', textAlign: 'right' },
+  deleteHintBox: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255, 59, 48, 0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 59, 48, 0.14)',
+  },
+  deleteHintText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '800',
+    color: 'rgba(17,24,39,0.70)',
+    textAlign: 'right',
+    lineHeight: 18,
+  },
+  deleteFooter: {
+    padding: 14,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(17,24,39,0.08)',
+    flexDirection: 'row-reverse',
+    gap: 10,
+    backgroundColor: 'rgba(255,255,255,0.98)',
+  },
+  deleteBtnSecondary: {
+    flex: 1,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: 'rgba(17,24,39,0.06)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deleteBtnSecondaryText: { fontSize: 13, fontWeight: '900', color: '#111827' },
+  deleteBtnDanger: {
+    flex: 2,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: colors.error,
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexDirection: 'row-reverse',
+    gap: 8,
+    shadowColor: colors.error,
+    shadowOpacity: 0.20,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 4,
+  },
+  deleteBtnDangerText: { fontSize: 13, fontWeight: '900', color: '#fff' },
 
   glassOuter: {
     borderWidth: 1,

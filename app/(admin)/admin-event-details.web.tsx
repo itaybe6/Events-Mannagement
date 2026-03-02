@@ -74,6 +74,8 @@ export default function AdminEventDetailsWebScreen() {
   const [avatarPreviewOpen, setAvatarPreviewOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
+  const [deleteSaving, setDeleteSaving] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [editDatePickerOpen, setEditDatePickerOpen] = useState(false);
   const [webCalendarOpen, setWebCalendarOpen] = useState(false);
   const [webCalendarMonth, setWebCalendarMonth] = useState(() => {
@@ -190,6 +192,50 @@ export default function AdminEventDetailsWebScreen() {
     } finally {
       setEditSaving(false);
     }
+  };
+
+  const performDeleteEvent = async () => {
+    if (!event?.id) return;
+    if (deleteSaving) return;
+
+    setDeleteSaving(true);
+    try {
+      const { data, error: fnError } = await supabase.functions.invoke('delete-event', {
+        body: { eventId: event.id },
+      });
+      if (fnError) throw fnError;
+      if (data?.ok !== true) throw new Error(String(data?.error ?? 'Failed to delete event'));
+
+      setDeleteConfirmOpen(false);
+      setEditOpen(false);
+      Alert.alert('נמחק', 'האירוע נמחק בהצלחה');
+      router.replace('/(admin)/admin-events');
+      return;
+    } catch (e) {
+      // Fallback: client-side delete (DB uses ON DELETE CASCADE for most tables).
+      try {
+        await supabase.from('notifications').delete().eq('event_id', event.id);
+      } catch {}
+      try {
+        await eventService.deleteEvent(event.id);
+        setDeleteConfirmOpen(false);
+        setEditOpen(false);
+        Alert.alert('נמחק', 'האירוע נמחק בהצלחה');
+        router.replace('/(admin)/admin-events');
+        return;
+      } catch (e2) {
+        // eslint-disable-next-line no-console
+        console.error('Delete event error:', e2);
+        Alert.alert('שגיאה', 'לא ניתן למחוק את האירוע כרגע');
+      }
+    } finally {
+      setDeleteSaving(false);
+    }
+  };
+
+  const confirmDeleteEvent = () => {
+    if (!event?.id) return;
+    setDeleteConfirmOpen(true);
   };
 
   const handleTablesList = () => {
@@ -742,6 +788,30 @@ export default function AdminEventDetailsWebScreen() {
               ) : null}
             </ScrollView>
 
+            <View style={styles.editDangerWrap}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="מחיקת אירוע"
+                onPress={confirmDeleteEvent}
+                disabled={deleteSaving || editSaving}
+                style={({ hovered, pressed }: any) => [
+                  styles.footerBtnDanger,
+                  Platform.OS === 'web' && hovered ? styles.footerBtnDangerHover : null,
+                  pressed ? { opacity: 0.92 } : null,
+                  deleteSaving ? { opacity: 0.88 } : null,
+                ]}
+              >
+                {deleteSaving ? (
+                  <ActivityIndicator color={colors.error} />
+                ) : (
+                  <>
+                    <Ionicons name="trash-outline" size={16} color={colors.error} />
+                    <Text style={styles.footerBtnDangerText}>מחק אירוע</Text>
+                  </>
+                )}
+              </Pressable>
+            </View>
+
             <View style={styles.editFooter}>
               <Pressable
                 accessibilityRole="button"
@@ -760,7 +830,7 @@ export default function AdminEventDetailsWebScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="שמירה"
                 onPress={() => void saveEditEvent()}
-                disabled={editSaving}
+                disabled={editSaving || deleteSaving}
                 style={({ hovered, pressed }: any) => [
                   styles.footerBtnPrimary,
                   Platform.OS === 'web' && hovered ? styles.footerBtnPrimaryHover : null,
@@ -790,6 +860,103 @@ export default function AdminEventDetailsWebScreen() {
               locale="he-IL"
               date={editForm.date}
             />
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Delete confirmation modal (styled, RTL) */}
+      <Modal
+        transparent
+        visible={deleteConfirmOpen}
+        animationType="fade"
+        onRequestClose={() => setDeleteConfirmOpen(false)}
+      >
+        <Pressable
+          style={styles.deleteOverlay}
+          onPress={() => {
+            if (!deleteSaving) setDeleteConfirmOpen(false);
+          }}
+        >
+          <Pressable style={styles.deleteCard} onPress={() => null}>
+            <View style={styles.deleteHeaderRow}>
+              <View style={styles.deleteIconCircle}>
+                <Ionicons name="trash-outline" size={18} color={colors.error} />
+              </View>
+              <View style={styles.deleteHeaderText}>
+                <Text style={styles.deleteTitle}>מחיקת אירוע</Text>
+                <Text style={styles.deleteSubtitle} numberOfLines={2}>
+                  פעולה זו בלתי הפיכה
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.deleteDivider} />
+
+            <View style={styles.deleteBody}>
+              <Text style={styles.deleteBodyText}>
+                אתה עומד למחוק את האירוע ואת כל הנתונים שמקושרים אליו:
+              </Text>
+
+              <View style={styles.deleteList}>
+                {[
+                  'מוזמנים וסטטוסים',
+                  'קטגוריות מוזמנים',
+                  'שולחנות ומפת הושבה',
+                  'משימות והודעות',
+                ].map((t) => (
+                  <View key={t} style={styles.deleteListRow}>
+                    <View style={styles.deleteBullet} />
+                    <Text style={styles.deleteListText}>{t}</Text>
+                  </View>
+                ))}
+              </View>
+
+              <View style={styles.deleteHintBox}>
+                <Ionicons name="alert-circle-outline" size={16} color={'rgba(255, 59, 48, 0.9)'} />
+                <Text style={styles.deleteHintText}>
+                  מומלץ לוודא שזה האירוע הנכון לפני מחיקה.
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.deleteFooter}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="ביטול מחיקה"
+                onPress={() => setDeleteConfirmOpen(false)}
+                disabled={deleteSaving}
+                style={({ hovered, pressed }: any) => [
+                  styles.deleteBtnSecondary,
+                  Platform.OS === 'web' && hovered ? styles.deleteBtnSecondaryHover : null,
+                  pressed ? { opacity: 0.92 } : null,
+                  deleteSaving ? { opacity: 0.88 } : null,
+                ]}
+              >
+                <Text style={styles.deleteBtnSecondaryText}>ביטול</Text>
+              </Pressable>
+
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="אישור מחיקת אירוע"
+                onPress={() => void performDeleteEvent()}
+                disabled={deleteSaving}
+                style={({ hovered, pressed }: any) => [
+                  styles.deleteBtnDanger,
+                  Platform.OS === 'web' && hovered ? styles.deleteBtnDangerHover : null,
+                  pressed ? { opacity: 0.94 } : null,
+                  deleteSaving ? { opacity: 0.88 } : null,
+                ]}
+              >
+                {deleteSaving ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <>
+                    <Ionicons name="trash-outline" size={16} color="#fff" />
+                    <Text style={styles.deleteBtnDangerText}>מחק אירוע</Text>
+                  </>
+                )}
+              </Pressable>
+            </View>
           </Pressable>
         </Pressable>
       </Modal>
@@ -1336,12 +1503,108 @@ const styles = StyleSheet.create({
   inputLikeText: { fontSize: 15, fontWeight: '900', color: '#111827' },
   textInput: { marginTop: 8, height: 48, borderRadius: 14, paddingHorizontal: 14, borderWidth: 1, borderColor: 'rgba(17,24,39,0.10)', backgroundColor: 'rgba(17,24,39,0.04)', color: '#111827', fontSize: 14, fontWeight: '700' },
   editFooter: { padding: 14, borderTopWidth: 1, borderTopColor: 'rgba(17,24,39,0.08)', flexDirection: 'row', gap: 10, backgroundColor: 'rgba(255,255,255,0.98)' },
+  editDangerWrap: { paddingHorizontal: 14, paddingTop: 10, paddingBottom: 2, backgroundColor: 'rgba(255,255,255,0.98)' },
   footerBtnSecondary: { flex: 1, height: 50, borderRadius: 14, backgroundColor: 'rgba(17,24,39,0.06)', justifyContent: 'center', alignItems: 'center' },
   footerBtnSecondaryHover: { backgroundColor: 'rgba(17,24,39,0.08)' },
   footerBtnSecondaryText: { fontSize: 14, fontWeight: '900', color: '#111827' },
+  footerBtnDanger: { height: 48, borderRadius: 14, backgroundColor: 'rgba(255, 59, 48, 0.08)', borderWidth: 1, borderColor: 'rgba(255, 59, 48, 0.22)', justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 8 },
+  footerBtnDangerHover: { backgroundColor: 'rgba(255, 59, 48, 0.12)' },
+  footerBtnDangerText: { fontSize: 13, fontWeight: '900', color: colors.error },
   footerBtnPrimary: { flex: 2, height: 50, borderRadius: 14, backgroundColor: '#1d4ed8', justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 8 },
   footerBtnPrimaryHover: { opacity: 0.95 },
   footerBtnPrimaryText: { fontSize: 14, fontWeight: '900', color: '#fff' },
+
+  // Delete confirmation modal (RTL)
+  deleteOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 18,
+  },
+  deleteCard: {
+    width: '100%',
+    maxWidth: 520,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.98)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.72)',
+    padding: 0,
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 24px 70px rgba(0,0,0,0.22)' } as any) : null),
+    overflow: 'hidden',
+  },
+  deleteHeaderRow: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 12,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 12,
+  },
+  deleteIconCircle: {
+    width: 42,
+    height: 42,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 59, 48, 0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 59, 48, 0.18)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deleteHeaderText: { flex: 1, alignItems: 'flex-end' },
+  deleteTitle: { fontSize: 18, fontWeight: '900', color: '#111827', textAlign: 'right' },
+  deleteSubtitle: { marginTop: 4, fontSize: 12, fontWeight: '800', color: 'rgba(17,24,39,0.55)', textAlign: 'right' },
+  deleteDivider: { height: 1, backgroundColor: 'rgba(17,24,39,0.08)', marginHorizontal: 16 },
+  deleteBody: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10, gap: 12 },
+  deleteBodyText: { fontSize: 13, fontWeight: '800', color: 'rgba(17,24,39,0.78)', textAlign: 'right', lineHeight: 20 },
+  deleteList: { gap: 10, paddingTop: 4 },
+  deleteListRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
+  deleteBullet: { width: 8, height: 8, borderRadius: 999, backgroundColor: 'rgba(255, 59, 48, 0.85)' },
+  deleteListText: { flex: 1, fontSize: 13, fontWeight: '900', color: '#111827', textAlign: 'right' },
+  deleteHintBox: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255, 59, 48, 0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 59, 48, 0.14)',
+  },
+  deleteHintText: { flex: 1, fontSize: 12, fontWeight: '800', color: 'rgba(17,24,39,0.70)', textAlign: 'right', lineHeight: 18 },
+  deleteFooter: {
+    padding: 14,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(17,24,39,0.08)',
+    flexDirection: 'row-reverse',
+    gap: 10,
+    backgroundColor: 'rgba(255,255,255,0.98)',
+  },
+  deleteBtnSecondary: {
+    flex: 1,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: 'rgba(17,24,39,0.06)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  deleteBtnSecondaryHover: { backgroundColor: 'rgba(17,24,39,0.08)' },
+  deleteBtnSecondaryText: { fontSize: 13, fontWeight: '900', color: '#111827' },
+  deleteBtnDanger: {
+    flex: 2,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: colors.error,
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexDirection: 'row-reverse',
+    gap: 8,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  deleteBtnDangerHover: { opacity: 0.96 },
+  deleteBtnDangerText: { fontSize: 13, fontWeight: '900', color: '#fff' },
 
   dateModalCard: {
     width: '100%',

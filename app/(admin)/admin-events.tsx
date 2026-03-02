@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, SafeAreaView, Platform, Alert, Image, TextInput } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, SafeAreaView, Platform, Alert, Image, TextInput, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { colors } from '@/constants/colors';
@@ -25,9 +25,9 @@ export default function AdminEventsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const headerTotalHeight = getAppHeaderTotalHeight(insets.top, APP_HEADER_HEIGHT_COMPACT);
-  const monthsBarHeight = Platform.OS === 'ios' ? 68 : 64;
 
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showMonthPicker, setShowMonthPicker] = useState(false);
   const loadEventsFn = useMemo(() => async () => {
     const data = await eventService.getEvents();
     return Array.isArray(data) ? (data as Event[]) : [];
@@ -59,6 +59,8 @@ export default function AdminEventsScreen() {
     }, [refresh])
   );
 
+  const selectedMonthLabel = filterMonth !== '' ? MONTHS[Number(filterMonth)] : null;
+
   // UI
   const today = new Date();
   const getDaysLeft = (date: Date | string) => {
@@ -67,54 +69,6 @@ export default function AdminEventsScreen() {
     return diff >= 0 ? `עוד ${diff} ימים` : 'עבר';
   };
 
-  const monthsBarContent = (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.monthsRow}
-    >
-      {filterDate ? (
-        <TouchableOpacity
-          style={[styles.monthChip, styles.monthChipDate]}
-          onPress={() => setFilterDate(null)}
-          activeOpacity={0.85}
-        >
-          <Ionicons name="close" size={14} color={colors.text} />
-          <Text style={styles.monthChipDateText}>
-            {filterDate.toLocaleDateString('he-IL')}
-          </Text>
-        </TouchableOpacity>
-      ) : null}
-
-      <TouchableOpacity
-        style={[styles.monthChip, !filterMonth && !filterDate && styles.monthChipActive]}
-        onPress={() => {
-          setFilterMonth('');
-          setFilterDate(null);
-        }}
-        activeOpacity={0.85}
-      >
-        <Text style={[styles.monthChipText, !filterMonth && !filterDate && styles.monthChipTextActive]}>הכל</Text>
-      </TouchableOpacity>
-
-      {MONTHS.map((m, i) => (
-        <TouchableOpacity
-          key={i}
-          style={[styles.monthChip, filterMonth === String(i) && styles.monthChipActive]}
-          onPress={() => {
-            setFilterMonth(String(i));
-            setFilterDate(null);
-          }}
-          activeOpacity={0.85}
-        >
-          <Text style={[styles.monthChipText, filterMonth === String(i) && styles.monthChipTextActive]}>
-            {m}
-          </Text>
-        </TouchableOpacity>
-      ))}
-    </ScrollView>
-  );
-
   return (
     <SafeAreaView style={styles.screen}>
       <View style={styles.bg}>
@@ -122,23 +76,9 @@ export default function AdminEventsScreen() {
         <View style={styles.bgBlobSecondary} />
       </View>
 
-      {/* Months chips (always fixed to top of this screen) */}
-      <View
-        style={[
-          styles.monthsWrap,
-          styles.monthsOverlay,
-          Platform.OS === 'web' ? { top: headerTotalHeight } : null,
-        ]}
-      >
-        {monthsBarContent}
-      </View>
-
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[
-          styles.scrollContent,
-          { paddingTop: monthsBarHeight },
-        ]}
+        contentContainerStyle={styles.scrollContent}
       >
         {/* Search / controls */}
         <View style={styles.controlsRow}>
@@ -164,13 +104,106 @@ export default function AdminEventsScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.roundControlBtn}
-            onPress={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+            style={[styles.roundControlBtn, filterMonth !== '' && styles.roundControlBtnActive]}
+            onPress={() => setShowMonthPicker(true)}
             activeOpacity={0.85}
           >
-            <Ionicons name={sortOrder === 'asc' ? 'swap-vertical' : 'swap-vertical'} size={18} color={colors.text} />
+            <Ionicons name="calendar-number-outline" size={18} color={filterMonth !== '' ? colors.white : colors.text} />
           </TouchableOpacity>
         </View>
+
+        {/* Month Picker Modal */}
+        <Modal
+          visible={showMonthPicker}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setShowMonthPicker(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <TouchableOpacity
+              style={styles.modalBackdrop}
+              activeOpacity={1}
+              onPress={() => setShowMonthPicker(false)}
+            />
+
+            <View style={styles.monthPickerSheet}>
+              <LinearGradient
+                colors={['rgba(255,255,255,0.98)', 'rgba(244, 247, 255, 0.94)']}
+                style={styles.monthPickerSheetGradient}
+              />
+
+              <View style={styles.sheetHandle} />
+
+              <View style={styles.monthPickerHeaderRow}>
+                <View style={styles.monthPickerHeaderSide} />
+
+                <View style={styles.monthPickerHeaderCenter}>
+                  <Text style={styles.monthPickerTitle}>בחר חודש</Text>
+                  <Text style={styles.monthPickerSubtitle}>
+                    {selectedMonthLabel ? `מסנן: ${selectedMonthLabel}` : 'מציג: הכל'}
+                  </Text>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.monthPickerCloseBtn}
+                  onPress={() => setShowMonthPicker(false)}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="close" size={18} color={colors.text} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.monthGrid}>
+                <TouchableOpacity
+                  style={[styles.monthChipV2, filterMonth === '' && !filterDate && styles.monthChipV2Active]}
+                  onPress={() => {
+                    setFilterMonth('');
+                    setFilterDate(null);
+                    setShowMonthPicker(false);
+                  }}
+                  activeOpacity={0.9}
+                >
+                  {filterMonth === '' && !filterDate ? (
+                    <Ionicons name="checkmark" size={16} color={colors.white} />
+                  ) : null}
+                  <Text
+                    style={[
+                      styles.monthChipV2Text,
+                      filterMonth === '' && !filterDate && styles.monthChipV2TextActive,
+                    ]}
+                  >
+                    הכל
+                  </Text>
+                </TouchableOpacity>
+
+                {MONTHS.map((m, i) => (
+                  <TouchableOpacity
+                    key={i}
+                    style={[styles.monthChipV2, filterMonth === String(i) && styles.monthChipV2Active]}
+                    onPress={() => {
+                      setFilterMonth(String(i));
+                      setFilterDate(null);
+                      setShowMonthPicker(false);
+                    }}
+                    activeOpacity={0.9}
+                  >
+                    {filterMonth === String(i) ? (
+                      <Ionicons name="checkmark" size={16} color={colors.white} />
+                    ) : null}
+                    <Text
+                      style={[
+                        styles.monthChipV2Text,
+                        filterMonth === String(i) && styles.monthChipV2TextActive,
+                      ]}
+                    >
+                      {m}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          </View>
+        </Modal>
 
         <DateTimePickerModal
           isVisible={showDatePicker}
@@ -338,65 +371,6 @@ const styles = StyleSheet.create({
     paddingBottom: 140,
   },
 
-  monthsWrap: {
-    backgroundColor: 'rgba(248, 249, 250, 0.85)',
-    paddingTop: Platform.OS === 'ios' ? 18 : 14,
-    paddingBottom: 10,
-  },
-  monthsOverlay: {
-    ...(Platform.OS === 'web'
-      ? ({ position: 'fixed' as any } as any)
-      : { position: 'absolute' as const }),
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 200,
-    elevation: 10,
-  },
-  monthsRow: {
-    paddingHorizontal: 18,
-    flexDirection: 'row-reverse',
-    gap: 10,
-    alignItems: 'center',
-  },
-  monthChip: {
-    height: 40,
-    paddingHorizontal: 18,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.7)',
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.06)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  monthChipActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-    shadowColor: colors.primary,
-    shadowOpacity: 0.22,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 3,
-  },
-  monthChipText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.gray[700],
-  },
-  monthChipTextActive: {
-    color: colors.white,
-  },
-  monthChipDate: {
-    flexDirection: 'row-reverse',
-    gap: 8,
-    backgroundColor: 'rgba(255,255,255,0.72)',
-  },
-  monthChipDateText: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: colors.text,
-  },
-
   controlsRow: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
@@ -442,6 +416,129 @@ const styles = StyleSheet.create({
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 10 },
     elevation: 2,
+  },
+  roundControlBtnActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+    shadowColor: colors.primary,
+    shadowOpacity: 0.22,
+    elevation: 4,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(7, 14, 34, 0.58)',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingBottom: 18,
+  },
+  modalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  monthPickerSheet: {
+    width: '100%',
+    maxWidth: 520,
+    borderRadius: 28,
+    overflow: 'hidden',
+    paddingHorizontal: 14,
+    paddingBottom: 14,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.5)',
+    shadowColor: colors.black,
+    shadowOpacity: 0.18,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 14 },
+    elevation: 16,
+  },
+  monthPickerSheetGradient: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  sheetHandle: {
+    alignSelf: 'center',
+    width: 54,
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: 'rgba(0,0,0,0.16)',
+    marginTop: 10,
+    marginBottom: 8,
+  },
+  monthPickerHeaderRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    marginBottom: 10,
+  },
+  monthPickerHeaderSide: {
+    width: 36,
+  },
+  monthPickerHeaderCenter: {
+    flex: 1,
+    alignItems: 'center',
+    paddingHorizontal: 8,
+  },
+  monthPickerTitle: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'center',
+    letterSpacing: 0.2,
+  },
+  monthPickerSubtitle: {
+    marginTop: 2,
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.gray[600],
+    textAlign: 'center',
+  },
+  monthPickerCloseBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.65)',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  monthGrid: {
+    flexDirection: 'row-reverse',
+    flexWrap: 'wrap',
+    gap: 10,
+    justifyContent: 'space-between',
+  },
+  monthChipV2: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.72)',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
+    minHeight: 44,
+    flexBasis: '31%',
+  },
+  monthChipV2Active: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+    shadowColor: colors.primary,
+    shadowOpacity: 0.22,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 4,
+  },
+  monthChipV2Text: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: colors.gray[800],
+    textAlign: 'center',
+  },
+  monthChipV2TextActive: {
+    color: colors.white,
   },
 
   timelineWrap: {

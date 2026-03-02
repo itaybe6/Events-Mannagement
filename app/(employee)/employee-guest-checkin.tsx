@@ -30,6 +30,50 @@ import { useSeatingMapModel } from "@/features/seating/useSeatingMapModel";
 
 type Props = { hideTopBar?: boolean };
 
+function CheckInToggle({
+  checked,
+  disabled,
+  saving,
+  onPress,
+  accessibilityLabel,
+}: {
+  checked: boolean;
+  disabled?: boolean;
+  saving?: boolean;
+  onPress: () => void;
+  accessibilityLabel: string;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="switch"
+      accessibilityState={{ checked, disabled: Boolean(disabled) }}
+      accessibilityLabel={accessibilityLabel}
+      onPress={onPress}
+      hitSlop={{ top: 10, bottom: 10, left: 0, right: 0 }}
+      disabled={disabled}
+      style={({ pressed }) => [
+        styles.switchWrap,
+        checked ? styles.switchWrapOn : null,
+        disabled ? { opacity: 0.6 } : null,
+        pressed ? { opacity: 0.92 } : null,
+      ]}
+    >
+      <View style={[styles.switchTrack, checked ? styles.switchTrackOn : null]} />
+      <View style={[styles.switchThumb, checked ? styles.switchThumbOn : null]}>
+        {saving ? (
+          <ActivityIndicator size={12} color={colors.primary} />
+        ) : (
+          <Ionicons
+            name={checked ? "checkmark" : "close"}
+            size={14}
+            color={checked ? "#10B981" : "rgba(55,65,81,0.65)"}
+          />
+        )}
+      </View>
+    </Pressable>
+  );
+}
+
 export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -107,6 +151,23 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
     // iPad portrait starts at 768dp width. Keep UI tablet-only from that breakpoint.
     return (Number(windowWidth) || 0) >= 768;
   }, [windowWidth]);
+
+  const guestsPaneWidth = useMemo(() => {
+    if (!isTablet) return null;
+    const w = Number(windowWidth) || 0;
+    // Make the right pane slightly narrower on iPad to give the map more space.
+    const target = Math.round(w * 0.48);
+    return Math.max(380, Math.min(440, target));
+  }, [isTablet, windowWidth]);
+
+  const mapViewportWidth = useMemo(() => {
+    if (!isTablet) return Number(windowWidth) || 0;
+    const w = Number(windowWidth) || 0;
+    const right = guestsPaneWidth ?? 420;
+    // Roughly account for map pane + card padding.
+    const approxGutters = 60;
+    return Math.max(320, Math.round(w - right - approxGutters));
+  }, [guestsPaneWidth, isTablet, windowWidth]);
 
   const phoneToTel = (raw: string) => {
     const cleaned = String(raw || "").replace(/[^\d+]/g, "").trim();
@@ -313,7 +374,14 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
         {isTablet ? (
           <View style={styles.tabletBody}>
             {/* Guests */}
-            <View style={styles.guestsPane}>
+            <View
+              style={[
+                styles.guestsPane,
+                guestsPaneWidth
+                  ? { width: guestsPaneWidth, minWidth: guestsPaneWidth, maxWidth: guestsPaneWidth }
+                  : null,
+              ]}
+            >
               <ScrollView
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={[styles.content, { paddingBottom: bottomReserve + insets.bottom }]}
@@ -426,8 +494,65 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                                   : Number(g.checkedInCount) || 0;
                               const isSavingCount = savingCountId === g.id;
                               return (
-                                <View key={g.id} style={[styles.guestRow, checkedIn && styles.guestRowChecked]}>
-                                  <View style={styles.arrivalSlot}>
+                                <View key={g.id} style={[styles.tabletGuestCard, checkedIn && styles.tabletGuestCardChecked]}>
+                                  {/* Accent bar (right edge) */}
+                                  <View style={[styles.tabletAccentBar, checkedIn && styles.tabletAccentBarOn]} />
+
+                                  {/* ── Top row (RTL): [phone+status RIGHT] [Name CENTER] [Toggle LEFT] ── */}
+                                  <View style={styles.tabletRow1}>
+                                    {/* Pinned LEFT toggle (independent of RTL/LTR) */}
+                                    <View style={styles.tabletTogglePinned}>
+                                      <CheckInToggle
+                                        checked={checkedIn}
+                                        saving={isSaving}
+                                        disabled={isSaving}
+                                        accessibilityLabel={checkedIn ? `סמן שלא הגיע: ${g.name}` : `סמן שהגיע: ${g.name}`}
+                                        onPress={() => toggleCheckIn(g)}
+                                      />
+                                    </View>
+
+                                    {/* RIGHT side in RTL: phone + status */}
+                                    <View style={styles.tabletRow1Right}>
+                                      <TouchableOpacity
+                                        onPress={() => void callGuest(g.phone, g.name)}
+                                        disabled={!phoneToTel(g.phone)}
+                                        activeOpacity={0.85}
+                                        style={[styles.phoneBtn, !phoneToTel(g.phone) && styles.phoneBtnDisabled]}
+                                        accessibilityRole="button"
+                                        accessibilityLabel={
+                                          phoneToTel(g.phone) ? `התקשר ל-${g.name}` : `אין מספר טלפון עבור ${g.name}`
+                                        }
+                                      >
+                                        <Ionicons
+                                          name="call-outline"
+                                          size={14}
+                                          color={phoneToTel(g.phone) ? colors.primary : "rgba(17,24,39,0.35)"}
+                                        />
+                                      </TouchableOpacity>
+
+                                      <View
+                                        style={[
+                                          styles.statusPill,
+                                          g.status === "מגיע"
+                                            ? styles.statusComing
+                                            : g.status === "לא מגיע"
+                                            ? styles.statusNot
+                                            : styles.statusPending,
+                                        ]}
+                                      >
+                                        <Text style={styles.statusText} numberOfLines={1}>{g.status}</Text>
+                                      </View>
+                                    </View>
+
+                                    {/* CENTER: Name */}
+                                    <Text style={styles.tabletGuestName} numberOfLines={1}>
+                                      {g.name}
+                                    </Text>
+                                  </View>
+
+                                  {/* ── Bottom row: arrived label | stepper / people ── */}
+                                  <View style={styles.tabletRow2}>
+                                    {/* LEFT: stepper or people count */}
                                     {checkedIn ? (
                                       <View style={styles.compactStepper}>
                                         <Pressable
@@ -464,73 +589,14 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                                     ) : (
                                       <View style={styles.peoplePill}>
                                         <Ionicons name="person" size={12} color={"rgba(17,24,39,0.65)"} />
-                                        <Text style={styles.peopleText}>{people}</Text>
+                                        <Text style={styles.peopleText}>{people} מוזמנים</Text>
                                       </View>
                                     )}
-                                  </View>
 
-                                  <TouchableOpacity
-                                    onPress={() => toggleCheckIn(g)}
-                                    style={[styles.checkInPill, checkedIn ? styles.checkInPillOn : styles.checkInPillOff]}
-                                    activeOpacity={0.9}
-                                    disabled={isSaving}
-                                    accessibilityRole="button"
-                                    accessibilityLabel={checkedIn ? `סמן שלא הגיע: ${g.name}` : `סמן שהגיע: ${g.name}`}
-                                  >
-                                    {isSaving ? (
-                                      <ActivityIndicator color={checkedIn ? colors.white : colors.primary} />
-                                    ) : (
-                                      <Ionicons
-                                        name={checkedIn ? "checkmark-circle" : "ellipse-outline"}
-                                        size={16}
-                                        color={checkedIn ? colors.white : colors.primary}
-                                      />
-                                    )}
-                                    <Text
-                                      style={[
-                                        styles.checkInText,
-                                        checkedIn ? { color: colors.white } : { color: colors.primary },
-                                      ]}
-                                    >
-                                      הגיע
+                                    {/* RIGHT: arrived label */}
+                                    <Text style={[styles.tabletArrivedLabel, checkedIn && styles.tabletArrivedLabelOn]}>
+                                      {checkedIn ? `הגיעו ${arrivedCount} מתוך ${people}` : "טרם הגיע"}
                                     </Text>
-                                  </TouchableOpacity>
-
-                                  <View style={styles.guestMain}>
-                                    <Text style={styles.guestName} numberOfLines={1}>
-                                      {g.name}
-                                    </Text>
-                                    <View style={styles.guestMetaRow}>
-                                      <TouchableOpacity
-                                        onPress={() => void callGuest(g.phone, g.name)}
-                                        disabled={!phoneToTel(g.phone)}
-                                        activeOpacity={0.85}
-                                        style={[styles.phoneBtn, !phoneToTel(g.phone) && styles.phoneBtnDisabled]}
-                                        accessibilityRole="button"
-                                        accessibilityLabel={
-                                          phoneToTel(g.phone) ? `התקשר ל-${g.name}` : `אין מספר טלפון עבור ${g.name}`
-                                        }
-                                      >
-                                        <Ionicons
-                                          name="call-outline"
-                                          size={14}
-                                          color={phoneToTel(g.phone) ? colors.primary : "rgba(17,24,39,0.35)"}
-                                        />
-                                      </TouchableOpacity>
-
-                                      <View
-                                        style={[
-                                          styles.statusPill,
-                                          g.status === "מגיע"
-                                            ? styles.statusComing
-                                            : g.status === "לא מגיע"
-                                            ? styles.statusNot
-                                            : styles.statusPending,
-                                        ]}
-                                      >
-                                        <Text style={styles.statusText}>{g.status}</Text>
-                                      </View>
-                                    </View>
                                   </View>
                                 </View>
                               );
@@ -594,7 +660,7 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                         : screenH;
 
                     const padding = 120;
-                    const canvasWidth = Math.max(Math.round(windowWidth * 0.5), maxX - minX + padding * 2);
+                    const canvasWidth = Math.max(mapViewportWidth, maxX - minX + padding * 2);
                     const canvasHeight = Math.max(Math.round(windowHeight * 0.78), maxY - minY + padding * 2, 900);
 
                     return (
@@ -985,9 +1051,9 @@ const styles = StyleSheet.create({
 
   tabletBody: { flex: 1, flexDirection: "row-reverse", alignItems: "stretch" },
   guestsPane: {
-    width: 460,
-    maxWidth: 520,
-    minWidth: 420,
+    width: 420,
+    maxWidth: 460,
+    minWidth: 380,
     borderLeftWidth: 1,
     borderLeftColor: "rgba(0,0,0,0.06)",
   },
@@ -1095,6 +1161,82 @@ const styles = StyleSheet.create({
   },
   categoryPctText: { fontSize: 12, fontWeight: "900", color: colors.success },
 
+  /* ── Tablet guest card ── */
+  tabletGuestCard: {
+    position: "relative",
+    backgroundColor: colors.white,
+    borderRadius: 18,
+    paddingTop: 11,
+    paddingBottom: 11,
+    paddingLeft: 12,
+    paddingRight: 20,      // extra room so accent bar doesn't clip content
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.07)",
+    gap: 8,
+  },
+  tabletGuestCardChecked: {
+    borderColor: "rgba(52,199,89,0.28)",
+    backgroundColor: "rgba(52,199,89,0.05)",
+  },
+  tabletAccentBar: {
+    position: "absolute",
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: 5,
+    borderTopRightRadius: 18,
+    borderBottomRightRadius: 18,
+    backgroundColor: "rgba(148,163,184,0.50)",
+  },
+  tabletAccentBarOn: { backgroundColor: "#10B981" },
+
+  /* Row 1: [Toggle] [Name flex] [phone + status] */
+  tabletRow1: {
+    position: "relative",
+    // Keep main content away from the pinned-left toggle
+    paddingLeft: 74,
+    minHeight: 38,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 10,
+  },
+  tabletTogglePinned: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    justifyContent: "center",
+    alignItems: "flex-start",
+  },
+  tabletGuestName: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: "900",
+    color: colors.text,
+    textAlign: "right",
+  },
+  tabletRow1Right: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    flexShrink: 0,
+  },
+
+  /* Row 2: [arrived label]  [stepper / people pill] */
+  tabletRow2: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  tabletArrivedLabel: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "rgba(17,24,39,0.38)",
+    textAlign: "right",
+  },
+  tabletArrivedLabelOn: { color: "#10B981" },
+
+  /* shared guest primitives (still used by phone layout) */
   guestRow: {
     backgroundColor: colors.white,
     borderRadius: 18,
@@ -1119,7 +1261,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 4,
     paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingVertical: 5,
     borderRadius: 999,
     backgroundColor: "rgba(0,0,0,0.04)",
     borderWidth: 1,
@@ -1129,7 +1271,7 @@ const styles = StyleSheet.create({
 
   phoneBtn: {
     width: 34,
-    height: 28,
+    height: 30,
     borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
@@ -1144,18 +1286,18 @@ const styles = StyleSheet.create({
 
   statusPill: {
     paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingVertical: 5,
     borderRadius: 999,
     borderWidth: 1,
-    minWidth: 74,
+    minWidth: 64,
     alignItems: "center",
   },
-  statusText: { fontSize: 12, fontWeight: "900", color: colors.text },
+  statusText: { fontSize: 11, fontWeight: "900", color: colors.text },
   statusComing: { backgroundColor: "rgba(52, 199, 89, 0.10)", borderColor: "rgba(52, 199, 89, 0.22)" },
   statusPending: { backgroundColor: "rgba(255, 193, 7, 0.10)", borderColor: "rgba(255, 193, 7, 0.22)" },
   statusNot: { backgroundColor: "rgba(255, 59, 48, 0.08)", borderColor: "rgba(255, 59, 48, 0.22)" },
 
-  arrivalSlot: { width: 126, alignItems: "center", justifyContent: "center" },
+  arrivalSlot: { width: 118, alignItems: "center", justifyContent: "center" },
   compactStepper: {
     height: 36,
     borderRadius: 14,
@@ -1182,20 +1324,36 @@ const styles = StyleSheet.create({
   compactCountWrap: { minWidth: 26, alignItems: "center", justifyContent: "center" },
   compactCountText: { fontSize: 12, fontWeight: "900", color: colors.text, textAlign: "center" },
 
-  checkInPill: {
-    height: 36,
-    paddingHorizontal: 10,
+  switchWrap: {
+    width: 62,
+    height: 34,
     borderRadius: 999,
-    flexDirection: "row-reverse",
+    justifyContent: "center",
+    backgroundColor: "rgba(148,163,184,0.52)",
+    borderWidth: 1,
+    borderColor: "rgba(15,23,42,0.16)",
+    shadowColor: "#000",
+    shadowOpacity: 0.10,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  switchWrapOn: { backgroundColor: "#10B981", borderColor: "rgba(16,185,129,0.35)" },
+  switchTrack: { position: "absolute", left: 0, right: 0, top: 0, bottom: 0, borderRadius: 999 },
+  switchTrackOn: {},
+  switchThumb: {
+    width: 30,
+    height: 30,
+    borderRadius: 999,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: "rgba(15,23,42,0.12)",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
-    borderWidth: 1,
-    minWidth: 84,
+    position: "absolute",
+    right: 2,
   },
-  checkInPillOn: { backgroundColor: colors.success, borderColor: "rgba(0,0,0,0.08)" },
-  checkInPillOff: { backgroundColor: "rgba(17, 82, 212, 0.06)", borderColor: "rgba(17, 82, 212, 0.22)" },
-  checkInText: { fontSize: 12, fontWeight: "900" },
+  switchThumbOn: { right: 30, backgroundColor: colors.white, borderColor: "rgba(15,23,42,0.12)" },
 
   emptyCard: {
     marginTop: 24,
