@@ -34,7 +34,8 @@ module.exports = {
         foregroundImage: "./assets/images/icon.png",
         backgroundColor: "#ffffff"
       },
-      package: "com.moonevents.app"
+      package: "com.moonevents.app",
+      supportsRtl: true
     },
     web: {
       favicon: "./assets/images/favicon.png",

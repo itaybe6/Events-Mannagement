@@ -21,17 +21,31 @@ type TabIconProps = {
 };
 
 function TabIcon({ iconName, iconNameActive, label, focused }: TabIconProps) {
-  if (focused) {
-    return (
-      <View style={styles.tabPill}>
-        <Ionicons name={iconNameActive} size={15} color="#fff" />
-        <Text style={styles.tabPillText} numberOfLines={1}>{label}</Text>
-      </View>
-    );
-  }
   return (
-    <View style={styles.tabIconWrap}>
-      <Ionicons name={iconName} size={22} color="rgba(0,0,0,0.36)" />
+    <View style={styles.tabItem}>
+      <View style={[styles.iconCircle, focused && styles.iconCircleActive]}>
+        <LinearGradient
+          pointerEvents="none"
+          colors={["rgba(255,255,255,0.55)", "rgba(255,255,255,0.16)", "rgba(255,255,255,0)"]}
+          locations={[0, 0.6, 1]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.iconGloss}
+        />
+        <Ionicons
+          name={focused ? iconNameActive : iconName}
+          size={22}
+          color={focused ? colors.white : "rgba(0,0,0,0.55)"}
+        />
+      </View>
+      <Text
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.65}
+        style={[styles.tabLabel, focused && styles.tabLabelActive]}
+      >
+        {label}
+      </Text>
     </View>
   );
 }
@@ -115,28 +129,47 @@ export default function CoupleTabsLayout() {
           tabBarShowLabel: false,
           tabBarBackground: () => (
             <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-              <BlurView intensity={60} tint="light" style={styles.tabBarBlur} />
+              <BlurView intensity={28} tint="light" style={styles.tabBarBlur} />
               <View style={styles.tabBarFrame} />
               <LinearGradient
                 pointerEvents="none"
-                colors={["rgba(255,255,255,0.55)", "rgba(255,255,255,0)"]}
+                colors={[
+                  "rgba(255,255,255,0.65)",
+                  "rgba(255,255,255,0.18)",
+                  "rgba(255,255,255,0)",
+                ]}
+                locations={[0, 0.35, 1]}
                 start={{ x: 0.5, y: 0 }}
                 end={{ x: 0.5, y: 1 }}
-                style={styles.tabBarShine}
+                style={styles.tabBarTopShine}
+              />
+              <LinearGradient
+                pointerEvents="none"
+                colors={["rgba(255,255,255,0.28)", "rgba(255,255,255,0)"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.tabBarSheen}
+              />
+              <LinearGradient
+                pointerEvents="none"
+                colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.06)"]}
+                start={{ x: 0.5, y: 0.5 }}
+                end={{ x: 0.5, y: 1 }}
+                style={styles.tabBarBottomShade}
               />
             </View>
           ),
           tabBarStyle: {
             position: 'absolute',
-            bottom: Platform.OS === 'ios' ? 24 : 14,
+            bottom: Platform.OS === 'ios' ? Math.max(16, insets.bottom + 8) : Math.max(12, insets.bottom + 6),
             left: 16,
             right: 16,
-            height: 66,
+            height: 76,
             backgroundColor: 'transparent',
-            borderRadius: 26,
-            paddingHorizontal: 4,
-            paddingTop: 0,
-            paddingBottom: 0,
+            borderRadius: 32,
+            paddingHorizontal: 8,
+            paddingTop: 12,
+            paddingBottom: 8,
             overflow: 'visible',
             shadowColor: '#000',
             shadowOffset: { width: 0, height: 6 },
@@ -149,11 +182,12 @@ export default function CoupleTabsLayout() {
           },
           tabBarItemStyle: {
             flex: 1,
-            height: 66,
+            height: 56,
             paddingVertical: 0,
             paddingHorizontal: 0,
             justifyContent: 'center',
             alignItems: 'center',
+            overflow: 'visible',
           },
           tabBarIconStyle: {
             margin: 0,
@@ -302,48 +336,67 @@ const styles = StyleSheet.create({
   // ─── Tab bar background ────────────────────────────────────
   tabBarBlur: {
     flex: 1,
-    borderRadius: 26,
+    borderRadius: 32,
     overflow: "hidden",
   },
   tabBarFrame: {
     ...StyleSheet.absoluteFillObject,
-    borderRadius: 26,
+    borderRadius: 32,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.70)",
-    backgroundColor: "rgba(255,255,255,0.74)",
+    borderColor: "rgba(255,255,255,0.7)",
+    backgroundColor: "rgba(255,255,255,0.16)",
   },
-  tabBarShine: {
+  tabBarTopShine: {
     ...StyleSheet.absoluteFillObject,
-    borderRadius: 26,
+    borderRadius: 32,
+  },
+  tabBarSheen: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 32,
+  },
+  tabBarBottomShade: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 32,
   },
 
   // ─── Tab icons ─────────────────────────────────────────────
-  tabPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: colors.primary,
-    paddingHorizontal: 13,
-    paddingVertical: 9,
-    borderRadius: 999,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.32,
-    shadowRadius: 8,
-    elevation: 6,
+  tabItem: {
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 3,
+    width: "100%",
+    paddingHorizontal: 2,
   },
-  tabPillText: {
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.1,
-    writingDirection: 'rtl',
+  tabLabel: {
+    fontSize: 10,
+    lineHeight: 12,
+    fontWeight: "700",
+    color: "rgba(0,0,0,0.42)",
+    textAlign: "center",
+    writingDirection: "rtl",
     includeFontPadding: false,
+    width: "100%",
   },
-  tabIconWrap: {
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
+  tabLabelActive: {
+    color: colors.primary,
+  },
+  iconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.42)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.75)",
+    overflow: "hidden",
+  },
+  iconGloss: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.9,
+  },
+  iconCircleActive: {
+    backgroundColor: colors.primary,
+    borderColor: "rgba(255,255,255,0.55)",
   },
 });

@@ -3,6 +3,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useFonts } from "expo-font";
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
+import * as Updates from "expo-updates";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, I18nManager, Platform, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -19,9 +20,18 @@ if (Platform.OS === 'web') {
 // We load Rubik via `expo-font` on all platforms (see `lib/fonts.*.ts`).
 // `global.css` still sets a sensible CSS fallback stack for the DOM.
 
-// Force RTL layout for Hebrew
+// Force RTL layout for Hebrew.
+// allowRTL + forceRTL require a full app restart to take effect at the native
+// layout level. On a fresh install the flag is not yet set, so we set it and
+// immediately reload the bundle so that the very first session is already RTL.
 I18nManager.allowRTL(true);
-I18nManager.forceRTL(true);
+if (!I18nManager.isRTL) {
+  I18nManager.forceRTL(true);
+  // Only reload on native — web handles RTL via CSS and doesn't need a restart.
+  if (Platform.OS !== 'web') {
+    Updates.reloadAsync().catch(() => {});
+  }
+}
 
 const rtlTextStyle = { textAlign: 'right' as const, writingDirection: 'rtl' as const };
 const webFontStack =
