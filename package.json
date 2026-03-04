@@ -6,7 +6,9 @@
     "start": "npx expo start --tunnel",
     "start-web": "npx expo start --web --tunnel",
     "start-web-dev": "DEBUG=expo* npx expo start --web --tunnel",
-    "build": "expo export --platform web"
+    "build": "expo export --platform web",
+    "android": "expo run:android",
+    "ios": "expo run:ios"
   },
   "dependencies": {
     "@animatereactnative/marquee": "^0.5.2",

@@ -46,6 +46,7 @@ module.exports = {
       bundler: "metro"
     },
     plugins: [
+      "./plugins/withForceRTL.js",
       "expo-font",
       // Use direct path to avoid plugin resolution issues (e.g. paths with non-ASCII chars on Windows)
       [
