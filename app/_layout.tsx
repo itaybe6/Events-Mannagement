@@ -20,16 +20,14 @@ if (Platform.OS === 'web') {
 // We load Rubik via `expo-font` on all platforms (see `lib/fonts.*.ts`).
 // `global.css` still sets a sensible CSS fallback stack for the DOM.
 
-// Force RTL layout for Hebrew.
-// allowRTL + forceRTL require a full app restart to take effect at the native
-// layout level. On a fresh install the flag is not yet set, so we set it and
-// immediately reload the bundle so that the very first session is already RTL.
+// Always RTL regardless of device language. forceRTL requires app restart to take effect.
 I18nManager.allowRTL(true);
 if (!I18nManager.isRTL) {
   I18nManager.forceRTL(true);
-  // Only reload on native — web handles RTL via CSS and doesn't need a restart.
   if (Platform.OS !== 'web') {
-    Updates.reloadAsync().catch(() => {});
+    Updates.reloadAsync().catch((e) => {
+      console.warn('RTL reload failed (expo-updates may be disabled):', e);
+    });
   }
 }
 

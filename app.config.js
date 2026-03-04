@@ -11,6 +11,10 @@ module.exports = {
     name: "Moon",
     slug: "euroe-nitgmal-eiroom-mekapim",
     version: "1.0.0",
+    runtimeVersion: "1.0.0",
+    updates: {
+      url: "https://u.expo.dev/292e2bf1-e784-4c87-9375-36040694dec9",
+    },
     // Allow device rotation (portrait + landscape).
     // If you want only specific screens to rotate, lock/unlock at runtime via expo-screen-orientation,
     // but the app must still support the orientations at build time.
