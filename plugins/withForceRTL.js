@@ -5,6 +5,7 @@ const { mergeContents } = require('@expo/config-plugins/build/utils/generateCode
 const RTL_TAG = 'expo-force-rtl';
 
 function addRTLToAppDelegateSwift(contents) {
+  // Match the didFinishLaunchingWithOptions parameter line; insert after next line (") -> Bool {") so offset 2.
   return mergeContents({
     tag: RTL_TAG,
     src: contents,
@@ -13,8 +14,8 @@ function addRTLToAppDelegateSwift(contents) {
       '    RCTI18nUtil.sharedInstance().allowRTL(true)',
       '    RCTI18nUtil.sharedInstance().forceRTL(true)',
     ].join('\n'),
-    anchor: /\s*\) -> Bool \{/,
-    offset: 0,
+    anchor: /didFinishLaunchingWithOptions launchOptions:/,
+    offset: 2,
     comment: '//',
   });
 }
