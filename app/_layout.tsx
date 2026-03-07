@@ -19,8 +19,12 @@ if (Platform.OS === 'web') {
 // We load Rubik via `expo-font` on all platforms (see `lib/fonts.*.ts`).
 // `global.css` still sets a sensible CSS fallback stack for the DOM.
 
-// RTL is forced in native (plugins/withForceRTL.js) so it applies from first launch. JS only allows RTL.
-I18nManager.allowRTL(true);
+// RTL is forced in native (plugins/withForceRTL.js) so it applies from first launch.
+// Keep a JS safety net for native release builds while excluding web.
+if (Platform.OS !== 'web') {
+  I18nManager.allowRTL(true);
+  I18nManager.forceRTL(true);
+}
 
 const rtlTextStyle = { textAlign: 'right' as const, writingDirection: 'rtl' as const };
 const webFontStack =

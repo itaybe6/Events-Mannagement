@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Animated, ScrollView, View, Text, StyleSheet, Platform, Pressable, Image, useWindowDimensions } from 'react-native';
+import { Animated, ScrollView, View, Text, StyleSheet, Platform, Pressable, Image, I18nManager, useWindowDimensions } from 'react-native';
 import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useUserStore } from '@/store/userStore';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
@@ -285,6 +285,10 @@ export default function HomeScreen() {
         style={styles.container}
         contentContainerStyle={[styles.contentContainer, isWeb && styles.contentContainerWeb]}
       >
+        <View style={styles.rtlDebugBanner}>
+          <Text style={styles.rtlDebugText}>RTL: {String(I18nManager.isRTL)}</Text>
+        </View>
+
         <View style={styles.hero}>
           {currentEvent?.invitationImageUrl ? (
             <View style={styles.heroBanner}>
@@ -498,6 +502,22 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 1180,
     alignSelf: 'center',
+  },
+  rtlDebugBanner: {
+    alignSelf: 'center',
+    marginBottom: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: 'rgba(11, 28, 65, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(11, 28, 65, 0.12)',
+  },
+  rtlDebugText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.text,
+    textAlign: 'center',
   },
 
   hero: {
