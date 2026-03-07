@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { supabase } from '@/lib/supabase';
 import { colors } from '@/constants/colors';
+import { ROW_DIR } from '@/lib/rtl';
 
 type NotificationTemplate = {
   notification_type: string;
@@ -346,7 +347,7 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: 13, fontWeight: '800' },
 
   notifHeader: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
@@ -398,7 +399,7 @@ const styles = StyleSheet.create({
   notificationsSection: { marginHorizontal: 20, marginBottom: 32 },
   section: { marginBottom: 28 },
   sectionHeader: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'flex-start',
     gap: 10,
@@ -411,7 +412,7 @@ const styles = StyleSheet.create({
 
   notificationCard: {
     position: 'relative',
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
     borderRadius: 16,
@@ -442,7 +443,7 @@ const styles = StyleSheet.create({
   cardMetaRow: {
     marginTop: 8,
     alignSelf: 'flex-end',
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
   },
   statusBtn: { paddingVertical: 2 },

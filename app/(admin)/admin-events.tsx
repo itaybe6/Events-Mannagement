@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, SafeAreaView, Platform, Alert, Image, TextInput, Modal } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, SafeAreaView, Platform, Alert, Image, TextInput, Modal, I18nManager } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { colors } from '@/constants/colors';
@@ -20,6 +20,8 @@ const EVENT_IMAGE_BY_TYPE: Record<EventType, number> = {
   ברית: require('../../assets/images/baby.jpg'),
   'אירוע חברה': require('../../assets/images/wedding.jpg'),
 };
+
+const ROW_DIR = (I18nManager.isRTL ? 'row' : 'row-reverse') as const;
 
 export default function AdminEventsScreen() {
   const router = useRouter();
@@ -372,7 +374,7 @@ const styles = StyleSheet.create({
   },
 
   controlsRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 10,
     paddingHorizontal: 18,
@@ -384,7 +386,7 @@ const styles = StyleSheet.create({
     height: 54,
     borderRadius: 24,
     paddingHorizontal: 14,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 10,
     backgroundColor: 'rgba(255,255,255,0.72)',
@@ -464,7 +466,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   monthPickerHeaderRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 8,
@@ -503,13 +505,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   monthGrid: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     flexWrap: 'wrap',
     gap: 10,
     justifyContent: 'space-between',
   },
   monthChipV2: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
@@ -550,7 +552,7 @@ const styles = StyleSheet.create({
     paddingTop: 12,
   },
   eventTopRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'flex-end',
     justifyContent: 'flex-start',
     paddingHorizontal: 8,
@@ -591,13 +593,13 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   metaLine: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     flexWrap: 'wrap',
     gap: 6,
   },
   metaItem: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 6,
   },
@@ -636,7 +638,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 14,
     bottom: 14,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 8,
     paddingVertical: 8,

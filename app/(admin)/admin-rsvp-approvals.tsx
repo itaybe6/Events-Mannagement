@@ -23,6 +23,7 @@ import { Guest, GuestCategory } from "@/types";
 import BackSwipe from "@/components/BackSwipe";
 import AppHeader, { APP_HEADER_HEIGHT_COMPACT, getAppHeaderTotalHeight } from "@/components/AppHeader";
 import { useRsvpApprovalsModel } from "@/features/rsvp/useRsvpApprovalsModel";
+import { ROW_DIR } from "@/lib/rtl";
 
 const sanitizePhone = (raw: string) => (raw || "").replace(/[^\d+]/g, "");
 
@@ -385,7 +386,7 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
   },
 
-  pillsRow: { flexDirection: "row-reverse", gap: 10, paddingRight: 0, minWidth: "100%", justifyContent: "flex-start" },
+  pillsRow: { flexDirection: ROW_DIR, gap: 10, paddingRight: 0, minWidth: "100%", justifyContent: "flex-start" },
   pillBase: {
     backgroundColor: "rgba(15,23,42,0.04)",
     borderRadius: 999,
@@ -452,7 +453,7 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
 
-  tabsRow: { flexDirection: "row-reverse", borderBottomWidth: 1, borderBottomColor: "rgba(15,23,42,0.06)" },
+  tabsRow: { flexDirection: ROW_DIR, borderBottomWidth: 1, borderBottomColor: "rgba(15,23,42,0.06)" },
   tabBtn: { flex: 1, paddingBottom: 10, alignItems: "center" },
   tabBtnActive: { borderBottomWidth: 2, borderBottomColor: colors.primary },
   tabText: { fontSize: 13, fontWeight: "800", color: colors.gray[500] },
@@ -471,7 +472,7 @@ const styles = StyleSheet.create({
   sectionHeader: {
     paddingHorizontal: 14,
     paddingVertical: 10,
-    flexDirection: "row-reverse",
+    flexDirection: ROW_DIR,
     alignItems: "center",
     justifyContent: "space-between",
     backgroundColor: "rgba(255,255,255,0.98)",
@@ -484,14 +485,14 @@ const styles = StyleSheet.create({
     minHeight: 60,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    flexDirection: "row-reverse",
+    flexDirection: ROW_DIR,
     alignItems: "center",
     justifyContent: "space-between",
     borderBottomWidth: 1,
     borderBottomColor: "rgba(15,23,42,0.06)",
     backgroundColor: colors.white,
   },
-  rightGroup: { flex: 1, minWidth: 0, flexDirection: "row-reverse", alignItems: "center" },
+  rightGroup: { flex: 1, minWidth: 0, flexDirection: ROW_DIR, alignItems: "center" },
   nameCol: { flex: 1, minWidth: 0, alignItems: "flex-end" },
   guestName: { minWidth: 0, flexShrink: 1, fontSize: 14, fontWeight: "900", color: colors.text, textAlign: "right" },
   leftSlot: { width: 170, alignItems: "flex-start", justifyContent: "center" },
@@ -505,8 +506,8 @@ const styles = StyleSheet.create({
   badgeDeclined: { backgroundColor: "rgba(255, 59, 48, 0.10)", borderColor: "rgba(255, 59, 48, 0.18)" },
   badgeTextDeclined: { color: "#dc2626" },
 
-  actionsInline: { flexDirection: "row-reverse", alignItems: "center", gap: 10 },
-  statusEditRow: { flexDirection: "row-reverse", alignItems: "center", gap: 10 },
+  actionsInline: { flexDirection: ROW_DIR, alignItems: "center", gap: 10 },
+  statusEditRow: { flexDirection: ROW_DIR, alignItems: "center", gap: 10 },
   iconBtn: {
     width: 36,
     height: 36,

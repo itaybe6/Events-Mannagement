@@ -22,6 +22,7 @@ import { colors } from '@/constants/colors';
 import { useAdminEventDetailsModel } from '@/features/events/useAdminEventDetailsModel';
 import { eventService } from '@/lib/services/eventService';
 import { invitationAssetService } from '@/lib/services/invitationAssetService';
+import { ROW_DIR } from '@/lib/rtl';
 
 function getEventTypeLabel(rawTitle: string) {
   const raw = String(rawTitle ?? '').trim();
@@ -724,7 +725,7 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 24 },
   centerText: { fontSize: 14, fontWeight: '800', color: colors.gray[700], textAlign: 'center' },
 
-  headerRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
+  headerRow: { flexDirection: ROW_DIR, alignItems: 'center', gap: 10 },
   h1: { fontSize: 20, fontWeight: '900', color: colors.text, textAlign: 'right' },
   h1Narrow: { fontSize: 22 },
   sub: { marginTop: 4, fontSize: 12, fontWeight: '700', color: colors.gray[600], textAlign: 'right' },
@@ -752,13 +753,13 @@ const styles = StyleSheet.create({
   },
   cardMobile: { padding: 16, gap: 12 },
   topGrid: { gap: 14 },
-  topGridDesktop: { flexDirection: 'row-reverse', alignItems: 'flex-start' },
+  topGridDesktop: { flexDirection: ROW_DIR, alignItems: 'flex-start' },
   previewCardDesktop: { flex: 1, minWidth: 420, maxWidth: 560 },
   formCardDesktop: { flex: 1, minWidth: 520 },
-  cardHeaderRow: { flexDirection: 'row-reverse', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  cardHeaderRow: { flexDirection: ROW_DIR, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   cardTitle: { fontSize: 15, fontWeight: '900', color: colors.text, textAlign: 'right' },
 
-  badge: { flexDirection: 'row-reverse', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(15,69,230,0.08)' },
+  badge: { flexDirection: ROW_DIR, gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(15,69,230,0.08)' },
   badgeText: { fontSize: 12, fontWeight: '900', color: colors.primary, textAlign: 'right' },
 
   previewWrap: {
@@ -785,12 +786,12 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(15,69,230,0.16)',
     backgroundColor: 'rgba(15,69,230,0.06)',
     padding: 12,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     flexWrap: 'wrap',
     alignItems: 'center',
     gap: 10,
   },
-  demoCardTop: { flexDirection: 'row-reverse', alignItems: 'center', flex: 1, minWidth: 0, gap: 10 },
+  demoCardTop: { flexDirection: ROW_DIR, alignItems: 'center', flex: 1, minWidth: 0, gap: 10 },
   demoCardTopMobile: { flex: 0 },
   demoCardMobile: {
     flexDirection: 'column-reverse',
@@ -816,7 +817,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 12,
     backgroundColor: colors.primary,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
@@ -847,9 +848,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
-  row: { flexDirection: 'row-reverse', gap: 10 },
+  row: { flexDirection: ROW_DIR, gap: 10 },
   rowStack: { flexDirection: 'column' },
-  actionsRow: { flexDirection: 'row-reverse', gap: 10, marginTop: 4 },
+  actionsRow: { flexDirection: ROW_DIR, gap: 10, marginTop: 4 },
   actionsRowStack: { flexDirection: 'column' },
   primaryBtn: {
     flex: 1,
@@ -858,7 +859,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     gap: 8,
   },
   primaryBtnText: { fontSize: 13, fontWeight: '900', color: '#fff', textAlign: 'right' },
@@ -869,7 +870,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(15,69,230,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     gap: 8,
     borderWidth: 1,
     borderColor: 'rgba(15,69,230,0.14)',
@@ -877,7 +878,7 @@ const styles = StyleSheet.create({
   secondaryBtnText: { fontSize: 13, fontWeight: '900', color: colors.primary, textAlign: 'right' },
 
   empty: { fontSize: 13, fontWeight: '800', color: colors.gray[600], textAlign: 'right', paddingVertical: 6 },
-  filtersRow: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8 },
+  filtersRow: { flexDirection: ROW_DIR, flexWrap: 'wrap', gap: 8 },
   filterPill: {
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -890,7 +891,7 @@ const styles = StyleSheet.create({
   filterText: { fontSize: 12, fontWeight: '900', color: 'rgba(17,24,39,0.72)', textAlign: 'right' },
   filterTextActive: { color: '#fff' },
   guestRow: {
-    flexDirection: Platform.OS === 'web' ? 'row' : 'row-reverse',
+    flexDirection: Platform.OS === 'web' ? 'row' : ROW_DIR,
     alignItems: 'center',
     gap: 10,
     padding: 12,
@@ -899,7 +900,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(15,23,42,0.08)',
     backgroundColor: 'rgba(255,255,255,0.92)',
   },
-  guestRowNarrow: { flexDirection: 'row-reverse', flexWrap: 'wrap', alignItems: 'flex-start' },
+  guestRowNarrow: { flexDirection: ROW_DIR, flexWrap: 'wrap', alignItems: 'flex-start' },
   guestName: { fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'right' },
   guestMetaBlock: { marginTop: 4, gap: 2 },
   statusRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
@@ -932,7 +933,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 12,
     backgroundColor: colors.primary,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
@@ -949,16 +950,16 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(17,24,39,0.04)',
     borderWidth: 1,
     borderColor: 'rgba(17,24,39,0.10)',
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 10,
   },
   searchOpenText: { fontSize: 13, fontWeight: '900', color: 'rgba(17,24,39,0.62)', textAlign: 'right' },
-  searchOpenCta: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6 },
+  searchOpenCta: { flexDirection: ROW_DIR, alignItems: 'center', gap: 6 },
   searchOpenCtaText: { fontSize: 13, fontWeight: '900', color: colors.primary, textAlign: 'right' },
 
   linksStatsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' },
-  linksStatsRowScroll: { flexDirection: 'row-reverse', flexWrap: 'nowrap', gap: 8, alignItems: 'center', paddingHorizontal: 2 },
+  linksStatsRowScroll: { flexDirection: ROW_DIR, flexWrap: 'nowrap', gap: 8, alignItems: 'center', paddingHorizontal: 2 },
   statPill: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1017,7 +1018,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
     marginBottom: 6,
   },
-  dialogHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  dialogHeader: { flexDirection: ROW_DIR, alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   dialogTitle: { fontSize: 15, fontWeight: '900', color: colors.text, textAlign: 'right' },
   dialogSub: { marginTop: 2, fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'right', lineHeight: 18 },
   dialogClose: {
@@ -1032,7 +1033,7 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
   dialogSearchRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 10,
     height: 46,
@@ -1052,7 +1053,7 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
   dialogFiltersScroll: { maxHeight: 48 },
-  dialogFiltersRow: { flexDirection: 'row-reverse', flexWrap: 'nowrap', gap: 8, alignItems: 'center' },
+  dialogFiltersRow: { flexDirection: ROW_DIR, flexWrap: 'nowrap', gap: 8, alignItems: 'center' },
   dialogList: { flex: 1 },
   dialogListContent: { paddingBottom: 10, gap: 10 },
 
@@ -1064,19 +1065,19 @@ const styles = StyleSheet.create({
     padding: 12,
     gap: 10,
   },
-  smsHeaderRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  smsTitleWrap: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
+  smsHeaderRow: { flexDirection: ROW_DIR, alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  smsTitleWrap: { flexDirection: ROW_DIR, alignItems: 'center', gap: 8 },
   smsTitle: { fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'right' },
-  smsBadge: { flexDirection: 'row-reverse', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(2,6,23,0.04)' },
+  smsBadge: { flexDirection: ROW_DIR, gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(2,6,23,0.04)' },
   smsBadgeText: { fontSize: 12, fontWeight: '900', color: 'rgba(2,6,23,0.72)', textAlign: 'right' },
 
-  smsModeRow: { flexDirection: 'row-reverse', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
+  smsModeRow: { flexDirection: ROW_DIR, alignItems: 'center', flexWrap: 'wrap', gap: 8 },
   modePill: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: '#fff', borderWidth: 1, borderColor: 'rgba(15,23,42,0.10)' },
   modePillActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   modeText: { fontSize: 12, fontWeight: '900', color: 'rgba(2,6,23,0.72)', textAlign: 'right' },
   modeTextActive: { color: '#fff' },
 
-  smallBtn: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12, backgroundColor: '#fff', borderWidth: 1, borderColor: 'rgba(15,69,230,0.14)' },
+  smallBtn: { flexDirection: ROW_DIR, alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12, backgroundColor: '#fff', borderWidth: 1, borderColor: 'rgba(15,69,230,0.14)' },
   smallBtnText: { fontSize: 12, fontWeight: '900', color: colors.primary, textAlign: 'right' },
 
   smsHint: { fontSize: 12, fontWeight: '800', color: 'rgba(2,6,23,0.62)', textAlign: 'right' },
@@ -1094,9 +1095,9 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     textAlignVertical: 'top',
   },
-  smsFooterRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  smsFooterRow: { flexDirection: ROW_DIR, alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   smsMeta: { fontSize: 12, fontWeight: '800', color: 'rgba(2,6,23,0.62)', textAlign: 'right' },
-  smsSendBtn: { height: 42, paddingHorizontal: 14, borderRadius: 14, backgroundColor: colors.primary, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  smsSendBtn: { height: 42, paddingHorizontal: 14, borderRadius: 14, backgroundColor: colors.primary, flexDirection: ROW_DIR, alignItems: 'center', justifyContent: 'center', gap: 8 },
   smsSendText: { fontSize: 12, fontWeight: '900', color: '#fff', textAlign: 'right' },
   smsResult: { fontSize: 12, fontWeight: '800', color: 'rgba(2,6,23,0.70)', textAlign: 'right' },
 

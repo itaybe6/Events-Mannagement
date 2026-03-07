@@ -8,6 +8,7 @@ import { eventService } from '@/lib/services/eventService';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import BackSwipe from '@/components/BackSwipe';
+import { ROW_DIR } from '@/lib/rtl';
 
 const EVENT_TYPES = [
   { label: 'חתונה', value: 'חתונה' },
@@ -440,7 +441,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   sectionHeaderRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'flex-end',
     justifyContent: 'space-between',
     marginBottom: 12,
@@ -458,14 +459,14 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     borderRadius: 18,
     padding: 16,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
     borderWidth: 1,
     borderColor: colors.gray[200],
   },
   selectorRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     flex: 1,
   },
@@ -494,7 +495,7 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   grid: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     flexWrap: 'wrap',
     justifyContent: 'space-between',
   },
@@ -563,7 +564,7 @@ const styles = StyleSheet.create({
     borderColor: colors.gray[200],
   },
   infoRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
   },
@@ -602,7 +603,7 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   createBtnRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 10,
@@ -651,7 +652,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-end',
   },
   searchRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     backgroundColor: colors.gray[100],
     borderRadius: 12,
@@ -675,7 +676,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   modalItemRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
     width: '100%',
