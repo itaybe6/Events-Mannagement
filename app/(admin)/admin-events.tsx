@@ -637,7 +637,7 @@ const styles = StyleSheet.create({
   },
   badgePill: {
     position: 'absolute',
-    right: 14,
+    start: 14,
     bottom: 14,
     flexDirection: ROW_DIR,
     alignItems: 'center',
@@ -651,17 +651,17 @@ const styles = StyleSheet.create({
   },
   badgeIconWrap: {
     position: 'absolute',
-    right: 10,
+    start: 10,
     width: 22,
     height: 22,
     borderRadius: 11,
     opacity: 0.95,
   },
   badgeIcon: {
-    marginRight: 2,
+    marginStart: 2,
   },
   badgeText: {
-    paddingRight: 22,
+    paddingStart: 22,
     fontSize: 12,
     fontWeight: '900',
     color: colors.text,
@@ -687,7 +687,7 @@ const styles = StyleSheet.create({
   },
   coverBottomRow: {
     position: 'absolute',
-    left: 14,
+    end: 14,
     bottom: 14,
   },
   daysLeft: {

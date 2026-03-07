@@ -95,7 +95,9 @@ export default function CoupleTabsLayout() {
             <AppHeader
               variant="compact"
               canGoBack={navigation.canGoBack()}
-              onPressBack={() => navigation.goBack()}
+              onPressBack={() => {
+                if (navigation.canGoBack()) navigation.goBack();
+              }}
               logoOffsetX={route?.name === "index" ? -12 : 0}
               logoStyle={route?.name === "index" ? styles.homeLogoTweaks : undefined}
               rightContent={(

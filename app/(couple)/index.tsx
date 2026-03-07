@@ -249,7 +249,7 @@ export default function HomeScreen() {
                 </View>
                 <View style={styles.actionTileDot} />
               </View>
-              <View>
+              <View style={styles.actionTileTextBlock}>
                 <Text style={styles.actionTileTitle}>{title}</Text>
                 <Text style={styles.actionTileSubtitle}>{subtitle}</Text>
               </View>
@@ -263,7 +263,7 @@ export default function HomeScreen() {
               </View>
               <View style={styles.actionTileDot} />
             </View>
-            <View>
+            <View style={styles.actionTileTextBlock}>
               <Text style={styles.actionTileTitle}>{title}</Text>
               <Text style={styles.actionTileSubtitle}>{subtitle}</Text>
             </View>
@@ -813,6 +813,10 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     justifyContent: 'space-between',
   },
+  actionTileTextBlock: {
+    alignSelf: 'stretch',
+    alignItems: ALIGN_RIGHT,
+  },
   actionTileIconBox: {
     width: 48,
     height: 48,
@@ -833,7 +837,9 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '900',
     color: colors.text,
+    alignSelf: 'stretch',
     textAlign: 'right',
+    writingDirection: 'rtl',
     lineHeight: 26,
   },
   actionTileSubtitle: {
@@ -841,7 +847,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: colors.gray[600],
+    alignSelf: 'stretch',
     textAlign: 'right',
+    writingDirection: 'rtl',
   },
 });
 

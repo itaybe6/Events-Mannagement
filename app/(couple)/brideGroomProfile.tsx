@@ -138,7 +138,6 @@ export default function BrideGroomSettings() {
   const performLogout = async () => {
     try {
       await logout();
-      router.replace('/login');
     } catch {
       Alert.alert('שגיאה', 'לא ניתן להתנתק כרגע, נסה שוב.');
     }
