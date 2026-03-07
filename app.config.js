@@ -30,7 +30,7 @@ module.exports = {
     },
     ios: {
       supportsTablet: true,
-      bundleIdentifier: "com.moonevents.app",
+      bundleIdentifier: "com.itaybenyair.moon",
       icon: "./assets/images/icon.png"
     },
     android: {
