@@ -1423,13 +1423,13 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontSize: 14,
     fontWeight: '600',
-    marginLeft: 8,
+    marginStart: 8,
   },
   saveButtonText: {
     color: colors.white,
     fontSize: 14,
     fontWeight: '600',
-    marginLeft: 8,
+    marginStart: 8,
   },
   modalContainer: {
     flex: 1,
@@ -1487,7 +1487,7 @@ const styles = StyleSheet.create({
   editModalHeaderCenter: {
     flex: 1,
     alignItems: ALIGN_RIGHT,
-    marginLeft: 12,
+    marginStart: 12,
   },
   editModalTitleRow: {
     flexDirection: ROW_DIR,
@@ -1559,7 +1559,7 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontSize: 16,
     fontWeight: '800',
-    marginRight: 8,
+    marginStart: 8,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -1614,7 +1614,7 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    marginLeft: 12,
+    marginStart: 12,
   },
   modalActions: {
     padding: 20,
@@ -1642,7 +1642,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.primary,
     fontWeight: '600',
-    marginLeft: 8,
+    marginStart: 8,
   },
   categoryItem: {
     flexDirection: 'row',
@@ -1674,7 +1674,7 @@ const styles = StyleSheet.create({
     padding: 10,
     fontSize: 15,
     backgroundColor: colors.gray[100],
-    marginRight: 8,
+    marginEnd: 8,
   },
   addCategoryButton: {
     backgroundColor: colors.primary,
@@ -1751,7 +1751,7 @@ const styles = StyleSheet.create({
     padding: 12,
     fontSize: 15,
     backgroundColor: colors.gray[100],
-    marginRight: 8,
+    marginEnd: 8,
   },
   appleAddCategoryButton: {
     backgroundColor: colors.primary,
@@ -1800,7 +1800,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
   },
   sideButtonText: {
-    marginLeft: 8,
+    marginStart: 8,
     fontSize: 15,
     fontWeight: '600',
     color: colors.primary,
@@ -1931,17 +1931,19 @@ const styles = StyleSheet.create({
   guestInfo: {
     flex: 1,
     minWidth: 0,
+    alignItems: ALIGN_RIGHT,
   },
   guestName: {
+    width: '100%',
     fontSize: 15,
     fontWeight: '700',
     color: colors.text,
     textAlign: 'right',
     writingDirection: 'rtl',
     lineHeight: 20,
-    flexShrink: 1,
   },
   guestPhone: {
+    width: '100%',
     fontSize: 13,
     color: colors.gray[600],
     textAlign: 'right',
@@ -1964,7 +1966,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.gray[800],
     fontWeight: '700',
-    marginRight: 4,
+    marginEnd: 4,
   },
   editForm: {
     paddingHorizontal: 20,
@@ -2060,7 +2062,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.black,
     fontWeight: 'bold',
-    marginLeft: 4,
+    marginStart: 4,
   },
   categoryGuestsScroll: {
     maxHeight: 200,

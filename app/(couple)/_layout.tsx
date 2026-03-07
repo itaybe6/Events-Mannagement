@@ -198,28 +198,28 @@ export default function CoupleTabsLayout() {
         }}
       >
         <Tabs.Screen
-          name="index"
+          name="automatic-notifications"
           options={{
-            title: "בית",
+            title: "הודעות",
             tabBarIcon: ({ focused }) => (
               <TabIcon
-                iconName="home-outline"
-                iconNameActive="home"
-                label="בית"
+                iconName="chatbubble-ellipses-outline"
+                iconNameActive="chatbubble-ellipses"
+                label="הודעות"
                 focused={focused}
               />
             ),
           }}
         />
         <Tabs.Screen
-          name="guests"
+          name="TablesList"
           options={{
-            title: "אורחים",
+            title: "שולחנות",
             tabBarIcon: ({ focused }) => (
               <TabIcon
-                iconName="people-outline"
-                iconNameActive="people"
-                label="אורחים"
+                iconName="list-outline"
+                iconNameActive="list"
+                label="שולחנות"
                 focused={focused}
               />
             ),
@@ -241,14 +241,28 @@ export default function CoupleTabsLayout() {
           }}
         />
         <Tabs.Screen
-          name="TablesList"
+          name="guests"
           options={{
-            title: "שולחנות",
+            title: "אורחים",
             tabBarIcon: ({ focused }) => (
               <TabIcon
-                iconName="list-outline"
-                iconNameActive="list"
-                label="שולחנות"
+                iconName="people-outline"
+                iconNameActive="people"
+                label="אורחים"
+                focused={focused}
+              />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="index"
+          options={{
+            title: "בית",
+            tabBarIcon: ({ focused }) => (
+              <TabIcon
+                iconName="home-outline"
+                iconNameActive="home"
+                label="בית"
                 focused={focused}
               />
             ),
@@ -275,20 +289,6 @@ export default function CoupleTabsLayout() {
           options={{
             href: null,
             headerShown: false,
-          }}
-        />
-        <Tabs.Screen
-          name="automatic-notifications"
-          options={{
-            title: "הודעות",
-            tabBarIcon: ({ focused }) => (
-              <TabIcon
-                iconName="chatbubble-ellipses-outline"
-                iconNameActive="chatbubble-ellipses"
-                label="הודעות"
-                focused={focused}
-              />
-            ),
           }}
         />
         <Tabs.Screen

@@ -9,7 +9,7 @@ import { eventService } from '@/lib/services/eventService';
 import { guestService } from '@/lib/services/guestService';
 import { BlurView } from 'expo-blur';
 import { EventSwitcher } from '@/components/EventSwitcher';
-import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
+import { ALIGN_RIGHT, ROW_DIR, rtlParagraph } from '@/lib/rtl';
 
 export default function HomeScreen() {
   const { isLoggedIn, userData, initializeAuth } = useUserStore();
@@ -250,7 +250,7 @@ export default function HomeScreen() {
                 <View style={styles.actionTileDot} />
               </View>
               <View style={styles.actionTileTextBlock}>
-                <Text style={styles.actionTileTitle}>{title}</Text>
+                <Text style={styles.actionTileTitle}>{rtlParagraph(title)}</Text>
                 <Text style={styles.actionTileSubtitle}>{subtitle}</Text>
               </View>
             </BlurView>
@@ -264,7 +264,7 @@ export default function HomeScreen() {
               <View style={styles.actionTileDot} />
             </View>
             <View style={styles.actionTileTextBlock}>
-              <Text style={styles.actionTileTitle}>{title}</Text>
+              <Text style={styles.actionTileTitle}>{rtlParagraph(title)}</Text>
               <Text style={styles.actionTileSubtitle}>{subtitle}</Text>
             </View>
           </BlurView>
@@ -396,7 +396,7 @@ export default function HomeScreen() {
 
           <View style={[styles.actionTileWrapper, isDesktopWeb && styles.actionTileWrapperWeb]}>
             <ActionTile
-              title={'סידור\nשולחנות'}
+              title={'סידור\nהושבה'}
               subtitle="גרור ושחרר אורחים"
               iconName="grid"
               variant="round"
@@ -837,7 +837,6 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '900',
     color: colors.text,
-    alignSelf: 'stretch',
     textAlign: 'right',
     writingDirection: 'rtl',
     lineHeight: 26,
@@ -847,7 +846,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: colors.gray[600],
-    alignSelf: 'stretch',
     textAlign: 'right',
     writingDirection: 'rtl',
   },

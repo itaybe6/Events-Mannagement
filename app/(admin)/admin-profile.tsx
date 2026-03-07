@@ -723,10 +723,10 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: "rgba(6,23,62,0.05)",
   },
-  heroIdentity: { flex: 1, flexDirection: ROW_DIR, alignItems: "center", gap: 14, minWidth: 0 },
+  heroIdentity: { flex: 1, flexDirection: ROW_DIR, alignItems: "center", gap: 14, minWidth: 0, paddingEnd: 52 },
   heroEditSlot: {
     position: "absolute",
-    left: 14,
+    right: 14,
     top: 0,
     bottom: 0,
     zIndex: 6,
