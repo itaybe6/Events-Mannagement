@@ -284,16 +284,19 @@ CREATE POLICY "Admins can manage all users" ON users
 DROP POLICY IF EXISTS "Users can view own profile" ON users;
 CREATE POLICY "Users can view own profile" ON users
   FOR SELECT
+  TO authenticated
   USING (auth.uid() = id);
 
 DROP POLICY IF EXISTS "Users can insert own profile" ON users;
 CREATE POLICY "Users can insert own profile" ON users
   FOR INSERT
+  TO authenticated
   WITH CHECK (auth.uid() = id);
 
 DROP POLICY IF EXISTS "Users can update own profile" ON users;
 CREATE POLICY "Users can update own profile" ON users
   FOR UPDATE
+  TO authenticated
   USING (auth.uid() = id)
   WITH CHECK (auth.uid() = id);
 
@@ -303,12 +306,13 @@ DROP POLICY IF EXISTS "Users can insert own events" ON events;
 DROP POLICY IF EXISTS "Users can update own events" ON events;
 DROP POLICY IF EXISTS "Users can delete own events" ON events;
 DROP POLICY IF EXISTS "Admins can manage events" ON events;
-CREATE POLICY "Users can view own events" ON events FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "Users can insert own events" ON events FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "Users can update own events" ON events FOR UPDATE USING (auth.uid() = user_id);
-CREATE POLICY "Users can delete own events" ON events FOR DELETE USING (auth.uid() = user_id);
+CREATE POLICY "Users can view own events" ON events FOR SELECT TO authenticated USING (auth.uid() = user_id);
+CREATE POLICY "Users can insert own events" ON events FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update own events" ON events FOR UPDATE TO authenticated USING (auth.uid() = user_id);
+CREATE POLICY "Users can delete own events" ON events FOR DELETE TO authenticated USING (auth.uid() = user_id);
 CREATE POLICY "Admins can manage events" ON events
   FOR ALL
+  TO authenticated
   USING (public.is_admin())
   WITH CHECK (public.is_admin());
 
@@ -318,12 +322,16 @@ DROP POLICY IF EXISTS "Users can insert tasks for own events" ON tasks;
 DROP POLICY IF EXISTS "Users can update tasks of own events" ON tasks;
 DROP POLICY IF EXISTS "Users can delete tasks of own events" ON tasks;
 CREATE POLICY "Users can view tasks of own events" ON tasks FOR SELECT 
+    TO authenticated
     USING (EXISTS (SELECT 1 FROM events WHERE events.id = tasks.event_id AND events.user_id = auth.uid()));
 CREATE POLICY "Users can insert tasks for own events" ON tasks FOR INSERT 
+    TO authenticated
     WITH CHECK (EXISTS (SELECT 1 FROM events WHERE events.id = tasks.event_id AND events.user_id = auth.uid()));
 CREATE POLICY "Users can update tasks of own events" ON tasks FOR UPDATE 
+    TO authenticated
     USING (EXISTS (SELECT 1 FROM events WHERE events.id = tasks.event_id AND events.user_id = auth.uid()));
 CREATE POLICY "Users can delete tasks of own events" ON tasks FOR DELETE 
+    TO authenticated
     USING (EXISTS (SELECT 1 FROM events WHERE events.id = tasks.event_id AND events.user_id = auth.uid()));
 
 -- Guests policies
@@ -332,12 +340,16 @@ DROP POLICY IF EXISTS "Users can insert guests for own events" ON guests;
 DROP POLICY IF EXISTS "Users can update guests of own events" ON guests;
 DROP POLICY IF EXISTS "Users can delete guests of own events" ON guests;
 CREATE POLICY "Users can view guests of own events" ON guests FOR SELECT 
+    TO authenticated
     USING (EXISTS (SELECT 1 FROM events WHERE events.id = guests.event_id AND events.user_id = auth.uid()));
 CREATE POLICY "Users can insert guests for own events" ON guests FOR INSERT 
+    TO authenticated
     WITH CHECK (EXISTS (SELECT 1 FROM events WHERE events.id = guests.event_id AND events.user_id = auth.uid()));
 CREATE POLICY "Users can update guests of own events" ON guests FOR UPDATE 
+    TO authenticated
     USING (EXISTS (SELECT 1 FROM events WHERE events.id = guests.event_id AND events.user_id = auth.uid()));
 CREATE POLICY "Users can delete guests of own events" ON guests FOR DELETE 
+    TO authenticated
     USING (EXISTS (SELECT 1 FROM events WHERE events.id = guests.event_id AND events.user_id = auth.uid()));
 
 -- Guest categories policies
@@ -346,12 +358,16 @@ DROP POLICY IF EXISTS "Users can insert guest categories for own events" ON gues
 DROP POLICY IF EXISTS "Users can update guest categories of own events" ON guest_categories;
 DROP POLICY IF EXISTS "Users can delete guest categories of own events" ON guest_categories;
 CREATE POLICY "Users can view guest categories of own events" ON guest_categories FOR SELECT
+    TO authenticated
     USING (EXISTS (SELECT 1 FROM events WHERE events.id = guest_categories.event_id AND events.user_id = auth.uid()));
 CREATE POLICY "Users can insert guest categories for own events" ON guest_categories FOR INSERT
+    TO authenticated
     WITH CHECK (EXISTS (SELECT 1 FROM events WHERE events.id = guest_categories.event_id AND events.user_id = auth.uid()));
 CREATE POLICY "Users can update guest categories of own events" ON guest_categories FOR UPDATE
+    TO authenticated
     USING (EXISTS (SELECT 1 FROM events WHERE events.id = guest_categories.event_id AND events.user_id = auth.uid()));
 CREATE POLICY "Users can delete guest categories of own events" ON guest_categories FOR DELETE
+    TO authenticated
     USING (EXISTS (SELECT 1 FROM events WHERE events.id = guest_categories.event_id AND events.user_id = auth.uid()));
 
 -- Tables policies
@@ -360,12 +376,16 @@ DROP POLICY IF EXISTS "Users can insert tables for own events" ON tables;
 DROP POLICY IF EXISTS "Users can update tables of own events" ON tables;
 DROP POLICY IF EXISTS "Users can delete tables of own events" ON tables;
 CREATE POLICY "Users can view tables of own events" ON tables FOR SELECT 
+    TO authenticated
     USING (EXISTS (SELECT 1 FROM events WHERE events.id = tables.event_id AND events.user_id = auth.uid()));
 CREATE POLICY "Users can insert tables for own events" ON tables FOR INSERT 
+    TO authenticated
     WITH CHECK (EXISTS (SELECT 1 FROM events WHERE events.id = tables.event_id AND events.user_id = auth.uid()));
 CREATE POLICY "Users can update tables of own events" ON tables FOR UPDATE 
+    TO authenticated
     USING (EXISTS (SELECT 1 FROM events WHERE events.id = tables.event_id AND events.user_id = auth.uid()));
 CREATE POLICY "Users can delete tables of own events" ON tables FOR DELETE 
+    TO authenticated
     USING (EXISTS (SELECT 1 FROM events WHERE events.id = tables.event_id AND events.user_id = auth.uid()));
 
 -- Seating maps policies
@@ -374,13 +394,17 @@ DROP POLICY IF EXISTS "Users can insert seating_maps for own events" ON seating_
 DROP POLICY IF EXISTS "Users can update seating_maps of own events" ON seating_maps;
 DROP POLICY IF EXISTS "Users can delete seating_maps of own events" ON seating_maps;
 CREATE POLICY "Users can view seating_maps of own events" ON seating_maps FOR SELECT
+    TO authenticated
     USING (EXISTS (SELECT 1 FROM events WHERE events.id = seating_maps.event_id AND events.user_id = auth.uid()));
 CREATE POLICY "Users can insert seating_maps for own events" ON seating_maps FOR INSERT
+    TO authenticated
     WITH CHECK (EXISTS (SELECT 1 FROM events WHERE events.id = seating_maps.event_id AND events.user_id = auth.uid()));
 CREATE POLICY "Users can update seating_maps of own events" ON seating_maps FOR UPDATE
+    TO authenticated
     USING (EXISTS (SELECT 1 FROM events WHERE events.id = seating_maps.event_id AND events.user_id = auth.uid()))
     WITH CHECK (EXISTS (SELECT 1 FROM events WHERE events.id = seating_maps.event_id AND events.user_id = auth.uid()));
 CREATE POLICY "Users can delete seating_maps of own events" ON seating_maps FOR DELETE
+    TO authenticated
     USING (EXISTS (SELECT 1 FROM events WHERE events.id = seating_maps.event_id AND events.user_id = auth.uid()));
 
 -- Messages policies
@@ -389,12 +413,16 @@ DROP POLICY IF EXISTS "Users can insert messages for own events" ON messages;
 DROP POLICY IF EXISTS "Users can update messages of own events" ON messages;
 DROP POLICY IF EXISTS "Users can delete messages of own events" ON messages;
 CREATE POLICY "Users can view messages of own events" ON messages FOR SELECT 
+    TO authenticated
     USING (EXISTS (SELECT 1 FROM events WHERE events.id = messages.event_id AND events.user_id = auth.uid()));
 CREATE POLICY "Users can insert messages for own events" ON messages FOR INSERT 
+    TO authenticated
     WITH CHECK (EXISTS (SELECT 1 FROM events WHERE events.id = messages.event_id AND events.user_id = auth.uid()));
 CREATE POLICY "Users can update messages of own events" ON messages FOR UPDATE 
+    TO authenticated
     USING (EXISTS (SELECT 1 FROM events WHERE events.id = messages.event_id AND events.user_id = auth.uid()));
 CREATE POLICY "Users can delete messages of own events" ON messages FOR DELETE 
+    TO authenticated
     USING (EXISTS (SELECT 1 FROM events WHERE events.id = messages.event_id AND events.user_id = auth.uid()));
 
 -- Notification settings policies
@@ -403,6 +431,7 @@ DROP POLICY IF EXISTS "Users can insert notification settings for own events" ON
 DROP POLICY IF EXISTS "Users can update notification settings of own events" ON notification_settings;
 DROP POLICY IF EXISTS "Users can delete notification settings of own events" ON notification_settings;
 CREATE POLICY "Users can view notification settings of own events" ON notification_settings FOR SELECT
+  TO authenticated
   USING (
     public.is_admin()
     OR EXISTS (
@@ -412,6 +441,7 @@ CREATE POLICY "Users can view notification settings of own events" ON notificati
     )
   );
 CREATE POLICY "Users can insert notification settings for own events" ON notification_settings FOR INSERT
+  TO authenticated
   WITH CHECK (
     public.is_admin()
     OR EXISTS (
@@ -421,6 +451,7 @@ CREATE POLICY "Users can insert notification settings for own events" ON notific
     )
   );
 CREATE POLICY "Users can update notification settings of own events" ON notification_settings FOR UPDATE
+  TO authenticated
   USING (
     public.is_admin()
     OR EXISTS (
@@ -438,6 +469,7 @@ CREATE POLICY "Users can update notification settings of own events" ON notifica
     )
   );
 CREATE POLICY "Users can delete notification settings of own events" ON notification_settings FOR DELETE
+  TO authenticated
   USING (
     public.is_admin()
     OR EXISTS (

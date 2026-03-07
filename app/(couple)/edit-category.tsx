@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -24,7 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GuestCategorySelectionSheet } from '@/components/GuestCategorySelectionSheet';
 import { useLayoutStore } from '@/store/layoutStore';
 import BackSwipe from '@/components/BackSwipe';
-import { ROW_DIR } from '@/lib/rtl';
+import { ROW_DIR, RTL_MARK, rtlText } from '@/lib/rtl';
 
 export default function EditCategoryScreen() {
   const router = useRouter();
@@ -256,8 +255,6 @@ export default function EditCategoryScreen() {
   const cancelMove = () => {
     setConfirmMoveVisible(false);
     setPendingMoveTarget(null);
-    // UX: let the user quickly re-pick another category
-    setMoveSheetVisible(true);
   };
 
   const confirmMove = async () => {
@@ -305,10 +302,60 @@ export default function EditCategoryScreen() {
         categories={(categories || []).filter((c: any) => String(c.id) !== categoryId)}
         selectedCategoryId={null}
         enableSides={enableSides}
+        closeOnSelect={false}
+        overlay={
+          confirmMoveVisible ? (
+            <View style={styles.confirmBackdrop}>
+              <Pressable style={StyleSheet.absoluteFill} onPress={() => (moving ? null : cancelMove())} />
+              <View style={[styles.confirmCard, { backgroundColor: ui.surface, borderColor: ui.border }]}>
+                <View style={styles.confirmHeaderRow}>
+                  <View style={[styles.confirmIcon, { backgroundColor: 'rgba(15,23,42,0.08)' }]}>
+                    <Ionicons name="swap-horizontal" size={22} color={ui.primary} />
+                  </View>
+                  <View style={styles.confirmTextCol}>
+                    <Text style={[styles.confirmTitle, { color: ui.text }]}>{rtlText('אישור העברה')}</Text>
+                    <Text style={[styles.confirmSubtitle, { color: ui.sub }]}>
+                      {RTL_MARK}
+                      האם אתה בטוח שברצונך להעביר {selectedCount} אורחים לקטגוריה "{String(pendingMoveTarget?.name ?? '')}"?
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.confirmButtonsRow}>
+                  <TouchableOpacity
+                    onPress={cancelMove}
+                    disabled={moving}
+                    activeOpacity={0.92}
+                    style={[
+                      styles.confirmBtn,
+                      styles.confirmBtnSecondary,
+                      { borderColor: ui.border, opacity: moving ? 0.6 : 1 },
+                    ]}
+                  >
+                    <Text style={[styles.confirmBtnText, { color: ui.text }]}>{rtlText('ביטול')}</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => void confirmMove()}
+                    disabled={moving}
+                    activeOpacity={0.92}
+                    style={[
+                      styles.confirmBtn,
+                      styles.confirmBtnPrimary,
+                      { backgroundColor: ui.primary, opacity: moving ? 0.7 : 1 },
+                    ]}
+                  >
+                    <Text style={[styles.confirmBtnText, { color: '#fff' }]}>
+                      {moving ? rtlText('מעביר...') : rtlText('כן, להעביר')}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          ) : null
+        }
         onClose={() => setMoveSheetVisible(false)}
         onSelect={(cat) => {
-          // Sheet closes instantly on selection; we ask for confirmation before moving.
-          setMoveSheetVisible(false);
           requestMoveToCategory(cat as any);
         }}
         onCreateCategory={async (name, side) => {
@@ -318,62 +365,6 @@ export default function EditCategoryScreen() {
           return created as any;
         }}
       />
-
-      {/* Confirm move modal (RTL, styled) */}
-      <Modal
-        visible={confirmMoveVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => {
-          if (moving) return;
-          cancelMove();
-        }}
-      >
-        <View style={styles.confirmBackdrop}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => (moving ? null : cancelMove())} />
-          <View style={[styles.confirmCard, { backgroundColor: ui.surface, borderColor: ui.border }]}>
-            <View style={styles.confirmHeaderRow}>
-              <View style={[styles.confirmIcon, { backgroundColor: 'rgba(15,23,42,0.08)' }]}>
-                <Ionicons name="swap-horizontal" size={22} color={ui.primary} />
-              </View>
-              <View style={styles.confirmTextCol}>
-                <Text style={[styles.confirmTitle, { color: ui.text }]}>אישור העברה</Text>
-                <Text style={[styles.confirmSubtitle, { color: ui.sub }]}>
-                  האם אתה בטוח שברצונך להעביר {selectedCount} אורחים לקטגוריה "{String(pendingMoveTarget?.name ?? '')}"?
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.confirmButtonsRow}>
-              <TouchableOpacity
-                onPress={cancelMove}
-                disabled={moving}
-                activeOpacity={0.92}
-                style={[
-                  styles.confirmBtn,
-                  styles.confirmBtnSecondary,
-                  { borderColor: ui.border, opacity: moving ? 0.6 : 1 },
-                ]}
-              >
-                <Text style={[styles.confirmBtnText, { color: ui.text }]}>ביטול</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={() => void confirmMove()}
-                disabled={moving}
-                activeOpacity={0.92}
-                style={[
-                  styles.confirmBtn,
-                  styles.confirmBtnPrimary,
-                  { backgroundColor: ui.primary, opacity: moving ? 0.7 : 1 },
-                ]}
-              >
-                <Text style={[styles.confirmBtnText, { color: '#fff' }]}>{moving ? 'מעביר...' : 'כן, להעביר'}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
 
       {/* Header */}
       <View
@@ -555,7 +546,7 @@ export default function EditCategoryScreen() {
 const styles = StyleSheet.create({
   page: { flex: 1 },
   confirmBackdrop: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(15,23,42,0.52)',
     alignItems: 'center',
     justifyContent: 'center',
@@ -572,18 +563,21 @@ const styles = StyleSheet.create({
     shadowRadius: 22,
     shadowOffset: { width: 0, height: 12 },
     elevation: 8,
-    // Ensure proper RTL layout on web and consistent text flow.
+    // Force RTL inside the modal, even if the app runs LTR.
     ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
   },
   confirmHeaderRow: {
     flexDirection: ROW_DIR,
     alignItems: 'flex-start',
     gap: 12,
+    width: '100%',
   },
   confirmTextCol: {
     flex: 1,
     alignItems: 'flex-end',
     alignSelf: 'stretch',
+    width: '100%',
+    ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
   },
   confirmIcon: {
     width: 42,
@@ -597,6 +591,8 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     textAlign: 'right',
     writingDirection: 'rtl',
+    width: '100%',
+    alignSelf: 'stretch',
   },
   confirmSubtitle: {
     marginTop: 6,
@@ -605,6 +601,8 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     textAlign: 'right',
     writingDirection: 'rtl',
+    width: '100%',
+    alignSelf: 'stretch',
   },
   confirmButtonsRow: {
     marginTop: 14,

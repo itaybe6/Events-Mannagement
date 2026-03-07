@@ -40,6 +40,8 @@ export function GuestCategorySelectionSheet({
   onSelect,
   onCreateCategory,
   title = 'בחירת קטגוריה',
+  closeOnSelect = true,
+  overlay,
 }: {
   visible: boolean;
   categories: GuestCategory[];
@@ -49,6 +51,8 @@ export function GuestCategorySelectionSheet({
   onSelect: (category: GuestCategory) => void;
   onCreateCategory: (name: string, side: Side) => Promise<GuestCategory>;
   title?: string;
+  closeOnSelect?: boolean;
+  overlay?: React.ReactNode;
 }) {
   const insets = useSafeAreaInsets();
   const translateY = useMemo(() => new Animated.Value(0), []);
@@ -107,7 +111,7 @@ export function GuestCategorySelectionSheet({
     if (mode === 'existing') {
       if (!selectedCategory) return;
       onSelect(selectedCategory);
-      requestClose();
+      if (closeOnSelect) requestClose();
       return;
     }
 
@@ -117,7 +121,7 @@ export function GuestCategorySelectionSheet({
       setCreating(true);
       const created = await onCreateCategory(name, newSide);
       onSelect(created);
-      requestClose();
+      if (closeOnSelect) requestClose();
     } finally {
       setCreating(false);
     }
@@ -419,7 +423,7 @@ export function GuestCategorySelectionSheet({
                             // (Previously required an extra "בחירה" confirm press.)
                             setPendingSelectedId(item.id);
                             onSelect(item);
-                            requestClose();
+                            if (closeOnSelect) requestClose();
                           }}
                           style={[
                             styles.card,
@@ -486,6 +490,13 @@ export function GuestCategorySelectionSheet({
                   </Pressable>
                 </View>
               </View>
+
+              {/* Optional overlay (rendered ABOVE all sheet content) */}
+              {overlay ? (
+                <View pointerEvents="box-none" style={styles.overlayInsideSheet}>
+                  {overlay}
+                </View>
+              ) : null}
             </BlurView>
           </Animated.View>
         </KeyboardAvoidingView>
@@ -502,6 +513,11 @@ const styles = StyleSheet.create({
   },
   backdropPressArea: {
     ...StyleSheet.absoluteFillObject,
+  },
+  overlayInsideSheet: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 999,
+    elevation: 999,
   },
   sheetWrap: {
     flex: 1,

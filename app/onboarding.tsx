@@ -40,6 +40,7 @@ export default function OnboardingScreen() {
     Platform.OS === 'web' ? 96 : 140,
     Platform.OS === 'web' ? safeWidth * 0.24 : safeWidth * 0.45
   );
+  const marqueeTopPadding = Platform.OS === 'web' ? 56 : Math.max(insets.top, 28);
 
   const images = useMemo(
     () => chunkArray(enterScreenImages, Math.max(1, Math.floor(enterScreenImages.length / 3))),
@@ -62,6 +63,7 @@ export default function OnboardingScreen() {
           style={{
             flex: 1,
             gap: _spacing,
+            paddingTop: marqueeTopPadding,
             transform: [
               {
                 rotate: '-4deg',
@@ -145,12 +147,16 @@ export default function OnboardingScreen() {
       >
         <Animated.View
           entering={FadeInDown.springify().delay(_initialDelay + 80)}
-          style={{ marginTop: -6, marginBottom: -10, opacity: 0.98 }}
+          style={{ marginTop: 0, marginBottom: 10, opacity: 0.98 }}
         >
           <Image
-            source={require('../assets/images/MOON_לוגו לבן.png')}
+            source={require('../assets/images/moon_logo_white.png')}
             resizeMode="contain"
-            style={{ width: 360, height: 120, maxWidth: '94%' }}
+            style={{
+              width: Platform.OS === 'web' ? 320 : 280,
+              height: Platform.OS === 'web' ? 105 : 95,
+              maxWidth: '94%',
+            }}
             accessibilityLabel="לוגו MOON"
           />
         </Animated.View>

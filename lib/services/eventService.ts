@@ -82,6 +82,9 @@ export const eventService = {
   // Get single event by ID
   getEvent: async (eventId: string): Promise<Event | null> => {
     try {
+      const cleanId = String(eventId || '').trim();
+      if (!cleanId) return null;
+
       const { data, error } = await supabase
         .from('events')
         .select(`
@@ -89,10 +92,16 @@ export const eventService = {
           tasks (*),
           users (name, avatar_url)
         `)
-        .eq('id', eventId)
-        .single();
+        .eq('id', cleanId)
+        .maybeSingle();
 
-      if (error) throw error;
+      // When no rows match (or are visible due to RLS), PostgREST can return PGRST116 for single-row coercion.
+      // `maybeSingle()` usually avoids it, but keep this guard for safety across versions.
+      if (error) {
+        const code = (error as any)?.code ? String((error as any).code) : '';
+        if (code === 'PGRST116') return null;
+        throw error;
+      }
       if (!data) return null;
 
       return {
@@ -116,12 +125,12 @@ export const eventService = {
         user_id: data.user_id, // הוסף את user_id
         userName: (data as any)?.users?.name ?? undefined,
         userAvatarUrl: (data as any)?.users?.avatar_url ?? undefined,
-        tasks: data.tasks.map((task: any) => ({
+        tasks: ((data as any).tasks || []).map((task: any) => ({
           id: task.id,
           title: task.title,
           completed: task.completed,
           dueDate: new Date(task.due_date),
-        })) || [],
+        })),
       };
     } catch (error) {
       console.error('Get event error:', error);
