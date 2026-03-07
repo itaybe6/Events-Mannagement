@@ -4,15 +4,13 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import React, { useMemo } from 'react';
 import type { ImageSourcePropType } from 'react-native';
-import { Dimensions, Image, Platform, Pressable, Text, View } from 'react-native';
+import { Dimensions, Image, Platform, Pressable, Text, useWindowDimensions, View } from 'react-native';
 import Animated, { FadeInDown, FadeInLeft, FadeInRight } from 'react-native-reanimated';
 import { colors } from '@/constants/colors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
-const { width } = Dimensions.get('window');
-const _itemSize = Platform.OS === 'web' ? width * 0.24 : width * 0.45;
 const _spacing = Platform.OS === 'web' ? 12 : 8;
 const _bgColor = '#010c21';
 const _initialDelay = 200;
@@ -33,6 +31,15 @@ function chunkArray<T>(array: T[], size: number): T[][] {
 export default function OnboardingScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const window = useWindowDimensions();
+
+  // On web (especially with SSR), Dimensions.get('window') can be 0 at module load time.
+  // Computing size from the hook ensures it updates after hydration/resizes.
+  const safeWidth = window.width || Dimensions.get('window').width || 360;
+  const itemSize = Math.max(
+    Platform.OS === 'web' ? 96 : 140,
+    Platform.OS === 'web' ? safeWidth * 0.24 : safeWidth * 0.45
+  );
 
   const images = useMemo(
     () => chunkArray(enterScreenImages, Math.max(1, Math.floor(enterScreenImages.length / 3))),
@@ -84,7 +91,7 @@ export default function OnboardingScreen() {
                           )
                     }
                     style={{
-                      width: _itemSize,
+                      width: itemSize,
                       aspectRatio: 1,
                       borderRadius: _spacing,
                     }}
@@ -204,22 +211,22 @@ export default function OnboardingScreen() {
 }
 
 export const enterScreenImages: ImageSourcePropType[] = [
-  require('../assets/images/enterScreen/WhatsApp Image 2026-03-01 at 14.57.52.jpeg'),
-  require('../assets/images/enterScreen/WhatsApp Image 2026-03-01 at 14.57.52 (4).jpeg'),
-  require('../assets/images/enterScreen/WhatsApp Image 2026-03-01 at 14.59.06.jpeg'),
-  require('../assets/images/enterScreen/WhatsApp Image 2026-03-01 at 14.59.07.jpeg'),
-  require('../assets/images/enterScreen/WhatsApp Image 2026-03-01 at 14.59.07 (1).jpeg'),
-  require('../assets/images/enterScreen/WhatsApp Image 2026-03-01 at 14.59.07 (2).jpeg'),
-  require('../assets/images/enterScreen/WhatsApp Image 2026-03-01 at 14.59.07 (3).jpeg'),
-  require('../assets/images/enterScreen/WhatsApp Image 2026-03-01 at 14.59.07 (4).jpeg'),
-  require('../assets/images/enterScreen/WhatsApp Image 2026-03-01 at 14.59.07 (5).jpeg'),
-  require('../assets/images/enterScreen/WhatsApp Image 2026-03-01 at 14.59.07 (6).jpeg'),
-  require('../assets/images/enterScreen/WhatsApp Image 2026-03-01 at 14.59.07 (7).jpeg'),
-  require('../assets/images/enterScreen/WhatsApp Image 2026-03-01 at 14.59.52.jpeg'),
-  require('../assets/images/enterScreen/WhatsApp Image 2026-03-01 at 14.59.52 (1).jpeg'),
-  require('../assets/images/enterScreen/WhatsApp Image 2026-03-01 at 14.59.53.jpeg'),
-  require('../assets/images/enterScreen/WhatsApp Image 2026-03-01 at 14.59.53 (1).jpeg'),
-  require('../assets/images/enterScreen/WhatsApp Image 2026-03-01 at 14.59.53 (2).jpeg'),
-  require('../assets/images/enterScreen/WhatsApp Image 2026-03-01 at 14.59.53 (3).jpeg'),
+  require('../assets/images/enterScreen/enter_01.jpeg'),
+  require('../assets/images/enterScreen/enter_02.jpeg'),
+  require('../assets/images/enterScreen/enter_03.jpeg'),
+  require('../assets/images/enterScreen/enter_04.jpeg'),
+  require('../assets/images/enterScreen/enter_05.jpeg'),
+  require('../assets/images/enterScreen/enter_06.jpeg'),
+  require('../assets/images/enterScreen/enter_07.jpeg'),
+  require('../assets/images/enterScreen/enter_08.jpeg'),
+  require('../assets/images/enterScreen/enter_09.jpeg'),
+  require('../assets/images/enterScreen/enter_10.jpeg'),
+  require('../assets/images/enterScreen/enter_11.jpeg'),
+  require('../assets/images/enterScreen/enter_12.jpeg'),
+  require('../assets/images/enterScreen/enter_13.jpeg'),
+  require('../assets/images/enterScreen/enter_14.jpeg'),
+  require('../assets/images/enterScreen/enter_15.jpeg'),
+  require('../assets/images/enterScreen/enter_16.jpeg'),
+  require('../assets/images/enterScreen/enter_17.jpeg'),
 ];
 

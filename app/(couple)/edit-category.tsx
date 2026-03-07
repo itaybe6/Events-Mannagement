@@ -3,7 +3,9 @@ import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
+  Modal,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -56,6 +58,8 @@ export default function EditCategoryScreen() {
   const [categories, setCategories] = useState<any[]>([]);
   const [moveSheetVisible, setMoveSheetVisible] = useState(false);
   const [enableSides, setEnableSides] = useState(true);
+  const [confirmMoveVisible, setConfirmMoveVisible] = useState(false);
+  const [pendingMoveTarget, setPendingMoveTarget] = useState<any | null>(null);
 
   const ui = useMemo(() => {
     return {
@@ -237,6 +241,33 @@ export default function EditCategoryScreen() {
   const bottomSafe = Math.max(16, insets.bottom + 16);
   const selectedCount = selectedToDelete.size;
 
+  const requestMoveToCategory = (target: any) => {
+    if (!target?.id) return;
+    const targetId = String(target.id);
+    if (targetId === categoryId) {
+      Alert.alert('שגיאה', 'בחר קטגוריה אחרת');
+      return;
+    }
+    if (selectedToDelete.size === 0) return;
+    setPendingMoveTarget(target);
+    setConfirmMoveVisible(true);
+  };
+
+  const cancelMove = () => {
+    setConfirmMoveVisible(false);
+    setPendingMoveTarget(null);
+    // UX: let the user quickly re-pick another category
+    setMoveSheetVisible(true);
+  };
+
+  const confirmMove = async () => {
+    const target = pendingMoveTarget;
+    if (!target?.id) return;
+    setConfirmMoveVisible(false);
+    await moveSelectedToCategory(target);
+    setPendingMoveTarget(null);
+  };
+
   const initials = (name?: string) => {
     const n = String(name || '').trim();
     if (!n) return 'א';
@@ -276,7 +307,9 @@ export default function EditCategoryScreen() {
         enableSides={enableSides}
         onClose={() => setMoveSheetVisible(false)}
         onSelect={(cat) => {
-          void moveSelectedToCategory(cat as any);
+          // Sheet closes instantly on selection; we ask for confirmation before moving.
+          setMoveSheetVisible(false);
+          requestMoveToCategory(cat as any);
         }}
         onCreateCategory={async (name, side) => {
           if (!eventId) throw new Error('Missing eventId');
@@ -285,6 +318,62 @@ export default function EditCategoryScreen() {
           return created as any;
         }}
       />
+
+      {/* Confirm move modal (RTL, styled) */}
+      <Modal
+        visible={confirmMoveVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (moving) return;
+          cancelMove();
+        }}
+      >
+        <View style={styles.confirmBackdrop}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => (moving ? null : cancelMove())} />
+          <View style={[styles.confirmCard, { backgroundColor: ui.surface, borderColor: ui.border }]}>
+            <View style={styles.confirmHeaderRow}>
+              <View style={[styles.confirmIcon, { backgroundColor: 'rgba(15,23,42,0.08)' }]}>
+                <Ionicons name="swap-horizontal" size={22} color={ui.primary} />
+              </View>
+              <View style={styles.confirmTextCol}>
+                <Text style={[styles.confirmTitle, { color: ui.text }]}>אישור העברה</Text>
+                <Text style={[styles.confirmSubtitle, { color: ui.sub }]}>
+                  האם אתה בטוח שברצונך להעביר {selectedCount} אורחים לקטגוריה "{String(pendingMoveTarget?.name ?? '')}"?
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.confirmButtonsRow}>
+              <TouchableOpacity
+                onPress={cancelMove}
+                disabled={moving}
+                activeOpacity={0.92}
+                style={[
+                  styles.confirmBtn,
+                  styles.confirmBtnSecondary,
+                  { borderColor: ui.border, opacity: moving ? 0.6 : 1 },
+                ]}
+              >
+                <Text style={[styles.confirmBtnText, { color: ui.text }]}>ביטול</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => void confirmMove()}
+                disabled={moving}
+                activeOpacity={0.92}
+                style={[
+                  styles.confirmBtn,
+                  styles.confirmBtnPrimary,
+                  { backgroundColor: ui.primary, opacity: moving ? 0.7 : 1 },
+                ]}
+              >
+                <Text style={[styles.confirmBtnText, { color: '#fff' }]}>{moving ? 'מעביר...' : 'כן, להעביר'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Header */}
       <View
@@ -465,6 +554,83 @@ export default function EditCategoryScreen() {
 
 const styles = StyleSheet.create({
   page: { flex: 1 },
+  confirmBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15,23,42,0.52)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+  },
+  confirmCard: {
+    width: '100%',
+    maxWidth: 420,
+    borderRadius: 22,
+    borderWidth: 1,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.16,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 8,
+    // Ensure proper RTL layout on web and consistent text flow.
+    ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
+  },
+  confirmHeaderRow: {
+    flexDirection: ROW_DIR,
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  confirmTextCol: {
+    flex: 1,
+    alignItems: 'flex-end',
+    alignSelf: 'stretch',
+  },
+  confirmIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmTitle: {
+    fontSize: 16,
+    fontWeight: '900',
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  confirmSubtitle: {
+    marginTop: 6,
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 18,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  confirmButtonsRow: {
+    marginTop: 14,
+    flexDirection: ROW_DIR,
+    gap: 10,
+  },
+  confirmBtn: {
+    flex: 1,
+    height: 46,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: ROW_DIR,
+  },
+  confirmBtnSecondary: {
+    backgroundColor: 'rgba(107,114,128,0.10)',
+    borderWidth: 1,
+  },
+  confirmBtnPrimary: {
+    borderWidth: 0,
+  },
+  confirmBtnText: {
+    fontSize: 14,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
   headerWrap: {
     position: 'relative',
     borderBottomWidth: 1,

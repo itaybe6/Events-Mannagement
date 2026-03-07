@@ -146,9 +146,8 @@ export default function SelectCategoryScreen() {
   const gridSidePad = Math.max(0, colPad - gridGap / 2);
 
   const goBack = () => {
-    const canGoBackFn = (router as any)?.canGoBack;
-    if (typeof canGoBackFn === 'function' && canGoBackFn()) router.back();
-    else router.replace('/(couple)/guests');
+    // Always return to the guests screen (not navigation history).
+    router.replace({ pathname: '/(couple)/guests', params: eventId ? { eventId } : undefined });
   };
 
   const goToContacts = (catId: string) => {
@@ -347,6 +346,7 @@ export default function SelectCategoryScreen() {
                   ] as const).map((opt) => {
                     const active = newSide === opt.side;
                     const accent = opt.side === 'bride' ? ACCENT_PINK : ACCENT_BLUE;
+                    const soft = opt.side === 'bride' ? 'rgba(236,72,153,0.10)' : 'rgba(59,130,246,0.10)';
                     return (
                       <Pressable
                         key={opt.side}
@@ -356,16 +356,18 @@ export default function SelectCategoryScreen() {
                           isDark && styles.sidePillDark,
                           active
                             ? [styles.sidePillActive, { backgroundColor: accent, borderColor: accent }]
-                            : [styles.sidePillInactive, isDark && styles.sidePillInactiveDark],
+                            : [styles.sidePillInactive, { backgroundColor: '#FFFFFF', borderColor: 'rgba(15,23,42,0.12)' }],
                           pressed && { opacity: 0.88 },
                         ]}
                       >
-                        <Ionicons
-                          name={opt.icon}
-                          size={18}
-                          color={active ? '#fff' : accent}
-                          style={undefined}
-                        />
+                        <View
+                          style={[
+                            styles.sidePillIconCircle,
+                            active ? { backgroundColor: 'rgba(255,255,255,0.22)' } : { backgroundColor: soft },
+                          ]}
+                        >
+                          <Ionicons name={opt.icon} size={18} color={active ? '#fff' : accent} style={undefined} />
+                        </View>
                         <Text style={[styles.sidePillText, { color: accent }, active && { color: '#fff' }]}>
                           {opt.label}
                         </Text>
@@ -774,17 +776,29 @@ const styles = StyleSheet.create({
   sideRow: { flexDirection: ROW_DIR, gap: 12 },
   sidePill: {
     flex: 1,
-    height: 48,
-    borderRadius: 14,
-    borderWidth: 1.5,
+    height: 54,
+    borderRadius: 16,
+    borderWidth: 2,
     flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 8px 24px rgba(15,23,42,0.10)' } as any)
+      : {
+          shadowColor: '#0F172A',
+          shadowOpacity: 0.10,
+          shadowRadius: 16,
+          shadowOffset: { width: 0, height: 8 },
+          elevation: 3,
+        }),
   },
   sidePillActive: {
     backgroundColor: PRIMARY,
     borderColor: PRIMARY,
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 10px 28px rgba(29,78,216,0.30)' } as any)
+      : { shadowOpacity: 0.18, elevation: 5 }),
   },
   sidePillInactive: {
     backgroundColor: '#fff',
@@ -796,8 +810,15 @@ const styles = StyleSheet.create({
   sidePillInactiveDark: {
     borderColor: 'rgba(255,255,255,0.12)',
   },
+  sidePillIconCircle: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   sidePillText: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '900',
     color: PRIMARY,
   },

@@ -137,7 +137,12 @@ export default function BrideGroomSettings() {
 
   const performLogout = async () => {
     try {
+      // Navigate off this pushed screen before auth state flips.
+      // This avoids "GO_BACK was not handled" warnings when navigators unmount/reset on sign-out.
+      router.replace('/(couple)');
       await logout();
+      // Root layout will route to onboarding; this is a safe best-effort.
+      router.replace('/onboarding');
     } catch {
       Alert.alert('שגיאה', 'לא ניתן להתנתק כרגע, נסה שוב.');
     }

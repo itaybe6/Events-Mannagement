@@ -65,7 +65,8 @@ export default function CoupleTabsLayout() {
   useEffect(() => {
     if (loading) return;
     if (!isLoggedIn) {
-      router.replace('/login');
+      // Keep consistent with root auth-guard (logged-out default is onboarding).
+      router.replace('/onboarding');
       return;
     }
     if (userType === 'admin') {

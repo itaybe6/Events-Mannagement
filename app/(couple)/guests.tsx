@@ -13,7 +13,7 @@ import { eventService } from '@/lib/services/eventService';
 import { supabase } from '@/lib/supabase';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
+import { ALIGN_RIGHT, ROW_DIR, ROW_REVERSE_DIR } from '@/lib/rtl';
 
 // On web, icons are ultimately rendered as text glyphs. Wrapping them in <Text>
 // prevents "Text strings must be rendered within a <Text> component" errors.
@@ -1911,9 +1911,12 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   guestRow: {
-    flexDirection: ROW_DIR,
+    // Keep a stable visual layout:
+    // left = status/people, right = avatar + name + phone.
+    direction: 'ltr',
+    flexDirection: 'row-reverse',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: colors.gray[100],
@@ -1922,7 +1925,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0,
   },
   guestMain: {
-    flexDirection: ROW_DIR,
+    direction: 'ltr',
+    flexDirection: 'row-reverse',
     alignItems: 'center',
     flex: 1,
     minWidth: 0,
@@ -1939,7 +1943,6 @@ const styles = StyleSheet.create({
   guestInfo: {
     flex: 1,
     minWidth: 0,
-    // Let children fill full width so `textAlign: 'right'` always works.
     alignItems: 'stretch',
     alignSelf: 'stretch',
   },
@@ -1959,12 +1962,15 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.gray[600],
     textAlign: 'right',
+    writingDirection: 'rtl',
     marginTop: 2,
   },
   guestMeta: {
-    flexDirection: ROW_DIR,
+    direction: 'ltr',
+    flexDirection: 'row-reverse',
     alignItems: 'center',
     gap: 8,
+    marginLeft: 10,
   },
   peopleCountBadge: {
     flexDirection: ROW_DIR,
