@@ -81,10 +81,10 @@ export default function AdminTabsLayout() {
   } else {
     screens.push(
       <Tabs.Screen
-        key="users"
-        name="users"
+        key="admin-profile"
+        name="admin-profile"
         options={{
-          title: "ניהול משתמשים",
+          title: "פרופיל",
           tabBarIcon: ({ focused }) => (
             <View style={styles.tabItem}>
               <View style={[styles.iconCircle, focused && styles.iconCircleActive]}>
@@ -101,13 +101,13 @@ export default function AdminTabsLayout() {
                   style={styles.iconGloss}
                 />
                 <Ionicons
-                  name={focused ? "people" : "people-outline"}
+                  name={focused ? "person" : "person-outline"}
                   size={22}
                   color={focused ? colors.white : colors.gray[700]}
                 />
               </View>
               <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65} style={[styles.tabLabel, focused && styles.tabLabelActive]}>
-                משתמשים
+                פרופיל
               </Text>
             </View>
           ),
@@ -155,10 +155,10 @@ export default function AdminTabsLayout() {
   if (userType !== "employee") {
     screens.push(
       <Tabs.Screen
-        key="admin-profile"
-        name="admin-profile"
+        key="users"
+        name="users"
         options={{
-          title: "פרופיל",
+          title: "ניהול משתמשים",
           tabBarIcon: ({ focused }) => (
             <View style={styles.tabItem}>
               <View style={[styles.iconCircle, focused && styles.iconCircleActive]}>
@@ -175,13 +175,13 @@ export default function AdminTabsLayout() {
                   style={styles.iconGloss}
                 />
                 <Ionicons
-                  name={focused ? "person" : "person-outline"}
+                  name={focused ? "people" : "people-outline"}
                   size={22}
                   color={focused ? colors.white : colors.gray[700]}
                 />
               </View>
               <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65} style={[styles.tabLabel, focused && styles.tabLabelActive]}>
-                פרופיל
+                משתמשים
               </Text>
             </View>
           ),

@@ -14,6 +14,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/colors';
 import { eventService } from '@/lib/services/eventService';
+import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
 
 type MinimalEvent = {
   id: string;
@@ -210,7 +211,7 @@ export function EventSwitcher({ userId, selectedEventId, onSelectEventId, label 
 
 const styles = StyleSheet.create({
   pill: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 10,
     paddingHorizontal: 12,
@@ -232,7 +233,7 @@ const styles = StyleSheet.create({
   },
   pillTextWrap: {
     flex: 1,
-    alignItems: 'flex-end',
+    alignItems: ALIGN_RIGHT,
   },
   pillLabel: {
     fontSize: 11,
@@ -274,7 +275,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: colors.gray[200],
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
   },
@@ -297,7 +298,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   eventRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
@@ -313,7 +314,7 @@ const styles = StyleSheet.create({
   },
   eventTextWrap: {
     flex: 1,
-    alignItems: 'flex-end',
+    alignItems: ALIGN_RIGHT,
   },
   eventTitle: {
     fontSize: 15,

@@ -9,6 +9,7 @@ import { eventService } from '@/lib/services/eventService';
 import { guestService } from '@/lib/services/guestService';
 import { BlurView } from 'expo-blur';
 import { EventSwitcher } from '@/components/EventSwitcher';
+import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
 
 export default function HomeScreen() {
   const { isLoggedIn, userData, initializeAuth } = useUserStore();
@@ -605,7 +606,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 14,
     borderRadius: 20,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 10,
     borderWidth: 1,
@@ -625,7 +626,7 @@ const styles = StyleSheet.create({
   locationCardText: {
     flex: 1,
     minWidth: 0,
-    alignItems: 'flex-end',
+    alignItems: ALIGN_RIGHT,
   },
   locationCardTitle: {
     fontSize: 12,
@@ -647,7 +648,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 14,
     borderRadius: 20,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 10,
     borderWidth: 1,
@@ -667,7 +668,7 @@ const styles = StyleSheet.create({
   daysCardText: {
     flex: 1,
     minWidth: 0,
-    alignItems: 'flex-end',
+    alignItems: ALIGN_RIGHT,
   },
   daysCardTitle: {
     fontSize: 12,
@@ -699,7 +700,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderRadius: 999,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 10,
     borderWidth: 1,
@@ -714,7 +715,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   statTextWrap: {
-    alignItems: 'flex-end',
+    alignItems: ALIGN_RIGHT,
   },
   statTitle: {
     fontSize: 10,
@@ -730,7 +731,7 @@ const styles = StyleSheet.create({
   },
 
   actionsHeaderRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 12,
@@ -808,7 +809,7 @@ const styles = StyleSheet.create({
     borderRadius: 34,
   },
   actionTileTopRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'flex-start',
     justifyContent: 'space-between',
   },

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, SafeAreaView, Platform, Alert, Image, TextInput, Modal, I18nManager } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, SafeAreaView, Platform, Alert, Image, TextInput, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { colors } from '@/constants/colors';
@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { APP_HEADER_HEIGHT_COMPACT, getAppHeaderTotalHeight } from '@/components/AppHeader';
 import { EVENT_BADGE_META, inferEventType, MONTHS, type EventType } from '@/features/events/eventsConstants';
 import { useEventsListModel } from '@/features/events/useEventsListModel';
+import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
 
 const EVENT_IMAGE_BY_TYPE: Record<EventType, number> = {
   חתונה: require('../../assets/images/wedding.jpg'),
@@ -20,8 +21,6 @@ const EVENT_IMAGE_BY_TYPE: Record<EventType, number> = {
   ברית: require('../../assets/images/baby.jpg'),
   'אירוע חברה': require('../../assets/images/wedding.jpg'),
 };
-
-const ROW_DIR = (I18nManager.isRTL ? 'row' : 'row-reverse') as const;
 
 export default function AdminEventsScreen() {
   const router = useRouter();
@@ -561,7 +560,7 @@ const styles = StyleSheet.create({
   },
   dateCol: {
     width: 86,
-    alignItems: 'flex-end',
+    alignItems: ALIGN_RIGHT,
     justifyContent: 'flex-end',
   },
   dayBig: {
@@ -580,7 +579,7 @@ const styles = StyleSheet.create({
   },
   metaCol: {
     flex: 1,
-    alignItems: 'flex-end',
+    alignItems: ALIGN_RIGHT,
     // In RTL, we want the content closer to the right edge
     paddingStart: 0,
   },
@@ -597,6 +596,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexWrap: 'wrap',
     gap: 6,
+    justifyContent: ALIGN_RIGHT,
+    alignSelf: ALIGN_RIGHT,
   },
   metaItem: {
     flexDirection: ROW_DIR,

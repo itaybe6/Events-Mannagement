@@ -26,6 +26,7 @@ import BackSwipe from '@/components/BackSwipe';
 import { Image as ExpoImage } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AppHeader, { APP_HEADER_HEIGHT_COMPACT, getAppHeaderTotalHeight } from '@/components/AppHeader';
+import { ALIGN_LEFT, ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
 
 export default function TablesList() {
   const userData = useUserStore((s) => s.userData);
@@ -975,12 +976,12 @@ const styles = StyleSheet.create({
     borderBottomColor: '#F3F4F6',
   },
   statsGrid: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     gap: 12,
   },
   statCard: {
     flex: 1,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     backgroundColor: '#F9FAFB',
     paddingHorizontal: 14,
@@ -998,7 +999,7 @@ const styles = StyleSheet.create({
   },
   statContent: {
     flex: 1,
-    alignItems: 'flex-end',
+    alignItems: ALIGN_RIGHT,
   },
   statValue: {
     fontSize: 20,
@@ -1045,7 +1046,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F0FDF4',
   },
   tableHeader: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
@@ -1054,7 +1055,7 @@ const styles = StyleSheet.create({
     borderBottomColor: '#F3F4F6',
   },
   tableLeft: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 12,
     flex: 1,
@@ -1080,7 +1081,7 @@ const styles = StyleSheet.create({
   },
   tableTitleWrap: {
     flex: 1,
-    alignItems: 'flex-end',
+    alignItems: ALIGN_RIGHT,
   },
   tableTitle: {
     fontSize: 17,
@@ -1097,7 +1098,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   tableNameEditWrap: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 8,
     width: '100%',
@@ -1130,12 +1131,12 @@ const styles = StyleSheet.create({
   },
   saveNameBtnFloating: {},
   tableRight: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 8,
   },
   capacityBadge: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 4,
     backgroundColor: '#F9FAFB',
@@ -1173,7 +1174,7 @@ const styles = StyleSheet.create({
     maxHeight: 240,
   },
   guestsList: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     flexWrap: 'wrap',
     gap: 8,
   },
@@ -1195,7 +1196,7 @@ const styles = StyleSheet.create({
     borderColor: '#3B82F6',
   },
   guestChipContent: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 6,
   },
@@ -1232,7 +1233,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   deleteButton: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#EF4444',
@@ -1248,13 +1249,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   editActionsRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     gap: 10,
     marginTop: 12,
   },
   secondaryActionBtn: {
     flex: 1,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
@@ -1278,7 +1279,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   categoryPickRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 12,
@@ -1305,7 +1306,7 @@ const styles = StyleSheet.create({
   },
   tablePickTextWrap: {
     flex: 1,
-    alignItems: 'flex-end',
+    alignItems: ALIGN_RIGHT,
   },
   tablePickMetaText: {
     marginTop: 4,
@@ -1359,7 +1360,7 @@ const styles = StyleSheet.create({
   },
   filterContainer: {
     marginBottom: 16,
-    alignItems: 'flex-end',
+    alignItems: ALIGN_RIGHT,
     width: '100%',
   },
   searchInput: {
@@ -1379,9 +1380,10 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   categoryContainer: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     justifyContent: 'flex-start',
-    paddingRight: 4,
+    paddingEnd: 4,
+    gap: 8,
   },
   categoryButton: {
     paddingHorizontal: 14,
@@ -1390,7 +1392,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#F3F4F6',
     borderWidth: 1,
     borderColor: '#E5E7EB',
-    marginLeft: 8,
   },
   categoryButtonActive: {
     backgroundColor: '#3B82F6',
@@ -1407,7 +1408,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   selectableGuestItem: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 10,
@@ -1421,7 +1422,7 @@ const styles = StyleSheet.create({
   },
   guestInfo: {
     flex: 1,
-    alignItems: 'flex-end',
+    alignItems: ALIGN_RIGHT,
   },
   selectableGuestName: {
     fontSize: 15,
@@ -1438,9 +1439,9 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   statusBadge: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
-    alignSelf: 'flex-end',
+    alignSelf: ALIGN_RIGHT,
     gap: 4,
     paddingHorizontal: 6,
     paddingVertical: 2,
@@ -1479,7 +1480,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     marginTop: 20,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     justifyContent: 'center',
     gap: 8,
   },
@@ -1493,19 +1494,19 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   peopleCountBadge: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     backgroundColor: '#E5E7EB',
     borderRadius: 6,
     paddingHorizontal: 6,
     paddingVertical: 2,
     marginTop: 4,
+    gap: 4,
   },
   peopleCountText: {
     fontSize: 12,
     fontWeight: '600',
     color: '#374151',
-    marginRight: 4,
   },
   orphanCard: {
     marginHorizontal: 16,
@@ -1518,14 +1519,14 @@ const styles = StyleSheet.create({
     borderColor: '#FCD34D',
   },
   orphanContent: { 
-    flexDirection: 'row-reverse', 
+    flexDirection: ROW_DIR, 
     alignItems: 'flex-start', 
     gap: 10, 
     marginBottom: 10 
   },
   orphanTextWrap: { 
     flex: 1, 
-    alignItems: 'flex-end' 
+    alignItems: ALIGN_RIGHT,
   },
   orphanTitle: {
     fontSize: 15,
@@ -1540,8 +1541,8 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   orphanBtn: {
-    alignSelf: 'flex-start',
-    flexDirection: 'row-reverse',
+    alignSelf: ALIGN_LEFT,
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 6,
     paddingHorizontal: 12,

@@ -22,6 +22,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GuestCategorySelectionSheet } from '@/components/GuestCategorySelectionSheet';
 import { useLayoutStore } from '@/store/layoutStore';
 import BackSwipe from '@/components/BackSwipe';
+import { ROW_DIR } from '@/lib/rtl';
 
 export default function EditCategoryScreen() {
   const router = useRouter();
@@ -528,15 +529,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     position: 'relative',
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
   },
   input: {
     flex: 1,
     fontSize: 18,
     fontWeight: '700',
-    paddingRight: 0,
-    paddingLeft: 34,
+    paddingEnd: 0,
+    paddingStart: 34,
   },
   inputIcon: {
     position: 'absolute',
@@ -549,7 +550,7 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   content: { paddingHorizontal: 18, paddingTop: 18 },
   sectionHeadRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'flex-end',
     justifyContent: 'space-between',
     marginBottom: 10,
@@ -569,14 +570,14 @@ const styles = StyleSheet.create({
   },
   emptyText: { fontSize: 14, fontWeight: '600', textAlign: 'center' },
   listRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderBottomWidth: 1,
   },
-  rowLeft: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, flex: 1, paddingLeft: 14 },
+  rowLeft: { flexDirection: ROW_DIR, alignItems: 'center', gap: 12, flex: 1, paddingStart: 14 },
   avatar: { width: 40, height: 40, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
   avatarText: { fontSize: 14, fontWeight: '800' },
   rowName: { fontSize: 15, fontWeight: '700', textAlign: 'right', flexShrink: 1 },
@@ -601,14 +602,14 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: -10 },
     elevation: 10,
   },
-  bottomActionsRow: { flexDirection: 'row-reverse', gap: 12 },
+  bottomActionsRow: { flexDirection: ROW_DIR, gap: 12 },
   bottomBtn: {
     flex: 1,
     height: 54,
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     gap: 8,
     shadowColor: '#0F172A',
     shadowOpacity: 0.18,

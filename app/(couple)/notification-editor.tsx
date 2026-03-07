@@ -24,6 +24,7 @@ import { supabase } from '@/lib/supabase';
 import { useUserStore } from '@/store/userStore';
 import { useLayoutStore } from '@/store/layoutStore';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
+import { ALIGN_LEFT, ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
 
 type NotificationSettingRow = {
   id?: string;
@@ -867,7 +868,7 @@ export default function NotificationEditorScreen() {
               </Pressable>
 
               <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-start', justifyContent: 'flex-start' }}>
-                <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8 }}>
+                <View style={{ flexDirection: ROW_DIR, alignItems: 'center', gap: 8 }}>
                   <Text style={[styles.webTitle, { color: ui.text }]} numberOfLines={1}>
                     {wizardStepId === 'message' ? 'עריכת הודעה' : wizardStepTitleText}
                   </Text>
@@ -1089,7 +1090,7 @@ export default function NotificationEditorScreen() {
                       <Text style={[styles.sectionTitle, { color: ui.text }]}>
                         אורחים חדשים שממתינים לשליחה {catchupQueueRows.length ? `(${catchupQueueRows.length})` : ''}
                       </Text>
-                      <View style={{ flexDirection: 'row-reverse', gap: 8 }}>
+                      <View style={{ flexDirection: ROW_DIR, gap: 8 }}>
                         <Pressable onPress={() => void loadCatchupQueue()} style={({ pressed }) => [styles.smallBtn, pressed ? { opacity: 0.92 } : null]}>
                           <Ionicons name="refresh-outline" size={16} color={ui.primary} />
                           <Text style={[styles.smallBtnText, { color: ui.primary }]}>רענן</Text>
@@ -1786,7 +1787,7 @@ export default function NotificationEditorScreen() {
                     <Text style={[styles.sectionTitle, { color: ui.text }]}>
                       אורחים חדשים שממתינים לשליחה {catchupQueueRows.length ? `(${catchupQueueRows.length})` : ''}
                     </Text>
-                    <View style={{ flexDirection: 'row-reverse', gap: 8 }}>
+                    <View style={{ flexDirection: ROW_DIR, gap: 8 }}>
                       <Pressable
                         onPress={() => void loadCatchupQueue()}
                         style={({ pressed }) => [styles.smallBtn, pressed ? { opacity: 0.92 } : null]}
@@ -2070,7 +2071,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingTop: 14,
     paddingBottom: 10,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'flex-start',
     gap: 12,
   },
@@ -2087,7 +2088,7 @@ const styles = StyleSheet.create({
   webTitle: { fontSize: 16, fontWeight: '900', textAlign: 'right' },
   webSubTitle: { marginTop: 2, fontSize: 12, fontWeight: '700', textAlign: 'right' },
   webProgressWrap: { paddingHorizontal: 18, paddingBottom: 12, gap: 8 },
-  webProgressLabels: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
+  webProgressLabels: { flexDirection: ROW_DIR, alignItems: 'center', justifyContent: 'space-between' },
   webProgressPctText: { fontSize: 12, fontWeight: '800' },
   webProgressStepText: { fontSize: 12, fontWeight: '800' },
   webProgressBar: {
@@ -2095,7 +2096,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: 'rgba(148,163,184,0.25)',
     overflow: 'hidden',
-    alignItems: 'flex-end', // RTL fill from right
+    alignItems: ALIGN_RIGHT,
     justifyContent: 'center',
   },
   webProgressFill: { height: 6, borderRadius: 999 },
@@ -2109,7 +2110,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(226,232,240,1)',
     backgroundColor: '#fff',
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     paddingHorizontal: 14,
     gap: 12,
@@ -2133,14 +2134,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(226,232,240,1)',
     backgroundColor: '#fff',
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 8,
   },
   webChipText: { fontSize: 12, fontWeight: '900', textAlign: 'right' },
 
   webQuickActionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 14, alignItems: 'center', justifyContent: 'flex-start' },
-  webLinkBtn: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6 },
+  webLinkBtn: { flexDirection: ROW_DIR, alignItems: 'center', gap: 6 },
   webLinkText: { fontSize: 12, fontWeight: '900', textAlign: 'right' },
 
   webTableWrap: {
@@ -2155,7 +2156,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(248,250,252,1)',
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(226,232,240,1)',
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     paddingHorizontal: 12,
   },
@@ -2168,7 +2169,7 @@ const styles = StyleSheet.create({
 
   webTableRow: {
     minHeight: 54,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     paddingHorizontal: 12,
     borderBottomWidth: 1,
@@ -2184,12 +2185,12 @@ const styles = StyleSheet.create({
   webStatusText: { fontSize: 12, fontWeight: '900', textAlign: 'right' },
 
   webFooter: { borderTopWidth: 1, borderTopColor: 'rgba(226,232,240,1)', backgroundColor: 'rgba(255,255,255,0.92)' },
-  webFooterRow: { paddingHorizontal: 18, paddingVertical: 14, flexDirection: 'row-reverse', alignItems: 'center', gap: 12 },
-  webFooterSecondary: { flexDirection: 'row-reverse', height: 44, paddingHorizontal: 18, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(226,232,240,1)', backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  webFooterRow: { paddingHorizontal: 18, paddingVertical: 14, flexDirection: ROW_DIR, alignItems: 'center', gap: 12 },
+  webFooterSecondary: { flexDirection: ROW_DIR, height: 44, paddingHorizontal: 18, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(226,232,240,1)', backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', gap: 8 },
   webFooterSecondaryText: { fontSize: 14, fontWeight: '900', textAlign: 'center' },
-  webFooterLink: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, paddingHorizontal: 10, height: 44 },
+  webFooterLink: { flexDirection: ROW_DIR, alignItems: 'center', gap: 8, paddingHorizontal: 10, height: 44 },
   webFooterLinkText: { fontSize: 14, fontWeight: '900', textAlign: 'right' },
-  webFooterPrimary: { marginRight: 'auto', height: 44, paddingHorizontal: 18, borderRadius: 12, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  webFooterPrimary: { marginRight: 'auto', height: 44, paddingHorizontal: 18, borderRadius: 12, flexDirection: ROW_DIR, alignItems: 'center', justifyContent: 'center', gap: 8 },
   webFooterPrimaryText: { fontSize: 14, fontWeight: '900', color: '#fff', textAlign: 'center' },
 
   headerWrap: {
@@ -2218,11 +2219,11 @@ const styles = StyleSheet.create({
   section: { paddingHorizontal: 2, gap: 12 },
   sectionTitle: { fontSize: 13, fontWeight: '900', textAlign: 'right', paddingHorizontal: 2 },
 
-  scheduleRow: { flexDirection: 'row-reverse', alignItems: 'stretch', gap: 12 },
+  scheduleRow: { flexDirection: ROW_DIR, alignItems: 'stretch', gap: 12 },
   dateCol: { flex: 2, gap: 8 },
   scheduleCard: { position: 'relative', flex: 2, minHeight: 92, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, gap: 6 },
   scheduleCardSmall: { position: 'relative', flex: 1, minHeight: 92, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, gap: 6 },
-  scheduleCardTop: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
+  scheduleCardTop: { flexDirection: ROW_DIR, alignItems: 'center', justifyContent: 'space-between' },
   scheduleValueText: { fontSize: 18, fontWeight: '900', textAlign: 'right', writingDirection: 'ltr' },
   scheduleSubText: { fontSize: 12, fontWeight: '800', textAlign: 'right', opacity: 0.85 },
   offsetBelow: { fontSize: 12, fontWeight: '800', textAlign: 'right', opacity: 0.85 },
@@ -2234,7 +2235,7 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : null),
   },
 
-  segmentWrap: { flexDirection: 'row-reverse', padding: 4, borderRadius: 16, borderWidth: 1 },
+  segmentWrap: { flexDirection: ROW_DIR, padding: 4, borderRadius: 16, borderWidth: 1 },
   segmentBtn: { flex: 1, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
   segmentBtnActive: {
     backgroundColor: '#FFFFFF',
@@ -2246,19 +2247,19 @@ const styles = StyleSheet.create({
   },
   segmentText: { fontSize: 13, fontWeight: '800' },
 
-  cardsRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12 },
+  cardsRow: { flexDirection: ROW_DIR, alignItems: 'center', gap: 12 },
   computedCard: { flex: 1, height: 76, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center', gap: 4 },
   computedLabel: { fontSize: 11, fontWeight: '800' },
   computedValue: { fontSize: 18, fontWeight: '900', textAlign: 'center', writingDirection: 'ltr' },
   sideCardsCol: { flex: 1, gap: 12 },
   daysCard: { flex: 1, height: 76, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, justifyContent: 'space-between' },
   timeCard: { flex: 1, height: 76, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, justifyContent: 'space-between' },
-  daysCardTop: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
+  daysCardTop: { flexDirection: ROW_DIR, alignItems: 'center', justifyContent: 'space-between' },
   daysMeta: { fontSize: 11, fontWeight: '800' },
   daysValue: { fontSize: 22, fontWeight: '900', paddingVertical: 0, paddingHorizontal: 0 },
 
-  messageHeaderRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  messageTools: { flexDirection: 'row-reverse', gap: 8, flexWrap: 'wrap' },
+  messageHeaderRow: { flexDirection: ROW_DIR, alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  messageTools: { flexDirection: ROW_DIR, gap: 8, flexWrap: 'wrap' },
   toolBtn: { width: 36, height: 36, borderRadius: 14, borderWidth: 1, justifyContent: 'center', alignItems: 'center' },
   textareaWrap: { position: 'relative' },
   textarea: { borderRadius: 20, paddingHorizontal: 18, paddingVertical: 16, fontSize: 16, fontWeight: '700', minHeight: 280, lineHeight: 24, writingDirection: 'rtl', borderWidth: 1 },
@@ -2267,27 +2268,27 @@ const styles = StyleSheet.create({
   helperText: { fontSize: 12, fontWeight: '600', textAlign: 'right', opacity: 0.75, paddingHorizontal: 2, lineHeight: 18 },
 
   wizardTop: { paddingHorizontal: 2 },
-  stepperRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingHorizontal: 2 },
+  stepperRow: { flexDirection: ROW_DIR, alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingHorizontal: 2 },
   stepperItem: { alignItems: 'center', justifyContent: 'center', gap: 6, flex: 1, minWidth: 0 },
   stepDot: { width: 30, height: 30, borderRadius: 15, borderWidth: 1, borderColor: 'rgba(17,24,39,0.14)', backgroundColor: 'rgba(255,255,255,0.92)', alignItems: 'center', justifyContent: 'center' },
   stepDotText: { fontSize: 12, fontWeight: '900', color: 'rgba(17,24,39,0.75)' },
   stepLabel: { fontSize: 11, fontWeight: '900', textAlign: 'center' },
 
   previewCard: { borderRadius: 20, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 12, gap: 10 },
-  previewHeaderRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'flex-start', gap: 8 },
+  previewHeaderRow: { flexDirection: ROW_DIR, alignItems: 'center', justifyContent: 'flex-start', gap: 8 },
   previewTitle: { fontSize: 12, fontWeight: '900', textAlign: 'right' },
   previewText: { fontSize: 14, fontWeight: '800', textAlign: 'right', lineHeight: 22, writingDirection: 'rtl' },
   previewHint: { fontSize: 11, fontWeight: '700', textAlign: 'right', opacity: 0.8 },
 
-  step4TwoCol: { flexDirection: 'row-reverse', flex: 1, minHeight: 0, gap: 24, paddingHorizontal: 2 },
+  step4TwoCol: { flexDirection: ROW_DIR, flex: 1, minHeight: 0, gap: 24, paddingHorizontal: 2 },
   step4PreviewCol: { flex: 1, minWidth: 0, maxWidth: 460, borderRadius: 20, borderWidth: 0, padding: 18, gap: 12, alignItems: 'center', backgroundColor: '#f2f2f2' },
   step4PreviewTitle: { fontSize: 15, fontWeight: '900', textAlign: 'right', alignSelf: 'stretch' },
   step4PreviewSubtitle: { fontSize: 12, fontWeight: '700', textAlign: 'right', alignSelf: 'stretch', marginBottom: 8 },
   step4PhoneMockup: { width: '100%', maxWidth: 340, borderRadius: 28, borderWidth: 10, borderColor: '#1f2937', backgroundColor: '#111827', padding: 12, alignItems: 'center' },
   step4PhoneScreen: { width: '100%', minHeight: 380, backgroundColor: '#f8fafc', borderRadius: 18, padding: 16, gap: 12 },
   step4PhoneTime: { fontSize: 12, fontWeight: '800', color: 'rgba(71,85,105,1)', textAlign: 'center' },
-  step4BubbleIn: { alignSelf: 'flex-start', maxWidth: '90%', padding: 14, borderRadius: 16, borderTopRightRadius: 4, gap: 4 },
-  step4BubbleOut: { alignSelf: 'flex-end', maxWidth: '90%', padding: 14, borderRadius: 16, borderTopLeftRadius: 4, gap: 4 },
+  step4BubbleIn: { alignSelf: ALIGN_LEFT, maxWidth: '90%', padding: 14, borderRadius: 16, borderTopRightRadius: 4, gap: 4 },
+  step4BubbleOut: { alignSelf: ALIGN_RIGHT, maxWidth: '90%', padding: 14, borderRadius: 16, borderTopLeftRadius: 4, gap: 4 },
   step4BubbleText: { fontSize: 14, fontWeight: '700', textAlign: 'right', lineHeight: 22 },
   step4BubbleTextOut: { fontSize: 14, fontWeight: '700', color: '#fff', textAlign: 'right', lineHeight: 22 },
   step4BubbleTime: { fontSize: 10, fontWeight: '800', color: 'rgba(100,116,139,1)', textAlign: 'left' },
@@ -2296,36 +2297,36 @@ const styles = StyleSheet.create({
   step4Instruction: { fontSize: 13, fontWeight: '700', textAlign: 'right', lineHeight: 20 },
   step4VarsLabel: { fontSize: 13, fontWeight: '900', textAlign: 'right' },
   step4VarsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  step4VarTag: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, borderWidth: 1 },
+  step4VarTag: { flexDirection: ROW_DIR, alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, borderWidth: 1 },
   step4VarTagText: { fontSize: 12, fontWeight: '800', textAlign: 'right' },
   step4Textarea: { minHeight: 280 },
-  step4CharRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 10, paddingHorizontal: 2 },
-  step4CharPill: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.86)', borderWidth: 1 },
+  step4CharRow: { flexDirection: ROW_DIR, alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 10, paddingHorizontal: 2 },
+  step4CharPill: { flexDirection: ROW_DIR, alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.86)', borderWidth: 1 },
   step4CharDot: { width: 8, height: 8, borderRadius: 4 },
   step4SmsHint: { fontSize: 12, fontWeight: '700', textAlign: 'right' },
 
   mono: { fontWeight: '900' },
-  recipientsHeaderRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  recipientsBadge: { flexDirection: 'row-reverse', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(17,24,39,0.04)' },
+  recipientsHeaderRow: { flexDirection: ROW_DIR, alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  recipientsBadge: { flexDirection: ROW_DIR, gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(17,24,39,0.04)' },
   recipientsBadgeText: { fontSize: 12, fontWeight: '900', color: 'rgba(17,24,39,0.72)', textAlign: 'right' },
 
-  filtersRow: { flexDirection: 'row-reverse', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
+  filtersRow: { flexDirection: ROW_DIR, flexWrap: 'wrap', alignItems: 'center', gap: 8 },
   filterPill: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.92)', borderWidth: 1, borderColor: 'rgba(17,24,39,0.10)' },
   filterPillActive: { backgroundColor: 'rgba(29,78,216,0.10)', borderColor: 'rgba(29,78,216,0.22)' },
   filterText: { fontSize: 12, fontWeight: '900', color: 'rgba(17,24,39,0.72)', textAlign: 'right' },
   filterTextActive: { color: 'rgba(29,78,216,1)' },
 
-  smallBtn: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.92)', borderWidth: 1, borderColor: 'rgba(29,78,216,0.18)' },
+  smallBtn: { flexDirection: ROW_DIR, alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.92)', borderWidth: 1, borderColor: 'rgba(29,78,216,0.18)' },
   smallBtnText: { fontSize: 12, fontWeight: '900', textAlign: 'right' },
 
-  recipientsActionsRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' },
-  keepPendingBtn: { flex: 1, minWidth: 180, height: 44, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(17,24,39,0.10)', backgroundColor: 'rgba(17,24,39,0.04)', flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 12 },
+  recipientsActionsRow: { flexDirection: ROW_DIR, alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' },
+  keepPendingBtn: { flex: 1, minWidth: 180, height: 44, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(17,24,39,0.10)', backgroundColor: 'rgba(17,24,39,0.04)', flexDirection: ROW_DIR, alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 12 },
   keepPendingText: { fontSize: 12, fontWeight: '900', textAlign: 'right' },
-  sendNowBtn: { height: 44, borderRadius: 14, paddingHorizontal: 14, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  sendNowBtn: { height: 44, borderRadius: 14, paddingHorizontal: 14, flexDirection: ROW_DIR, alignItems: 'center', justifyContent: 'center', gap: 8 },
   sendNowText: { fontSize: 12, fontWeight: '900', color: '#fff', textAlign: 'right' },
 
   automationCard: { borderRadius: 20, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 14, gap: 12 },
-  automationTopRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  automationTopRow: { flexDirection: ROW_DIR, alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   automationTitle: { fontSize: 13, fontWeight: '900', textAlign: 'right' },
   automationHint: { marginTop: 4, fontSize: 12, fontWeight: '700', textAlign: 'right', opacity: 0.85, lineHeight: 18 },
   automationTiny: { fontSize: 12, fontWeight: '700', textAlign: 'right', opacity: 0.85, lineHeight: 18 },
@@ -2338,10 +2339,10 @@ const styles = StyleSheet.create({
   togglePillTextOn: { color: 'rgba(16,185,129,1)' },
   togglePillTextOff: { color: 'rgba(100,116,139,1)' },
 
-  catchupRow: { flexDirection: 'row-reverse', alignItems: 'flex-start', gap: 12 },
+  catchupRow: { flexDirection: ROW_DIR, alignItems: 'flex-start', gap: 12 },
   catchupLabel: { fontSize: 11, fontWeight: '800', textAlign: 'right' },
   catchupInput: { marginTop: 6, height: 44, borderRadius: 14, borderWidth: 1, paddingHorizontal: 12, fontSize: 14, fontWeight: '900', textAlign: 'right', writingDirection: 'ltr' },
-  weekdaysRow: { marginTop: 6, flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8 },
+  weekdaysRow: { marginTop: 6, flexDirection: ROW_DIR, flexWrap: 'wrap', gap: 8 },
   weekdayPill: { height: 34, minWidth: 38, paddingHorizontal: 10, borderRadius: 999, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   weekdayPillOn: { backgroundColor: 'rgba(29,78,216,0.12)', borderColor: 'rgba(29,78,216,0.22)' },
   weekdayPillOff: { backgroundColor: 'rgba(255,255,255,0.92)', borderColor: 'rgba(17,24,39,0.10)' },
@@ -2349,19 +2350,19 @@ const styles = StyleSheet.create({
   weekdayTextOn: { color: 'rgba(29,78,216,1)' },
   weekdayTextOff: { color: 'rgba(17,24,39,0.70)' },
 
-  queueHeaderRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' },
-  queueRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingHorizontal: 12, paddingVertical: 12, borderRadius: 16, borderWidth: 1 },
+  queueHeaderRow: { flexDirection: ROW_DIR, alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' },
+  queueRow: { flexDirection: ROW_DIR, alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingHorizontal: 12, paddingVertical: 12, borderRadius: 16, borderWidth: 1 },
 
-  recipientRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingHorizontal: 12, paddingVertical: 12, borderRadius: 16, borderWidth: 1 },
+  recipientRow: { flexDirection: ROW_DIR, alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingHorizontal: 12, paddingVertical: 12, borderRadius: 16, borderWidth: 1 },
   recipientName: { fontSize: 13, fontWeight: '900', textAlign: 'right' },
   recipientMeta: { marginTop: 3, fontSize: 12, fontWeight: '700', textAlign: 'right' },
 
   bottomBar: { position: 'relative', borderTopWidth: 1 },
   bottomBarInner: { paddingHorizontal: 16, paddingTop: 12 },
-  bottomButtonsRow: { flexDirection: 'row-reverse', gap: 12, maxWidth: 720, width: '100%', alignSelf: 'center' },
+  bottomButtonsRow: { flexDirection: ROW_DIR, gap: 12, maxWidth: 720, width: '100%', alignSelf: 'center' },
   bottomBtnSecondary: { flex: 1, height: 58, borderRadius: 16, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
   bottomBtnSecondaryText: { fontSize: 16, fontWeight: '900' },
-  bottomBtnPrimary: { flex: 2, height: 58, borderRadius: 16, justifyContent: 'center', alignItems: 'center', flexDirection: 'row-reverse', gap: 10 },
+  bottomBtnPrimary: { flex: 2, height: 58, borderRadius: 16, justifyContent: 'center', alignItems: 'center', flexDirection: ROW_DIR, gap: 10 },
   bottomBtnPrimaryText: { fontSize: 16, fontWeight: '900', color: '#fff' },
 });
 

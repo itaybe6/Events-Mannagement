@@ -4,6 +4,7 @@ import type { ImageStyle, StyleProp } from 'react-native';
 import { Image, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { colors } from '@/constants/colors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ALIGN_LEFT, ALIGN_RIGHT, ROW_REVERSE_DIR } from '@/lib/rtl';
 
 // Base header height (excluding safe-area top inset)
 export const APP_HEADER_HEIGHT = 90;
@@ -140,7 +141,7 @@ export default function AppHeader(props: Props) {
 const styles = StyleSheet.create({
   wrap: {
     backgroundColor: '#FFFFFF',
-    flexDirection: 'row',
+    flexDirection: ROW_REVERSE_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 12,
@@ -148,21 +149,21 @@ const styles = StyleSheet.create({
   wrapLogoLeft: {
     // Override base wrap paddingHorizontal so the logo can hug the screen edge.
     paddingHorizontal: 0,
-    paddingLeft: 0,
-    paddingRight: 10,
+    paddingStart: 0,
+    paddingEnd: 10,
   },
   sideLeft: {
     width: 56,
-    alignItems: 'flex-start',
+    alignItems: ALIGN_RIGHT,
     justifyContent: 'center',
   },
   sideRight: {
     width: 56,
-    alignItems: 'flex-end',
+    alignItems: ALIGN_LEFT,
     justifyContent: 'center',
   },
   sideRightAuto: {
-    alignItems: 'flex-end',
+    alignItems: ALIGN_LEFT,
     justifyContent: 'center',
     flexShrink: 0,
   },
@@ -175,13 +176,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   leftCluster: {
-    flexDirection: 'row',
+    flexDirection: ROW_REVERSE_DIR,
     alignItems: 'center',
     justifyContent: 'flex-start',
     flexShrink: 0,
     gap: 8,
     // Pull the cluster to the very edge (some RN headers still add subtle spacing)
-    marginLeft: -12,
+    marginStart: -12,
   },
   logo: {
     width: 320,
@@ -215,10 +216,10 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   leftBtn: {
-    marginLeft: 3,
+    marginStart: 3,
   },
   rightBtn: {
-    marginRight: 3,
+    marginEnd: 3,
   },
 });
 

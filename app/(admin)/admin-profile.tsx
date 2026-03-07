@@ -13,6 +13,7 @@ import { userService } from "@/lib/services/userService";
 import { eventService } from "@/lib/services/eventService";
 import { EVENT_BADGE_META, inferEventType, type EventType } from "@/features/events/eventsConstants";
 import type { Event } from "@/types";
+import { ALIGN_RIGHT, ROW_DIR } from "@/lib/rtl";
 
 const ui = {
   bg: colors.gray[100],
@@ -423,7 +424,7 @@ export default function AdminProfileScreen() {
         {/* EVENT TYPE BREAKDOWN */}
         <View style={styles.card}>
           <View style={styles.cardHeaderRow}>
-            <View style={{ flex: 1, minWidth: 0 }}>
+            <View style={styles.cardHeaderTextCol}>
               <Text style={styles.cardTitle}>חלוקה לפי סוג אירוע</Text>
             </View>
             <LinearGradient
@@ -496,7 +497,7 @@ export default function AdminProfileScreen() {
         {/* MONTHLY PERFORMANCE */}
         <View style={styles.card}>
           <View style={styles.cardHeaderRow}>
-            <View style={{ flex: 1, minWidth: 0 }}>
+            <View style={styles.cardHeaderTextCol}>
               <Text style={styles.cardTitle}>ביצועים חודשיים</Text>
               <Text style={styles.cardSubtitle}>{`מס׳ אירועים לפי חודש · ${selectedYear}`}</Text>
             </View>
@@ -722,7 +723,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: "rgba(6,23,62,0.05)",
   },
-  heroIdentity: { flex: 1, flexDirection: "row-reverse", alignItems: "center", gap: 14, minWidth: 0 },
+  heroIdentity: { flex: 1, flexDirection: ROW_DIR, alignItems: "center", gap: 14, minWidth: 0 },
   heroEditSlot: {
     position: "absolute",
     left: 14,
@@ -742,11 +743,11 @@ const styles = StyleSheet.create({
     borderColor: ui.border,
   },
   avatar: { width: "100%", height: "100%", borderRadius: 999 },
-  heroTextCol: { flex: 1, minWidth: 0, justifyContent: "flex-start", alignItems: "flex-start", gap: 4 },
-  heroTitleRow: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" },
+  heroTextCol: { flex: 1, minWidth: 0, justifyContent: "flex-start", alignItems: ALIGN_RIGHT, alignSelf: "stretch", gap: 4 },
+  heroTitleRow: { flexDirection: ROW_DIR, alignItems: "center", justifyContent: ALIGN_RIGHT, gap: 10, flexWrap: "wrap" },
   heroName: { fontSize: 20, fontWeight: "900", color: ui.primary, textAlign: "right" },
   rolePill: {
-    flexDirection: "row-reverse",
+    flexDirection: ROW_DIR,
     alignItems: "center",
     gap: 6,
     paddingHorizontal: 10,
@@ -788,12 +789,13 @@ const styles = StyleSheet.create({
     backgroundColor: ui.card,
     borderWidth: 1,
     borderColor: ui.border,
+    alignItems: ALIGN_RIGHT,
   },
   kpiCardDark: {
     backgroundColor: ui.primary,
     borderColor: "rgba(255,255,255,0.10)",
   },
-  kpiHeader: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between" },
+  kpiHeader: { flexDirection: ROW_DIR, alignItems: "center", justifyContent: "space-between" },
   kpiIconBox: { width: 38, height: 38, borderRadius: 14, alignItems: "center", justifyContent: "center" },
   kpiTitle: { marginTop: 10, fontSize: 12, fontWeight: "900", color: ui.muted, textAlign: "right" },
   kpiTitleDark: { color: "rgba(203,213,225,0.88)" },
@@ -802,9 +804,10 @@ const styles = StyleSheet.create({
   kpiSubtitle: { marginTop: 6, fontSize: 11, fontWeight: "800", color: "rgba(100,116,139,0.95)", textAlign: "right" },
   kpiSubtitleDark: { color: "rgba(203,213,225,0.82)" },
 
-  cardHeaderRow: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12 },
-  cardTitle: { fontSize: 16, fontWeight: "900", color: ui.primary, textAlign: "right" },
-  cardSubtitle: { marginTop: 4, fontSize: 12, fontWeight: "700", color: ui.muted, textAlign: "right" },
+  cardHeaderRow: { flexDirection: ROW_DIR, alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12 },
+  cardHeaderTextCol: { flex: 1, minWidth: 0, alignItems: ALIGN_RIGHT, alignSelf: "stretch" },
+  cardTitle: { width: "100%", fontSize: 16, fontWeight: "900", color: ui.primary, textAlign: "right" },
+  cardSubtitle: { width: "100%", marginTop: 4, fontSize: 12, fontWeight: "700", color: ui.muted, textAlign: "right" },
   pill: {
     height: 32,
     paddingHorizontal: 10,
@@ -812,7 +815,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(6,23,62,0.05)",
     borderWidth: 1,
     borderColor: ui.border,
-    flexDirection: "row-reverse",
+    flexDirection: ROW_DIR,
     alignItems: "center",
     gap: 8,
   },
@@ -823,7 +826,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: 1,
     borderColor: "rgba(204,160,0,0.22)",
-    flexDirection: "row-reverse",
+    flexDirection: ROW_DIR,
     alignItems: "center",
     gap: 8,
     shadowColor: ui.primary,
@@ -832,7 +835,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     elevation: 4,
   },
-  totalPillTextRow: { flexDirection: "row-reverse", alignItems: "baseline", gap: 6 },
+  totalPillTextRow: { flexDirection: ROW_DIR, alignItems: "baseline", gap: 6 },
   totalPillNumber: { fontSize: 14, fontWeight: "900", color: ui.primary },
   totalPillLabel: { fontSize: 11, fontWeight: "900", color: "rgba(6,23,62,0.72)" },
   totalPillEmpty: { fontSize: 12, fontWeight: "900", color: "rgba(6,23,62,0.72)" },
@@ -848,7 +851,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderRadius: 16,
     backgroundColor: ui.primary,
-    flexDirection: "row-reverse",
+    flexDirection: ROW_DIR,
     alignItems: "center",
     justifyContent: "center",
     gap: 10,
@@ -872,7 +875,7 @@ const styles = StyleSheet.create({
   donutCenterBig: { fontSize: 28, fontWeight: "900", color: ui.primary },
   donutCenterSmall: { marginTop: 4, fontSize: 12, fontWeight: "800", color: ui.muted },
 
-  typeList: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 10 },
+  typeList: { flexDirection: ROW_DIR, flexWrap: "wrap", gap: 10 },
   typeItem: {
     flexGrow: 0,
     borderRadius: 18,
@@ -893,16 +896,16 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderWidth: 1,
   },
-  typeItemCount: { fontSize: 13, fontWeight: "900", color: ui.muted, textAlign: "center" },
-  typeItemName: { fontSize: 11, fontWeight: "900", color: ui.primary, textAlign: "center" },
+  typeItemCount: { fontSize: 13, fontWeight: "900", color: ui.muted, textAlign: "center", alignSelf: "center" },
+  typeItemName: { fontSize: 11, fontWeight: "900", color: ui.primary, textAlign: "center", alignSelf: "center" },
 
   miniList: { marginTop: 4, gap: 8 },
   miniTitle: { fontSize: 12, fontWeight: "900", color: ui.muted, textAlign: "right" },
-  miniRow: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", gap: 10 },
+  miniRow: { flexDirection: ROW_DIR, alignItems: "center", justifyContent: "space-between", gap: 10 },
   miniLabel: { fontSize: 12, fontWeight: "800", color: ui.primary, textAlign: "right", flex: 1, minWidth: 0 },
   miniCount: { fontSize: 12, fontWeight: "900", color: ui.muted, width: 34, textAlign: "left" },
 
-  yearControls: { flexDirection: "row-reverse", alignItems: "center", gap: 8 },
+  yearControls: { flexDirection: ROW_DIR, alignItems: "center", gap: 8 },
   yearBtn: {
     width: 34,
     height: 34,
@@ -921,7 +924,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(6,23,62,0.04)",
     borderWidth: 1,
     borderColor: ui.border,
-    flexDirection: "row-reverse",
+    flexDirection: ROW_DIR,
     alignItems: "center",
     gap: 8,
   },
@@ -944,7 +947,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(6,23,62,0.04)",
     borderWidth: 1,
     borderColor: ui.border,
-    flexDirection: "row-reverse",
+    flexDirection: ROW_DIR,
     alignItems: "center",
     gap: 8,
   },
@@ -984,7 +987,7 @@ const styles = StyleSheet.create({
     width: "100%",
     minHeight: 62,
     borderRadius: 22,
-    flexDirection: "row-reverse",
+    flexDirection: ROW_DIR,
     alignItems: "center",
     justifyContent: "center",
     gap: 12,
@@ -1050,7 +1053,7 @@ const styles = StyleSheet.create({
   },
   loActions: {
     width: "100%",
-    flexDirection: "row-reverse",
+    flexDirection: ROW_DIR,
     gap: 12,
   },
   loBtnOuter: {
@@ -1079,7 +1082,7 @@ const styles = StyleSheet.create({
     minHeight: 50,
     borderRadius: 16,
     backgroundColor: "#c62828",
-    flexDirection: "row-reverse",
+    flexDirection: ROW_DIR,
     alignItems: "center",
     justifyContent: "center",
     gap: 8,

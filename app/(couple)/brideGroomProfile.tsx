@@ -9,6 +9,7 @@ import { Image } from 'expo-image';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import * as ImagePicker from 'expo-image-picker';
 import { invitationAssetService } from '@/lib/services/invitationAssetService';
+import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
 
 export default function BrideGroomSettings() {
   const { userData, logout } = useUserStore();
@@ -887,7 +888,7 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   notifHeader: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
@@ -913,7 +914,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  notifHeaderText: { flex: 1, alignItems: 'flex-end' },
+  notifHeaderText: { flex: 1, alignItems: ALIGN_RIGHT },
   notifTitle: { fontSize: 18, fontWeight: '900', color: colors.text, textAlign: 'right' },
   notifSubtitle: {
     marginTop: 4,
@@ -933,7 +934,7 @@ const styles = StyleSheet.create({
   },
   notifPillText: { fontSize: 12, fontWeight: '900', color: 'rgba(29,78,216,0.95)' },
   notifCallout: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'flex-start',
     gap: 10,
     padding: 12,
@@ -983,7 +984,7 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   groupHeader: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     marginBottom: 12,
     paddingHorizontal: 8,
@@ -1000,7 +1001,7 @@ const styles = StyleSheet.create({
   },
   notificationCard: {
     position: 'relative',
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
     borderRadius: 16,
@@ -1028,7 +1029,7 @@ const styles = StyleSheet.create({
   },
   cardMain: {
     flex: 1,
-    alignItems: 'flex-end',
+    alignItems: ALIGN_RIGHT,
   },
   cardTitle: {
     fontSize: 18,
@@ -1037,8 +1038,8 @@ const styles = StyleSheet.create({
   },
   cardMetaRow: {
     marginTop: 8,
-    alignSelf: 'flex-end',
-    flexDirection: 'row-reverse',
+    alignSelf: ALIGN_RIGHT,
+    flexDirection: ROW_DIR,
     alignItems: 'center',
   },
   statusBtn: {
@@ -1058,8 +1059,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   cardChevron: {
-    paddingRight: 4,
-    paddingLeft: 8,
+    paddingEnd: 4,
+    paddingStart: 8,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1100,7 +1101,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 24,
     paddingBottom: 16,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'flex-start',
     justifyContent: 'space-between',
   },
@@ -1181,7 +1182,7 @@ const styles = StyleSheet.create({
   },
   invitationActionsRow: {
     marginTop: 10,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     gap: 10,
   },
   invitationActionBtn: {
@@ -1191,7 +1192,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.10)',
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
@@ -1206,7 +1207,7 @@ const styles = StyleSheet.create({
     color: '#111827',
   },
   segmentWrap: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     gap: 6,
     padding: 4,
     borderRadius: 16,
@@ -1230,7 +1231,7 @@ const styles = StyleSheet.create({
   segmentText: { fontSize: 13, fontWeight: '800', color: '#6B7280' },
   segmentTextActive: { color: '#1d4ed8' },
 
-  timingRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12 },
+  timingRow: { flexDirection: ROW_DIR, alignItems: 'center', gap: 12 },
   daysInputWrap: {
     flex: 1,
     height: 54,
@@ -1256,7 +1257,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(29,78,216,0.08)',
     borderWidth: 1,
     borderColor: 'rgba(29,78,216,0.16)',
-    alignItems: 'flex-end',
+    alignItems: ALIGN_RIGHT,
     minWidth: 128,
   },
   computedLabel: { fontSize: 11, fontWeight: '800', color: 'rgba(29,78,216,0.75)' },
@@ -1265,12 +1266,12 @@ const styles = StyleSheet.create({
   bodyDivider: { height: 1, backgroundColor: '#E5E7EB' },
 
   messageHeaderRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
   },
-  messageTools: { flexDirection: 'row-reverse', gap: 8 },
+  messageTools: { flexDirection: ROW_DIR, gap: 8 },
   toolBtn: {
     width: 34,
     height: 34,
@@ -1311,7 +1312,7 @@ const styles = StyleSheet.create({
     padding: 18,
     borderTopWidth: 1,
     borderTopColor: '#E5E7EB',
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     gap: 10,
     backgroundColor: '#FFFFFF',
   },
@@ -1333,7 +1334,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#1d4ed8',
     justifyContent: 'center',
     alignItems: 'center',
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     gap: 8,
     shadowColor: '#1d4ed8',
     shadowOpacity: 0.24,
@@ -1353,7 +1354,6 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   dateDisplay: {
-    marginLeft: 8,
     fontSize: 16,
     color: colors.text,
   },
@@ -1411,7 +1411,7 @@ const styles = StyleSheet.create({
   },
   loActions: {
     width: '100%',
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     gap: 12,
   },
   loBtnOuter: {
@@ -1440,7 +1440,7 @@ const styles = StyleSheet.create({
     minHeight: 50,
     borderRadius: 16,
     backgroundColor: '#c62828',
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,

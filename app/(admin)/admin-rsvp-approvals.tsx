@@ -23,7 +23,7 @@ import { Guest, GuestCategory } from "@/types";
 import BackSwipe from "@/components/BackSwipe";
 import AppHeader, { APP_HEADER_HEIGHT_COMPACT, getAppHeaderTotalHeight } from "@/components/AppHeader";
 import { useRsvpApprovalsModel } from "@/features/rsvp/useRsvpApprovalsModel";
-import { ROW_DIR } from "@/lib/rtl";
+import { ALIGN_LEFT, ALIGN_RIGHT, ROW_DIR } from "@/lib/rtl";
 
 const sanitizePhone = (raw: string) => (raw || "").replace(/[^\d+]/g, "");
 
@@ -249,7 +249,7 @@ export default function AdminRsvpApprovalsScreen() {
                       name={isCollapsed ? "chevron-down" : "chevron-up"}
                       size={18}
                       color={colors.gray[500]}
-                      style={{ marginRight: 6 }}
+                      style={{ marginStart: 6 }}
                     />
                   </TouchableOpacity>
 
@@ -444,10 +444,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginBottom: 12,
   },
-  searchIcon: { position: "absolute", left: 14 },
+  searchIcon: { position: "absolute", right: 14 },
   searchInputNew: {
-    paddingLeft: 40,
-    paddingRight: 16,
+    paddingRight: 40,
+    paddingLeft: 16,
     fontSize: 14,
     fontWeight: "800",
     color: colors.text,
@@ -493,13 +493,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
   },
   rightGroup: { flex: 1, minWidth: 0, flexDirection: ROW_DIR, alignItems: "center" },
-  nameCol: { flex: 1, minWidth: 0, alignItems: "flex-end" },
+  nameCol: { flex: 1, minWidth: 0, alignItems: ALIGN_RIGHT },
   guestName: { minWidth: 0, flexShrink: 1, fontSize: 14, fontWeight: "900", color: colors.text, textAlign: "right" },
-  leftSlot: { width: 170, alignItems: "flex-start", justifyContent: "center" },
+  leftSlot: { width: 170, alignItems: ALIGN_LEFT, justifyContent: "center" },
 
   badgeBase: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, borderWidth: 1 },
   // Nudge "מגיע" badge right to align with "לא מגיע"
-  badgeOffsetComing: { marginLeft: 10 },
+  badgeOffsetComing: { marginStart: 10 },
   badgeTextBase: { fontSize: 13, fontWeight: "900" },
   badgeConfirmed: { backgroundColor: "rgba(52, 199, 89, 0.12)", borderColor: "rgba(52, 199, 89, 0.22)" },
   badgeTextConfirmed: { color: colors.success },

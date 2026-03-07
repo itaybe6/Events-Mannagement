@@ -19,6 +19,7 @@ import { eventService } from '@/lib/services/eventService';
 import { useUserStore } from '@/store/userStore';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import { Event } from '@/types';
+import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
 
 type NotificationTemplate = {
   notification_type: string;
@@ -683,7 +684,7 @@ export default function AutomaticNotificationsScreen(props?: { editorPathname?: 
           </View>
 
           {(row.channel || 'SMS') === 'SMS' ? (
-            <View style={{ gap: 8, alignItems: 'flex-end' }}>
+            <View style={{ gap: 8, alignItems: ALIGN_RIGHT }}>
               <TouchableOpacity
                 activeOpacity={0.9}
                 onPress={() => openSendStatus(row)}
@@ -880,7 +881,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   notifHeader: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
@@ -906,7 +907,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  notifHeaderText: { flex: 1, alignItems: 'flex-end' },
+  notifHeaderText: { flex: 1, alignItems: ALIGN_RIGHT },
   notifTitle: { fontSize: 18, fontWeight: '900', color: colors.text, textAlign: 'right' },
   notifSubtitle: {
     marginTop: 4,
@@ -941,7 +942,7 @@ const styles = StyleSheet.create({
   notificationCard: {
     position: 'relative',
     borderWidth: 1,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
     borderRadius: 16,
@@ -963,19 +964,19 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 16,
     borderBottomRightRadius: 16,
   },
-  cardMain: { flex: 1, alignItems: 'flex-end' },
+  cardMain: { flex: 1, alignItems: ALIGN_RIGHT },
   cardTitle: { fontSize: 18, fontWeight: '800', textAlign: 'right' },
   cardMetaRow: {
     marginTop: 8,
-    alignSelf: 'flex-end',
-    flexDirection: 'row-reverse',
+    alignSelf: ALIGN_RIGHT,
+    flexDirection: ROW_DIR,
     alignItems: 'center',
   },
   statusBtn: { paddingVertical: 2 },
   statusText: { fontSize: 14, fontWeight: '800' },
   metaBullet: { marginHorizontal: 10, fontSize: 14, fontWeight: '800' },
   metaText: { fontSize: 14, fontWeight: '700' },
-  cardChevron: { paddingRight: 4, paddingLeft: 8, justifyContent: 'center', alignItems: 'center' },
+  cardChevron: { paddingEnd: 4, paddingStart: 8, justifyContent: 'center', alignItems: 'center' },
 
   sendStatusPill: {
     marginTop: 10,
@@ -995,7 +996,7 @@ const styles = StyleSheet.create({
   modalOverlay: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 18 },
   modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(2,6,23,0.45)' },
   modalCard: { width: '100%', maxWidth: 520, maxHeight: '86%', borderRadius: 16, backgroundColor: '#fff', overflow: 'hidden' },
-  modalHeader: { paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: 'rgba(17,24,39,0.08)' },
+  modalHeader: { paddingHorizontal: 14, paddingVertical: 12, flexDirection: ROW_DIR, alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: 'rgba(17,24,39,0.08)' },
   modalTitle: { fontSize: 14, fontWeight: '900', color: '#111827', textAlign: 'right', flex: 1 },
   modalCloseBtn: { width: 34, height: 34, borderRadius: 10, backgroundColor: 'rgba(17,24,39,0.04)', borderWidth: 1, borderColor: 'rgba(17,24,39,0.10)', alignItems: 'center', justifyContent: 'center' },
   modalBody: { padding: 14, gap: 10 },

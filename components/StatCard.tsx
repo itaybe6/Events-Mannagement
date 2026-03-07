@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { colors } from '@/constants/colors';
 import { Card } from './Card';
+import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
 
 interface StatCardProps {
   title: string;
@@ -38,13 +39,13 @@ const styles = StyleSheet.create({
     margin: 8,
   },
   content: {
-    flexDirection: 'row',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
   },
   textContainer: {
     flex: 1,
-    alignItems: 'flex-end',
+    alignItems: ALIGN_RIGHT,
   },
   title: {
     fontSize: 14,
@@ -63,6 +64,6 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 12,
+    marginStart: 12,
   },
 });

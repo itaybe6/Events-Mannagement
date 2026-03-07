@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { supabase } from '@/lib/supabase';
 import { colors } from '@/constants/colors';
-import { ROW_DIR } from '@/lib/rtl';
+import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
 
 type NotificationTemplate = {
   notification_type: string;
@@ -373,7 +373,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  notifHeaderText: { flex: 1, alignItems: 'flex-end' },
+  notifHeaderText: { flex: 1, alignItems: ALIGN_RIGHT },
   notifTitle: { fontSize: 18, fontWeight: '900', color: colors.text, textAlign: 'right' },
   notifSubtitle: {
     marginTop: 4,
@@ -438,11 +438,11 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 16,
     borderBottomRightRadius: 16,
   },
-  cardMain: { flex: 1, alignItems: 'flex-end' },
+  cardMain: { flex: 1, alignItems: ALIGN_RIGHT },
   cardTitle: { fontSize: 18, fontWeight: '800', textAlign: 'right' },
   cardMetaRow: {
     marginTop: 8,
-    alignSelf: 'flex-end',
+    alignSelf: ALIGN_RIGHT,
     flexDirection: ROW_DIR,
     alignItems: 'center',
   },
@@ -450,6 +450,6 @@ const styles = StyleSheet.create({
   statusText: { fontSize: 14, fontWeight: '800' },
   metaBullet: { marginHorizontal: 10, fontSize: 14, fontWeight: '800' },
   metaText: { fontSize: 14, fontWeight: '700' },
-  cardChevron: { paddingRight: 4, paddingLeft: 8, justifyContent: 'center', alignItems: 'center' },
+  cardChevron: { paddingStart: 4, paddingEnd: 8, justifyContent: 'center', alignItems: 'center' },
 });
 

@@ -21,6 +21,7 @@ import { useUserStore } from '@/store/userStore';
 import { useDemoUsersStore } from '@/store/demoUsersStore';
 import { userService, UserWithMetadata } from '@/lib/services/userService';
 import { useUsersModel } from '@/features/users/useUsersModel';
+import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
 
 type UserFilter = 'all' | 'admin' | 'event_owner' | 'employee';
 
@@ -225,6 +226,10 @@ export default function UsersScreen() {
                     setShowUserModal(true);
                   }}
                 >
+                  <View style={[styles.userCardBadgeWrap, { backgroundColor: tag.bg }]}>
+                    <Text style={[styles.roleTagText, { color: tag.fg }]}>{getUserTypeLabel(u.userType)}</Text>
+                  </View>
+
                   <View style={styles.avatarWrap}>
                     {hasAvatar ? (
                       <Image
@@ -250,9 +255,6 @@ export default function UsersScreen() {
                       <Text style={styles.userName} numberOfLines={1}>
                         {u.name}
                       </Text>
-                      <View style={[styles.roleTag, { backgroundColor: tag.bg }]}>
-                        <Text style={[styles.roleTagText, { color: tag.fg }]}>{getUserTypeLabel(u.userType)}</Text>
-                      </View>
                     </View>
                     <Text style={styles.userSubtitle} numberOfLines={1}>
                       {u.name} • {getUserTypeSubtitle(u.userType)}
@@ -463,7 +465,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(245, 247, 248, 0.96)',
   },
   headerNavRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 12,
@@ -492,13 +494,13 @@ const styles = StyleSheet.create({
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 6 },
     elevation: 2,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
-    paddingRight: 14,
-    paddingLeft: 12,
+    paddingStart: 14,
+    paddingEnd: 12,
   },
   searchIcon: {
-    marginLeft: 8,
+    marginStart: 8,
   },
   searchInput: {
     flex: 1,
@@ -512,7 +514,7 @@ const styles = StyleSheet.create({
   filtersRow: {
     paddingHorizontal: 18,
     gap: 10,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     justifyContent: 'flex-start',
     minWidth: '100%',
   },
@@ -549,7 +551,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
   },
   sectionHeader: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingTop: 10,
@@ -562,7 +564,7 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   sortButton: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 8,
     paddingVertical: 8,
@@ -593,7 +595,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   userCard: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     padding: 14,
     borderRadius: 24,
@@ -605,13 +607,23 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 8 },
     elevation: 2,
+    position: 'relative',
+  },
+  userCardBadgeWrap: {
+    position: 'absolute',
+    left: 14,
+    top: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    zIndex: 2,
   },
   avatarWrap: {
     width: 64,
     height: 64,
     borderRadius: 32,
     overflow: 'hidden',
-    marginLeft: 12,
+    marginStart: 12,
     position: 'relative',
     backgroundColor: colors.gray[100],
   },
@@ -645,27 +657,23 @@ const styles = StyleSheet.create({
   userInfo: {
     flex: 1,
     minWidth: 0,
-    alignItems: 'flex-end',
+    alignItems: 'stretch',
+    alignSelf: 'stretch',
+    justifyContent: 'center',
+    paddingLeft: 84,
   },
   userTitleRow: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    alignItems: 'stretch',
+    justifyContent: 'center',
     alignSelf: 'stretch',
     marginBottom: 4,
   },
   userName: {
-    flex: 1,
+    width: '100%',
     fontSize: 18,
     fontWeight: '900',
     color: colors.text,
     textAlign: 'right',
-    marginLeft: 10,
-  },
-  roleTag: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
   },
   roleTagText: {
     fontSize: 11,
@@ -677,13 +685,14 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.gray[600],
     textAlign: 'right',
+    width: '100%',
   },
   moreButton: {
     width: 36,
     height: 36,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 6,
+    marginEnd: 6,
   },
   emptyCard: {
     marginTop: 18,
@@ -787,7 +796,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(0,0,0,0.06)',
   },
   modalHeader: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     paddingTop: 10,
     paddingBottom: 14,
@@ -854,7 +863,7 @@ const styles = StyleSheet.create({
   },
   modalHeaderText: {
     flex: 1,
-    alignItems: 'flex-end',
+    alignItems: ALIGN_RIGHT,
   },
   modalTitle: {
     fontSize: 22,
@@ -863,13 +872,13 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   modalBadgeRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     marginTop: 6,
     gap: 8,
   },
   modalBadge: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 6,
     paddingHorizontal: 10,
@@ -901,7 +910,7 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
   },
   modalInfoTile: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 12,
     paddingVertical: 12,
@@ -932,7 +941,7 @@ const styles = StyleSheet.create({
   },
   modalInfoTextWrap: {
     flex: 1,
-    alignItems: 'flex-end',
+    alignItems: ALIGN_RIGHT,
   },
   modalInfoLabel: {
     fontSize: 12,
@@ -952,13 +961,13 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   modalActionsBar: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     gap: 12,
     paddingTop: 6,
   },
   modalActionSecondary: {
     flex: 1,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
@@ -976,7 +985,7 @@ const styles = StyleSheet.create({
   },
   modalActionDanger: {
     flex: 1,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
@@ -994,7 +1003,7 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   demoNoteRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 6,
     marginTop: 10,

@@ -30,6 +30,7 @@ import { EventSwitcher } from '@/components/EventSwitcher';
 import { SeatingGridReadonly } from '../seating/web/SeatingGridReadonly';
 import { CELL_SIZE, DEFAULT_GRID_COLS, DEFAULT_GRID_ROWS, tableCellSize, type Orientation, type TableType } from '../seating/web/_types';
 import { BlurView } from 'expo-blur';
+import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
 
 const TABLE_PANEL_DURATION = 500;
 const AnimatedEntypo = Reanimated.createAnimatedComponent(Entypo);
@@ -1796,7 +1797,7 @@ export default function BrideGroomSeating() {
                         name={seatedEditMode ? 'close' : 'create-outline'}
                         size={18}
                         color={colors.text}
-                        style={{ marginLeft: 6 }}
+                        style={undefined}
                       />
                       <Text style={styles.seatedEditButtonText}>{seatedEditMode ? 'ביטול' : 'עריכה'}</Text>
                     </TouchableOpacity>
@@ -2204,7 +2205,7 @@ export default function BrideGroomSeating() {
                       <ActivityIndicator color={colors.white} size="small" />
                     ) : (
                       <>
-                        <Ionicons name="swap-horizontal" size={16} color={colors.white} style={{ marginLeft: 6 }} />
+                        <Ionicons name="swap-horizontal" size={16} color={colors.white} style={undefined} />
                         <Text style={styles.moveBtnConfirmText}>
                           העבר {selectedSeatedGuestsToRemove.size > 0 ? `(${selectedSeatedGuestsToRemove.size})` : ''}
                         </Text>
@@ -2553,7 +2554,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 12,
     right: 12,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 10,
     zIndex: 30,
@@ -2831,7 +2832,7 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(15,23,42,0.06)',
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 10,
   },
@@ -2859,7 +2860,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.10)',
     backgroundColor: 'rgba(248,250,252,0.96)',
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 8,
   },
@@ -2873,7 +2874,7 @@ const styles = StyleSheet.create({
     writingDirection: 'rtl',
   },
   guestPanelFilterRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     flexWrap: 'wrap',
     gap: 8,
     paddingHorizontal: 12,
@@ -2907,7 +2908,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(15,23,42,0.08)',
     backgroundColor: 'rgba(255,255,255,0.96)',
   },
-  guestRowTop: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  guestRowTop: { flexDirection: ROW_DIR, alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   guestName: {
     flex: 1,
     minWidth: 0,
@@ -2925,7 +2926,7 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   guestPplPill: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 6,
     paddingHorizontal: 10,
@@ -2936,7 +2937,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(15,23,42,0.08)',
   },
   guestPplText: { fontSize: 11, fontWeight: '900', color: colors.gray[800], textAlign: 'right' },
-  guestRowMeta: { marginTop: 8, flexDirection: 'row-reverse', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
+  guestRowMeta: { marginTop: 8, flexDirection: ROW_DIR, alignItems: 'center', flexWrap: 'wrap', gap: 6 },
   guestMetaText: { fontSize: 11, fontWeight: '800', color: colors.gray[700], textAlign: 'right', writingDirection: 'rtl' },
   guestMetaDot: { fontSize: 11, fontWeight: '900', color: colors.gray[500] },
   guestEmpty: { paddingVertical: 28, alignItems: 'center', justifyContent: 'center', gap: 6 },
@@ -3005,7 +3006,7 @@ const styles = StyleSheet.create({
   },
   filterContainer: {
     marginBottom: 16,
-    alignItems: 'flex-end',
+    alignItems: ALIGN_RIGHT,
     width: '100%',
   },
   searchInput: {
@@ -3023,16 +3024,16 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   categoryContainer: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     justifyContent: 'flex-start',
-    paddingRight: 4,
+    paddingEnd: 4,
+    gap: 8,
   },
   categoryButton: {
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
     backgroundColor: colors.gray[100],
-    marginLeft: 8,
   },
   categoryButtonActive: {
     backgroundColor: colors.primary,
@@ -3085,7 +3086,7 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 2,
     width: '95%',
-    alignSelf: 'flex-end',
+    alignSelf: ALIGN_RIGHT,
   },
   guestMainInfo: {
     flexDirection: 'row',
@@ -3166,7 +3167,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   selectableGuestTopRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: 8,
@@ -3189,13 +3190,13 @@ const styles = StyleSheet.create({
     marginLeft: 2,
   },
   selectableGuestMetaRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'flex-start',
     gap: 8,
   },
   guestCardTopRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 6,
   },
@@ -3238,14 +3239,14 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   seatedGuestTopRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'flex-start',
     justifyContent: 'flex-start',
     gap: 8,
   },
   seatedGuestMetaRow: {
     marginTop: 6,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'flex-start',
     gap: 8,
@@ -3258,13 +3259,13 @@ const styles = StyleSheet.create({
     marginLeft: 2,
   },
   seatedHeaderRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     justifyContent: 'flex-start',
     alignItems: 'center',
     marginTop: 6,
   },
   seatedEditButton: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -3272,6 +3273,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(15,23,42,0.05)',
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.08)',
+    gap: 6,
   },
   seatedEditButtonText: {
     fontSize: 13,
@@ -3306,7 +3308,7 @@ const styles = StyleSheet.create({
     marginTop: 16,
     marginHorizontal: 4,
     marginBottom: 12,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     gap: 10,
   },
   bulkMoveButton: {
@@ -3345,7 +3347,7 @@ const styles = StyleSheet.create({
     elevation: 12,
   },
   moveCardHeader: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 12,
     marginBottom: 0,
@@ -3403,7 +3405,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   moveTableOption: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 12,
     paddingVertical: 11,
@@ -3448,7 +3450,7 @@ const styles = StyleSheet.create({
   },
   moveOccRow: {
     marginTop: 4,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 5,
   },
@@ -3477,7 +3479,7 @@ const styles = StyleSheet.create({
   },
   moveActionsRow: {
     marginTop: 16,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     gap: 10,
   },
   moveBtnCancel: {
@@ -3500,7 +3502,7 @@ const styles = StyleSheet.create({
     flex: 2,
     height: 46,
     borderRadius: 14,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.primary,
@@ -3544,7 +3546,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.gray[400],
   },
   toggleContainer: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     backgroundColor: colors.gray[200],
     borderRadius: 12,
     padding: 4,
@@ -3616,7 +3618,7 @@ const styles = StyleSheet.create({
   },
   tableButtonsContainer: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    justifyContent: ALIGN_RIGHT,
     gap: 10,
     marginTop: 10,
   },
@@ -3692,7 +3694,7 @@ const styles = StyleSheet.create({
   },
   confirmButtonsRow: {
     marginTop: 14,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     gap: 10,
   },
   confirmBtn: {
@@ -3752,7 +3754,7 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   successHeaderRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'flex-start',
     gap: 10,

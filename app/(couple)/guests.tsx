@@ -13,6 +13,7 @@ import { eventService } from '@/lib/services/eventService';
 import { supabase } from '@/lib/supabase';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
+import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
 
 // On web, icons are ultimately rendered as text glyphs. Wrapping them in <Text>
 // prevents "Text strings must be rendered within a <Text> component" errors.
@@ -1045,7 +1046,7 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
   },
   headerRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'flex-end',
     justifyContent: 'space-between',
     marginBottom: 16,
@@ -1057,7 +1058,7 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   addTextButton: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 6,
     paddingHorizontal: 10,
@@ -1071,16 +1072,17 @@ const styles = StyleSheet.create({
   },
   searchContainer: {
     position: 'relative',
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     backgroundColor: colors.gray[200],
     borderRadius: 20,
     paddingHorizontal: 14,
     height: 48,
     flex: 1,
+    gap: 8,
   },
   searchRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 10,
   },
@@ -1090,10 +1092,10 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.text,
     textAlign: 'right',
-    paddingRight: 8,
+    paddingEnd: 8,
   },
   searchIcon: {
-    marginLeft: 8,
+    // Spacing handled by `gap` on the row container.
   },
   filterIconButton: {
     width: 44,
@@ -1174,7 +1176,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
   },
   filterHeader: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 18,
@@ -1245,7 +1247,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingVertical: 14,
     paddingHorizontal: 14,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
     shadowColor: colors.black,
@@ -1260,7 +1262,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingVertical: 14,
     paddingHorizontal: 14,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
     shadowColor: colors.black,
@@ -1280,7 +1282,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(0,0,0,0.02)',
   },
   filterAppleButtonLeft: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 10,
     flex: 1,
@@ -1326,7 +1328,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 12,
     paddingBottom: Platform.OS === 'ios' ? 16 : 14,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 14,
@@ -1338,7 +1340,7 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
   },
   filterClearInline: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 8,
     paddingHorizontal: 10,
@@ -1473,7 +1475,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   editModalHeader: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
@@ -1484,11 +1486,11 @@ const styles = StyleSheet.create({
   },
   editModalHeaderCenter: {
     flex: 1,
-    alignItems: 'flex-end',
+    alignItems: ALIGN_RIGHT,
     marginLeft: 12,
   },
   editModalTitleRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 10,
   },
@@ -1521,7 +1523,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   editModalActions: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     paddingHorizontal: 20,
     paddingTop: 16,
     paddingBottom: Platform.OS === 'ios' ? 28 : 20,
@@ -1532,7 +1534,7 @@ const styles = StyleSheet.create({
   },
   editActionButton: {
     flex: 1,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 14,
@@ -1592,7 +1594,7 @@ const styles = StyleSheet.create({
   },
   contactInfo: {
     flex: 1,
-    alignItems: 'flex-end',
+    alignItems: ALIGN_RIGHT,
   },
   contactName: {
     fontSize: 16,
@@ -1634,7 +1636,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderWidth: 1,
     borderColor: colors.primary,
-    alignSelf: 'flex-end',
+    alignSelf: ALIGN_RIGHT,
   },
   categorySelectorText: {
     fontSize: 16,
@@ -1828,7 +1830,7 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   guestCardApple: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     backgroundColor: colors.gray[100],
     borderRadius: 18,
@@ -1867,13 +1869,13 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   categoryHeader: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 6,
   },
   categoryTitleRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 10,
   },
@@ -1901,7 +1903,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   guestRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 12,
@@ -1912,7 +1914,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0,
   },
   guestMain: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     flex: 1,
     minWidth: 0,
@@ -1946,12 +1948,12 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   guestMeta: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 8,
   },
   peopleCountBadge: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     backgroundColor: colors.gray[200],
     borderRadius: 12,

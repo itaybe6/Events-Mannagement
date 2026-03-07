@@ -22,6 +22,7 @@ import { guestService } from '@/lib/services/guestService';
 import { eventService } from '@/lib/services/eventService';
 import { useLayoutStore } from '@/store/layoutStore';
 import { colors } from '@/constants/colors';
+import { ROW_DIR } from '@/lib/rtl';
 
 type Side = 'groom' | 'bride';
 type SideFilter = 'all' | Side | 'other';
@@ -354,7 +355,7 @@ export default function SelectCategoryScreen() {
                   name={chip.icon}
                   size={isOther ? 22 : 18}
                   color={chipIconColor}
-                  style={isOther ? undefined : { marginLeft: 8 }}
+                  style={undefined}
                 />
                 {isOther ? null : (
                   <Text style={[styles.chipText, isDark && styles.chipTextDark, active && styles.chipTextActive]}>
@@ -429,7 +430,7 @@ export default function SelectCategoryScreen() {
                           name={opt.icon}
                           size={18}
                           color={active ? '#fff' : accent}
-                          style={{ marginLeft: 8 }}
+                          style={undefined}
                         />
                         <Text style={[styles.sidePillText, { color: accent }, active && { color: '#fff' }]}>
                           {opt.label}
@@ -628,7 +629,7 @@ const styles = StyleSheet.create({
     height: 52,
     borderRadius: 16,
     padding: 6,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     position: 'relative',
     backgroundColor: 'rgba(255,255,255,0.60)',
     borderWidth: 1,
@@ -659,7 +660,7 @@ const styles = StyleSheet.create({
     height: 70,
   },
   chipsRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     paddingHorizontal: 20,
     paddingBottom: 16,
     marginBottom: 8,
@@ -671,8 +672,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     borderRadius: 999,
     borderWidth: 1,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
+    gap: 8,
     backgroundColor: '#FFFFFF',
     borderColor: BORDER_LIGHT,
   },
@@ -880,13 +882,13 @@ const styles = StyleSheet.create({
   inputDark: {
     color: TEXT_DARK,
   },
-  sideRow: { flexDirection: 'row-reverse', gap: 12 },
+  sideRow: { flexDirection: ROW_DIR, gap: 12 },
   sidePill: {
     flex: 1,
     height: 48,
     borderRadius: 14,
     borderWidth: 1.5,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,

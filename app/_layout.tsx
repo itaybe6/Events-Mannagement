@@ -34,7 +34,7 @@ const RTL_MARK = '\u200F';
 
 // React 19 + RNW/RN can ignore `defaultProps`-based global styling in some cases.
 // To ensure Rubik is applied consistently, we patch `React.createElement` and inject
-// a default `fontFamily` for Text/TextInput unless a component already set one.
+// default styles for Text/TextInput unless a component already set them.
 (() => {
   const reactAny = React as unknown as {
     createElement: typeof React.createElement;
@@ -74,6 +74,13 @@ const RTL_MARK = '\u200F';
     return false;
   };
 
+  const hasStyleProp = (style: unknown, key: string): boolean => {
+    if (!style) return false;
+    if (Array.isArray(style)) return style.some((s) => hasStyleProp(s, key));
+    if (typeof style === 'object') return key in (style as any) && (style as any)[key] != null;
+    return false;
+  };
+
   const pickRubikFamily = (weight?: number | null) => {
     const w = typeof weight === 'number' ? weight : null;
     const pick =
@@ -93,8 +100,15 @@ const RTL_MARK = '\u200F';
   reactAny.createElement = ((type: any, props: any, ...children: any[]) => {
     if (type === Text || type === TextInput) {
       const p = props ?? {};
-      if (!hasFontFamily(p.style)) {
-        const injected = { fontFamily: pickRubikFamily(getFontWeight(p.style)) as any };
+      const injectFont = !hasFontFamily(p.style);
+      const injectTextAlign = !hasStyleProp(p.style, 'textAlign');
+      const injectWritingDir = !hasStyleProp(p.style, 'writingDirection');
+
+      if (injectFont || injectTextAlign || injectWritingDir) {
+        const injected: any = {};
+        if (injectFont) injected.fontFamily = pickRubikFamily(getFontWeight(p.style)) as any;
+        if (injectTextAlign) injected.textAlign = 'right';
+        if (injectWritingDir) injected.writingDirection = 'rtl';
         const nextStyle = p.style ? [injected, p.style] : injected;
         return originalCreateElement(type, { ...p, style: nextStyle }, ...children);
       }

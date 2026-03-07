@@ -28,6 +28,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { avatarService } from '@/lib/services/avatarService';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLayoutStore } from '@/store/layoutStore';
+import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
 
 const ui = {
   // Use the app's brand dark-blue
@@ -502,7 +503,7 @@ export default function AddUserScreenV2({
                     },
                   ]}
                 >
-                  <Ionicons name="information-circle" size={18} color={ui.primary} style={{ marginLeft: 8 }} />
+                  <Ionicons name="information-circle" size={18} color={ui.primary} style={{ marginStart: 8 }} />
                   <Text style={[styles.demoNoteText, { color: theme.text }]}>
                     מצב דמו: הנתונים נשמרים מקומית ולא בדאטאבייס.
                   </Text>
@@ -536,7 +537,7 @@ export default function AddUserScreenV2({
                     activeOpacity={0.85}
                     style={styles.removeAvatarBtn}
                   >
-                    <Ionicons name="trash-outline" size={16} color="#F44336" style={{ marginLeft: 6 }} />
+                    <Ionicons name="trash-outline" size={16} color="#F44336" style={{ marginStart: 6 }} />
                     <Text style={styles.removeAvatarText}>הסר</Text>
                   </TouchableOpacity>
                 )}
@@ -728,7 +729,7 @@ export default function AddUserScreenV2({
         >
           {isDemoMode ? (
             <View style={styles.webDemoNote}>
-              <Ionicons name="information-circle" size={18} color={ui.primary} style={{ marginLeft: 8 }} />
+              <Ionicons name="information-circle" size={18} color={ui.primary} style={{ marginStart: 8 }} />
               <Text style={styles.webDemoNoteText}>מצב דמו: הנתונים נשמרים מקומית ולא בדאטאבייס.</Text>
             </View>
           ) : null}
@@ -1216,7 +1217,7 @@ const styles = StyleSheet.create({
   headerRow: {
     alignItems: 'center',
     justifyContent: 'center',
-    flexDirection: isRTL ? 'row-reverse' : 'row',
+    flexDirection: ROW_DIR,
     paddingHorizontal: 18,
     paddingBottom: 14,
     paddingTop: 18,
@@ -1297,8 +1298,9 @@ const styles = StyleSheet.create({
 
   fields: {
     marginTop: 6,
+    alignItems: ALIGN_RIGHT,
   },
-  fieldGroup: { marginBottom: 14 },
+  fieldGroup: { marginBottom: 14, width: '100%', alignItems: ALIGN_RIGHT },
   label: {
     fontSize: 13,
     fontWeight: '900',
@@ -1312,6 +1314,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     fontSize: 15,
     fontWeight: '800',
+    width: '100%',
   },
   inputRtl: {
     textAlign: rtlTextAlign,
@@ -1328,10 +1331,10 @@ const styles = StyleSheet.create({
   },
 
   inputRow: { position: 'relative', justifyContent: 'center' },
-  inputInRow: { paddingLeft: 46 },
+  inputInRow: { paddingRight: 46 },
   eyeBtn: {
     position: 'absolute',
-    left: 10,
+    right: 10,
     height: 48,
     width: 40,
     alignItems: 'center',

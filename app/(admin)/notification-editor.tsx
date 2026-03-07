@@ -23,6 +23,8 @@ import DateTimePickerModal from 'react-native-modal-datetime-picker';
 
 import { supabase } from '@/lib/supabase';
 import { useLayoutStore } from '@/store/layoutStore';
+import { ROW_DIR } from '@/lib/rtl';
+import { I18nManager } from 'react-native';
 
 type NotificationSettingRow = {
   id?: string;
@@ -602,11 +604,12 @@ export default function AdminNotificationEditorScreen() {
             style={({ pressed }: any) => [
               styles.headerBtn,
               styles.backBtnAbs,
+              I18nManager.isRTL ? { left: undefined, right: 18 } : { right: undefined, left: 18 },
               { backgroundColor: 'rgba(255,255,255,0.78)', borderColor: 'rgba(17,24,39,0.10)' },
               pressed ? { opacity: 0.92 } : null,
             ]}
           >
-            <Ionicons name="chevron-back" size={20} color={ui.text} />
+            <Ionicons name={I18nManager.isRTL ? 'chevron-forward' : 'chevron-back'} size={20} color={ui.text} />
           </Pressable>
 
           <View style={styles.headerTitles}>
@@ -1003,11 +1006,11 @@ const styles = StyleSheet.create({
   section: { paddingHorizontal: 2, gap: 12 },
   sectionTitle: { fontSize: 13, fontWeight: '900', textAlign: 'right', paddingHorizontal: 2 },
 
-  scheduleRow: { flexDirection: 'row-reverse', alignItems: 'stretch', gap: 12 },
+  scheduleRow: { flexDirection: ROW_DIR, alignItems: 'stretch', gap: 12 },
   dateCol: { flex: 2, gap: 8 },
   scheduleCard: { position: 'relative', flex: 2, minHeight: 92, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, gap: 6 },
   scheduleCardSmall: { position: 'relative', flex: 1, minHeight: 92, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, gap: 6 },
-  scheduleCardTop: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
+  scheduleCardTop: { flexDirection: ROW_DIR, alignItems: 'center', justifyContent: 'space-between' },
   scheduleValueText: { fontSize: 18, fontWeight: '900', textAlign: 'right', writingDirection: 'ltr' },
   scheduleSubText: { fontSize: 12, fontWeight: '800', textAlign: 'right', opacity: 0.85 },
   offsetBelow: { fontSize: 12, fontWeight: '800', textAlign: 'right', opacity: 0.85 },
@@ -1019,7 +1022,7 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : null),
   },
 
-  segmentWrap: { flexDirection: 'row-reverse', padding: 4, borderRadius: 16, borderWidth: 1 },
+  segmentWrap: { flexDirection: ROW_DIR, padding: 4, borderRadius: 16, borderWidth: 1 },
   segmentBtn: { flex: 1, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
   segmentBtnActive: {
     backgroundColor: '#FFFFFF',
@@ -1031,19 +1034,19 @@ const styles = StyleSheet.create({
   },
   segmentText: { fontSize: 13, fontWeight: '800' },
 
-  cardsRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12 },
+  cardsRow: { flexDirection: ROW_DIR, alignItems: 'center', gap: 12 },
   computedCard: { flex: 1, height: 76, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center', gap: 4 },
   computedLabel: { fontSize: 11, fontWeight: '800' },
   computedValue: { fontSize: 18, fontWeight: '900', textAlign: 'center', writingDirection: 'ltr' },
   sideCardsCol: { flex: 1, gap: 12 },
   daysCard: { flex: 1, height: 76, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, justifyContent: 'space-between' },
   timeCard: { flex: 1, height: 76, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, justifyContent: 'space-between' },
-  daysCardTop: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
+  daysCardTop: { flexDirection: ROW_DIR, alignItems: 'center', justifyContent: 'space-between' },
   daysMeta: { fontSize: 11, fontWeight: '800' },
   daysValue: { fontSize: 22, fontWeight: '900', paddingVertical: 0, paddingHorizontal: 0 },
 
-  messageHeaderRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  messageTools: { flexDirection: 'row-reverse', gap: 8, flexWrap: 'wrap' },
+  messageHeaderRow: { flexDirection: ROW_DIR, alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  messageTools: { flexDirection: ROW_DIR, gap: 8, flexWrap: 'wrap' },
   toolBtn: { width: 36, height: 36, borderRadius: 14, borderWidth: 1, justifyContent: 'center', alignItems: 'center' },
   textareaWrap: { position: 'relative' },
   textarea: { borderRadius: 20, paddingHorizontal: 18, paddingVertical: 16, fontSize: 16, fontWeight: '700', minHeight: 280, lineHeight: 24, writingDirection: 'rtl', borderWidth: 1 },
@@ -1052,35 +1055,35 @@ const styles = StyleSheet.create({
   helperText: { fontSize: 12, fontWeight: '600', textAlign: 'right', opacity: 0.75, paddingHorizontal: 2, lineHeight: 18 },
 
   mono: { fontWeight: '900' },
-  recipientsHeaderRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  recipientsBadge: { flexDirection: 'row-reverse', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(17,24,39,0.04)' },
+  recipientsHeaderRow: { flexDirection: ROW_DIR, alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  recipientsBadge: { flexDirection: ROW_DIR, gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(17,24,39,0.04)' },
   recipientsBadgeText: { fontSize: 12, fontWeight: '900', color: 'rgba(17,24,39,0.72)', textAlign: 'right' },
 
-  filtersRow: { flexDirection: 'row-reverse', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
+  filtersRow: { flexDirection: ROW_DIR, flexWrap: 'wrap', alignItems: 'center', gap: 8 },
   filterPill: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.92)', borderWidth: 1, borderColor: 'rgba(17,24,39,0.10)' },
   filterPillActive: { backgroundColor: 'rgba(29,78,216,0.10)', borderColor: 'rgba(29,78,216,0.22)' },
   filterText: { fontSize: 12, fontWeight: '900', color: 'rgba(17,24,39,0.72)', textAlign: 'right' },
   filterTextActive: { color: 'rgba(29,78,216,1)' },
 
-  smallBtn: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.92)', borderWidth: 1, borderColor: 'rgba(29,78,216,0.18)' },
+  smallBtn: { flexDirection: ROW_DIR, alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.92)', borderWidth: 1, borderColor: 'rgba(29,78,216,0.18)' },
   smallBtnText: { fontSize: 12, fontWeight: '900', textAlign: 'right' },
 
-  recipientsActionsRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' },
-  keepPendingBtn: { flex: 1, minWidth: 180, height: 44, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(17,24,39,0.10)', backgroundColor: 'rgba(17,24,39,0.04)', flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 12 },
+  recipientsActionsRow: { flexDirection: ROW_DIR, alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' },
+  keepPendingBtn: { flex: 1, minWidth: 180, height: 44, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(17,24,39,0.10)', backgroundColor: 'rgba(17,24,39,0.04)', flexDirection: ROW_DIR, alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 12 },
   keepPendingText: { fontSize: 12, fontWeight: '900', textAlign: 'right' },
-  sendNowBtn: { height: 44, borderRadius: 14, paddingHorizontal: 14, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  sendNowBtn: { height: 44, borderRadius: 14, paddingHorizontal: 14, flexDirection: ROW_DIR, alignItems: 'center', justifyContent: 'center', gap: 8 },
   sendNowText: { fontSize: 12, fontWeight: '900', color: '#fff', textAlign: 'right' },
 
-  recipientRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingHorizontal: 12, paddingVertical: 12, borderRadius: 16, borderWidth: 1 },
+  recipientRow: { flexDirection: ROW_DIR, alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingHorizontal: 12, paddingVertical: 12, borderRadius: 16, borderWidth: 1 },
   recipientName: { fontSize: 13, fontWeight: '900', textAlign: 'right' },
   recipientMeta: { marginTop: 3, fontSize: 12, fontWeight: '700', textAlign: 'right' },
 
   bottomBar: { position: 'relative', borderTopWidth: 1 },
   bottomBarInner: { paddingHorizontal: 16, paddingTop: 12 },
-  bottomButtonsRow: { flexDirection: 'row-reverse', gap: 12, maxWidth: 720, width: '100%', alignSelf: 'center' },
+  bottomButtonsRow: { flexDirection: ROW_DIR, gap: 12, maxWidth: 720, width: '100%', alignSelf: 'center' },
   bottomBtnSecondary: { flex: 1, height: 58, borderRadius: 16, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
   bottomBtnSecondaryText: { fontSize: 16, fontWeight: '900' },
-  bottomBtnPrimary: { flex: 2, height: 58, borderRadius: 16, justifyContent: 'center', alignItems: 'center', flexDirection: 'row-reverse', gap: 10 },
+  bottomBtnPrimary: { flex: 2, height: 58, borderRadius: 16, justifyContent: 'center', alignItems: 'center', flexDirection: ROW_DIR, gap: 10 },
   bottomBtnPrimaryText: { fontSize: 16, fontWeight: '900', color: '#fff' },
 });
 

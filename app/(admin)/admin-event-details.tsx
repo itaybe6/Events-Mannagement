@@ -14,6 +14,7 @@ import { Image } from 'expo-image';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import BackSwipe from '@/components/BackSwipe';
 import { useAdminEventDetailsModel } from '@/features/events/useAdminEventDetailsModel';
+import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
 
 const HERO_IMAGES = {
   baby: require('../../assets/images/baby.jpg'),
@@ -1230,7 +1231,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.4,
   },
   heroMetaRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 8,
     marginTop: 10,
@@ -1265,7 +1266,7 @@ const styles = StyleSheet.create({
   },
   heroTopRow: {
     width: '100%',
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     justifyContent: 'center',
     marginBottom: 12,
   },
@@ -1383,7 +1384,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 16,
     paddingBottom: 12,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
   },
@@ -1400,7 +1401,7 @@ const styles = StyleSheet.create({
   editDivider: { height: 1, backgroundColor: 'rgba(17,24,39,0.08)', marginHorizontal: 16 },
   editBody: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 14, gap: 12 },
   editBlock: { gap: 10 },
-  editBlockHeaderRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  editBlockHeaderRow: { flexDirection: ROW_DIR, alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   editBlockLabel: { fontSize: 13, fontWeight: '900', color: '#111827', textAlign: 'right' },
   editInput: {
     height: 48,
@@ -1414,7 +1415,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   smallBtn: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 8,
     paddingHorizontal: 12,
@@ -1443,7 +1444,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(17,24,39,0.10)',
     backgroundColor: 'rgba(17,24,39,0.04)',
     paddingHorizontal: 14,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
   },
@@ -1452,7 +1453,7 @@ const styles = StyleSheet.create({
     padding: 14,
     borderTopWidth: 1,
     borderTopColor: 'rgba(17,24,39,0.08)',
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     gap: 10,
     backgroundColor: 'rgba(255,255,255,0.98)',
   },
@@ -1479,7 +1480,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 59, 48, 0.22)',
     justifyContent: 'center',
     alignItems: 'center',
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     gap: 8,
   },
   footerBtnDangerText: { fontSize: 13, fontWeight: '900', color: colors.error },
@@ -1490,7 +1491,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#1d4ed8',
     justifyContent: 'center',
     alignItems: 'center',
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     gap: 8,
     shadowColor: '#1d4ed8',
     shadowOpacity: 0.18,
@@ -1527,7 +1528,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 16,
     paddingBottom: 12,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 12,
   },
@@ -1541,7 +1542,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  deleteHeaderText: { flex: 1, alignItems: 'flex-end' },
+  deleteHeaderText: { flex: 1, alignItems: ALIGN_RIGHT },
   deleteTitle: { fontSize: 18, fontWeight: '900', color: '#111827', textAlign: 'right' },
   deleteSubtitle: {
     marginTop: 4,
@@ -1560,7 +1561,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   deleteList: { gap: 10, paddingTop: 4 },
-  deleteListRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
+  deleteListRow: { flexDirection: ROW_DIR, alignItems: 'center', gap: 10 },
   deleteBullet: {
     width: 8,
     height: 8,
@@ -1569,7 +1570,7 @@ const styles = StyleSheet.create({
   },
   deleteListText: { flex: 1, fontSize: 13, fontWeight: '900', color: '#111827', textAlign: 'right' },
   deleteHintBox: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 8,
     paddingHorizontal: 12,
@@ -1591,7 +1592,7 @@ const styles = StyleSheet.create({
     padding: 14,
     borderTopWidth: 1,
     borderTopColor: 'rgba(17,24,39,0.08)',
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     gap: 10,
     backgroundColor: 'rgba(255,255,255,0.98)',
   },
@@ -1611,7 +1612,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.error,
     justifyContent: 'center',
     alignItems: 'center',
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     gap: 8,
     shadowColor: colors.error,
     shadowOpacity: 0.20,
@@ -1648,7 +1649,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 16,
     paddingBottom: 12,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 12,
   },
@@ -1662,7 +1663,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  noTablesHeaderText: { flex: 1, alignItems: 'flex-end' },
+  noTablesHeaderText: { flex: 1, alignItems: ALIGN_RIGHT },
   noTablesTitle: {
     fontSize: 18,
     fontWeight: '900',
@@ -1682,7 +1683,7 @@ const styles = StyleSheet.create({
   noTablesDivider: { height: 1, backgroundColor: 'rgba(17,24,39,0.08)', marginHorizontal: 16 },
   noTablesBody: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10, gap: 12 },
   noTablesHintBox: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 8,
     paddingHorizontal: 12,
@@ -1757,21 +1758,21 @@ const styles = StyleSheet.create({
     shadowRadius: 20,
     shadowOffset: { width: 0, height: 10 },
     elevation: 3,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
   },
   actionRowContent: {
     flex: 1,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'flex-start',
     gap: 14,
   },
   actionRowTextWrap: {
     flex: 1,
-    alignItems: 'flex-end',
+    alignItems: ALIGN_RIGHT,
     justifyContent: 'center',
   },
   actionRowTitle: {
@@ -1803,7 +1804,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   panelHeaderRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 14,
@@ -1824,7 +1825,7 @@ const styles = StyleSheet.create({
   },
 
   ringsRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'flex-end',
     justifyContent: 'space-around',
     gap: 8,
@@ -1839,7 +1840,7 @@ const styles = StyleSheet.create({
   ringLabel: { fontSize: 13, fontWeight: '600' },
 
   grid2: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     gap: 12,
   },
   miniCard: {
@@ -1852,7 +1853,7 @@ const styles = StyleSheet.create({
     opacity: 0.9,
   },
   miniContent: {
-    alignItems: 'flex-end',
+    alignItems: ALIGN_RIGHT,
     gap: 6,
   },
   miniLabel: {
@@ -1896,7 +1897,7 @@ const styles = StyleSheet.create({
   },
 
   tilesRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     gap: 12,
     alignItems: 'stretch',
     marginTop: 14,
@@ -1919,7 +1920,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   tileDarkTopRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
   },
@@ -2006,12 +2007,12 @@ const styles = StyleSheet.create({
 
   rsvpCardInner: { flex: 1, justifyContent: "space-between" },
   rsvpHeaderRow: {
-    flexDirection: "row-reverse",
+    flexDirection: ROW_DIR,
     alignItems: "flex-start",
     justifyContent: "space-between",
   },
   rsvpHeaderRight: {
-    alignItems: "flex-end",
+    alignItems: ALIGN_RIGHT,
     gap: 4,
   },
   rsvpHeaderLeft: {
@@ -2019,7 +2020,7 @@ const styles = StyleSheet.create({
     justifyContent: "flex-start",
   },
   rsvpHeaderValueRow: {
-    flexDirection: "row-reverse",
+    flexDirection: ROW_DIR,
     alignItems: "baseline",
     gap: 10,
   },
@@ -2055,7 +2056,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   rsvpGrid: {
-    flexDirection: "row-reverse",
+    flexDirection: ROW_DIR,
     alignItems: "stretch",
     gap: 10,
   },
@@ -2122,7 +2123,7 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255, 59, 48, 0.18)",
   },
   tileLightTopRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 8,
@@ -2167,7 +2168,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.22)',
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 10,
@@ -2206,7 +2207,7 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   secondaryAction: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 8,
     paddingVertical: 8,

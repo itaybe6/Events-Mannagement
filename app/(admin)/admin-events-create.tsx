@@ -8,7 +8,7 @@ import { eventService } from '@/lib/services/eventService';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import BackSwipe from '@/components/BackSwipe';
-import { ROW_DIR } from '@/lib/rtl';
+import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
 
 const EVENT_TYPES = [
   { label: 'חתונה', value: 'חתונה' },
@@ -410,10 +410,11 @@ const styles = StyleSheet.create({
   heroContent: {
     flex: 1,
     justifyContent: 'flex-end',
+    alignItems: ALIGN_RIGHT,
     padding: 20,
   },
   heroBadge: {
-    alignSelf: 'flex-end',
+    alignSelf: ALIGN_RIGHT,
     backgroundColor: 'rgba(6, 23, 62, 0.08)',
     borderRadius: 14,
     paddingHorizontal: 10,
@@ -442,7 +443,7 @@ const styles = StyleSheet.create({
   },
   sectionHeaderRow: {
     flexDirection: ROW_DIR,
-    alignItems: 'flex-end',
+    alignItems: ALIGN_RIGHT,
     justifyContent: 'space-between',
     marginBottom: 12,
   },
@@ -450,10 +451,12 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: colors.text,
+    textAlign: 'right',
   },
   sectionHint: {
     fontSize: 12,
     color: colors.gray[500],
+    textAlign: 'right',
   },
   selectorCard: {
     backgroundColor: colors.white,
@@ -477,10 +480,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(6, 23, 62, 0.08)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 12,
+    marginStart: 12,
   },
   selectorTextWrap: {
     flex: 1,
+    alignItems: ALIGN_RIGHT,
   },
   selectorTitle: {
     fontSize: 16,
@@ -507,6 +511,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderWidth: 1,
     borderColor: colors.gray[200],
+    alignItems: ALIGN_RIGHT,
   },
   eventCardActive: {
     borderColor: colors.primary,
@@ -524,6 +529,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 10,
+    alignSelf: ALIGN_RIGHT,
   },
   eventIconWrapActive: {
     backgroundColor: colors.primary,
@@ -570,6 +576,7 @@ const styles = StyleSheet.create({
   },
   infoTextWrap: {
     flex: 1,
+    alignItems: ALIGN_RIGHT,
   },
   infoLabel: {
     fontSize: 12,
@@ -637,7 +644,7 @@ const styles = StyleSheet.create({
     padding: 16,
     minWidth: 220,
     maxWidth: 320,
-    alignItems: 'flex-end',
+    alignItems: ALIGN_RIGHT,
     shadowColor: colors.black,
     shadowOpacity: 0.15,
     shadowRadius: 12,
@@ -649,7 +656,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.text,
     marginBottom: 12,
-    alignSelf: 'flex-end',
+    alignSelf: ALIGN_RIGHT,
   },
   searchRow: {
     flexDirection: ROW_DIR,
@@ -673,7 +680,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     borderBottomWidth: 1,
     borderBottomColor: colors.gray[200],
-    alignItems: 'flex-end',
+    alignItems: ALIGN_RIGHT,
   },
   modalItemRow: {
     flexDirection: ROW_DIR,
