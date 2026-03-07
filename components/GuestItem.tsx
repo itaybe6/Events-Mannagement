@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Guest } from '@/types';
 import { colors } from '@/constants/colors';
 import { Ionicons } from '@expo/vector-icons';
+import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
 
 interface GuestItemProps {
   guest: Guest;
@@ -111,7 +112,7 @@ export const GuestItem: React.FC<GuestItemProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    flexDirection: 'row',
+    flexDirection: ROW_DIR,
     justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: colors.white,
@@ -126,38 +127,42 @@ const styles = StyleSheet.create({
   },
   infoContainer: {
     flex: 1,
-    alignItems: 'flex-end',
+    alignItems: ALIGN_RIGHT,
   },
   name: {
+    width: '100%',
     fontSize: 16,
     fontWeight: '600',
     color: colors.text,
     textAlign: 'right',
   },
   phone: {
+    width: '100%',
     fontSize: 14,
     color: colors.textLight,
     marginTop: 2,
     textAlign: 'right',
   },
   statusContainer: {
-    flexDirection: 'row',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
+    gap: 4,
     marginTop: 4,
   },
   status: {
     fontSize: 14,
     fontWeight: '500',
-    marginRight: 4,
     textAlign: 'right',
   },
   table: {
+    width: '100%',
     fontSize: 12,
     color: colors.gray[600],
     marginTop: 4,
     textAlign: 'right',
   },
   numberOfPeople: {
+    width: '100%',
     fontSize: 12,
     color: colors.gray[600],
     marginTop: 4,
@@ -169,7 +174,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   statusActions: {
-    flexDirection: 'row',
+    flexDirection: ROW_DIR,
     marginBottom: 8,
   },
   statusButton: {
@@ -190,7 +195,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.warning,
   },
   editActions: {
-    flexDirection: 'row',
+    flexDirection: ROW_DIR,
   },
   actionButton: {
     width: 32,

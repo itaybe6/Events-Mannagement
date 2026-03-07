@@ -251,7 +251,7 @@ export default function CoupleHomeWebScreen() {
 
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="סידור שולחנות"
+            accessibilityLabel="ניהול שולחנות"
             onPress={() =>
               router.push({
                 pathname: '/(couple)/TablesList',
@@ -267,13 +267,13 @@ export default function CoupleHomeWebScreen() {
             <View style={styles.bigActionIconWrapSecondary}>
               <Ionicons name="restaurant-outline" size={26} color={stylesVars.accentPurple} />
             </View>
-            <Text style={styles.bigActionTitleSecondary}>סידור שולחנות</Text>
-            <Text style={styles.bigActionSubtitleSecondary}>ניהול שולחנות והושבה</Text>
+            <Text style={styles.bigActionTitleSecondary}>ניהול שולחנות</Text>
+            <Text style={styles.bigActionSubtitleSecondary}>עריכה, קיבולת ומעקב הושבה</Text>
           </Pressable>
 
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="מפת הושבה"
+            accessibilityLabel="סידור הושבה"
             onPress={() =>
               router.push({
                 pathname: '/(couple)/BrideGroomSeating',
@@ -291,8 +291,8 @@ export default function CoupleHomeWebScreen() {
             <View style={styles.bigActionIconWrapPrimary}>
               <Ionicons name="grid-outline" size={26} color={colors.white} />
             </View>
-            <Text style={styles.bigActionTitlePrimary}>מפת הושבה</Text>
-            <Text style={styles.bigActionSubtitlePrimary}>שיבוץ אורחים בשולחנות</Text>
+            <Text style={styles.bigActionTitlePrimary}>סידור הושבה</Text>
+            <Text style={styles.bigActionSubtitlePrimary}>גרירה ושיבוץ אורחים בשולחנות</Text>
           </Pressable>
         </View>
 

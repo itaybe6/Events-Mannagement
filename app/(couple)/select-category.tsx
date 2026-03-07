@@ -22,10 +22,9 @@ import { guestService } from '@/lib/services/guestService';
 import { eventService } from '@/lib/services/eventService';
 import { useLayoutStore } from '@/store/layoutStore';
 import { colors } from '@/constants/colors';
-import { ROW_DIR } from '@/lib/rtl';
+import { ROW_DIR, ROW_REVERSE_DIR } from '@/lib/rtl';
 
 type Side = 'groom' | 'bride';
-type SideFilter = 'all' | Side | 'other';
 type Mode = 'existing' | 'new';
 
 type GuestCategory = {
@@ -68,7 +67,6 @@ export default function SelectCategoryScreen() {
   const [categories, setCategories] = useState<GuestCategory[]>([]);
   const [guestCountByCategoryId, setGuestCountByCategoryId] = useState<Record<string, number>>({});
   const [mode, setMode] = useState<Mode>('existing');
-  const [filter, setFilter] = useState<SideFilter>('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
   const [newSide, setNewSide] = useState<Side>('groom');
@@ -133,24 +131,8 @@ export default function SelectCategoryScreen() {
   }, [eventId, initialCategoryId]);
 
   useEffect(() => {
-    if (!enableSides) { setFilter('all'); setNewSide('groom'); }
+    if (!enableSides) setNewSide('groom');
   }, [enableSides]);
-
-  const chips: Array<{ key: SideFilter; label: string; icon: keyof typeof Ionicons.glyphMap }> = useMemo(() => {
-    if (!enableSides) return [{ key: 'all', label: 'הכל', icon: 'people' }];
-    return [
-      { key: 'all', label: 'הכל', icon: 'people' },
-      { key: 'groom', label: 'חתן', icon: 'male' },
-      { key: 'bride', label: 'כלה', icon: 'female' },
-      { key: 'other', label: 'אחרים', icon: 'ellipsis-horizontal' },
-    ];
-  }, [enableSides]);
-
-  const filteredCategories = useMemo(() => {
-    if (!enableSides || filter === 'all') return categories;
-    if (filter === 'other') return [];
-    return categories.filter((c) => c.side === filter);
-  }, [categories, enableSides, filter]);
 
   const selectedCategory = useMemo(() => {
     if (!selectedId) return null;
@@ -161,9 +143,7 @@ export default function SelectCategoryScreen() {
 
   const gridGap = 14;
   const colPad = 16;
-  const gridWidth = windowWidth - colPad * 2;
-  const cardWidth = Math.floor((gridWidth - gridGap) / 2);
-  const cardHeight = Math.round(cardWidth * 1.15); // slightly taller than square
+  const gridSidePad = Math.max(0, colPad - gridGap / 2);
 
   const goBack = () => {
     const canGoBackFn = (router as any)?.canGoBack;
@@ -255,19 +235,6 @@ export default function SelectCategoryScreen() {
 
       {/* ─── header ───────────────────────────────────── */}
       <View style={[styles.header, { paddingTop: Math.max(14, insets.top + 10) }]}>
-        {/* כפתור חזרה - View עוטף עם העיצוב (NativeWind דורס style על Pressable) */}
-        <Pressable
-          onPress={goBack}
-          accessibilityRole="button"
-          accessibilityLabel="חזרה"
-          style={({ pressed }) => ({ opacity: pressed ? 0.70 : 1 })}
-        >
-          <View style={styles.headerBackBtn}>
-            <Ionicons name="chevron-back" size={16} color={NAVY} />
-            <Text style={styles.headerBackBtnText}>חזרה</Text>
-          </View>
-        </Pressable>
-
         <Text style={[styles.headerTitle, isDark && styles.headerTitleDark]}>בחירת קטגוריה</Text>
 
         {/* כפתור הבא - View עוטף עם העיצוב (NativeWind דורס style על Pressable) */}
@@ -281,6 +248,19 @@ export default function SelectCategoryScreen() {
           <View style={[styles.headerNextBtn, isNextDisabled && styles.headerNextBtnDisabled]}>
             <Text style={styles.headerNextBtnText}>{saving ? 'שומר...' : 'הבא'}</Text>
             <Ionicons name="chevron-forward" size={16} color="#fff" />
+          </View>
+        </Pressable>
+
+        {/* כפתור חזרה - View עוטף עם העיצוב (NativeWind דורס style על Pressable) */}
+        <Pressable
+          onPress={goBack}
+          accessibilityRole="button"
+          accessibilityLabel="חזרה"
+          style={({ pressed }) => ({ opacity: pressed ? 0.70 : 1 })}
+        >
+          <View style={styles.headerBackBtn}>
+            <Ionicons name="chevron-back" size={16} color={NAVY} />
+            <Text style={styles.headerBackBtnText}>חזרה</Text>
           </View>
         </Pressable>
       </View>
@@ -321,52 +301,6 @@ export default function SelectCategoryScreen() {
           </Pressable>
         </View>
       </View>
-
-      {/* ─── chips ────────────────────────────────────── */}
-      {mode === 'existing' && enableSides ? (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.chipsScroll}
-          contentContainerStyle={styles.chipsRow}
-          contentInsetAdjustmentBehavior="never"
-        >
-          {chips.map((chip) => {
-            const active = filter === chip.key;
-            const chipIconColor = (() => {
-              if (chip.key === 'groom') return active ? '#FFFFFF' : ACCENT_BLUE;
-              if (chip.key === 'bride') return active ? '#FFFFFF' : ACCENT_PINK;
-              if (chip.key === 'all') return active ? '#FFFFFF' : SUBTEXT;
-              return active ? '#FFFFFF' : SUBTEXT;
-            })();
-            const isOther = chip.key === 'other';
-            return (
-              <Pressable
-                key={chip.key}
-                onPress={() => setFilter(chip.key)}
-                style={({ pressed }) => [
-                  styles.chip,
-                  isOther && styles.chipOther,
-                  active ? styles.chipActive : isDark ? styles.chipInactiveDark : styles.chipInactive,
-                  pressed && { transform: [{ scale: 0.98 }] },
-                ]}
-              >
-                <Ionicons
-                  name={chip.icon}
-                  size={isOther ? 22 : 18}
-                  color={chipIconColor}
-                  style={undefined}
-                />
-                {isOther ? null : (
-                  <Text style={[styles.chipText, isDark && styles.chipTextDark, active && styles.chipTextActive]}>
-                    {chip.label}
-                  </Text>
-                )}
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-      ) : null}
 
       {/* ─── divider ──────────────────────────────────── */}
       <View style={styles.divider} />
@@ -444,7 +378,7 @@ export default function SelectCategoryScreen() {
           </ScrollView>
         ) : (
           <FlatList
-            data={filteredCategories}
+            data={categories}
             keyExtractor={(item) => item.id}
             numColumns={2}
             columnWrapperStyle={styles.gridRow}
@@ -452,7 +386,7 @@ export default function SelectCategoryScreen() {
             contentInsetAdjustmentBehavior="never"
             contentContainerStyle={[
               styles.gridContent,
-              { paddingBottom: bottomPadding + 24, paddingHorizontal: colPad },
+              { paddingBottom: bottomPadding + 24, paddingHorizontal: gridSidePad },
             ]}
             showsVerticalScrollIndicator={false}
             renderItem={({ item }) => {
@@ -468,40 +402,43 @@ export default function SelectCategoryScreen() {
               const tone = categoryTone(item);
               const count = guestCountByCategoryId[item.id] || 0;
               return (
-                <Pressable
-                  onPress={() => setSelectedId(item.id)}
-                  style={({ pressed }) => [
-                    styles.cardOuter,
-                    { width: cardWidth, height: cardHeight },
-                    isSelected ? styles.cardOuterSelected : styles.cardOuterUnselected,
-                    pressed && { transform: [{ scale: 0.98 }] },
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.cardInner,
-                      isSelected
-                        ? { borderColor: tone.accent }
-                        : { borderColor: 'transparent' },
+                <View style={[styles.gridItem, { margin: gridGap / 2 }]}>
+                  <Pressable
+                    onPress={() => setSelectedId(item.id)}
+                    style={({ pressed }) => [
+                      styles.cardOuter,
+                      isSelected ? styles.cardOuterSelected : styles.cardOuterUnselected,
+                      pressed && { transform: [{ scale: 0.98 }] },
                     ]}
                   >
-                    {/* corner blob */}
-                    <View style={[styles.cornerBlob, { backgroundColor: tone.blob }]} />
+                    <View
+                      style={[
+                        styles.cardInner,
+                        isSelected ? { borderColor: tone.accent } : { borderColor: 'transparent' },
+                      ]}
+                    >
+                      {/* corner blob */}
+                      <View style={[styles.cornerBlob, { backgroundColor: tone.blob }]} />
 
-                    {/* Icon circle */}
-                    <View style={[styles.cardIconCircle, { backgroundColor: tone.soft }]}>
-                      <Ionicons name={iconName} size={36} color={tone.icon} />
+                      {/* Icon circle */}
+                      <View style={[styles.cardIconCircle, { backgroundColor: tone.soft }]}>
+                        <Ionicons name={iconName} size={36} color={tone.icon} />
+                      </View>
+
+                      <Text
+                        style={[styles.cardText, isDark && styles.cardTextDark]}
+                        numberOfLines={2}
+                        ellipsizeMode="tail"
+                      >
+                        {item.name}
+                      </Text>
+
+                      <Text style={[styles.cardSubText, isDark && styles.cardSubTextDark]}>
+                        {count} אורחים
+                      </Text>
                     </View>
-
-                    <Text style={[styles.cardText, isDark && styles.cardTextDark]} numberOfLines={2}>
-                      {item.name}
-                    </Text>
-
-                    <Text style={[styles.cardSubText, isDark && styles.cardSubTextDark]}>
-                      {count} אורחים
-                    </Text>
-                  </View>
-                </Pressable>
+                  </Pressable>
+                </View>
               );
             }}
             ListEmptyComponent={
@@ -559,7 +496,7 @@ const styles = StyleSheet.create({
   },
   /* כפתורי header - העיצוב על View (NativeWind דורס style על Pressable) */
   headerBackBtn: {
-    flexDirection: 'row',
+    flexDirection: ROW_REVERSE_DIR,
     alignItems: 'center',
     gap: 5,
     paddingHorizontal: 14,
@@ -585,7 +522,7 @@ const styles = StyleSheet.create({
     color: NAVY,
   },
   headerNextBtn: {
-    flexDirection: 'row',
+    flexDirection: ROW_REVERSE_DIR,
     alignItems: 'center',
     gap: 6,
     paddingHorizontal: 16,
@@ -653,65 +590,6 @@ const styles = StyleSheet.create({
   segmentTextDark: { color: SUBTEXT_DARK },
   segmentTextActiveDark: { color: TEXT_DARK },
 
-  /* chips */
-  chipsScroll: {
-    flexGrow: 0,
-    flexShrink: 0,
-    height: 70,
-  },
-  chipsRow: {
-    flexDirection: ROW_DIR,
-    paddingHorizontal: 20,
-    paddingBottom: 16,
-    marginBottom: 8,
-    gap: 12,
-    paddingTop: 10,
-  },
-  chip: {
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 999,
-    borderWidth: 1,
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#FFFFFF',
-    borderColor: BORDER_LIGHT,
-  },
-  chipOther: {
-    width: 44,
-    height: 44,
-    paddingHorizontal: 0,
-    paddingVertical: 0,
-    justifyContent: 'center',
-  },
-  chipActive: {
-    backgroundColor: NAVY,
-    borderColor: 'rgba(15,23,42,0.12)',
-    shadowColor: 'rgba(15,23,42,1)',
-    shadowOpacity: 0.20,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 3,
-  },
-  chipInactive: {
-    backgroundColor: '#FFFFFF',
-    borderColor: BORDER_LIGHT,
-  },
-  chipInactiveDark: {
-    backgroundColor: 'rgba(30,41,59,0.70)',
-    borderColor: 'rgba(255,255,255,0.10)',
-  },
-  chipText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: SUBTEXT,
-  },
-  chipTextDark: {
-    color: SUBTEXT_DARK,
-  },
-  chipTextActive: { color: '#fff' },
-
   divider: {
     height: 1,
     backgroundColor: 'rgba(255,255,255,0.55)',
@@ -739,9 +617,15 @@ const styles = StyleSheet.create({
   /* grid */
   gridList: { flex: 1 },
   gridContent: { paddingTop: 12 },
-  gridRow: { marginBottom: 14, gap: 14 },
+  gridRow: { flexDirection: ROW_DIR },
+  gridItem: {
+    flex: 1,
+    minWidth: 0, // critical for web: allow shrink instead of sizing to content
+  },
   cardOuter: {
     borderRadius: 24,
+    width: '100%',
+    aspectRatio: 1 / 1.15, // keep constant size; 2 cards always fit the row
     shadowColor: '#000',
     shadowOpacity: 0.08,
     shadowRadius: 40,
@@ -756,10 +640,11 @@ const styles = StyleSheet.create({
   cardOuterUnselected: {},
   cardInner: {
     flex: 1,
+    width: '100%',
     borderRadius: 24,
     overflow: 'hidden',
     backgroundColor: '#FFFFFF',
-    paddingHorizontal: 52,
+    paddingHorizontal: 18,
     paddingVertical: 20,
     alignItems: 'center',
     justifyContent: 'center',
@@ -789,6 +674,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#1F2937',
     textAlign: 'center',
+    maxWidth: '100%',
+    flexShrink: 1,
     lineHeight: 22,
   },
   cardTextDark: { color: TEXT_DARK },
@@ -797,6 +684,8 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#9CA3AF',
     textAlign: 'center',
+    maxWidth: '100%',
+    flexShrink: 1,
     marginTop: 2,
   },
   cardSubTextDark: {

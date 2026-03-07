@@ -19,6 +19,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { IS_RTL, ROW_DIR } from '@/lib/rtl';
 
 type Side = 'groom' | 'bride';
 type SideFilter = 'all' | Side | 'other';
@@ -265,7 +266,9 @@ export function GuestCategorySelectionSheet({
                   <View
                     style={[
                       styles.segmentIndicator,
-                      mode === 'existing' ? styles.segmentIndicatorRight : styles.segmentIndicatorLeft,
+                      mode === 'existing'
+                        ? (IS_RTL ? styles.segmentIndicatorStart : styles.segmentIndicatorEnd)
+                        : (IS_RTL ? styles.segmentIndicatorEnd : styles.segmentIndicatorStart),
                     ]}
                   />
                   <Pressable style={styles.segmentBtn} onPress={() => setMode('existing')}>
@@ -304,7 +307,6 @@ export function GuestCategorySelectionSheet({
                             name={chip.icon}
                             size={16}
                             color={active ? '#fff' : 'rgba(15,23,42,0.65)'}
-                            style={{ marginLeft: 8 }}
                           />
                           <Text style={[styles.chipText, active && { color: '#fff', fontWeight: '800' }]}>
                             {chip.label}
@@ -364,7 +366,6 @@ export function GuestCategorySelectionSheet({
                               name="male"
                               size={18}
                               color={newSide === 'groom' ? '#fff' : sheetPrimary}
-                              style={{ marginLeft: 8 }}
                             />
                             <Text style={[styles.sidePillText, newSide === 'groom' && { color: '#fff', fontWeight: '800' }]}>
                               חתן
@@ -382,7 +383,6 @@ export function GuestCategorySelectionSheet({
                               name="female"
                               size={18}
                               color={newSide === 'bride' ? '#fff' : sheetPrimary}
-                              style={{ marginLeft: 8 }}
                             />
                             <Text style={[styles.sidePillText, newSide === 'bride' && { color: '#fff', fontWeight: '800' }]}>
                               כלה
@@ -473,7 +473,7 @@ export function GuestCategorySelectionSheet({
                       },
                     ]}
                   >
-                    <Ionicons name="checkmark" size={20} color="#fff" style={{ marginLeft: 8 }} />
+                    <Ionicons name="checkmark" size={20} color="#fff" />
                     <Text style={styles.primaryBtnText}>
                       {mode === 'new'
                         ? creating
@@ -552,7 +552,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     backgroundColor: 'rgba(15,23,42,0.06)',
     padding: 4,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     position: 'relative',
     overflow: 'hidden',
   },
@@ -571,9 +571,9 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
-  // Note: RTL layout, "existing" is the right segment.
-  segmentIndicatorRight: { right: 4 },
-  segmentIndicatorLeft: { left: 4 },
+  // Use start/end to avoid left/right swapping surprises in RTL builds.
+  segmentIndicatorStart: { start: 4 },
+  segmentIndicatorEnd: { end: 4 },
   segmentBtn: {
     flex: 1,
     alignItems: 'center',
@@ -589,15 +589,16 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     paddingHorizontal: 2,
     gap: 10,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
   },
   chip: {
     height: 36,
     paddingHorizontal: 16,
     borderRadius: 999,
     borderWidth: 1,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
+    gap: 8,
     shadowColor: '#000',
     shadowOpacity: 0.06,
     shadowRadius: 10,
@@ -643,7 +644,7 @@ const styles = StyleSheet.create({
   cardCheck: {
     position: 'absolute',
     top: 10,
-    right: 10,
+    ...(IS_RTL ? ({ start: 10 } as const) : ({ end: 10 } as const)),
     width: 22,
     height: 22,
     borderRadius: 999,
@@ -678,7 +679,8 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
+    gap: 8,
     shadowColor: '#135bec',
     shadowOpacity: 0.35,
     shadowRadius: 18,
@@ -716,7 +718,7 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   sideRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     gap: 12,
   },
   sidePill: {
@@ -726,9 +728,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(19,91,236,0.35)',
     backgroundColor: '#fff',
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 8,
   },
   sidePillText: {
     fontSize: 14,

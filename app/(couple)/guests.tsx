@@ -1583,8 +1583,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   contactItem: {
-    flexDirection: 'row',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
+    gap: 12,
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: colors.gray[100],
@@ -1594,17 +1595,25 @@ const styles = StyleSheet.create({
   },
   contactInfo: {
     flex: 1,
-    alignItems: ALIGN_RIGHT,
+    // Let children fill full width so `textAlign: 'right'` always works.
+    alignItems: 'stretch',
+    alignSelf: 'stretch',
   },
   contactName: {
+    width: '100%',
+    alignSelf: 'stretch',
     fontSize: 16,
     fontWeight: '500',
     color: colors.text,
     marginBottom: 2,
+    textAlign: 'right',
   },
   contactPhone: {
+    width: '100%',
+    alignSelf: 'stretch',
     fontSize: 14,
     color: colors.gray[600],
+    textAlign: 'right',
   },
   checkboxContainer: {
     width: 24,
@@ -1614,7 +1623,6 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    marginStart: 12,
   },
   modalActions: {
     padding: 20,
@@ -1661,7 +1669,7 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   addCategoryRow: {
-    flexDirection: 'row',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     marginTop: 16,
     marginBottom: 8,
@@ -1751,7 +1759,7 @@ const styles = StyleSheet.create({
     padding: 12,
     fontSize: 15,
     backgroundColor: colors.gray[100],
-    marginEnd: 8,
+    marginRight: 8,
   },
   appleAddCategoryButton: {
     backgroundColor: colors.primary,
@@ -1763,7 +1771,7 @@ const styles = StyleSheet.create({
   appleCloseButton: {
     position: 'absolute',
     top: 16,
-    left: 16,
+    end: 16,
     width: 36,
     height: 36,
     borderRadius: 18,
@@ -1931,10 +1939,13 @@ const styles = StyleSheet.create({
   guestInfo: {
     flex: 1,
     minWidth: 0,
-    alignItems: ALIGN_RIGHT,
+    // Let children fill full width so `textAlign: 'right'` always works.
+    alignItems: 'stretch',
+    alignSelf: 'stretch',
   },
   guestName: {
     width: '100%',
+    alignSelf: 'stretch',
     fontSize: 15,
     fontWeight: '700',
     color: colors.text,
@@ -1944,6 +1955,7 @@ const styles = StyleSheet.create({
   },
   guestPhone: {
     width: '100%',
+    alignSelf: 'stretch',
     fontSize: 13,
     color: colors.gray[600],
     textAlign: 'right',
@@ -2019,12 +2031,12 @@ const styles = StyleSheet.create({
     padding: 8,
   },
   statusSelector: {
-    flexDirection: 'row',
+    flexDirection: ROW_DIR,
     justifyContent: 'space-between',
     marginTop: 8,
   },
   statusOption: {
-    flexDirection: 'row',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     paddingVertical: 8,
     paddingHorizontal: 12,
@@ -2040,7 +2052,7 @@ const styles = StyleSheet.create({
   statusOptionText: {
     fontSize: 14,
     color: colors.text,
-    marginLeft: 4,
+    marginStart: 4,
   },
   statusOptionTextActive: {
     color: colors.white,
@@ -2062,7 +2074,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.black,
     fontWeight: 'bold',
-    marginStart: 4,
+    marginLeft: 4,
   },
   categoryGuestsScroll: {
     maxHeight: 200,
