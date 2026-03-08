@@ -23,7 +23,7 @@ import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import { Entypo, Ionicons } from '@expo/vector-icons';
 import { useLayoutStore } from '@/store/layoutStore';
 import { Table } from '@/types';
-import { Stack, useRouter, useFocusEffect, useLocalSearchParams, useSegments } from 'expo-router';
+import { Stack, useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { colors } from '@/constants/colors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { EventSwitcher } from '@/components/EventSwitcher';
@@ -86,8 +86,19 @@ export function FabButton({
   openedPadding = 0,
   iconColor = colors.text,
 }: FabButtonProps) {
-  const { width } = useWindowDimensions();
+  const { width, height: windowHeight } = useWindowDimensions();
   const resolvedOpenedSize = openedSize ?? width;
+  const resolvedOpenedHeight = useMemo(() => {
+    if (typeof openedHeight === 'number' && Number.isFinite(openedHeight)) return openedHeight;
+    const s = String(openedHeight ?? '').trim();
+    const m = /^(\d+(?:\.\d+)?)%$/.exec(s);
+    if (m) {
+      const pct = Number(m[1]);
+      if (Number.isFinite(pct)) return (windowHeight * pct) / 100;
+    }
+    // Fallback: keep the panel reasonably sized even if a non-percent string was provided.
+    return windowHeight * 0.75;
+  }, [openedHeight, windowHeight]);
   const spacing = closedSize * 0.2;
   const closeIconSize = closedSize * 0.34;
   const openIconSize = closedSize * 0.52;
@@ -107,7 +118,7 @@ export function FabButton({
         panelStyle,
         {
           width: isOpen ? resolvedOpenedSize : closedSize,
-          height: isOpen ? openedHeight : closedSize,
+          height: isOpen ? resolvedOpenedHeight : closedSize,
           borderRadius: isOpen ? openedBorderRadius : closedSize / 2,
           padding: isOpen ? openedPadding : spacing,
         },
@@ -173,7 +184,6 @@ export default function BrideGroomSeating() {
   const isLandscape = windowWidth > windowHeight;
   const { userData } = useUserStore();
   const { eventId: queryEventId } = useLocalSearchParams<{ eventId?: string }>();
-  const segments = useSegments();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const activeUserId = useEventSelectionStore((s) => s.activeUserId);
@@ -193,19 +203,6 @@ export default function BrideGroomSeating() {
     router.replace({ pathname: './', params: { eventId: nextEventId } });
   };
 
-  const handleBackPress = useCallback(() => {
-    const isAdminContext = segments?.[0] === '(admin)';
-    if (isAdminContext) {
-      if (resolvedEventId) {
-        router.replace(`/(admin)/admin-event-details?id=${encodeURIComponent(String(resolvedEventId))}`);
-      } else {
-        router.replace('/(admin)/admin-events');
-      }
-      return;
-    }
-    router.back();
-  }, [resolvedEventId, router, segments]);
-  
   const [tables, setTables] = useState<Table[]>([]);
   const [guests, setGuests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -608,12 +605,11 @@ export default function BrideGroomSeating() {
   };
 
   const { setTabBarVisible } = useLayoutStore();
-  // Map-only screen: hide tab bar while focused.
-  // Important: tab screens often stay mounted; use focus/blur rather than mount/unmount.
+  // Keep the bottom tab bar visible on the seating screen as well.
   useFocusEffect(
     useCallback(() => {
-      setTabBarVisible(false);
-      return () => setTabBarVisible(true);
+      setTabBarVisible(true);
+      return undefined;
     }, [setTabBarVisible])
   );
 
@@ -650,7 +646,6 @@ export default function BrideGroomSeating() {
     setCategoryFilterTable('הכל');
 
     setTableModalVisible(true);
-    setTabBarVisible(false);
     clearSeatedEditState();
 
     requestAnimationFrame(() => {
@@ -683,7 +678,6 @@ export default function BrideGroomSeating() {
     if (closePanelTimerRef.current) clearTimeout(closePanelTimerRef.current);
     closePanelTimerRef.current = setTimeout(() => {
       setTableModalVisible(false);
-      setTabBarVisible(false);
     }, TABLE_PANEL_DURATION);
   };
 
@@ -1397,16 +1391,16 @@ export default function BrideGroomSeating() {
             if (!num) return null;
             const seated = seatedByNumber.get(Number(num)) ?? 0;
             const cap = Number(t?.seats ?? 0) || 0;
-            return cap ? `יושבים בשולחן: ${seated} / ${cap}` : `יושבים בשולחן: ${seated}`;
+            return cap ? `מקומות / יושבים: ${cap} / ${seated}` : `יושבים בשולחן: ${seated}`;
           }}
           getTableSubLabel={(t: any) => {
             const num = t?.number;
             if (!num) return null;
             const seated = seatedByNumber.get(Number(num)) ?? 0;
             const cap = Number(t?.seats ?? 0) || 0;
-            return cap ? `${seated} / ${cap}` : String(seated);
+            return cap ? `${cap} / ${seated}` : String(seated);
           }}
-          onPressTableNumber={(num, origin) => {
+          onPressTableNumber={(num: number | undefined, origin?: { x: number; y: number }) => {
             if (!num) return;
             const t = tables.find((x) => x.number === num);
             if (t) handleTablePress(t, origin);
@@ -1415,7 +1409,7 @@ export default function BrideGroomSeating() {
       ) : (
         <MobileSeatingMap
           sketch={(webSketchWithNames ?? webSketch) as any}
-          onPressTableNumber={(num, origin) => {
+          onPressTableNumber={(num: number | undefined, origin?: { x: number; y: number }) => {
             if (!num) return;
             const t = tables.find((x) => x.number === num);
             if (t) handleTablePress(t, origin);
@@ -1431,7 +1425,7 @@ export default function BrideGroomSeating() {
             if (!num) return null;
             const seated = seatedByNumber.get(Number(num)) ?? 0;
             const cap = Number(t?.seats ?? 0) || 0;
-            return cap ? `${seated} / ${cap}` : String(seated);
+            return cap ? `${cap} / ${seated}` : String(seated);
           }}
         />
       )}
@@ -1562,7 +1556,7 @@ export default function BrideGroomSeating() {
                     pressedTable === table.id && { color: isTableFull ? colors.white : colors.gray[500] },
                   ]}
                 >
-                  {totalPeopleSeated} / {table.capacity}
+                  {table.capacity} / {totalPeopleSeated}
                 </Text>
               </Pressable>
             </Animated.View>
@@ -1602,7 +1596,7 @@ export default function BrideGroomSeating() {
       {/* Full-screen map frame */}
       <View style={styles.mapFrame}>{mapNode}</View>
 
-      {/* Floating top bar: back + (optional) event switcher */}
+      {/* Floating top bar */}
       <View
         pointerEvents="box-none"
         style={[
@@ -1612,16 +1606,6 @@ export default function BrideGroomSeating() {
           },
         ]}
       >
-        <TouchableOpacity
-          onPress={handleBackPress}
-          activeOpacity={0.85}
-          style={styles.backFab}
-          accessibilityRole="button"
-          accessibilityLabel="חזרה"
-        >
-          <Ionicons name="chevron-forward" size={20} color={colors.text} />
-        </TouchableOpacity>
-
         <View style={{ flex: 1 }} />
 
         <View style={styles.eventSwitcherWrap}>
@@ -2145,13 +2129,13 @@ export default function BrideGroomSeating() {
                               {/* Occupancy row */}
                               <View style={styles.moveOccRow}>
                                 <Text style={[styles.moveTableSub, active && { color: colors.primary }]}>
-                                  {seatedNow}{cap > 0 ? ` / ${cap}` : ''}
+                                  {cap > 0 ? `${cap} / ${seatedNow}` : String(seatedNow)}
                                 </Text>
                                 {active && movedPeopleCount > 0 ? (
                                   <>
                                     <Ionicons name="arrow-forward" size={11} color={colors.primary} />
                                     <Text style={styles.moveTableAfter}>
-                                      {afterMove}{cap > 0 ? ` / ${cap}` : ''}
+                                      {cap > 0 ? `${cap} / ${afterMove}` : String(afterMove)}
                                     </Text>
                                   </>
                                 ) : null}
@@ -2525,16 +2509,6 @@ function MobileSeatingMap({
           </Reanimated.View>
         </View>
       </GestureDetector>
-
-      {/* +/− zoom buttons */}
-      <View style={styles.mobileMapControls}>
-        <TouchableOpacity style={styles.mobileMapBtn} onPress={() => zoomBy(1.3)}>
-          <Ionicons name="add" size={18} color={colors.text} />
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.mobileMapBtn} onPress={() => zoomBy(1 / 1.3)}>
-          <Ionicons name="remove" size={18} color={colors.text} />
-        </TouchableOpacity>
-      </View>
     </View>
   );
 }
@@ -2554,7 +2528,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 12,
     right: 12,
-    flexDirection: ROW_DIR,
+    flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
     zIndex: 30,
@@ -2700,28 +2674,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(17,24,39,0.02)',
   },
   mobileLabelText: { fontWeight: '800', color: 'rgba(17,24,39,0.62)' },
-  mobileMapControls: {
-    position: 'absolute',
-    left: 12,
-    bottom: 12,
-    flexDirection: 'row',
-    gap: 10,
-    backgroundColor: 'rgba(255,255,255,0.92)',
-    borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.10)',
-    borderRadius: 16,
-    padding: 8,
-  },
-  mobileMapBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(15,23,42,0.05)',
-    borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.08)',
-  },
   canvas: { 
     backgroundColor: colors.white, 
     overflow: 'hidden', 
@@ -3237,18 +3189,21 @@ const styles = StyleSheet.create({
   seatedGuestMain: {
     flex: 1,
     minWidth: 0,
+    alignItems: ALIGN_RIGHT,
   },
   seatedGuestTopRow: {
     flexDirection: ROW_DIR,
     alignItems: 'flex-start',
-    justifyContent: 'flex-start',
+    justifyContent: ALIGN_RIGHT,
+    width: '100%',
     gap: 8,
   },
   seatedGuestMetaRow: {
     marginTop: 6,
     flexDirection: ROW_DIR,
     alignItems: 'center',
-    justifyContent: 'flex-start',
+    justifyContent: ALIGN_RIGHT,
+    width: '100%',
     gap: 8,
   },
   seatedGuestCheckboxWrap: {

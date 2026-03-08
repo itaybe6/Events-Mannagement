@@ -23,7 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GuestCategorySelectionSheet } from '@/components/GuestCategorySelectionSheet';
 import { useLayoutStore } from '@/store/layoutStore';
 import BackSwipe from '@/components/BackSwipe';
-import { ROW_DIR, RTL_MARK, rtlText } from '@/lib/rtl';
+import { ALIGN_RIGHT, IS_RTL, ROW_DIR, RTL_MARK } from '@/lib/rtl';
 
 export default function EditCategoryScreen() {
   const router = useRouter();
@@ -308,17 +308,13 @@ export default function EditCategoryScreen() {
             <View style={styles.confirmBackdrop}>
               <Pressable style={StyleSheet.absoluteFill} onPress={() => (moving ? null : cancelMove())} />
               <View style={[styles.confirmCard, { backgroundColor: ui.surface, borderColor: ui.border }]}>
-                <View style={styles.confirmHeaderRow}>
-                  <View style={[styles.confirmIcon, { backgroundColor: 'rgba(15,23,42,0.08)' }]}>
-                    <Ionicons name="swap-horizontal" size={22} color={ui.primary} />
-                  </View>
-                  <View style={styles.confirmTextCol}>
-                    <Text style={[styles.confirmTitle, { color: ui.text }]}>{rtlText('אישור העברה')}</Text>
-                    <Text style={[styles.confirmSubtitle, { color: ui.sub }]}>
-                      {RTL_MARK}
-                      האם אתה בטוח שברצונך להעביר {selectedCount} אורחים לקטגוריה "{String(pendingMoveTarget?.name ?? '')}"?
-                    </Text>
-                  </View>
+                <View style={styles.confirmTextWrap}>
+                  <Text style={[styles.confirmTitle, { color: ui.text, textAlign: IS_RTL ? 'left' : 'right' }]}>
+                    {RTL_MARK}אישור העברה
+                  </Text>
+                  <Text style={[styles.confirmSubtitle, { color: ui.sub, textAlign: IS_RTL ? 'left' : 'right' }]}>
+                    {RTL_MARK}האם אתה בטוח שברצונך להעביר {selectedCount} אורחים לקטגוריה "{String(pendingMoveTarget?.name ?? '')}"?
+                  </Text>
                 </View>
 
                 <View style={styles.confirmButtonsRow}>
@@ -332,7 +328,7 @@ export default function EditCategoryScreen() {
                       { borderColor: ui.border, opacity: moving ? 0.6 : 1 },
                     ]}
                   >
-                    <Text style={[styles.confirmBtnText, { color: ui.text }]}>{rtlText('ביטול')}</Text>
+                    <Text style={[styles.confirmBtnText, { color: ui.text }]}>ביטול</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
@@ -345,8 +341,9 @@ export default function EditCategoryScreen() {
                       { backgroundColor: ui.primary, opacity: moving ? 0.7 : 1 },
                     ]}
                   >
+                    <Ionicons name="swap-horizontal" size={18} color="#fff" />
                     <Text style={[styles.confirmBtnText, { color: '#fff' }]}>
-                      {moving ? rtlText('מעביר...') : rtlText('כן, להעביר')}
+                      {moving ? 'מאשר...' : 'אישור'}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -370,43 +367,48 @@ export default function EditCategoryScreen() {
       <View
         style={[
           styles.headerWrap,
-          { backgroundColor: ui.surface, borderBottomColor: ui.border, paddingTop: Math.max(12, insets.top + 10) + 10 },
+          { backgroundColor: ui.surface, borderBottomColor: ui.border, paddingTop: Math.max(12, insets.top + 10) },
         ]}
       >
-        <TouchableOpacity
-          onPress={goToGuests}
-          style={[
-            styles.headerBackBtn,
-            styles.backBtnAbs,
-            { backgroundColor: ui.faint, top: Math.max(8, insets.top + 6) },
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel="חזרה"
-          activeOpacity={0.9}
-        >
-          <Ionicons name="chevron-back" size={22} color={ui.sub} />
-        </TouchableOpacity>
+        <View style={styles.headerTopRow}>
+          <TouchableOpacity
+            onPress={saveName}
+            disabled={saving}
+            style={[
+              styles.headerSaveBtn,
+              { backgroundColor: ui.primary, opacity: saving ? 0.7 : 1 },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="שמור"
+            activeOpacity={0.9}
+          >
+            <Ionicons name="checkmark" size={18} color="#FFFFFF" />
+            <Text style={styles.headerSaveText}>{saving ? 'שומר...' : 'שמור'}</Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          onPress={saveName}
-          disabled={saving}
-          style={[styles.headerSaveBtn, styles.saveBtnAbs, { top: Math.max(8, insets.top + 6) }]}
-          accessibilityRole="button"
-          accessibilityLabel="שמור"
-          activeOpacity={0.9}
-        >
-          <Text style={[styles.headerSaveText, { color: ui.primary, opacity: saving ? 0.6 : 1 }]}>
-            {saving ? 'שומר...' : 'שמור'}
-          </Text>
-        </TouchableOpacity>
+          <View style={styles.headerTitleWrap}>
+            <Text style={[styles.headerTitle, { color: ui.text }]}>{headerTitle}</Text>
+            <Text style={[styles.headerSubtitle, { color: ui.sub }]}>עדכון שם הקטגוריה וניהול האורחים שבה</Text>
+          </View>
 
-        <View style={styles.headerRow}>
-          <Text style={[styles.headerTitle, { color: ui.text }]}>{headerTitle}</Text>
+          <TouchableOpacity
+            onPress={goToGuests}
+            style={[
+              styles.headerBackBtn,
+              { backgroundColor: ui.faint, borderColor: ui.border },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="חזרה"
+            activeOpacity={0.9}
+          >
+            <Text style={[styles.headerBackText, { color: ui.text }]}>חזור</Text>
+            <Ionicons name="chevron-back" size={18} color={ui.text} />
+          </TouchableOpacity>
         </View>
 
-        <View style={styles.inputBlock}>
+        <View style={[styles.inputBlock, { backgroundColor: ui.inputBg, borderColor: ui.border }]}>
           <Text style={[styles.inputLabel, { color: ui.sub }]}>שם הקטגוריה</Text>
-          <View style={[styles.inputWrap, { backgroundColor: ui.inputBg }]}>
+          <View style={[styles.inputWrap, { backgroundColor: ui.surface, borderColor: ui.border }]}>
             <TextInput
               value={categoryName}
               onChangeText={setCategoryName}
@@ -557,55 +559,38 @@ const styles = StyleSheet.create({
     maxWidth: 420,
     borderRadius: 22,
     borderWidth: 1,
-    padding: 16,
+    padding: 20,
     shadowColor: '#000',
     shadowOpacity: 0.16,
     shadowRadius: 22,
     shadowOffset: { width: 0, height: 12 },
     elevation: 8,
-    // Force RTL inside the modal, even if the app runs LTR.
-    ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
+    alignItems: ALIGN_RIGHT,
   },
-  confirmHeaderRow: {
-    flexDirection: ROW_DIR,
-    alignItems: 'flex-start',
-    gap: 12,
+  confirmTextWrap: {
     width: '100%',
-  },
-  confirmTextCol: {
-    flex: 1,
-    alignItems: 'flex-end',
     alignSelf: 'stretch',
-    width: '100%',
-    ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
-  },
-  confirmIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
+    marginBottom: 20,
+    alignItems: ALIGN_RIGHT,
   },
   confirmTitle: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '900',
-    textAlign: 'right',
     writingDirection: 'rtl',
     width: '100%',
-    alignSelf: 'stretch',
+    marginBottom: 8,
   },
   confirmSubtitle: {
-    marginTop: 6,
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
-    lineHeight: 18,
-    textAlign: 'right',
+    lineHeight: 22,
     writingDirection: 'rtl',
     width: '100%',
-    alignSelf: 'stretch',
+    marginTop: 8,
   },
   confirmButtonsRow: {
-    marginTop: 14,
+    width: '100%',
+    alignSelf: 'stretch',
     flexDirection: ROW_DIR,
     gap: 10,
   },
@@ -615,7 +600,6 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    flexDirection: ROW_DIR,
   },
   confirmBtnSecondary: {
     backgroundColor: 'rgba(107,114,128,0.10)',
@@ -633,7 +617,7 @@ const styles = StyleSheet.create({
     position: 'relative',
     borderBottomWidth: 1,
     paddingHorizontal: 18,
-    paddingBottom: 18,
+    paddingBottom: 20,
     borderBottomLeftRadius: 28,
     borderBottomRightRadius: 28,
     shadowColor: '#000',
@@ -643,49 +627,72 @@ const styles = StyleSheet.create({
     elevation: 4,
     zIndex: 2,
   },
-  headerRow: {
+  headerTopRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 14,
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 18,
   },
   headerBackBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 999,
+    minWidth: 92,
+    height: 42,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 4,
+    borderWidth: 1,
   },
   headerSaveBtn: {
-    height: 38,
-    minWidth: 52,
+    minWidth: 92,
+    height: 42,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 6,
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.16,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
   },
-  backBtnAbs: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    zIndex: 5,
+  headerTitleWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
   },
-  saveBtnAbs: {
-    position: 'absolute',
-    right: 0,
-    top: 0,
-    zIndex: 5,
+  headerBackText: {
+    fontSize: 14,
+    fontWeight: '800',
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: '800',
+    fontSize: 20,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  headerSubtitle: {
+    marginTop: 4,
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   headerSaveText: {
     fontSize: 14,
     fontWeight: '800',
+    color: '#FFFFFF',
   },
-  inputBlock: {},
+  inputBlock: {
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 14,
+  },
   inputLabel: {
     fontSize: 12,
-    fontWeight: '600',
-    marginBottom: 6,
+    fontWeight: '700',
+    marginBottom: 8,
     textAlign: 'right',
   },
   inputWrap: {
@@ -695,6 +702,7 @@ const styles = StyleSheet.create({
     position: 'relative',
     flexDirection: ROW_DIR,
     alignItems: 'center',
+    borderWidth: 1,
   },
   input: {
     flex: 1,

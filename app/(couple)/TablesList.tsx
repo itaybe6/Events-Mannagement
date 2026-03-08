@@ -26,7 +26,7 @@ import BackSwipe from '@/components/BackSwipe';
 import { Image as ExpoImage } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AppHeader, { APP_HEADER_HEIGHT_COMPACT, getAppHeaderTotalHeight } from '@/components/AppHeader';
-import { ALIGN_LEFT, ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
+import { ALIGN_LEFT, ALIGN_RIGHT, IS_RTL, ROW_DIR } from '@/lib/rtl';
 
 export default function TablesList() {
   const userData = useUserStore((s) => s.userData);
@@ -686,14 +686,12 @@ export default function TablesList() {
                               activeOpacity={0.7}
                             >
                               <View style={styles.guestChipContent}>
-                                {guest.numberOfPeople > 1 && (
-                                  <View style={styles.peopleCountMini}>
-                                    <Text style={styles.peopleCountMiniText}>{guest.numberOfPeople}</Text>
-                                  </View>
-                                )}
                                 <Text style={styles.guestChipName} numberOfLines={2}>
                                   {guest.name}
                                 </Text>
+                                <View style={styles.peopleCountMini}>
+                                  <Text style={styles.peopleCountMiniText}>{Number(guest.numberOfPeople ?? 1) || 1}</Text>
+                                </View>
                                 {isEditing && isSelected && (
                                   <Ionicons name="checkmark-circle" size={18} color="#3B82F6" />
                                 )}
@@ -1176,17 +1174,19 @@ const styles = StyleSheet.create({
   guestsList: {
     flexDirection: ROW_DIR,
     flexWrap: 'wrap',
+    justifyContent: 'space-between',
     gap: 8,
   },
   guestChip: {
     backgroundColor: '#F9FAFB',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#E5E7EB',
-    width: '49%',
-    minWidth: 140,
+    flexBasis: '48%',
+    maxWidth: '48%',
+    alignSelf: 'flex-start',
   },
   guestChipEditing: {
     borderColor: '#D1D5DB',
@@ -1205,7 +1205,9 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#374151',
     flex: 1,
-    textAlign: 'right',
+    // RN mirrors layout in RTL builds; this keeps the name visually right-aligned.
+    textAlign: IS_RTL ? 'left' : 'right',
+    writingDirection: IS_RTL ? 'rtl' : 'ltr',
     lineHeight: 18,
   },
   peopleCountMini: {

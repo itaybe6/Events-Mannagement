@@ -83,6 +83,7 @@ export default function CoupleTabsLayout() {
       <StatusBar style="dark" backgroundColor="#FFFFFF" />
 
       <Tabs
+        initialRouteName="index"
         screenOptions={{
           tabBarActiveTintColor: colors.white,
           tabBarInactiveTintColor: colors.gray[500],
@@ -167,12 +168,12 @@ export default function CoupleTabsLayout() {
             bottom: Platform.OS === 'ios' ? Math.max(16, insets.bottom + 8) : Math.max(12, insets.bottom + 6),
             left: 16,
             right: 16,
-            height: 76,
+            height: 72,
             backgroundColor: 'transparent',
             borderRadius: 32,
             paddingHorizontal: 8,
-            paddingTop: 12,
-            paddingBottom: 8,
+            paddingTop: 20,
+            paddingBottom:8,
             overflow: 'visible',
             shadowColor: '#000',
             shadowOffset: { width: 0, height: 6 },
@@ -185,7 +186,7 @@ export default function CoupleTabsLayout() {
           },
           tabBarItemStyle: {
             flex: 1,
-            height: 56,
+            height: 52,
             paddingVertical: 0,
             paddingHorizontal: 0,
             justifyContent: 'center',
@@ -368,7 +369,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 3,
     width: "100%",
-    paddingHorizontal: 2,
+    paddingHorizontal: 1,
   },
   tabLabel: {
     fontSize: 10,
