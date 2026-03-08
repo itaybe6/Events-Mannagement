@@ -84,7 +84,8 @@ const RTL_MARK = '\u200F';
   const pickRubikFamily = (weight?: number | null) => {
     const w = typeof weight === 'number' ? weight : null;
     const pick =
-      w != null && w >= 900 ? 'Rubik_900Black'
+      // Rubik 900 looks too heavy in this app's UI, so cap it at 700 globally.
+      w != null && w >= 900 ? 'Rubik_700Bold'
       : w != null && w >= 800 ? 'Rubik_800ExtraBold'
       : w != null && w >= 700 ? 'Rubik_700Bold'
       : w != null && w >= 600 ? 'Rubik_600SemiBold'

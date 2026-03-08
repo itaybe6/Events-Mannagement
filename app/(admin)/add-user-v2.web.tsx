@@ -10,7 +10,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
@@ -43,6 +43,7 @@ const ROLE_OPTIONS: Array<{
 
 export default function AddUserV2WebScreen() {
   const router = useRouter();
+  const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
   const { isLoggedIn, userType } = useUserStore();
   const addDemoUser = useDemoUsersStore((s) => s.addUser);
   const { width } = useWindowDimensions();
@@ -189,7 +190,16 @@ export default function AddUserV2WebScreen() {
         };
         addDemoUser(demoUser);
         setSuccessText('מצב דמו: המשתמש נוסף מקומית (לא נשמר בדאטאבייס).');
-        setTimeout(() => router.replace('/users'), 800);
+        setTimeout(() => {
+          if (returnTo === 'admin-events-create') {
+            router.replace({
+              pathname: '/(admin)/admin-events-create',
+              params: { userId: demoUser.id },
+            });
+            return;
+          }
+          router.replace('/users');
+        }, 800);
         return;
       }
 
@@ -198,14 +208,23 @@ export default function AddUserV2WebScreen() {
         await avatarService.uploadUserAvatar(createdUser.id, avatarImage);
       }
       setSuccessText('המשתמש נוסף בהצלחה.');
-      setTimeout(() => router.replace('/users'), 800);
+      setTimeout(() => {
+        if (returnTo === 'admin-events-create') {
+          router.replace({
+            pathname: '/(admin)/admin-events-create',
+            params: { userId: createdUser.id },
+          });
+          return;
+        }
+        router.replace('/users');
+      }, 800);
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'שגיאה לא ידועה';
       setErrorText(`לא ניתן להוסיף משתמש.\n${msg}`);
     } finally {
       setSubmitting(false);
     }
-  }, [addDemoUser, form, isDemoMode, submitting, avatarImage]);
+  }, [addDemoUser, avatarImage, form, isDemoMode, returnTo, router, submitting]);
 
   const RoleCard = ({
     value,
@@ -311,8 +330,11 @@ export default function AddUserV2WebScreen() {
             <View style={styles.divider} />
 
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>תמונת פרופיל</Text>
-              <View style={styles.avatarRow}>
+              <View style={styles.avatarUploadFrame}>
+                <View style={styles.avatarSectionCenter}>
+                <Text style={styles.avatarSectionTitle}>תמונת פרופיל</Text>
+                <Text style={styles.avatarSectionSubtitle}>תמונה אופציונלית. בחר/י מתמונות המכשיר.</Text>
+
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="בחר תמונת פרופיל"
@@ -331,38 +353,38 @@ export default function AddUserV2WebScreen() {
                     </View>
                   )}
                 </Pressable>
-                <View style={styles.avatarActions}>
-                  <Text style={styles.avatarHint}>תמונה אופציונלית. בחר/י מתמונות המכשיר.</Text>
-                  <View style={styles.avatarBtnRow}>
+
+                <View style={styles.avatarBtnColumn}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="בחר תמונה"
+                    onPress={pickAvatarImage}
+                    style={({ hovered, pressed }: any) => [
+                      styles.avatarActionBtn,
+                      Platform.OS === 'web' && hovered ? styles.avatarActionBtnHover : null,
+                      pressed ? { opacity: 0.9 } : null,
+                    ]}
+                  >
+                    <MaterialIcons name="photo-library" size={18} color={colors.primary} />
+                    <Text style={styles.avatarActionText}>בחר תמונה</Text>
+                  </Pressable>
+
+                  {avatarImage ? (
                     <Pressable
                       accessibilityRole="button"
-                      accessibilityLabel="בחר תמונה"
-                      onPress={pickAvatarImage}
+                      accessibilityLabel="הסר תמונה"
+                      onPress={removeAvatarImage}
                       style={({ hovered, pressed }: any) => [
-                        styles.avatarActionBtn,
-                        Platform.OS === 'web' && hovered ? styles.avatarActionBtnHover : null,
+                        styles.avatarRemoveBtn,
+                        Platform.OS === 'web' && hovered ? styles.avatarRemoveBtnHover : null,
                         pressed ? { opacity: 0.9 } : null,
                       ]}
                     >
-                      <MaterialIcons name="photo-library" size={18} color={colors.primary} />
-                      <Text style={styles.avatarActionText}>בחר תמונה</Text>
+                      <MaterialIcons name="close" size={18} color={colors.gray[700]} />
+                      <Text style={styles.avatarRemoveText}>הסר</Text>
                     </Pressable>
-                    {avatarImage ? (
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel="הסר תמונה"
-                        onPress={removeAvatarImage}
-                        style={({ hovered, pressed }: any) => [
-                          styles.avatarRemoveBtn,
-                          Platform.OS === 'web' && hovered ? styles.avatarRemoveBtnHover : null,
-                          pressed ? { opacity: 0.9 } : null,
-                        ]}
-                      >
-                        <MaterialIcons name="close" size={18} color={colors.gray[700]} />
-                        <Text style={styles.avatarRemoveText}>הסר</Text>
-                      </Pressable>
-                    ) : null}
-                  </View>
+                  ) : null}
+                </View>
                 </View>
               </View>
             </View>
@@ -681,10 +703,34 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'right', writingDirection: 'rtl' },
   divider: { height: 1, width: '100%', backgroundColor: `rgba(${BRAND_RGB.primary}, 0.08)` },
 
-  avatarRow: {
-    flexDirection: 'row-reverse',
+  avatarUploadFrame: {
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    borderColor: `rgba(${BRAND_RGB.primary}, 0.18)`,
+    borderRadius: 22,
+    paddingHorizontal: 22,
+    paddingVertical: 18,
+    backgroundColor: 'rgba(255,255,255,0.45)',
+  },
+  avatarSectionCenter: {
     alignItems: 'center',
-    gap: 16,
+    justifyContent: 'center',
+    gap: 12,
+    paddingVertical: 6,
+  },
+  avatarSectionTitle: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'center',
+    writingDirection: 'rtl',
+  },
+  avatarSectionSubtitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.gray[700],
+    textAlign: 'center',
+    writingDirection: 'rtl',
   },
   avatarPreviewWrap: {
     width: 88,
@@ -704,9 +750,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarActions: { flex: 1, gap: 8 },
-  avatarHint: { fontSize: 12, fontWeight: '700', color: colors.gray[700], textAlign: 'right', writingDirection: 'rtl' },
-  avatarBtnRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
+  avatarBtnColumn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
   avatarActionBtn: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
@@ -720,7 +768,7 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   } as any,
   avatarActionBtnHover: { backgroundColor: `rgba(${BRAND_RGB.primary}, 0.08)` },
-  avatarActionText: { fontSize: 13, fontWeight: '800', color: colors.primary, writingDirection: 'rtl' },
+  avatarActionText: { fontSize: 13, fontWeight: '800', color: colors.primary, writingDirection: 'rtl', textAlign: 'center' },
   avatarRemoveBtn: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
@@ -731,7 +779,7 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   } as any,
   avatarRemoveBtnHover: { backgroundColor: `rgba(${BRAND_RGB.primary}, 0.06)` },
-  avatarRemoveText: { fontSize: 12, fontWeight: '800', color: colors.gray[700], writingDirection: 'rtl' },
+  avatarRemoveText: { fontSize: 12, fontWeight: '800', color: colors.gray[700], writingDirection: 'rtl', textAlign: 'center' },
 
   roleGrid: {
     gap: 10,

@@ -103,19 +103,19 @@ export default function AdminEventsCreateWebScreen() {
 
   const completion = useMemo(() => {
     const parts = [
+      Boolean(form.user_id),
       Boolean(form.eventType),
       Boolean(form.date && form.eventName.trim()),
-      Boolean(form.user_id),
     ];
     const done = parts.filter(Boolean).length;
     return Math.round((done / parts.length) * 100);
   }, [form.date, form.eventName, form.eventType, form.user_id]);
 
   const currentStep = useMemo(() => {
-    if (!form.eventType) return 1;
-    if (!(form.date && form.eventName.trim())) return 2;
+    if (!form.user_id) return 1;
+    if (!form.eventType) return 2;
     return 3;
-  }, [form.date, form.eventName, form.eventType]);
+  }, [form.eventType, form.user_id]);
 
   const handleAddEvent = async () => {
     if (!isFormValid) return;
@@ -211,6 +211,48 @@ export default function AdminEventsCreateWebScreen() {
                 <View style={styles.badge}>
                   <Text style={styles.badgeText}>1</Text>
                 </View>
+                <Text style={styles.sectionTitle}>בחירת לקוח</Text>
+              </View>
+
+              <View style={styles.card}>
+                <Text style={styles.fieldLabel}>שיוך משתמש לאירוע</Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="בחירת משתמש"
+                  onPress={() => setUserModalOpen(true)}
+                  style={({ hovered, pressed }: any) => [
+                    styles.selector,
+                    Platform.OS === 'web' && hovered ? styles.inputHover : null,
+                    pressed ? { opacity: 0.92 } : null,
+                  ]}
+                >
+                  <View style={styles.selectorIcon}>
+                    <Ionicons name="person-outline" size={18} color={stylesTokens.primary} />
+                  </View>
+                  <View style={styles.selectorText}>
+                    <Text style={styles.selectorTitle} numberOfLines={1}>
+                      {selectedUser ? selectedUser.name : 'בחר משתמש'}
+                    </Text>
+                    <Text style={styles.selectorSubtitle} numberOfLines={1}>
+                      {selectedUser ? selectedUser.email : 'הקצאת משתמש לאירוע'}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-down" size={18} color={stylesTokens.textMuted} />
+                </Pressable>
+
+                <Text style={styles.miniHint}>
+                  בחרו משתמש עם 0 אירועים פעילים. אם לא מופיעים משתמשים, נסו לרענן.
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.divider} />
+
+            <View style={styles.section}>
+              <View style={styles.sectionTitleRow}>
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>2</Text>
+                </View>
                 <Text style={styles.sectionTitle}>סוג האירוע</Text>
               </View>
 
@@ -266,7 +308,7 @@ export default function AdminEventsCreateWebScreen() {
             <View style={styles.section}>
               <View style={styles.sectionTitleRow}>
                 <View style={styles.badge}>
-                  <Text style={styles.badgeText}>2</Text>
+                  <Text style={styles.badgeText}>3</Text>
                 </View>
                 <Text style={styles.sectionTitle}>פרטי האירוע</Text>
               </View>
@@ -283,13 +325,13 @@ export default function AdminEventsCreateWebScreen() {
                     pressed ? { opacity: 0.92 } : null,
                   ]}
                 >
-                  <View style={styles.inputIcon}>
-                    <Ionicons name="calendar-outline" size={18} color={stylesTokens.textMuted} />
-                  </View>
+                  <Ionicons name="chevron-down" size={16} color={stylesTokens.textMuted} />
                   <Text style={[styles.dateText, !form.date ? styles.dateTextPlaceholder : null]} numberOfLines={1}>
                     {form.date ? formatDate(form.date) : 'בחר תאריך לאירוע'}
                   </Text>
-                  <Ionicons name="chevron-down" size={16} color={stylesTokens.textMuted} />
+                  <View style={styles.inputIcon}>
+                    <Ionicons name="calendar-outline" size={18} color={stylesTokens.textMuted} />
+                  </View>
                 </Pressable>
 
                 <View style={styles.formGrid}>
@@ -371,48 +413,6 @@ export default function AdminEventsCreateWebScreen() {
                 </View>
               </View>
             </View>
-
-            <View style={styles.divider} />
-
-            <View style={styles.section}>
-              <View style={styles.sectionTitleRow}>
-                <View style={styles.badge}>
-                  <Text style={styles.badgeText}>3</Text>
-                </View>
-                <Text style={styles.sectionTitle}>בחירת לקוח</Text>
-              </View>
-
-              <View style={styles.card}>
-                <Text style={styles.fieldLabel}>שיוך משתמש לאירוע</Text>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="בחירת משתמש"
-                  onPress={() => setUserModalOpen(true)}
-                  style={({ hovered, pressed }: any) => [
-                    styles.selector,
-                    Platform.OS === 'web' && hovered ? styles.inputHover : null,
-                    pressed ? { opacity: 0.92 } : null,
-                  ]}
-                >
-                  <View style={styles.selectorIcon}>
-                    <Ionicons name="person-outline" size={18} color={stylesTokens.primary} />
-                  </View>
-                  <View style={styles.selectorText}>
-                    <Text style={styles.selectorTitle} numberOfLines={1}>
-                      {selectedUser ? selectedUser.name : 'בחר משתמש'}
-                    </Text>
-                    <Text style={styles.selectorSubtitle} numberOfLines={1}>
-                      {selectedUser ? selectedUser.email : 'הקצאת משתמש לאירוע'}
-                    </Text>
-                  </View>
-                  <Ionicons name="chevron-down" size={18} color={stylesTokens.textMuted} />
-                </Pressable>
-
-                <Text style={styles.miniHint}>
-                  בחרו משתמש עם 0 אירועים פעילים. אם לא מופיעים משתמשים, נסו לרענן.
-                </Text>
-              </View>
-            </View>
           </ScrollView>
 
           {isLg ? (
@@ -423,66 +423,66 @@ export default function AdminEventsCreateWebScreen() {
 
                   <View style={styles.summaryList}>
                     <View style={styles.summaryItem}>
-                      <View style={styles.summaryIconCircle}>
-                        <Ionicons name="pricetag-outline" size={18} color={stylesTokens.white} />
-                      </View>
                       <View style={styles.summaryText}>
                         <Text style={styles.summaryLabel}>סוג אירוע</Text>
                         <Text style={styles.summaryValue}>{form.eventType || 'טרם נבחר'}</Text>
                       </View>
+                      <View style={styles.summaryIconCircle}>
+                        <Ionicons name="pricetag-outline" size={18} color={stylesTokens.white} />
+                      </View>
                     </View>
 
                     <View style={styles.summaryItem}>
-                      <View style={styles.summaryIconCircle}>
-                        <Ionicons name="text-outline" size={18} color={stylesTokens.white} />
-                      </View>
                       <View style={styles.summaryText}>
                         <Text style={styles.summaryLabel}>שם האירוע</Text>
                         <Text style={styles.summaryValue}>{form.eventName.trim() ? form.eventName.trim() : 'טרם נבחר'}</Text>
                       </View>
+                      <View style={styles.summaryIconCircle}>
+                        <Ionicons name="text-outline" size={18} color={stylesTokens.white} />
+                      </View>
                     </View>
 
                     <View style={styles.summaryItem}>
-                      <View style={styles.summaryIconCircle}>
-                        <Ionicons name="calendar-outline" size={18} color={stylesTokens.white} />
-                      </View>
                       <View style={styles.summaryText}>
                         <Text style={styles.summaryLabel}>תאריך</Text>
                         <Text style={styles.summaryValue}>{form.date ? formatDate(form.date) : 'טרם נבחר'}</Text>
                       </View>
+                      <View style={styles.summaryIconCircle}>
+                        <Ionicons name="calendar-outline" size={18} color={stylesTokens.white} />
+                      </View>
                     </View>
 
                     <View style={styles.summaryItem}>
-                      <View style={styles.summaryIconCircle}>
-                        <Ionicons name="pin-outline" size={18} color={stylesTokens.white} />
-                      </View>
                       <View style={styles.summaryText}>
                         <Text style={styles.summaryLabel}>מיקום</Text>
                         <Text style={[styles.summaryValue, !form.location.trim() ? styles.summaryValueMuted : null]} numberOfLines={2}>
                           {form.location.trim() ? `${form.location.trim()}${form.city.trim() ? `, ${form.city.trim()}` : ''}` : 'לא צוין מיקום'}
                         </Text>
                       </View>
+                      <View style={styles.summaryIconCircle}>
+                        <Ionicons name="pin-outline" size={18} color={stylesTokens.white} />
+                      </View>
                     </View>
 
                     <View style={styles.summaryItem}>
-                      <View style={[styles.summaryIconCircle, styles.summaryIconCircleMuted]}>
-                        <Ionicons name="person-outline" size={18} color={'rgba(255,255,255,0.86)'} />
-                      </View>
                       <View style={styles.summaryText}>
                         <Text style={styles.summaryLabel}>לקוח</Text>
                         <Text style={styles.summaryValue}>{selectedUser ? selectedUser.name : '—'}</Text>
+                      </View>
+                      <View style={[styles.summaryIconCircle, styles.summaryIconCircleMuted]}>
+                        <Ionicons name="person-outline" size={18} color={'rgba(255,255,255,0.86)'} />
                       </View>
                     </View>
                   </View>
 
                   <View style={styles.summaryFooter}>
                     <View style={styles.statusRow}>
-                      <Text style={styles.statusLabel}>סטטוס</Text>
                       <View style={[styles.statusChip, isFormValid ? styles.statusChipReady : null]}>
                         <Text style={[styles.statusChipText, isFormValid ? styles.statusChipTextReady : null]}>
                           {isFormValid ? 'מוכן לשמירה' : 'טיוטה חדשה'}
                         </Text>
                       </View>
+                      <Text style={styles.statusLabel}>סטטוס</Text>
                     </View>
 
                     <Pressable
@@ -716,6 +716,26 @@ export default function AdminEventsCreateWebScreen() {
                 onBlur={() => setFocusedField(null)}
               />
             </View>
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="הוספת משתמש חדש"
+              onPress={() => {
+                setUserModalOpen(false);
+                router.push({
+                  pathname: '/(admin)/add-user-v2',
+                  params: { returnTo: 'admin-events-create' },
+                });
+              }}
+              style={({ hovered, pressed }: any) => [
+                styles.addUserInlineBtn,
+                Platform.OS === 'web' && hovered ? styles.addUserInlineBtnHover : null,
+                pressed ? { opacity: 0.92 } : null,
+              ]}
+            >
+              <Ionicons name="person-add-outline" size={18} color={stylesTokens.primary} />
+              <Text style={styles.addUserInlineBtnText}>הוספת משתמש חדש למערכת</Text>
+            </Pressable>
 
             {loadingCouples ? (
               <View style={styles.modalLoading}>
@@ -971,9 +991,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  selectorText: { flex: 1, minWidth: 0, alignItems: 'flex-end' },
-  selectorTitle: { fontSize: 14, fontWeight: '900', color: stylesTokens.text, textAlign: 'right' },
-  selectorSubtitle: { marginTop: 2, fontSize: 12, fontWeight: '700', color: stylesTokens.textMuted, textAlign: 'right' },
+  selectorText: { flex: 1, minWidth: 0, alignItems: 'stretch' },
+  selectorTitle: {
+    width: '100%',
+    fontSize: 14,
+    fontWeight: '900',
+    color: stylesTokens.text,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  selectorSubtitle: {
+    width: '100%',
+    marginTop: 2,
+    fontSize: 12,
+    fontWeight: '700',
+    color: stylesTokens.textMuted,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
   miniHint: { marginTop: 10, fontSize: 12, fontWeight: '600', color: stylesTokens.textMuted, textAlign: 'right', lineHeight: 17 },
 
   side: { width: 380, minWidth: 340, flexShrink: 0 },
@@ -1006,9 +1041,24 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   summaryIconCircleMuted: { backgroundColor: 'rgba(255,255,255,0.12)' },
-  summaryText: { flex: 1, minWidth: 0, alignItems: 'flex-end' },
-  summaryLabel: { fontSize: 10, fontWeight: '900', color: 'rgba(255,255,255,0.75)', textAlign: 'right' },
-  summaryValue: { marginTop: 2, fontSize: 14, fontWeight: '800', color: stylesTokens.white, textAlign: 'right' },
+  summaryText: { flex: 1, minWidth: 0, alignItems: 'stretch' },
+  summaryLabel: {
+    width: '100%',
+    fontSize: 10,
+    fontWeight: '900',
+    color: 'rgba(255,255,255,0.75)',
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  summaryValue: {
+    width: '100%',
+    marginTop: 2,
+    fontSize: 14,
+    fontWeight: '800',
+    color: stylesTokens.white,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
   summaryValueMuted: { color: 'rgba(255,255,255,0.62)', fontStyle: 'italic' },
 
   summaryFooter: { marginTop: 16, paddingTop: 14, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.14)', gap: 12 },
@@ -1109,6 +1159,30 @@ const styles = StyleSheet.create({
   },
   searchIcon: { position: 'absolute', left: 12 },
   searchInput: { width: '100%', paddingLeft: 40, paddingRight: 12, fontSize: 14, fontWeight: '800', color: stylesTokens.text, textAlign: 'right' },
+  addUserInlineBtn: {
+    marginTop: 12,
+    height: 46,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    backgroundColor: 'rgba(22,45,156,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(22,45,156,0.14)',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  addUserInlineBtnHover: {
+    backgroundColor: 'rgba(22,45,156,0.10)',
+  },
+  addUserInlineBtnText: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: stylesTokens.primary,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
   modalLoading: { paddingVertical: 24, alignItems: 'center' },
   userRow: {
     paddingVertical: 12,

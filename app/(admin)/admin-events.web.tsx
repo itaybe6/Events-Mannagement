@@ -95,13 +95,14 @@ function getStatusMeta(date: Date | string) {
   const diff = Math.ceil((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
   if (diff < 0) return { label: 'הסתיים', tone: 'past' as const };
   if (diff <= 7) return { label: 'פעיל', tone: 'active' as const };
-  if (diff <= 30) return { label: 'בתכנון', tone: 'planning' as const };
-  return { label: 'טיוטה', tone: 'draft' as const };
+  return { label: 'בתכנון', tone: 'planning' as const };
 }
 
 export default function AdminEventsWebScreen() {
   const router = useRouter();
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [datePickerMode, setDatePickerMode] = useState<'exact' | 'start' | 'end'>('exact');
 
   const loadEventsFn = useMemo(() => async () => {
     const data = await eventService.getEvents();
@@ -109,11 +110,16 @@ export default function AdminEventsWebScreen() {
   }, []);
 
   const {
+    events,
     loading,
     query,
     setQuery,
     filterDate,
     setFilterDate,
+    filterStartDate,
+    setFilterStartDate,
+    filterEndDate,
+    setFilterEndDate,
     filterMonth,
     setFilterMonth,
     sortOrder,
@@ -194,102 +200,240 @@ export default function AdminEventsWebScreen() {
   }, [visibleEventIdsKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const formatCount = (n: number) => (Number(n) || 0).toLocaleString('he-IL');
+  const activeFilterLabels = useMemo(() => {
+    const labels: string[] = [];
+    const trimmedQuery = query.trim();
+    if (trimmedQuery) labels.push(`חיפוש: ${trimmedQuery}`);
+    if (filterDate) {
+      labels.push(`תאריך: ${formatDateLabel(filterDate)}`);
+    } else if (filterStartDate || filterEndDate) {
+      const from = filterStartDate ? formatDateLabel(filterStartDate) : 'מההתחלה';
+      const to = filterEndDate ? formatDateLabel(filterEndDate) : 'ללא סוף';
+      labels.push(`טווח: ${from} - ${to}`);
+    } else if (filterMonth) {
+      labels.push(`חודש: ${MONTHS[Number(filterMonth)] ?? 'נבחר'}`);
+    }
+    if (sortOrder === 'desc') labels.push('מיון: חדש לישן');
+    return labels;
+  }, [filterDate, filterEndDate, filterMonth, filterStartDate, query, sortOrder]);
+
+  const openPicker = (mode: 'exact' | 'start' | 'end') => {
+    setDatePickerMode(mode);
+    setShowDatePicker(true);
+  };
+
+  const resetFilters = () => {
+    setQuery('');
+    setFilterDate(null);
+    setFilterStartDate(null);
+    setFilterEndDate(null);
+    setFilterMonth('');
+    setSortOrder('asc');
+  };
 
   return (
     <View style={styles.page}>
       <View style={styles.filterBarOuter}>
-        <View style={styles.filterBar}>
-          <View style={styles.filterBarLeft}>
-            <View style={styles.filterLabelRow}>
-              <Ionicons name="filter" size={18} color={colors.primary} />
-              <Text style={styles.filterLabel}>סינון</Text>
+        <View style={styles.toolbarCard}>
+          <View style={styles.toolbarTopRow}>
+            <View style={styles.toolbarTitleWrap}>
+              <Text style={styles.toolbarEyebrow}>ניהול אירועים</Text>
+              <Text style={styles.toolbarTitle}>טבלת אירועים</Text>
             </View>
-            <View style={styles.filterDivider} />
+            <View style={styles.toolbarStats}>
+              <View style={styles.toolbarStatChip}>
+                <Text style={styles.toolbarStatValue}>{formatCount(filteredEvents.length)}</Text>
+                <Text style={styles.toolbarStatLabel}>מוצגים</Text>
+              </View>
+              <View style={styles.toolbarStatChipMuted}>
+                <Text style={styles.toolbarStatValueMuted}>{formatCount(events.length)}</Text>
+                <Text style={styles.toolbarStatLabel}>סה"כ</Text>
+              </View>
+            </View>
+          </View>
 
-            <View style={styles.searchWrapInline}>
+          <View style={styles.searchToolbarRow}>
+            <View style={styles.searchWrapHero}>
               <Ionicons name="search" size={18} color={colors.gray[500]} style={styles.searchIconInline} />
               <TextInput
                 value={query}
                 onChangeText={setQuery}
-                placeholder="חיפוש אירוע..."
+                placeholder="חיפוש לפי שם אירוע, לקוח, אולם או עיר..."
                 placeholderTextColor={colors.gray[500]}
-                style={styles.searchInput}
+                style={styles.searchInputHero}
                 textAlign="right"
                 returnKeyType="search"
               />
+              {query.trim() ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="נקה חיפוש"
+                  onPress={() => setQuery('')}
+                  style={({ pressed }: any) => [styles.clearSearchBtn, pressed ? { opacity: 0.72 } : null]}
+                >
+                  <Ionicons name="close" size={14} color={colors.gray[600]} />
+                </Pressable>
+              ) : null}
             </View>
 
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="בחירת תאריך"
-              onPress={() => setShowDatePicker(true)}
+              accessibilityLabel={filtersOpen ? 'סגור סינון' : 'פתח סינון'}
+              onPress={() => setFiltersOpen((prev) => !prev)}
               style={({ hovered, pressed }: any) => [
-                styles.dateBtn,
-                Platform.OS === 'web' && hovered ? styles.dateBtnHover : null,
+                styles.filterToggleBtn,
+                Platform.OS === 'web' && hovered ? styles.filterToggleBtnHover : null,
                 pressed ? { opacity: 0.92 } : null,
               ]}
             >
-              <Ionicons name="calendar-outline" size={16} color={colors.text} />
-              <Text style={styles.dateBtnText}>
-                {filterDate ? filterDate.toLocaleDateString('he-IL') : 'בחירת תאריך'}
-              </Text>
+              <Ionicons name={filtersOpen ? 'options' : 'options-outline'} size={18} color={colors.primary} />
+              <Text style={styles.filterToggleBtnText}>סינון</Text>
+              {activeFilterLabels.length > 0 ? (
+                <View style={styles.filterToggleBadge}>
+                  <Text style={styles.filterToggleBadgeText}>{activeFilterLabels.length}</Text>
+                </View>
+              ) : null}
             </Pressable>
           </View>
 
-          <View style={styles.filterBarRight}>
-            <View style={styles.selectWrap}>
-              <Picker
-                selectedValue={sortOrder}
-                onValueChange={(value) => setSortOrder(value as any)}
-                style={styles.picker}
-                dropdownIconColor={colors.gray[600]}
-              >
-                <Picker.Item label="תאריך (חדש)" value="desc" />
-                <Picker.Item label="תאריך (ישן)" value="asc" />
-              </Picker>
+          {activeFilterLabels.length > 0 ? (
+            <View style={styles.activeFiltersRow}>
+              {activeFilterLabels.map((label) => (
+                <View key={label} style={styles.activeFilterChip}>
+                  <Text style={styles.activeFilterChipText}>{label}</Text>
+                </View>
+              ))}
             </View>
+          ) : null}
 
-            <View style={styles.selectWrap}>
-              <Picker
-                selectedValue={filterDate ? '' : filterMonth}
-                onValueChange={(value) => {
-                  const v = String(value ?? '');
-                  setFilterMonth(v);
-                  setFilterDate(null);
-                }}
-                style={styles.picker}
-                dropdownIconColor={colors.gray[600]}
-              >
-                <Picker.Item label="כל החודשים" value="" />
-                {MONTHS.map((m, i) => (
-                  <Picker.Item key={m} label={m} value={String(i)} />
-                ))}
-              </Picker>
+          {filtersOpen ? (
+            <View style={styles.filtersPanel}>
+              <View style={styles.filtersGrid}>
+                <View style={styles.filterField}>
+                  <Text style={styles.filterFieldLabel}>מיון</Text>
+                  <View style={styles.selectWrapModern}>
+                    <Picker
+                      selectedValue={sortOrder}
+                      onValueChange={(value) => setSortOrder(value as any)}
+                      style={styles.picker}
+                      dropdownIconColor={colors.gray[600]}
+                    >
+                      <Picker.Item label="תאריך (ישן לחדש)" value="asc" />
+                      <Picker.Item label="תאריך (חדש לישן)" value="desc" />
+                    </Picker>
+                  </View>
+                </View>
+
+                <View style={styles.filterField}>
+                  <Text style={styles.filterFieldLabel}>חודש</Text>
+                  <View style={styles.selectWrapModern}>
+                    <Picker
+                      selectedValue={filterDate || filterStartDate || filterEndDate ? '' : filterMonth}
+                      onValueChange={(value) => {
+                        const v = String(value ?? '');
+                        setFilterMonth(v);
+                        setFilterDate(null);
+                        setFilterStartDate(null);
+                        setFilterEndDate(null);
+                      }}
+                      style={styles.picker}
+                      dropdownIconColor={colors.gray[600]}
+                    >
+                      <Picker.Item label="כל החודשים" value="" />
+                      {MONTHS.map((m, i) => (
+                        <Picker.Item key={m} label={m} value={String(i)} />
+                      ))}
+                    </Picker>
+                  </View>
+                </View>
+
+                <View style={styles.filterField}>
+                  <Text style={styles.filterFieldLabel}>תאריך מדויק</Text>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="בחירת תאריך מדויק"
+                    onPress={() => openPicker('exact')}
+                    style={({ hovered, pressed }: any) => [
+                      styles.dateBtnWide,
+                      Platform.OS === 'web' && hovered ? styles.dateBtnHover : null,
+                      pressed ? { opacity: 0.92 } : null,
+                    ]}
+                  >
+                    <Ionicons name="calendar-outline" size={16} color={colors.text} />
+                    <Text style={styles.dateBtnText}>{filterDate ? formatDateLabel(filterDate) : 'בחירת תאריך'}</Text>
+                  </Pressable>
+                </View>
+
+                <View style={styles.filterField}>
+                  <Text style={styles.filterFieldLabel}>טווח תאריכים</Text>
+                  <View style={styles.rangeActions}>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="בחירת תאריך התחלה"
+                      onPress={() => openPicker('start')}
+                      style={({ hovered, pressed }: any) => [
+                        styles.rangeBtn,
+                        Platform.OS === 'web' && hovered ? styles.rangeBtnHover : null,
+                        pressed ? { opacity: 0.92 } : null,
+                      ]}
+                    >
+                      <Ionicons name="arrow-forward-outline" size={14} color={colors.text} />
+                      <Text style={styles.rangeBtnText}>{filterStartDate ? formatDateLabel(filterStartDate) : 'מתאריך'}</Text>
+                    </Pressable>
+
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="בחירת תאריך סיום"
+                      onPress={() => openPicker('end')}
+                      style={({ hovered, pressed }: any) => [
+                        styles.rangeBtn,
+                        Platform.OS === 'web' && hovered ? styles.rangeBtnHover : null,
+                        pressed ? { opacity: 0.92 } : null,
+                      ]}
+                    >
+                      <Ionicons name="arrow-back-outline" size={14} color={colors.text} />
+                      <Text style={styles.rangeBtnText}>{filterEndDate ? formatDateLabel(filterEndDate) : 'עד תאריך'}</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.filtersFooter}>
+                <Text style={styles.filtersHint}>אפשר לסנן לפי חודש, תאריך מדויק או טווח תאריכים.</Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="איפוס פילטרים"
+                  onPress={resetFilters}
+                  style={({ hovered, pressed }: any) => [
+                    styles.resetBtnModern,
+                    Platform.OS === 'web' && hovered ? styles.resetBtnHover : null,
+                    pressed ? { opacity: 0.92 } : null,
+                  ]}
+                >
+                  <Ionicons name="refresh-outline" size={15} color={colors.primary} />
+                  <Text style={styles.resetBtnText}>איפוס פילטרים</Text>
+                </Pressable>
+              </View>
             </View>
-
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="איפוס סינון"
-              onPress={() => {
-                setQuery('');
-                setFilterDate(null);
-                setFilterMonth('');
-                setSortOrder('asc');
-              }}
-              style={({ hovered, pressed }: any) => [
-                styles.resetBtn,
-                Platform.OS === 'web' && hovered ? styles.resetBtnHover : null,
-                pressed ? { opacity: 0.92 } : null,
-              ]}
-            >
-              <Text style={styles.resetBtnText}>איפוס</Text>
-            </Pressable>
-          </View>
+          ) : null}
         </View>
       </View>
 
       <View style={styles.contentRow}>
         <View style={styles.tableCard}>
+          <View style={styles.tableTopBar}>
+            <View style={styles.tableTopTextWrap}>
+              <Text style={styles.tableTopTitle}>כל האירועים במערכת</Text>
+              <Text style={styles.tableTopSubtitle}>מעקב מהיר אחרי בעלי האירוע, תאריכים וסטטוס הושבה.</Text>
+            </View>
+            <View style={styles.tableTopMeta}>
+              <View style={styles.tableMetaPill}>
+                <Ionicons name="swap-vertical-outline" size={14} color={colors.primary} />
+                <Text style={styles.tableMetaPillText}>{sortOrder === 'desc' ? 'חדש לישן' : 'ישן לחדש'}</Text>
+              </View>
+            </View>
+          </View>
+
           <View style={styles.tableHeader}>
             <Text style={[styles.th, { width: 64, textAlign: 'center' }]}>תמונה</Text>
             <Text style={[styles.th, { width: 160 }]}>לקוח</Text>
@@ -300,6 +444,7 @@ export default function AdminEventsWebScreen() {
             <Text style={[styles.th, { width: 100, textAlign: 'center' }]}>מגיעים</Text>
             <Text style={[styles.th, { width: 100, textAlign: 'center' }]}>הושבו</Text>
             <Text style={[styles.th, { width: 120 }]}>זמן</Text>
+            <Text style={[styles.th, { width: 100, textAlign: 'center' }]}>סטטוס</Text>
             <Text style={[styles.th, { width: 90, textAlign: 'center' }]}>פעולה</Text>
           </View>
 
@@ -320,7 +465,7 @@ export default function AdminEventsWebScreen() {
               contentContainerStyle={styles.rowsScrollContent}
               showsVerticalScrollIndicator={false}
             >
-              {filteredEvents.map((e) => {
+              {filteredEvents.map((e, index) => {
                 const ownerName = String((e as any).userName || e.userName || '').trim();
                 const invitationImageUrl = String((e as any).invitationImageUrl ?? e.invitationImageUrl ?? '').trim();
                 const subtitle = getEventSubtitle(e);
@@ -335,6 +480,12 @@ export default function AdminEventsWebScreen() {
                       : status.tone === 'past'
                         ? styles.statusPillPast
                         : styles.statusPillDraft;
+                const statusTextToneStyle =
+                  status.tone === 'active'
+                    ? styles.statusPillTextActive
+                    : status.tone === 'planning'
+                      ? styles.statusPillTextPlanning
+                      : styles.statusPillTextMuted;
 
                 return (
                   <Pressable
@@ -344,6 +495,7 @@ export default function AdminEventsWebScreen() {
                     onPress={() => router.push({ pathname: '/(admin)/admin-event-details', params: { id: e.id } })}
                     style={({ hovered, pressed }: any) => [
                       styles.tr,
+                      index % 2 === 1 ? styles.trAlt : null,
                       Platform.OS === 'web' && hovered ? styles.trHover : null,
                       pressed ? { opacity: 0.96 } : null,
                     ]}
@@ -360,9 +512,11 @@ export default function AdminEventsWebScreen() {
                       </Text>
                     </View>
 
-                    <View style={[styles.cell, { width: 110 }]}>
-                      <Text style={styles.dateDay}>{formatDay(e.date)}</Text>
-                      <Text style={styles.dateMonth}>{formatMonthYear(e.date)}</Text>
+                    <View style={[styles.cell, styles.dateCell]}>
+                      <View style={styles.dateBadge}>
+                        <Text style={styles.dateDay}>{formatDay(e.date)}</Text>
+                        <Text style={styles.dateMonth}>{formatMonthYear(e.date)}</Text>
+                      </View>
                     </View>
 
                     <View style={[styles.cell, { flex: 1 }]}>
@@ -376,10 +530,14 @@ export default function AdminEventsWebScreen() {
                       </View>
                     </View>
 
-                    <Text style={[styles.tdText, { flex: 1 }]} numberOfLines={1}>
-                      {e.location}
-                      {e.city ? `, ${e.city}` : ''}
-                    </Text>
+                    <View style={[styles.cell, { flex: 1 }]}>
+                      <Text style={styles.locationMain} numberOfLines={1}>
+                        {e.location || '—'}
+                      </Text>
+                      <Text style={styles.locationSub} numberOfLines={1}>
+                        {e.city || 'ללא עיר'}
+                      </Text>
+                    </View>
 
                     <View style={[styles.cell, { width: 100, alignItems: 'center' }]}>
                       <Text style={styles.guestsMetaMain}>
@@ -402,6 +560,12 @@ export default function AdminEventsWebScreen() {
                     <View style={[styles.cell, { width: 120 }]}>
                       <Text style={styles.timeMain}>{daysLeftLabel(e.date)}</Text>
                       <Text style={styles.timeSub}>{formatDateLabel(e.date)}</Text>
+                    </View>
+
+                    <View style={[styles.cell, { width: 100, alignItems: 'center' }]}>
+                      <View style={[styles.statusPill, statusToneStyle]}>
+                        <Text style={[styles.statusPillText, statusTextToneStyle]}>{status.label}</Text>
+                      </View>
                     </View>
 
                     <View style={[styles.cell, { width: 90, alignItems: 'center' }]}>
@@ -441,11 +605,35 @@ export default function AdminEventsWebScreen() {
         mode="date"
         onConfirm={(date) => {
           setShowDatePicker(false);
-          setFilterDate(date as Date);
+          if (datePickerMode === 'exact') {
+            setFilterDate(date as Date);
+            setFilterMonth('');
+            setFilterStartDate(null);
+            setFilterEndDate(null);
+            return;
+          }
+
+          if (datePickerMode === 'start') {
+            const nextStart = date as Date;
+            setFilterDate(null);
+            setFilterMonth('');
+            setFilterStartDate(nextStart);
+            if (filterEndDate && nextStart.getTime() > new Date(filterEndDate).getTime()) {
+              setFilterEndDate(nextStart);
+            }
+            return;
+          }
+
+          const nextEnd = date as Date;
+          setFilterDate(null);
           setFilterMonth('');
+          setFilterEndDate(nextEnd);
+          if (filterStartDate && nextEnd.getTime() < new Date(filterStartDate).getTime()) {
+            setFilterStartDate(nextEnd);
+          }
         }}
         onCancel={() => setShowDatePicker(false)}
-        minimumDate={new Date()}
+        minimumDate={datePickerMode === 'end' && filterStartDate ? new Date(filterStartDate) : undefined}
         locale="he-IL"
       />
     </View>
@@ -541,83 +729,228 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
     paddingTop: 18,
   },
-  filterBar: {
+  toolbarCard: {
     backgroundColor: colors.white,
-    borderRadius: 18,
+    borderRadius: 24,
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.08)',
-    padding: 14,
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 16,
+    padding: 18,
+    gap: 14,
     shadowColor: '#0b1c41',
     shadowOpacity: 0.06,
     shadowRadius: 20,
     shadowOffset: { width: 0, height: 8 },
   },
-  filterBarLeft: {
-    flex: 1,
-    minWidth: 0,
-    flexDirection: 'row-reverse',
+  toolbarTopRow: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     gap: 12,
     flexWrap: 'wrap',
   },
-  filterBarRight: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: 10,
-    flexWrap: 'wrap',
+  toolbarTitleWrap: {
+    alignItems: 'stretch',
+    gap: 4,
   },
-  filterLabelRow: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: 8,
+  toolbarEyebrow: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.primary,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+    width: '100%',
   },
-  filterLabel: {
-    fontSize: 14,
+  toolbarTitle: {
+    fontSize: 28,
     fontWeight: '900',
     color: colors.text,
     textAlign: 'right',
+    writingDirection: 'rtl',
+    width: '100%',
   },
-  filterDivider: {
-    width: 1,
-    height: 28,
-    backgroundColor: 'rgba(15,23,42,0.10)',
-    marginHorizontal: 6,
+  toolbarStats: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
-  searchWrapInline: {
-    height: 42,
-    minWidth: 260,
-    flexGrow: 1,
-    borderRadius: 14,
+  toolbarStatChip: {
+    minWidth: 92,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 16,
+    backgroundColor: 'rgba(15,69,230,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,69,230,0.14)',
+    alignItems: 'center',
+  },
+  toolbarStatChipMuted: {
+    minWidth: 92,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 16,
     backgroundColor: 'rgba(15,23,42,0.04)',
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.06)',
-    justifyContent: 'center',
+    alignItems: 'center',
   },
-  searchIconInline: { position: 'absolute', right: 12 },
-  searchInput: {
-    paddingRight: 40,
-    paddingLeft: 12,
+  toolbarStatValue: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: colors.primary,
+    textAlign: 'center',
+  },
+  toolbarStatValueMuted: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'center',
+  },
+  toolbarStatLabel: {
+    marginTop: 3,
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.gray[600],
+    textAlign: 'center',
+  },
+  searchToolbarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  searchWrapHero: {
+    flex: 1,
+    minHeight: 52,
+    borderRadius: 18,
+    backgroundColor: '#f7f9fc',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.06)',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  searchIconInline: {
+    position: 'absolute',
+    right: 16,
+    top: 17,
+  },
+  searchInputHero: {
+    minHeight: 52,
+    paddingRight: 46,
+    paddingLeft: 44,
     fontSize: 15,
     fontWeight: '600',
     color: colors.text,
   },
-  dateBtn: {
+  clearSearchBtn: {
+    position: 'absolute',
+    left: 12,
+    top: 12,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(15,23,42,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterToggleBtn: {
+    minWidth: 118,
+    minHeight: 52,
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    backgroundColor: 'rgba(15,69,230,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,69,230,0.14)',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  filterToggleBtnHover: {
+    backgroundColor: 'rgba(15,69,230,0.12)',
+  },
+  filterToggleBtnText: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: colors.primary,
+    textAlign: 'right',
+  },
+  filterToggleBadge: {
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: 5,
+    borderRadius: 10,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterToggleBadgeText: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: colors.white,
+    textAlign: 'center',
+  },
+  activeFiltersRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  activeFilterChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: 'rgba(15,23,42,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+  },
+  activeFilterChipText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.text,
+    textAlign: 'right',
+  },
+  filtersPanel: {
+    paddingTop: 4,
+    gap: 14,
+  },
+  filtersGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  filterField: {
+    flexGrow: 1,
+    minWidth: 220,
+    gap: 8,
+  },
+  filterFieldLabel: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.gray[600],
+    textAlign: 'right',
+  },
+  selectWrapModern: {
+    height: 42,
+    minWidth: 160,
+    borderRadius: 14,
+    overflow: 'hidden',
+    backgroundColor: '#f7f9fc',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.06)',
+    justifyContent: 'center',
+  },
+  dateBtnHover: {
+    backgroundColor: 'rgba(15,23,42,0.08)',
+  },
+  dateBtnWide: {
     height: 42,
     borderRadius: 14,
-    backgroundColor: 'rgba(15,23,42,0.04)',
+    backgroundColor: '#f7f9fc',
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.06)',
     flexDirection: 'row-reverse',
     alignItems: 'center',
+    justifyContent: 'space-between',
     gap: 8,
     paddingHorizontal: 12,
-  },
-  dateBtnHover: {
-    backgroundColor: 'rgba(15,23,42,0.06)',
   },
   dateBtnText: {
     fontSize: 13,
@@ -625,30 +958,60 @@ const styles = StyleSheet.create({
     color: colors.text,
     textAlign: 'right',
   },
-  selectWrap: {
-    height: 42,
-    minWidth: 160,
-    borderRadius: 14,
-    overflow: 'hidden',
-    backgroundColor: 'rgba(15,23,42,0.04)',
-    borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.06)',
-    justifyContent: 'center',
-  },
   picker: {
     height: 42,
     width: '100%',
     color: colors.text,
   },
-  resetBtn: {
+  rangeActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  rangeBtn: {
+    height: 42,
+    flex: 1,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    backgroundColor: '#f7f9fc',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.06)',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  rangeBtnHover: {
+    backgroundColor: 'rgba(15,23,42,0.08)',
+  },
+  rangeBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.text,
+    textAlign: 'right',
+  },
+  filtersFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    flexWrap: 'wrap',
+  },
+  filtersHint: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.gray[600],
+    textAlign: 'right',
+  },
+  resetBtnModern: {
     height: 42,
     borderRadius: 14,
     paddingHorizontal: 14,
     backgroundColor: 'rgba(15,69,230,0.08)',
     borderWidth: 1,
     borderColor: 'rgba(15,69,230,0.14)',
+    flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 8,
   },
   resetBtnHover: {
     backgroundColor: 'rgba(15,69,230,0.12)',
@@ -676,21 +1039,78 @@ const styles = StyleSheet.create({
     shadowRadius: 20,
     shadowOffset: { width: 0, height: 8 },
   },
+  tableTopBar: {
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(15,23,42,0.06)',
+    backgroundColor: '#fcfdff',
+  },
+  tableTopTextWrap: {
+    flex: 1,
+    alignItems: 'stretch',
+    gap: 4,
+  },
+  tableTopTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+    width: '100%',
+  },
+  tableTopSubtitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.gray[600],
+    textAlign: 'right',
+    writingDirection: 'rtl',
+    width: '100%',
+  },
+  tableTopMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  tableMetaPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: 'rgba(15,69,230,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,69,230,0.14)',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+  },
+  tableMetaPillText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.primary,
+    textAlign: 'right',
+  },
   tableHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: 'rgba(15,23,42,0.02)',
+    backgroundColor: 'rgba(15,23,42,0.03)',
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(15,23,42,0.06)',
     gap: 10,
+    ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
   },
   th: {
     fontSize: 13,
     fontWeight: '800',
     color: colors.gray[500],
     textAlign: 'right',
+    writingDirection: 'rtl',
   },
   rowsScroll: {
     flex: 1,
@@ -707,9 +1127,13 @@ const styles = StyleSheet.create({
     borderBottomColor: 'rgba(15,23,42,0.06)',
     backgroundColor: 'rgba(255,255,255,1)',
     gap: 10,
+    ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
+  },
+  trAlt: {
+    backgroundColor: '#fbfcfe',
   },
   trHover: {
-    backgroundColor: 'rgba(15,69,230,0.04)',
+    backgroundColor: 'rgba(15,69,230,0.05)',
   },
   td: {
     fontSize: 14,
@@ -724,19 +1148,39 @@ const styles = StyleSheet.create({
     color: colors.text,
     textAlign: 'right',
   },
+  dateCell: {
+    width: 110,
+    alignItems: 'stretch',
+  },
+  dateBadge: {
+    width: 88,
+    alignSelf: 'flex-end',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: '#fbfcff',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+  },
   dateDay: {
-    fontSize: 20,
-    fontWeight: '900',
-    color: colors.text,
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0f2f63',
     textAlign: 'right',
-    lineHeight: 22,
+    writingDirection: 'ltr',
+    lineHeight: 20,
+    width: '100%',
   },
   dateMonth: {
-    marginTop: 3,
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.gray[600],
+    marginTop: 4,
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#7b8aa0',
     textAlign: 'right',
+    writingDirection: 'rtl',
+    width: '100%',
   },
   titleCell: {
     flexDirection: 'row-reverse',
@@ -754,6 +1198,19 @@ const styles = StyleSheet.create({
   titleSub: {
     marginTop: 3,
     fontSize: 13,
+    fontWeight: '600',
+    color: colors.gray[600],
+    textAlign: 'right',
+  },
+  locationMain: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.text,
+    textAlign: 'right',
+  },
+  locationSub: {
+    marginTop: 3,
+    fontSize: 12,
     fontWeight: '600',
     color: colors.gray[600],
     textAlign: 'right',
@@ -817,6 +1274,15 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '900',
     textAlign: 'center',
+  },
+  statusPillTextActive: {
+    color: '#15803d',
+  },
+  statusPillTextPlanning: {
+    color: '#a16207',
+  },
+  statusPillTextMuted: {
+    color: '#475569',
   },
   statusPillActive: {
     backgroundColor: 'rgba(34,197,94,0.14)',

@@ -11,6 +11,10 @@ export type EventsListModel = {
   setQuery: (value: string) => void;
   filterDate: Date | null;
   setFilterDate: (d: Date | null) => void;
+  filterStartDate: Date | null;
+  setFilterStartDate: (d: Date | null) => void;
+  filterEndDate: Date | null;
+  setFilterEndDate: (d: Date | null) => void;
   filterMonth: string;
   setFilterMonth: (m: string) => void;
   sortOrder: SortOrder;
@@ -23,6 +27,8 @@ export function useEventsListModel(loadEvents: () => Promise<Event[]>, opts?: { 
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterDate, setFilterDate] = useState<Date | null>(null);
+  const [filterStartDate, setFilterStartDate] = useState<Date | null>(null);
+  const [filterEndDate, setFilterEndDate] = useState<Date | null>(null);
   const [filterMonth, setFilterMonth] = useState('');
   const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
   const [query, setQuery] = useState('');
@@ -50,6 +56,21 @@ export function useEventsListModel(loadEvents: () => Promise<Event[]>, opts?: { 
         const d = new Date(e.date);
         return d.toDateString() === filterDate.toDateString();
       });
+    } else if (filterStartDate || filterEndDate) {
+      const start = filterStartDate ? new Date(filterStartDate) : null;
+      const end = filterEndDate ? new Date(filterEndDate) : null;
+
+      if (start) start.setHours(0, 0, 0, 0);
+      if (end) end.setHours(23, 59, 59, 999);
+
+      out = out.filter((e) => {
+        const d = new Date(e.date);
+        const time = d.getTime();
+        if (!Number.isFinite(time)) return false;
+        if (start && time < start.getTime()) return false;
+        if (end && time > end.getTime()) return false;
+        return true;
+      });
     } else if (filterMonth) {
       out = out.filter((e) => {
         const d = new Date(e.date);
@@ -68,15 +89,38 @@ export function useEventsListModel(loadEvents: () => Promise<Event[]>, opts?: { 
       });
     }
 
-    // Sorting
+    // Keep ended events at the bottom. Upcoming events are ordered by nearest date first.
     out.sort((a, b) => {
+      const now = new Date();
+      now.setHours(0, 0, 0, 0);
+
       const da = new Date(a.date);
       const db = new Date(b.date);
-      return sortOrder === 'asc' ? da.getTime() - db.getTime() : db.getTime() - da.getTime();
+      const ta = da.getTime();
+      const tb = db.getTime();
+
+      const aValid = Number.isFinite(ta);
+      const bValid = Number.isFinite(tb);
+      if (!aValid && !bValid) return 0;
+      if (!aValid) return 1;
+      if (!bValid) return -1;
+
+      const aIsPast = ta < now.getTime();
+      const bIsPast = tb < now.getTime();
+
+      if (aIsPast !== bIsPast) {
+        return aIsPast ? 1 : -1;
+      }
+
+      if (!aIsPast && !bIsPast) {
+        return ta - tb;
+      }
+
+      return tb - ta;
     });
 
     return out;
-  }, [events, filterDate, filterMonth, query, sortOrder]);
+  }, [events, filterDate, filterStartDate, filterEndDate, filterMonth, query, sortOrder]);
 
   return {
     events,
@@ -85,6 +129,10 @@ export function useEventsListModel(loadEvents: () => Promise<Event[]>, opts?: { 
     setQuery,
     filterDate,
     setFilterDate,
+    filterStartDate,
+    setFilterStartDate,
+    filterEndDate,
+    setFilterEndDate,
     filterMonth,
     setFilterMonth,
     sortOrder,
