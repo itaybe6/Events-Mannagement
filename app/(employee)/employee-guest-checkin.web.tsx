@@ -129,6 +129,34 @@ export default function EmployeeGuestCheckinWebScreen() {
   const [mapLoading, setMapLoading] = useState(false);
   const [selectedTableNumber, setSelectedTableNumber] = useState<number | null>(null);
 
+  const sendCheckInTableSms = useCallback(
+    async (guest: Guest) => {
+      if (!resolvedEventId || !guest?.id) return;
+      try {
+        await supabase.functions.invoke('send-checkin-table-sms', {
+          body: { eventId: resolvedEventId, guestId: guest.id },
+        });
+      } catch (e) {
+        console.warn('Check-in table SMS send failed:', e);
+      }
+    },
+    [resolvedEventId]
+  );
+
+  const sendTableUpdateSms = useCallback(
+    async (guestId: string) => {
+      if (!resolvedEventId || !guestId) return;
+      try {
+        await supabase.functions.invoke('send-checkin-table-sms', {
+          body: { eventId: resolvedEventId, guestId, type: 'table_update' },
+        });
+      } catch (e) {
+        console.warn('Table update SMS send failed:', e);
+      }
+    },
+    [resolvedEventId]
+  );
+
   const {
     loading,
     guests,
@@ -149,6 +177,7 @@ export default function EmployeeGuestCheckinWebScreen() {
     eventId: resolvedEventId ? resolvedEventId : null,
     errorTitle: 'שגיאה',
     errorMessage: 'לא ניתן לטעון את רשימת האורחים',
+    onCheckInSuccess: sendCheckInTableSms,
   });
 
   const [moveGuest, setMoveGuest] = useState<Guest | null>(null);
@@ -692,8 +721,11 @@ export default function EmployeeGuestCheckinWebScreen() {
   const confirmMove = useCallback(async () => {
     if (!moveGuest) return;
     const ok = await assignGuestToTable(moveGuest, moveSelectedTableId);
-    if (ok) closeMoveModal();
-  }, [assignGuestToTable, closeMoveModal, moveGuest, moveSelectedTableId]);
+    if (ok) {
+      sendTableUpdateSms(moveGuest.id);
+      closeMoveModal();
+    }
+  }, [assignGuestToTable, closeMoveModal, moveGuest, moveSelectedTableId, sendTableUpdateSms]);
 
   const guestsListContent = (
     <View style={styles.tableGroupsWrap}>

@@ -26,8 +26,10 @@ export function useGuestCheckInModel(params: {
   eventId: string | null;
   errorTitle?: string;
   errorMessage?: string;
+  /** Called after a guest is successfully marked as checked-in (toggle ON). Use to e.g. send table SMS. */
+  onCheckInSuccess?: (guest: Guest) => void;
 }) {
-  const { eventId, errorTitle = 'שגיאה', errorMessage = 'לא ניתן לטעון את רשימת האורחים' } = params;
+  const { eventId, errorTitle = 'שגיאה', errorMessage = 'לא ניתן לטעון את רשימת האורחים', onCheckInSuccess } = params;
 
   const [loading, setLoading] = useState(true);
   const [guests, setGuests] = useState<Guest[]>([]);
@@ -211,13 +213,16 @@ export function useGuestCheckInModel(params: {
         guest.checkedInCount === null || guest.checkedInCount === undefined ? fallbackCount : Number(guest.checkedInCount) || 0;
       const updated = await guestService.setGuestCheckedIn(guest.id, next, next ? { checkedInCount: desiredCount } : undefined);
       setGuests((prev) => prev.map((g) => (g.id === guest.id ? { ...g, ...updated } : g)));
+      if (next && onCheckInSuccess) {
+        onCheckInSuccess({ ...guest, ...updated });
+      }
     } catch (e) {
       console.error('Check-in update error:', e);
       Alert.alert('שגיאה', 'לא ניתן לעדכן הגעה');
     } finally {
       setSavingId(null);
     }
-  }, []);
+  }, [onCheckInSuccess]);
 
   const setCheckedInCount = useCallback(async (guest: Guest, checkedInCount: number) => {
     const next = Math.max(0, Math.floor(Number(checkedInCount) || 0));
