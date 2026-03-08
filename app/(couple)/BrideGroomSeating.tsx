@@ -30,7 +30,7 @@ import { EventSwitcher } from '@/components/EventSwitcher';
 import { SeatingGridReadonly } from '../seating/web/SeatingGridReadonly';
 import { CELL_SIZE, DEFAULT_GRID_COLS, DEFAULT_GRID_ROWS, tableCellSize, type Orientation, type TableType } from '../seating/web/_types';
 import { BlurView } from 'expo-blur';
-import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
+import { ALIGN_RIGHT, IS_RTL, ROW_DIR } from '@/lib/rtl';
 
 const TABLE_PANEL_DURATION = 500;
 const AnimatedEntypo = Reanimated.createAnimatedComponent(Entypo);
@@ -2864,11 +2864,13 @@ const styles = StyleSheet.create({
   guestName: {
     flex: 1,
     minWidth: 0,
+    width: '100%',
+    alignSelf: 'stretch',
     fontSize: 13,
     fontWeight: '900',
     color: colors.text,
-    textAlign: 'right',
-    writingDirection: 'rtl',
+    textAlign: IS_RTL ? 'left' : 'right',
+    writingDirection: IS_RTL ? 'rtl' : 'ltr',
     lineHeight: 17,
     flexShrink: 1,
   },
@@ -3117,21 +3119,24 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     gap: 6,
+    alignItems: ALIGN_RIGHT,
   },
   selectableGuestTopRow: {
     flexDirection: ROW_DIR,
     alignItems: 'flex-start',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
+    width: '100%',
     gap: 8,
   },
   selectableGuestName: {
     flex: 1,
     minWidth: 0,
+    width: '100%',
     fontSize: 13,
     fontWeight: '900',
     color: colors.text,
-    textAlign: 'right',
-    writingDirection: 'rtl',
+    textAlign: IS_RTL ? 'left' : 'right',
+    writingDirection: IS_RTL ? 'rtl' : 'ltr',
     lineHeight: 18,
   },
   selectableGuestCheckboxWrap: {
@@ -3145,6 +3150,7 @@ const styles = StyleSheet.create({
     flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'flex-start',
+    width: '100%',
     gap: 8,
   },
   guestCardTopRow: {
@@ -3194,15 +3200,15 @@ const styles = StyleSheet.create({
   seatedGuestTopRow: {
     flexDirection: ROW_DIR,
     alignItems: 'flex-start',
-    justifyContent: ALIGN_RIGHT,
+    justifyContent: 'flex-start',
     width: '100%',
     gap: 8,
   },
   seatedGuestMetaRow: {
     marginTop: 6,
-    flexDirection: ROW_DIR,
+    flexDirection: 'row-reverse',
     alignItems: 'center',
-    justifyContent: ALIGN_RIGHT,
+    justifyContent: 'flex-start',
     width: '100%',
     gap: 8,
   },
