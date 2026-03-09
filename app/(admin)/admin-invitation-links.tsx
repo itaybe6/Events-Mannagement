@@ -359,18 +359,18 @@ export default function AdminInvitationLinksScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.headerRow}>
+          <View style={styles.headerTextWrap}>
+            <Text style={[styles.h1, isNarrow ? styles.h1Narrow : null]}>לינק להזמנה</Text>
+            <Text style={styles.sub}>הגדרת תצוגת הזמנה + קישורים אישיים למוזמנים</Text>
+          </View>
           <Pressable
             onPress={() => router.back()}
-            style={({ pressed }) => [styles.iconBtn, pressed ? { opacity: 0.92 } : null]}
+            style={({ pressed }) => [styles.headerBackBtn, pressed ? { opacity: 0.92 } : null]}
             accessibilityRole="button"
             accessibilityLabel="חזרה"
           >
             <Ionicons name="arrow-forward" size={18} color={colors.primary} />
           </Pressable>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.h1, isNarrow ? styles.h1Narrow : null]}>לינק להזמנה</Text>
-            <Text style={styles.sub}>הגדרת תצוגת הזמנה + קישורים אישיים למוזמנים</Text>
-          </View>
         </View>
 
         <View style={[styles.topGrid, isDesktop ? styles.topGridDesktop : null]}>
@@ -725,10 +725,12 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 24 },
   centerText: { fontSize: 14, fontWeight: '800', color: colors.gray[700], textAlign: 'center' },
 
-  headerRow: { flexDirection: ROW_DIR, alignItems: 'center', gap: 10 },
-  h1: { fontSize: 20, fontWeight: '900', color: colors.text, textAlign: 'right' },
+  headerRow: { position: 'relative', minHeight: 40, justifyContent: 'center' },
+  headerTextWrap: { width: '100%', alignItems: 'stretch', paddingRight: 52 },
+  h1: { width: '100%', fontSize: 20, fontWeight: '900', color: colors.text, textAlign: 'right', writingDirection: 'rtl' },
   h1Narrow: { fontSize: 22 },
-  sub: { marginTop: 4, fontSize: 12, fontWeight: '700', color: colors.gray[600], textAlign: 'right' },
+  sub: { width: '100%', marginTop: 4, fontSize: 12, fontWeight: '700', color: colors.gray[600], textAlign: 'right', writingDirection: 'rtl' },
+  headerBackBtn: { position: 'absolute', top: 0, right: 0, width: 40, height: 40, borderRadius: 14, backgroundColor: 'rgba(15,69,230,0.08)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(15,69,230,0.14)' },
 
   iconBtn: {
     width: 40,

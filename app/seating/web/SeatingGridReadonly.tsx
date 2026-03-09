@@ -68,6 +68,7 @@ export function SeatingGridReadonly({
   showTableBorder,
   isTableSelected,
   selectedRingColor,
+  tableTextScale,
 }: {
   gridCols: number;
   gridRows: number;
@@ -87,10 +88,12 @@ export function SeatingGridReadonly({
   showTableBorder?: boolean;
   isTableSelected?: (t: TableItem) => boolean;
   selectedRingColor?: string;
+  tableTextScale?: number;
 }) {
   const isWeb = Platform.OS === 'web';
   const fitBoost = Number.isFinite(autoFitZoomMultiplier as any) ? Math.max(0.6, Math.min(2, Number(autoFitZoomMultiplier))) : 1;
   const CS = CELL_SIZE * (Number.isFinite(cellSizeMultiplier as any) ? Math.max(0.5, Math.min(4, Number(cellSizeMultiplier))) : 1);
+  const textScale = Number.isFinite(tableTextScale as any) ? Math.max(0.65, Math.min(1.2, Number(tableTextScale))) : 1;
 
   // Compute content bounds so we "fit" to content, not to an oversized empty grid.
   const contentRect = useMemo(() => {
@@ -157,6 +160,10 @@ export function SeatingGridReadonly({
   const zoomRef = useRef(1);
   const fitZoomRef = useRef(1);
   const lastAutoFitTokenRef = useRef<string>('');
+  const tableNumFontSize = Math.round(18 * textScale);
+  const tableNameFontSize = Math.round(12 * textScale);
+  const tableTypeFontSize = Math.round(11 * textScale);
+  const tableSubFontSize = Math.round(12 * textScale);
 
   useEffect(() => {
     fitZoomRef.current = fitZoomAdjusted;
@@ -382,11 +389,12 @@ export function SeatingGridReadonly({
                     },
                   ]}
                 >
-                  <Text style={[styles.tableNum, { color: isWeb ? webAccent : base }]}>{t.number ?? ''}</Text>
+                  <Text style={[styles.tableNum, { color: isWeb ? webAccent : base, fontSize: tableNumFontSize }]}>{t.number ?? ''}</Text>
                   {name ? (
                     <Text
                       style={[
                         styles.tableName,
+                        { fontSize: tableNameFontSize },
                         isWeb && onDarkWeb ? styles.tableNameOnDark : null,
                       ]}
                       numberOfLines={2}
@@ -395,12 +403,15 @@ export function SeatingGridReadonly({
                     </Text>
                   ) : null}
                   {!hideTableType ? (
-                    <Text style={[styles.tableType, isWeb && onDarkWeb ? styles.tableTextOnDark : null]}>{TABLE_LABELS[t.type]}</Text>
+                    <Text style={[styles.tableType, { fontSize: tableTypeFontSize }, isWeb && onDarkWeb ? styles.tableTextOnDark : null]}>
+                      {TABLE_LABELS[t.type]}
+                    </Text>
                   ) : null}
                   {sub ? (
                     <Text
                       style={[
                         styles.tableSub,
+                        { fontSize: tableSubFontSize },
                         isWeb && onDarkWeb ? styles.tableTextOnDark : null,
                         selectedWeb ? styles.tableSubSelected : null,
                       ]}

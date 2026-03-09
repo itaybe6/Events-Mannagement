@@ -149,6 +149,9 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
     (kind: SeatingItemKind, id: string, e: any) => {
       if (!isWeb) return;
       if (edit?.id === id) return;
+      e?.preventDefault?.();
+      e?.stopPropagation?.();
+      e?.currentTarget?.setPointerCapture?.(e?.pointerId);
 
       const groupIds =
         kind === 'table' && selected.size > 1 && selected.has(id) ? Array.from(selected) : [id];
@@ -317,6 +320,7 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
       if (!isWeb) return;
       if (edit) return;
       if (elementAtTargetIsItem(e)) return;
+      e?.preventDefault?.();
 
       const rect = getGridRect();
       if (!rect) return;
@@ -392,7 +396,9 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
   const startResize = useCallback(
     (id: string, handle: 'right' | 'bottom' | 'corner', e: any) => {
       if (!isWeb) return;
+      e?.preventDefault?.();
       e?.stopPropagation?.();
+      e?.currentTarget?.setPointerCapture?.(e?.pointerId);
       const z = api.zones.find(zz => zz.id === id);
       if (!z) return;
       const startClient = { x: e.clientX ?? e.nativeEvent?.clientX ?? 0, y: e.clientY ?? e.nativeEvent?.clientY ?? 0 };
@@ -788,7 +794,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: 18,
-    ...(Platform.OS === 'web' ? ({ overflow: 'auto' } as any) : null),
+    ...(Platform.OS === 'web'
+      ? ({ overflow: 'auto', userSelect: 'none', WebkitUserSelect: 'none' } as any)
+      : null),
   },
   gridWrap: {
     backgroundColor: '#fff',
@@ -796,6 +804,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(148,163,184,0.70)',
     overflow: 'hidden',
+    ...(Platform.OS === 'web' ? ({ userSelect: 'none', WebkitUserSelect: 'none' } as any) : null),
   },
 
   table: {
@@ -809,9 +818,22 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 6 },
     elevation: 4,
+    ...(Platform.OS === 'web'
+      ? ({ cursor: 'grab', userSelect: 'none', WebkitUserSelect: 'none', touchAction: 'none' } as any)
+      : null),
   },
-  tableNum: { fontSize: 16, fontWeight: '900' },
-  tableType: { marginTop: 2, fontSize: 11, fontWeight: '800', color: 'rgba(17,24,39,0.60)' },
+  tableNum: {
+    fontSize: 16,
+    fontWeight: '900',
+    ...(Platform.OS === 'web' ? ({ userSelect: 'none', WebkitUserSelect: 'none', pointerEvents: 'none' } as any) : null),
+  },
+  tableType: {
+    marginTop: 2,
+    fontSize: 11,
+    fontWeight: '800',
+    color: 'rgba(17,24,39,0.60)',
+    ...(Platform.OS === 'web' ? ({ userSelect: 'none', WebkitUserSelect: 'none', pointerEvents: 'none' } as any) : null),
+  },
 
   zone: {
     position: 'absolute',
@@ -821,8 +843,15 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(43,140,238,0.06)',
     alignItems: 'center',
     justifyContent: 'center',
+    ...(Platform.OS === 'web'
+      ? ({ cursor: 'grab', userSelect: 'none', WebkitUserSelect: 'none', touchAction: 'none' } as any)
+      : null),
   },
-  zoneText: { fontWeight: '900', color: 'rgba(17,24,39,0.65)' },
+  zoneText: {
+    fontWeight: '900',
+    color: 'rgba(17,24,39,0.65)',
+    ...(Platform.OS === 'web' ? ({ userSelect: 'none', WebkitUserSelect: 'none', pointerEvents: 'none' } as any) : null),
+  },
 
   labelWrap: {
     position: 'absolute',
@@ -830,8 +859,15 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 12,
     backgroundColor: 'rgba(17,24,39,0.02)',
+    ...(Platform.OS === 'web'
+      ? ({ cursor: 'grab', userSelect: 'none', WebkitUserSelect: 'none', touchAction: 'none' } as any)
+      : null),
   },
-  labelText: { fontWeight: '800', color: 'rgba(17,24,39,0.62)' },
+  labelText: {
+    fontWeight: '800',
+    color: 'rgba(17,24,39,0.62)',
+    ...(Platform.OS === 'web' ? ({ userSelect: 'none', WebkitUserSelect: 'none', pointerEvents: 'none' } as any) : null),
+  },
 
   selectedRing: {
     borderWidth: 2,

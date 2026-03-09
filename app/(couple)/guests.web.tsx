@@ -12,7 +12,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter, useSegments } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
 import { colors } from '@/constants/colors';
@@ -34,6 +34,7 @@ type GuestCategoryRow = { id: string; name: string; side?: 'groom' | 'bride' };
 
 export default function CoupleGuestsWebScreen() {
   const router = useRouter();
+  const segments = useSegments();
   const { eventId: queryEventId } = useLocalSearchParams<{ eventId?: string }>();
   const { isLoggedIn, userData } = useUserStore();
   const activeUserId = useEventSelectionStore((s) => s.activeUserId);
@@ -41,7 +42,10 @@ export default function CoupleGuestsWebScreen() {
   const setActiveEvent = useEventSelectionStore((s) => s.setActiveEvent);
 
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
-  const isNarrow = windowWidth < 720;
+  const isAdminContext = useMemo(() => segments.includes('(admin)'), [segments]);
+  const sidebarWidth = Platform.OS === 'web' && isAdminContext ? 270 : 0;
+  const contentWidth = Math.max(0, windowWidth - sidebarWidth);
+  const isNarrow = contentWidth < 720;
 
   const resolvedEventId =
     String(
@@ -50,8 +54,16 @@ export default function CoupleGuestsWebScreen() {
         userData?.event_id ||
         ''
     ).trim() || null;
+  const backHref = resolvedEventId
+    ? isAdminContext
+      ? `/(admin)/admin-event-details?id=${resolvedEventId}`
+      : `/(couple)?eventId=${resolvedEventId}`
+    : isAdminContext
+      ? '/(admin)/admin-events'
+      : '/(couple)';
 
   const [loading, setLoading] = useState(false);
+  const [eventTitle, setEventTitle] = useState('');
 
   const [categories, setCategories] = useState<GuestCategoryRow[]>([]);
   const [guests, setGuests] = useState<GuestRow[]>([]);
@@ -98,7 +110,7 @@ export default function CoupleGuestsWebScreen() {
         guestService.getGuestCategories(resolvedEventId),
         guestService.getGuests(resolvedEventId),
       ]);
-      void evt;
+      setEventTitle(String((evt as any)?.title || '').trim());
       setCategories(cats as any);
       setGuests(g as any);
       setExpandedByCategoryId((prev) => {
@@ -409,29 +421,77 @@ export default function CoupleGuestsWebScreen() {
     ];
 
   const cardWidth = useMemo(() => {
-    if (windowWidth < 640) return '100%';
-    if (windowWidth < 980) return '48%';
+    if (contentWidth < 640) return '100%';
+    if (contentWidth < 980) return '48%';
     return '23.5%';
-  }, [windowWidth]);
+  }, [contentWidth]);
 
   const guestItemWidth = useMemo(() => {
     // Responsive:
     // - narrow: 1 col
     // - laptop: 2 cols
     // - desktop+: compact fixed widths (cleaner, narrower cards)
-    if (windowWidth < 720) return '100%';
-    if (windowWidth < 1100) return '48%';
-    if (windowWidth < 1480) return 260;
-    if (windowWidth < 1720) return 240;
+    if (contentWidth < 720) return '100%';
+    if (contentWidth < 1100) return '48%';
+    if (contentWidth < 1480) return 260;
+    if (contentWidth < 1720) return 240;
     return 220;
-  }, [windowWidth]);
+  }, [contentWidth]);
 
   // Compact cards look cleaner than large square tiles for guests lists.
   const useSquareGuestCards = false;
 
+  const contentMaxWidth = contentWidth >= 1900 ? 1600 : contentWidth >= 1600 ? 1480 : 1320;
+  const addIsCategoryStep = addStep === 'category';
+  const addSelectedCategoryName =
+    addSelectedCategoryId === '__uncategorized__'
+      ? 'ללא קטגוריה'
+      : String(categories.find((c) => String(c.id) === String(addSelectedCategoryId))?.name || '—');
+  const addStepMeta = addIsCategoryStep
+    ? {
+        title: 'הוספת מוזמן',
+        subtitle: 'בחרו איך לשייך את המוזמן כדי לשמור על רשימה מסודרת ונוחה לניהול.',
+        badge: 'שלב 1 מתוך 2',
+        icon: 'albums-outline' as const,
+      }
+    : {
+        title: 'פרטי המוזמן',
+        subtitle: 'מלאו את פרטי הקשר וניצור עבורו רשומת RSVP חדשה עם הקטגוריה שבחרתם.',
+        badge: 'שלב 2 מתוך 2',
+        icon: 'person-circle-outline' as const,
+      };
+
   return (
     <View style={styles.page}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[styles.content, isAdminContext ? styles.contentAdmin : null, { maxWidth: contentMaxWidth }]}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.heroCard}>
+          <View style={styles.heroTopRow}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="חזרה"
+              onPress={() => router.replace(backHref as any)}
+              style={({ hovered, pressed }: any) => [
+                styles.backBtn,
+                Platform.OS === 'web' && hovered ? styles.backBtnHover : null,
+                pressed ? styles.btnPressed : null,
+              ]}
+            >
+              <Ionicons name="arrow-forward" size={18} color={colors.gray[800]} />
+            </Pressable>
+
+            <View style={styles.heroTextWrap}>
+              <Text style={styles.heroEyebrow}>ניהול מוזמנים</Text>
+              <Text style={styles.heroTitle}>אישורי הגעה</Text>
+              <Text style={styles.heroSubtitle}>
+                {eventTitle ? `${eventTitle} · ניהול מוזמנים, חיפוש מהיר וסידור לפי קטגוריות.` : 'ניהול מוזמנים, חיפוש מהיר וסידור לפי קטגוריות.'}
+              </Text>
+            </View>
+          </View>
+        </View>
+
         {/* Metrics */}
         <View style={styles.metricsRow}>
           <MetricCard
@@ -447,17 +507,34 @@ export default function CoupleGuestsWebScreen() {
 
         {/* Filter Bar */}
         <View style={[styles.filterBar, isNarrow ? styles.filterBarNarrow : styles.filterBarWide]}>
-          <View style={[styles.searchWrap, isNarrow ? { width: '100%' } : { width: 420 }]}>
-            <View style={styles.searchIconRight}>
-              <Ionicons name="search" size={18} color={colors.gray[500]} />
+          <View style={[styles.filterPrimaryRow, isNarrow ? styles.filterPrimaryRowNarrow : null]}>
+            <View style={[styles.searchWrap, isNarrow ? { width: '100%' } : { width: 420 }]}>
+              <View style={styles.searchIconRight}>
+                <Ionicons name="search" size={18} color={colors.gray[500]} />
+              </View>
+              <TextInput
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                placeholder="חיפוש מוזמנים לפי שם או טלפון..."
+                placeholderTextColor={colors.gray[500]}
+                style={styles.searchInput}
+              />
             </View>
-            <TextInput
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              placeholder="חיפוש מוזמנים לפי שם או טלפון..."
-              placeholderTextColor={colors.gray[500]}
-              style={styles.searchInput}
-            />
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="הוסף מוזמנים"
+              onPress={openAdd}
+              style={({ hovered, pressed }: any) => [
+                styles.addGuestsBtn,
+                isNarrow ? styles.addGuestsBtnNarrow : null,
+                Platform.OS === 'web' && hovered ? styles.addGuestsBtnHover : null,
+                pressed ? styles.btnPressed : null,
+              ]}
+            >
+              <Ionicons name="add" size={18} color={colors.white} />
+              <Text style={styles.addGuestsBtnText}>הוסף מוזמנים</Text>
+            </Pressable>
           </View>
 
           <View style={styles.chipsRow}>
@@ -473,50 +550,46 @@ export default function CoupleGuestsWebScreen() {
             ))}
           </View>
 
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="הוסף מוזמנים"
-            onPress={openAdd}
-            style={({ hovered, pressed }: any) => [
-              styles.addGuestsBtn,
-              isNarrow ? styles.addGuestsBtnNarrow : null,
-              Platform.OS === 'web' && hovered ? styles.addGuestsBtnHover : null,
-              pressed ? styles.btnPressed : null,
-            ]}
-          >
-            <Ionicons name="add" size={18} color={colors.white} />
-            <Text style={styles.addGuestsBtnText}>הוסף מוזמנים</Text>
-          </Pressable>
-
           {selectedGuestIds.size > 0 ? (
             <View style={styles.bulkRow}>
-              <Text style={styles.bulkText}>{selectedGuestIds.size} נבחרו</Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="נקה בחירה"
-                onPress={clearSelection}
-                style={({ hovered, pressed }: any) => [
-                  styles.bulkBtn,
-                  Platform.OS === 'web' && hovered ? styles.bulkBtnHover : null,
-                  pressed ? styles.btnPressed : null,
-                ]}
-              >
-                <Ionicons name="close" size={16} color={colors.gray[700]} />
-                <Text style={styles.bulkBtnText}>נקה</Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="מחק נבחרים"
-                onPress={bulkDeleteSelected}
-                style={({ hovered, pressed }: any) => [
-                  styles.bulkDangerBtn,
-                  Platform.OS === 'web' && hovered ? styles.bulkDangerBtnHover : null,
-                  pressed ? styles.btnPressed : null,
-                ]}
-              >
-                <Ionicons name="trash-outline" size={16} color={colors.white} />
-                <Text style={styles.bulkDangerBtnText}>מחק</Text>
-              </Pressable>
+              <View style={styles.bulkInfo}>
+                <View style={styles.bulkCountBadge}>
+                  <Ionicons name="checkmark-circle" size={15} color={colors.primary} />
+                  <Text style={styles.bulkCountText}>{selectedGuestIds.size}</Text>
+                </View>
+                <View style={styles.bulkTextWrap}>
+                  <Text style={styles.bulkText}>נבחרו {selectedGuestIds.size} אורחים</Text>
+                  <Text style={styles.bulkHint}>אפשר לנקות את הבחירה או למחוק את כל המסומנים</Text>
+                </View>
+              </View>
+              <View style={styles.bulkActions}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="נקה בחירה"
+                  onPress={clearSelection}
+                  style={({ hovered, pressed }: any) => [
+                    styles.bulkBtn,
+                    Platform.OS === 'web' && hovered ? styles.bulkBtnHover : null,
+                    pressed ? styles.btnPressed : null,
+                  ]}
+                >
+                  <Ionicons name="close" size={16} color={colors.gray[700]} />
+                  <Text style={styles.bulkBtnText}>נקה בחירה</Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="מחק נבחרים"
+                  onPress={bulkDeleteSelected}
+                  style={({ hovered, pressed }: any) => [
+                    styles.bulkDangerBtn,
+                    Platform.OS === 'web' && hovered ? styles.bulkDangerBtnHover : null,
+                    pressed ? styles.btnPressed : null,
+                  ]}
+                >
+                  <Ionicons name="trash-outline" size={16} color={colors.white} />
+                  <Text style={styles.bulkDangerBtnText}>מחק נבחרים</Text>
+                </Pressable>
+              </View>
             </View>
           ) : null}
         </View>
@@ -557,11 +630,16 @@ export default function CoupleGuestsWebScreen() {
                           color={colors.gray[500]}
                           style={isExpanded ? undefined : (styles.chevronCollapsed as any)}
                         />
-                        <Text style={styles.groupTitle} numberOfLines={1}>
-                          {cat.name}
-                        </Text>
-                        <View style={styles.groupPill}>
-                          <Text style={styles.groupPillText}>{list.length} מוזמנים</Text>
+                        <View style={styles.groupIconWrap}>
+                          <Ionicons name={cat.id === '__uncategorized__' ? 'albums-outline' : 'folder-open-outline'} size={17} color={colors.primary} />
+                        </View>
+                        <View style={styles.groupTitleWrap}>
+                          <Text style={styles.groupTitle} numberOfLines={1}>
+                            {cat.name}
+                          </Text>
+                          <View style={styles.groupPill}>
+                            <Text style={styles.groupPillText}>{list.length} מוזמנים</Text>
+                          </View>
                         </View>
                       </View>
 
@@ -607,7 +685,16 @@ export default function CoupleGuestsWebScreen() {
         <Pressable style={styles.modalOverlay} onPress={closeAdd}>
           <Pressable style={[styles.modalCard, { maxHeight: Math.min(0.92 * windowHeight, 720) }]} onPress={() => {}}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{addStep === 'category' ? 'הוספת מוזמן' : 'פרטי מוזמן'}</Text>
+              <View style={styles.modalTitleWrap}>
+                <View style={styles.modalIconBadge}>
+                  <Ionicons name={addStepMeta.icon} size={22} color={colors.primary} />
+                </View>
+                <View style={styles.modalTitleTextWrap}>
+                  <Text style={styles.modalBadgeText}>{addStepMeta.badge}</Text>
+                  <Text style={styles.modalTitle}>{addStepMeta.title}</Text>
+                  <Text style={styles.modalSubtitle}>{addStepMeta.subtitle}</Text>
+                </View>
+              </View>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="סגירה"
@@ -623,123 +710,203 @@ export default function CoupleGuestsWebScreen() {
             </View>
 
             <ScrollView contentContainerStyle={styles.modalBody} showsVerticalScrollIndicator={false}>
-              {addStep === 'category' ? (
-                <>
-                  <Text style={styles.addHint}>בחר קטגוריה כדי לתייג את המוזמן, או הוסף קטגוריה חדשה.</Text>
-
-                  <View style={styles.categoryPickList}>
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="ללא קטגוריה"
-                      onPress={() => setAddSelectedCategoryId('__uncategorized__')}
-                      style={({ hovered, pressed }: any) => [
-                        styles.categoryPickItem,
-                        addSelectedCategoryId === '__uncategorized__' ? styles.categoryPickItemActive : null,
-                        Platform.OS === 'web' && hovered && addSelectedCategoryId !== '__uncategorized__'
-                          ? styles.categoryPickItemHover
-                          : null,
-                        pressed ? styles.btnPressed : null,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.categoryPickText,
-                          addSelectedCategoryId === '__uncategorized__' ? styles.categoryPickTextActive : null,
-                        ]}
-                        numberOfLines={1}
-                      >
-                        ללא קטגוריה
-                      </Text>
-                      {addSelectedCategoryId === '__uncategorized__' ? (
-                        <Ionicons name="checkmark" size={18} color={colors.white} />
-                      ) : null}
-                    </Pressable>
-
-                    {categories.map((c) => {
-                      const id = String(c.id);
-                      const active = addSelectedCategoryId === id;
-                      return (
-                        <Pressable
-                          key={id}
-                          accessibilityRole="button"
-                          accessibilityLabel={`קטגוריה ${c.name}`}
-                          onPress={() => setAddSelectedCategoryId(id)}
-                          style={({ hovered, pressed }: any) => [
-                            styles.categoryPickItem,
-                            active ? styles.categoryPickItemActive : null,
-                            Platform.OS === 'web' && hovered && !active ? styles.categoryPickItemHover : null,
-                            pressed ? styles.btnPressed : null,
-                          ]}
-                        >
-                          <Text style={[styles.categoryPickText, active ? styles.categoryPickTextActive : null]} numberOfLines={1}>
-                            {c.name}
-                          </Text>
-                          {active ? <Ionicons name="checkmark" size={18} color={colors.white} /> : null}
-                        </Pressable>
-                      );
-                    })}
+              <View style={styles.stepperRow}>
+                <View style={[styles.stepperItem, styles.stepperItemActive]}>
+                  <View style={[styles.stepperDot, styles.stepperDotActive]}>
+                    <Text style={[styles.stepperDotText, styles.stepperDotTextActive]}>1</Text>
                   </View>
+                  <Text style={[styles.stepperLabel, styles.stepperLabelActive]}>בחירת קטגוריה</Text>
+                </View>
+                <View style={[styles.stepperDivider, !addIsCategoryStep ? styles.stepperDividerDone : null]} />
+                <View style={[styles.stepperItem, !addIsCategoryStep ? styles.stepperItemActive : null]}>
+                  <View style={[styles.stepperDot, !addIsCategoryStep ? styles.stepperDotActive : null]}>
+                    <Text style={[styles.stepperDotText, !addIsCategoryStep ? styles.stepperDotTextActive : null]}>2</Text>
+                  </View>
+                  <Text style={[styles.stepperLabel, !addIsCategoryStep ? styles.stepperLabelActive : null]}>פרטי מוזמן</Text>
+                </View>
+              </View>
 
-                  <View style={{ height: 6 }} />
+              {addIsCategoryStep ? (
+                <>
+                  <View style={styles.addSectionCard}>
+                    <View style={styles.addSectionHeader}>
+                      <View style={styles.addSectionIconWrap}>
+                        <Ionicons name="pricetags-outline" size={18} color={colors.primary} />
+                      </View>
+                      <View style={styles.addSectionTextWrap}>
+                        <Text style={styles.addSectionTitle}>בחירת קטגוריה</Text>
+                        <Text style={styles.addHint}>בחרו קטגוריה קיימת כדי לתייג את המוזמן, או צרו קטגוריה חדשה במקום.</Text>
+                      </View>
+                    </View>
 
-                  <Field label="קטגוריה חדשה">
-                    <View style={styles.inlineRow}>
+                    <View style={styles.categoryPickList}>
                       <Pressable
                         accessibilityRole="button"
-                        accessibilityLabel="הוסף קטגוריה"
-                        onPress={handleAddCategoryInline}
+                        accessibilityLabel="ללא קטגוריה"
+                        onPress={() => setAddSelectedCategoryId('__uncategorized__')}
                         style={({ hovered, pressed }: any) => [
-                          styles.inlineAddBtn,
-                          Platform.OS === 'web' && hovered ? styles.inlineAddBtnHover : null,
+                          styles.categoryPickItem,
+                          addSelectedCategoryId === '__uncategorized__' ? styles.categoryPickItemActive : null,
+                          Platform.OS === 'web' && hovered && addSelectedCategoryId !== '__uncategorized__'
+                            ? styles.categoryPickItemHover
+                            : null,
                           pressed ? styles.btnPressed : null,
-                          addSaving ? styles.inlineAddBtnDisabled : null,
                         ]}
-                        disabled={addSaving}
                       >
-                        <Ionicons name="add" size={18} color={colors.white} />
-                        <Text style={styles.inlineAddBtnText}>{addSaving ? 'מוסיף...' : 'הוסף'}</Text>
+                        <View style={styles.categoryPickContent}>
+                          <View style={[styles.categoryPickLeadingIcon, addSelectedCategoryId === '__uncategorized__' ? styles.categoryPickLeadingIconActive : null]}>
+                            <Ionicons
+                              name="remove-circle-outline"
+                              size={16}
+                              color={addSelectedCategoryId === '__uncategorized__' ? colors.white : colors.primary}
+                            />
+                          </View>
+                          <Text
+                            style={[
+                              styles.categoryPickText,
+                              addSelectedCategoryId === '__uncategorized__' ? styles.categoryPickTextActive : null,
+                            ]}
+                            numberOfLines={1}
+                          >
+                            ללא קטגוריה
+                          </Text>
+                        </View>
+                        {addSelectedCategoryId === '__uncategorized__' ? (
+                          <Ionicons name="checkmark-circle" size={20} color={colors.white} />
+                        ) : (
+                          <Ionicons name="chevron-back" size={16} color={colors.gray[400]} />
+                        )}
                       </Pressable>
-                      <TextInput
-                        value={addNewCategoryName}
-                        onChangeText={setAddNewCategoryName}
-                        placeholder="למשל: משפחה / חברים"
-                        placeholderTextColor={colors.gray[500]}
-                        style={[styles.modalInput, { flex: 1 }]}
-                      />
+
+                      {categories.map((c) => {
+                        const id = String(c.id);
+                        const active = addSelectedCategoryId === id;
+                        return (
+                          <Pressable
+                            key={id}
+                            accessibilityRole="button"
+                            accessibilityLabel={`קטגוריה ${c.name}`}
+                            onPress={() => setAddSelectedCategoryId(id)}
+                            style={({ hovered, pressed }: any) => [
+                              styles.categoryPickItem,
+                              active ? styles.categoryPickItemActive : null,
+                              Platform.OS === 'web' && hovered && !active ? styles.categoryPickItemHover : null,
+                              pressed ? styles.btnPressed : null,
+                            ]}
+                          >
+                            <View style={styles.categoryPickContent}>
+                              <View style={[styles.categoryPickLeadingIcon, active ? styles.categoryPickLeadingIconActive : null]}>
+                                <Ionicons name="folder-open-outline" size={16} color={active ? colors.white : colors.primary} />
+                              </View>
+                              <Text style={[styles.categoryPickText, active ? styles.categoryPickTextActive : null]} numberOfLines={1}>
+                                {c.name}
+                              </Text>
+                            </View>
+                            {active ? <Ionicons name="checkmark-circle" size={20} color={colors.white} /> : <Ionicons name="chevron-back" size={16} color={colors.gray[400]} />}
+                          </Pressable>
+                        );
+                      })}
                     </View>
-                  </Field>
+                  </View>
+
+                  <View style={styles.addSectionCard}>
+                    <View style={styles.addSectionHeader}>
+                      <View style={styles.addSectionIconWrap}>
+                        <Ionicons name="add-circle-outline" size={18} color={colors.primary} />
+                      </View>
+                      <View style={styles.addSectionTextWrap}>
+                        <Text style={styles.addSectionTitle}>קטגוריה חדשה</Text>
+                        <Text style={styles.addHint}>צרו קטגוריה חדשה אם הרשימה הקיימת לא מתאימה למוזמן שאתם מוסיפים עכשיו.</Text>
+                      </View>
+                    </View>
+
+                    <Field label="שם הקטגוריה">
+                      <View style={styles.inlineRow}>
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel="הוסף קטגוריה"
+                          onPress={handleAddCategoryInline}
+                          style={({ hovered, pressed }: any) => [
+                            styles.inlineAddBtn,
+                            Platform.OS === 'web' && hovered ? styles.inlineAddBtnHover : null,
+                            pressed ? styles.btnPressed : null,
+                            addSaving ? styles.inlineAddBtnDisabled : null,
+                          ]}
+                          disabled={addSaving}
+                        >
+                          <Ionicons name="add" size={18} color={colors.white} />
+                          <Text style={styles.inlineAddBtnText}>{addSaving ? 'מוסיף...' : 'הוסף'}</Text>
+                        </Pressable>
+                        <TextInput
+                          value={addNewCategoryName}
+                          onChangeText={setAddNewCategoryName}
+                          placeholder="למשל: משפחה / חברים"
+                          placeholderTextColor={colors.gray[500]}
+                          style={[styles.modalInput, { flex: 1 }]}
+                        />
+                      </View>
+                    </Field>
+                  </View>
                 </>
               ) : (
                 <>
-                  <View style={styles.selectedCategoryLine}>
-                    <Text style={styles.selectedCategoryLabel}>קטגוריה:</Text>
-                    <Text style={styles.selectedCategoryValue} numberOfLines={1}>
-                      {addSelectedCategoryId === '__uncategorized__'
-                        ? 'ללא קטגוריה'
-                        : String(categories.find((c) => String(c.id) === String(addSelectedCategoryId))?.name || '—')}
-                    </Text>
+                  <View style={styles.selectedCategoryCard}>
+                    <View style={styles.selectedCategoryIconWrap}>
+                      <Ionicons name="bookmark-outline" size={18} color={colors.primary} />
+                    </View>
+                    <View style={styles.selectedCategoryTextWrap}>
+                      <Text style={styles.selectedCategoryLabel}>קטגוריה שנבחרה</Text>
+                      <Text style={styles.selectedCategoryValue} numberOfLines={1}>
+                        {addSelectedCategoryName}
+                      </Text>
+                    </View>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="שנה קטגוריה"
+                      onPress={() => setAddStep('category')}
+                      style={({ hovered, pressed }: any) => [
+                        styles.selectedCategoryEditBtn,
+                        Platform.OS === 'web' && hovered ? styles.selectedCategoryEditBtnHover : null,
+                        pressed ? styles.btnPressed : null,
+                      ]}
+                    >
+                      <Ionicons name="create-outline" size={15} color={colors.primary} />
+                      <Text style={styles.selectedCategoryEditBtnText}>שנה</Text>
+                    </Pressable>
                   </View>
 
-                  <Field label="שם">
-                    <TextInput
-                      value={addGuestName}
-                      onChangeText={setAddGuestName}
-                      placeholder="שם מלא"
-                      placeholderTextColor={colors.gray[500]}
-                      style={styles.modalInput}
-                    />
-                  </Field>
+                  <View style={styles.addSectionCard}>
+                    <View style={styles.addSectionHeader}>
+                      <View style={styles.addSectionIconWrap}>
+                        <Ionicons name="person-outline" size={18} color={colors.primary} />
+                      </View>
+                      <View style={styles.addSectionTextWrap}>
+                        <Text style={styles.addSectionTitle}>פרטי איש הקשר</Text>
+                        <Text style={styles.addHint}>מלאו שם מלא ומספר טלפון כדי שהמוזמן יתווסף מיידית לרשימת אישורי ההגעה.</Text>
+                      </View>
+                    </View>
 
-                  <Field label="מספר פלאפון">
-                    <TextInput
-                      value={addGuestPhone}
-                      onChangeText={setAddGuestPhone}
-                      placeholder="050-0000000"
-                      placeholderTextColor={colors.gray[500]}
-                      style={[styles.modalInput, styles.inputLtr]}
-                      keyboardType="phone-pad"
-                    />
-                  </Field>
+                    <Field label="שם מלא">
+                      <TextInput
+                        value={addGuestName}
+                        onChangeText={setAddGuestName}
+                        placeholder="למשל: ישראל ישראלי"
+                        placeholderTextColor={colors.gray[500]}
+                        style={styles.modalInput}
+                      />
+                    </Field>
+
+                    <Field label="מספר פלאפון">
+                      <TextInput
+                        value={addGuestPhone}
+                        onChangeText={setAddGuestPhone}
+                        placeholder="050-0000000"
+                        placeholderTextColor={colors.gray[500]}
+                        style={[styles.modalInput, styles.inputLtr]}
+                        keyboardType="phone-pad"
+                      />
+                    </Field>
+                  </View>
                 </>
               )}
 
@@ -912,6 +1079,16 @@ function toneColor(tone: 'primary' | 'success' | 'warning' | 'danger') {
   return { main: colors.primary, soft: 'rgba(6,23,62,0.10)', text: colors.primary };
 }
 
+function guestInitials(name: string) {
+  const parts = String(name || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!parts.length) return 'א';
+  if (parts.length === 1) return parts[0].slice(0, 1);
+  return `${parts[0].slice(0, 1)}${parts[1].slice(0, 1)}`;
+}
+
 function MetricCard({
   title,
   value,
@@ -926,16 +1103,35 @@ function MetricCard({
   width: any;
 }) {
   const c = toneColor(tone);
+  const iconName =
+    tone === 'success'
+      ? 'checkmark-circle-outline'
+      : tone === 'warning'
+        ? 'time-outline'
+        : tone === 'danger'
+          ? 'close-circle-outline'
+          : 'people-outline';
   return (
     <View style={[styles.metricCard, { width }, { borderRightColor: c.main }]}>
-      <Text style={styles.metricLabel}>{title}</Text>
+      <View style={[styles.metricGlow, { backgroundColor: c.soft }]} />
+      <View style={styles.metricTopRow}>
+        <View style={styles.metricTextWrap}>
+          <Text style={styles.metricLabel}>{title}</Text>
+          {hint ? (
+            <View style={[styles.metricHintPill, { backgroundColor: c.soft }]}>
+              <Text style={[styles.metricHintText, { color: c.text }]}>{hint}</Text>
+            </View>
+          ) : null}
+        </View>
+        <View style={[styles.metricIconWrap, { backgroundColor: c.soft, borderColor: 'rgba(255,255,255,0.7)' }]}>
+          <Ionicons name={iconName} size={18} color={c.main} />
+        </View>
+      </View>
       <View style={styles.metricValueRow}>
         <Text style={styles.metricValue}>{value}</Text>
-        {hint ? (
-          <View style={[styles.metricHintPill, { backgroundColor: c.soft }]}>
-            <Text style={[styles.metricHintText, { color: c.text }]}>{hint}</Text>
-          </View>
-        ) : null}
+        <View style={styles.metricValueTrail}>
+          <View style={[styles.metricAccentDot, { backgroundColor: c.main }]} />
+        </View>
       </View>
     </View>
   );
@@ -967,6 +1163,7 @@ function StatusChip({
         pressed ? styles.btnPressed : null,
       ]}
     >
+      <View style={[styles.chipDot, active ? { backgroundColor: 'rgba(255,255,255,0.92)' } : { backgroundColor: c.main }]} />
       <Text style={[styles.chipText, active ? { color: colors.white } : null]}>{label}</Text>
       <View style={[styles.chipCount, active ? { backgroundColor: 'rgba(255,255,255,0.20)' } : { backgroundColor: c.soft }]}>
         <Text style={[styles.chipCountText, active ? { color: colors.white } : { color: c.text }]}>{count}</Text>
@@ -1006,6 +1203,7 @@ function GuestListRow({
 }) {
   const statusTone = guest.status === 'מגיע' ? 'success' : guest.status === 'לא מגיע' ? 'danger' : 'warning';
   const sc = toneColor(statusTone);
+  const initials = guestInitials(guest.name);
 
   return (
     <Pressable
@@ -1036,44 +1234,57 @@ function GuestListRow({
           </Pressable>
 
           <View style={styles.guestCardHeader}>
-            {/* Left side: name + phone (left-aligned) */}
             <View style={styles.guestHeaderLeft}>
+              <View style={styles.guestAvatar}>
+                <Text style={styles.guestAvatarText}>{initials}</Text>
+              </View>
               <View style={styles.guestCardTitleWrap}>
-                <Text style={styles.guestCardName} numberOfLines={1}>
-                  {guest.name}
-                </Text>
-                <Text style={styles.guestCardPhone} numberOfLines={1}>
-                  {guest.phone}
-                </Text>
+                <View style={styles.guestTitleRow}>
+                  <Text style={styles.guestCardName} numberOfLines={1}>
+                    {guest.name}
+                  </Text>
+                </View>
+
+                <View
+                  style={[
+                    styles.statusPill,
+                    styles.statusPillInline,
+                    { backgroundColor: sc.soft, borderColor: 'rgba(0,0,0,0.06)' },
+                  ]}
+                >
+                  <View style={[styles.statusDot, { backgroundColor: sc.main }]} />
+                  <Text style={[styles.statusText, { color: sc.text }]}>{guest.status}</Text>
+                </View>
+
+                <View style={styles.guestDetailsRow}>
+                  <View style={[styles.guestInfoPill, styles.guestInfoPillWide]}>
+                    <View style={styles.guestPhoneRow}>
+                      <Ionicons name="call-outline" size={12} color={colors.gray[500]} />
+                      <Text style={styles.guestCardPhone} numberOfLines={1}>
+                        {guest.phone}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.guestInfoPill}>
+                    <Ionicons name="people-outline" size={14} color={colors.gray[600]} />
+                    <Text style={styles.guestInfoText}>כמות {guest.numberOfPeople || 1}</Text>
+                  </View>
+                </View>
               </View>
             </View>
           </View>
 
-          {/* Bottom-left: qty + actions, then status under them */}
-          <View style={styles.guestBottom}>
-            <View style={styles.guestBottomTopRow}>
-              <View style={styles.guestCardMetaPill}>
-                <Ionicons name="people-outline" size={14} color={colors.gray[600]} />
-                <Text style={styles.guestCardMetaText}>כמות: {guest.numberOfPeople || 1}</Text>
-              </View>
+          <View style={styles.guestCardFooterBar}>
+            <View style={[styles.guestSelectionPill, checked ? styles.guestSelectionPillActive : null]}>
+              <Ionicons name={checked ? 'checkmark-circle' : 'ellipse-outline'} size={14} color={checked ? colors.primary : colors.gray[400]} />
+              <Text style={[styles.guestSelectionText, checked ? styles.guestSelectionTextActive : null]}>
+                {checked ? 'נבחר' : 'סמן לבחירה'}
+              </Text>
             </View>
-
-            <View
-              style={[
-                styles.statusPill,
-                styles.statusPillBottom,
-                { backgroundColor: sc.soft, borderColor: 'rgba(0,0,0,0.06)' },
-              ]}
-            >
-              <View style={[styles.statusDot, { backgroundColor: sc.main }]} />
-              <Text style={[styles.statusText, { color: sc.text }]}>{guest.status}</Text>
+            <View style={styles.guestCardActions}>
+              <IconCircleBtn icon="create-outline" label="עריכה" onPress={onEdit} />
+              <IconCircleBtn icon="trash-outline" label="מחק" danger onPress={onDelete} />
             </View>
-          </View>
-
-          {/* Actions pinned to the bottom-left of the card */}
-          <View style={styles.guestCardActionsAbs}>
-            <IconCircleBtn icon="create-outline" label="עריכה" onPress={onEdit} />
-            <IconCircleBtn icon="trash-outline" label="מחק" danger onPress={onDelete} />
           </View>
         </>
       )}
@@ -1151,21 +1362,28 @@ function StatusPill({
 function EmptyState({ onAdd }: { onAdd: () => void }) {
   return (
     <View style={styles.empty}>
-      <Text style={styles.emptyTitle}>אין קטגוריות עדיין</Text>
-      <Text style={styles.emptySubtitle}>כדי להתחיל, הוסף מוזמנים מתוך אנשי הקשר ובחר קטגוריה.</Text>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="הוסף מוזמנים"
-        onPress={onAdd}
-        style={({ hovered, pressed }: any) => [
-          styles.emptyPrimaryBtn,
-          Platform.OS === 'web' && hovered ? styles.emptyPrimaryBtnHover : null,
-          pressed ? styles.btnPressed : null,
-        ]}
-      >
-        <Ionicons name="add" size={18} color={colors.white} />
-        <Text style={styles.emptyPrimaryBtnText}>הוסף מוזמנים</Text>
-      </Pressable>
+      <View style={styles.emptyTop}>
+        <View style={styles.emptyTextWrap}>
+          <Text style={styles.emptyTitle}>אין קטגוריות עדיין</Text>
+          <Text style={styles.emptySubtitle}>כדי להתחיל, הוסף מוזמנים מתוך אנשי הקשר ובחר קטגוריה.</Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="הוסף מוזמנים"
+            onPress={onAdd}
+            style={({ hovered, pressed }: any) => [
+              styles.emptyPrimaryBtn,
+              Platform.OS === 'web' && hovered ? styles.emptyPrimaryBtnHover : null,
+              pressed ? styles.btnPressed : null,
+            ]}
+          >
+            <Ionicons name="add" size={18} color={colors.white} />
+            <Text style={styles.emptyPrimaryBtnText}>הוסף מוזמנים</Text>
+          </Pressable>
+        </View>
+        <View style={styles.emptyIconWrap}>
+          <Ionicons name="people-outline" size={24} color={colors.primary} />
+        </View>
+      </View>
     </View>
   );
 }
@@ -1182,44 +1400,124 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 28,
     width: '100%',
-    // wider maxWidth for desktop screens
-    maxWidth: 1600,
     alignSelf: 'center',
     gap: 16,
     // @ts-expect-error - react-native-web supports direction
     direction: 'rtl',
   },
+  contentAdmin: {
+    ...(Platform.OS === 'web' ? ({ alignSelf: 'stretch', direction: 'rtl' } as any) : null),
+  },
+
+  heroCard: {
+    backgroundColor: colors.white,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.06)',
+    padding: 18,
+    gap: 14,
+    // @ts-expect-error - react-native-web supports boxShadow
+    boxShadow: '0 1px 2px rgba(16,24,40,0.04), 0 18px 36px rgba(16,24,40,0.06)',
+  },
+  heroTopRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'flex-start',
+    gap: 14,
+    // @ts-expect-error - react-native-web supports direction
+    direction: 'rtl',
+  },
+  heroTextWrap: { flex: 1, minWidth: 0, alignItems: 'flex-end', gap: 4, flexDirection: 'row', flexWrap: 'wrap' },
+  heroEyebrow: { fontSize: 12, fontWeight: '900', color: colors.primary, textAlign: 'right', writingDirection: 'rtl' },
+  heroTitle: { width: '100%', fontSize: 28, fontWeight: '900', color: colors.text, textAlign: 'right', writingDirection: 'rtl' },
+  heroSubtitle: { width: '100%', fontSize: 13, fontWeight: '700', color: colors.gray[600], textAlign: 'right', writingDirection: 'rtl', lineHeight: 20 },
+  backBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: colors.gray[50],
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  backBtnHover: { backgroundColor: colors.white, borderColor: 'rgba(6,23,62,0.18)' },
 
   metricsRow: {
     flexDirection: 'row',
-    flexWrap: 'nowrap',
-    gap: 12,
+    flexWrap: 'wrap',
+    gap: 14,
+    alignItems: 'stretch',
   },
   metricCard: {
     backgroundColor: colors.white,
-    borderRadius: 18,
-    padding: 16,
+    borderRadius: 24,
+    paddingHorizontal: 20,
+    paddingVertical: 18,
     borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.06)',
+    borderColor: 'rgba(15,23,42,0.07)',
     borderRightWidth: 4,
+    minHeight: 116,
+    justifyContent: 'space-between',
+    position: 'relative',
+    overflow: 'hidden',
     // @ts-expect-error - react-native-web supports boxShadow
-    boxShadow: '0 0 0 1px rgba(11,48,65,0.02), 0 10px 30px rgba(11,48,65,0.05)',
+    boxShadow: '0 2px 6px rgba(16,24,40,0.04), 0 18px 40px rgba(16,24,40,0.08)',
   },
-  metricLabel: { fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'right' },
-  metricValueRow: { marginTop: 10, flexDirection: 'row-reverse', alignItems: 'baseline', gap: 10 },
-  metricValue: { fontSize: 28, fontWeight: '900', color: colors.text, textAlign: 'right' },
-  metricHintPill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
+  metricGlow: {
+    position: 'absolute',
+    top: -28,
+    left: -18,
+    width: 112,
+    height: 112,
+    borderRadius: 999,
+    opacity: 0.45,
+  },
+  metricTopRow: { flexDirection: 'row-reverse', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14 },
+  metricTextWrap: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  metricIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    borderWidth: 1,
+  },
+  metricLabel: { fontSize: 12, fontWeight: '800', color: colors.gray[500], textAlign: 'right', writingDirection: 'rtl', lineHeight: 16 },
+  metricValueRow: { marginTop: 18, flexDirection: 'row-reverse', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 },
+  metricValue: { fontSize: 34, fontWeight: '900', color: colors.text, textAlign: 'right', lineHeight: 36, letterSpacing: -0.6 },
+  metricValueTrail: {
+    minHeight: 36,
+    justifyContent: 'flex-end',
+    alignItems: 'flex-end',
+  },
+  metricAccentDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 999,
+  },
+  metricHintPill: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255,255,255,0.55)' },
   metricHintText: { fontSize: 11, fontWeight: '900', textAlign: 'right', writingDirection: 'rtl' },
 
   filterBar: {
     backgroundColor: colors.white,
-    borderRadius: 22,
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.06)',
-    padding: 10,
-    gap: 10,
+    borderColor: 'rgba(15,23,42,0.07)',
+    padding: 14,
+    gap: 12,
     // @ts-expect-error - react-native-web supports boxShadow
-    boxShadow: '0 8px 26px rgba(11,48,65,0.05)',
+    boxShadow: '0 1px 2px rgba(16,24,40,0.03), 0 18px 38px rgba(16,24,40,0.08)',
+    // @ts-expect-error - react-native-web supports direction
+    direction: 'rtl',
     ...(Platform.OS === 'web'
       ? ({
           position: 'sticky',
@@ -1229,148 +1527,227 @@ const styles = StyleSheet.create({
       : null),
   },
   filterBarNarrow: {
-    padding: 12,
+    padding: 14,
   },
   filterBarWide: {
+    alignItems: 'stretch',
+    // @ts-expect-error - react-native-web supports direction
+    direction: 'rtl',
+  },
+  filterPrimaryRow: {
+    width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-    flexWrap: 'nowrap',
+    justifyContent: 'flex-start',
+    gap: 14,
+    flexWrap: 'wrap',
+    // @ts-expect-error - react-native-web supports direction
+    direction: 'rtl',
+  },
+  filterPrimaryRowNarrow: {
+    alignItems: 'stretch',
   },
   searchWrap: {
     position: 'relative',
     alignSelf: 'auto',
+    flexGrow: 1,
+    minWidth: 280,
   },
   searchIconRight: {
     position: 'absolute',
-    right: 12,
+    right: 14,
     top: 0,
     bottom: 0,
     justifyContent: 'center',
     pointerEvents: 'none',
   },
   searchInput: {
-    height: 44,
-    borderRadius: 16,
-    backgroundColor: colors.gray[50],
+    height: 48,
+    borderRadius: 18,
+    backgroundColor: '#F8FAFC',
     borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.06)',
-    paddingRight: 40,
-    paddingLeft: 12,
+    borderColor: 'rgba(15,23,42,0.08)',
+    paddingRight: 44,
+    paddingLeft: 14,
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '800',
     color: colors.text,
     textAlign: 'right',
   },
   chipsRow: {
+    width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
     flexWrap: 'wrap',
     justifyContent: 'flex-start',
     flex: 1,
     minWidth: 0,
+    // @ts-expect-error - react-native-web supports direction
+    direction: 'rtl',
   },
   addGuestsBtn: {
-    height: 44,
-    paddingHorizontal: 14,
-    borderRadius: 16,
+    height: 48,
+    paddingHorizontal: 18,
+    borderRadius: 18,
     backgroundColor: colors.primary,
     flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
+    gap: 8,
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
     flexShrink: 0,
+    // @ts-expect-error - react-native-web supports boxShadow
+    boxShadow: '0 10px 22px rgba(6,23,62,0.16)',
   },
   addGuestsBtnNarrow: { width: '100%' },
-  addGuestsBtnHover: { opacity: 0.95 },
-  addGuestsBtnText: { fontSize: 13, fontWeight: '900', color: colors.white, textAlign: 'right' },
+  addGuestsBtnHover: { opacity: 0.97, transform: [{ translateY: -1 }] },
+  addGuestsBtnText: { fontSize: 13, fontWeight: '900', color: colors.white, textAlign: 'right', writingDirection: 'rtl' },
   chip: {
     paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingVertical: 9,
     borderRadius: 999,
-    backgroundColor: colors.white,
+    backgroundColor: '#F8FAFC',
     borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.10)',
+    borderColor: 'rgba(15,23,42,0.08)',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
   chipHover: {
-    backgroundColor: colors.gray[50],
+    backgroundColor: colors.white,
+    borderColor: 'rgba(15,23,42,0.14)',
   },
-  chipText: { fontSize: 12, fontWeight: '900', color: colors.gray[700], textAlign: 'right' },
-  chipCount: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, minWidth: 26, alignItems: 'center' },
+  chipText: { fontSize: 12, fontWeight: '900', color: colors.gray[700], textAlign: 'right', writingDirection: 'rtl' },
+  chipDot: { width: 8, height: 8, borderRadius: 999 },
+  chipCount: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, minWidth: 28, alignItems: 'center' },
   chipCountText: { fontSize: 11, fontWeight: '900', textAlign: 'right', writingDirection: 'rtl' },
 
   bulkRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 10,
-    paddingHorizontal: 4,
-    paddingTop: 2,
-    flexShrink: 0,
-  },
-  bulkText: { fontSize: 12, fontWeight: '900', color: colors.gray[700], textAlign: 'right' },
-  bulkBtn: {
-    height: 36,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    backgroundColor: colors.gray[100],
+    gap: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 18,
+    backgroundColor: '#F8FAFF',
     borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.06)',
+    borderColor: 'rgba(37,99,235,0.10)',
+    flexShrink: 0,
+    flexWrap: 'wrap',
+    // @ts-expect-error - react-native-web supports boxShadow
+    boxShadow: '0 10px 24px rgba(15,23,42,0.05)',
+  },
+  bulkInfo: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+    minWidth: 220,
+  },
+  bulkCountBadge: {
+    minWidth: 42,
+    height: 42,
+    paddingHorizontal: 10,
+    borderRadius: 14,
+    backgroundColor: 'rgba(37,99,235,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(37,99,235,0.14)',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  bulkCountText: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: colors.primary,
+    textAlign: 'center',
+  },
+  bulkTextWrap: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'flex-start',
+    gap: 3,
+  },
+  bulkText: { fontSize: 13, fontWeight: '900', color: colors.gray[800], textAlign: 'right', writingDirection: 'rtl' },
+  bulkHint: { fontSize: 11.5, fontWeight: '700', color: colors.gray[500], textAlign: 'right', writingDirection: 'rtl' },
+  bulkActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flexWrap: 'wrap',
+    ...(Platform.OS === 'web' ? ({ direction: 'ltr' } as any) : null),
+  },
+  bulkBtn: {
+    height: 40,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
-  bulkBtnHover: { backgroundColor: colors.gray[200] },
-  bulkBtnText: { fontSize: 12, fontWeight: '900', color: colors.gray[700], textAlign: 'right' },
+  bulkBtnHover: { backgroundColor: '#F8FAFC', borderColor: 'rgba(15,23,42,0.14)' },
+  bulkBtnText: { fontSize: 12.5, fontWeight: '900', color: colors.gray[700], textAlign: 'right', writingDirection: 'rtl' },
   bulkDangerBtn: {
-    height: 36,
-    paddingHorizontal: 12,
+    height: 40,
+    paddingHorizontal: 14,
     borderRadius: 12,
     backgroundColor: '#F43F5E',
     borderWidth: 1,
-    borderColor: 'rgba(244,63,94,0.25)',
+    borderColor: 'rgba(244,63,94,0.22)',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
-  bulkDangerBtnHover: { opacity: 0.95 },
-  bulkDangerBtnText: { fontSize: 12, fontWeight: '900', color: colors.white, textAlign: 'right' },
+  bulkDangerBtnHover: { backgroundColor: '#E11D48' },
+  bulkDangerBtnText: { fontSize: 12.5, fontWeight: '900', color: colors.white, textAlign: 'right', writingDirection: 'rtl' },
 
   loadingBox: { paddingVertical: 30, alignItems: 'center', gap: 10 },
   loadingText: { fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'right', writingDirection: 'rtl' },
 
-  groups: { gap: 14 },
+  groups: { gap: 16 },
   groupCard: {
     backgroundColor: colors.white,
-    borderRadius: 20,
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.07)',
+    borderColor: 'rgba(15,23,42,0.06)',
     overflow: 'hidden',
     // @ts-expect-error - react-native-web supports boxShadow
-    boxShadow: '0 1px 2px rgba(16,24,40,0.04), 0 14px 28px rgba(16,24,40,0.06)',
+    boxShadow: '0 1px 2px rgba(16,24,40,0.03), 0 18px 38px rgba(16,24,40,0.06)',
   },
   groupHeader: {
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(15,23,42,0.06)',
-    flexDirection: 'row-reverse',
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 12,
+    gap: 14,
     backgroundColor: colors.white,
   },
-  groupHeaderHover: { backgroundColor: 'rgba(15,23,42,0.02)' },
-  groupHeaderLeft: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 },
+  groupHeaderHover: { backgroundColor: 'rgba(248,250,252,0.95)' },
+  groupHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1, minWidth: 0, flexWrap: 'wrap' },
+  groupIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(6,23,62,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.08)',
+    flexShrink: 0,
+  },
+  groupTitleWrap: { flex: 1, minWidth: 0, gap: 6, alignItems: 'flex-start', justifyContent: 'center' },
   groupToggleBtn: {
     width: 34,
     height: 34,
@@ -1384,31 +1761,32 @@ const styles = StyleSheet.create({
   chevronCollapsed: {
     transform: [{ rotate: '-90deg' }],
   },
-  groupTitle: { fontSize: 18, fontWeight: '900', color: colors.primary, textAlign: 'right', flex: 1, minWidth: 0 },
+  groupTitle: { fontSize: 18, fontWeight: '900', color: colors.text, textAlign: 'right', width: '100%', writingDirection: 'rtl' },
   groupPill: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 11,
+    paddingVertical: 5,
     borderRadius: 999,
-    backgroundColor: 'rgba(15,23,42,0.04)',
+    backgroundColor: 'rgba(6,23,62,0.05)',
     borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.06)',
+    borderColor: 'rgba(6,23,62,0.08)',
   },
   groupPillText: { fontSize: 11, fontWeight: '900', color: colors.gray[700], textAlign: 'right', writingDirection: 'rtl' },
-  groupHeaderRight: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12 },
-  miniStat: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6 },
-  miniDot: { width: 8, height: 8, borderRadius: 999 },
-  miniStatText: { fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'right', writingDirection: 'rtl' },
+  groupHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'nowrap', justifyContent: 'flex-start' },
+  miniStat: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 999, backgroundColor: 'rgba(248,250,252,0.95)', borderWidth: 1, borderColor: 'rgba(15,23,42,0.06)' },
+  miniDot: { width: 7, height: 7, borderRadius: 999 },
+  miniStatText: { fontSize: 11.5, fontWeight: '800', color: colors.gray[600], textAlign: 'right', writingDirection: 'rtl' },
 
   groupBody: {
-    paddingHorizontal: 14,
-    paddingVertical: 14,
+    paddingHorizontal: 18,
+    paddingTop: 16,
+    paddingBottom: 18,
     // In RTL, a plain 'row' starts at the physical right edge.
     // Using 'row-reverse' together with `direction: 'rtl'` can flip the start edge back to the left on web.
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    gap: 14,
     alignItems: 'stretch',
-    backgroundColor: 'rgba(248,250,252,0.92)',
+    backgroundColor: 'rgba(248,250,252,0.72)',
     // @ts-expect-error - react-native-web supports direction
     direction: 'rtl',
   },
@@ -1421,7 +1799,7 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     writingDirection: 'rtl',
   },
-  groupCollapsedBar: { height: 6, backgroundColor: colors.gray[50] },
+  groupCollapsedBar: { height: 8, backgroundColor: 'rgba(248,250,252,0.9)' },
 
   guestRow: {
     paddingHorizontal: 10,
@@ -1447,11 +1825,11 @@ const styles = StyleSheet.create({
     boxShadow: '0 0 0 1px rgba(30,58,138,0.06), 0 14px 26px rgba(16,24,40,0.08)',
   },
   checkbox: {
-    width: 18,
-    height: 18,
-    borderRadius: 5,
+    width: 20,
+    height: 20,
+    borderRadius: 6,
     borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.18)',
+    borderColor: 'rgba(15,23,42,0.16)',
     backgroundColor: colors.white,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1460,18 +1838,17 @@ const styles = StyleSheet.create({
   checkboxHover: { borderColor: 'rgba(6,23,62,0.35)' },
   checkboxChecked: { backgroundColor: colors.primary, borderColor: colors.primary },
   guestCard: {
-    padding: 10,
-    paddingBottom: 92,
+    padding: 16,
     borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.06)',
-    borderRadius: 18,
+    borderColor: 'rgba(15,23,42,0.07)',
+    borderRadius: 22,
     backgroundColor: colors.white,
-    gap: 8,
+    gap: 14,
     // @ts-expect-error - react-native-web supports direction
     direction: 'rtl',
     // @ts-expect-error - react-native-web supports boxShadow
-    boxShadow: '0 0 0 1px rgba(11,48,65,0.02), 0 10px 22px rgba(16,24,40,0.06)',
-    minHeight: 86,
+    boxShadow: '0 1px 2px rgba(16,24,40,0.03), 0 12px 28px rgba(16,24,40,0.07)',
+    minHeight: 172,
     position: 'relative',
   },
   guestCardSquare: {
@@ -1479,7 +1856,7 @@ const styles = StyleSheet.create({
   },
   guestCardHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: 10,
     minWidth: 0,
@@ -1490,15 +1867,61 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'flex-start',
+    gap: 12,
+    ...(Platform.OS === 'web' ? ({ direction: 'ltr' } as any) : null),
+  },
+  guestAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 16,
+    backgroundColor: 'rgba(6,23,62,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  guestAvatarText: { fontSize: 13, fontWeight: '900', color: colors.primary, textAlign: 'center' },
+  guestCardTitleWrap: { flex: 1, minWidth: 0, alignItems: 'stretch', gap: 10, paddingLeft: 18, paddingTop: 2 },
+  guestTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'flex-start',
+    width: '100%',
+    ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
+  },
+  guestCardName: { fontSize: 15, fontWeight: '900', color: colors.text, textAlign: 'left', lineHeight: 20 },
+  guestDetailsRow: {
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-start',
     gap: 10,
+    flexWrap: 'wrap',
+    ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
+  },
+  guestInfoPill: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: 'rgba(248,250,252,0.95)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.06)',
+  },
+  guestInfoPillWide: {
+    maxWidth: '100%',
+    minHeight: 38,
+  },
+  guestPhoneRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
     ...(Platform.OS === 'web' ? ({ direction: 'ltr' } as any) : null),
   },
-  guestCardTitleWrap: { flex: 1, minWidth: 0, alignItems: 'flex-start', gap: 3, paddingLeft: 22 },
-  guestCardName: { fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'left' },
   guestCardPhone: {
-    fontSize: 11,
+    fontSize: 11.5,
     fontWeight: '800',
     color: colors.gray[600],
     // Keep phone numbers readable (LTR) but anchor them to the RTL layout.
@@ -1507,6 +1930,7 @@ const styles = StyleSheet.create({
     textAlign: 'left',
     alignSelf: 'flex-start',
   },
+  guestInfoText: { fontSize: 11.5, fontWeight: '900', color: colors.gray[700], textAlign: 'right', writingDirection: 'rtl' },
   // Quantity row pinned to the left.
   guestCardMetaRow: {
     flexDirection: 'row',
@@ -1518,31 +1942,32 @@ const styles = StyleSheet.create({
     flexDirection: 'row-reverse',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: 'rgba(243,244,246,0.9)',
+    backgroundColor: 'rgba(248,250,252,0.95)',
     borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.06)',
-    alignSelf: 'flex-end',
-    // Push to the physical right edge (stable in RTL/LTR).
-    marginLeft: 'auto',
+    borderColor: 'rgba(15,23,42,0.07)',
   },
   guestCardMetaText: { fontSize: 11, fontWeight: '900', color: colors.gray[700], textAlign: 'left' },
   guestBottom: {
     position: 'absolute',
-    bottom: 10,
-    right: 10,
-    left: 10,
+    bottom: 14,
+    right: 14,
+    left: 14,
     // Anchor the info cluster to the physical right edge.
     alignItems: 'stretch',
     justifyContent: 'flex-start',
-    gap: 8,
+    gap: 10,
     maxWidth: '100%',
+    paddingLeft: 74,
   },
   guestBottomTopRow: {
-    flexDirection: 'column',
-    alignItems: 'flex-end',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    gap: 8,
+    flexWrap: 'wrap',
   },
   guestBottomActions: {
     flexDirection: 'row',
@@ -1553,11 +1978,11 @@ const styles = StyleSheet.create({
   },
   guestCardActionsAbs: {
     position: 'absolute',
-    left: 10,
-    bottom: 10,
+    left: 14,
+    bottom: 14,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
     zIndex: 3,
     ...(Platform.OS === 'web' ? ({ direction: 'ltr' } as any) : null),
   },
@@ -1568,9 +1993,53 @@ const styles = StyleSheet.create({
     gap: 6,
     marginTop: 'auto',
   },
+  guestCardFooterBar: {
+    marginTop: 'auto',
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(15,23,42,0.06)',
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    justifyContent: 'flex-start',
+    gap: 10,
+  },
+  guestCardActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    alignSelf: 'flex-start',
+    ...(Platform.OS === 'web' ? ({ direction: 'ltr' } as any) : null),
+  },
+  guestSelectionPill: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: 'rgba(248,250,252,0.9)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.06)',
+    alignSelf: 'stretch',
+    justifyContent: 'center',
+  },
+  guestSelectionPillActive: {
+    backgroundColor: 'rgba(37,99,235,0.08)',
+    borderColor: 'rgba(37,99,235,0.16)',
+  },
+  guestSelectionText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.gray[500],
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  guestSelectionTextActive: {
+    color: colors.primary,
+  },
   statusPill: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: 999,
     borderWidth: 1,
     flexDirection: 'row-reverse',
@@ -1578,32 +2047,36 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   statusPillBottom: {
-    alignSelf: 'flex-end',
-    // Push to the physical right edge (stable in RTL/LTR).
-    marginLeft: 'auto',
+    alignSelf: 'auto',
+  },
+  statusPillInline: {
+    flexShrink: 0,
+    alignSelf: 'flex-start',
   },
   statusDot: { width: 6, height: 6, borderRadius: 999 },
-  statusText: { fontSize: 10.5, fontWeight: '900', textAlign: 'right' },
+  statusText: { fontSize: 11, fontWeight: '900', textAlign: 'right', writingDirection: 'rtl' },
   actions: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
   iconBtn: {
-    width: 26,
-    height: 26,
+    width: 30,
+    height: 30,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.10)',
-    backgroundColor: colors.white,
+    borderColor: 'rgba(15,23,42,0.08)',
+    backgroundColor: '#F8FAFC',
     alignItems: 'center',
     justifyContent: 'center',
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
     opacity: 0.95,
+    // @ts-expect-error - react-native-web supports boxShadow
+    boxShadow: '0 6px 14px rgba(16,24,40,0.06)',
   },
   guestCheckboxAbs: {
     position: 'absolute',
-    top: 10,
-    left: 10,
+    top: 14,
+    left: 14,
     zIndex: 2,
   },
-  iconBtnHover: { borderColor: 'rgba(6,23,62,0.20)', backgroundColor: 'rgba(6,23,62,0.03)' },
+  iconBtnHover: { borderColor: 'rgba(6,23,62,0.18)', backgroundColor: colors.white },
   iconBtnDangerHover: { borderColor: 'rgba(244,63,94,0.22)', backgroundColor: 'rgba(244,63,94,0.06)' },
 
   btnPressed: { opacity: 0.92, transform: [{ scale: 0.99 }] },
@@ -1617,9 +2090,9 @@ const styles = StyleSheet.create({
   },
   modalCard: {
     width: '100%',
-    maxWidth: 520,
+    maxWidth: 560,
     backgroundColor: colors.white,
-    borderRadius: 20,
+    borderRadius: 28,
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.10)',
     overflow: 'hidden',
@@ -1627,16 +2100,47 @@ const styles = StyleSheet.create({
     boxShadow: '0 30px 80px rgba(0,0,0,0.20)',
   },
   modalHeader: {
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(15,23,42,0.06)',
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
-    gap: 10,
+    gap: 14,
+    backgroundColor: '#F8FAFF',
   },
-  modalTitle: { fontSize: 16, fontWeight: '900', color: colors.text, textAlign: 'right' },
+  modalTitleWrap: { flex: 1, minWidth: 0, flexDirection: 'row-reverse', alignItems: 'flex-start', gap: 12 },
+  modalIconBadge: {
+    width: 46,
+    height: 46,
+    borderRadius: 16,
+    backgroundColor: 'rgba(6,23,62,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  modalTitleTextWrap: { flex: 1, minWidth: 0, gap: 4, justifyContent: 'flex-start', alignItems: 'flex-start' },
+  modalBadgeText: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: colors.primary,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  modalTitle: { fontSize: 20, fontWeight: '900', color: colors.text, textAlign: 'right', writingDirection: 'rtl' },
+  modalSubtitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.gray[600],
+    textAlign: 'right',
+    writingDirection: 'rtl',
+    lineHeight: 19,
+  },
   modalCloseBtn: {
     width: 34,
     height: 34,
@@ -1647,7 +2151,102 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
   modalCloseBtnHover: { backgroundColor: colors.gray[200] },
-  modalBody: { padding: 16, gap: 12 },
+  modalBody: { padding: 18, gap: 14 },
+  stepperRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    paddingHorizontal: 2,
+  },
+  stepperItem: {
+    flex: 1,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: 'rgba(148,163,184,0.08)',
+  },
+  stepperItemActive: {
+    backgroundColor: 'rgba(6,23,62,0.08)',
+  },
+  stepperDivider: {
+    width: 34,
+    height: 2,
+    borderRadius: 999,
+    backgroundColor: 'rgba(148,163,184,0.28)',
+  },
+  stepperDividerDone: {
+    backgroundColor: colors.primary,
+  },
+  stepperDot: {
+    width: 26,
+    height: 26,
+    borderRadius: 999,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepperDotActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  stepperDotText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: colors.gray[600],
+    textAlign: 'center',
+  },
+  stepperDotTextActive: {
+    color: colors.white,
+  },
+  stepperLabel: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: colors.gray[600],
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  stepperLabelActive: {
+    color: colors.primary,
+  },
+  addSectionCard: {
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+    backgroundColor: '#FBFCFF',
+    padding: 16,
+    gap: 14,
+    // @ts-expect-error - react-native-web supports boxShadow
+    boxShadow: '0 10px 24px rgba(16,24,40,0.05)',
+  },
+  addSectionHeader: {
+    flexDirection: 'row-reverse',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  addSectionIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 14,
+    backgroundColor: 'rgba(6,23,62,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  addSectionTextWrap: { flex: 1, minWidth: 0, gap: 4, justifyContent: 'flex-start', alignItems: 'flex-start' },
+  addSectionTitle: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
   field: { gap: 8 },
   fieldLabel: { fontSize: 12, fontWeight: '900', color: colors.gray[700], textAlign: 'right' },
   modalInput: {
@@ -1683,7 +2282,7 @@ const styles = StyleSheet.create({
     padding: 14,
     borderTopWidth: 1,
     borderTopColor: 'rgba(15,23,42,0.06)',
-    flexDirection: 'row-reverse',
+    flexDirection: 'row',
     gap: 10,
   },
   modalDangerBtn: {
@@ -1732,27 +2331,46 @@ const styles = StyleSheet.create({
 
   addHint: {
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: '700',
     color: colors.gray[600],
     textAlign: 'right',
     writingDirection: 'rtl',
+    lineHeight: 19,
   },
-  categoryPickList: { gap: 10, marginTop: 10 },
+  categoryPickList: { gap: 10 },
   categoryPickItem: {
-    height: 44,
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    backgroundColor: colors.gray[50],
+    minHeight: 52,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: colors.white,
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.10)',
     flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 12,
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
-  categoryPickItemHover: { backgroundColor: colors.gray[100] },
+  categoryPickItemHover: {
+    backgroundColor: '#F8FAFF',
+    borderColor: 'rgba(6,23,62,0.14)',
+  },
   categoryPickItemActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  categoryPickText: { fontSize: 13, fontWeight: '900', color: colors.gray[800], textAlign: 'right', flex: 1, minWidth: 0 },
+  categoryPickContent: { flex: 1, minWidth: 0, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 10 },
+  categoryPickLeadingIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 999,
+    backgroundColor: 'rgba(6,23,62,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  categoryPickLeadingIconActive: {
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
+  categoryPickText: { fontSize: 13, fontWeight: '900', color: colors.gray[800], textAlign: 'right', flex: 1, minWidth: 0, writingDirection: 'rtl' },
   categoryPickTextActive: { color: colors.white },
 
   inlineRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
@@ -1771,9 +2389,52 @@ const styles = StyleSheet.create({
   inlineAddBtnDisabled: { opacity: 0.75 },
   inlineAddBtnText: { fontSize: 12, fontWeight: '900', color: colors.white, textAlign: 'right' },
 
-  selectedCategoryLine: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
-  selectedCategoryLabel: { fontSize: 12, fontWeight: '900', color: colors.gray[700], textAlign: 'right' },
-  selectedCategoryValue: { fontSize: 12, fontWeight: '900', color: colors.primary, textAlign: 'right', flex: 1, minWidth: 0 },
+  selectedCategoryCard: {
+    borderRadius: 20,
+    padding: 14,
+    backgroundColor: '#F8FAFF',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.10)',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 12,
+  },
+  selectedCategoryIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    backgroundColor: 'rgba(6,23,62,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  selectedCategoryTextWrap: { flex: 1, minWidth: 0, gap: 2, justifyContent: 'flex-start', alignItems: 'flex-start' },
+  selectedCategoryLabel: { fontSize: 11, fontWeight: '900', color: colors.gray[600], textAlign: 'right', writingDirection: 'rtl' },
+  selectedCategoryValue: { fontSize: 14, fontWeight: '900', color: colors.primary, textAlign: 'right', flex: 1, minWidth: 0, writingDirection: 'rtl' },
+  selectedCategoryEditBtn: {
+    height: 34,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.12)',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  selectedCategoryEditBtnHover: {
+    backgroundColor: 'rgba(6,23,62,0.04)',
+  },
+  selectedCategoryEditBtnText: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: colors.primary,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
 
   empty: {
     padding: 26,
@@ -1784,9 +2445,38 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.06)',
+    // @ts-expect-error - react-native-web supports direction
+    direction: 'rtl',
   },
-  emptyTitle: { fontSize: 16, fontWeight: '900', color: colors.text, textAlign: 'right', writingDirection: 'rtl' },
-  emptySubtitle: { fontSize: 13, fontWeight: '700', color: colors.gray[600], textAlign: 'right', writingDirection: 'rtl', maxWidth: 520 },
+  emptyTop: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'flex-start',
+    gap: 14,
+    // @ts-expect-error - react-native-web supports direction
+    direction: 'rtl',
+  },
+  emptyIconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 18,
+    backgroundColor: 'rgba(6,23,62,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  emptyTextWrap: {
+    flex: 1,
+    minWidth: 0,
+    width: '100%',
+    alignItems: 'flex-start',
+    gap: 6,
+    // @ts-expect-error - react-native-web supports direction
+    direction: 'rtl',
+  },
+  emptyTitle: { width: '100%', fontSize: 16, fontWeight: '900', color: colors.text, textAlign: 'right', writingDirection: 'rtl' },
+  emptySubtitle: { width: '100%', fontSize: 13, fontWeight: '700', color: colors.gray[600], textAlign: 'right', writingDirection: 'rtl', maxWidth: 520, lineHeight: 20 },
   emptyPrimaryBtn: {
     height: 44,
     paddingHorizontal: 16,
@@ -1797,6 +2487,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 10,
     marginTop: 6,
+    alignSelf: 'flex-start',
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
   emptyPrimaryBtnHover: { opacity: 0.95 },

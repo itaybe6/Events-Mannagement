@@ -97,6 +97,7 @@ export default function AdminEventDetailsWebScreen() {
   const contentWidth = Math.max(0, width - sidebarWidth);
   const isNarrow = contentWidth < 1024;
   const maxContentWidth = contentWidth >= 1900 ? 1600 : contentWidth >= 1600 ? 1480 : 1280;
+  const useWideEditLayout = contentWidth >= 1180;
   const seatedPeople = useMemo(
     () =>
       guests
@@ -684,113 +685,152 @@ export default function AdminEventDetailsWebScreen() {
         <Pressable style={styles.editOverlay} onPress={() => setEditOpen(false)}>
           <Pressable style={styles.editCard} onPress={() => null}>
             <View style={styles.editHeader}>
+              <View style={styles.editHeaderContent}>
+                <View style={styles.editHeaderBadge}>
+                  <Ionicons name="create-outline" size={18} color="#1d4ed8" />
+                </View>
+                <View style={styles.editHeaderTextWrap}>
+                  <Text style={styles.editTitle}>עריכת אירוע</Text>
+                  <Text style={styles.editSubtitle} numberOfLines={1}>
+                    {eventType}
+                  </Text>
+                  <Text style={styles.editHeaderHint}>עדכנו כאן את פרטי האירוע כפי שיוצגו בכל המערכת.</Text>
+                </View>
+              </View>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="סגירה"
                 onPress={() => setEditOpen(false)}
-                style={styles.iconCircle}
+                style={({ hovered, pressed }: any) => [
+                  styles.iconCircle,
+                  Platform.OS === 'web' && hovered ? styles.iconCircleHover : null,
+                  pressed ? { opacity: 0.9 } : null,
+                ]}
               >
                 <Ionicons name="close" size={18} color={'rgba(17,24,39,0.70)'} />
               </Pressable>
-              <View style={{ flex: 1, alignItems: 'center' }}>
-                <Text style={styles.editTitle}>עריכת אירוע</Text>
-                <Text style={styles.editSubtitle} numberOfLines={1}>
-                  {eventType}
-                </Text>
-              </View>
-              <View style={{ width: 40 }} />
             </View>
 
             <View style={styles.editDivider} />
 
             <ScrollView contentContainerStyle={styles.editBody} showsVerticalScrollIndicator={false}>
-              <Text style={styles.editLabel}>תאריך האירוע</Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="בחירת תאריך"
-                onPress={openEditDatePicker}
-                style={({ hovered, pressed }: any) => [
-                  styles.inputLike,
-                  Platform.OS === 'web' && hovered ? styles.inputLikeHover : null,
-                  pressed ? { opacity: 0.92 } : null,
-                ]}
-              >
-                <Ionicons name="calendar-outline" size={18} color={'rgba(17,24,39,0.55)'} />
-                <Text style={styles.inputLikeText}>
-                  {Number.isFinite(editForm.date.getTime())
-                    ? editForm.date.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' })
-                    : ''}
-                </Text>
-              </Pressable>
+              <View style={styles.editSectionCard}>
+                <View style={styles.editSectionHeader}>
+                  <Text style={styles.editSectionTitle}>פרטי האירוע</Text>
+                  <Text style={styles.editSectionHint}>אפשר לעדכן תאריך, מיקום ועיר לפני השמירה.</Text>
+                </View>
 
-              <Text style={[styles.editLabel, { marginTop: 12 }]}>מיקום</Text>
-              <TextInput
-                value={editForm.location}
-                onChangeText={(t) => setEditForm((f) => ({ ...f, location: t }))}
-                placeholder="מיקום"
-                placeholderTextColor={'rgba(17,24,39,0.35)'}
-                style={styles.textInput}
-                textAlign="right"
-              />
+                <View style={[styles.editFieldsRow, useWideEditLayout ? styles.editFieldsRowDesktop : null]}>
+                  <View style={[styles.editFieldGroup, useWideEditLayout ? styles.editFieldHalf : null]}>
+                    <Text style={styles.editLabel}>תאריך האירוע</Text>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="בחירת תאריך"
+                      onPress={openEditDatePicker}
+                      style={({ hovered, pressed }: any) => [
+                        styles.inputLike,
+                        Platform.OS === 'web' && hovered ? styles.inputLikeHover : null,
+                        pressed ? { opacity: 0.92 } : null,
+                      ]}
+                    >
+                      <Ionicons name="calendar-outline" size={18} color={'rgba(17,24,39,0.55)'} />
+                      <Text style={styles.inputLikeText}>
+                        {Number.isFinite(editForm.date.getTime())
+                          ? editForm.date.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                          : ''}
+                      </Text>
+                    </Pressable>
+                  </View>
 
-              <Text style={[styles.editLabel, { marginTop: 12 }]}>עיר</Text>
-              <TextInput
-                value={editForm.city}
-                onChangeText={(t) => setEditForm((f) => ({ ...f, city: t }))}
-                placeholder="עיר"
-                placeholderTextColor={'rgba(17,24,39,0.35)'}
-                style={styles.textInput}
-                textAlign="right"
-              />
+                  <View style={[styles.editFieldGroup, useWideEditLayout ? styles.editFieldHalf : null]}>
+                    <Text style={styles.editLabel}>מיקום</Text>
+                    <TextInput
+                      value={editForm.location}
+                      onChangeText={(t) => setEditForm((f) => ({ ...f, location: t }))}
+                      placeholder="מיקום"
+                      placeholderTextColor={'rgba(17,24,39,0.35)'}
+                      style={styles.textInput}
+                      textAlign="right"
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.editFieldGroup}>
+                  <Text style={styles.editLabel}>עיר</Text>
+                  <TextInput
+                    value={editForm.city}
+                    onChangeText={(t) => setEditForm((f) => ({ ...f, city: t }))}
+                    placeholder="עיר"
+                    placeholderTextColor={'rgba(17,24,39,0.35)'}
+                    style={styles.textInput}
+                    textAlign="right"
+                  />
+                </View>
+              </View>
 
               {isWedding ? (
-                <>
-                  <Text style={[styles.editLabel, { marginTop: 12 }]}>שם חתן</Text>
-                  <TextInput
-                    value={editForm.groomName}
-                    onChangeText={(t) => setEditForm((f) => ({ ...f, groomName: t }))}
-                    placeholder="שם החתן"
-                    placeholderTextColor={'rgba(17,24,39,0.35)'}
-                    style={styles.textInput}
-                    textAlign="right"
-                  />
+                <View style={styles.editSectionCard}>
+                  <View style={styles.editSectionHeader}>
+                    <Text style={styles.editSectionTitle}>פרטי בני הזוג</Text>
+                    <Text style={styles.editSectionHint}>השמות יוצגו בכותרות ובהודעות האירוע.</Text>
+                  </View>
 
-                  <Text style={[styles.editLabel, { marginTop: 12 }]}>שם כלה</Text>
-                  <TextInput
-                    value={editForm.brideName}
-                    onChangeText={(t) => setEditForm((f) => ({ ...f, brideName: t }))}
-                    placeholder="שם הכלה"
-                    placeholderTextColor={'rgba(17,24,39,0.35)'}
-                    style={styles.textInput}
-                    textAlign="right"
-                  />
-                </>
+                  <View style={[styles.editFieldsRow, useWideEditLayout ? styles.editFieldsRowDesktop : null]}>
+                    <View style={[styles.editFieldGroup, useWideEditLayout ? styles.editFieldHalf : null]}>
+                      <Text style={styles.editLabel}>שם חתן</Text>
+                      <TextInput
+                        value={editForm.groomName}
+                        onChangeText={(t) => setEditForm((f) => ({ ...f, groomName: t }))}
+                        placeholder="שם החתן"
+                        placeholderTextColor={'rgba(17,24,39,0.35)'}
+                        style={styles.textInput}
+                        textAlign="right"
+                      />
+                    </View>
+
+                    <View style={[styles.editFieldGroup, useWideEditLayout ? styles.editFieldHalf : null]}>
+                      <Text style={styles.editLabel}>שם כלה</Text>
+                      <TextInput
+                        value={editForm.brideName}
+                        onChangeText={(t) => setEditForm((f) => ({ ...f, brideName: t }))}
+                        placeholder="שם הכלה"
+                        placeholderTextColor={'rgba(17,24,39,0.35)'}
+                        style={styles.textInput}
+                        textAlign="right"
+                      />
+                    </View>
+                  </View>
+                </View>
               ) : null}
-            </ScrollView>
 
-            <View style={styles.editDangerWrap}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="מחיקת אירוע"
-                onPress={confirmDeleteEvent}
-                disabled={deleteSaving || editSaving}
-                style={({ hovered, pressed }: any) => [
-                  styles.footerBtnDanger,
-                  Platform.OS === 'web' && hovered ? styles.footerBtnDangerHover : null,
-                  pressed ? { opacity: 0.92 } : null,
-                  deleteSaving ? { opacity: 0.88 } : null,
-                ]}
-              >
-                {deleteSaving ? (
-                  <ActivityIndicator color={colors.error} />
-                ) : (
-                  <>
-                    <Ionicons name="trash-outline" size={16} color={colors.error} />
-                    <Text style={styles.footerBtnDangerText}>מחק אירוע</Text>
-                  </>
-                )}
-              </Pressable>
-            </View>
+              <View style={styles.editDangerCard}>
+                <View style={styles.editDangerTextWrap}>
+                  <Text style={styles.editDangerTitle}>מחיקת אירוע</Text>
+                  <Text style={styles.editDangerHint}>הפעולה תמחק את האירוע והמידע המשויך אליו לצמיתות.</Text>
+                </View>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="מחיקת אירוע"
+                  onPress={confirmDeleteEvent}
+                  disabled={deleteSaving || editSaving}
+                  style={({ hovered, pressed }: any) => [
+                    styles.footerBtnDanger,
+                    Platform.OS === 'web' && hovered ? styles.footerBtnDangerHover : null,
+                    pressed ? { opacity: 0.92 } : null,
+                    deleteSaving ? { opacity: 0.88 } : null,
+                  ]}
+                >
+                  {deleteSaving ? (
+                    <ActivityIndicator color={colors.error} />
+                  ) : (
+                    <>
+                      <Ionicons name="trash-outline" size={16} color={colors.error} />
+                      <Text style={styles.footerBtnDangerText}>מחק אירוע</Text>
+                    </>
+                  )}
+                </Pressable>
+              </View>
+            </ScrollView>
 
             <View style={styles.editFooter}>
               <Pressable
@@ -1658,29 +1698,101 @@ const styles = StyleSheet.create({
   previewFallback: { width: 280, height: 240, borderRadius: 18, justifyContent: 'center', alignItems: 'center', gap: 10 },
   previewFallbackText: { fontSize: 14, fontWeight: '800', color: 'rgba(255,255,255,0.78)', textAlign: 'center' },
 
-  editOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 18 },
-  editCard: { width: '100%', maxWidth: 720, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.98)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.7)', overflow: 'hidden', maxHeight: '88%' },
-  editHeader: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  iconCircle: { width: 40, height: 40, borderRadius: 999, backgroundColor: 'rgba(17,24,39,0.06)', justifyContent: 'center', alignItems: 'center' },
+  editOverlay: { flex: 1, backgroundColor: 'rgba(2,6,23,0.54)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24, paddingVertical: 32 },
+  editCard: {
+    width: '100%',
+    maxWidth: 760,
+    borderRadius: 26,
+    backgroundColor: 'rgba(255,255,255,0.98)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.76)',
+    overflow: 'hidden',
+    maxHeight: '90%',
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 28px 80px rgba(15,23,42,0.22)' } as any) : null),
+  },
+  editHeader: { paddingHorizontal: 22, paddingTop: 22, paddingBottom: 18, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 },
+  editHeaderContent: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 14 },
+  editHeaderBadge: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: 'rgba(29,78,216,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(29,78,216,0.14)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  editHeaderTextWrap: { flex: 1, alignItems: 'stretch', justifyContent: 'center' },
+  iconCircle: { width: 40, height: 40, borderRadius: 999, backgroundColor: 'rgba(17,24,39,0.05)', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(17,24,39,0.06)' },
   iconCircleHover: { backgroundColor: 'rgba(17,24,39,0.09)' },
-  editTitle: { fontSize: 18, fontWeight: '900', color: '#111827', textAlign: 'center' },
-  editSubtitle: { marginTop: 4, fontSize: 12, fontWeight: '800', color: 'rgba(17,24,39,0.55)', textAlign: 'center' },
-  editDivider: { height: 1, backgroundColor: 'rgba(17,24,39,0.08)', marginHorizontal: 16 },
-  editBody: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 14 },
+  editTitle: { width: '100%', fontSize: 22, fontWeight: '900', color: '#0f172a', textAlign: 'right', writingDirection: 'rtl' },
+  editSubtitle: { width: '100%', marginTop: 4, fontSize: 13, fontWeight: '900', color: '#1d4ed8', textAlign: 'right', writingDirection: 'rtl' },
+  editHeaderHint: { width: '100%', marginTop: 6, fontSize: 12, fontWeight: '700', color: 'rgba(15,23,42,0.62)', textAlign: 'right', lineHeight: 18, writingDirection: 'rtl' },
+  editDivider: { height: 1, backgroundColor: 'rgba(15,23,42,0.08)', marginHorizontal: 22 },
+  editBody: { paddingHorizontal: 22, paddingTop: 18, paddingBottom: 18, gap: 14 },
+  editSectionCard: {
+    borderRadius: 22,
+    padding: 16,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: 'rgba(148,163,184,0.20)',
+    gap: 14,
+    alignItems: 'stretch',
+  },
+  editSectionHeader: { width: '100%', alignItems: 'stretch', gap: 4 },
+  editSectionTitle: { width: '100%', fontSize: 15, fontWeight: '900', color: '#0f172a', textAlign: 'right', writingDirection: 'rtl' },
+  editSectionHint: { width: '100%', fontSize: 12, fontWeight: '700', color: 'rgba(15,23,42,0.58)', textAlign: 'right', lineHeight: 18, writingDirection: 'rtl' },
+  editFieldsRow: { gap: 14 },
+  editFieldsRowDesktop: { flexDirection: 'row-reverse', alignItems: 'flex-start' },
+  editFieldGroup: { gap: 8, alignItems: 'stretch' },
+  editFieldHalf: { flex: 1 },
   editLabel: { fontSize: 13, fontWeight: '900', color: '#111827', textAlign: 'right' },
-  inputLike: { marginTop: 8, height: 52, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(17,24,39,0.10)', backgroundColor: 'rgba(17,24,39,0.04)', paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  inputLikeHover: { backgroundColor: 'rgba(17,24,39,0.06)' },
+  inputLike: {
+    height: 52,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.10)',
+    backgroundColor: '#fff',
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  inputLikeHover: { borderColor: 'rgba(29,78,216,0.22)', backgroundColor: 'rgba(255,255,255,0.98)' },
   inputLikeText: { fontSize: 15, fontWeight: '900', color: '#111827' },
-  textInput: { marginTop: 8, height: 48, borderRadius: 14, paddingHorizontal: 14, borderWidth: 1, borderColor: 'rgba(17,24,39,0.10)', backgroundColor: 'rgba(17,24,39,0.04)', color: '#111827', fontSize: 14, fontWeight: '700' },
-  editFooter: { padding: 14, borderTopWidth: 1, borderTopColor: 'rgba(17,24,39,0.08)', flexDirection: 'row', gap: 10, backgroundColor: 'rgba(255,255,255,0.98)' },
-  editDangerWrap: { paddingHorizontal: 14, paddingTop: 10, paddingBottom: 2, backgroundColor: 'rgba(255,255,255,0.98)' },
+  textInput: {
+    height: 52,
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.10)',
+    backgroundColor: '#fff',
+    color: '#111827',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  editDangerCard: {
+    borderRadius: 20,
+    padding: 16,
+    backgroundColor: 'rgba(255, 59, 48, 0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 59, 48, 0.14)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 16,
+  },
+  editDangerTextWrap: { flex: 1, alignItems: 'stretch', gap: 4 },
+  editDangerTitle: { width: '100%', fontSize: 14, fontWeight: '900', color: '#7f1d1d', textAlign: 'right', writingDirection: 'rtl' },
+  editDangerHint: { width: '100%', fontSize: 12, fontWeight: '700', color: 'rgba(127,29,29,0.76)', textAlign: 'right', lineHeight: 18, writingDirection: 'rtl' },
+  editFooter: { paddingHorizontal: 22, paddingTop: 16, paddingBottom: 18, borderTopWidth: 1, borderTopColor: 'rgba(15,23,42,0.08)', flexDirection: 'row-reverse', gap: 12, backgroundColor: 'rgba(255,255,255,0.98)' },
   footerBtnSecondary: { flex: 1, height: 50, borderRadius: 14, backgroundColor: 'rgba(17,24,39,0.06)', justifyContent: 'center', alignItems: 'center' },
   footerBtnSecondaryHover: { backgroundColor: 'rgba(17,24,39,0.08)' },
   footerBtnSecondaryText: { fontSize: 14, fontWeight: '900', color: '#111827' },
-  footerBtnDanger: { height: 48, borderRadius: 14, backgroundColor: 'rgba(255, 59, 48, 0.08)', borderWidth: 1, borderColor: 'rgba(255, 59, 48, 0.22)', justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 8 },
+  footerBtnDanger: { minWidth: 154, height: 48, borderRadius: 14, backgroundColor: 'rgba(255, 59, 48, 0.08)', borderWidth: 1, borderColor: 'rgba(255, 59, 48, 0.22)', justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 8, paddingHorizontal: 16 },
   footerBtnDangerHover: { backgroundColor: 'rgba(255, 59, 48, 0.12)' },
   footerBtnDangerText: { fontSize: 13, fontWeight: '900', color: colors.error },
-  footerBtnPrimary: { flex: 2, height: 50, borderRadius: 14, backgroundColor: '#1d4ed8', justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 8 },
+  footerBtnPrimary: { flex: 1.35, height: 50, borderRadius: 16, backgroundColor: '#1d4ed8', justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 8 },
   footerBtnPrimaryHover: { opacity: 0.95 },
   footerBtnPrimaryText: { fontSize: 14, fontWeight: '900', color: '#fff' },
 
