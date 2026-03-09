@@ -89,11 +89,7 @@ export function useEventsListModel(loadEvents: () => Promise<Event[]>, opts?: { 
       });
     }
 
-    // Keep ended events at the bottom. Upcoming events are ordered by nearest date first.
     out.sort((a, b) => {
-      const now = new Date();
-      now.setHours(0, 0, 0, 0);
-
       const da = new Date(a.date);
       const db = new Date(b.date);
       const ta = da.getTime();
@@ -105,18 +101,7 @@ export function useEventsListModel(loadEvents: () => Promise<Event[]>, opts?: { 
       if (!aValid) return 1;
       if (!bValid) return -1;
 
-      const aIsPast = ta < now.getTime();
-      const bIsPast = tb < now.getTime();
-
-      if (aIsPast !== bIsPast) {
-        return aIsPast ? 1 : -1;
-      }
-
-      if (!aIsPast && !bIsPast) {
-        return ta - tb;
-      }
-
-      return tb - ta;
+      return sortOrder === 'desc' ? tb - ta : ta - tb;
     });
 
     return out;

@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -59,6 +61,14 @@ function formatMonthYear(date: Date | string) {
   const d = new Date(date);
   if (!Number.isFinite(d.getTime())) return '';
   return d.toLocaleDateString('he-IL', { month: 'long', year: 'numeric' });
+}
+
+function formatDateInputValue(date: Date | string | null | undefined) {
+  if (!date) return '';
+  const d = new Date(date);
+  if (!Number.isFinite(d.getTime())) return '';
+  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 10);
 }
 
 function daysLeftLabel(date: Date | string) {
@@ -132,6 +142,8 @@ export default function AdminEventsWebScreen() {
     Record<string, { invitedPeople: number; comingPeople: number; seatedPeople: number }>
   >({});
   const [guestStatsLoading, setGuestStatsLoading] = useState(false);
+  const [deleteConfirmEvent, setDeleteConfirmEvent] = useState<Event | null>(null);
+  const [deleteSaving, setDeleteSaving] = useState(false);
 
   useEffect(() => {
     void refresh();
@@ -200,6 +212,51 @@ export default function AdminEventsWebScreen() {
   }, [visibleEventIdsKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const formatCount = (n: number) => (Number(n) || 0).toLocaleString('he-IL');
+  const closeDeleteDialog = () => {
+    if (deleteSaving) return;
+    setDeleteConfirmEvent(null);
+  };
+
+  const handleDeletePress = (eventItem: Event, pressEvent?: any) => {
+    pressEvent?.stopPropagation?.();
+    pressEvent?.preventDefault?.();
+    setDeleteConfirmEvent(eventItem);
+  };
+
+  const performDeleteEvent = async () => {
+    const eventId = String(deleteConfirmEvent?.id ?? '').trim();
+    if (!eventId || deleteSaving) return;
+
+    setDeleteSaving(true);
+    try {
+      const { data, error: fnError } = await supabase.functions.invoke('delete-event', {
+        body: { eventId },
+      });
+      if (fnError) throw fnError;
+      if (data?.ok !== true) throw new Error(String(data?.error ?? 'Failed to delete event'));
+
+      setDeleteConfirmEvent(null);
+      await refresh();
+      return;
+    } catch (e) {
+      try {
+        await supabase.from('notifications').delete().eq('event_id', eventId);
+      } catch {}
+
+      try {
+        await eventService.deleteEvent(eventId);
+        setDeleteConfirmEvent(null);
+        await refresh();
+        return;
+      } catch (fallbackError) {
+        console.error('Delete event error:', fallbackError);
+        Alert.alert('שגיאה', 'לא ניתן למחוק את האירוע כרגע');
+      }
+    } finally {
+      setDeleteSaving(false);
+    }
+  };
+
   const activeFilterLabels = useMemo(() => {
     const labels: string[] = [];
     const trimmedQuery = query.trim();
@@ -230,6 +287,10 @@ export default function AdminEventsWebScreen() {
     setFilterMonth('');
     setSortOrder('asc');
   };
+
+  const hasExactDateFilter = Boolean(filterDate);
+  const hasRangeFilter = Boolean(filterStartDate || filterEndDate);
+  const hasMonthFilter = Boolean(filterMonth) && !hasExactDateFilter && !hasRangeFilter;
 
   return (
     <View style={styles.page}>
@@ -308,10 +369,37 @@ export default function AdminEventsWebScreen() {
 
           {filtersOpen ? (
             <View style={styles.filtersPanel}>
+              <View style={styles.filtersPanelHeader}>
+                <View style={styles.filtersPanelTitleWrap}>
+                  <Text style={styles.filtersPanelEyebrow}>סינון מתקדם</Text>
+                  <Text style={styles.filtersPanelTitle}>מקד את רשימת האירועים</Text>
+                  <Text style={styles.filtersPanelSubtitle}>
+                    אפשר לבחור חודש, תאריך מדויק או טווח תאריכים וגם לשנות את סדר המיון.
+                  </Text>
+                </View>
+                <View
+                  style={[styles.filtersSummaryPill, activeFilterLabels.length > 0 ? styles.filtersSummaryPillActive : null]}
+                >
+                  <Ionicons
+                    name={activeFilterLabels.length > 0 ? 'options-outline' : 'sparkles-outline'}
+                    size={14}
+                    color={activeFilterLabels.length > 0 ? colors.primary : colors.gray[600]}
+                  />
+                  <Text
+                    style={[
+                      styles.filtersSummaryPillText,
+                      activeFilterLabels.length > 0 ? styles.filtersSummaryPillTextActive : null,
+                    ]}
+                  >
+                    {activeFilterLabels.length > 0 ? `${activeFilterLabels.length} מסננים פעילים` : 'ללא מסננים פעילים'}
+                  </Text>
+                </View>
+              </View>
+
               <View style={styles.filtersGrid}>
-                <View style={styles.filterField}>
+                <View style={[styles.filterField, styles.filterFieldCard]}>
                   <Text style={styles.filterFieldLabel}>מיון</Text>
-                  <View style={styles.selectWrapModern}>
+                  <View style={[styles.selectWrapModern, sortOrder === 'desc' ? styles.selectWrapModernActive : null]}>
                     <Picker
                       selectedValue={sortOrder}
                       onValueChange={(value) => setSortOrder(value as any)}
@@ -324,9 +412,9 @@ export default function AdminEventsWebScreen() {
                   </View>
                 </View>
 
-                <View style={styles.filterField}>
+                <View style={[styles.filterField, styles.filterFieldCard]}>
                   <Text style={styles.filterFieldLabel}>חודש</Text>
-                  <View style={styles.selectWrapModern}>
+                  <View style={[styles.selectWrapModern, hasMonthFilter ? styles.selectWrapModernActive : null]}>
                     <Picker
                       selectedValue={filterDate || filterStartDate || filterEndDate ? '' : filterMonth}
                       onValueChange={(value) => {
@@ -347,53 +435,131 @@ export default function AdminEventsWebScreen() {
                   </View>
                 </View>
 
-                <View style={styles.filterField}>
+                <View style={[styles.filterField, styles.filterFieldCard]}>
                   <Text style={styles.filterFieldLabel}>תאריך מדויק</Text>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="בחירת תאריך מדויק"
-                    onPress={() => openPicker('exact')}
-                    style={({ hovered, pressed }: any) => [
-                      styles.dateBtnWide,
-                      Platform.OS === 'web' && hovered ? styles.dateBtnHover : null,
-                      pressed ? { opacity: 0.92 } : null,
-                    ]}
-                  >
-                    <Ionicons name="calendar-outline" size={16} color={colors.text} />
-                    <Text style={styles.dateBtnText}>{filterDate ? formatDateLabel(filterDate) : 'בחירת תאריך'}</Text>
-                  </Pressable>
+                  {Platform.OS === 'web' ? (
+                    <View style={[styles.dateBtnWide, hasExactDateFilter ? styles.dateBtnWideActive : null]}>
+                      {/* @ts-expect-error web-only element */}
+                      <input
+                        aria-label="בחירת תאריך מדויק"
+                        value={formatDateInputValue(filterDate)}
+                        onChange={(e: any) => {
+                          const value = String(e?.target?.value || '');
+                          setFilterMonth('');
+                          setFilterStartDate(null);
+                          setFilterEndDate(null);
+                          setFilterDate(value ? new Date(`${value}T00:00:00`) : null);
+                        }}
+                        type="date"
+                        style={styles.webDateInputFull as any}
+                      />
+                    </View>
+                  ) : (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="בחירת תאריך מדויק"
+                      onPress={() => openPicker('exact')}
+                      style={({ hovered, pressed }: any) => [
+                        styles.dateBtnWide,
+                        hasExactDateFilter ? styles.dateBtnWideActive : null,
+                        Platform.OS === 'web' && hovered ? styles.dateBtnHover : null,
+                        pressed ? { opacity: 0.92 } : null,
+                      ]}
+                    >
+                      <Ionicons name="calendar-outline" size={16} color={colors.text} />
+                      <Text style={styles.dateBtnText}>{filterDate ? formatDateLabel(filterDate) : 'בחירת תאריך'}</Text>
+                    </Pressable>
+                  )}
                 </View>
 
-                <View style={styles.filterField}>
+                <View style={[styles.filterField, styles.filterFieldCard]}>
                   <Text style={styles.filterFieldLabel}>טווח תאריכים</Text>
                   <View style={styles.rangeActions}>
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="בחירת תאריך התחלה"
-                      onPress={() => openPicker('start')}
-                      style={({ hovered, pressed }: any) => [
-                        styles.rangeBtn,
-                        Platform.OS === 'web' && hovered ? styles.rangeBtnHover : null,
-                        pressed ? { opacity: 0.92 } : null,
-                      ]}
-                    >
-                      <Ionicons name="arrow-forward-outline" size={14} color={colors.text} />
-                      <Text style={styles.rangeBtnText}>{filterStartDate ? formatDateLabel(filterStartDate) : 'מתאריך'}</Text>
-                    </Pressable>
+                    {Platform.OS === 'web' ? (
+                      <View style={[styles.rangeBtn, filterStartDate ? styles.rangeBtnActive : null]}>
+                        <Ionicons name="arrow-forward-outline" size={14} color={colors.text} style={styles.webDateInlineIcon} />
+                        {/* @ts-expect-error web-only element */}
+                        <input
+                          aria-label="בחירת תאריך התחלה"
+                          value={formatDateInputValue(filterStartDate)}
+                          onChange={(e: any) => {
+                            const value = String(e?.target?.value || '');
+                            setFilterDate(null);
+                            setFilterMonth('');
+                            if (!value) {
+                              setFilterStartDate(null);
+                              return;
+                            }
+                            const nextStart = new Date(`${value}T00:00:00`);
+                            setFilterStartDate(nextStart);
+                            if (filterEndDate && nextStart.getTime() > new Date(filterEndDate).getTime()) {
+                              setFilterEndDate(nextStart);
+                            }
+                          }}
+                          type="date"
+                          max={filterEndDate ? formatDateInputValue(filterEndDate) : undefined}
+                          style={styles.webDateInputWithLeadingIcon as any}
+                        />
+                      </View>
+                    ) : (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="בחירת תאריך התחלה"
+                        onPress={() => openPicker('start')}
+                        style={({ hovered, pressed }: any) => [
+                          styles.rangeBtn,
+                          filterStartDate ? styles.rangeBtnActive : null,
+                          Platform.OS === 'web' && hovered ? styles.rangeBtnHover : null,
+                          pressed ? { opacity: 0.92 } : null,
+                        ]}
+                      >
+                        <Ionicons name="arrow-forward-outline" size={14} color={colors.text} />
+                        <Text style={styles.rangeBtnText}>{filterStartDate ? formatDateLabel(filterStartDate) : 'מתאריך'}</Text>
+                      </Pressable>
+                    )}
 
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="בחירת תאריך סיום"
-                      onPress={() => openPicker('end')}
-                      style={({ hovered, pressed }: any) => [
-                        styles.rangeBtn,
-                        Platform.OS === 'web' && hovered ? styles.rangeBtnHover : null,
-                        pressed ? { opacity: 0.92 } : null,
-                      ]}
-                    >
-                      <Ionicons name="arrow-back-outline" size={14} color={colors.text} />
-                      <Text style={styles.rangeBtnText}>{filterEndDate ? formatDateLabel(filterEndDate) : 'עד תאריך'}</Text>
-                    </Pressable>
+                    {Platform.OS === 'web' ? (
+                      <View style={[styles.rangeBtn, filterEndDate ? styles.rangeBtnActive : null]}>
+                        <Ionicons name="arrow-back-outline" size={14} color={colors.text} style={styles.webDateInlineIcon} />
+                        {/* @ts-expect-error web-only element */}
+                        <input
+                          aria-label="בחירת תאריך סיום"
+                          value={formatDateInputValue(filterEndDate)}
+                          onChange={(e: any) => {
+                            const value = String(e?.target?.value || '');
+                            setFilterDate(null);
+                            setFilterMonth('');
+                            if (!value) {
+                              setFilterEndDate(null);
+                              return;
+                            }
+                            const nextEnd = new Date(`${value}T00:00:00`);
+                            setFilterEndDate(nextEnd);
+                            if (filterStartDate && nextEnd.getTime() < new Date(filterStartDate).getTime()) {
+                              setFilterStartDate(nextEnd);
+                            }
+                          }}
+                          type="date"
+                          min={filterStartDate ? formatDateInputValue(filterStartDate) : undefined}
+                          style={styles.webDateInputWithLeadingIcon as any}
+                        />
+                      </View>
+                    ) : (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="בחירת תאריך סיום"
+                        onPress={() => openPicker('end')}
+                        style={({ hovered, pressed }: any) => [
+                          styles.rangeBtn,
+                          filterEndDate ? styles.rangeBtnActive : null,
+                          Platform.OS === 'web' && hovered ? styles.rangeBtnHover : null,
+                          pressed ? { opacity: 0.92 } : null,
+                        ]}
+                      >
+                        <Ionicons name="arrow-back-outline" size={14} color={colors.text} />
+                        <Text style={styles.rangeBtnText}>{filterEndDate ? formatDateLabel(filterEndDate) : 'עד תאריך'}</Text>
+                      </Pressable>
+                    )}
                   </View>
                 </View>
               </View>
@@ -569,10 +735,18 @@ export default function AdminEventsWebScreen() {
                     </View>
 
                     <View style={[styles.cell, { width: 90, alignItems: 'center' }]}>
-                      <View style={styles.openPill}>
-                        <Ionicons name="open-outline" size={14} color={colors.primary} />
-                        <Text style={styles.openPillText}>פתח</Text>
-                      </View>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`מחיקת אירוע ${e.title}`}
+                        onPress={(pressEvent) => handleDeletePress(e, pressEvent)}
+                        style={({ hovered, pressed }: any) => [
+                          styles.deleteActionBtn,
+                          Platform.OS === 'web' && hovered ? styles.deleteActionBtnHover : null,
+                          pressed ? styles.deleteActionBtnPressed : null,
+                        ]}
+                      >
+                        <Ionicons name="trash-outline" size={16} color={colors.error} />
+                      </Pressable>
                     </View>
                   </Pressable>
                 );
@@ -600,42 +774,113 @@ export default function AdminEventsWebScreen() {
         <Text style={styles.fabCreateText}>אירוע חדש</Text>
       </Pressable>
 
-      <DateTimePickerModal
-        isVisible={showDatePicker}
-        mode="date"
-        onConfirm={(date) => {
-          setShowDatePicker(false);
-          if (datePickerMode === 'exact') {
-            setFilterDate(date as Date);
-            setFilterMonth('');
-            setFilterStartDate(null);
-            setFilterEndDate(null);
-            return;
-          }
+      <Modal transparent visible={Boolean(deleteConfirmEvent)} animationType="fade" onRequestClose={closeDeleteDialog}>
+        <Pressable style={styles.deleteOverlay} onPress={closeDeleteDialog}>
+          <Pressable style={styles.deleteCard} onPress={() => null}>
+            <View style={styles.deleteHeaderRow}>
+              <View style={styles.deleteIconCircle}>
+                <Ionicons name="trash-outline" size={18} color={colors.error} />
+              </View>
+              <View style={styles.deleteHeaderText}>
+                <Text style={styles.deleteTitle}>מחיקת אירוע</Text>
+                <Text style={styles.deleteSubtitle}>פעולה זו אינה ניתנת לביטול</Text>
+              </View>
+            </View>
 
-          if (datePickerMode === 'start') {
-            const nextStart = date as Date;
+            <View style={styles.deleteDivider} />
+
+            <View style={styles.deleteBody}>
+              <Text style={styles.deleteBodyText}>
+                האם אתה בטוח שברצונך למחוק את האירוע
+                {' "'}
+                {deleteConfirmEvent?.title || 'ללא שם'}
+                {'"'}?
+              </Text>
+              <Text style={styles.deleteHintText}>
+                המחיקה תסיר גם נתונים קשורים כמו מוזמנים, הודעות, משימות ומפת הושבה.
+              </Text>
+            </View>
+
+            <View style={styles.deleteFooter}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="ביטול מחיקה"
+                onPress={closeDeleteDialog}
+                disabled={deleteSaving}
+                style={({ hovered, pressed }: any) => [
+                  styles.deleteBtnSecondary,
+                  Platform.OS === 'web' && hovered ? styles.deleteBtnSecondaryHover : null,
+                  pressed ? { opacity: 0.92 } : null,
+                  deleteSaving ? { opacity: 0.7 } : null,
+                ]}
+              >
+                <Text style={styles.deleteBtnSecondaryText}>ביטול</Text>
+              </Pressable>
+
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="אישור מחיקת אירוע"
+                onPress={() => void performDeleteEvent()}
+                disabled={deleteSaving}
+                style={({ hovered, pressed }: any) => [
+                  styles.deleteBtnDanger,
+                  Platform.OS === 'web' && hovered ? styles.deleteBtnDangerHover : null,
+                  pressed ? { opacity: 0.94 } : null,
+                  deleteSaving ? { opacity: 0.84 } : null,
+                ]}
+              >
+                {deleteSaving ? (
+                  <ActivityIndicator color={colors.white} />
+                ) : (
+                  <>
+                    <Ionicons name="trash-outline" size={16} color={colors.white} />
+                    <Text style={styles.deleteBtnDangerText}>מחק אירוע</Text>
+                  </>
+                )}
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {Platform.OS !== 'web' ? (
+        <DateTimePickerModal
+          isVisible={showDatePicker}
+          mode="date"
+          onConfirm={(date) => {
+            setShowDatePicker(false);
+            if (datePickerMode === 'exact') {
+              setFilterDate(date as Date);
+              setFilterMonth('');
+              setFilterStartDate(null);
+              setFilterEndDate(null);
+              return;
+            }
+
+            if (datePickerMode === 'start') {
+              const nextStart = date as Date;
+              setFilterDate(null);
+              setFilterMonth('');
+              setFilterStartDate(nextStart);
+              if (filterEndDate && nextStart.getTime() > new Date(filterEndDate).getTime()) {
+                setFilterEndDate(nextStart);
+              }
+              return;
+            }
+
+            const nextEnd = date as Date;
             setFilterDate(null);
             setFilterMonth('');
-            setFilterStartDate(nextStart);
-            if (filterEndDate && nextStart.getTime() > new Date(filterEndDate).getTime()) {
-              setFilterEndDate(nextStart);
+            setFilterEndDate(nextEnd);
+            if (filterStartDate && nextEnd.getTime() < new Date(filterStartDate).getTime()) {
+              setFilterStartDate(nextEnd);
             }
-            return;
-          }
-
-          const nextEnd = date as Date;
-          setFilterDate(null);
-          setFilterMonth('');
-          setFilterEndDate(nextEnd);
-          if (filterStartDate && nextEnd.getTime() < new Date(filterStartDate).getTime()) {
-            setFilterStartDate(nextEnd);
-          }
-        }}
-        onCancel={() => setShowDatePicker(false)}
-        minimumDate={datePickerMode === 'end' && filterStartDate ? new Date(filterStartDate) : undefined}
-        locale="he-IL"
-      />
+          }}
+          onCancel={() => setShowDatePicker(false)}
+          minimumDate={datePickerMode === 'end' && filterStartDate ? new Date(filterStartDate) : undefined}
+          locale="he-IL"
+        />
+      ) : null}
     </View>
   );
 }
@@ -908,49 +1153,133 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   filtersPanel: {
-    paddingTop: 4,
+    marginTop: 4,
+    padding: 16,
+    borderRadius: 22,
+    backgroundColor: 'rgba(247,249,252,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.06)',
     gap: 14,
+    shadowColor: '#0b1c41',
+    shadowOpacity: 0.04,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+  },
+  filtersPanelHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+    flexWrap: 'nowrap',
+  },
+  filtersPanelTitleWrap: {
+    flex: 1,
+    minWidth: 240,
+    justifyContent: 'flex-start',
+    alignItems: 'flex-start',
+    gap: 4,
+  },
+  filtersPanelEyebrow: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.primary,
+    textAlign: 'right',
+  },
+  filtersPanelTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'right',
+  },
+  filtersPanelSubtitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    lineHeight: 18,
+    color: colors.gray[600],
+    textAlign: 'right',
+  },
+  filtersSummaryPill: {
+    minHeight: 36,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: 'rgba(15,23,42,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  filtersSummaryPillActive: {
+    backgroundColor: 'rgba(15,69,230,0.08)',
+    borderColor: 'rgba(15,69,230,0.16)',
+  },
+  filtersSummaryPillText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.gray[700],
+    textAlign: 'right',
+  },
+  filtersSummaryPillTextActive: {
+    color: colors.primary,
   },
   filtersGrid: {
-    flexDirection: 'row',
+    flexDirection: 'row-reverse',
     flexWrap: 'wrap',
     gap: 12,
   },
   filterField: {
     flexGrow: 1,
     minWidth: 220,
+    flexBasis: 240,
     gap: 8,
   },
+  filterFieldCard: {
+    padding: 14,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.94)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.06)',
+  },
   filterFieldLabel: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '800',
     color: colors.gray[600],
     textAlign: 'right',
   },
   selectWrapModern: {
-    height: 42,
+    height: 48,
     minWidth: 160,
-    borderRadius: 14,
+    borderRadius: 16,
     overflow: 'hidden',
-    backgroundColor: '#f7f9fc',
+    backgroundColor: 'rgba(247,249,252,0.9)',
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.06)',
     justifyContent: 'center',
+  },
+  selectWrapModernActive: {
+    backgroundColor: 'rgba(15,69,230,0.06)',
+    borderColor: 'rgba(15,69,230,0.18)',
   },
   dateBtnHover: {
     backgroundColor: 'rgba(15,23,42,0.08)',
   },
   dateBtnWide: {
-    height: 42,
-    borderRadius: 14,
-    backgroundColor: '#f7f9fc',
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: 'rgba(247,249,252,0.9)',
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.06)',
+    position: 'relative',
     flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 8,
     paddingHorizontal: 12,
+  },
+  dateBtnWideActive: {
+    backgroundColor: 'rgba(15,69,230,0.06)',
+    borderColor: 'rgba(15,69,230,0.18)',
   },
   dateBtnText: {
     fontSize: 13,
@@ -958,26 +1287,67 @@ const styles = StyleSheet.create({
     color: colors.text,
     textAlign: 'right',
   },
+  webDateInputFull: {
+    width: '100%',
+    height: '100%',
+    minWidth: 0,
+    border: 'none',
+    outline: 'none',
+    backgroundColor: 'transparent',
+    color: colors.text,
+    fontSize: '13px',
+    fontWeight: 800,
+    fontFamily: 'inherit',
+    textAlign: 'right',
+    direction: 'rtl',
+    cursor: 'pointer',
+    paddingLeft: '12px',
+    paddingRight: '12px',
+  } as any,
+  webDateInputWithLeadingIcon: {
+    width: '100%',
+    height: '100%',
+    minWidth: 0,
+    border: 'none',
+    outline: 'none',
+    backgroundColor: 'transparent',
+    color: colors.text,
+    fontSize: '13px',
+    fontWeight: 800,
+    fontFamily: 'inherit',
+    textAlign: 'right',
+    direction: 'rtl',
+    cursor: 'pointer',
+    paddingLeft: '36px',
+    paddingRight: '12px',
+  } as any,
   picker: {
-    height: 42,
+    height: 48,
     width: '100%',
     color: colors.text,
   },
   rangeActions: {
-    flexDirection: 'row',
+    flexDirection: 'row-reverse',
+    flexWrap: 'wrap',
     gap: 10,
   },
   rangeBtn: {
-    height: 42,
+    height: 48,
     flex: 1,
+    minWidth: 150,
     borderRadius: 14,
     paddingHorizontal: 14,
-    backgroundColor: '#f7f9fc',
+    backgroundColor: 'rgba(247,249,252,0.9)',
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.06)',
+    position: 'relative',
     flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  rangeBtnActive: {
+    backgroundColor: 'rgba(15,69,230,0.06)',
+    borderColor: 'rgba(15,69,230,0.18)',
   },
   rangeBtnHover: {
     backgroundColor: 'rgba(15,23,42,0.08)',
@@ -988,12 +1358,19 @@ const styles = StyleSheet.create({
     color: colors.text,
     textAlign: 'right',
   },
+  webDateInlineIcon: {
+    position: 'absolute',
+    left: 12,
+    top: 17,
+    pointerEvents: 'none',
+  } as any,
   filtersFooter: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
-    flexWrap: 'wrap',
+    flexWrap: 'nowrap',
+    paddingTop: 2,
   },
   filtersHint: {
     fontSize: 13,
@@ -1300,22 +1677,19 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(148,163,184,0.18)',
     borderColor: 'rgba(148,163,184,0.30)',
   },
-  openPill: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+  deleteActionBtn: {
+    width: 36,
+    height: 36,
     borderRadius: 999,
-    backgroundColor: 'rgba(15,69,230,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(239,68,68,0.08)',
     borderWidth: 1,
-    borderColor: 'rgba(15,69,230,0.14)',
+    borderColor: 'rgba(239,68,68,0.14)',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
-  openPillText: {
-    fontSize: 12,
-    fontWeight: '900',
-    color: colors.primary,
-  },
+  deleteActionBtnHover: { backgroundColor: 'rgba(239,68,68,0.12)' },
+  deleteActionBtnPressed: { opacity: 0.84 },
   loadingRow: {
     flex: 1,
     paddingVertical: 34,
@@ -1363,6 +1737,117 @@ const styles = StyleSheet.create({
     color: colors.gray[600],
     textAlign: 'right',
   },
+  deleteOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 18,
+  },
+  deleteCard: {
+    width: '100%',
+    maxWidth: 480,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.98)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.72)',
+    overflow: 'hidden',
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 24px 70px rgba(0,0,0,0.22)' } as any) : null),
+  },
+  deleteHeaderRow: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 12,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 12,
+  },
+  deleteIconCircle: {
+    width: 42,
+    height: 42,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 59, 48, 0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 59, 48, 0.18)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deleteHeaderText: {
+    flex: 1,
+    alignItems: 'flex-start',
+    justifyContent: 'flex-start',
+  },
+  deleteTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#111827',
+    textAlign: 'right',
+  },
+  deleteSubtitle: {
+    marginTop: 4,
+    fontSize: 12,
+    fontWeight: '800',
+    color: 'rgba(17,24,39,0.55)',
+    textAlign: 'right',
+  },
+  deleteDivider: {
+    height: 1,
+    backgroundColor: 'rgba(17,24,39,0.08)',
+    marginHorizontal: 16,
+  },
+  deleteBody: {
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 10,
+    gap: 10,
+  },
+  deleteBodyText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: 'rgba(17,24,39,0.82)',
+    textAlign: 'right',
+    lineHeight: 22,
+  },
+  deleteHintText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: 'rgba(17,24,39,0.66)',
+    textAlign: 'right',
+    lineHeight: 18,
+  },
+  deleteFooter: {
+    padding: 14,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(17,24,39,0.08)',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    backgroundColor: 'rgba(255,255,255,0.98)',
+  },
+  deleteBtnSecondary: {
+    flex: 1,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: 'rgba(17,24,39,0.06)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  deleteBtnSecondaryHover: { backgroundColor: 'rgba(17,24,39,0.08)' },
+  deleteBtnSecondaryText: { fontSize: 13, fontWeight: '900', color: '#111827' },
+  deleteBtnDanger: {
+    flex: 2,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: colors.error,
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexDirection: 'row-reverse',
+    gap: 8,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  deleteBtnDangerHover: { opacity: 0.96 },
+  deleteBtnDangerText: { fontSize: 13, fontWeight: '900', color: '#fff' },
   fabCreate: {
     position: Platform.OS === 'web' ? ('fixed' as any) : 'absolute',
     left: 24,
