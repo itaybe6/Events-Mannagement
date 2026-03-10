@@ -632,7 +632,7 @@ const styles = StyleSheet.create({
   passwordRow: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
   },
   inputWrap: {
     position: 'relative',
