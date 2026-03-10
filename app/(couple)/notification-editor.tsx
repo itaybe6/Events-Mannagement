@@ -18,6 +18,7 @@ import {
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
 import { BlurView } from 'expo-blur';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import { supabase } from '@/lib/supabase';
@@ -1474,7 +1475,7 @@ export default function NotificationEditorScreen() {
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.flex}>
         <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
           <View style={styles.flex}>
-            <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+            <AppKeyboardAwareScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
               <View style={styles.wizardTop}>
                 <View style={styles.stepperRow}>
                   {wizardSteps.map((s, idx) => {
@@ -1955,7 +1956,7 @@ export default function NotificationEditorScreen() {
                   )}
                 </View>
               ) : null}
-            </ScrollView>
+            </AppKeyboardAwareScrollView>
           </View>
         </TouchableWithoutFeedback>
       </KeyboardAvoidingView>

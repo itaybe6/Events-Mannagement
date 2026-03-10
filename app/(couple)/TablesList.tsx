@@ -18,6 +18,7 @@ import { useUserStore } from '@/store/userStore';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import { Ionicons } from '@expo/vector-icons';
 import { Table } from '@/types';
+import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter, useSegments } from 'expo-router';
 import { useLayoutStore } from '@/store/layoutStore';
 import { colors } from '@/constants/colors';
@@ -587,7 +588,7 @@ export default function TablesList() {
         />
       </View>
 
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollViewContent}>
+      <AppKeyboardAwareScrollView style={styles.scrollView} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollViewContent}>
         {tables.map((table) => {
           const tableGuests = getGuestsForTable(table.id);
           const totalPeopleSeated = tableGuests.reduce((sum, guest) => sum + (guest.numberOfPeople || 1), 0);
@@ -728,7 +729,7 @@ export default function TablesList() {
             </View>
           );
         })}
-      </ScrollView>
+      </AppKeyboardAwareScrollView>
 
       {/* Add Guests Modal */}
       <Modal
@@ -871,7 +872,7 @@ export default function TablesList() {
               {`נבחרו ${selectedGuestsToDelete.size} אורחים. בחר שולחן יעד:`}
             </Text>
 
-            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 16 }} showsVerticalScrollIndicator={false}>
+            <AppKeyboardAwareScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 16 }} showsVerticalScrollIndicator={false}>
               {tables
                 .filter((t) => String(t.id) !== String(editingTableId))
                 .map((t) => {
@@ -903,7 +904,7 @@ export default function TablesList() {
                 </TouchableOpacity>
                   );
                 })}
-            </ScrollView>
+            </AppKeyboardAwareScrollView>
 
             <TouchableOpacity
               style={[

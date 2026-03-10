@@ -592,12 +592,6 @@ export default function AdminEventsWebScreen() {
               <Text style={styles.tableTopTitle}>כל האירועים במערכת</Text>
               <Text style={styles.tableTopSubtitle}>מעקב מהיר אחרי בעלי האירוע, תאריכים וסטטוס הושבה.</Text>
             </View>
-            <View style={styles.tableTopMeta}>
-              <View style={styles.tableMetaPill}>
-                <Ionicons name="swap-vertical-outline" size={14} color={colors.primary} />
-                <Text style={styles.tableMetaPillText}>{sortOrder === 'desc' ? 'חדש לישן' : 'ישן לחדש'}</Text>
-              </View>
-            </View>
           </View>
 
           <View style={styles.tableHeader}>
@@ -1448,28 +1442,6 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     writingDirection: 'rtl',
     width: '100%',
-  },
-  tableTopMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  tableMetaPill: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 999,
-    backgroundColor: 'rgba(15,69,230,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(15,69,230,0.14)',
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: 6,
-  },
-  tableMetaPillText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: colors.primary,
-    textAlign: 'right',
   },
   tableHeader: {
     flexDirection: 'row',

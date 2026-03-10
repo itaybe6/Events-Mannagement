@@ -18,6 +18,7 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { Stack, useLocalSearchParams, useRouter, useSegments } from "expo-router";
+import { AppKeyboardAwareScrollView } from "@/components/AppKeyboardAware";
 import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -399,7 +400,7 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                   : null,
               ]}
             >
-              <ScrollView
+              <AppKeyboardAwareScrollView
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={[styles.content, { paddingBottom: bottomReserve + insets.bottom }]}
                 keyboardShouldPersistTaps="handled"
@@ -634,7 +635,7 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                     </View>
                   ) : null}
                 </View>
-              </ScrollView>
+              </AppKeyboardAwareScrollView>
             </View>
 
             {/* Map */}
@@ -810,7 +811,7 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
 
                   <View style={styles.modalDivider} />
 
-                  <ScrollView contentContainerStyle={styles.modalBody} showsVerticalScrollIndicator={false}>
+                  <AppKeyboardAwareScrollView contentContainerStyle={styles.modalBody} showsVerticalScrollIndicator={false}>
                     {guestsForActiveTable.length === 0 ? (
                       <View style={styles.emptyBox}>
                         <Ionicons name="people-outline" size={38} color={"rgba(17,24,39,0.45)"} />
@@ -856,13 +857,13 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                         );
                       })
                     )}
-                  </ScrollView>
+                  </AppKeyboardAwareScrollView>
                 </Pressable>
               </Pressable>
             </Modal>
           </View>
         ) : (
-          <ScrollView
+          <AppKeyboardAwareScrollView
             showsVerticalScrollIndicator={false}
             contentContainerStyle={[styles.content, { paddingBottom: bottomReserve + insets.bottom }]}
           >
@@ -1024,7 +1025,7 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                 </View>
               ) : null}
             </View>
-          </ScrollView>
+          </AppKeyboardAwareScrollView>
         )}
       </SafeAreaView>
     </BackSwipe>

@@ -13,6 +13,7 @@ import { eventService } from '@/lib/services/eventService';
 import { supabase } from '@/lib/supabase';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
+import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
 import { ALIGN_RIGHT, ROW_DIR, ROW_REVERSE_DIR } from '@/lib/rtl';
 
 // On web, icons are ultimately rendered as text glyphs. Wrapping them in <Text>
@@ -897,7 +898,7 @@ export default function GuestsScreen() {
               </TouchableOpacity>
             </View>
           
-          <ScrollView style={styles.editForm} showsVerticalScrollIndicator={false}>
+          <AppKeyboardAwareScrollView style={styles.editForm} showsVerticalScrollIndicator={false}>
             <View style={styles.editInputGroup}>
               <Text style={styles.editInputLabel}>שם</Text>
               <TextInput
@@ -980,7 +981,7 @@ export default function GuestsScreen() {
                 keyboardType="numeric"
               />
             </View>
-          </ScrollView>
+          </AppKeyboardAwareScrollView>
           
           <View style={styles.editModalActions}>
             <TouchableOpacity 

@@ -17,6 +17,7 @@ import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import Constants from 'expo-constants';
 import * as Linking from 'expo-linking';
+import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
 
 import { colors } from '@/constants/colors';
 import { useAdminEventDetailsModel } from '@/features/events/useAdminEventDetailsModel';
@@ -350,7 +351,7 @@ export default function AdminInvitationLinksScreen() {
 
   return (
     <View style={styles.page}>
-      <ScrollView
+      <AppKeyboardAwareScrollView
         contentContainerStyle={[
           styles.content,
           isMobile ? styles.contentMobile : null,
@@ -642,7 +643,7 @@ export default function AdminInvitationLinksScreen() {
                 </Pressable>
               </ScrollView>
 
-              <ScrollView style={styles.dialogList} contentContainerStyle={styles.dialogListContent} showsVerticalScrollIndicator={false}>
+              <AppKeyboardAwareScrollView style={styles.dialogList} contentContainerStyle={styles.dialogListContent} showsVerticalScrollIndicator={false}>
                 {pickerGuests.length === 0 ? (
                   <Text style={styles.empty}>
                     {guests.length === 0 ? 'אין עדיין מוזמנים באירוע.' : 'לא נמצאו תוצאות לחיפוש/סינון.'}
@@ -706,13 +707,13 @@ export default function AdminInvitationLinksScreen() {
                     );
                   })
                 )}
-              </ScrollView>
+              </AppKeyboardAwareScrollView>
             </View>
           </View>
         ) : null}
 
         <Text style={styles.footer}>© 2026 כל הזכויות שמורות למערכת אירועים</Text>
-      </ScrollView>
+      </AppKeyboardAwareScrollView>
     </View>
   );
 }

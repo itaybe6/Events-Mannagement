@@ -18,6 +18,7 @@ import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { AppKeyboardAwareFlatList } from '@/components/AppKeyboardAware';
 import BackSwipe from '@/components/BackSwipe';
 
 export default function ContactsListScreen() {
@@ -305,7 +306,7 @@ export default function ContactsListScreen() {
       <View style={[styles.container, { backgroundColor: ui.bg }]}>
         <Stack.Screen options={{ headerShown: false }} />
 
-      <FlatList
+      <AppKeyboardAwareFlatList
         data={filteredContacts}
         extraData={selectedContacts}
         keyExtractor={item => item.id}

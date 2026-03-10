@@ -9,6 +9,7 @@ import { Image } from 'expo-image';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import * as ImagePicker from 'expo-image-picker';
 import { invitationAssetService } from '@/lib/services/invitationAssetService';
+import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
 import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
 
 export default function BrideGroomSettings() {
@@ -368,7 +369,7 @@ export default function BrideGroomSettings() {
 
   return (
     <View style={styles.container}>
-      <ScrollView 
+      <AppKeyboardAwareScrollView
         style={styles.scrollView} 
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
@@ -497,12 +498,12 @@ export default function BrideGroomSettings() {
         <TouchableOpacity style={styles.logoutButton} onPress={askLogout}>
           <Text style={styles.logoutButtonText}>התנתק</Text>
         </TouchableOpacity>
-      </ScrollView>
+      </AppKeyboardAwareScrollView>
 
       {/* Event editor modal */}
       <Modal visible={eventEditorOpen} transparent animationType="fade" onRequestClose={() => setEventEditorOpen(false)}>
         <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.35)' }]}>
-          <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} showsVerticalScrollIndicator={false}>
+          <AppKeyboardAwareScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} showsVerticalScrollIndicator={false}>
             <Pressable style={styles.modalOverlayTouchable} onPress={() => setEventEditorOpen(false)} />
 
             <View style={styles.modalCard}>
@@ -578,14 +579,14 @@ export default function BrideGroomSettings() {
                 </Pressable>
               </View>
             </View>
-          </ScrollView>
+          </AppKeyboardAwareScrollView>
         </View>
       </Modal>
 
       {/* Invitation editor modal */}
       <Modal visible={invitationEditorOpen} transparent animationType="fade" onRequestClose={() => setInvitationEditorOpen(false)}>
         <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.35)' }]}>
-          <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} showsVerticalScrollIndicator={false}>
+          <AppKeyboardAwareScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} showsVerticalScrollIndicator={false}>
             <Pressable style={styles.modalOverlayTouchable} onPress={() => setInvitationEditorOpen(false)} />
 
             <View style={styles.modalCard}>
@@ -677,7 +678,7 @@ export default function BrideGroomSettings() {
                 </Pressable>
               </View>
             </View>
-          </ScrollView>
+          </AppKeyboardAwareScrollView>
         </View>
       </Modal>
 

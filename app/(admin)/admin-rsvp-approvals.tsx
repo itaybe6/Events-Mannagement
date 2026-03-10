@@ -16,6 +16,7 @@ import {
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
+import { AppKeyboardAwareScrollView } from "@/components/AppKeyboardAware";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { colors } from "@/constants/colors";
@@ -130,7 +131,7 @@ export default function AdminRsvpApprovalsScreen() {
         }}
       />
       <SafeAreaView style={[styles.screen, { paddingTop: insets.top }]}>
-        <ScrollView
+        <AppKeyboardAwareScrollView
           showsVerticalScrollIndicator={false}
           stickyHeaderIndices={[0]}
           contentContainerStyle={{ paddingBottom: bottomReserve + insets.bottom }}
@@ -363,7 +364,7 @@ export default function AdminRsvpApprovalsScreen() {
               </View>
             ) : null}
           </View>
-        </ScrollView>
+        </AppKeyboardAwareScrollView>
       </SafeAreaView>
     </BackSwipe>
   );

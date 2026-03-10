@@ -21,6 +21,7 @@ import { useUserStore } from '@/store/userStore';
 import { LottieAnimation } from '@/components/LottieAnimation';
 import { supabase } from '@/lib/supabase';
 import { authService } from '@/lib/services/authService';
+import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
 import Svg, { Path } from 'react-native-svg';
 
 const { height } = Dimensions.get('window');
@@ -221,7 +222,7 @@ export default function LoginScreen() {
     >
       <StatusBar barStyle="light-content" backgroundColor={NAVY_DEEP} />
       
-      <ScrollView 
+      <AppKeyboardAwareScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
@@ -342,7 +343,7 @@ export default function LoginScreen() {
             </TouchableOpacity>
           </View>
         </View>
-      </ScrollView>
+      </AppKeyboardAwareScrollView>
     </KeyboardAvoidingView>
   );
 }

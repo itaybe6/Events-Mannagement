@@ -27,6 +27,7 @@ import { Stack, useRouter, useFocusEffect, useLocalSearchParams } from 'expo-rou
 import { colors } from '@/constants/colors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { EventSwitcher } from '@/components/EventSwitcher';
+import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
 import { SeatingGridReadonly } from '../seating/web/SeatingGridReadonly';
 import { CELL_SIZE, DEFAULT_GRID_COLS, DEFAULT_GRID_ROWS, tableCellSize, type Orientation, type TableType } from '../seating/web/_types';
 import { BlurView } from 'expo-blur';
@@ -1431,7 +1432,7 @@ export default function BrideGroomSeating() {
       )}
     </View>
   ) : (
-    <ScrollView
+    <AppKeyboardAwareScrollView
       ref={scrollViewRef}
       style={styles.canvasScroll}
       contentContainerStyle={{
@@ -1570,7 +1571,7 @@ export default function BrideGroomSeating() {
           </View>
         ))}
       </View>
-    </ScrollView>
+    </AppKeyboardAwareScrollView>
   );
 
   if (loading) {
@@ -2092,7 +2093,7 @@ export default function BrideGroomSeating() {
                 <Text style={styles.movePickerLabel}>בחר שולחן יעד</Text>
 
                 <View style={styles.moveListWrap}>
-                  <ScrollView contentContainerStyle={styles.moveListContent} showsVerticalScrollIndicator={false}>
+                  <AppKeyboardAwareScrollView contentContainerStyle={styles.moveListContent} showsVerticalScrollIndicator={false}>
                     {(tables || [])
                       .filter((t) => String(t?.id) !== String(selectedTableForModal?.id))
                       .slice()
@@ -2154,7 +2155,7 @@ export default function BrideGroomSeating() {
                           </TouchableOpacity>
                         );
                       })}
-                  </ScrollView>
+                  </AppKeyboardAwareScrollView>
                 </View>
 
                 {/* Action buttons */}

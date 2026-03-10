@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import BackSwipe from '@/components/BackSwipe';
+import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
 import { useAdminEventDetailsModel } from '@/features/events/useAdminEventDetailsModel';
 import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
 
@@ -848,7 +849,7 @@ export default function AdminEventDetailsScreen() {
 
               <View style={styles.editDivider} />
 
-              <ScrollView contentContainerStyle={styles.editBody} showsVerticalScrollIndicator={false}>
+              <AppKeyboardAwareScrollView contentContainerStyle={styles.editBody} showsVerticalScrollIndicator={false}>
                 {/* Date */}
                 <View style={styles.editBlock}>
                   <Text style={styles.editBlockLabel}>תאריך האירוע</Text>
@@ -923,7 +924,7 @@ export default function AdminEventDetailsScreen() {
                 ) : null}
 
                 <View style={{ height: 6 }} />
-              </ScrollView>
+              </AppKeyboardAwareScrollView>
 
               <View style={styles.editDangerWrap}>
                 <TouchableOpacity

@@ -15,6 +15,7 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { AppKeyboardAwareScrollView } from "@/components/AppKeyboardAware";
 
 import { colors } from "@/constants/colors";
 import { Guest, GuestCategory } from "@/types";
@@ -92,7 +93,7 @@ export default function EmployeeRsvpApprovalsScreen() {
   return (
     <BackSwipe fallbackHref={fallbackToDetails}>
       <SafeAreaView style={[styles.screen, { paddingTop: insets.top }]}>
-        <ScrollView
+        <AppKeyboardAwareScrollView
           showsVerticalScrollIndicator={false}
           stickyHeaderIndices={[0]}
           contentContainerStyle={{ paddingBottom: bottomReserve + insets.bottom }}
@@ -326,7 +327,7 @@ export default function EmployeeRsvpApprovalsScreen() {
               </View>
             ) : null}
           </View>
-        </ScrollView>
+        </AppKeyboardAwareScrollView>
       </SafeAreaView>
     </BackSwipe>
   );

@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { APP_HEADER_HEIGHT_COMPACT, getAppHeaderTotalHeight } from '@/components/AppHeader';
 import { EVENT_BADGE_META, inferEventType, MONTHS, type EventType } from '@/features/events/eventsConstants';
 import { useEventsListModel } from '@/features/events/useEventsListModel';
+import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
 import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
 
 const EVENT_IMAGE_BY_TYPE: Record<EventType, number> = {
@@ -77,7 +78,7 @@ export default function AdminEventsScreen() {
         <View style={styles.bgBlobSecondary} />
       </View>
 
-      <ScrollView
+      <AppKeyboardAwareScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
@@ -322,7 +323,7 @@ export default function AdminEventsScreen() {
             })
           )}
         </View>
-      </ScrollView>
+      </AppKeyboardAwareScrollView>
 
       {/* Floating Action Button */}
       <View style={styles.fabWrap}>

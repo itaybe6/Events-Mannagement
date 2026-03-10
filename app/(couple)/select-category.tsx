@@ -17,6 +17,7 @@ import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-rou
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
 
 import { guestService } from '@/lib/services/guestService';
 import { eventService } from '@/lib/services/eventService';
@@ -315,7 +316,7 @@ export default function SelectCategoryScreen() {
             <Text style={[styles.loadingText, isDark && styles.loadingTextDark]}>טוען קטגוריות...</Text>
           </View>
         ) : mode === 'new' ? (
-          <ScrollView
+          <AppKeyboardAwareScrollView
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={[styles.createScroll, { paddingBottom: bottomPadding + 24 }]}
@@ -377,7 +378,7 @@ export default function SelectCategoryScreen() {
                 </View>
               </>
             ) : null}
-          </ScrollView>
+          </AppKeyboardAwareScrollView>
         ) : (
           <FlatList
             data={categories}

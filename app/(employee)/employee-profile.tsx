@@ -13,6 +13,7 @@ import {
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
+import { AppKeyboardAwareScrollView } from "@/components/AppKeyboardAware";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 
@@ -230,6 +231,7 @@ export default function EmployeeProfileScreen() {
       <Modal transparent visible={editOpen} animationType="fade" onRequestClose={() => setEditOpen(false)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setEditOpen(false)}>
           <Pressable style={styles.modalCard} onPress={() => null}>
+            <AppKeyboardAwareScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
             <Text style={styles.modalTitle}>עריכת פרטים</Text>
 
             <TextInput
@@ -282,6 +284,7 @@ export default function EmployeeProfileScreen() {
                 {saving ? <ActivityIndicator color={colors.white} /> : <Text style={[styles.modalBtnText, { color: colors.white }]}>שמור</Text>}
               </TouchableOpacity>
             </View>
+            </AppKeyboardAwareScrollView>
           </Pressable>
         </Pressable>
       </Modal>

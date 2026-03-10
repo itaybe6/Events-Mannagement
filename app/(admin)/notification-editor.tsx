@@ -18,6 +18,7 @@ import {
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
 import { BlurView } from 'expo-blur';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
 
@@ -631,7 +632,7 @@ export default function AdminNotificationEditorScreen() {
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.flex}>
         <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
           <View style={styles.flex}>
-            <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+            <AppKeyboardAwareScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
               <View style={styles.section}>
                 <Text style={[styles.sectionTitle, { color: ui.text }]}>מתי לשלוח</Text>
 
@@ -896,7 +897,7 @@ export default function AdminNotificationEditorScreen() {
                   </View>
                 </View>
               ) : null}
-            </ScrollView>
+            </AppKeyboardAwareScrollView>
           </View>
         </TouchableWithoutFeedback>
       </KeyboardAvoidingView>

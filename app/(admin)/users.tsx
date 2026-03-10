@@ -21,6 +21,7 @@ import { useUserStore } from '@/store/userStore';
 import { useDemoUsersStore } from '@/store/demoUsersStore';
 import { userService, UserWithMetadata } from '@/lib/services/userService';
 import { useUsersModel } from '@/features/users/useUsersModel';
+import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
 import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
 
 type UserFilter = 'all' | 'admin' | 'event_owner' | 'employee';
@@ -211,7 +212,7 @@ export default function UsersScreen() {
             <Text style={styles.emptyText}>נסה לשנות חיפוש או פילטר.</Text>
           </View>
         ) : (
-          <ScrollView contentContainerStyle={styles.cardsList} showsVerticalScrollIndicator={false}>
+          <AppKeyboardAwareScrollView contentContainerStyle={styles.cardsList} showsVerticalScrollIndicator={false}>
             {filteredUsers.map((u) => {
               const tag = getTagStyle(u.userType);
               const hasAvatar = !!u.avatar_url && !avatarLoadErrors[u.id];
@@ -265,7 +266,7 @@ export default function UsersScreen() {
             })}
 
             <View style={{ height: 140 }} />
-          </ScrollView>
+          </AppKeyboardAwareScrollView>
         )}
       </View>
 

@@ -23,6 +23,7 @@ import { colors } from '@/constants/colors';
 import { useUserStore } from '@/store/userStore';
 import { useDemoUsersStore } from '@/store/demoUsersStore';
 import { userService, UserWithMetadata } from '@/lib/services/userService';
+import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
 import { authService } from '@/lib/services/authService';
 import * as ImagePicker from 'expo-image-picker';
 import { avatarService } from '@/lib/services/avatarService';
@@ -481,7 +482,7 @@ export default function AddUserScreenV2({
             behavior={Platform.OS === 'ios' ? 'height' : 'height'}
             keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
           >
-            <ScrollView
+            <AppKeyboardAwareScrollView
               style={{ flex: 1 }}
               showsVerticalScrollIndicator={false}
               contentContainerStyle={[
@@ -696,7 +697,7 @@ export default function AddUserScreenV2({
                   <RoleOption label="בעל אירוע" value="event_owner" />
                 </View>
               </View>
-            </ScrollView>
+            </AppKeyboardAwareScrollView>
           </KeyboardAvoidingView>
 
           {/* Sticky bottom action (fixed: not affected by keyboard avoiding) */}

@@ -8,6 +8,7 @@ import { eventService } from '@/lib/services/eventService';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import BackSwipe from '@/components/BackSwipe';
+import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
 import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
 
 const EVENT_TYPES = [
@@ -120,7 +121,7 @@ export default function AdminEventsCreateScreen() {
           keyboardVerticalOffset={0}
         >
           <View style={styles.container}>
-            <ScrollView
+            <AppKeyboardAwareScrollView
               ref={scrollRef}
               contentContainerStyle={[
                 styles.contentContainer,
@@ -301,7 +302,7 @@ export default function AdminEventsCreateScreen() {
                 </Text>
               </View>
             </View>
-          </ScrollView>
+          </AppKeyboardAwareScrollView>
         </View>
 
         <Modal

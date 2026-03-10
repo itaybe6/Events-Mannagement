@@ -18,6 +18,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useUserStore } from '@/store/userStore';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import { guestService } from '@/lib/services/guestService';
+import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
 import { eventService } from '@/lib/services/eventService';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GuestCategorySelectionSheet } from '@/components/GuestCategorySelectionSheet';
@@ -430,7 +431,7 @@ export default function EditCategoryScreen() {
         </View>
       ) : (
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-          <ScrollView contentContainerStyle={[styles.content, { paddingBottom: bottomSafe + 140 }]} showsVerticalScrollIndicator={false}>
+          <AppKeyboardAwareScrollView contentContainerStyle={[styles.content, { paddingBottom: bottomSafe + 140 }]} showsVerticalScrollIndicator={false}>
             <View style={styles.sectionHeadRow}>
               <Text style={[styles.sectionTitle, { color: '#374151' }]}>בחר אורחים למחיקה</Text>
               <Text style={[styles.sectionMeta, { color: '#9CA3AF' }]}>
@@ -488,7 +489,7 @@ export default function EditCategoryScreen() {
               )}
             </View>
 
-          </ScrollView>
+          </AppKeyboardAwareScrollView>
 
           {/* Bottom floating actions (HTML-like) */}
           <LinearGradient

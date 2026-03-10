@@ -22,6 +22,7 @@ import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { avatarService } from '@/lib/services/avatarService';
 import BackSwipe from '@/components/BackSwipe';
+import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function ProfileEditor() {
@@ -292,7 +293,7 @@ export default function ProfileEditor() {
             </TouchableOpacity>
           </View>
 
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+      <AppKeyboardAwareScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
         {/* Avatar Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>תמונת פרופיל</Text>
@@ -420,7 +421,7 @@ export default function ProfileEditor() {
         </View>
 
 
-      </ScrollView>
+      </AppKeyboardAwareScrollView>
         </KeyboardAvoidingView>
       </BackSwipe>
     </>
