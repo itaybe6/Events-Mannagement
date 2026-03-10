@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -9,11 +9,10 @@ import {
   StatusBar,
   TextInput,
   Alert,
-  KeyboardAvoidingView,
-  ScrollView,
+  Keyboard,
   Platform,
-  useColorScheme,
 } from 'react-native';
+import { BlurView } from 'expo-blur';
 import { colors } from '@/constants/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -21,20 +20,50 @@ import { useUserStore } from '@/store/userStore';
 import { LottieAnimation } from '@/components/LottieAnimation';
 import { supabase } from '@/lib/supabase';
 import { authService } from '@/lib/services/authService';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
-import Svg, { Path } from 'react-native-svg';
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useDerivedValue,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from 'react-native-reanimated';
 
-const { height } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 
 const NAVY_DEEP = '#010c21';
+const HERO_HEIGHT = Math.max(280, height * 0.47);
+const LAVA_LAMP_COLORS = [
+  'rgba(26, 58, 112, 0.28)',
+  'rgba(38, 78, 145, 0.22)',
+  'rgba(65, 105, 180, 0.18)',
+  'rgba(94, 128, 194, 0.14)',
+];
+
+function randomNumber(min: number, max: number) {
+  return Math.floor(Math.random() * (max - min + 1) + min);
+}
+
+type LavaLampCircleData = {
+  radius: number;
+  index: number;
+  color: string;
+  originX: number;
+  originY: number;
+  travel: number;
+  duration: number;
+  scaleTo: number;
+};
+
+type LavaLampCircleProps = {
+  circle: LavaLampCircleData;
+};
 
 function RingsHeroIcon() {
   return (
     <View style={styles.heroIconWrap} pointerEvents="none">
-      <Svg width={128} height={128} viewBox="0 0 100 100" style={styles.heroRingsSvg}>
-        <Path d="M50 38 L54 44 L50 50 L46 44 Z" fill="rgba(255,255,255,0.95)" />
-      </Svg>
-
       {/* Bride/Groom animation centered inside the rings */}
       <LottieAnimation
         source={require('../assets/animations/83J2Ko52jU.json')}
@@ -88,16 +117,125 @@ function StarField() {
   );
 }
 
+function LavaLampBackground() {
+  const circles = useMemo<LavaLampCircleData[]>(
+    () =>
+      LAVA_LAMP_COLORS.map((color, index) => {
+        const radius = (width * randomNumber(36, 58)) / 100;
+        const safeX = Math.max(radius * 2, width - radius * 2);
+        const safeY = Math.max(radius * 1.3, HERO_HEIGHT - radius * 1.3);
+
+        return {
+          radius,
+          index,
+          color,
+          originX: randomNumber(radius, safeX),
+          originY: randomNumber(radius * 0.6, safeY),
+          travel: randomNumber(24, 72),
+          duration: randomNumber(14000, 22000),
+          scaleTo: randomNumber(108, 126) / 100,
+        };
+      }),
+    []
+  );
+
+  return (
+    <View style={styles.lavaLampLayer} pointerEvents="none">
+      <View style={styles.lavaLampBase} />
+      {circles.map((circle) => (
+        <LavaLampCircle key={`lava-${circle.index}`} circle={circle} />
+      ))}
+      <BlurView style={StyleSheet.absoluteFillObject} intensity={72} tint="dark" />
+    </View>
+  );
+}
+
+function LavaLampCircle({ circle }: LavaLampCircleProps) {
+  const rotation = useDerivedValue(() =>
+    withRepeat(
+      withSequence(
+        withTiming(0, { duration: 0 }),
+        withTiming(360, {
+          duration: circle.duration,
+          easing: Easing.linear,
+        })
+      ),
+      -1,
+      false
+    )
+  );
+
+  const scale = useDerivedValue(() =>
+    withRepeat(
+      withSequence(
+        withTiming(circle.scaleTo, {
+          duration: Math.round(circle.duration * 0.45),
+          easing: Easing.inOut(Easing.ease),
+        }),
+        withTiming(1, {
+          duration: Math.round(circle.duration * 0.55),
+          easing: Easing.inOut(Easing.ease),
+        })
+      ),
+      -1,
+      true
+    )
+  );
+
+  const orbitStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${rotation.value}deg` }, { scale: scale.value }],
+  }));
+
+  return (
+    <Animated.View
+      style={[
+        styles.lavaLampOrbit,
+        orbitStyle,
+        {
+          left: circle.originX,
+          top: circle.originY,
+        },
+      ]}
+    >
+      <View
+        style={[
+          styles.lavaLampBlob,
+          {
+            width: circle.radius * 2,
+            height: circle.radius * 2,
+            borderRadius: circle.radius,
+            backgroundColor: circle.color,
+            transform: [{ translateX: circle.travel }, { translateY: -circle.radius * 0.35 }],
+          },
+        ]}
+      />
+    </Animated.View>
+  );
+}
+
 export default function LoginScreen() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const router = useRouter();
   const { login } = useUserStore();
-  const scheme = useColorScheme();
-  const isDark = scheme === 'dark';
+  const insets = useSafeAreaInsets();
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSub = Keyboard.addListener(showEvent, () => setKeyboardVisible(true));
+    const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardVisible(false));
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const handleLogin = async () => {
     try {
@@ -215,21 +353,26 @@ export default function LoginScreen() {
   const isLoginDisabled = !username.trim() || !password.trim() || loading;
 
   return (
-    <KeyboardAvoidingView 
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
-    >
+    <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={NAVY_DEEP} />
       
       <AppKeyboardAwareScrollView
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: Math.max(insets.bottom, 18) },
+        ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
+        bounces={false}
+        alwaysBounceVertical={false}
+        overScrollMode="never"
+        enableResetScrollToCoords={false}
+        scrollEnabled={keyboardVisible}
       >
         {/* Top hero (55%) */}
         <View style={styles.hero}>
+          <LavaLampBackground />
           <StarField />
           <View style={styles.glow} pointerEvents="none" />
 
@@ -239,135 +382,160 @@ export default function LoginScreen() {
         </View>
 
         {/* Bottom floating card */}
-        <View style={styles.card}>
-          <View style={styles.brandWrap}>
-            <Image
-              source={require('../assets/images/logo-moon.png')}
-              style={styles.brandLogo}
-              resizeMode="contain"
-              accessibilityLabel="לוגו"
-            />
-          </View>
-
-          {/* Form */}
-          <View style={styles.form}>
-            {/* Email */}
-            <View style={styles.field}>
-              <View style={styles.fieldIconRight} pointerEvents="none">
-                <Ionicons name="mail-outline" size={20} color={colors.gray[500]} />
-              </View>
-              <TextInput
-                style={styles.fieldInput}
-                placeholder="אימייל"
-                placeholderTextColor={colors.gray[500]}
-                value={username}
-                onChangeText={(text) => {
-                  setUsername(text);
-                  if (errorMessage) setErrorMessage(null);
-                }}
-                autoCapitalize="none"
-                autoCorrect={false}
-                keyboardType="email-address"
-                textAlign="right"
+        <View style={styles.cardArea}>
+          <View style={styles.card}>
+            <View style={styles.brandWrap}>
+              <Image
+                source={require('../assets/images/logo-moon.png')}
+                style={styles.brandLogo}
+                resizeMode="contain"
+                accessibilityLabel="לוגו"
               />
+              <View style={styles.brandTextWrap}>
+                <Text style={styles.brandTitle}>ברוכים הבאים</Text>
+                <Text style={styles.brandSubtitle}>
+                  התחברו והשלימו את הפרטים שלכם כדי להמשיך לחוויה האישית שלכם.
+                </Text>
+              </View>
             </View>
 
-            {/* Password */}
-            <View style={styles.field}>
-              <View style={styles.fieldIconRight} pointerEvents="none">
-                <Ionicons
-                  name="lock-closed-outline"
-                  size={20}
-                  color={colors.gray[500]}
+            {/* Form */}
+            <View style={styles.form}>
+              {/* Email */}
+              <View style={styles.field}>
+                <View style={styles.fieldIconRight} pointerEvents="none">
+                  <Ionicons name="mail-outline" size={20} color={colors.gray[500]} />
+                </View>
+                <TextInput
+                  style={styles.fieldInput}
+                  placeholder="אימייל"
+                  placeholderTextColor={colors.gray[500]}
+                  value={username}
+                  onChangeText={(text) => {
+                    setUsername(text);
+                    if (errorMessage) setErrorMessage(null);
+                  }}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="email-address"
+                  textAlign="right"
                 />
               </View>
 
-              <TextInput
-                style={[styles.fieldInput, { paddingLeft: 46 }]}
-                placeholder="סיסמה"
-                placeholderTextColor={colors.gray[500]}
-                value={password}
-                onChangeText={(text) => {
-                  setPassword(text);
-                  if (errorMessage) setErrorMessage(null);
-                }}
-                secureTextEntry={!showPassword}
-                autoCapitalize="none"
-                autoCorrect={false}
-                textAlign="right"
-              />
+              {/* Password */}
+              <View style={styles.field}>
+                <View style={styles.fieldIconRight} pointerEvents="none">
+                  <Ionicons
+                    name="lock-closed-outline"
+                    size={20}
+                    color={colors.gray[500]}
+                  />
+                </View>
+
+                <TextInput
+                  style={[styles.fieldInput, { paddingLeft: 46 }]}
+                  placeholder="סיסמה"
+                  placeholderTextColor={colors.gray[500]}
+                  value={password}
+                  onChangeText={(text) => {
+                    setPassword(text);
+                    if (errorMessage) setErrorMessage(null);
+                  }}
+                  secureTextEntry={!showPassword}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  textAlign="right"
+                />
+
+                <TouchableOpacity
+                  style={styles.fieldIconLeftButton}
+                  onPress={() => setShowPassword((prev) => !prev)}
+                  accessibilityLabel={showPassword ? 'הסתר סיסמה' : 'הצג סיסמה'}
+                >
+                  <Ionicons
+                    name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                    size={20}
+                    color={colors.gray[500]}
+                  />
+                </TouchableOpacity>
+              </View>
+
+              {errorMessage ? (
+                <View style={styles.errorBox} accessibilityRole="alert">
+                  <Text style={styles.errorText}>{errorMessage}</Text>
+                </View>
+              ) : null}
+
+              <View style={styles.forgotWrap}>
+                <TouchableOpacity
+                  onPress={() => Alert.alert('איפוס סיסמה', 'בקרוב נוסיף אפשרות לאיפוס סיסמה.')}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.forgotText}>שכחת סיסמה?</Text>
+                </TouchableOpacity>
+              </View>
 
               <TouchableOpacity
-                style={styles.fieldIconLeftButton}
-                onPress={() => setShowPassword((prev) => !prev)}
-                accessibilityLabel={showPassword ? 'הסתר סיסמה' : 'הצג סיסמה'}
+                style={[styles.primaryButton, isLoginDisabled && styles.primaryButtonDisabled]}
+                onPress={handleLogin}
+                disabled={isLoginDisabled}
+                activeOpacity={0.92}
               >
+                <Text style={[styles.primaryButtonText, isLoginDisabled && styles.primaryButtonTextDisabled]}>
+                  {loading ? 'מתחבר...' : 'התחבר'}
+                </Text>
                 <Ionicons
-                  name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                  size={20}
-                  color={colors.gray[500]}
+                  name="arrow-back"
+                  size={18}
+                  color={isLoginDisabled ? 'rgba(255,255,255,0.8)' : colors.white}
+                  style={{ marginLeft: 8 }}
                 />
               </TouchableOpacity>
             </View>
-
-            {errorMessage ? (
-              <View style={styles.errorBox} accessibilityRole="alert">
-                <Text style={styles.errorText}>{errorMessage}</Text>
-              </View>
-            ) : null}
-
-            <View style={styles.forgotWrap}>
-              <TouchableOpacity
-                onPress={() => Alert.alert('איפוס סיסמה', 'בקרוב נוסיף אפשרות לאיפוס סיסמה.')}
-                accessibilityRole="button"
-              >
-                <Text style={styles.forgotText}>שכחת סיסמה?</Text>
-              </TouchableOpacity>
-            </View>
-
-            <TouchableOpacity
-              style={[styles.primaryButton, isLoginDisabled && styles.primaryButtonDisabled]}
-              onPress={handleLogin}
-              disabled={isLoginDisabled}
-              activeOpacity={0.92}
-            >
-              <Text style={[styles.primaryButtonText, isLoginDisabled && styles.primaryButtonTextDisabled]}>
-                {loading ? 'מתחבר...' : 'התחבר'}
-              </Text>
-              <Ionicons
-                name="arrow-back"
-                size={18}
-                color={isLoginDisabled ? 'rgba(255,255,255,0.8)' : colors.white}
-                style={{ marginLeft: 8 }}
-              />
-            </TouchableOpacity>
           </View>
         </View>
       </AppKeyboardAwareScrollView>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: NAVY_DEEP,
+    backgroundColor: colors.white,
   },
   scrollView: {
     flex: 1,
+    backgroundColor: colors.white,
   },
   scrollContent: {
+    flex: 1,
     flexGrow: 1,
+    backgroundColor: colors.white,
   },
-
+  lavaLampLayer: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  lavaLampBase: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: NAVY_DEEP,
+  },
+  lavaLampOrbit: {
+    position: 'absolute',
+    width: 1,
+    height: 1,
+  },
+  lavaLampBlob: {
+    position: 'absolute',
+  },
   hero: {
-    height: Math.max(320, height * 0.55),
+    height: HERO_HEIGHT,
     backgroundColor: NAVY_DEEP,
     overflow: 'hidden',
   },
   starsLayer: {
     ...StyleSheet.absoluteFillObject,
-    opacity: 0.28,
+    opacity: 0.18,
   },
   starDot: {
     position: 'absolute',
@@ -378,10 +546,10 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: '50%',
     left: '50%',
-    width: 320,
-    height: 320,
-    marginLeft: -160,
-    marginTop: -160,
+    width: 280,
+    height: 280,
+    marginLeft: -140,
+    marginTop: -140,
     borderRadius: 9999,
     backgroundColor: 'rgba(255,255,255,0.08)',
   },
@@ -389,11 +557,11 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingBottom: 10,
+    paddingBottom: 4,
   },
   heroIconWrap: {
-    width: 260,
-    height: 260,
+    width: 220,
+    height: 220,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#fff',
@@ -401,37 +569,52 @@ const styles = StyleSheet.create({
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 0 },
   },
-  heroRingsSvg: {
-    position: 'absolute',
-  },
   heroLottie: {
-    width: 232,
-    height: 232,
+    width: 196,
+    height: 196,
   },
 
+  cardArea: {
+    flex: 1,
+    backgroundColor: colors.white,
+  },
   card: {
     backgroundColor: colors.white,
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,
     marginTop: -34,
     paddingHorizontal: 24,
-    paddingTop: 26,
-    paddingBottom: 28,
-    minHeight: Math.max(360, height * 0.48),
-    shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 22,
-    shadowOffset: { width: 0, height: -10 },
-    elevation: 14,
+    paddingTop: 22,
+    paddingBottom: 12,
+    minHeight: Math.max(330, height * 0.44),
+    flex: 1,
   },
 
   brandWrap: {
     alignItems: 'center',
-    marginBottom: 22,
+    marginBottom: 18,
   },
   brandLogo: {
-    width: 320,
-    height: 100,
+    width: 292,
+    height: 90,
+  },
+  brandTextWrap: {
+    marginTop: 2,
+    alignItems: 'center',
+    maxWidth: 320,
+  },
+  brandTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: NAVY_DEEP,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  brandSubtitle: {
+    fontSize: 14,
+    lineHeight: 22,
+    color: colors.gray[600],
+    textAlign: 'center',
   },
 
   form: {

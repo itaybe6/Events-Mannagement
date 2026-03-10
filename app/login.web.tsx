@@ -199,6 +199,12 @@ export default function LoginWebScreen() {
             style={styles.cardLogo}
             resizeMode="contain"
           />
+          <View style={styles.cardIntroWrap}>
+            <Text style={styles.cardIntroTitle}>ברוכים הבאים</Text>
+            <Text style={styles.cardIntroSubtitle}>
+              התחברו והשלימו את הפרטים שלכם כדי להמשיך לאזור האישי שלכם.
+            </Text>
+          </View>
         </View>
 
         <View style={styles.form}>
@@ -603,6 +609,24 @@ const styles = StyleSheet.create({
     width: 360,
     height: 120,
     maxWidth: '100%',
+  },
+  cardIntroWrap: {
+    marginTop: 4,
+    maxWidth: 360,
+    alignItems: 'center',
+  },
+  cardIntroTitle: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#010c21',
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  cardIntroSubtitle: {
+    fontSize: 15,
+    lineHeight: 24,
+    color: colors.gray[600],
+    textAlign: 'center',
   },
   form: {
     gap: 12,
