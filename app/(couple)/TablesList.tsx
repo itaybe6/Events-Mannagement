@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -26,7 +26,7 @@ import { colors } from '@/constants/colors';
 import { EventSwitcher } from '@/components/EventSwitcher';
 import BackSwipe from '@/components/BackSwipe';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ALIGN_LEFT, ALIGN_RIGHT, IS_RTL, ROW_DIR } from '@/lib/rtl';
+import { ALIGN_LEFT, ALIGN_RIGHT, IS_RTL, ROW_DIR, ROW_REVERSE_DIR } from '@/lib/rtl';
 
 export default function TablesList() {
   const userData = useUserStore((s) => s.userData);
@@ -55,6 +55,7 @@ export default function TablesList() {
   const [moveGuestsSaving, setMoveGuestsSaving] = useState(false);
   const [moveTargetTableId, setMoveTargetTableId] = useState<string | null>(null);
   const [hasMultipleEvents, setHasMultipleEvents] = useState(false);
+  const categoryScrollRef = useRef<ScrollView | null>(null);
 
   const resolvedEventId =
     String(
@@ -112,6 +113,14 @@ export default function TablesList() {
       refresh();
     }, [refresh])
   );
+
+  useEffect(() => {
+    if (!modalVisible || !IS_RTL) return;
+    const timer = setTimeout(() => {
+      categoryScrollRef.current?.scrollToEnd({ animated: false });
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [modalVisible, categories.length]);
 
   const fetchTables = async () => {
     if (!resolvedEventId) return;
@@ -268,8 +277,17 @@ export default function TablesList() {
     setTabBarVisible(true);
   };
 
-  const handleEditPress = (tableId: string) => {
+  const handleEditPress = async (tableId: string) => {
     if (editingTableId === tableId) {
+      const currentTable = tables.find((x) => String(x.id) === String(tableId));
+      const currentName = String((currentTable as any)?.name ?? '').trim();
+      const nextName = String(editingTableName ?? '').trim();
+
+      if (nextName !== currentName) {
+        await handleSaveTableName(tableId);
+        return;
+      }
+
       setEditingTableId(null);
       setSelectedGuestsToDelete(new Set());
       setEditingTableName('');
@@ -613,28 +631,25 @@ export default function TablesList() {
                       )}
                       {isEditing ? (
                         <View style={styles.tableNameEditWrap}>
-                          <TouchableOpacity
-                            style={[styles.saveNameBtn, savingTableName ? styles.disabledButton : null]}
-                            onPress={() => handleSaveTableName(String(table.id))}
-                            disabled={savingTableName}
-                            activeOpacity={0.85}
-                            accessibilityRole="button"
-                            accessibilityLabel="שמירת שם שולחן"
-                          >
-                            <Ionicons name="checkmark" size={18} color="#FFFFFF" />
-                          </TouchableOpacity>
                           <TextInput
                             value={editingTableName}
                             onChangeText={(t) => setEditingTableName(String(t || '').slice(0, 20))}
+                            onSubmitEditing={() => void handleSaveTableName(String(table.id))}
+                            onBlur={() => {
+                              const currentName = String((table as any)?.name ?? '').trim();
+                              const nextName = String(editingTableName ?? '').trim();
+                              if (nextName !== currentName) {
+                                void handleSaveTableName(String(table.id));
+                              }
+                            }}
                             placeholder="שם שולחן"
                             placeholderTextColor="#9CA3AF"
                             style={styles.tableNameInput}
                             textAlign="right"
                             maxLength={20}
+                            returnKeyType="done"
                           />
                         </View>
-                      ) : table.name ? (
-                        <Text style={styles.tableSubtitle}>{table.name}</Text>
                       ) : null}
                     </View>
                   </View>
@@ -657,7 +672,7 @@ export default function TablesList() {
                     </TouchableOpacity>
                     <TouchableOpacity 
                       style={styles.actionButton} 
-                      onPress={() => handleEditPress(table.id)}
+                      onPress={() => void handleEditPress(table.id)}
                     >
                       <Ionicons 
                         name={isEditing ? "close-circle-outline" : "create-outline"} 
@@ -705,6 +720,10 @@ export default function TablesList() {
                       </ScrollView>
                       {isEditing && selectedGuestsToDelete.size > 0 && (
                         <View style={styles.editActionsRow}>
+                          <TouchableOpacity style={styles.deleteButton} onPress={handleRemoveGuestsFromTable} activeOpacity={0.8}>
+                            <Ionicons name="trash-outline" size={18} color="#FFFFFF" />
+                            <Text style={styles.deleteButtonText}>הסר {selectedGuestsToDelete.size}</Text>
+                          </TouchableOpacity>
                           <TouchableOpacity
                             style={styles.secondaryActionBtn}
                             onPress={openMoveGuests}
@@ -712,10 +731,6 @@ export default function TablesList() {
                           >
                             <Ionicons name="swap-horizontal-outline" size={16} color="#111827" />
                             <Text style={styles.secondaryActionBtnText}>העבר לשולחן</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity style={styles.deleteButton} onPress={handleRemoveGuestsFromTable} activeOpacity={0.8}>
-                            <Ionicons name="trash-outline" size={18} color="#FFFFFF" />
-                            <Text style={styles.deleteButtonText}>הסר {selectedGuestsToDelete.size}</Text>
                           </TouchableOpacity>
                         </View>
                       )}
@@ -743,24 +758,42 @@ export default function TablesList() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHandle} />
-            <TouchableOpacity style={styles.closeModalButton} onPress={closeModal}>
-              <Ionicons name="close" size={20} color="#6B7280" />
-            </TouchableOpacity>
-
-            <Text style={styles.modalTitle}>
-              הוסף אורחים לשולחן {selectedTable?.number}
-            </Text>
+            <View style={styles.modalHeader}>
+              <TouchableOpacity style={styles.closeModalButton} onPress={closeModal} activeOpacity={0.85}>
+                <Ionicons name="close" size={18} color="#6B7280" />
+              </TouchableOpacity>
+              <View style={styles.modalTitleWrap}>
+                <Text style={styles.modalTitle}>
+                  הוסף אורחים לשולחן {selectedTable?.number}
+                </Text>
+                <Text style={styles.modalSubtitle}>
+                  בחר אורחים פנויים לשיוך מהיר לשולחן הנוכחי
+                </Text>
+              </View>
+            </View>
 
             <View style={styles.filterContainer}>
-              <TextInput
-                style={styles.searchInput}
-                placeholder="חיפוש לפי שם..."
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                placeholderTextColor={colors.gray[500]}
-              />
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScrollView}>
-                <View style={styles.categoryContainer}>
+              <View style={styles.searchBox}>
+                <View style={styles.searchIconWrap}>
+                  <Ionicons name="search" size={18} color="#94A3B8" />
+                </View>
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="חיפוש לפי שם..."
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  placeholderTextColor={colors.gray[500]}
+                  textAlign="right"
+                />
+              </View>
+              <ScrollView
+                ref={categoryScrollRef}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.categoryScrollView}
+                contentContainerStyle={[styles.categoryScrollContent, IS_RTL && styles.categoryScrollContentRtl]}
+              >
+                <View style={[styles.categoryContainer, IS_RTL && styles.categoryContainerRtl]}>
                   {categories.map(category => (
                     <TouchableOpacity
                       key={category}
@@ -780,11 +813,21 @@ export default function TablesList() {
               </ScrollView>
             </View>
 
+            <View style={styles.modalListMeta}>
+              <Text style={styles.modalListMetaText}>
+                {`${filteredUnseatedGuests.length} אורחים זמינים`}
+              </Text>
+              <View style={styles.selectedCountPill}>
+                <Ionicons name="checkmark-circle-outline" size={14} color={colors.primary} />
+                <Text style={styles.selectedCountPillText}>{`${selectedGuestsToAdd.size} נבחרו`}</Text>
+              </View>
+            </View>
+
             <FlatList
               data={filteredUnseatedGuests}
               keyExtractor={(item) => item.id.toString()}
               numColumns={2}
-              columnWrapperStyle={{ justifyContent: 'space-between' }}
+              columnWrapperStyle={styles.selectableGuestRow}
               renderItem={({ item }) => {
                 const status = item.status || 'ממתין';
                 const statusConfig = status === 'מגיע'
@@ -798,6 +841,14 @@ export default function TablesList() {
                   onPress={() => handleToggleGuestSelection(item.id)}
                   activeOpacity={0.7}
                 >
+                  <View style={[
+                    styles.checkbox,
+                    selectedGuestsToAdd.has(item.id) && styles.checkboxChecked
+                  ]}>
+                    {selectedGuestsToAdd.has(item.id) && (
+                      <Ionicons name="checkmark" size={16} color="#FFFFFF" />
+                    )}
+                  </View>
                   <View style={styles.guestInfo}>
                     <Text style={styles.selectableGuestName} numberOfLines={2}>{item.name}</Text>
                     {item.guest_categories?.name && (
@@ -809,25 +860,16 @@ export default function TablesList() {
                       <Ionicons name={statusConfig.icon} size={12} color={statusConfig.color} />
                       <Text style={[styles.statusBadgeText, { color: statusConfig.color }]}>{statusConfig.label}</Text>
                     </View>
-                    {item.numberOfPeople > 1 && (
-                      <View style={styles.peopleCountBadge}>
-                        <Ionicons name="people" size={12} color="#6B7280" />
-                        <Text style={styles.peopleCountText}>{item.numberOfPeople}</Text>
-                      </View>
-                    )}
-                  </View>
-                  <View style={[
-                    styles.checkbox,
-                    selectedGuestsToAdd.has(item.id) && styles.checkboxChecked
-                  ]}>
-                    {selectedGuestsToAdd.has(item.id) && (
-                      <Ionicons name="checkmark" size={16} color="#FFFFFF" />
-                    )}
+                    <View style={styles.peopleCountBadge}>
+                      <Ionicons name="people" size={12} color="#6B7280" />
+                      <Text style={styles.peopleCountText}>{Number(item.numberOfPeople ?? 1) || 1}</Text>
+                    </View>
                   </View>
                 </TouchableOpacity>
                 );
               }}
-              style={{ flex: 1, marginTop: 16 }}
+              style={styles.selectableGuestsList}
+              contentContainerStyle={styles.selectableGuestsListContent}
               ListEmptyComponent={
                 <Text style={styles.emptyText}>
                   אין אורחים ללא שולחן
@@ -894,7 +936,7 @@ export default function TablesList() {
                 >
                   <View style={styles.tablePickTextWrap}>
                     <Text style={[styles.categoryPickText, active && styles.categoryPickTextActive]}>
-                      {`שולחן ${(t as any).number ?? t.number ?? ''}${t.name ? ` · ${t.name}` : ''}`}
+                        {`שולחן ${(t as any).number ?? t.number ?? ''}`}
                     </Text>
                     <Text style={styles.tablePickMetaText}>{`יושבים: ${ratio}`}</Text>
                   </View>
@@ -1117,6 +1159,7 @@ const styles = StyleSheet.create({
   tableTitleWrap: {
     flex: 1,
     alignItems: ALIGN_RIGHT,
+    maxWidth: '70%',
   },
   tableTitle: {
     fontSize: 17,
@@ -1135,20 +1178,24 @@ const styles = StyleSheet.create({
   tableNameEditWrap: {
     flexDirection: ROW_DIR,
     alignItems: 'center',
-    gap: 8,
-    width: '100%',
+    width: 'auto',
+    maxWidth: 160,
+    alignSelf: ALIGN_RIGHT,
   },
   tableNameInput: {
-    flex: 1,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: '#F9FAFB',
+    flexGrow: 0,
+    flexShrink: 1,
+    minWidth: 112,
+    maxWidth: 160,
+    height: 34,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#D1D5DB',
     paddingHorizontal: 12,
     color: '#111827',
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   tableNameCharCountFloating: {
     fontSize: 12,
@@ -1169,6 +1216,7 @@ const styles = StyleSheet.create({
     flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 8,
+    marginStart: 10,
   },
   capacityBadge: {
     flexDirection: ROW_DIR,
@@ -1356,17 +1404,18 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    backgroundColor: 'rgba(7, 14, 34, 0.45)',
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingTop: 8,
-    paddingBottom: 20,
-    paddingHorizontal: 16,
-    height: '80%',
+    backgroundColor: 'rgba(255,255,255,0.98)',
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    paddingTop: 10,
+    paddingBottom: Platform.OS === 'web' ? 28 : 20,
+    paddingHorizontal: 18,
+    minHeight: Platform.OS === 'web' ? undefined : '80%',
+    maxHeight: Platform.OS === 'web' ? '92%' : undefined,
     width: '100%',
   },
   modalHandle: {
@@ -1377,58 +1426,102 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     marginBottom: 8,
   },
+  modalHeader: {
+    flexDirection: ROW_DIR,
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 18,
+  },
   closeModalButton: {
-    position: 'absolute',
-    top: 20,
-    right: 16,
-    zIndex: 10,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#F3F4F6',
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
     alignItems: 'center',
     justifyContent: 'center',
   },
+  modalTitleWrap: {
+    flex: 1,
+    alignItems: ALIGN_RIGHT,
+    gap: 6,
+  },
   modalTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    marginTop: 16,
-    marginBottom: 20,
-    textAlign: 'center',
+    width: '100%',
+    fontSize: 22,
+    fontWeight: '800',
+    textAlign: 'right',
     color: '#111827',
+  },
+  modalSubtitle: {
+    width: '100%',
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#6B7280',
+    textAlign: 'right',
+    lineHeight: 20,
   },
   filterContainer: {
     marginBottom: 16,
     alignItems: ALIGN_RIGHT,
     width: '100%',
   },
-  searchInput: {
-    backgroundColor: '#F9FAFB',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 12,
+  searchBox: {
+    width: '100%',
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: '#E5E7EB',
+    paddingHorizontal: 14,
+    marginBottom: 12,
+  },
+  searchIconWrap: {
+    width: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchInput: {
+    flex: 1,
+    backgroundColor: 'transparent',
+    paddingHorizontal: 10,
+    paddingVertical: 12,
     fontSize: 16,
     textAlign: 'right',
-    marginBottom: 12,
-    width: '100%',
     color: '#111827',
   },
   categoryScrollView: {
     width: '100%',
+    marginHorizontal: -18,
+  },
+  categoryScrollContent: {
+    paddingHorizontal: 18,
+  },
+  categoryScrollContentRtl: {
+    flexGrow: 1,
+    justifyContent: 'flex-end',
+    alignItems: 'flex-end',
   },
   categoryContainer: {
     flexDirection: ROW_DIR,
     justifyContent: 'flex-start',
-    paddingEnd: 4,
+    paddingEnd: 0,
     gap: 8,
+  },
+  categoryContainerRtl: {
+    minWidth: '100%',
+    flexDirection: ROW_REVERSE_DIR,
+    justifyContent: 'flex-start',
+    alignSelf: 'flex-end',
   },
   categoryButton: {
     paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 8,
-    backgroundColor: '#F3F4F6',
+    paddingVertical: 9,
+    borderRadius: 999,
+    backgroundColor: '#F8FAFC',
     borderWidth: 1,
     borderColor: '#E5E7EB',
   },
@@ -1446,36 +1539,83 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '600',
   },
+  modalListMeta: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginBottom: 12,
+    gap: 12,
+  },
+  modalListMetaText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#475569',
+    textAlign: 'right',
+  },
+  selectedCountPill: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: 'rgba(59,130,246,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(59,130,246,0.16)',
+  },
+  selectedCountPillText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primary,
+    textAlign: 'right',
+  },
+  selectableGuestRow: {
+    flexDirection: ROW_DIR,
+    justifyContent: 'space-between',
+    width: '100%',
+    marginBottom: 10,
+  },
   selectableGuestItem: {
     flexDirection: ROW_DIR,
     justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 10,
+    alignItems: 'flex-start',
+    paddingVertical: 12,
     paddingHorizontal: 14,
-    backgroundColor: '#F9FAFB',
-    borderRadius: 10,
-    marginBottom: 8,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: '#E5E7EB',
-    width: '47%',
+    width: '48%',
+    minHeight: 112,
+  },
+  selectableGuestsList: { flex: 1 },
+  selectableGuestsListContent: {
+    paddingBottom: Platform.OS === 'web' ? 96 : 24,
+    alignItems: 'stretch',
   },
   guestInfo: {
     flex: 1,
     alignItems: ALIGN_RIGHT,
+    justifyContent: 'flex-start',
+    paddingHorizontal: 10,
   },
   selectableGuestName: {
     fontSize: 15,
-    fontWeight: '500',
+    fontWeight: '700',
     color: '#111827',
     textAlign: 'right',
     lineHeight: 19,
+    width: '100%',
   },
   selectableGuestCategory: {
     fontSize: 13,
-    fontWeight: '400',
+    fontWeight: '500',
     color: '#6B7280',
-    marginTop: 2,
+    marginTop: 4,
     textAlign: 'right',
+    width: '100%',
   },
   statusBadge: {
     flexDirection: ROW_DIR,
