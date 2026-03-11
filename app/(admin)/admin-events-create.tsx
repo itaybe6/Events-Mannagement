@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Platform, ActivityIndicator, KeyboardAvoidingView, SafeAreaView, Alert, Modal, Keyboard } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Platform, ActivityIndicator, Alert, Modal, Keyboard, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { colors } from '@/constants/colors';
@@ -10,6 +10,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import BackSwipe from '@/components/BackSwipe';
 import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
 import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const EVENT_TYPES = [
   { label: 'חתונה', value: 'חתונה' },
@@ -28,8 +29,9 @@ const EVENT_TYPE_META: Record<string, { icon: keyof typeof Ionicons.glyphMap; hi
 
 export default function AdminEventsCreateScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { userId } = useLocalSearchParams<{ userId?: string }>();
-  const [coupleOptions, setCoupleOptions] = useState<{id: string, name: string, email: string}[]>([]);
+  const [coupleOptions, setCoupleOptions] = useState<{id: string, name: string, email: string, avatar_url?: string}[]>([]);
   const [addForm, setAddForm] = useState({ user_id: '', title: '', date: '', location: '', city: '' });
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -66,7 +68,18 @@ export default function AdminEventsCreateScreen() {
 
   const loadAvailableCouples = async () => {
     const allCouples = await userService.getClients();
-    setCoupleOptions(allCouples.filter(u => (u.events_count || 0) === 0).map(u => ({ id: u.id, name: u.name, email: u.email })));
+    setCoupleOptions(
+      allCouples
+        .filter(u => (u.events_count || 0) === 0)
+        .map(u => ({ id: u.id, name: u.name, email: u.email, avatar_url: u.avatar_url }))
+    );
+  };
+
+  const getInitials = (name: string) => {
+    const parts = String(name).trim().split(/\s+/).filter(Boolean);
+    const first = parts[0]?.[0] ?? '';
+    const second = parts.length > 1 ? parts[parts.length - 1]?.[0] ?? '' : '';
+    return (first + second).toUpperCase() || 'U';
   };
 
   const handleDateChange = (date: Date | undefined) => {
@@ -111,25 +124,67 @@ export default function AdminEventsCreateScreen() {
       scrollRef.current?.scrollToEnd({ animated: true });
     }, 120);
   };
+  const goBackToEvents = () => {
+    router.replace('/(admin)/admin-events');
+  };
 
   return (
     <BackSwipe>
-      <SafeAreaView style={styles.screen}>
-        <KeyboardAvoidingView
+      <View style={styles.screen}>
+        <LinearGradient
+          colors={['#F7FAFF', '#E8F1FF', '#F2E0BA']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.bg}
+        />
+        <LinearGradient
+          colors={['rgba(255,255,255,0.68)', 'rgba(255,255,255,0)']}
+          start={{ x: 0.05, y: 0 }}
+          end={{ x: 0.75, y: 0.55 }}
+          style={styles.bgHighlight}
+        />
+        <LinearGradient
+          colors={['rgba(232,196,122,0.56)', 'rgba(244,224,186,0.22)', 'rgba(244,224,186,0)']}
+          start={{ x: 1, y: 0.95 }}
+          end={{ x: 0.18, y: 0.22 }}
+          style={styles.bgWarmGlow}
+        />
+
+        <AppKeyboardAwareScrollView
+          ref={scrollRef}
           style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'height' : undefined}
-          keyboardVerticalOffset={0}
+          stickyHeaderIndices={[0]}
+          contentContainerStyle={[
+            styles.contentContainer,
+            { paddingBottom: keyboardVisible ? 140 : Math.max(insets.bottom, 24) + 84 },
+          ]}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+          alwaysBounceVertical={false}
+          overScrollMode="never"
+          enableResetScrollToCoords={false}
         >
-          <View style={styles.container}>
-            <AppKeyboardAwareScrollView
-              ref={scrollRef}
-              contentContainerStyle={[
-                styles.contentContainer,
-                { paddingBottom: keyboardVisible ? 140 : 40 },
-              ]}
-              keyboardShouldPersistTaps="handled"
-              keyboardDismissMode="on-drag"
-            >
+            <View style={[styles.mobileTopBarSticky, { paddingTop: insets.top + 10 }]}>
+              <View style={styles.mobileTopBar}>
+                <View style={styles.mobileTopBarRightGroup}>
+                  <TouchableOpacity
+                    accessibilityRole="button"
+                    accessibilityLabel="חזרה לאירועים"
+                    onPress={goBackToEvents}
+                    activeOpacity={0.88}
+                    style={styles.mobileTopBarButton}
+                  >
+                    <Ionicons name="arrow-forward" size={20} color={colors.primary} />
+                  </TouchableOpacity>
+
+                  <Text style={styles.mobileTopBarTitle}>הוספת אירוע חדש</Text>
+                </View>
+                <View style={styles.mobileTopBarPlaceholder} />
+              </View>
+            </View>
+
             <View style={styles.heroCard}>
               <View style={styles.heroSurface} />
               <View style={styles.heroBlobPrimary} />
@@ -204,17 +259,30 @@ export default function AdminEventsCreateScreen() {
                 <Text style={styles.sectionHint}>תאריך ומיקום</Text>
               </View>
 
-              <TouchableOpacity style={styles.infoCard} onPress={() => setShowDatePicker(true)} activeOpacity={0.8}>
-                <View style={styles.infoRow}>
-                  <View style={styles.selectorIconWrap}>
-                    <Ionicons name="calendar" size={18} color={colors.primary} />
+              <TouchableOpacity style={styles.datePickerCard} onPress={() => setShowDatePicker(true)} activeOpacity={0.88}>
+                <LinearGradient
+                  colors={['rgba(255,255,255,0.98)', 'rgba(245,248,255,0.98)']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.datePickerCardGradient}
+                />
+                <View style={styles.datePickerRow}>
+                  <View style={styles.datePickerIconWrap}>
+                    <Ionicons name="calendar" size={20} color={colors.primary} />
                   </View>
-                  <View style={styles.infoTextWrap}>
-                    <Text style={styles.infoLabel}>מתי?</Text>
-                    <Text style={styles.infoValue}>{addForm.date ? formatDate(addForm.date) : 'בחר תאריך לאירוע'}</Text>
+
+                  <View style={styles.datePickerTextWrap}>
+                    <Text style={styles.datePickerLabel}>מתי?</Text>
+                    <Text style={[styles.datePickerValue, !addForm.date && styles.datePickerPlaceholder]}>
+                      {addForm.date ? formatDate(addForm.date) : 'בחר תאריך לאירוע'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.datePickerActionPill}>
+                    <Text style={styles.datePickerActionText}>{addForm.date ? 'שנה תאריך' : 'בחר תאריך'}</Text>
+                    <Ionicons name="calendar-outline" size={15} color={colors.primary} />
                   </View>
                 </View>
-                <Ionicons name="pencil" size={16} color={colors.gray[500]} />
               </TouchableOpacity>
 
               <DateTimePickerModal
@@ -294,16 +362,9 @@ export default function AdminEventsCreateScreen() {
                     )}
                   </LinearGradient>
                 </TouchableOpacity>
-
-                <Text style={styles.selectedUserHint}>
-                  {addForm.user_id
-                    ? `משתמש שנבחר: ${coupleOptions.find(opt => opt.id === addForm.user_id)?.name || '—'}`
-                    : 'לא נבחר משתמש עדיין'}
-                </Text>
               </View>
             </View>
           </AppKeyboardAwareScrollView>
-        </View>
 
         <Modal
           visible={showUserModal}
@@ -312,10 +373,33 @@ export default function AdminEventsCreateScreen() {
           onRequestClose={() => setShowUserModal(false)}
         >
           <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowUserModal(false)}>
-            <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>בחר משתמש</Text>
+            <TouchableOpacity style={styles.modalContent} activeOpacity={1} onPress={() => {}}>
+              <LinearGradient
+                colors={['rgba(255,255,255,0.98)', 'rgba(249,247,242,0.97)']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.modalContentGradient}
+              />
+
+              <View style={styles.modalHeader}>
+                <TouchableOpacity
+                  style={styles.modalCloseButton}
+                  onPress={() => setShowUserModal(false)}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="close" size={18} color={colors.text} />
+                </TouchableOpacity>
+
+                <View style={styles.modalTitleWrap}>
+                  <Text style={styles.modalTitle}>בחירת משתמש</Text>
+                  <Text style={styles.modalSubtitle}>בחר משתמש פנוי לשיוך האירוע החדש</Text>
+                </View>
+              </View>
+
               <View style={styles.searchRow}>
-                <Ionicons name="search" size={16} color={colors.gray[400]} />
+                <View style={styles.searchIconWrap}>
+                  <Ionicons name="search" size={16} color={colors.primary} />
+                </View>
                 <TextInput
                   style={styles.searchInput}
                   value={userSearch}
@@ -325,36 +409,58 @@ export default function AdminEventsCreateScreen() {
                   textAlign="right"
                 />
               </View>
-              <ScrollView style={{ maxHeight: 300 }}>
+
+              <ScrollView style={styles.modalList} contentContainerStyle={styles.modalListContent}>
                 {filteredCouples.length === 0 ? (
-                  <Text style={styles.value}>אין משתמשים זמינים</Text>
+                  <View style={styles.modalEmptyState}>
+                    <Ionicons name="people-outline" size={30} color={colors.gray[400]} />
+                    <Text style={styles.value}>אין משתמשים זמינים</Text>
+                  </View>
                 ) : (
-                  filteredCouples.map(opt => (
-                    <TouchableOpacity
-                      key={opt.id}
-                      style={styles.modalItem}
-                      onPress={() => {
-                        setAddForm(f => ({ ...f, user_id: opt.id }));
-                        setShowUserModal(false);
-                        setUserSearch('');
-                      }}
-                    >
-                      <View style={styles.modalItemRow}>
-                        <View>
-                          <Text style={styles.modalItemText}>{opt.name}</Text>
-                          <Text style={styles.modalItemSub}>{opt.email}</Text>
+                  filteredCouples.map(opt => {
+                    const isSelected = addForm.user_id === opt.id;
+                    return (
+                      <TouchableOpacity
+                        key={opt.id}
+                        style={[styles.modalItem, isSelected && styles.modalItemSelected]}
+                        onPress={() => {
+                          setAddForm(f => ({ ...f, user_id: opt.id }));
+                          setShowUserModal(false);
+                          setUserSearch('');
+                        }}
+                        activeOpacity={0.88}
+                      >
+                        <View style={styles.modalItemRow}>
+                          <View style={styles.modalItemArrowWrap}>
+                            {isSelected ? (
+                              <Ionicons name="checkmark-circle" size={20} color={colors.primary} />
+                            ) : (
+                              <Ionicons name="chevron-back" size={18} color={colors.gray[400]} />
+                            )}
+                          </View>
+
+                          <View style={styles.modalItemTextWrap}>
+                            <Text style={styles.modalItemText}>{opt.name}</Text>
+                            <Text style={styles.modalItemSub}>{opt.email}</Text>
+                          </View>
+
+                          <View style={styles.modalItemAvatar}>
+                            {opt.avatar_url ? (
+                              <Image source={{ uri: opt.avatar_url }} style={styles.modalItemAvatarImage} />
+                            ) : (
+                              <Text style={styles.modalItemAvatarFallback}>{getInitials(opt.name)}</Text>
+                            )}
+                          </View>
                         </View>
-                        <Ionicons name="chevron-back" size={18} color={colors.gray[400]} />
-                      </View>
-                    </TouchableOpacity>
-                  ))
+                      </TouchableOpacity>
+                    );
+                  })
                 )}
               </ScrollView>
-            </View>
+            </TouchableOpacity>
           </TouchableOpacity>
         </Modal>
-        </KeyboardAvoidingView>
-      </SafeAreaView>
+      </View>
     </BackSwipe>
   );
 }
@@ -362,22 +468,81 @@ export default function AdminEventsCreateScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: colors.gray[50],
+    backgroundColor: '#E8F1FF',
+  },
+  bg: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  bgHighlight: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.95,
+  },
+  bgWarmGlow: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.78,
   },
   container: {
     flex: 1,
   },
   contentContainer: {
-    padding: 20,
+    paddingHorizontal: 18,
+    paddingTop: 0,
     paddingBottom: 40,
+  },
+  mobileTopBarSticky: {
+    backgroundColor: 'rgba(247,250,255,0.96)',
+    paddingBottom: 10,
+    marginHorizontal: -18,
+    paddingHorizontal: 18,
+    zIndex: 10,
+  },
+  mobileTopBar: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  mobileTopBarRightGroup: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    gap: 10,
+    flex: 1,
+  },
+  mobileTopBarButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.84)',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.08)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: colors.black,
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
+  },
+  mobileTopBarTitle: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#06173e',
+    textAlign: 'right',
+    flexShrink: 1,
+  },
+  mobileTopBarPlaceholder: {
+    width: 44,
+    height: 44,
   },
   heroCard: {
     height: 200,
     borderRadius: 24,
     overflow: 'hidden',
-    marginTop: 4,
+    marginTop: 12,
     marginBottom: 24,
-    backgroundColor: colors.white,
+    backgroundColor: 'rgba(255,255,255,0.94)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.78)',
     shadowColor: colors.black,
     shadowOpacity: 0.08,
     shadowRadius: 18,
@@ -597,6 +762,76 @@ const styles = StyleSheet.create({
     color: colors.text,
     textAlign: 'right',
   },
+  datePickerCard: {
+    borderRadius: 22,
+    padding: 16,
+    marginBottom: 10,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.94)',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.08)',
+    shadowColor: colors.black,
+    shadowOpacity: 0.06,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3,
+  },
+  datePickerCardGradient: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  datePickerRow: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  datePickerIconWrap: {
+    width: 46,
+    height: 46,
+    borderRadius: 16,
+    backgroundColor: 'rgba(6,23,62,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  datePickerTextWrap: {
+    flex: 1,
+    alignItems: ALIGN_RIGHT,
+  },
+  datePickerLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.gray[500],
+    textAlign: 'right',
+  },
+  datePickerValue: {
+    marginTop: 6,
+    fontSize: 19,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'right',
+  },
+  datePickerPlaceholder: {
+    color: colors.gray[500],
+    fontSize: 16,
+  },
+  datePickerActionPill: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: 'rgba(232,240,255,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.08)',
+  },
+  datePickerActionText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: colors.primary,
+    textAlign: 'right',
+  },
   inlineActions: {
     marginTop: 6,
   },
@@ -635,40 +870,83 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.2)',
+    backgroundColor: 'rgba(7,14,34,0.42)',
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 18,
   },
   modalContent: {
-    backgroundColor: colors.white,
-    borderRadius: 16,
-    padding: 16,
-    minWidth: 220,
-    maxWidth: 320,
+    width: '100%',
+    maxWidth: 420,
+    borderRadius: 28,
+    padding: 18,
     alignItems: ALIGN_RIGHT,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.72)',
     shadowColor: colors.black,
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
+    shadowOpacity: 0.18,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 10,
+  },
+  modalContentGradient: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  modalHeader: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 14,
+  },
+  modalCloseButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.82)',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalTitleWrap: {
+    flex: 1,
+    alignItems: ALIGN_RIGHT,
   },
   modalTitle: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 19,
+    fontWeight: '900',
     color: colors.text,
-    marginBottom: 12,
-    alignSelf: ALIGN_RIGHT,
+    textAlign: 'right',
+  },
+  modalSubtitle: {
+    marginTop: 4,
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.gray[600],
+    textAlign: 'right',
   },
   searchRow: {
     flexDirection: ROW_DIR,
     alignItems: 'center',
-    backgroundColor: colors.gray[100],
-    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.82)',
+    borderRadius: 18,
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderWidth: 1,
-    borderColor: colors.gray[200],
+    borderColor: 'rgba(6,23,62,0.08)',
     marginBottom: 12,
+  },
+  searchIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(6,23,62,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginStart: 8,
   },
   searchInput: {
     flex: 1,
@@ -676,21 +954,64 @@ const styles = StyleSheet.create({
     color: colors.text,
     textAlign: 'right',
   },
+  modalList: {
+    maxHeight: 340,
+    width: '100%',
+  },
+  modalListContent: {
+    gap: 10,
+    paddingTop: 2,
+  },
   modalItem: {
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.gray[200],
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.78)',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.06)',
     alignItems: ALIGN_RIGHT,
+  },
+  modalItemSelected: {
+    borderColor: 'rgba(6,23,62,0.18)',
+    backgroundColor: 'rgba(232,240,255,0.86)',
   },
   modalItemRow: {
     flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
     width: '100%',
+    gap: 12,
+  },
+  modalItemAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(6,23,62,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  modalItemAvatarImage: {
+    width: '100%',
+    height: '100%',
+  },
+  modalItemAvatarFallback: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: colors.primary,
+    textAlign: 'center',
+  },
+  modalItemTextWrap: {
+    flex: 1,
+    alignItems: ALIGN_RIGHT,
+  },
+  modalItemArrowWrap: {
+    width: 24,
+    alignItems: 'center',
   },
   modalItemText: {
     fontSize: 16,
+    fontWeight: '800',
     color: colors.text,
     textAlign: 'right',
   },
@@ -699,5 +1020,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.gray[500],
     textAlign: 'right',
+  },
+  modalEmptyState: {
+    paddingVertical: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
   },
 }); 

@@ -1,10 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   Image,
   Modal,
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -15,11 +15,12 @@ import {
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/constants/colors';
 import { useUserStore } from '@/store/userStore';
 import { useDemoUsersStore } from '@/store/demoUsersStore';
-import { userService, UserWithMetadata } from '@/lib/services/userService';
+import { UserWithMetadata } from '@/lib/services/userService';
 import { useUsersModel } from '@/features/users/useUsersModel';
 import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
 import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
@@ -80,23 +81,16 @@ function getInitials(name: string) {
   return (first + second).toUpperCase() || 'U';
 }
 
-function hashStringToHue(str: string) {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = (hash << 5) - hash + str.charCodeAt(i);
-    hash |= 0;
-  }
-  return Math.abs(hash) % 360;
-}
-
 export default function UsersScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { isLoggedIn, userType } = useUserStore();
   const demoUsers = useDemoUsersStore((s) => s.users);
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const [headerHeight, setHeaderHeight] = useState(insets.top + 76);
 
   const {
     users,
-    setUsers,
     loading,
     isDemoMode,
     userFilter,
@@ -129,7 +123,7 @@ export default function UsersScreen() {
     useCallback(() => {
       if (!isLoggedIn || userType !== 'admin') return;
       void refreshUsers();
-    }, [isLoggedIn, userType, demoUsers])
+    }, [isLoggedIn, userType, demoUsers, refreshUsers])
   );
 
   const handleDeleteUser = (u: UserWithMetadata) => {
@@ -151,56 +145,130 @@ export default function UsersScreen() {
     ]);
   };
 
+  const headerBackdropColor = scrollY.interpolate({
+    inputRange: [0, 14],
+    outputRange: ['rgba(255,255,255,0)', 'rgba(255,255,255,0.98)'],
+    extrapolate: 'clamp',
+  });
+  const headerBorderColor = scrollY.interpolate({
+    inputRange: [0, 14],
+    outputRange: ['rgba(6,23,62,0)', 'rgba(6,23,62,0.05)'],
+    extrapolate: 'clamp',
+  });
+  const headerShadowOpacity = scrollY.interpolate({
+    inputRange: [0, 14],
+    outputRange: [0, 0.08],
+    extrapolate: 'clamp',
+  });
+
   return (
     <View style={styles.screen}>
-      {/* Background decoration */}
-      <View pointerEvents="none" style={styles.bgWrap}>
-        <View style={styles.bgBlobTopRight} />
-        <View style={styles.bgBlobBottomLeft} />
-      </View>
+      <LinearGradient
+        colors={['#F7FAFF', '#E8F1FF', '#F2E0BA']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.bg}
+      />
+      <LinearGradient
+        colors={['rgba(255,255,255,0.68)', 'rgba(255,255,255,0)']}
+        start={{ x: 0.05, y: 0 }}
+        end={{ x: 0.75, y: 0.55 }}
+        style={styles.bgHighlight}
+      />
+      <LinearGradient
+        colors={['rgba(232,196,122,0.58)', 'rgba(244,224,186,0.22)', 'rgba(244,224,186,0)']}
+        start={{ x: 1, y: 0.95 }}
+        end={{ x: 0.18, y: 0.22 }}
+        style={styles.bgWarmGlow}
+      />
 
-      {/* Header (styled like the reference) */}
-      <View style={styles.header}>
-        {/* Search */}
-        <View style={styles.searchWrap}>
-          <Ionicons name="search" size={18} color={colors.gray[500]} style={styles.searchIcon} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="חיפוש עובד או תפקיד..."
-            placeholderTextColor={colors.gray[500]}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            textAlign="right"
-            autoCapitalize="none"
-          />
+      <Animated.View
+        onLayout={(event) => {
+          const nextHeight = Math.round(event.nativeEvent.layout.height);
+          setHeaderHeight((prev) => (prev === nextHeight ? prev : nextHeight));
+        }}
+        style={[
+          styles.floatingHeaderWrap,
+          {
+            paddingTop: insets.top + 10,
+            paddingBottom: 10,
+            backgroundColor: headerBackdropColor,
+            borderBottomColor: headerBorderColor,
+            shadowOpacity: headerShadowOpacity,
+          },
+        ]}
+      >
+        <View style={styles.headerHeroRow}>
+          <View style={styles.headerActionSlot} />
+
+          <View style={styles.headerTitleWrap}>
+            <Image
+              source={require('../../assets/images/logoMoon.png')}
+              style={styles.headerLogo}
+              resizeMode="contain"
+            />
+          </View>
+
+          <View style={styles.headerActionSlot}>
+            <TouchableOpacity
+              style={styles.heroPrimaryBtn}
+              onPress={() => router.push('/(admin)/add-user-v2')}
+              activeOpacity={0.88}
+            >
+              <Ionicons name="add" size={22} color={colors.white} />
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
+      </Animated.View>
 
-      {/* Filters */}
-      <View style={styles.filtersWrap}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filtersRow}
-        >
-          {USER_FILTERS.map((f) => {
-            const active = userFilter === f.value;
-            return (
-              <TouchableOpacity
-                key={f.value}
-                style={[styles.filterChip, active && styles.filterChipActive]}
-                onPress={() => setUserFilter(f.value)}
-                activeOpacity={0.92}
-              >
-                <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>{f.label}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      </View>
+      <AppKeyboardAwareScrollView
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={[styles.pageContent, { paddingTop: headerHeight + 8 }]}
+        scrollEventThrottle={16}
+        onScroll={(event: any) => {
+          const offsetY = Number(event?.nativeEvent?.contentOffset?.y ?? 0);
+          scrollY.setValue(Math.max(offsetY, 0));
+        }}
+      >
+        <View style={styles.header}>
+          <View style={styles.searchWrap}>
+            <Ionicons name="search" size={18} color={colors.gray[500]} style={styles.searchIcon} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="חיפוש עובד או תפקיד..."
+              placeholderTextColor={colors.gray[500]}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              textAlign="right"
+              autoCapitalize="none"
+            />
+          </View>
 
-      {/* List */}
-      <View style={styles.listWrap}>
+          <View style={styles.filtersWrap}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.filtersRow}
+            >
+              {USER_FILTERS.map((f) => {
+                const active = userFilter === f.value;
+                return (
+                  <TouchableOpacity
+                    key={f.value}
+                    style={[styles.filterChip, active && styles.filterChipActive]}
+                    onPress={() => setUserFilter(f.value)}
+                    activeOpacity={0.92}
+                  >
+                    <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>{f.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </View>
+
+        <View style={styles.listWrap}>
         {loading ? (
           <View style={styles.loadingWrap}>
             <ActivityIndicator size="large" color={colors.primary} />
@@ -212,7 +280,7 @@ export default function UsersScreen() {
             <Text style={styles.emptyText}>נסה לשנות חיפוש או פילטר.</Text>
           </View>
         ) : (
-          <AppKeyboardAwareScrollView contentContainerStyle={styles.cardsList} showsVerticalScrollIndicator={false}>
+          <View style={styles.cardsList}>
             {filteredUsers.map((u) => {
               const tag = getTagStyle(u.userType);
               const hasAvatar = !!u.avatar_url && !avatarLoadErrors[u.id];
@@ -227,10 +295,6 @@ export default function UsersScreen() {
                     setShowUserModal(true);
                   }}
                 >
-                  <View style={[styles.userCardBadgeWrap, { backgroundColor: tag.bg }]}>
-                    <Text style={[styles.roleTagText, { color: tag.fg }]}>{getUserTypeLabel(u.userType)}</Text>
-                  </View>
-
                   <View style={styles.avatarWrap}>
                     {hasAvatar ? (
                       <Image
@@ -243,12 +307,6 @@ export default function UsersScreen() {
                         <Text style={styles.avatarFallbackText}>{getInitials(u.name)}</Text>
                       </View>
                     )}
-                    <View
-                      style={[
-                        styles.presenceDot,
-                        { backgroundColor: getPresenceDotColor(u.userType) },
-                      ]}
-                    />
                   </View>
 
                   <View style={styles.userInfo}>
@@ -257,34 +315,36 @@ export default function UsersScreen() {
                         {u.name}
                       </Text>
                     </View>
-                    <Text style={styles.userSubtitle} numberOfLines={1}>
-                      {u.name} • {getUserTypeSubtitle(u.userType)}
-                    </Text>
+                    <View style={[styles.userTypeTagInline, { backgroundColor: tag.bg }]}>
+                      <Text style={[styles.roleTagText, { color: tag.fg }]}>{getUserTypeLabel(u.userType)}</Text>
+                    </View>
                   </View>
                 </TouchableOpacity>
               );
             })}
 
             <View style={{ height: 140 }} />
-          </AppKeyboardAwareScrollView>
+          </View>
         )}
-      </View>
-
-      {/* Floating Action Button */}
-      <View style={styles.fabWrap}>
-        <TouchableOpacity
-          style={styles.fab}
-          onPress={() => router.push('/(admin)/add-user-v2')}
-          activeOpacity={0.92}
-        >
-          <Ionicons name="add" size={32} color={colors.white} />
-        </TouchableOpacity>
-      </View>
+        </View>
+      </AppKeyboardAwareScrollView>
 
       {/* Details modal */}
       <Modal visible={showUserModal} transparent animationType="fade" onRequestClose={() => setShowUserModal(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
+            <LinearGradient
+              colors={['rgba(247,250,255,0.98)', 'rgba(255,255,255,0.94)', 'rgba(244,224,186,0.36)']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.modalCardGradient}
+            />
+            <LinearGradient
+              colors={['rgba(232,196,122,0.28)', 'rgba(232,196,122,0.04)', 'rgba(232,196,122,0)']}
+              start={{ x: 1, y: 0 }}
+              end={{ x: 0.2, y: 0.6 }}
+              style={styles.modalGlowTop}
+            />
             <View style={styles.modalAccent} />
             <View style={styles.modalHandleRow}>
               <View style={styles.modalHandle} />
@@ -311,14 +371,6 @@ export default function UsersScreen() {
                         </View>
                       )}
                     </View>
-                    <View style={styles.modalStatusDot}>
-                      <View
-                        style={[
-                          styles.modalStatusDotInner,
-                          { backgroundColor: getPresenceDotColor(selectedUser.userType) },
-                        ]}
-                      />
-                    </View>
                   </View>
 
                   <View style={styles.modalHeaderText}>
@@ -333,9 +385,13 @@ export default function UsersScreen() {
                         />
                         <Text style={styles.modalBadgeText}>{getUserTypeLabel(selectedUser.userType)}</Text>
                       </View>
-                      <Text style={styles.modalSubtitle}>{getUserTypeSubtitle(selectedUser.userType)}</Text>
                     </View>
+                    <Text style={styles.modalHelperText}>פרטי משתמש, הרשאות ואפשרויות ניהול</Text>
                   </View>
+                </View>
+
+                <View style={styles.modalSectionIntro}>
+                  <Text style={styles.modalSectionTitle}>פרטי המשתמש</Text>
                 </View>
 
                 <View style={styles.modalInfoGrid}>
@@ -388,6 +444,17 @@ export default function UsersScreen() {
 
                 <View style={styles.modalActionsBar}>
                   <TouchableOpacity
+                    style={styles.modalActionDanger}
+                    onPress={() => {
+                      setShowUserModal(false);
+                      handleDeleteUser(selectedUser);
+                    }}
+                  >
+                    <Ionicons name="trash" size={18} color={colors.white} />
+                    <Text style={styles.modalActionDangerText}>מחק</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
                     style={[styles.modalActionSecondary, avatarUploading && styles.modalPrimaryDisabled]}
                     onPress={pickAvatarForSelectedUser}
                     disabled={avatarUploading}
@@ -401,22 +468,13 @@ export default function UsersScreen() {
                       {avatarUploading ? 'מעלה...' : 'החלף תמונה'}
                     </Text>
                   </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.modalActionDanger}
-                    onPress={() => {
-                      setShowUserModal(false);
-                      handleDeleteUser(selectedUser);
-                    }}
-                  >
-                    <Ionicons name="trash" size={18} color={colors.white} />
-                    <Text style={styles.modalActionDangerText}>מחק</Text>
-                  </TouchableOpacity>
                 </View>
 
                 {isDemoMode && (
                   <View style={styles.demoNoteRow}>
-                    <Ionicons name="information-circle" size={16} color={colors.gray[500]} />
+                    <View style={styles.demoNoteIconWrap}>
+                      <Ionicons name="information-circle" size={16} color={colors.primary} />
+                    </View>
                     <Text style={styles.demoNote}>
                       מצב דמו: חלק מהפעולות אינן נשמרות בדאטאבייס.
                     </Text>
@@ -434,62 +492,80 @@ export default function UsersScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#F5F7F8',
+    backgroundColor: '#E8F1FF',
   },
-  bgWrap: {
+  bg: {
     ...StyleSheet.absoluteFillObject,
-    overflow: 'hidden',
   },
-  bgBlobTopRight: {
-    position: 'absolute',
-    top: -80,
-    right: -90,
-    width: 420,
-    height: 420,
-    borderRadius: 999,
-    backgroundColor: 'rgba(0, 53, 102, 0.10)',
-    transform: [{ scaleX: 1.05 }],
+  bgHighlight: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.95,
   },
-  bgBlobBottomLeft: {
-    position: 'absolute',
-    bottom: -100,
-    left: -110,
-    width: 360,
-    height: 360,
-    borderRadius: 999,
-    backgroundColor: 'rgba(204, 160, 0, 0.12)',
+  bgWarmGlow: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.78,
   },
   header: {
-    paddingTop: Platform.OS === 'ios' ? 12 : 10,
     paddingHorizontal: 18,
-    paddingBottom: 12,
-    backgroundColor: 'rgba(245, 247, 248, 0.96)',
+    paddingBottom: 4,
   },
-  headerNavRow: {
+  floatingHeaderWrap: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 40,
+    borderBottomWidth: 1,
+    shadowColor: colors.black,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
+  },
+  pageContent: {
+    paddingBottom: 24,
+  },
+  headerHeroRow: {
     flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingHorizontal: 18,
     marginBottom: 12,
+    gap: 12,
   },
-  headerIconButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.white,
+  headerActionSlot: {
+    width: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitleWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  headerLogo: {
+    width: 275,
+    height: 66,
+  },
+  heroPrimaryBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: colors.black,
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    shadowColor: colors.primary,
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
   },
   searchWrap: {
     height: 56,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.85)',
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.88)',
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.06)',
+    borderColor: 'rgba(6,23,62,0.06)',
     shadowColor: colors.black,
     shadowOpacity: 0.05,
     shadowRadius: 14,
@@ -510,22 +586,23 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   filtersWrap: {
-    paddingVertical: 8,
+    paddingTop: 12,
+    paddingBottom: 6,
   },
   filtersRow: {
-    paddingHorizontal: 18,
+    paddingHorizontal: 2,
     gap: 10,
     flexDirection: ROW_DIR,
-    justifyContent: 'flex-start',
+    justifyContent: 'center',
     minWidth: '100%',
   },
   filterChip: {
     height: 40,
     paddingHorizontal: 18,
     borderRadius: 999,
-    backgroundColor: colors.white,
+    backgroundColor: 'rgba(255,255,255,0.92)',
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.06)',
+    borderColor: 'rgba(6,23,62,0.06)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -548,8 +625,8 @@ const styles = StyleSheet.create({
     color: colors.white,
   },
   listWrap: {
-    flex: 1,
-    paddingHorizontal: 18,
+    paddingHorizontal: 14,
+    paddingTop: 4,
   },
   sectionHeader: {
     flexDirection: ROW_DIR,
@@ -592,32 +669,24 @@ const styles = StyleSheet.create({
     paddingTop: 20,
   },
   cardsList: {
-    paddingTop: 4,
+    paddingTop: 6,
+    paddingHorizontal: 4,
     gap: 12,
   },
   userCard: {
     flexDirection: ROW_DIR,
     alignItems: 'center',
     padding: 14,
-    borderRadius: 24,
-    backgroundColor: colors.white,
+    borderRadius: 28,
+    backgroundColor: 'rgba(255,255,255,0.9)',
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.06)',
+    borderColor: 'rgba(255,255,255,0.8)',
     shadowColor: colors.black,
-    shadowOpacity: 0.05,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 2,
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 4,
     position: 'relative',
-  },
-  userCardBadgeWrap: {
-    position: 'absolute',
-    left: 14,
-    top: 14,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
-    zIndex: 2,
   },
   avatarWrap: {
     width: 64,
@@ -645,29 +714,19 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     textAlign: 'center',
   },
-  presenceDot: {
-    position: 'absolute',
-    bottom: 2,
-    left: 2,
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    borderWidth: 2,
-    borderColor: colors.white,
-  },
   userInfo: {
     flex: 1,
     minWidth: 0,
-    alignItems: 'stretch',
+    alignItems: 'flex-end',
     alignSelf: 'stretch',
     justifyContent: 'center',
-    paddingLeft: 84,
+    paddingStart: 12,
   },
   userTitleRow: {
-    alignItems: 'stretch',
+    alignItems: 'flex-end',
     justifyContent: 'center',
     alignSelf: 'stretch',
-    marginBottom: 4,
+    marginBottom: 6,
   },
   userName: {
     width: '100%',
@@ -680,6 +739,14 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '900',
     textAlign: 'right',
+  },
+  userTypeTagInline: {
+    alignSelf: ALIGN_RIGHT,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   userSubtitle: {
     fontSize: 13,
@@ -697,12 +764,12 @@ const styles = StyleSheet.create({
   },
   emptyCard: {
     marginTop: 18,
-    borderRadius: 24,
+    borderRadius: 26,
     paddingVertical: 28,
     paddingHorizontal: 18,
-    backgroundColor: 'rgba(255,255,255,0.75)',
+    backgroundColor: 'rgba(255,255,255,0.78)',
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.06)',
+    borderColor: 'rgba(255,255,255,0.72)',
     alignItems: 'center',
   },
   emptyTitle: {
@@ -719,26 +786,6 @@ const styles = StyleSheet.create({
     color: colors.gray[600],
     textAlign: 'center',
   },
-  fabWrap: {
-    position: 'absolute',
-    left: 18,
-    bottom: 108,
-  },
-  fab: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: colors.primary,
-    shadowOpacity: 0.22,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 6,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
-  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(11, 18, 32, 0.45)',
@@ -749,77 +796,88 @@ const styles = StyleSheet.create({
   modalCard: {
     width: '100%',
     maxWidth: 440,
-    borderRadius: 28,
-    backgroundColor: 'rgba(255,255,255,0.96)',
-    paddingHorizontal: 18,
-    paddingBottom: 18,
-    paddingTop: 10,
+    borderRadius: 32,
+    backgroundColor: 'rgba(255,255,255,0.98)',
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+    paddingTop: 12,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.6)',
+    borderColor: 'rgba(255,255,255,0.78)',
     shadowColor: colors.black,
-    shadowOpacity: 0.18,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 10,
+    shadowOpacity: 0.2,
+    shadowRadius: 30,
+    shadowOffset: { width: 0, height: 16 },
+    elevation: 14,
     overflow: 'hidden',
+  },
+  modalCardGradient: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  modalGlowTop: {
+    position: 'absolute',
+    top: -18,
+    right: -28,
+    width: 180,
+    height: 180,
+    borderRadius: 999,
   },
   modalAccent: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    height: 60,
-    backgroundColor: 'rgba(240, 243, 255, 0.8)',
+    height: 96,
+    backgroundColor: 'rgba(240, 243, 255, 0.42)',
   },
   modalHandleRow: {
     alignItems: 'center',
     paddingTop: 6,
-    paddingBottom: 2,
+    paddingBottom: 6,
   },
   modalHandle: {
-    width: 44,
+    width: 52,
     height: 5,
     borderRadius: 999,
-    backgroundColor: 'rgba(120, 130, 155, 0.3)',
+    backgroundColor: 'rgba(120, 130, 155, 0.24)',
   },
   modalClose: {
     position: 'absolute',
-    top: 10,
-    left: 10,
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: 'rgba(255,255,255,0.9)',
+    top: 14,
+    left: 14,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(255,255,255,0.86)',
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 2,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.06)',
+    borderColor: 'rgba(6,23,62,0.08)',
   },
   modalHeader: {
     flexDirection: ROW_DIR,
     alignItems: 'center',
     paddingTop: 10,
-    paddingBottom: 14,
-    gap: 14,
+    paddingBottom: 18,
+    gap: 16,
   },
   modalAvatarShell: {
-    width: 86,
-    height: 86,
-    borderRadius: 43,
-    padding: 3,
-    backgroundColor: 'rgba(255,255,255,0.9)',
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    padding: 4,
+    backgroundColor: 'rgba(255,255,255,0.94)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.7)',
-    shadowColor: colors.black,
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 3,
+    borderColor: 'rgba(255,255,255,0.82)',
+    shadowColor: colors.primary,
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 5,
   },
   modalAvatarWrap: {
     flex: 1,
-    borderRadius: 40,
+    borderRadius: 44,
     overflow: 'hidden',
     backgroundColor: colors.gray[100],
   },
@@ -840,34 +898,13 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     textAlign: 'center',
   },
-  modalStatusDot: {
-    position: 'absolute',
-    bottom: 4,
-    left: 4,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: colors.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: colors.white,
-    shadowColor: colors.black,
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-  },
-  modalStatusDotInner: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-  },
   modalHeaderText: {
     flex: 1,
     alignItems: ALIGN_RIGHT,
+    gap: 4,
   },
   modalTitle: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '900',
     color: colors.text,
     textAlign: 'right',
@@ -875,19 +912,20 @@ const styles = StyleSheet.create({
   modalBadgeRow: {
     flexDirection: ROW_DIR,
     alignItems: 'center',
-    marginTop: 6,
     gap: 8,
+    alignSelf: ALIGN_RIGHT,
+    flexWrap: 'wrap',
   },
   modalBadge: {
     flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.7)',
+    backgroundColor: 'rgba(255,255,255,0.82)',
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.06)',
+    borderColor: 'rgba(6,23,62,0.06)',
   },
   modalBadgeDot: {
     width: 8,
@@ -902,29 +940,51 @@ const styles = StyleSheet.create({
   },
   modalSubtitle: {
     fontSize: 13,
+    fontWeight: '800',
+    color: colors.gray[600],
+    textAlign: 'right',
+  },
+  modalHelperText: {
+    marginTop: 2,
+    fontSize: 12,
     fontWeight: '700',
     color: colors.gray[600],
     textAlign: 'right',
   },
+  modalSectionIntro: {
+    marginBottom: 10,
+    alignItems: ALIGN_RIGHT,
+  },
+  modalSectionTitle: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: colors.primary,
+    textAlign: 'right',
+  },
   modalInfoGrid: {
     gap: 12,
-    paddingBottom: 10,
+    paddingBottom: 14,
   },
   modalInfoTile: {
     flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.7)',
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.78)',
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.06)',
+    borderColor: 'rgba(6,23,62,0.06)',
+    shadowColor: colors.black,
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 2,
   },
   modalInfoIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
+    width: 44,
+    height: 44,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -946,13 +1006,13 @@ const styles = StyleSheet.create({
   },
   modalInfoLabel: {
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '800',
     color: colors.gray[600],
     textAlign: 'right',
   },
   modalInfoValue: {
     marginTop: 4,
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '800',
     color: colors.text,
     textAlign: 'right',
@@ -964,7 +1024,7 @@ const styles = StyleSheet.create({
   modalActionsBar: {
     flexDirection: ROW_DIR,
     gap: 12,
-    paddingTop: 6,
+    paddingTop: 2,
   },
   modalActionSecondary: {
     flex: 1,
@@ -972,11 +1032,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    paddingVertical: 12,
-    borderRadius: 16,
-    backgroundColor: 'rgba(6, 23, 62, 0.08)',
+    paddingVertical: 14,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.82)',
     borderWidth: 1,
-    borderColor: 'rgba(6, 23, 62, 0.2)',
+    borderColor: 'rgba(6, 23, 62, 0.12)',
   },
   modalActionSecondaryText: {
     color: colors.primary,
@@ -990,9 +1050,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    paddingVertical: 12,
-    borderRadius: 16,
+    paddingVertical: 14,
+    borderRadius: 18,
     backgroundColor: colors.error,
+    shadowColor: colors.error,
+    shadowOpacity: 0.14,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3,
   },
   modalActionDangerText: {
     color: colors.white,
@@ -1006,12 +1071,27 @@ const styles = StyleSheet.create({
   demoNoteRow: {
     flexDirection: ROW_DIR,
     alignItems: 'center',
-    gap: 6,
-    marginTop: 10,
+    gap: 10,
+    marginTop: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.66)',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.06)',
+  },
+  demoNoteIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(6,23,62,0.08)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   demoNote: {
+    flex: 1,
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '800',
     color: colors.gray[600],
     textAlign: 'right',
   },

@@ -187,6 +187,7 @@ export default function AdminProfileScreen() {
   const [logoutModalOpen, setLogoutModalOpen] = useState(false);
 
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+  const [visibleHalf, setVisibleHalf] = useState<0 | 1>(0);
   const [availableYears, setAvailableYears] = useState<number[]>([]);
   const [bars12, setBars12] = useState<MonthBar[]>([]);
   const [yearTotalEvents, setYearTotalEvents] = useState<number>(0);
@@ -201,17 +202,17 @@ export default function AdminProfileScreen() {
     return `https://i.pravatar.cc/256?u=${seed}`;
   }, [userData?.avatar_url, userData?.email]);
 
-  const canPrevYear = useMemo(() => {
+  const canPrevHalf = useMemo(() => {
     if (availableYears.length === 0) return true;
     const min = Math.min(...availableYears);
-    return selectedYear > min;
-  }, [availableYears, selectedYear]);
+    return visibleHalf === 1 || selectedYear > min;
+  }, [availableYears, selectedYear, visibleHalf]);
 
-  const canNextYear = useMemo(() => {
+  const canNextHalf = useMemo(() => {
     if (availableYears.length === 0) return true;
     const max = Math.max(...availableYears);
-    return selectedYear < max;
-  }, [availableYears, selectedYear]);
+    return visibleHalf === 0 || selectedYear < max;
+  }, [availableYears, selectedYear, visibleHalf]);
 
   const performLogout = async () => {
     if (loggingOut) return;
@@ -333,10 +334,30 @@ export default function AdminProfileScreen() {
 
   const donutSize = Math.max(168, Math.min(220, Math.floor(width * 0.52)));
   const donutPalette = ["#06173e", "#CCA000", "#F0CB46", "#003566", "#4CAF50", "#6C757D"];
-  const typesGap = 10;
-  const typeCols = width >= 420 ? 4 : width >= 360 ? 3 : 2;
-  const typeInnerWidth = Math.max(260, width - 16 * 2 - 16 * 2); // content padding + card padding
-  const typeItemWidth = Math.floor((typeInnerWidth - typesGap * (typeCols - 1)) / typeCols);
+  const useThreeTypesPerRow = width < 420;
+  const visibleBars = useMemo(() => bars12.slice(visibleHalf === 0 ? 0 : 6, visibleHalf === 0 ? 6 : 12), [bars12, visibleHalf]);
+  const visibleRangeLabel = visibleHalf === 0 ? "ינואר - יוני" : "יולי - דצמבר";
+  const visibleHalfTotal = useMemo(() => visibleBars.reduce((sum, bar) => sum + bar.value, 0), [visibleBars]);
+
+  const goToPreviousHalf = () => {
+    if (!canPrevHalf) return;
+    if (visibleHalf === 1) {
+      setVisibleHalf(0);
+      return;
+    }
+    setSelectedYear((year) => year - 1);
+    setVisibleHalf(1);
+  };
+
+  const goToNextHalf = () => {
+    if (!canNextHalf) return;
+    if (visibleHalf === 0) {
+      setVisibleHalf(1);
+      return;
+    }
+    setSelectedYear((year) => year + 1);
+    setVisibleHalf(0);
+  };
 
   // Bottom padding for content above tab bar
   const TAB_BAR_HEIGHT = 65;
@@ -351,60 +372,75 @@ export default function AdminProfileScreen() {
     );
   }
 
-  const maxBar = Math.max(1, ...bars12.map((b) => b.value));
+  const maxBar = Math.max(1, ...visibleBars.map((b) => b.value));
   const isCurrentYear = selectedYear === now.getFullYear();
 
   return (
     <View style={styles.root}>
       <View style={styles.bg} pointerEvents="none">
-        <View style={styles.bgBlobA} />
-        <View style={styles.bgBlobB} />
+        <LinearGradient
+          colors={["#F7FAFF", "#E8F1FF", "#F2E0BA"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.bg}
+        />
+        <LinearGradient
+          colors={["rgba(255,255,255,0.68)", "rgba(255,255,255,0)"]}
+          start={{ x: 0.05, y: 0 }}
+          end={{ x: 0.75, y: 0.55 }}
+          style={styles.bgHighlight}
+        />
+        <LinearGradient
+          colors={["rgba(232,196,122,0.58)", "rgba(244,224,186,0.22)", "rgba(244,224,186,0)"]}
+          start={{ x: 1, y: 0.95 }}
+          end={{ x: 0.18, y: 0.22 }}
+          style={styles.bgWarmGlow}
+        />
       </View>
 
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={[styles.content, { paddingBottom: contentBottomPadding + insets.bottom }]}
+        stickyHeaderIndices={[0]}
+        contentContainerStyle={[
+          styles.content,
+          {
+            paddingBottom: contentBottomPadding + insets.bottom,
+          },
+        ]}
         showsVerticalScrollIndicator={false}
       >
-        {/* HERO */}
-        <View style={styles.heroCard}>
-          <LinearGradient colors={[ui.primary, ui.gold, ui.primary]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.heroTopLine} />
-          <View style={styles.heroDecor1} pointerEvents="none" />
-          <View style={styles.heroDecor2} pointerEvents="none" />
-
-          <View style={styles.heroEditSlot} pointerEvents="box-none">
+        <View style={[styles.topBarSticky, { paddingTop: insets.top + 10 }]}>
+          <View style={styles.topBar}>
             <Pressable
               onPress={() => router.push("/profile-editor")}
-              style={({ pressed }) => [styles.heroEditBtn, pressed && { opacity: 0.85 }]}
+              style={({ pressed }) => [styles.topBarAction, pressed && styles.topBarActionPressed]}
               accessibilityRole="button"
               accessibilityLabel="עריכת פרופיל"
             >
-              <LinearGradient
-                pointerEvents="none"
-                colors={["rgba(255,255,255,0.98)", "rgba(240,203,70,0.22)", "rgba(6,23,62,0.06)"]}
-                locations={[0, 0.55, 1]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.heroEditBtnBg}
-              />
-              <Ionicons name="create-outline" size={20} color={ui.primary} />
+              <Ionicons name="create-outline" size={18} color={colors.white} />
             </Pressable>
-          </View>
 
+            <View style={styles.topBarTextWrap}>
+              <Text style={styles.topBarTitle}>פרופיל מנהל</Text>
+              <Text style={styles.topBarSubtitle}>החשבון, הסטטיסטיקות והניהול שלך במקום אחד</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* HERO */}
+        <View style={styles.heroCard}>
           <View style={styles.heroIdentity}>
             <View style={styles.avatarRing}>
               <Image source={{ uri: avatarUri }} style={styles.avatar} contentFit="cover" />
             </View>
 
             <View style={styles.heroTextCol}>
-              <View style={styles.heroTitleRow}>
-                <Text style={styles.heroName} numberOfLines={1}>
-                  {String(userData.name || "מנהל")}
-                </Text>
-                <View style={styles.rolePill}>
-                  <Ionicons name="shield-checkmark" size={14} color={ui.gold} />
-                  <Text style={styles.rolePillText}>מנהל מערכת</Text>
-                </View>
+              <Text style={styles.heroName} numberOfLines={1}>
+                {String(userData.name || "מנהל")}
+              </Text>
+              <View style={styles.rolePill}>
+                <Ionicons name="shield-checkmark" size={14} color={ui.gold} />
+                <Text style={styles.rolePillText}>מנהל מערכת</Text>
               </View>
               <Text style={styles.heroEmail} numberOfLines={1}>
                 {String(userData.email || "")}
@@ -468,7 +504,7 @@ export default function AdminProfileScreen() {
                   const meta = EVENT_BADGE_META[type];
                   const iconColor = donutPalette[(idx >= 0 ? idx : 0) % donutPalette.length] ?? ui.primary;
                   return (
-                    <View key={row.type} style={[styles.typeItem, { width: typeItemWidth }]}>
+                    <View key={row.type} style={[styles.typeItem, useThreeTypesPerRow ? styles.typeItemThird : styles.typeItemQuarter]}>
                       <View
                         style={[
                           styles.typeIconPill,
@@ -496,19 +532,18 @@ export default function AdminProfileScreen() {
 
         {/* MONTHLY PERFORMANCE */}
         <View style={styles.card}>
-          <View style={styles.cardHeaderRow}>
-            <View style={styles.cardHeaderTextCol}>
-              <Text style={styles.cardTitle}>ביצועים חודשיים</Text>
-              <Text style={styles.cardSubtitle}>{`מס׳ אירועים לפי חודש · ${selectedYear}`}</Text>
+          <View style={styles.monthlyHeader}>
+            <View style={styles.monthlyHeaderTextCol}>
+              <Text style={styles.monthlyHeaderTitle}>ביצועים חודשיים</Text>
+              <Text style={styles.monthlyHeaderSubtitle}>{`מס׳ אירועים לפי חודש · ${visibleRangeLabel} · ${selectedYear}`}</Text>
             </View>
-
             <View style={styles.yearControls}>
               <Pressable
-                onPress={() => setSelectedYear((y) => y - 1)}
-                disabled={!canPrevYear}
-                style={({ pressed }) => [styles.yearBtn, pressed && canPrevYear && styles.yearBtnPressed, !canPrevYear && { opacity: 0.4 }]}
+                onPress={goToPreviousHalf}
+                disabled={!canPrevHalf}
+                style={({ pressed }) => [styles.yearBtn, pressed && canPrevHalf && styles.yearBtnPressed, !canPrevHalf && { opacity: 0.4 }]}
                 accessibilityRole="button"
-                accessibilityLabel="שנה קודמת"
+                accessibilityLabel="חצי שנה קודמת"
               >
                 <Ionicons name="chevron-forward" size={18} color={ui.text} />
               </Pressable>
@@ -517,15 +552,17 @@ export default function AdminProfileScreen() {
                 <Ionicons name="calendar-outline" size={14} color={ui.text} />
                 <Text style={styles.yearPillText}>{selectedYear}</Text>
                 <View style={styles.dot} />
-                <Text style={styles.yearPillText}>{`סה״כ ${yearTotalEvents}`}</Text>
+                <Text style={styles.yearPillText}>{visibleHalf === 0 ? "חצי א׳" : "חצי ב׳"}</Text>
+                <View style={styles.dot} />
+                <Text style={styles.yearPillText}>{`סה״כ ${visibleHalfTotal}`}</Text>
               </View>
 
               <Pressable
-                onPress={() => setSelectedYear((y) => y + 1)}
-                disabled={!canNextYear}
-                style={({ pressed }) => [styles.yearBtn, pressed && canNextYear && styles.yearBtnPressed, !canNextYear && { opacity: 0.4 }]}
+                onPress={goToNextHalf}
+                disabled={!canNextHalf}
+                style={({ pressed }) => [styles.yearBtn, pressed && canNextHalf && styles.yearBtnPressed, !canNextHalf && { opacity: 0.4 }]}
                 accessibilityRole="button"
-                accessibilityLabel="שנה הבאה"
+                accessibilityLabel="חצי שנה הבאה"
               >
                 <Ionicons name="chevron-back" size={18} color={ui.text} />
               </Pressable>
@@ -533,7 +570,7 @@ export default function AdminProfileScreen() {
           </View>
 
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chartRow}>
-            {bars12.map((b) => {
+            {visibleBars.map((b) => {
               const isCurrentMonth = isCurrentYear && b.monthIndex === now.getMonth();
               const pct = b.value === 0 ? 0 : Math.max(0.08, b.value / maxBar);
               const fillColors = isCurrentMonth ? [ui.primary, ui.gold] : ["rgba(6,23,62,0.22)", "rgba(204,160,0,0.14)"];
@@ -649,33 +686,74 @@ export default function AdminProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: ui.bg },
+  root: { flex: 1, backgroundColor: "#E8F1FF" },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
 
-  bg: { ...StyleSheet.absoluteFillObject, backgroundColor: ui.bg },
-  bgBlobA: {
-    position: "absolute",
-    width: 520,
-    height: 520,
-    borderRadius: 260,
-    backgroundColor: ui.primary,
-    opacity: 0.06,
-    top: -220,
-    right: -160,
+  bg: { ...StyleSheet.absoluteFillObject },
+  bgHighlight: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.95,
   },
-  bgBlobB: {
-    position: "absolute",
-    width: 420,
-    height: 420,
-    borderRadius: 210,
-    backgroundColor: ui.gold,
-    opacity: 0.08,
-    top: 120,
-    left: -180,
+  bgWarmGlow: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.78,
   },
 
   scroll: { flex: 1 },
-  content: { paddingHorizontal: 16, paddingTop: 14, gap: 14 },
+  content: { paddingHorizontal: 16, paddingTop: 0, gap: 14 },
+  topBarSticky: {
+    marginHorizontal: -16,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    backgroundColor: "rgba(255,255,255,0.96)",
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(6,23,62,0.06)",
+    shadowColor: colors.black,
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
+  },
+  topBar: {
+    flexDirection: ROW_DIR,
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  topBarTextWrap: {
+    flex: 1,
+    alignItems: ALIGN_RIGHT,
+    gap: 4,
+  },
+  topBarTitle: {
+    fontSize: 22,
+    fontWeight: "900",
+    color: ui.primary,
+    textAlign: "right",
+  },
+  topBarSubtitle: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: ui.muted,
+    textAlign: "right",
+  },
+  topBarAction: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: ui.primary,
+    shadowColor: ui.primary,
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 6,
+  },
+  topBarActionPressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.98 }],
+  },
 
   card: {
     backgroundColor: ui.card,
@@ -691,93 +769,45 @@ const styles = StyleSheet.create({
   },
 
   heroCard: {
-    backgroundColor: ui.card,
+    backgroundColor: "rgba(255,255,255,0.98)",
     borderRadius: 24,
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 18,
     borderWidth: 1,
-    borderColor: ui.border,
-    overflow: "hidden",
-    position: "relative",
+    borderColor: "rgba(6,23,62,0.08)",
     shadowColor: colors.black,
-    shadowOpacity: 0.06,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 2,
+    shadowOpacity: 0.05,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3,
   },
-  heroTopLine: { position: "absolute", top: 0, left: 0, right: 0, height: 4 },
-  heroDecor1: {
-    position: "absolute",
-    top: -80,
-    right: -90,
-    width: 260,
-    height: 260,
-    borderRadius: 999,
-    backgroundColor: "rgba(204,160,0,0.10)",
-  },
-  heroDecor2: {
-    position: "absolute",
-    bottom: -110,
-    left: -110,
-    width: 320,
-    height: 320,
-    borderRadius: 999,
-    backgroundColor: "rgba(6,23,62,0.05)",
-  },
-  heroIdentity: { flex: 1, flexDirection: ROW_DIR, alignItems: "center", gap: 14, minWidth: 0, paddingEnd: 52 },
-  heroEditSlot: {
-    position: "absolute",
-    right: 14,
-    top: 0,
-    bottom: 0,
-    zIndex: 6,
-    justifyContent: "center",
-    alignItems: "center",
-  },
+  heroIdentity: { flex: 1, flexDirection: ROW_DIR, alignItems: "center", gap: 14, minWidth: 0 },
   avatarRing: {
     width: 78,
     height: 78,
     borderRadius: 999,
     padding: 3,
-    backgroundColor: "rgba(0,0,0,0.03)",
+    backgroundColor: "rgba(6,23,62,0.03)",
     borderWidth: 1,
-    borderColor: ui.border,
+    borderColor: "rgba(6,23,62,0.08)",
   },
   avatar: { width: "100%", height: "100%", borderRadius: 999 },
-  heroTextCol: { flex: 1, minWidth: 0, justifyContent: "flex-start", alignItems: ALIGN_RIGHT, alignSelf: "stretch", gap: 4 },
-  heroTitleRow: { flexDirection: ROW_DIR, alignItems: "center", justifyContent: ALIGN_RIGHT, gap: 10, flexWrap: "wrap" },
-  heroName: { fontSize: 20, fontWeight: "900", color: ui.primary, textAlign: "right" },
+  heroTextCol: { flex: 1, minWidth: 0, justifyContent: "flex-start", alignItems: ALIGN_RIGHT, alignSelf: "stretch", gap: 8 },
+  heroName: { fontSize: 24, fontWeight: "900", color: ui.primary, textAlign: "right" },
   rolePill: {
     flexDirection: ROW_DIR,
     alignItems: "center",
     gap: 6,
     paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingVertical: 5,
     borderRadius: 999,
-    backgroundColor: "rgba(204,160,0,0.10)",
+    alignSelf: ALIGN_RIGHT,
+    backgroundColor: "rgba(204,160,0,0.08)",
     borderWidth: 1,
-    borderColor: "rgba(204,160,0,0.18)",
+    borderColor: "rgba(204,160,0,0.16)",
   },
   rolePillText: { fontSize: 12, fontWeight: "900", color: "rgba(161,98,7,0.98)", textAlign: "right" },
-  heroEmail: { fontSize: 13, fontWeight: "800", color: ui.muted, textAlign: "right" },
-  heroEditBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.92)",
-    borderWidth: 1,
-    borderColor: ui.border,
-    overflow: "hidden",
-    shadowColor: ui.primary,
-    shadowOpacity: 0.14,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 6,
-  },
-  heroEditBtnBg: {
-    ...StyleSheet.absoluteFillObject,
-  },
+  heroEmail: { fontSize: 14, fontWeight: "700", color: ui.muted, textAlign: "right" },
 
   kpisGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
   kpiCard: {
@@ -808,6 +838,31 @@ const styles = StyleSheet.create({
   cardHeaderTextCol: { flex: 1, minWidth: 0, alignItems: ALIGN_RIGHT, alignSelf: "stretch" },
   cardTitle: { width: "100%", fontSize: 16, fontWeight: "900", color: ui.primary, textAlign: "right" },
   cardSubtitle: { width: "100%", marginTop: 4, fontSize: 12, fontWeight: "700", color: ui.muted, textAlign: "right" },
+  monthlyHeader: {
+    marginBottom: 12,
+    gap: 10,
+    alignItems: "center",
+  },
+  monthlyHeaderTextCol: {
+    width: "100%",
+    alignItems: "center",
+  },
+  monthlyHeaderTitle: {
+    width: "100%",
+    fontSize: 16,
+    fontWeight: "900",
+    color: ui.primary,
+    textAlign: "center",
+  },
+  monthlyHeaderSubtitle: {
+    width: "100%",
+    marginTop: 4,
+    fontSize: 12,
+    fontWeight: "700",
+    color: ui.muted,
+    textAlign: "center",
+    lineHeight: 18,
+  },
   pill: {
     height: 32,
     paddingHorizontal: 10,
@@ -875,7 +930,7 @@ const styles = StyleSheet.create({
   donutCenterBig: { fontSize: 28, fontWeight: "900", color: ui.primary },
   donutCenterSmall: { marginTop: 4, fontSize: 12, fontWeight: "800", color: ui.muted },
 
-  typeList: { flexDirection: ROW_DIR, flexWrap: "wrap", gap: 10 },
+  typeList: { flexDirection: ROW_DIR, flexWrap: "wrap", justifyContent: "space-between", rowGap: 10 },
   typeItem: {
     flexGrow: 0,
     borderRadius: 18,
@@ -887,6 +942,12 @@ const styles = StyleSheet.create({
     gap: 8,
     alignItems: "center",
     justifyContent: "center",
+  },
+  typeItemThird: {
+    width: "31.5%",
+  },
+  typeItemQuarter: {
+    width: "23%",
   },
   typeIconPill: {
     width: 44,

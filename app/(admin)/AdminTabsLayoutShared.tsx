@@ -134,6 +134,11 @@ export default function AdminTabsLayoutShared() {
         name="admin-profile"
         options={{
           title: "פרופיל",
+          ...(Platform.OS !== "web"
+            ? {
+                headerShown: false,
+              }
+            : null),
           tabBarIcon: ({ focused }) => (
             <View style={styles.tabItem}>
               <View style={[styles.iconCircle, focused && styles.iconCircleActive]}>
@@ -218,6 +223,8 @@ export default function AdminTabsLayoutShared() {
         name="users"
         options={{
           title: "ניהול משתמשים",
+          animation: "none",
+          headerShown: false,
           tabBarIcon: ({ focused }) => (
             <View style={styles.tabItem}>
               <View style={[styles.iconCircle, focused && styles.iconCircleActive]}>
@@ -270,7 +277,20 @@ export default function AdminTabsLayoutShared() {
       }}
     />
   );
-  screens.push(<Tabs.Screen key="admin-events-create" name="admin-events-create" options={{ href: null }} />);
+  screens.push(
+    <Tabs.Screen
+      key="admin-events-create"
+      name="admin-events-create"
+      options={{
+        href: null,
+        ...(Platform.OS !== "web"
+          ? {
+              headerShown: false,
+            }
+          : null),
+      }}
+    />
+  );
   screens.push(
     <Tabs.Screen
       key="admin-event-details"

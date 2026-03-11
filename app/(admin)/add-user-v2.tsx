@@ -7,7 +7,6 @@ import {
   TextInput,
   TouchableOpacity,
   Keyboard,
-  KeyboardAvoidingView,
   Platform,
   Alert,
   Modal,
@@ -19,6 +18,7 @@ import {
 } from 'react-native';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
 import { colors } from '@/constants/colors';
 import { useUserStore } from '@/store/userStore';
 import { useDemoUsersStore } from '@/store/demoUsersStore';
@@ -100,11 +100,6 @@ export default function AddUserScreenV2({
   });
 
   const goBackOrUsers = useCallback(() => {
-    const canGoBack = typeof (router as any)?.canGoBack === 'function' ? (router as any).canGoBack() : false;
-    if (canGoBack) {
-      router.back();
-      return;
-    }
     router.replace('/(admin)/users');
   }, [router]);
 
@@ -157,8 +152,10 @@ export default function AddUserScreenV2({
   );
 
   useEffect(() => {
-    const showSub = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
-    const hideSub = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, () => setKeyboardVisible(true));
+    const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardVisible(false));
     return () => {
       showSub.remove();
       hideSub.remove();
@@ -449,7 +446,7 @@ export default function AddUserScreenV2({
                   } as any)
                 : null,
             ] as any)
-          : { backgroundColor: theme.bg, paddingTop: insets.top },
+          : { backgroundColor: theme.bg, paddingTop: 0 },
       ]}
     >
       <Stack.Screen options={{ headerShown: false }} />
@@ -457,269 +454,332 @@ export default function AddUserScreenV2({
       {/* Header (stable: no row-reverse tricks, use RTL-aware direction) */}
       {!isWebPremium ? (
         <>
-          <View style={[styles.headerSurface, { backgroundColor: theme.headerBg, borderBottomColor: theme.border }]}>
-            <View style={styles.headerRow}>
-              <TouchableOpacity
-                accessibilityRole="button"
-                accessibilityLabel="חזרה"
-                onPress={goBackOrUsers}
-                activeOpacity={0.85}
-                style={styles.backButton}
-              >
-                <MaterialIcons name="arrow-back-ios" size={20} color={ui.primary} />
-              </TouchableOpacity>
+          <LinearGradient
+            colors={['#F7FAFF', '#E8F1FF', '#F2E0BA']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.mobileBg}
+          />
+          <LinearGradient
+            colors={['rgba(255,255,255,0.68)', 'rgba(255,255,255,0)']}
+            start={{ x: 0.05, y: 0 }}
+            end={{ x: 0.75, y: 0.55 }}
+            style={styles.mobileBgHighlight}
+          />
+          <LinearGradient
+            colors={['rgba(232,196,122,0.56)', 'rgba(244,224,186,0.22)', 'rgba(244,224,186,0)']}
+            start={{ x: 1, y: 0.95 }}
+            end={{ x: 0.18, y: 0.22 }}
+            style={styles.mobileBgWarmGlow}
+          />
 
-              <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1} pointerEvents="none">
-                הוספת משתמש חדש
-              </Text>
-
-              <View style={styles.headerPlaceholder} />
-            </View>
-          </View>
-
-          <KeyboardAvoidingView
+          <AppKeyboardAwareScrollView
             style={{ flex: 1 }}
-            behavior={Platform.OS === 'ios' ? 'height' : 'height'}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+            showsVerticalScrollIndicator={false}
+            stickyHeaderIndices={[0]}
+            contentContainerStyle={[
+              styles.mobileContent,
+              {
+                paddingTop: 0,
+                paddingBottom: keyboardVisible ? 24 : Math.max(insets.bottom, 24) + 24,
+              },
+            ]}
+            keyboardShouldPersistTaps="handled"
+            bounces={false}
+            alwaysBounceVertical={false}
+            overScrollMode="never"
+            enableResetScrollToCoords={false}
           >
-            <AppKeyboardAwareScrollView
-              style={{ flex: 1 }}
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={[
-                styles.content,
-                {
-                  // When keyboard is open the footer is behind it; avoid leaving a big empty "gray" gap.
-                  paddingBottom: keyboardVisible ? 24 : 40 + 12 + 48 + Math.max(insets.bottom, 14),
-                },
-              ]}
-              keyboardShouldPersistTaps="handled"
-            >
+              <View style={[styles.mobileTopBarSticky, { paddingTop: insets.top + 10 }]}>
+                <View style={styles.mobileTopBar}>
+                  <View style={styles.mobileTopBarRightGroup}>
+                    <TouchableOpacity
+                      accessibilityRole="button"
+                      accessibilityLabel="חזרה"
+                      onPress={goBackOrUsers}
+                      activeOpacity={0.88}
+                      style={styles.mobileTopBarButton}
+                    >
+                      <MaterialIcons name="arrow-forward-ios" size={20} color={ui.primary} />
+                    </TouchableOpacity>
+
+                    <Text style={styles.mobileTopBarTitle}>הוספת משתמש חדש</Text>
+                  </View>
+                  <View style={styles.mobileTopBarPlaceholder} />
+                </View>
+              </View>
+
               {isDemoMode && (
                 <View
                   style={[
-                    styles.demoNote,
+                    styles.mobileDemoNote,
                     {
-                      borderColor: 'rgba(6, 23, 62, 0.18)',
-                      backgroundColor: 'rgba(6, 23, 62, 0.08)',
+                      borderColor: 'rgba(6, 23, 62, 0.12)',
+                      backgroundColor: 'rgba(255,255,255,0.72)',
                     },
                   ]}
                 >
-                  <Ionicons name="information-circle" size={18} color={ui.primary} style={{ marginStart: 8 }} />
+                  <View style={styles.mobileDemoNoteIconWrap}>
+                    <Ionicons name="information-circle" size={18} color={ui.primary} />
+                  </View>
                   <Text style={[styles.demoNoteText, { color: theme.text }]}>
                     מצב דמו: הנתונים נשמרים מקומית ולא בדאטאבייס.
                   </Text>
                 </View>
               )}
 
-              {/* Avatar */}
-              <View style={styles.avatarSection}>
-                <TouchableOpacity
-                  accessibilityRole="button"
-                  accessibilityLabel={avatar ? 'החלף תמונה' : 'הוסף תמונה'}
-                  onPress={handlePickAvatar}
-                  activeOpacity={0.85}
-                  style={styles.avatarPressable}
-                >
-                  <View style={[styles.avatarCircle, { backgroundColor: theme.inputBg, borderColor: theme.border }]}>
-                    {avatar?.uri ? (
-                      <Image source={{ uri: avatar.uri }} style={styles.avatarImage} />
-                    ) : (
-                      <MaterialIcons name="add-a-photo" size={30} color={isDark ? '#64748b' : '#94a3b8'} />
-                    )}
+              <View style={styles.mobileHeroCard}>
+                <LinearGradient
+                  colors={['rgba(255,255,255,0.98)', 'rgba(249,247,242,0.96)']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.mobileHeroCardGradient}
+                />
+                <View style={styles.mobileHeroTextWrap}>
+                  <View style={styles.mobileSectionTitleRow}>
+                    <View style={styles.mobileSectionTitleIconWrap}>
+                      <MaterialIcons name="add-a-photo" size={18} color={ui.primary} />
+                    </View>
+                    <Text style={styles.mobileHeroTitle}>תמונת פרופיל</Text>
                   </View>
-                  <Text style={[styles.avatarCta, { marginTop: 10 }]}>הוסף תמונה</Text>
-                </TouchableOpacity>
+                  <Text style={styles.mobileHeroSubtitle}>הוסף תמונה שתוצג למשתמש במערכת</Text>
+                </View>
 
-                {!!avatar && (
+                <View style={styles.avatarSection}>
                   <TouchableOpacity
                     accessibilityRole="button"
-                    accessibilityLabel="הסר תמונה"
-                    onPress={() => setAvatar(null)}
-                    activeOpacity={0.85}
-                    style={styles.removeAvatarBtn}
+                    accessibilityLabel={avatar ? 'החלף תמונה' : 'הוסף תמונה'}
+                    onPress={handlePickAvatar}
+                    activeOpacity={0.88}
+                    style={styles.avatarPressable}
                   >
-                    <Ionicons name="trash-outline" size={16} color="#F44336" style={{ marginStart: 6 }} />
-                    <Text style={styles.removeAvatarText}>הסר</Text>
+                    <View style={[styles.avatarCircle, { backgroundColor: theme.inputBg, borderColor: theme.border }]}>
+                      {avatar?.uri ? (
+                        <Image source={{ uri: avatar.uri }} style={styles.avatarImage} />
+                      ) : (
+                        <MaterialIcons name="add-a-photo" size={30} color={isDark ? '#64748b' : '#94a3b8'} />
+                      )}
+                    </View>
+                    <Text style={[styles.avatarCta, { marginTop: 10 }]}>{avatar ? 'החלף תמונה' : 'הוסף תמונה'}</Text>
                   </TouchableOpacity>
-                )}
-              </View>
 
-              {/* Fields */}
-              <View style={styles.fields}>
-                <View style={styles.fieldGroup}>
-                  <Text style={[styles.label, { color: theme.muted }]}>שם מלא</Text>
-                  <TextInput
-                    style={[
-                      styles.input,
-                      styles.inputRtl,
-                      { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text },
-                      focusedField === 'name' && styles.inputFocused,
-                    ]}
-                    value={newUser.name}
-                    onChangeText={(text) => setNewUser((prev) => ({ ...prev, name: text }))}
-                    placeholder="ישראל ישראלי"
-                    placeholderTextColor={theme.faint}
-                    autoCapitalize="words"
-                    onFocus={() => setFocusedField('name')}
-                    onBlur={() => setFocusedField((f) => (f === 'name' ? null : f))}
-                  />
-                </View>
-
-                <View style={styles.fieldGroup}>
-                  <Text style={[styles.label, { color: theme.muted }]}>אימייל</Text>
-                  <TextInput
-                    style={[
-                      styles.input,
-                      styles.inputLtr,
-                      { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text },
-                      focusedField === 'email' && styles.inputFocused,
-                    ]}
-                    value={newUser.email}
-                    onChangeText={(text) => setNewUser((prev) => ({ ...prev, email: text }))}
-                    placeholder="email@example.com"
-                    placeholderTextColor={theme.faint}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                    onFocus={() => setFocusedField('email')}
-                    onBlur={() => setFocusedField((f) => (f === 'email' ? null : f))}
-                  />
-                </View>
-
-                <View style={styles.fieldGroup}>
-                  <Text style={[styles.label, { color: theme.muted }]}>טלפון</Text>
-                  <TextInput
-                    style={[
-                      styles.input,
-                      styles.inputLtr,
-                      { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text },
-                      focusedField === 'phone' && styles.inputFocused,
-                    ]}
-                    value={newUser.phone}
-                    onChangeText={(text) => setNewUser((prev) => ({ ...prev, phone: text }))}
-                    placeholder="050-0000000"
-                    placeholderTextColor={theme.faint}
-                    keyboardType="phone-pad"
-                    onFocus={() => setFocusedField('phone')}
-                    onBlur={() => setFocusedField((f) => (f === 'phone' ? null : f))}
-                  />
-                </View>
-              </View>
-
-              <View style={[styles.divider, { backgroundColor: theme.divider }]} />
-
-              <View style={styles.fields}>
-                <View style={styles.fieldGroup}>
-                  <Text style={[styles.label, { color: theme.muted }]}>סיסמה</Text>
-                  <View style={styles.inputRow}>
-                    <TextInput
-                      style={[
-                        styles.input,
-                        styles.inputInRow,
-                        styles.inputRtl,
-                        { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text },
-                        focusedField === 'password' && styles.inputFocused,
-                      ]}
-                      value={newUser.password}
-                      onChangeText={(text) => setNewUser((prev) => ({ ...prev, password: text }))}
-                      placeholder="********"
-                      placeholderTextColor={theme.faint}
-                      secureTextEntry={!showPassword}
-                      onFocus={() => setFocusedField('password')}
-                      onBlur={() => setFocusedField((f) => (f === 'password' ? null : f))}
-                    />
+                  {!!avatar && (
                     <TouchableOpacity
                       accessibilityRole="button"
-                      accessibilityLabel={showPassword ? 'הסתר סיסמה' : 'הצג סיסמה'}
-                      onPress={() => setShowPassword((v) => !v)}
-                      activeOpacity={0.7}
-                      style={styles.eyeBtn}
+                      accessibilityLabel="הסר תמונה"
+                      onPress={() => setAvatar(null)}
+                      activeOpacity={0.85}
+                      style={styles.removeAvatarBtn}
                     >
-                      <MaterialIcons
-                        name={showPassword ? 'visibility-off' : 'visibility'}
-                        size={20}
-                        color={isDark ? '#94a3b8' : '#64748b'}
-                      />
+                      <Ionicons name="trash-outline" size={16} color="#F44336" style={{ marginStart: 6 }} />
+                      <Text style={styles.removeAvatarText}>הסר</Text>
                     </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+
+              <View style={styles.mobileSectionCard}>
+                <View style={styles.mobileSectionHeader}>
+                  <View style={styles.mobileSectionTitleRow}>
+                    <View style={styles.mobileSectionTitleIconWrap}>
+                      <Ionicons name="shield-checkmark-outline" size={18} color={ui.primary} />
+                    </View>
+                    <Text style={styles.mobileSectionTitle}>הרשאות משתמש</Text>
                   </View>
+                  <Text style={styles.mobileSectionSubtitle}>קבע איזה סוג גישה המשתמש יקבל באפליקציה</Text>
                 </View>
 
-                <View style={styles.fieldGroup}>
-                  <Text style={[styles.label, { color: theme.muted }]}>אימות סיסמה</Text>
-                  <View style={styles.inputRow}>
-                    <TextInput
-                      style={[
-                        styles.input,
-                        styles.inputInRow,
-                        styles.inputRtl,
-                        { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text },
-                        focusedField === 'confirmPassword' && styles.inputFocused,
-                      ]}
-                      value={newUser.confirmPassword}
-                      onChangeText={(text) => setNewUser((prev) => ({ ...prev, confirmPassword: text }))}
-                      placeholder="********"
-                      placeholderTextColor={theme.faint}
-                      secureTextEntry={!showConfirmPassword}
-                      onFocus={() => setFocusedField('confirmPassword')}
-                      onBlur={() => setFocusedField((f) => (f === 'confirmPassword' ? null : f))}
-                    />
-                    <TouchableOpacity
-                      accessibilityRole="button"
-                      accessibilityLabel={showConfirmPassword ? 'הסתר אימות סיסמה' : 'הצג אימות סיסמה'}
-                      onPress={() => setShowConfirmPassword((v) => !v)}
-                      activeOpacity={0.7}
-                      style={styles.eyeBtn}
-                    >
-                      <MaterialIcons
-                        name={showConfirmPassword ? 'visibility-off' : 'visibility'}
-                        size={20}
-                        color={isDark ? '#94a3b8' : '#64748b'}
-                      />
-                    </TouchableOpacity>
+                <View style={styles.roleSection}>
+                  <Text style={[styles.roleLabel, { color: theme.muted }]}>תפקיד</Text>
+                  <View
+                    style={[
+                      styles.roleSegmentV3,
+                      {
+                        backgroundColor: 'rgba(232,240,255,0.92)',
+                        borderColor: 'rgba(6,23,62,0.08)',
+                        flexDirection: isRTL ? 'row' : 'row-reverse',
+                      },
+                    ]}
+                  >
+                    <RoleOption label="עובד" value="employee" />
+                    <RoleOption label="מנהל" value="admin" />
+                    <RoleOption label="בעל אירוע" value="event_owner" />
                   </View>
                 </View>
               </View>
 
-              {/* Role segmented control (existing) */}
-              <View style={styles.roleSection}>
-                <Text style={[styles.roleLabel, { color: theme.muted }]}>תפקיד</Text>
-                <View
-                  style={[
-                    styles.roleSegmentV3,
-                    {
-                      backgroundColor: '#E2E8F0', // slate-200 (opaque + visible)
-                      borderColor: '#CBD5E1', // slate-300
-                      flexDirection: isRTL ? 'row' : 'row-reverse',
-                    },
-                  ]}
+              <View style={styles.mobileSectionCard}>
+                <View style={styles.mobileSectionHeader}>
+                  <View style={styles.mobileSectionTitleRow}>
+                    <View style={styles.mobileSectionTitleIconWrap}>
+                      <Ionicons name="person-outline" size={18} color={ui.primary} />
+                    </View>
+                    <Text style={styles.mobileSectionTitle}>פרטים אישיים</Text>
+                  </View>
+                  <Text style={styles.mobileSectionSubtitle}>המידע שיופיע בכרטיס המשתמש ובמערכת</Text>
+                </View>
+
+                <View style={styles.fields}>
+                  <View style={styles.fieldGroup}>
+                    <Text style={[styles.label, { color: theme.muted }]}>שם מלא</Text>
+                    <TextInput
+                      style={[
+                        styles.input,
+                        styles.inputRtl,
+                        { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text },
+                        focusedField === 'name' && styles.inputFocused,
+                      ]}
+                      value={newUser.name}
+                      onChangeText={(text) => setNewUser((prev) => ({ ...prev, name: text }))}
+                      placeholder="ישראל ישראלי"
+                      placeholderTextColor={theme.faint}
+                      autoCapitalize="words"
+                      onFocus={() => setFocusedField('name')}
+                      onBlur={() => setFocusedField((f) => (f === 'name' ? null : f))}
+                    />
+                  </View>
+
+                  <View style={styles.fieldGroup}>
+                    <Text style={[styles.label, { color: theme.muted }]}>אימייל</Text>
+                    <TextInput
+                      style={[
+                        styles.input,
+                        styles.inputLtr,
+                        { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text },
+                        focusedField === 'email' && styles.inputFocused,
+                      ]}
+                      value={newUser.email}
+                      onChangeText={(text) => setNewUser((prev) => ({ ...prev, email: text }))}
+                      placeholder="email@example.com"
+                      placeholderTextColor={theme.faint}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      onFocus={() => setFocusedField('email')}
+                      onBlur={() => setFocusedField((f) => (f === 'email' ? null : f))}
+                    />
+                  </View>
+
+                  <View style={styles.fieldGroup}>
+                    <Text style={[styles.label, { color: theme.muted }]}>טלפון</Text>
+                    <TextInput
+                      style={[
+                        styles.input,
+                        styles.inputLtr,
+                        { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text },
+                        focusedField === 'phone' && styles.inputFocused,
+                      ]}
+                      value={newUser.phone}
+                      onChangeText={(text) => setNewUser((prev) => ({ ...prev, phone: text }))}
+                      placeholder="050-0000000"
+                      placeholderTextColor={theme.faint}
+                      keyboardType="phone-pad"
+                      onFocus={() => setFocusedField('phone')}
+                      onBlur={() => setFocusedField((f) => (f === 'phone' ? null : f))}
+                    />
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.mobileSectionCard}>
+                <View style={styles.mobileSectionHeader}>
+                  <View style={styles.mobileSectionTitleRow}>
+                    <View style={styles.mobileSectionTitleIconWrap}>
+                      <Ionicons name="lock-closed-outline" size={18} color={ui.primary} />
+                    </View>
+                    <Text style={styles.mobileSectionTitle}>אבטחה והתחברות</Text>
+                  </View>
+                  <Text style={styles.mobileSectionSubtitle}>בחר סיסמה למשתמש החדש ואמת אותה</Text>
+                </View>
+
+                <View style={styles.fields}>
+                  <View style={styles.fieldGroup}>
+                    <Text style={[styles.label, { color: theme.muted }]}>סיסמה</Text>
+                    <View style={styles.passwordInputRow}>
+                      <TextInput
+                        style={[
+                          styles.passwordInput,
+                          styles.inputInRow,
+                          styles.inputRtl,
+                          { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text },
+                          focusedField === 'password' && styles.inputFocused,
+                        ]}
+                        value={newUser.password}
+                        onChangeText={(text) => setNewUser((prev) => ({ ...prev, password: text }))}
+                        placeholder="********"
+                        placeholderTextColor={theme.faint}
+                        secureTextEntry={!showPassword}
+                        onFocus={() => setFocusedField('password')}
+                        onBlur={() => setFocusedField((f) => (f === 'password' ? null : f))}
+                      />
+                      <TouchableOpacity
+                        accessibilityRole="button"
+                        accessibilityLabel={showPassword ? 'הסתר סיסמה' : 'הצג סיסמה'}
+                        onPress={() => setShowPassword((v) => !v)}
+                        activeOpacity={0.7}
+                        style={styles.eyeBtn}
+                      >
+                        <MaterialIcons
+                          name={showPassword ? 'visibility-off' : 'visibility'}
+                          size={20}
+                          color={isDark ? '#94a3b8' : '#64748b'}
+                        />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  <View style={styles.fieldGroup}>
+                    <Text style={[styles.label, { color: theme.muted }]}>אימות סיסמה</Text>
+                    <View style={styles.passwordInputRow}>
+                      <TextInput
+                        style={[
+                          styles.passwordInput,
+                          styles.inputInRow,
+                          styles.inputRtl,
+                          { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text },
+                          focusedField === 'confirmPassword' && styles.inputFocused,
+                        ]}
+                        value={newUser.confirmPassword}
+                        onChangeText={(text) => setNewUser((prev) => ({ ...prev, confirmPassword: text }))}
+                        placeholder="********"
+                        placeholderTextColor={theme.faint}
+                        secureTextEntry={!showConfirmPassword}
+                        onFocus={() => setFocusedField('confirmPassword')}
+                        onBlur={() => setFocusedField((f) => (f === 'confirmPassword' ? null : f))}
+                      />
+                      <TouchableOpacity
+                        accessibilityRole="button"
+                        accessibilityLabel={showConfirmPassword ? 'הסתר אימות סיסמה' : 'הצג אימות סיסמה'}
+                        onPress={() => setShowConfirmPassword((v) => !v)}
+                        activeOpacity={0.7}
+                        style={styles.eyeBtn}
+                      >
+                        <MaterialIcons
+                          name={showConfirmPassword ? 'visibility-off' : 'visibility'}
+                          size={20}
+                          color={isDark ? '#94a3b8' : '#64748b'}
+                        />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </View>
+              </View>
+
+              <TouchableOpacity
+                onPress={handleAddUser}
+                disabled={loading}
+                activeOpacity={0.88}
+                style={[styles.mobilePrimaryButton, styles.mobileBottomSubmitButton, loading && { opacity: 0.75 }]}
+              >
+                <LinearGradient
+                  colors={['#06173E', '#003566']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.mobilePrimaryButtonGradient}
                 >
-                  <RoleOption label="עובד" value="employee" />
-                  <RoleOption label="מנהל" value="admin" />
-                  <RoleOption label="בעל אירוע" value="event_owner" />
-                </View>
-              </View>
-            </AppKeyboardAwareScrollView>
-          </KeyboardAvoidingView>
-
-          {/* Sticky bottom action (fixed: not affected by keyboard avoiding) */}
-          <View
-            style={[
-              styles.footerBar,
-              {
-                paddingBottom: Math.max(insets.bottom, 14),
-                backgroundColor: theme.bg,
-                borderTopColor: 'rgba(15, 23, 42, 0.06)',
-              },
-            ]}
-          >
-            <TouchableOpacity
-              onPress={handleAddUser}
-              disabled={loading}
-              activeOpacity={0.88}
-              style={[styles.primaryButtonV3, loading && { opacity: 0.75 }]}
-            >
-              {loading ? <ActivityIndicator color="white" /> : <Text style={styles.primaryButtonText}>שמור משתמש</Text>}
-            </TouchableOpacity>
-          </View>
+                  {loading ? <ActivityIndicator color="white" /> : <Text style={styles.primaryButtonText}>שמור משתמש</Text>}
+                </LinearGradient>
+              </TouchableOpacity>
+          </AppKeyboardAwareScrollView>
         </>
       ) : (
         <ScrollView
@@ -1210,6 +1270,192 @@ const styles = StyleSheet.create({
     transform: [{ rotate: isRTL ? '180deg' : '0deg' }],
   },
 
+  mobileBg: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  mobileBgHighlight: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.95,
+  },
+  mobileBgWarmGlow: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.78,
+  },
+  mobileContent: {
+    width: '100%',
+    alignSelf: 'stretch',
+    paddingHorizontal: 18,
+    paddingBottom: 40,
+  },
+  mobileTopBarSticky: {
+    backgroundColor: 'rgba(247,250,255,0.96)',
+    paddingBottom: 10,
+    zIndex: 10,
+  },
+  mobileTopBar: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  mobileTopBarRightGroup: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    gap: 10,
+    flex: 1,
+  },
+  mobileTopBarButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.84)',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.08)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: colors.black,
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
+  },
+  mobileTopBarTitle: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#06173e',
+    textAlign: rtlTextAlign,
+  },
+  mobileTopBarPlaceholder: {
+    width: 44,
+    height: 44,
+  },
+  mobileDemoNote: {
+    flexDirection: isRTL ? 'row' : 'row-reverse',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    borderWidth: 1,
+    marginBottom: 14,
+    shadowColor: colors.black,
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 2,
+  },
+  mobileDemoNoteIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(6,23,62,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginStart: 8,
+  },
+  mobileHeroCard: {
+    borderRadius: 30,
+    padding: 18,
+    marginBottom: 18,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.94)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.78)',
+    shadowColor: colors.black,
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 4,
+  },
+  mobileHeroCardGradient: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  mobileHeroTextWrap: {
+    alignItems: ALIGN_RIGHT,
+    marginBottom: 14,
+    gap: 6,
+  },
+  mobileSectionTitleRow: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    alignSelf: ALIGN_RIGHT,
+    gap: 8,
+    width: '100%',
+  },
+  mobileSectionTitleIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(6,23,62,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mobileHeroTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#06173e',
+    textAlign: rtlTextAlign,
+    flexShrink: 1,
+  },
+  mobileHeroSubtitle: {
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '700',
+    color: '#64748b',
+    textAlign: rtlTextAlign,
+    width: '100%',
+  },
+  mobileSectionCard: {
+    borderRadius: 28,
+    padding: 16,
+    marginBottom: 16,
+    backgroundColor: 'rgba(255,255,255,0.86)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.78)',
+    shadowColor: colors.black,
+    shadowOpacity: 0.06,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3,
+  },
+  mobileSectionHeader: {
+    alignItems: ALIGN_RIGHT,
+    marginBottom: 14,
+    gap: 4,
+  },
+  mobileSectionTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#06173e',
+    textAlign: rtlTextAlign,
+    flexShrink: 1,
+  },
+  mobileSectionSubtitle: {
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '700',
+    color: '#64748b',
+    textAlign: rtlTextAlign,
+  },
+  mobilePrimaryButton: {
+    borderRadius: 18,
+    overflow: 'hidden',
+    shadowColor: colors.primary,
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 4,
+  },
+  mobileBottomSubmitButton: {
+    marginTop: 6,
+    marginBottom: 8,
+  },
+  mobilePrimaryButtonGradient: {
+    height: 56,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 18,
+  },
+
   headerSurface: {
     position: 'relative',
     borderBottomWidth: 1,
@@ -1267,20 +1513,24 @@ const styles = StyleSheet.create({
   avatarSection: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 2,
-    marginBottom: 8,
+    marginTop: 4,
+    marginBottom: 2,
   },
   avatarPressable: { alignItems: 'center' },
   avatarCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 92,
+    height: 92,
+    borderRadius: 46,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
     backgroundColor: '#fff',
-    ...baseShadow,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
+    elevation: 4,
   },
   avatarImage: { width: '100%', height: '100%', resizeMode: 'cover' },
   avatarCta: { fontSize: 14, fontWeight: '900', color: ui.primary, textAlign: 'center' },
@@ -1290,7 +1540,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 999,
-    backgroundColor: 'rgba(244, 67, 54, 0.08)',
+    backgroundColor: 'rgba(255,255,255,0.84)',
     borderWidth: 1,
     borderColor: 'rgba(244, 67, 54, 0.18)',
     marginTop: 10,
@@ -1309,8 +1559,8 @@ const styles = StyleSheet.create({
     textAlign: rtlTextAlign,
   },
   input: {
-    height: 48,
-    borderRadius: 12,
+    height: 54,
+    borderRadius: 18,
     paddingHorizontal: 16,
     borderWidth: 1,
     fontSize: 15,
@@ -1323,6 +1573,11 @@ const styles = StyleSheet.create({
   inputLtr: { textAlign: 'left' },
   inputFocused: {
     borderColor: ui.primary,
+    shadowColor: colors.primary,
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
 
   divider: {
@@ -1332,19 +1587,32 @@ const styles = StyleSheet.create({
   },
 
   inputRow: { position: 'relative', justifyContent: 'center' },
-  inputInRow: { paddingRight: 46 },
+  passwordInputRow: {
+    position: 'relative',
+    justifyContent: 'center',
+    width: '100%',
+  },
+  passwordInput: {
+    width: '100%',
+    minHeight: 58,
+    borderRadius: 20,
+  },
+  inputInRow: {
+    paddingRight: 16,
+    paddingLeft: 52,
+  },
   eyeBtn: {
     position: 'absolute',
-    right: 10,
-    height: 48,
+    left: 10,
+    height: 58,
     width: 40,
     alignItems: 'center',
     justifyContent: 'center',
   },
 
   roleSection: {
-    marginTop: 14,
-    paddingTop: 6,
+    marginTop: 4,
+    paddingTop: 2,
   },
   roleLabel: {
     fontSize: 12,
@@ -1362,14 +1630,14 @@ const styles = StyleSheet.create({
   // New: super-stable segmented container (no shadows, strong contrast)
   roleSegmentV3: {
     borderWidth: 1,
-    borderRadius: 14,
-    padding: 4,
+    borderRadius: 20,
+    padding: 5,
     alignSelf: 'stretch',
   },
   roleOption: {
     flex: 1,
-    height: 40,
-    borderRadius: 10,
+    height: 46,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
     marginHorizontal: 4,
@@ -1382,7 +1650,7 @@ const styles = StyleSheet.create({
   roleOptionActive: {
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#94A3B8', // slate-400
+    borderColor: 'rgba(6,23,62,0.12)',
   },
   roleOptionText: {
     fontSize: 13,
