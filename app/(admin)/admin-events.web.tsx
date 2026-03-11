@@ -9,6 +9,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -23,6 +24,7 @@ import { supabase } from '@/lib/supabase';
 import { Event } from '@/types';
 import { MONTHS } from '@/features/events/eventsConstants';
 import { useEventsListModel } from '@/features/events/useEventsListModel';
+import AdminEventsScreen from './admin-events';
 
 const HERO_IMAGES = {
   baby: require('../../assets/images/baby.jpg'),
@@ -109,6 +111,12 @@ function getStatusMeta(date: Date | string) {
 }
 
 export default function AdminEventsWebScreen() {
+  const { width } = useWindowDimensions();
+
+  if (width < 900) {
+    return <AdminEventsScreen />;
+  }
+
   const router = useRouter();
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);

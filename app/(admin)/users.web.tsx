@@ -10,6 +10,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,6 +23,7 @@ import { useUsersModel, type UserFilter } from '@/features/users/useUsersModel';
 import { userService, type UserWithMetadata } from '@/lib/services/userService';
 import { eventService } from '@/lib/services/eventService';
 import type { Event } from '@/types';
+import UsersScreen from './users';
 
 type RoleFilter = Exclude<UserFilter, 'all'>;
 
@@ -60,6 +62,12 @@ function formatHebrewDate(value?: string | Date) {
 }
 
 export default function UsersWebScreen() {
+  const { width } = useWindowDimensions();
+
+  if (width < 900) {
+    return <UsersScreen />;
+  }
+
   const router = useRouter();
   const demoUsers = useDemoUsersStore((s) => s.users);
 

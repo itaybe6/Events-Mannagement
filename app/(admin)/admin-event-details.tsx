@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { BackHandler, View, Text, StyleSheet, ScrollView, ActivityIndicator, SafeAreaView, TouchableOpacity, Platform, useWindowDimensions, Modal, Alert, Pressable, TextInput, KeyboardAvoidingView } from 'react-native';
+import { BackHandler, View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, Platform, useWindowDimensions, Modal, Alert, Pressable, TextInput, KeyboardAvoidingView } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { colors } from '@/constants/colors';
 import { eventService } from '@/lib/services/eventService';
@@ -16,12 +16,6 @@ import BackSwipe from '@/components/BackSwipe';
 import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
 import { useAdminEventDetailsModel } from '@/features/events/useAdminEventDetailsModel';
 import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
-
-const HERO_IMAGES = {
-  baby: require('../../assets/images/baby.jpg'),
-  barMitzvah: require('../../assets/images/Bar Mitzvah.jpg'),
-  wedding: require('../../assets/images/wedding.jpg'),
-} as const;
 
 export default function AdminEventDetailsScreen() {
   const { id } = useLocalSearchParams();
@@ -72,9 +66,9 @@ export default function AdminEventDetailsScreen() {
         fallbackHref="/(admin)/admin-events"
         onBack={() => router.replace('/(admin)/admin-events')}
       >
-        <SafeAreaView style={{ flex: 1, backgroundColor: colors.gray[100], justifyContent: 'center', alignItems: 'center' }}>
+        <View style={{ flex: 1, backgroundColor: colors.gray[100], justifyContent: 'center', alignItems: 'center', paddingTop: insets.top }}>
           <ActivityIndicator size="large" color={colors.primary} />
-        </SafeAreaView>
+        </View>
       </BackSwipe>
     );
   }
@@ -85,7 +79,7 @@ export default function AdminEventDetailsScreen() {
         fallbackHref="/(admin)/admin-events"
         onBack={() => router.replace('/(admin)/admin-events')}
       >
-        <SafeAreaView style={{ flex: 1, backgroundColor: colors.gray[100], justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+        <View style={{ flex: 1, backgroundColor: colors.gray[100], justifyContent: 'center', alignItems: 'center', padding: 24, paddingTop: 24 + insets.top }}>
           <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text, textAlign: 'center' }}>{error}</Text>
           <TouchableOpacity
             onPress={() => router.replace('/(admin)/admin-events')}
@@ -94,7 +88,7 @@ export default function AdminEventDetailsScreen() {
           >
             <Text style={{ color: '#fff', fontWeight: '800' }}>חזרה לרשימת אירועים</Text>
           </TouchableOpacity>
-        </SafeAreaView>
+        </View>
       </BackSwipe>
     );
   }
@@ -105,7 +99,7 @@ export default function AdminEventDetailsScreen() {
         fallbackHref="/(admin)/admin-events"
         onBack={() => router.replace('/(admin)/admin-events')}
       >
-        <SafeAreaView style={{ flex: 1, backgroundColor: colors.gray[100], justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+        <View style={{ flex: 1, backgroundColor: colors.gray[100], justifyContent: 'center', alignItems: 'center', padding: 24, paddingTop: 24 + insets.top }}>
           <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text, textAlign: 'center' }}>האירוע לא נמצא</Text>
           <TouchableOpacity
             onPress={() => router.replace('/(admin)/admin-events')}
@@ -114,7 +108,7 @@ export default function AdminEventDetailsScreen() {
           >
             <Text style={{ color: '#fff', fontWeight: '800' }}>חזרה לרשימת אירועים</Text>
           </TouchableOpacity>
-        </SafeAreaView>
+        </View>
       </BackSwipe>
     );
   }
@@ -161,6 +155,15 @@ export default function AdminEventDetailsScreen() {
 
     // IMPORTANT: Keep admin tab bar by staying inside /(admin) group
     router.push(`/(admin)/BrideGroomSeating?eventId=${event.id}`);
+  };
+
+  const handleBackPress = () => {
+    const canGoBack = typeof (router as any)?.canGoBack === 'function' ? (router as any).canGoBack() : false;
+    if (canGoBack) {
+      router.back();
+      return;
+    }
+    router.replace('/(admin)/admin-events');
   };
 
   const openEditEvent = () => {
@@ -268,31 +271,14 @@ export default function AdminEventDetailsScreen() {
   // IMPORTANT: do not use a hook here, because this screen has an early return during loading
   // (changing hook order between renders breaks the Rules of Hooks).
   const ui = {
-    bg: '#F3F4F6',
-    text: '#0d111c',
-    muted: '#5d6b88',
-    primary: '#0f45e6',
-    glassBorder: 'rgba(17, 24, 39, 0.08)',
-    glassFill: '#FFFFFF',
+    bg: '#FFF9EE',
+    text: colors.richBlack,
+    muted: 'rgba(0, 53, 102, 0.72)',
+    primary: colors.richBlack,
+    accent: colors.gold,
+    glassBorder: 'rgba(6, 23, 62, 0.08)',
+    glassFill: 'rgba(255,255,255,0.88)',
   } as const;
-
-  const getHeroImageSource = () => {
-    const title = String(event?.title ?? '').toLowerCase();
-    const hasBarMitzvah =
-      title.includes('בר מצו') || title.includes('בר-מצו') || title.includes('bar mitz');
-    const hasBaby =
-      title.includes('ברית') ||
-      title.includes('בריתה') ||
-      title.includes('תינוק') ||
-      title.includes('תינוקת') ||
-      title.includes('baby') ||
-      title.includes('בייבי');
-
-    if (hasBarMitzvah) return HERO_IMAGES.barMitzvah;
-    if (hasBaby) return HERO_IMAGES.baby;
-
-    return HERO_IMAGES.wedding;
-  };
 
   const getEventTypeLabel = () => {
     const raw = String(event?.title ?? '').trim();
@@ -449,17 +435,35 @@ export default function AdminEventDetailsScreen() {
       onBack={() => router.replace('/(admin)/admin-events')}
     >
       <View style={[styles.safeRoot, { backgroundColor: ui.bg }]}>
-        <SafeAreaView style={styles.safe}>
-        {/* Background blobs */}
+        <View style={[styles.safe, { paddingTop: insets.top }]}>
+        {/* App background gradient */}
         <View pointerEvents="none" style={styles.bgLayer}>
           <LinearGradient
-            colors={['rgba(224,231,255,0.95)', 'rgba(224,231,255,0)']}
+            colors={['#F7FAFF', '#E8F1FF', '#F2E0BA']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.bgBase}
+          />
+          <LinearGradient
+            colors={['rgba(255,255,255,0.68)', 'rgba(255,255,255,0)']}
+            start={{ x: 0.05, y: 0 }}
+            end={{ x: 0.75, y: 0.55 }}
+            style={styles.bgHighlight}
+          />
+          <LinearGradient
+            colors={['rgba(232,196,122,0.58)', 'rgba(244,224,186,0.22)', 'rgba(244,224,186,0)']}
+            start={{ x: 1, y: 0.95 }}
+            end={{ x: 0.18, y: 0.22 }}
+            style={styles.bgWarmGlow}
+          />
+          <LinearGradient
+            colors={['rgba(240,203,70,0.18)', 'rgba(240,203,70,0)']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={[styles.blob, styles.blobLeft]}
           />
           <LinearGradient
-            colors={['rgba(237,233,254,0.95)', 'rgba(237,233,254,0)']}
+            colors={['rgba(0,53,102,0.16)', 'rgba(0,53,102,0)']}
             start={{ x: 1, y: 0 }}
             end={{ x: 0, y: 1 }}
             style={[styles.blob, styles.blobRight]}
@@ -471,7 +475,7 @@ export default function AdminEventDetailsScreen() {
         contentContainerStyle={[
           styles.content,
           {
-            paddingBottom: tabBarReserve + insets.bottom,
+            paddingBottom: tabBarReserve,
           },
         ]}
         showsVerticalScrollIndicator={false}
@@ -486,79 +490,75 @@ export default function AdminEventDetailsScreen() {
             },
           ]}
         >
-          <View pointerEvents="none" style={styles.heroBackdrop}>
-            <Image source={getHeroImageSource()} style={styles.heroBackdropImg} contentFit="cover" transition={150} />
-            <LinearGradient
-              colors={['rgba(246,246,248,0.10)', 'rgba(246,246,248,0.78)', ui.bg]}
-              locations={[0, 0.68, 1]}
-              start={{ x: 0.5, y: 0 }}
-              end={{ x: 0.5, y: 1 }}
-              style={styles.heroBackdropFade}
-            />
-            <View style={styles.heroBackdropTint} />
-          </View>
-
           <View style={styles.hero}>
             <View style={styles.heroWindowOuter}>
-              <BlurView intensity={24} tint="light" style={styles.heroWindowBlur}>
-                <View style={[styles.heroWindowInner, { backgroundColor: 'rgba(255, 255, 255, 0.41)' }]}>
-                  <View style={styles.heroTopRow}>
-                    <View style={styles.heroAvatarWrap}>
-                      <TouchableOpacity
-                        style={styles.heroAvatarRing}
-                        onPress={() => setAvatarPreviewOpen(true)}
-                        activeOpacity={0.88}
-                        accessibilityRole="button"
-                        accessibilityLabel="הגדלת תמונת פרופיל"
-                      >
-                        {userAvatarUrl ? (
-                          <Image source={{ uri: userAvatarUrl }} style={styles.heroAvatar} contentFit="cover" transition={150} />
-                        ) : (
-                          <View style={styles.heroAvatarFallback}>
-                            {getInitials(userName) ? (
-                              <Text style={styles.heroAvatarInitials}>{getInitials(userName)}</Text>
-                            ) : (
-                              <Ionicons name="person" size={18} color={'rgba(13,17,28,0.65)'} />
-                            )}
-                          </View>
-                        )}
-                      </TouchableOpacity>
+              <View style={styles.heroWindowInner}>
+                <TouchableOpacity
+                  style={styles.heroBackButton}
+                  onPress={handleBackPress}
+                  activeOpacity={0.88}
+                  accessibilityRole="button"
+                  accessibilityLabel="חזרה לעמוד הקודם"
+                >
+                  <Ionicons name="chevron-forward" size={20} color={colors.richBlack} />
+                </TouchableOpacity>
 
-                      <TouchableOpacity
-                        style={styles.heroAvatarEditBadge}
-                        onPress={openEditEvent}
-                        activeOpacity={0.9}
-                        disabled={editSaving}
-                        accessibilityRole="button"
-                        accessibilityLabel="עריכת אירוע"
-                      >
-                        <Ionicons name="create-outline" size={16} color={ui.primary} />
-                      </TouchableOpacity>
-                    </View>
+                <View style={styles.heroTopRow}>
+                  <View style={styles.heroAvatarWrap}>
+                    <TouchableOpacity
+                      style={styles.heroAvatarRing}
+                      onPress={() => setAvatarPreviewOpen(true)}
+                      activeOpacity={0.88}
+                      accessibilityRole="button"
+                      accessibilityLabel="הגדלת תמונת פרופיל"
+                    >
+                      {userAvatarUrl ? (
+                        <Image source={{ uri: userAvatarUrl }} style={styles.heroAvatar} contentFit="cover" transition={150} />
+                      ) : (
+                        <View style={styles.heroAvatarFallback}>
+                          {getInitials(userName) ? (
+                            <Text style={styles.heroAvatarInitials}>{getInitials(userName)}</Text>
+                          ) : (
+                            <Ionicons name="person" size={18} color={'rgba(13,17,28,0.65)'} />
+                          )}
+                        </View>
+                      )}
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.heroAvatarEditBadge}
+                      onPress={openEditEvent}
+                      activeOpacity={0.9}
+                      disabled={editSaving}
+                      accessibilityRole="button"
+                      accessibilityLabel="עריכת אירוע"
+                    >
+                      <Ionicons name="create-outline" size={16} color={colors.white} />
+                    </TouchableOpacity>
                   </View>
+                </View>
 
-                  <View style={styles.heroTitleWrap}>
-                    <Text style={[styles.heroTitleType, { color: ui.text }]}>{getEventTypeLabel()}</Text>
-                    {userName ? <Text style={[styles.heroTitleOwner, { color: ui.primary }]}>{`לקוח: ${userName}`}</Text> : null}
-                  </View>
+                <View style={styles.heroTitleWrap}>
+                  <Text style={[styles.heroTitleType, { color: ui.text }]}>{getEventTypeLabel()}</Text>
+                  {userName ? <Text style={[styles.heroTitleOwner, { color: ui.accent }]}>{`לקוח: ${userName}`}</Text> : null}
+                </View>
 
+                <View style={styles.heroMetaRow}>
+                  <Ionicons name="calendar-outline" size={18} color={ui.muted} />
+                  <Text style={[styles.heroMetaText, { color: ui.muted }]}>
+                    {`${weekday}, ${day} | ${String(event.location ?? '')}`}
+                  </Text>
+                </View>
+
+                {isWeddingEvent() ? (
                   <View style={styles.heroMetaRow}>
-                    <Ionicons name="calendar-outline" size={18} color={ui.muted} />
+                    <Ionicons name="heart-outline" size={18} color={ui.muted} />
                     <Text style={[styles.heroMetaText, { color: ui.muted }]}>
-                      {`${weekday}, ${day} | ${String(event.location ?? '')}`}
+                      {`חתן: ${groomLabel()} | כלה: ${brideLabel()}`}
                     </Text>
                   </View>
-
-                  {isWeddingEvent() ? (
-                    <View style={styles.heroMetaRow}>
-                      <Ionicons name="heart-outline" size={18} color={ui.muted} />
-                      <Text style={[styles.heroMetaText, { color: ui.muted }]}>
-                        {`חתן: ${groomLabel()} | כלה: ${brideLabel()}`}
-                      </Text>
-                    </View>
-                  ) : null}
-                </View>
-              </BlurView>
+                ) : null}
+              </View>
             </View>
           </View>
         </View>
@@ -582,7 +582,7 @@ export default function AdminEventDetailsScreen() {
               <View style={styles.rsvpHeaderRow}>
                 <View style={styles.rsvpHeaderRight}>
                   <View style={styles.rsvpHeaderValueRow}>
-                    <Text style={[styles.rsvpHeaderValue, { color: ui.primary }]}>{invitedPeople}</Text>
+                    <Text style={[styles.rsvpHeaderValue, { color: ui.accent }]}>{invitedPeople}</Text>
                     <Text style={styles.rsvpHeaderLabelInline}>מוזמנים לאירוע</Text>
                   </View>
                 </View>
@@ -628,8 +628,8 @@ export default function AdminEventDetailsScreen() {
           <GlassPanel style={styles.panel}>
             <View style={styles.panelHeaderRow}>
               <Text style={[styles.panelTitle, { color: ui.text }]}>סטטוס אורחים</Text>
-              <View style={[styles.totalChip, { backgroundColor: 'rgba(15,69,230,0.05)' }]}>
-                <Text style={[styles.totalChipText, { color: ui.primary }]}>{`${totalGuests} סה״כ`}</Text>
+              <View style={[styles.totalChip, { backgroundColor: 'rgba(204,160,0,0.12)' }]}>
+                <Text style={[styles.totalChipText, { color: ui.text }]}>{`${totalGuests} סה״כ`}</Text>
               </View>
             </View>
 
@@ -638,7 +638,7 @@ export default function AdminEventDetailsScreen() {
                 size={84}
                 strokeWidth={9}
                 progress={totalGuests ? confirmed / totalGuests : 0}
-                color={'#34C759'}
+                color={colors.yaleBlue}
                 value={confirmed}
                 label="אישרו"
                 valueFontSize={20}
@@ -647,7 +647,7 @@ export default function AdminEventDetailsScreen() {
                 size={68}
                 strokeWidth={9}
                 progress={totalGuests ? pending / totalGuests : 0}
-                color={ui.primary}
+                color={colors.gold}
                 value={pending}
                 label="אולי"
                 valueFontSize={18}
@@ -669,14 +669,14 @@ export default function AdminEventDetailsScreen() {
             {/* Dark tile: seating progress */}
             <View style={styles.tileDarkOuter}>
               <LinearGradient
-                colors={['#0B1020', '#111B3A']}
+                colors={[colors.richBlack, colors.yaleBlue]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={styles.tileDark}
               >
                 <View style={styles.tileDarkTopRow}>
                   <View style={styles.tileBadge}>
-                    <Ionicons name="checkmark-circle" size={16} color="#E5E7EB" />
+                    <Ionicons name="checkmark-circle" size={16} color={colors.yellow} />
                   </View>
                 </View>
 
@@ -698,7 +698,7 @@ export default function AdminEventDetailsScreen() {
 
               <View style={styles.tileLightTopRow}>
                 <View style={styles.tileLightIconCircle}>
-                  <Ionicons name="people" size={18} color={ui.primary} />
+                  <Ionicons name="people" size={18} color={colors.richBlack} />
                 </View>
                 <Text style={styles.tileLightPercentHint}>
                   {totalGuests ? `${Math.max(0, Math.min(100, Math.round((confirmed / totalGuests) * 100)))}%+` : '0%'}
@@ -716,8 +716,8 @@ export default function AdminEventDetailsScreen() {
               title="לינק להזמנה"
               subtitle="הגדרת תמונה/כותרת והעתקת קישורים אישיים למוזמנים"
               iconName="link-outline"
-              iconBg="rgba(168, 85, 247, 0.14)"
-              iconColor="#A855F7"
+              iconBg="rgba(204,160,0,0.14)"
+              iconColor={colors.gold}
               onPress={() => router.push(`/(admin)/admin-invitation-links?eventId=${event.id}`)}
               accessibilityLabel="לינק להזמנה"
             />
@@ -725,8 +725,8 @@ export default function AdminEventDetailsScreen() {
               title="עריכת סקיצה"
               subtitle="ניהול סידורי הושבה וסקיצות"
               iconName="create-outline"
-              iconBg="rgba(249, 115, 22, 0.14)"
-              iconColor="#F97316"
+              iconBg="rgba(6,23,62,0.10)"
+              iconColor={colors.richBlack}
               onPress={() => Alert.alert('את הסקיצה ניתן לערוך רק מהאתר')}
               accessibilityLabel="עריכת סקיצה"
             />
@@ -734,8 +734,8 @@ export default function AdminEventDetailsScreen() {
               title="צ׳ק-אין אורחים"
               subtitle="סימון הגעה של אורחים בזמן אמת"
               iconName="checkbox-outline"
-              iconBg="rgba(34, 197, 94, 0.14)"
-              iconColor="#22C55E"
+              iconBg="rgba(0,53,102,0.10)"
+              iconColor={colors.yaleBlue}
               onPress={() => router.push(`/(admin)/admin-guest-checkin?eventId=${event.id}`)}
               accessibilityLabel="צ׳ק-אין אורחים"
             />
@@ -743,8 +743,8 @@ export default function AdminEventDetailsScreen() {
               title="שולחנות"
               subtitle="צפייה וניהול רשימת שולחנות"
               iconName="list-outline"
-              iconBg="rgba(16,185,129,0.14)"
-              iconColor="#10B981"
+              iconBg="rgba(240,203,70,0.18)"
+              iconColor={colors.gold}
               onPress={() => router.push(`/(admin)/TablesList?eventId=${event.id}`)}
               accessibilityLabel="שולחנות"
             />
@@ -752,8 +752,8 @@ export default function AdminEventDetailsScreen() {
               title="הודעות אוטומטיות"
               subtitle="עריכה והפעלה של תזכורות והודעות וואטסאפ"
               iconName="chatbubble-ellipses-outline"
-              iconBg="rgba(14,165,233,0.14)"
-              iconColor="#0EA5E9"
+              iconBg="rgba(0,53,102,0.10)"
+              iconColor={colors.yaleBlue}
               onPress={() => router.push(`/(admin)/admin-event-messages?eventId=${event.id}`)}
               accessibilityLabel="עריכת הודעות"
             />
@@ -761,15 +761,15 @@ export default function AdminEventDetailsScreen() {
               title="מפת הושבה"
               subtitle="צפייה וניהול מפת האולם"
               iconName="grid-outline"
-              iconBg="rgba(168, 85, 247, 0.14)"
-              iconColor="#A855F7"
+              iconBg="rgba(6,23,62,0.10)"
+              iconColor={colors.richBlack}
               onPress={handleSeatingMap}
               accessibilityLabel="מפת הושבה"
             />
           </View>
         </View>
       </ScrollView>
-      </SafeAreaView>
+      </View>
 
       {/* Avatar preview (big centered) */}
       <Modal
@@ -1135,25 +1135,16 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     zIndex: -3,
   },
+  bgBase: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  bgHighlight: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  bgWarmGlow: {
+    ...StyleSheet.absoluteFillObject,
+  },
 
-  heroBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    overflow: 'hidden',
-  },
-  heroBackdropImg: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  heroBackdropFade: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: 240,
-  },
-  heroBackdropTint: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(15,69,230,0.06)',
-  },
   blob: {
     position: 'absolute',
     width: 520,
@@ -1173,6 +1164,7 @@ const styles = StyleSheet.create({
     position: 'relative',
     justifyContent: 'flex-start',
     marginHorizontal: -24, // extend hero image to screen edges
+    backgroundColor: 'transparent',
   },
   scroll: {
     flex: 1,
@@ -1203,7 +1195,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 22,
     paddingBottom: 24,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#FFFCF6',
     borderTopLeftRadius: 34,
     borderTopRightRadius: 34,
     zIndex: 4,
@@ -1247,23 +1239,31 @@ const styles = StyleSheet.create({
   heroWindowOuter: {
     width: '100%',
     maxWidth: 560,
-    borderRadius: 32,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.55)',
-    overflow: 'hidden',
-    shadowColor: colors.black,
-    shadowOpacity: 0.10,
-    shadowRadius: 26,
-    shadowOffset: { width: 0, height: 16 },
-    elevation: 5,
-  },
-  heroWindowBlur: {
-    width: '100%',
+    borderRadius: 0,
   },
   heroWindowInner: {
     paddingHorizontal: 18,
     paddingVertical: 18,
     alignItems: 'center',
+    position: 'relative',
+  },
+  heroBackButton: {
+    position: 'absolute',
+    top: 14,
+    right: 14,
+    width: 42,
+    height: 42,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(204,160,0,0.18)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: colors.black,
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
   },
   heroTopRow: {
     width: '100%',
@@ -1296,12 +1296,12 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(15,69,230,0.08)',
+    backgroundColor: 'rgba(240,203,70,0.18)',
   },
   heroAvatarInitials: {
     fontSize: 22,
     fontWeight: '900',
-    color: '#0d111c',
+    color: colors.richBlack,
   },
   heroAvatarEditBadge: {
     position: 'absolute',
@@ -1310,9 +1310,9 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.98)',
+    backgroundColor: colors.richBlack,
     borderWidth: 1,
-    borderColor: 'rgba(13,17,28,0.10)',
+    borderColor: 'rgba(255,255,255,0.40)',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: colors.black,
@@ -1361,7 +1361,7 @@ const styles = StyleSheet.create({
 
   editOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: 'rgba(6,23,62,0.46)',
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 18,
@@ -1393,25 +1393,25 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 999,
-    backgroundColor: 'rgba(17,24,39,0.06)',
+    backgroundColor: 'rgba(240,203,70,0.18)',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  editTitle: { fontSize: 18, fontWeight: '900', color: '#111827', textAlign: 'center' },
-  editSubtitle: { marginTop: 4, fontSize: 12, fontWeight: '800', color: 'rgba(17,24,39,0.55)', textAlign: 'center' },
-  editDivider: { height: 1, backgroundColor: 'rgba(17,24,39,0.08)', marginHorizontal: 16 },
+  editTitle: { fontSize: 18, fontWeight: '900', color: colors.richBlack, textAlign: 'center' },
+  editSubtitle: { marginTop: 4, fontSize: 12, fontWeight: '800', color: 'rgba(0,53,102,0.64)', textAlign: 'center' },
+  editDivider: { height: 1, backgroundColor: 'rgba(6,23,62,0.08)', marginHorizontal: 16 },
   editBody: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 14, gap: 12 },
   editBlock: { gap: 10 },
   editBlockHeaderRow: { flexDirection: ROW_DIR, alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  editBlockLabel: { fontSize: 13, fontWeight: '900', color: '#111827', textAlign: 'right' },
+  editBlockLabel: { fontSize: 13, fontWeight: '900', color: colors.richBlack, textAlign: 'right' },
   editInput: {
     height: 48,
     borderRadius: 14,
     paddingHorizontal: 14,
     borderWidth: 1,
-    borderColor: 'rgba(17,24,39,0.10)',
-    backgroundColor: 'rgba(17,24,39,0.04)',
-    color: '#111827',
+    borderColor: 'rgba(6,23,62,0.10)',
+    backgroundColor: 'rgba(255,255,255,0.86)',
+    color: colors.richBlack,
     fontSize: 14,
     fontWeight: '700',
   },
@@ -1422,11 +1422,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 999,
-    backgroundColor: 'rgba(15,69,230,0.10)',
+    backgroundColor: 'rgba(240,203,70,0.18)',
     borderWidth: 1,
-    borderColor: 'rgba(15,69,230,0.16)',
+    borderColor: 'rgba(204,160,0,0.22)',
   },
-  smallBtnText: { fontSize: 12, fontWeight: '900', color: '#0f45e6' },
+  smallBtnText: { fontSize: 12, fontWeight: '900', color: colors.richBlack },
   coverPreviewWrap: {
     height: 160,
     borderRadius: 18,
@@ -1442,14 +1442,14 @@ const styles = StyleSheet.create({
     height: 52,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: 'rgba(17,24,39,0.10)',
-    backgroundColor: 'rgba(17,24,39,0.04)',
+    borderColor: 'rgba(6,23,62,0.10)',
+    backgroundColor: 'rgba(255,255,255,0.86)',
     paddingHorizontal: 14,
     flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  dateRowText: { fontSize: 15, fontWeight: '900', color: '#111827' },
+  dateRowText: { fontSize: 15, fontWeight: '900', color: colors.richBlack },
   editFooter: {
     padding: 14,
     borderTopWidth: 1,
@@ -1489,12 +1489,12 @@ const styles = StyleSheet.create({
     flex: 2,
     height: 50,
     borderRadius: 14,
-    backgroundColor: '#1d4ed8',
+    backgroundColor: colors.richBlack,
     justifyContent: 'center',
     alignItems: 'center',
     flexDirection: ROW_DIR,
     gap: 8,
-    shadowColor: '#1d4ed8',
+    shadowColor: colors.richBlack,
     shadowOpacity: 0.18,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 10 },
@@ -1658,9 +1658,9 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 999,
-    backgroundColor: 'rgba(15, 69, 230, 0.10)',
+    backgroundColor: 'rgba(240,203,70,0.18)',
     borderWidth: 1,
-    borderColor: 'rgba(15, 69, 230, 0.18)',
+    borderColor: 'rgba(204,160,0,0.22)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1668,7 +1668,7 @@ const styles = StyleSheet.create({
   noTablesTitle: {
     fontSize: 18,
     fontWeight: '900',
-    color: '#111827',
+    color: colors.richBlack,
     textAlign: 'right',
     writingDirection: 'rtl',
   },
@@ -1676,7 +1676,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontSize: 12,
     fontWeight: '800',
-    color: 'rgba(17,24,39,0.60)',
+    color: 'rgba(0,53,102,0.72)',
     textAlign: 'right',
     writingDirection: 'rtl',
     lineHeight: 18,
@@ -1690,9 +1690,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 16,
-    backgroundColor: 'rgba(15, 69, 230, 0.06)',
+    backgroundColor: 'rgba(240,203,70,0.12)',
     borderWidth: 1,
-    borderColor: 'rgba(15, 69, 230, 0.14)',
+    borderColor: 'rgba(204,160,0,0.18)',
   },
   noTablesHintText: {
     flex: 1,
@@ -1712,10 +1712,10 @@ const styles = StyleSheet.create({
   noTablesBtnPrimary: {
     height: 48,
     borderRadius: 14,
-    backgroundColor: '#1d4ed8',
+    backgroundColor: colors.richBlack,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#1d4ed8',
+    shadowColor: colors.richBlack,
     shadowOpacity: 0.18,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 10 },
@@ -1749,11 +1749,11 @@ const styles = StyleSheet.create({
   actionRow: {
     width: '100%',
     maxWidth: 560,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: 'rgba(255,255,255,0.94)',
     borderRadius: 24,
     padding: 16,
     borderWidth: 1,
-    borderColor: 'rgba(17, 24, 39, 0.06)',
+    borderColor: 'rgba(204,160,0,0.12)',
     shadowColor: colors.black,
     shadowOpacity: 0.06,
     shadowRadius: 20,
@@ -1800,7 +1800,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 999,
-    backgroundColor: 'rgba(17, 24, 39, 0.04)',
+    backgroundColor: 'rgba(240,203,70,0.16)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1929,11 +1929,11 @@ const styles = StyleSheet.create({
     width: 30,
     height: 30,
     borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.10)',
+    backgroundColor: 'rgba(240,203,70,0.16)',
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
+    borderColor: 'rgba(240,203,70,0.24)',
   },
   tilePercent: {
     color: '#EEF2FF',
@@ -1944,7 +1944,7 @@ const styles = StyleSheet.create({
     marginTop: -2,
   },
   tileDarkLabel: {
-    color: 'rgba(238,242,255,0.70)',
+    color: 'rgba(255,255,255,0.78)',
     fontSize: 13,
     fontWeight: '700',
     textAlign: 'right',
@@ -1953,13 +1953,13 @@ const styles = StyleSheet.create({
   tileProgressTrack: {
     height: 6,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: 'rgba(255,255,255,0.16)',
     overflow: 'hidden',
   },
   tileProgressFill: {
     height: 6,
     borderRadius: 999,
-    backgroundColor: '#4F7DFF',
+    backgroundColor: colors.gold,
   },
 
   tileLight: {
@@ -1978,7 +1978,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     top: -55,
     left: -40,
-    backgroundColor: 'rgba(15,69,230,0.10)',
+    backgroundColor: 'rgba(240,203,70,0.16)',
   },
   tileLightDecorCircle2: {
     position: 'absolute',
@@ -1987,16 +1987,16 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     top: -32,
     left: 30,
-    backgroundColor: 'rgba(15,69,230,0.06)',
+    backgroundColor: 'rgba(6,23,62,0.08)',
   },
   tileWideOuter: {
     width: "100%",
     minHeight: 232,
     borderRadius: 24,
     padding: 14,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "rgba(255,255,255,0.94)",
     borderWidth: 1,
-    borderColor: "rgba(17, 24, 39, 0.06)",
+    borderColor: "rgba(204,160,0,0.12)",
     shadowColor: colors.black,
     shadowOpacity: 0.06,
     shadowRadius: 20,
@@ -2035,7 +2035,7 @@ const styles = StyleSheet.create({
   rsvpHeaderLabelInline: {
     fontSize: 16,
     fontWeight: "800",
-    color: "rgba(17, 24, 39, 0.55)",
+    color: "rgba(0,53,102,0.68)",
     textAlign: "right",
     marginBottom: 8,
   },
@@ -2043,9 +2043,9 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 999,
-    backgroundColor: "rgba(17, 24, 39, 0.04)",
+    backgroundColor: "rgba(240,203,70,0.16)",
     borderWidth: 1,
-    borderColor: "rgba(17, 24, 39, 0.06)",
+    borderColor: "rgba(204,160,0,0.16)",
     justifyContent: "center",
     alignItems: "center",
   },
@@ -2106,9 +2106,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 6,
     overflow: "hidden",
-    backgroundColor: "rgba(255, 193, 7, 0.16)",
+    backgroundColor: "rgba(240,203,70,0.18)",
     borderWidth: 2,
-    borderColor: "rgba(255, 193, 7, 0.22)",
+    borderColor: "rgba(204,160,0,0.24)",
   },
   rsvpStatCardRed: {
     flex: 1,
@@ -2133,14 +2133,14 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 999,
-    backgroundColor: 'rgba(15,69,230,0.12)',
+    backgroundColor: 'rgba(240,203,70,0.18)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   tileLightPercentHint: {
     fontSize: 12,
     fontWeight: '800',
-    color: '#22C55E',
+    color: colors.gold,
     textAlign: 'left',
   },
   tileLightValue: {
@@ -2152,7 +2152,7 @@ const styles = StyleSheet.create({
   tileLightLabel: {
     fontSize: 13,
     fontWeight: '700',
-    color: 'rgba(17, 24, 39, 0.60)',
+    color: 'rgba(0,53,102,0.70)',
     textAlign: 'right',
     marginTop: 2,
   },

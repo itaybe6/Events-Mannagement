@@ -24,6 +24,7 @@ import { eventService } from '@/lib/services/eventService';
 import { supabase } from '@/lib/supabase';
 import { avatarService } from '@/lib/services/avatarService';
 import type { Event } from '@/types';
+import AdminProfileScreen from './admin-profile';
 
 const ui = {
   bgLight: '#f6f6f8',
@@ -135,6 +136,11 @@ function StatCard({
 export default function AdminProfileWebScreen() {
   const router = useRouter();
   const { width } = useWindowDimensions();
+
+  if (width < 900) {
+    return <AdminProfileScreen />;
+  }
+
   // On web we render inside the admin sidebar layout (sticky 270px sidebar).
   // Use "content width" so breakpoints reflect available space, not full viewport.
   const sidebarWidth = Platform.OS === 'web' ? 270 : 0;
