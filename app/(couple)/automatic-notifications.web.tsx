@@ -288,7 +288,9 @@ const isMissingColumn = (err: any, column: string) =>
 export default function AutomaticNotificationsWebScreen() {
   const router = useRouter();
   const { width: viewportWidth } = useWindowDimensions();
-  const { userData } = useUserStore();
+  const { userData, userType } = useUserStore();
+  const canEdit = userType === 'admin' || userType === 'employee';
+  const isReadOnly = !canEdit;
   const params = useLocalSearchParams<{ eventId?: string | string[] }>();
   const activeUserId = useEventSelectionStore((s) => s.activeUserId);
   const activeEventId = useEventSelectionStore((s) => s.activeEventId);
@@ -1072,6 +1074,10 @@ export default function AutomaticNotificationsWebScreen() {
   }, [editorOpen, editorKind, editorWizardStepId, editorRow?.id, editorRow?.notification_type, loadStepCatchupQueue]);
 
   const runCatchupBackfill = useCallback(async () => {
+    if (!canEdit) {
+      showToast('לצפייה בלבד');
+      return;
+    }
     if (!resolvedEventId) {
       showToast('אין אירוע פעיל');
       return;
@@ -1100,7 +1106,7 @@ export default function AutomaticNotificationsWebScreen() {
       console.warn('Backfill catchup queue:', e);
       showToast('לא ניתן לעדכן את התור');
     }
-  }, [resolvedEventId, loadStepCatchupQueue, notificationSettings, showToast]);
+  }, [canEdit, resolvedEventId, loadStepCatchupQueue, notificationSettings, showToast]);
 
   const demoInvitation = useMemo(() => {
     const pickFrom = (list: any[]) => {
@@ -1407,6 +1413,10 @@ export default function AutomaticNotificationsWebScreen() {
   };
 
   const toggleNotification = async (row: NotificationSettingRow) => {
+    if (!canEdit) {
+      showToast('לצפייה בלבד');
+      return;
+    }
     if (!event?.id) return;
     const nextEnabled = !row.enabled;
     const isFlow = String(row.notification_type || '').startsWith('flow_step:');
@@ -1491,11 +1501,16 @@ export default function AutomaticNotificationsWebScreen() {
   };
 
   const insertVariable = (token: string) => {
+    if (!canEdit) return;
     if (!editDraft) return;
     setEditDraft((d) => (d ? { ...d, message: `${d.message}${d.message ? ' ' : ''}${token}` } : d));
   };
 
   const openRecipientsPicker = (row: NotificationSettingRow) => {
+    if (!canEdit) {
+      showToast('לצפייה בלבד');
+      return;
+    }
     const nt = String(row.notification_type || '').trim();
     const isFlow = nt.startsWith('flow_step:');
     const recipientMode = isFlow ? String((row as any)?.recipient_mode || 'manual') : null;
@@ -1515,6 +1530,10 @@ export default function AutomaticNotificationsWebScreen() {
   };
 
   const hideCard = async (row: NotificationSettingRow) => {
+    if (!canEdit) {
+      showToast('לצפייה בלבד');
+      return;
+    }
     if (!event?.id) return;
     const ok = typeof window !== 'undefined' ? window.confirm('למחוק את הכרטיסיה מהמסך? ניתן להחזיר רק דרך DB.') : true;
     if (!ok) return;
@@ -1596,6 +1615,10 @@ export default function AutomaticNotificationsWebScreen() {
   const pickerClear = () => setPickerSelectedIds(new Set());
 
   const saveDraft = async (opts?: { recipientGuestIds?: string[]; closeOnSuccess?: boolean; toastOnSuccess?: boolean }) => {
+    if (!canEdit) {
+      showToast('לצפייה בלבד');
+      return;
+    }
     if (!event?.id || !editorRow || !editDraft) return;
     if ((editDraft.message ?? '').length > MESSAGE_MAX_CHARS) {
       alert(`תוכן ההודעה מוגבל ל־${MESSAGE_MAX_CHARS} תווים. קיצר את ההודעה ושמור שוב.`);
@@ -1769,6 +1792,10 @@ export default function AutomaticNotificationsWebScreen() {
   };
 
   const saveRecipientsForNotificationType = async (notificationType: string, guestIds: string[]) => {
+    if (!canEdit) {
+      showToast('לצפייה בלבד');
+      return;
+    }
     if (!event?.id) return;
     const nt = String(notificationType || '').trim();
     if (!nt) return;
@@ -1872,6 +1899,10 @@ export default function AutomaticNotificationsWebScreen() {
   };
 
   const sendNow = async () => {
+    if (!canEdit) {
+      showToast('לצפייה בלבד');
+      return;
+    }
     if (!event?.id || !editorRow || !editDraft) return;
     if (sendingNow) return;
     if (!editDraft.message.trim()) {
@@ -2001,12 +2032,16 @@ export default function AutomaticNotificationsWebScreen() {
   }, [editDraft?.days, editDraft?.timeHm, event]);
 
   const openAddWizard = useCallback(() => {
+    if (!canEdit) {
+      showToast('לצפייה בלבד');
+      return;
+    }
     const nextInsertAt = (flowStepsSorted?.length || 0) + 1;
     setAddWizardChannel('SMS');
     setAddWizardInsertAt(nextInsertAt);
     setAddWizardStep(1);
     setAddWizardOpen(true);
-  }, [flowStepsSorted?.length]);
+  }, [canEdit, flowStepsSorted?.length, showToast]);
 
   const closeAddWizard = useCallback(() => {
     setAddWizardOpen(false);
@@ -2014,6 +2049,10 @@ export default function AutomaticNotificationsWebScreen() {
   }, []);
 
   const insertFlowStep = useCallback(async (args: { channel: 'SMS' | 'WHATSAPP'; insertAt: number }) => {
+    if (!canEdit) {
+      showToast('לצפייה בלבד');
+      return;
+    }
     if (!event?.id) return;
     const channel = args.channel;
     const existing = flowStepsSorted;
@@ -2119,10 +2158,14 @@ export default function AutomaticNotificationsWebScreen() {
       console.error('Failed to add flow step:', e);
       alert('לא ניתן להוסיף כרטיסיה (בדוק שהרצת את המיגרציה החדשה).');
     }
-  }, [event, flowStepsSorted, combinedCards.length]);
+  }, [canEdit, event, flowStepsSorted, combinedCards.length, showToast]);
 
   const deleteFlowStep = useCallback(
     async (row: NotificationSettingRow) => {
+      if (!canEdit) {
+        showToast('לצפייה בלבד');
+        return;
+      }
       if (!row?.id) {
         setFlowSteps((p) => p.filter((s) => s.notification_type !== row.notification_type));
         return;
@@ -2139,11 +2182,15 @@ export default function AutomaticNotificationsWebScreen() {
         alert('לא ניתן למחוק כרטיסיה.');
       }
     },
-    [editorType]
+    [canEdit, editorType, showToast]
   );
 
   const moveFlowStep = useCallback(
     async (row: NotificationSettingRow, dir: -1 | 1) => {
+      if (!canEdit) {
+        showToast('לצפייה בלבד');
+        return;
+      }
       const list = flowStepsSorted;
       const idx = list.findIndex((s) => s.notification_type === row.notification_type);
       if (idx < 0) return;
@@ -2169,7 +2216,7 @@ export default function AutomaticNotificationsWebScreen() {
         console.warn('Failed to persist step order swap:', e);
       }
     },
-    [flowStepsSorted]
+    [canEdit, flowStepsSorted, showToast]
   );
 
   const calendarSelected = useMemo(() => {
@@ -2220,17 +2267,25 @@ export default function AutomaticNotificationsWebScreen() {
   }, [catchupCalendarMonth]);
 
   const openDateDialog = useCallback(() => {
+    if (!canEdit) {
+      showToast('לצפייה בלבד');
+      return;
+    }
     const seed = calendarSelected ?? scheduledSendDateTime ?? new Date(String((event as any)?.date ?? ''));
     const base = Number.isFinite(seed.getTime()) ? seed : new Date();
     setCalendarMonth(new Date(base.getFullYear(), base.getMonth(), 1));
     setDateDialogOpen(true);
-  }, [calendarSelected, event, scheduledSendDateTime]);
+  }, [calendarSelected, canEdit, event, scheduledSendDateTime, showToast]);
 
   const openTimeDialog = useCallback(() => {
+    if (!canEdit) {
+      showToast('לצפייה בלבד');
+      return;
+    }
     const hm = parseTimeHm(String(editDraft?.timeHm ?? '11:00')) ?? { h: 11, m: 0 };
     setTimeDraft({ h: hm.h, m: hm.m });
     setTimeDialogOpen(true);
-  }, [editDraft?.timeHm]);
+  }, [canEdit, editDraft?.timeHm, showToast]);
 
 
 
@@ -2289,6 +2344,7 @@ export default function AutomaticNotificationsWebScreen() {
               <View style={{ width: 180 }} />
               <View style={styles.timelineHeaderCenter}>
                 <Text style={styles.timelineHeaderTitle}>הודעות אוטומטיות</Text>
+                {isReadOnly ? <Text style={styles.timelineHeaderSubtitle}>תצוגת צפייה בלבד</Text> : null}
               </View>
               <View style={styles.timelineHeaderLeft}>
                 <Pressable onPress={() => router.back()} style={styles.backSmall} accessibilityRole="button" accessibilityLabel="חזרה">
@@ -2507,9 +2563,10 @@ export default function AutomaticNotificationsWebScreen() {
                                 e?.preventDefault?.();
                                 void toggleNotification(row);
                               }}
+                              disabled={!canEdit}
                               accessibilityRole="switch"
                               accessibilityState={{ checked: !!row.enabled }}
-                              style={({ pressed }: any) => [styles.toggleBtn, pressed ? { opacity: 0.92 } : null]}
+                              style={({ pressed }: any) => [styles.toggleBtn, !canEdit ? { opacity: 0.55 } : null, pressed ? { opacity: 0.92 } : null]}
                             >
                               <View style={[styles.toggleTrack, row.enabled ? styles.toggleTrackOn : styles.toggleTrackOff]}>
                                 <View style={[styles.toggleThumb, row.enabled ? styles.toggleThumbOn : styles.toggleThumbOff]} />
@@ -2527,19 +2584,21 @@ export default function AutomaticNotificationsWebScreen() {
 
                     <View style={styles.cardBottomRow}>
                       {isFlow ? (
-                        <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8 }}>
-                          <Pressable
-                            onPress={(e: any) => {
-                              e?.stopPropagation?.();
-                              e?.preventDefault?.();
-                              void deleteFlowStep(row as any);
-                            }}
-                            style={({ pressed }: any) => [styles.builderIconBtnDanger, pressed ? { opacity: 0.9 } : null]}
-                            accessibilityLabel="מחק"
-                          >
-                            <Ionicons name="trash-outline" size={18} color="#EF4444" />
-                          </Pressable>
-                        </View>
+                        canEdit ? (
+                          <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8 }}>
+                            <Pressable
+                              onPress={(e: any) => {
+                                e?.stopPropagation?.();
+                                e?.preventDefault?.();
+                                void deleteFlowStep(row as any);
+                              }}
+                              style={({ pressed }: any) => [styles.builderIconBtnDanger, pressed ? { opacity: 0.9 } : null]}
+                              accessibilityLabel="מחק"
+                            >
+                              <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                            </Pressable>
+                          </View>
+                        ) : null
                       ) : (
                         <Pressable
                           onPress={(e: any) => {
@@ -2547,9 +2606,10 @@ export default function AutomaticNotificationsWebScreen() {
                             e?.preventDefault?.();
                             void toggleNotification(row);
                           }}
+                          disabled={!canEdit}
                           accessibilityRole="switch"
                           accessibilityState={{ checked: !!row.enabled }}
-                          style={({ pressed }: any) => [styles.toggleBtn, pressed ? { opacity: 0.92 } : null]}
+                          style={({ pressed }: any) => [styles.toggleBtn, !canEdit ? { opacity: 0.55 } : null, pressed ? { opacity: 0.92 } : null]}
                         >
                           <View style={[styles.toggleTrack, row.enabled ? styles.toggleTrackOn : styles.toggleTrackOff]}>
                             <View style={[styles.toggleThumb, row.enabled ? styles.toggleThumbOn : styles.toggleThumbOff]} />
@@ -2570,11 +2630,11 @@ export default function AutomaticNotificationsWebScreen() {
                           }}
                           style={({ pressed }: any) => [styles.editBtn, pressed ? { opacity: 0.9 } : null]}
                         >
-                          <Ionicons name="create-outline" size={16} color={ui.primary} />
-                          <Text style={[styles.editBtnText, { color: ui.primary }]}>ערוך</Text>
+                          <Ionicons name={canEdit ? 'create-outline' : 'eye-outline'} size={16} color={ui.primary} />
+                          <Text style={[styles.editBtnText, { color: ui.primary }]}>{canEdit ? 'ערוך' : 'צפייה'}</Text>
                         </Pressable>
 
-                        {!isFlow ? (
+                        {!isFlow && canEdit ? (
                           <Pressable
                             onPress={(e: any) => {
                               e?.stopPropagation?.();
@@ -2721,18 +2781,20 @@ export default function AutomaticNotificationsWebScreen() {
       </View>
 
       {/* FAB: Add flow step (like Users page) */}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="הוסף כרטיסיה"
-        onPress={openAddWizard}
-        style={({ hovered, pressed }: any) => [
-          styles.fabAddStep,
-          Platform.OS === 'web' && hovered ? styles.fabAddStepHover : null,
-          pressed ? { opacity: 0.92 } : null,
-        ]}
-      >
-        <Ionicons name="add" size={22} color="#fff" />
-      </Pressable>
+      {canEdit ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="הוסף כרטיסיה"
+          onPress={openAddWizard}
+          style={({ hovered, pressed }: any) => [
+            styles.fabAddStep,
+            Platform.OS === 'web' && hovered ? styles.fabAddStepHover : null,
+            pressed ? { opacity: 0.92 } : null,
+          ]}
+        >
+          <Ionicons name="add" size={22} color="#fff" />
+        </Pressable>
+      ) : null}
 
       {/* Add Step Wizard (2-step form) */}
       {addWizardOpen ? (
