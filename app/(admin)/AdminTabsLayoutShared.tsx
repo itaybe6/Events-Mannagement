@@ -256,7 +256,20 @@ export default function AdminTabsLayoutShared() {
 
   screens.push(<Tabs.Screen key="add-user-v2" name="add-user-v2" options={{ href: null, headerShown: false }} />);
   screens.push(<Tabs.Screen key="admin-guest-checkin" name="admin-guest-checkin" options={{ href: null }} />);
-  screens.push(<Tabs.Screen key="admin-invitation-links" name="admin-invitation-links" options={{ href: null }} />);
+  screens.push(
+    <Tabs.Screen
+      key="admin-invitation-links"
+      name="admin-invitation-links"
+      options={{
+        href: null,
+        ...(Platform.OS !== "web"
+          ? {
+              headerShown: false,
+            }
+          : null),
+      }}
+    />
+  );
   screens.push(<Tabs.Screen key="admin-events-create" name="admin-events-create" options={{ href: null }} />);
   screens.push(
     <Tabs.Screen

@@ -8,6 +8,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  TouchableOpacity,
   useWindowDimensions,
   View,
 } from 'react-native';
@@ -18,6 +19,8 @@ import * as ImagePicker from 'expo-image-picker';
 import Constants from 'expo-constants';
 import * as Linking from 'expo-linking';
 import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors } from '@/constants/colors';
 import { useAdminEventDetailsModel } from '@/features/events/useAdminEventDetailsModel';
@@ -93,6 +96,7 @@ export default function AdminInvitationLinksScreen() {
   const { eventId } = useLocalSearchParams<{ eventId?: string }>();
   const id = useMemo(() => String(eventId || ''), [eventId]);
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
 
   const { loading, error, event, setEvent, guests, refresh } = useAdminEventDetailsModel(id);
 
@@ -348,37 +352,63 @@ export default function AdminInvitationLinksScreen() {
   const isDesktop = Platform.OS === 'web' && width >= 1024;
   const isMobile = width < 768;
   const isNarrow = width < 420;
+  const stickyHeaderHeight = insets.top + 62;
 
   return (
     <View style={styles.page}>
+      <LinearGradient
+        colors={['#F7FAFF', '#E8F1FF', '#F2E0BA']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.bg}
+      />
+      <LinearGradient
+        colors={['rgba(255,255,255,0.68)', 'rgba(255,255,255,0)']}
+        start={{ x: 0.05, y: 0 }}
+        end={{ x: 0.75, y: 0.55 }}
+        style={styles.bgHighlight}
+      />
+      <LinearGradient
+        colors={['rgba(232,196,122,0.58)', 'rgba(244,224,186,0.22)', 'rgba(244,224,186,0)']}
+        start={{ x: 1, y: 0.95 }}
+        end={{ x: 0.18, y: 0.22 }}
+        style={styles.bgWarmGlow}
+      />
+      <View style={[styles.stickyHeader, { paddingTop: insets.top, height: stickyHeaderHeight }]}>
+        <View style={styles.stickyHeaderInner}>
+          <Pressable
+            onPress={() => router.replace(`/(admin)/admin-event-details?id=${encodeURIComponent(id)}`)}
+            style={({ pressed }) => [styles.stickyHeaderBackBtn, pressed ? { opacity: 0.88 } : null]}
+            accessibilityRole="button"
+            accessibilityLabel="בחזרה לאירוע"
+          >
+            <Ionicons name="arrow-forward" size={18} color={colors.primary} />
+          </Pressable>
+
+          <View style={styles.stickyHeaderTitleWrap}>
+            <Text style={styles.stickyHeaderTitle}>לינק להזמנה</Text>
+          </View>
+
+          <View style={styles.stickyHeaderSideSpacer} />
+        </View>
+      </View>
       <AppKeyboardAwareScrollView
         contentContainerStyle={[
           styles.content,
           isMobile ? styles.contentMobile : null,
           isNarrow ? styles.contentNarrow : null,
+          { paddingTop: stickyHeaderHeight + 24 },
         ]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.headerRow}>
-          <View style={styles.headerTextWrap}>
-            <Text style={[styles.h1, isNarrow ? styles.h1Narrow : null]}>לינק להזמנה</Text>
-            <Text style={styles.sub}>הגדרת תצוגת הזמנה + קישורים אישיים למוזמנים</Text>
-          </View>
-          <Pressable
-            onPress={() => router.back()}
-            style={({ pressed }) => [styles.headerBackBtn, pressed ? { opacity: 0.92 } : null]}
-            accessibilityRole="button"
-            accessibilityLabel="חזרה"
-          >
-            <Ionicons name="arrow-forward" size={18} color={colors.primary} />
-          </Pressable>
-        </View>
-
         <View style={[styles.topGrid, isDesktop ? styles.topGridDesktop : null]}>
           {/* Preview */}
           <View style={[styles.card, isMobile ? styles.cardMobile : null, isDesktop ? styles.previewCardDesktop : null]}>
             <View style={styles.cardHeaderRow}>
-              <Text style={styles.cardTitle}>תצוגה מקדימה</Text>
+              <View style={styles.cardHeaderTextWrap}>
+                <Text style={styles.cardTitle}>תצוגה מקדימה</Text>
+                <Text style={styles.cardSubtitle}>כך עמוד ההזמנה ייראה למוזמנים שלך</Text>
+              </View>
               <View style={styles.badge}>
                 <Ionicons name="image-outline" size={14} color={colors.primary} />
                 <Text style={styles.badgeText}>{invitationPreviewImage ? 'יש תמונה' : 'אין תמונה'}</Text>
@@ -386,29 +416,59 @@ export default function AdminInvitationLinksScreen() {
             </View>
 
             <View style={styles.previewWrap}>
-              {invitationPreviewImage ? (
-                <Image
-                  source={{ uri: invitationPreviewImage }}
-                  style={[styles.previewImg, isMobile ? styles.previewImgMobile : null, isNarrow ? styles.previewImgNarrow : null]}
-                  contentFit="cover"
-                  transition={0}
-                />
-              ) : (
-                <View style={[styles.previewFallback, isMobile ? styles.previewFallbackMobile : null, isNarrow ? styles.previewFallbackNarrow : null]}>
-                  <Ionicons name="image-outline" size={26} color={colors.gray[500]} />
-                  <Text style={styles.previewFallbackText}>עדיין לא הוגדרה תמונה</Text>
-                </View>
-              )}
+              <View style={styles.previewMediaWrap}>
+                {invitationPreviewImage ? (
+                  <Image
+                    source={{ uri: invitationPreviewImage }}
+                    style={[styles.previewImg, isMobile ? styles.previewImgMobile : null, isNarrow ? styles.previewImgNarrow : null]}
+                    contentFit="cover"
+                    transition={0}
+                  />
+                ) : (
+                  <View style={[styles.previewFallback, isMobile ? styles.previewFallbackMobile : null, isNarrow ? styles.previewFallbackNarrow : null]}>
+                    <Ionicons name="image-outline" size={26} color={colors.gray[500]} />
+                    <Text style={styles.previewFallbackText}>עדיין לא הוגדרה תמונה</Text>
+                  </View>
+                )}
+
+                <Pressable
+                  onPress={() => void pickAndUploadInvitationImage()}
+                  disabled={uploading}
+                  style={({ pressed }) => [
+                    styles.previewCameraBtn,
+                    pressed ? { opacity: 0.9 } : null,
+                    uploading ? { opacity: 0.7 } : null,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel={invitationPreviewImage ? 'החלפת תמונת הזמנה' : 'העלאת תמונת הזמנה'}
+                >
+                  {uploading ? (
+                    <ActivityIndicator color={colors.white} size="small" />
+                  ) : (
+                    <Ionicons name="camera-outline" size={18} color={colors.white} />
+                  )}
+                </Pressable>
+              </View>
+
               <View style={styles.previewBottom}>
                 <Text style={styles.previewTitle} numberOfLines={2}>
                   {invitationPreviewTitle}
                 </Text>
-                <Text style={styles.previewMeta} numberOfLines={1}>
-                  {dateLabel}
-                </Text>
-                <Text style={styles.previewMeta} numberOfLines={1}>
-                  {String(event.location ?? '')}
-                </Text>
+                <View style={styles.previewMetaRow}>
+                  <View style={styles.previewMetaChip}>
+                    <Ionicons name="calendar-outline" size={13} color={colors.primary} />
+                    <Text style={styles.previewMetaChipText} numberOfLines={1}>
+                      {dateLabel}
+                    </Text>
+                  </View>
+                  <View style={styles.previewMetaChip}>
+                    <Ionicons name="business-outline" size={13} color={colors.primary} />
+                    <Text style={styles.previewMetaChipText} numberOfLines={1}>
+                      {String(event.location ?? '')}
+                    </Text>
+                  </View>
+                </View>
+                <Text style={styles.previewHint}>לחיצה על המצלמה תאפשר לבחור או להחליף את תמונת ההזמנה</Text>
               </View>
             </View>
 
@@ -446,7 +506,10 @@ export default function AdminInvitationLinksScreen() {
           {/* Form */}
           <View style={[styles.card, isMobile ? styles.cardMobile : null, isDesktop ? styles.formCardDesktop : null]}>
             <View style={styles.cardHeaderRow}>
-              <Text style={styles.cardTitle}>הגדרות הזמנה</Text>
+              <View style={styles.cardHeaderTextWrap}>
+                <Text style={styles.cardTitle}>הגדרות הזמנה</Text>
+                <Text style={styles.cardSubtitle}>ערוך את התוכן שיוצג בדף ההזמנה שלך</Text>
+              </View>
               <View style={[styles.badge, { backgroundColor: 'rgba(2,6,23,0.04)' }]}>
                 <Ionicons name={isWedding ? 'heart-outline' : 'pricetag-outline'} size={14} color={'rgba(2,6,23,0.72)'} />
                 <Text style={[styles.badgeText, { color: 'rgba(2,6,23,0.72)' }]}>{isWedding ? 'חתונה' : getEventTypeLabel(String(event.title ?? ''))}</Text>
@@ -455,86 +518,92 @@ export default function AdminInvitationLinksScreen() {
 
             {isWedding ? (
               <>
-                <Text style={styles.sectionTitle}>שמות</Text>
-                <View style={[styles.row, isNarrow ? styles.rowStack : null]}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.label}>שם החתן *</Text>
-                    <TextInput
-                      value={form.groomName}
-                      onChangeText={(t) => setForm((f) => ({ ...f, groomName: t }))}
-                      placeholder="שם החתן"
-                      placeholderTextColor={'rgba(17,24,39,0.35)'}
-                      style={styles.input}
-                      textAlign="right"
-                    />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.label}>שם הכלה *</Text>
-                    <TextInput
-                      value={form.brideName}
-                      onChangeText={(t) => setForm((f) => ({ ...f, brideName: t }))}
-                      placeholder="שם הכלה"
-                      placeholderTextColor={'rgba(17,24,39,0.35)'}
-                      style={styles.input}
-                      textAlign="right"
-                    />
-                  </View>
-                </View>
-
-                <Text style={styles.sectionTitle}>זמנים (אופציונלי)</Text>
-                <View style={[styles.row, isNarrow ? styles.rowStack : null]}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.label}>שעת קבלת פנים</Text>
-                    <TextInput
-                      value={form.receptionTime}
-                      onChangeText={(t) => setForm((f) => ({ ...f, receptionTime: t }))}
-                      placeholder="לדוגמה: 18:30"
-                      placeholderTextColor={'rgba(17,24,39,0.35)'}
-                      style={styles.input}
-                      textAlign="right"
-                    />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.label}>שעת חופה וקידושין</Text>
-                    <TextInput
-                      value={form.ceremonyTime}
-                      onChangeText={(t) => setForm((f) => ({ ...f, ceremonyTime: t }))}
-                      placeholder="לדוגמה: 19:30"
-                      placeholderTextColor={'rgba(17,24,39,0.35)'}
-                      style={styles.input}
-                      textAlign="right"
-                    />
+                <View style={styles.formSectionCard}>
+                  <Text style={styles.sectionTitle}>שמות</Text>
+                  <View style={[styles.row, isNarrow ? styles.rowStack : null]}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.label}>שם החתן *</Text>
+                      <TextInput
+                        value={form.groomName}
+                        onChangeText={(t) => setForm((f) => ({ ...f, groomName: t }))}
+                        placeholder="שם החתן"
+                        placeholderTextColor={'rgba(17,24,39,0.35)'}
+                        style={styles.input}
+                        textAlign="right"
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.label}>שם הכלה *</Text>
+                      <TextInput
+                        value={form.brideName}
+                        onChangeText={(t) => setForm((f) => ({ ...f, brideName: t }))}
+                        placeholder="שם הכלה"
+                        placeholderTextColor={'rgba(17,24,39,0.35)'}
+                        style={styles.input}
+                        textAlign="right"
+                      />
+                    </View>
                   </View>
                 </View>
 
-                <Text style={styles.sectionTitle}>הורים (אופציונלי)</Text>
-                <View style={[styles.row, isNarrow ? styles.rowStack : null]}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.label}>הורי הכלה</Text>
-                    <TextInput
-                      value={form.brideParents}
-                      onChangeText={(t) => setForm((f) => ({ ...f, brideParents: t }))}
-                      placeholder="לדוגמה: משפחת לוי"
-                      placeholderTextColor={'rgba(17,24,39,0.35)'}
-                      style={styles.input}
-                      textAlign="right"
-                    />
+                <View style={styles.formSectionCard}>
+                  <Text style={styles.sectionTitle}>זמנים (אופציונלי)</Text>
+                  <View style={[styles.row, isNarrow ? styles.rowStack : null]}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.label}>שעת קבלת פנים</Text>
+                      <TextInput
+                        value={form.receptionTime}
+                        onChangeText={(t) => setForm((f) => ({ ...f, receptionTime: t }))}
+                        placeholder="לדוגמה: 18:30"
+                        placeholderTextColor={'rgba(17,24,39,0.35)'}
+                        style={styles.input}
+                        textAlign="right"
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.label}>שעת חופה וקידושין</Text>
+                      <TextInput
+                        value={form.ceremonyTime}
+                        onChangeText={(t) => setForm((f) => ({ ...f, ceremonyTime: t }))}
+                        placeholder="לדוגמה: 19:30"
+                        placeholderTextColor={'rgba(17,24,39,0.35)'}
+                        style={styles.input}
+                        textAlign="right"
+                      />
+                    </View>
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.label}>הורי החתן</Text>
-                    <TextInput
-                      value={form.groomParents}
-                      onChangeText={(t) => setForm((f) => ({ ...f, groomParents: t }))}
-                      placeholder="לדוגמה: משפחת כהן"
-                      placeholderTextColor={'rgba(17,24,39,0.35)'}
-                      style={styles.input}
-                      textAlign="right"
-                    />
+                </View>
+
+                <View style={styles.formSectionCard}>
+                  <Text style={styles.sectionTitle}>הורים (אופציונלי)</Text>
+                  <View style={[styles.row, isNarrow ? styles.rowStack : null]}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.label}>הורי הכלה</Text>
+                      <TextInput
+                        value={form.brideParents}
+                        onChangeText={(t) => setForm((f) => ({ ...f, brideParents: t }))}
+                        placeholder="לדוגמה: משפחת לוי"
+                        placeholderTextColor={'rgba(17,24,39,0.35)'}
+                        style={styles.input}
+                        textAlign="right"
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.label}>הורי החתן</Text>
+                      <TextInput
+                        value={form.groomParents}
+                        onChangeText={(t) => setForm((f) => ({ ...f, groomParents: t }))}
+                        placeholder="לדוגמה: משפחת כהן"
+                        placeholderTextColor={'rgba(17,24,39,0.35)'}
+                        style={styles.input}
+                        textAlign="right"
+                      />
+                    </View>
                   </View>
                 </View>
               </>
             ) : (
-              <>
+              <View style={styles.formSectionCard}>
                 <Text style={styles.sectionTitle}>כותרת</Text>
                 <Text style={styles.label}>כותרת להזמנה *</Text>
                 <TextInput
@@ -545,28 +614,29 @@ export default function AdminInvitationLinksScreen() {
                   style={styles.input}
                   textAlign="right"
                 />
-              </>
+              </View>
             )}
 
-            <View style={[styles.actionsRow, isNarrow ? styles.actionsRowStack : null]}>
-              <Pressable
-                onPress={() => void pickAndUploadInvitationImage()}
-                disabled={uploading}
-                style={({ pressed }) => [styles.secondaryBtn, pressed ? { opacity: 0.92 } : null, uploading ? { opacity: 0.75 } : null]}
-              >
-                {uploading ? <ActivityIndicator color={colors.primary} /> : <Ionicons name="cloud-upload-outline" size={18} color={colors.primary} />}
-                <Text style={styles.secondaryBtnText}>{uploading ? 'מעלה...' : invitationPreviewImage ? 'החלפת תמונה' : 'העלה תמונה'}</Text>
-              </Pressable>
-
-              <Pressable
+            <View style={styles.formFooter}>
+              <TouchableOpacity
                 onPress={() => void save()}
                 disabled={saving}
-                style={({ pressed }) => [styles.primaryBtn, pressed ? { opacity: 0.92 } : null, saving ? { opacity: 0.8 } : null]}
+                activeOpacity={0.9}
+                style={[styles.saveSimpleBtn, saving ? { opacity: 0.8 } : null]}
+                accessibilityRole="button"
+                accessibilityLabel="שמור שינויים"
               >
-                {saving ? <ActivityIndicator color="#fff" /> : <Ionicons name="checkmark-circle-outline" size={18} color="#fff" />}
-                <Text style={styles.primaryBtnText}>{saving ? 'שומר...' : 'שמור שינויים'}</Text>
-              </Pressable>
+                {saving ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <>
+                    <Ionicons name="save-outline" size={18} color="#fff" />
+                    <Text style={styles.saveSimpleBtnText}>שמור שינויים</Text>
+                  </>
+                )}
+              </TouchableOpacity>
             </View>
+
           </View>
         </View>
 
@@ -712,26 +782,77 @@ export default function AdminInvitationLinksScreen() {
           </View>
         ) : null}
 
-        <Text style={styles.footer}>© 2026 כל הזכויות שמורות למערכת אירועים</Text>
       </AppKeyboardAwareScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: '#f6f6f8' },
+  page: { flex: 1, backgroundColor: '#E8F1FF' },
+  bg: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  bgHighlight: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.95,
+  },
+  bgWarmGlow: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.78,
+  },
+  stickyHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 20,
+    backgroundColor: 'rgba(255,255,255,0.98)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(15,23,42,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: colors.black,
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+  stickyHeaderInner: {
+    flex: 1,
+    paddingHorizontal: 18,
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+  },
+  stickyHeaderTitleWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stickyHeaderTitle: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'center',
+  },
+  stickyHeaderBackBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 999,
+    backgroundColor: 'rgba(232,240,255,0.98)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(15,69,230,0.20)',
+  },
+  stickyHeaderSideSpacer: {
+    width: 42,
+    height: 42,
+  },
   content: { padding: 18, paddingBottom: Platform.OS === 'web' ? 40 : 110, gap: 14 },
-  contentMobile: { paddingTop: 14 },
-  contentNarrow: { padding: 14, paddingTop: 12, gap: 12 },
+  contentMobile: {},
+  contentNarrow: { padding: 14, gap: 12 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 24 },
   centerText: { fontSize: 14, fontWeight: '800', color: colors.gray[700], textAlign: 'center' },
-
-  headerRow: { position: 'relative', minHeight: 40, justifyContent: 'center' },
-  headerTextWrap: { width: '100%', alignItems: 'stretch', paddingRight: 52 },
-  h1: { width: '100%', fontSize: 20, fontWeight: '900', color: colors.text, textAlign: 'right', writingDirection: 'rtl' },
-  h1Narrow: { fontSize: 22 },
-  sub: { width: '100%', marginTop: 4, fontSize: 12, fontWeight: '700', color: colors.gray[600], textAlign: 'right', writingDirection: 'rtl' },
-  headerBackBtn: { position: 'absolute', top: 0, right: 0, width: 40, height: 40, borderRadius: 14, backgroundColor: 'rgba(15,69,230,0.08)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(15,69,230,0.14)' },
 
   iconBtn: {
     width: 40,
@@ -760,16 +881,25 @@ const styles = StyleSheet.create({
   previewCardDesktop: { flex: 1, minWidth: 420, maxWidth: 560 },
   formCardDesktop: { flex: 1, minWidth: 520 },
   cardHeaderRow: { flexDirection: ROW_DIR, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  cardHeaderTextWrap: { flex: 1, minWidth: 0, gap: 4 },
   cardTitle: { fontSize: 15, fontWeight: '900', color: colors.text, textAlign: 'right' },
+  cardSubtitle: { fontSize: 12, fontWeight: '700', color: 'rgba(17,24,39,0.58)', textAlign: 'right', lineHeight: 18 },
 
   badge: { flexDirection: ROW_DIR, gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(15,69,230,0.08)' },
   badgeText: { fontSize: 12, fontWeight: '900', color: colors.primary, textAlign: 'right' },
 
   previewWrap: {
-    borderRadius: 16,
-    overflow: 'hidden',
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.10)',
+    backgroundColor: 'rgba(255,255,255,0.90)',
+    padding: 10,
+    gap: 10,
+  },
+  previewMediaWrap: {
+    position: 'relative',
+    borderRadius: 18,
+    overflow: 'hidden',
     backgroundColor: 'rgba(15,23,42,0.03)',
   },
   previewImg: { width: '100%', height: 240 },
@@ -779,9 +909,56 @@ const styles = StyleSheet.create({
   previewFallbackMobile: { height: 220 },
   previewFallbackNarrow: { height: 210 },
   previewFallbackText: { fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'center' },
-  previewBottom: { padding: 12, gap: 4, backgroundColor: 'rgba(255,255,255,0.92)' },
-  previewTitle: { fontSize: 16, fontWeight: '900', color: colors.text, textAlign: 'right' },
-  previewMeta: { fontSize: 12, fontWeight: '700', color: colors.gray[600], textAlign: 'right' },
+  previewCameraBtn: {
+    position: 'absolute',
+    left: 12,
+    bottom: 12,
+    width: 44,
+    height: 44,
+    borderRadius: 999,
+    backgroundColor: 'rgba(6,23,62,0.88)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.26)',
+    shadowColor: colors.black,
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 4,
+  },
+  previewBottom: {
+    paddingHorizontal: 6,
+    paddingTop: 2,
+    paddingBottom: 4,
+    gap: 10,
+  },
+  previewTitle: { fontSize: 17, fontWeight: '900', color: colors.text, textAlign: 'right', lineHeight: 24 },
+  previewMetaRow: { flexDirection: ROW_DIR, flexWrap: 'wrap', gap: 8 },
+  previewMetaChip: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: 'rgba(15,69,230,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,69,230,0.10)',
+  },
+  previewMetaChipText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: 'rgba(17,24,39,0.72)',
+    textAlign: 'right',
+  },
+  previewHint: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: 'rgba(17,24,39,0.54)',
+    textAlign: 'right',
+    lineHeight: 17,
+  },
 
   demoCard: {
     borderRadius: 16,
@@ -837,16 +1014,24 @@ const styles = StyleSheet.create({
   demoBtnDisabled: { opacity: 0.55, ...(Platform.OS === 'web' ? ({ cursor: 'default' } as any) : null) },
   demoBtnText: { fontSize: 12, fontWeight: '900', color: '#fff', textAlign: 'right' },
 
-  sectionTitle: { marginTop: 2, fontSize: 12, fontWeight: '900', color: 'rgba(17,24,39,0.78)', textAlign: 'right' },
+  formSectionCard: {
+    marginTop: 2,
+    padding: 14,
+    borderRadius: 18,
+    backgroundColor: 'rgba(248,251,255,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,69,230,0.08)',
+  },
+  sectionTitle: { marginTop: 2, marginBottom: 8, fontSize: 13, fontWeight: '900', color: 'rgba(17,24,39,0.82)', textAlign: 'right' },
   label: { marginTop: 2, fontSize: 12, fontWeight: '900', color: colors.text, textAlign: 'right' },
   input: {
     marginTop: 6,
-    height: 46,
-    borderRadius: 14,
-    paddingHorizontal: 14,
+    height: 48,
+    borderRadius: 16,
+    paddingHorizontal: 16,
     borderWidth: 1,
-    borderColor: 'rgba(17,24,39,0.10)',
-    backgroundColor: 'rgba(17,24,39,0.04)',
+    borderColor: 'rgba(15,69,230,0.10)',
+    backgroundColor: 'rgba(255,255,255,0.96)',
     color: '#111827',
     fontSize: 14,
     fontWeight: '700',
@@ -855,15 +1040,47 @@ const styles = StyleSheet.create({
   rowStack: { flexDirection: 'column' },
   actionsRow: { flexDirection: ROW_DIR, gap: 10, marginTop: 4 },
   actionsRowStack: { flexDirection: 'column' },
+  formFooter: {
+    marginTop: 14,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(15,69,230,0.08)',
+  },
   primaryBtn: {
     flex: 1,
-    height: 46,
-    borderRadius: 14,
+    height: 48,
+    borderRadius: 16,
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: ROW_DIR,
     gap: 8,
+  },
+  saveSimpleBtn: {
+    width: '100%',
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: colors.primary,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.04)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: ROW_DIR,
+    gap: 8,
+    shadowColor: colors.primary,
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 5,
+  },
+  saveSimpleBtnText: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: '#fff',
+    textAlign: 'center',
+  },
+  primaryBtnFull: {
+    flex: 1,
   },
   primaryBtnText: { fontSize: 13, fontWeight: '900', color: '#fff', textAlign: 'right' },
   secondaryBtn: {
@@ -1104,6 +1321,5 @@ const styles = StyleSheet.create({
   smsSendText: { fontSize: 12, fontWeight: '900', color: '#fff', textAlign: 'right' },
   smsResult: { fontSize: 12, fontWeight: '800', color: 'rgba(2,6,23,0.70)', textAlign: 'right' },
 
-  footer: { marginTop: 2, fontSize: 12, fontWeight: '700', color: colors.gray[500], textAlign: 'center' },
 });
 

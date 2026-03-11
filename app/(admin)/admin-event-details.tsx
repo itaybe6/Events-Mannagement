@@ -8,14 +8,12 @@ import { Event, Guest } from '@/types';
 import { supabase } from '@/lib/supabase';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import Svg, { Circle } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import BackSwipe from '@/components/BackSwipe';
-import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
 import { useAdminEventDetailsModel } from '@/features/events/useAdminEventDetailsModel';
-import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
+import { ALIGN_LEFT, ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
 
 export default function AdminEventDetailsScreen() {
   const { id } = useLocalSearchParams();
@@ -158,11 +156,6 @@ export default function AdminEventDetailsScreen() {
   };
 
   const handleBackPress = () => {
-    const canGoBack = typeof (router as any)?.canGoBack === 'function' ? (router as any).canGoBack() : false;
-    if (canGoBack) {
-      router.back();
-      return;
-    }
     router.replace('/(admin)/admin-events');
   };
 
@@ -271,13 +264,13 @@ export default function AdminEventDetailsScreen() {
   // IMPORTANT: do not use a hook here, because this screen has an early return during loading
   // (changing hook order between renders breaks the Rules of Hooks).
   const ui = {
-    bg: '#FFF9EE',
+    bg: '#EDF5FF',
     text: colors.richBlack,
     muted: 'rgba(0, 53, 102, 0.72)',
     primary: colors.richBlack,
     accent: colors.gold,
-    glassBorder: 'rgba(6, 23, 62, 0.08)',
-    glassFill: 'rgba(255,255,255,0.88)',
+    glassBorder: 'rgba(21, 76, 151, 0.10)',
+    glassFill: 'rgba(244, 249, 255, 0.92)',
   } as const;
 
   const getEventTypeLabel = () => {
@@ -286,6 +279,16 @@ export default function AdminEventDetailsScreen() {
     // Common pattern in the design: "סוג אירוע – ..." → keep only the type
     const parts = raw.split(/(?:\s*[–—-]\s*)/g).map(p => p.trim()).filter(Boolean);
     return parts[0] || raw;
+  };
+
+  const getEventDisplayTitle = () => {
+    const raw = String(event?.title ?? '').trim();
+    if (!raw) return 'אירוע';
+    const parts = raw.split(/(?:\s*[–—-]\s*)/g).map(p => p.trim()).filter(Boolean);
+    if (parts.length > 1) {
+      return parts.slice(1).join(' - ');
+    }
+    return raw;
   };
 
   const isWeddingEvent = () => {
@@ -303,64 +306,6 @@ export default function AdminEventDetailsScreen() {
     const first = parts[0]?.[0] ?? '';
     const second = parts.length > 1 ? parts[1]?.[0] ?? '' : '';
     return (first + second).toUpperCase();
-  };
-
-  const ProgressRing = ({
-    size,
-    strokeWidth,
-    progress,
-    color,
-    value,
-    label,
-    valueFontSize,
-  }: {
-    size: number;
-    strokeWidth: number;
-    progress: number; // 0..1
-    color: string;
-    value: number;
-    label: string;
-    valueFontSize: number;
-  }) => {
-    const r = (size - strokeWidth) / 2;
-    const c = 2 * Math.PI * r;
-    const clamped = Math.max(0, Math.min(1, Number.isFinite(progress) ? progress : 0));
-    const dashOffset = c * (1 - clamped);
-
-    return (
-      <View style={styles.ringWrap}>
-        <View style={{ width: size, height: size }}>
-          <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-            <Circle
-              cx={size / 2}
-              cy={size / 2}
-              r={r}
-              stroke={'rgba(17, 24, 39, 0.08)'}
-              strokeWidth={strokeWidth}
-              fill="transparent"
-            />
-            <Circle
-              cx={size / 2}
-              cy={size / 2}
-              r={r}
-              stroke={color}
-              strokeWidth={strokeWidth}
-              strokeLinecap="round"
-              fill="transparent"
-              strokeDasharray={`${c} ${c}`}
-              strokeDashoffset={dashOffset}
-              originX={size / 2}
-              originY={size / 2}
-              rotation={-90}
-            />
-          </Svg>
-          <View style={styles.ringCenter}>
-            <Text style={[styles.ringValue, { fontSize: valueFontSize, color: ui.text }]}>{value}</Text>
-          </View>
-        </View>
-        <Text style={[styles.ringLabel, { color: 'rgba(17, 24, 39, 0.55)' }]}>{label}</Text>
-      </View>
-    );
   };
 
   const GlassPanel = ({
@@ -423,10 +368,14 @@ export default function AdminEventDetailsScreen() {
     );
   };
 
-  const heroHeight = Math.max(420, Math.min(620, windowHeight * 0.62));
+  const heroTopSpacing = 58;
+  const heroBaseHeight = Math.max(420, Math.min(620, windowHeight * 0.62));
+  const heroHeight = heroBaseHeight + Math.max(0, heroTopSpacing - 22);
   // Keep the end of the scroll content above the tab bar
   const tabBarBottomOffset = Platform.OS === 'ios' ? 30 : 20;
   const tabBarHeight = 65;
+  const getProgressPercent = (value: number, total: number) =>
+    total ? Math.max(0, Math.min(100, Math.round((value / total) * 100))) : 0;
   const tabBarReserve = tabBarBottomOffset + tabBarHeight + 24;
 
   return (
@@ -435,11 +384,11 @@ export default function AdminEventDetailsScreen() {
       onBack={() => router.replace('/(admin)/admin-events')}
     >
       <View style={[styles.safeRoot, { backgroundColor: ui.bg }]}>
-        <View style={[styles.safe, { paddingTop: insets.top }]}>
+        <View style={styles.safe}>
         {/* App background gradient */}
         <View pointerEvents="none" style={styles.bgLayer}>
           <LinearGradient
-            colors={['#F7FAFF', '#E8F1FF', '#F2E0BA']}
+            colors={['#F7FAFF', '#EEF5FF', '#E1EEFF']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.bgBase}
@@ -451,7 +400,7 @@ export default function AdminEventDetailsScreen() {
             style={styles.bgHighlight}
           />
           <LinearGradient
-            colors={['rgba(232,196,122,0.58)', 'rgba(244,224,186,0.22)', 'rgba(244,224,186,0)']}
+            colors={['rgba(123,164,224,0.24)', 'rgba(214,231,255,0.20)', 'rgba(214,231,255,0)']}
             start={{ x: 1, y: 0.95 }}
             end={{ x: 0.18, y: 0.22 }}
             style={styles.bgWarmGlow}
@@ -475,7 +424,7 @@ export default function AdminEventDetailsScreen() {
         contentContainerStyle={[
           styles.content,
           {
-            paddingBottom: tabBarReserve,
+            paddingBottom: 0,
           },
         ]}
         showsVerticalScrollIndicator={false}
@@ -486,10 +435,30 @@ export default function AdminEventDetailsScreen() {
             styles.heroStack,
             {
               height: heroHeight,
-              paddingTop: 10,
+              paddingTop: heroTopSpacing,
             },
           ]}
         >
+          <View pointerEvents="none" style={styles.heroGradientLayer}>
+            <LinearGradient
+              colors={['#F7FAFF', '#E8F1FF', '#F2E0BA']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.bgBase}
+            />
+            <LinearGradient
+              colors={['rgba(255,255,255,0.68)', 'rgba(255,255,255,0)']}
+              start={{ x: 0.05, y: 0 }}
+              end={{ x: 0.75, y: 0.55 }}
+              style={styles.bgHighlight}
+            />
+            <LinearGradient
+              colors={['rgba(232,196,122,0.58)', 'rgba(244,224,186,0.22)', 'rgba(244,224,186,0)']}
+              start={{ x: 1, y: 0.95 }}
+              end={{ x: 0.18, y: 0.22 }}
+              style={styles.bgWarmGlow}
+            />
+          </View>
           <View style={styles.hero}>
             <View style={styles.heroWindowOuter}>
               <View style={styles.heroWindowInner}>
@@ -539,15 +508,31 @@ export default function AdminEventDetailsScreen() {
                 </View>
 
                 <View style={styles.heroTitleWrap}>
-                  <Text style={[styles.heroTitleType, { color: ui.text }]}>{getEventTypeLabel()}</Text>
-                  {userName ? <Text style={[styles.heroTitleOwner, { color: ui.accent }]}>{`לקוח: ${userName}`}</Text> : null}
+                  {userName ? (
+                    <View style={styles.heroOwnerTag}>
+                      <Text style={[styles.heroOwnerTagText, { color: ui.accent }]}>{userName}</Text>
+                    </View>
+                  ) : null}
+                  <Text style={[styles.heroTitleType, { color: ui.text }]}>{getEventDisplayTitle()}</Text>
+                  <View style={styles.heroEventTypeTag}>
+                    <Text style={[styles.heroEventTypeTagText, { color: ui.text }]}>{getEventTypeLabel()}</Text>
+                  </View>
                 </View>
 
-                <View style={styles.heroMetaRow}>
-                  <Ionicons name="calendar-outline" size={18} color={ui.muted} />
-                  <Text style={[styles.heroMetaText, { color: ui.muted }]}>
-                    {`${weekday}, ${day} | ${String(event.location ?? '')}`}
-                  </Text>
+                <View style={styles.heroMetaCardsRow}>
+                  <View style={styles.heroMetaCard}>
+                    <View style={styles.heroMetaCardIcon}>
+                      <Ionicons name="calendar-outline" size={16} color={ui.accent} />
+                    </View>
+                    <Text style={[styles.heroMetaCardText, { color: ui.text }]}>{`${weekday}, ${day}`}</Text>
+                  </View>
+
+                  <View style={styles.heroMetaCard}>
+                    <View style={styles.heroMetaCardIcon}>
+                      <Ionicons name="business-outline" size={16} color={ui.accent} />
+                    </View>
+                    <Text style={[styles.heroMetaCardText, { color: ui.text }]}>{String(event.location ?? '').trim() || 'מיקום לא הוזן'}</Text>
+                  </View>
                 </View>
 
                 {isWeddingEvent() ? (
@@ -564,7 +549,15 @@ export default function AdminEventDetailsScreen() {
         </View>
 
         {/* White bottom sheet with rounded corners (like the reference) */}
-        <View style={[styles.sheet, { marginBottom: Platform.OS === 'web' ? 30 : 0 }]}>
+        <View
+          style={[
+            styles.sheet,
+            {
+              marginBottom: Platform.OS === 'web' ? 30 : 0,
+              paddingBottom: Platform.OS === 'web' ? 24 : tabBarReserve,
+            },
+          ]}
+        >
           {/* RSVP approvals (top tile) */}
           <TouchableOpacity
             style={styles.tileWideOuter}
@@ -573,11 +566,6 @@ export default function AdminEventDetailsScreen() {
             accessibilityRole="button"
             accessibilityLabel="פתיחת אישורי הגעה"
           >
-            <View pointerEvents="none" style={styles.tileLightDecorWrap}>
-              <View style={styles.tileLightDecorCircle} />
-              <View style={styles.tileLightDecorCircle2} />
-            </View>
-
             <View style={styles.rsvpCardInner}>
               <View style={styles.rsvpHeaderRow}>
                 <View style={styles.rsvpHeaderRight}>
@@ -633,80 +621,67 @@ export default function AdminEventDetailsScreen() {
               </View>
             </View>
 
-            <View style={styles.ringsRow}>
-              <ProgressRing
-                size={84}
-                strokeWidth={9}
-                progress={totalGuests ? confirmed / totalGuests : 0}
-                color={colors.yaleBlue}
-                value={confirmed}
-                label="אישרו"
-                valueFontSize={20}
-              />
-              <ProgressRing
-                size={68}
-                strokeWidth={9}
-                progress={totalGuests ? pending / totalGuests : 0}
-                color={colors.gold}
-                value={pending}
-                label="אולי"
-                valueFontSize={18}
-              />
-              <ProgressRing
-                size={68}
-                strokeWidth={9}
-                progress={totalGuests ? declined / totalGuests : 0}
-                color={'#FF3B30'}
-                value={declined}
-                label="לא"
-                valueFontSize={18}
-              />
+            <View style={styles.guestStatusGrid}>
+              <View style={styles.guestStatusCard}>
+                <View style={styles.guestStatusTopRow}>
+                  <Text style={[styles.guestStatusLabel, { color: 'rgba(17,24,39,0.62)' }]}>אישרו</Text>
+                  <Text style={[styles.guestStatusPercent, { color: colors.yaleBlue }]}>{`${getProgressPercent(confirmed, totalGuests)}%`}</Text>
+                </View>
+                <Text style={[styles.guestStatusValue, { color: ui.text }]}>{confirmed}</Text>
+                <View style={styles.guestStatusBarTrack}>
+                  <View style={[styles.guestStatusBarFill, { width: `${getProgressPercent(confirmed, totalGuests)}%`, backgroundColor: colors.yaleBlue }]} />
+                </View>
+              </View>
+
+              <View style={styles.guestStatusCard}>
+                <View style={styles.guestStatusTopRow}>
+                  <Text style={[styles.guestStatusLabel, { color: 'rgba(17,24,39,0.62)' }]}>ממתינים</Text>
+                  <Text style={[styles.guestStatusPercent, { color: colors.gold }]}>{`${getProgressPercent(pending, totalGuests)}%`}</Text>
+                </View>
+                <Text style={[styles.guestStatusValue, { color: ui.text }]}>{pending}</Text>
+                <View style={styles.guestStatusBarTrack}>
+                  <View style={[styles.guestStatusBarFill, { width: `${getProgressPercent(pending, totalGuests)}%`, backgroundColor: colors.gold }]} />
+                </View>
+              </View>
+
+              <View style={styles.guestStatusCard}>
+                <View style={styles.guestStatusTopRow}>
+                  <Text style={[styles.guestStatusLabel, { color: 'rgba(17,24,39,0.62)' }]}>לא מגיעים</Text>
+                  <Text style={[styles.guestStatusPercent, { color: colors.error }]}>{`${getProgressPercent(declined, totalGuests)}%`}</Text>
+                </View>
+                <Text style={[styles.guestStatusValue, { color: ui.text }]}>{declined}</Text>
+                <View style={styles.guestStatusBarTrack}>
+                  <View style={[styles.guestStatusBarFill, { width: `${getProgressPercent(declined, totalGuests)}%`, backgroundColor: colors.error }]} />
+                </View>
+              </View>
             </View>
           </GlassPanel>
 
-          {/* Stat tiles (match screenshot style) */}
-          <View style={styles.tilesRow}>
-            {/* Dark tile: seating progress */}
-            <View style={styles.tileDarkOuter}>
-              <LinearGradient
-                colors={[colors.richBlack, colors.yaleBlue]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.tileDark}
-              >
-                <View style={styles.tileDarkTopRow}>
-                  <View style={styles.tileBadge}>
-                    <Ionicons name="checkmark-circle" size={16} color={colors.yellow} />
-                  </View>
+          <View style={styles.summaryTilesRow}>
+            <GlassPanel style={styles.summaryTile}>
+              <View style={styles.summaryTileHeader}>
+                <View style={[styles.summaryTileIcon, { backgroundColor: 'rgba(0,53,102,0.08)' }]}>
+                  <Ionicons name="checkbox-outline" size={18} color={colors.yaleBlue} />
                 </View>
-
-                <Text style={styles.tilePercent}>{`${seatedPercent}%`}</Text>
-                <Text style={styles.tileDarkLabel}>הושבו</Text>
-
-                <View style={styles.tileProgressTrack}>
-                  <View style={[styles.tileProgressFill, { width: `${Math.max(0, Math.min(100, seatedPercent))}%` }]} />
-                </View>
-              </LinearGradient>
-            </View>
-
-            {/* Light tile: confirmed guests */}
-            <GlassPanel style={styles.tileLight}>
-              <View pointerEvents="none" style={styles.tileLightDecorWrap}>
-                <View style={styles.tileLightDecorCircle} />
-                <View style={styles.tileLightDecorCircle2} />
+                <Text style={[styles.summaryTileLabel, { color: 'rgba(17,24,39,0.62)' }]}>הושבו</Text>
               </View>
-
-              <View style={styles.tileLightTopRow}>
-                <View style={styles.tileLightIconCircle}>
-                  <Ionicons name="people" size={18} color={colors.richBlack} />
-                </View>
-                <Text style={styles.tileLightPercentHint}>
-                  {totalGuests ? `${Math.max(0, Math.min(100, Math.round((confirmed / totalGuests) * 100)))}%+` : '0%'}
-                </Text>
+              <Text style={[styles.summaryTileValue, { color: ui.text }]}>{`${seatedPercent}%`}</Text>
+              <View style={styles.guestStatusBarTrack}>
+                <View style={[styles.guestStatusBarFill, { width: `${Math.max(0, Math.min(100, seatedPercent))}%`, backgroundColor: colors.yaleBlue }]} />
               </View>
+            </GlassPanel>
 
-              <Text style={[styles.tileLightValue, { color: ui.text }]}>{confirmed}</Text>
-              <Text style={styles.tileLightLabel}>אורחים אישרו</Text>
+            <GlassPanel style={styles.summaryTile}>
+              <View style={styles.summaryTileHeader}>
+                <View style={[styles.summaryTileIcon, { backgroundColor: 'rgba(240,203,70,0.18)' }]}>
+                  <Ionicons name="people-outline" size={18} color={colors.gold} />
+                </View>
+                <Text style={[styles.summaryTileLabel, { color: 'rgba(17,24,39,0.62)' }]}>אורחים אישרו</Text>
+              </View>
+              <Text style={[styles.summaryTileValue, { color: ui.text }]}>{confirmed}</Text>
+              <View style={styles.guestStatusBarTrack}>
+                <View style={[styles.guestStatusBarFill, { width: `${getProgressPercent(confirmed, totalGuests)}%`, backgroundColor: colors.gold }]} />
+              </View>
             </GlassPanel>
           </View>
 
@@ -824,7 +799,11 @@ export default function AdminEventDetailsScreen() {
             setEditOpen(false);
           }}
         >
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ width: '100%' }}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 18 : 0}
+            style={styles.editKeyboardWrap}
+          >
             <Pressable style={styles.editCard} onPress={() => null}>
               <View style={styles.editHeader}>
                 <TouchableOpacity
@@ -837,96 +816,120 @@ export default function AdminEventDetailsScreen() {
                   <Ionicons name="close" size={18} color={'rgba(17,24,39,0.70)'} />
                 </TouchableOpacity>
 
-                <View style={{ flex: 1, alignItems: 'center' }}>
+                <View style={styles.editHeaderTextWrap}>
                   <Text style={styles.editTitle}>עריכת אירוע</Text>
                   <Text style={styles.editSubtitle} numberOfLines={1}>
-                    {getEventTypeLabel()}
+                    {getEventDisplayTitle()}
                   </Text>
+                  <View style={styles.editTypeChip}>
+                    <Text style={styles.editTypeChipText}>{getEventTypeLabel()}</Text>
+                  </View>
                 </View>
 
-                <View style={{ width: 40 }} />
+                <View style={styles.editHeaderIcon}>
+                  <Ionicons name="create-outline" size={18} color={ui.primary} />
+                </View>
               </View>
 
               <View style={styles.editDivider} />
 
-              <AppKeyboardAwareScrollView contentContainerStyle={styles.editBody} showsVerticalScrollIndicator={false}>
-                {/* Date */}
-                <View style={styles.editBlock}>
-                  <Text style={styles.editBlockLabel}>תאריך האירוע</Text>
-                  <TouchableOpacity
-                    style={styles.dateRow}
-                    onPress={() => setEditDatePickerOpen(true)}
-                    activeOpacity={0.9}
-                    accessibilityRole="button"
-                    accessibilityLabel="בחירת תאריך"
-                  >
-                    <Ionicons name="calendar-outline" size={18} color={'rgba(17,24,39,0.55)'} />
-                    <Text style={styles.dateRowText}>
-                      {Number.isFinite(editForm.date.getTime())
-                        ? editForm.date.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' })
-                        : ''}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
+              <ScrollView
+                style={styles.editScroll}
+                contentContainerStyle={[styles.editBody, { paddingBottom: Math.max(insets.bottom + 18, 24) }]}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                bounces={false}
+                alwaysBounceVertical={false}
+                overScrollMode="never"
+              >
+                <View style={styles.editSectionCard}>
+                  <View style={styles.editSectionHeader}>
+                    <Text style={styles.editSectionTitle}>פרטי האירוע</Text>
+                    <Text style={styles.editSectionHint}>עדכן את התאריך והמיקום שיוצגו באפליקציה</Text>
+                  </View>
 
-                {/* Location + City */}
-                <View style={styles.editBlock}>
-                  <Text style={styles.editBlockLabel}>מיקום</Text>
-                  <TextInput
-                    value={editForm.location}
-                    onChangeText={(t) => setEditForm((f) => ({ ...f, location: t }))}
-                    placeholder="מיקום"
-                    placeholderTextColor={'rgba(17,24,39,0.35)'}
-                    style={styles.editInput}
-                    textAlign="right"
-                  />
+                  <View style={styles.editFieldBlock}>
+                    <Text style={styles.editFieldLabel}>תאריך האירוע</Text>
+                    <TouchableOpacity
+                      style={styles.dateRow}
+                      onPress={() => setEditDatePickerOpen(true)}
+                      activeOpacity={0.9}
+                      accessibilityRole="button"
+                      accessibilityLabel="בחירת תאריך"
+                    >
+                      <View style={styles.editFieldIcon}>
+                        <Ionicons name="calendar-outline" size={16} color={'rgba(0,53,102,0.78)'} />
+                      </View>
+                      <Text style={styles.dateRowText}>
+                        {Number.isFinite(editForm.date.getTime())
+                          ? editForm.date.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                          : ''}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
 
-                  <Text style={[styles.editBlockLabel, { marginTop: 10 }]}>עיר</Text>
-                  <TextInput
-                    value={editForm.city}
-                    onChangeText={(t) => setEditForm((f) => ({ ...f, city: t }))}
-                    placeholder="עיר"
-                    placeholderTextColor={'rgba(17,24,39,0.35)'}
-                    style={styles.editInput}
-                    textAlign="right"
-                  />
-                </View>
-
-                {/* Groom / Bride */}
-                {isWeddingEvent() ? (
-                  <View style={styles.editBlock}>
-                    <Text style={styles.editBlockLabel}>פרטי חתונה</Text>
-
-                    <Text style={[styles.editBlockLabel, { marginTop: 10, fontSize: 12, color: 'rgba(17,24,39,0.60)' }]}>
-                      שם חתן
-                    </Text>
+                  <View style={styles.editFieldBlock}>
+                    <Text style={styles.editFieldLabel}>מיקום</Text>
                     <TextInput
-                      value={editForm.groomName}
-                      onChangeText={(t) => setEditForm((f) => ({ ...f, groomName: t }))}
-                      placeholder="שם החתן"
-                      placeholderTextColor={'rgba(17,24,39,0.35)'}
-                      style={styles.editInput}
-                      textAlign="right"
-                    />
-
-                    <Text style={[styles.editBlockLabel, { marginTop: 10, fontSize: 12, color: 'rgba(17,24,39,0.60)' }]}>
-                      שם כלה
-                    </Text>
-                    <TextInput
-                      value={editForm.brideName}
-                      onChangeText={(t) => setEditForm((f) => ({ ...f, brideName: t }))}
-                      placeholder="שם הכלה"
+                      value={editForm.location}
+                      onChangeText={(t) => setEditForm((f) => ({ ...f, location: t }))}
+                      placeholder="הזן אולם או מקום"
                       placeholderTextColor={'rgba(17,24,39,0.35)'}
                       style={styles.editInput}
                       textAlign="right"
                     />
                   </View>
+
+                  <View style={styles.editFieldBlock}>
+                    <Text style={styles.editFieldLabel}>עיר</Text>
+                    <TextInput
+                      value={editForm.city}
+                      onChangeText={(t) => setEditForm((f) => ({ ...f, city: t }))}
+                      placeholder="הזן עיר"
+                      placeholderTextColor={'rgba(17,24,39,0.35)'}
+                      style={styles.editInput}
+                      textAlign="right"
+                    />
+                  </View>
+                </View>
+
+                {isWeddingEvent() ? (
+                  <View style={styles.editSectionCard}>
+                    <View style={styles.editSectionHeader}>
+                      <Text style={styles.editSectionTitle}>פרטי חתונה</Text>
+                      <Text style={styles.editSectionHint}>שמות שיופיעו באזור המידע של האירוע</Text>
+                    </View>
+
+                    <View style={styles.editFieldBlock}>
+                      <Text style={styles.editFieldLabel}>שם חתן</Text>
+                      <TextInput
+                        value={editForm.groomName}
+                        onChangeText={(t) => setEditForm((f) => ({ ...f, groomName: t }))}
+                        placeholder="שם החתן"
+                        placeholderTextColor={'rgba(17,24,39,0.35)'}
+                        style={styles.editInput}
+                        textAlign="right"
+                      />
+                    </View>
+
+                    <View style={styles.editFieldBlock}>
+                      <Text style={styles.editFieldLabel}>שם כלה</Text>
+                      <TextInput
+                        value={editForm.brideName}
+                        onChangeText={(t) => setEditForm((f) => ({ ...f, brideName: t }))}
+                        placeholder="שם הכלה"
+                        placeholderTextColor={'rgba(17,24,39,0.35)'}
+                        style={styles.editInput}
+                        textAlign="right"
+                      />
+                    </View>
+                  </View>
                 ) : null}
 
                 <View style={{ height: 6 }} />
-              </AppKeyboardAwareScrollView>
+              </ScrollView>
 
-              <View style={styles.editDangerWrap}>
+              <View style={styles.editFooter}>
                 <TouchableOpacity
                   style={[styles.footerBtnDanger, deleteSaving ? { opacity: 0.88 } : null]}
                   onPress={confirmDeleteEvent}
@@ -943,18 +946,6 @@ export default function AdminEventDetailsScreen() {
                       <Text style={styles.footerBtnDangerText}>מחק אירוע</Text>
                     </>
                   )}
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.editFooter}>
-                <TouchableOpacity
-                  style={styles.footerBtnSecondary}
-                  onPress={() => setEditOpen(false)}
-                  activeOpacity={0.9}
-                  accessibilityRole="button"
-                  accessibilityLabel="ביטול"
-                >
-                  <Text style={styles.footerBtnSecondaryText}>ביטול</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -1166,6 +1157,10 @@ const styles = StyleSheet.create({
     marginHorizontal: -24, // extend hero image to screen edges
     backgroundColor: 'transparent',
   },
+  heroGradientLayer: {
+    ...StyleSheet.absoluteFillObject,
+    overflow: 'hidden',
+  },
   scroll: {
     flex: 1,
     zIndex: 3,
@@ -1195,9 +1190,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 22,
     paddingBottom: 24,
-    backgroundColor: '#FFFCF6',
+    backgroundColor: '#EDF5FF',
     borderTopLeftRadius: 34,
     borderTopRightRadius: 34,
+    borderTopWidth: 1,
+    borderColor: 'rgba(21, 76, 151, 0.08)',
     zIndex: 4,
     shadowColor: colors.black,
     shadowOpacity: 0.08,
@@ -1208,6 +1205,22 @@ const styles = StyleSheet.create({
   heroTitleWrap: {
     alignItems: 'center',
   },
+  heroOwnerTag: {
+    marginBottom: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(240,203,70,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(204,160,0,0.22)',
+  },
+  heroOwnerTagText: {
+    fontSize: 18,
+    fontWeight: '800',
+    lineHeight: 22,
+    textAlign: 'center',
+    letterSpacing: -0.2,
+  },
   heroTitleType: {
     fontSize: 36,
     fontWeight: '900',
@@ -1215,13 +1228,21 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     letterSpacing: -0.6,
   },
-  heroTitleOwner: {
-    marginTop: 6,
-    fontSize: 24,
-    fontWeight: '900',
-    lineHeight: 28,
+  heroEventTypeTag: {
+    marginTop: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(6, 23, 62, 0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(6, 23, 62, 0.1)',
+  },
+  heroEventTypeTagText: {
+    fontSize: 15,
+    fontWeight: '800',
+    lineHeight: 18,
     textAlign: 'center',
-    letterSpacing: -0.4,
+    letterSpacing: -0.2,
   },
   heroMetaRow: {
     flexDirection: ROW_DIR,
@@ -1229,6 +1250,43 @@ const styles = StyleSheet.create({
     gap: 8,
     marginTop: 10,
     justifyContent: 'center',
+  },
+  heroMetaCardsRow: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    marginTop: 14,
+    flexWrap: 'wrap',
+  },
+  heroMetaCard: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.82)',
+    borderWidth: 1,
+    borderColor: 'rgba(6, 23, 62, 0.08)',
+    shadowColor: colors.black,
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+  heroMetaCardIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(240,203,70,0.16)',
+  },
+  heroMetaCardText: {
+    fontSize: 15,
+    fontWeight: '700',
+    textAlign: 'center',
   },
   heroMetaText: {
     fontSize: 16,
@@ -1361,56 +1419,146 @@ const styles = StyleSheet.create({
 
   editOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(6,23,62,0.46)',
+    backgroundColor: 'rgba(6,23,62,0.40)',
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 18,
   },
+  editKeyboardWrap: {
+    width: '100%',
+    justifyContent: 'center',
+  },
   editCard: {
     width: '100%',
     maxWidth: 560,
-    borderRadius: 26,
-    backgroundColor: 'rgba(255,255,255,0.98)',
+    borderRadius: 30,
+    backgroundColor: 'rgba(252,253,255,0.99)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.7)',
+    borderColor: 'rgba(255,255,255,0.78)',
     shadowColor: colors.black,
-    shadowOpacity: 0.20,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 14 },
-    elevation: 10,
+    shadowOpacity: 0.16,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 16 },
+    elevation: 12,
     overflow: 'hidden',
-    maxHeight: '88%',
+    maxHeight: '90%',
+  },
+  editScroll: {
+    flexGrow: 0,
   },
   editHeader: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 12,
-    flexDirection: ROW_DIR,
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 14,
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
+    minHeight: 108,
+    position: 'relative',
   },
-  editCloseBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 999,
+  editHeaderIcon: {
+    position: 'absolute',
+    top: 18,
+    right: 18,
+    width: 46,
+    height: 46,
+    borderRadius: 16,
     backgroundColor: 'rgba(240,203,70,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(204,160,0,0.18)',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  editTitle: { fontSize: 18, fontWeight: '900', color: colors.richBlack, textAlign: 'center' },
-  editSubtitle: { marginTop: 4, fontSize: 12, fontWeight: '800', color: 'rgba(0,53,102,0.64)', textAlign: 'center' },
-  editDivider: { height: 1, backgroundColor: 'rgba(6,23,62,0.08)', marginHorizontal: 16 },
-  editBody: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 14, gap: 12 },
-  editBlock: { gap: 10 },
-  editBlockHeaderRow: { flexDirection: ROW_DIR, alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  editBlockLabel: { fontSize: 13, fontWeight: '900', color: colors.richBlack, textAlign: 'right' },
-  editInput: {
-    height: 48,
-    borderRadius: 14,
-    paddingHorizontal: 14,
+  editHeaderTextWrap: {
+    width: '100%',
+    paddingHorizontal: 58,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editCloseBtn: {
+    position: 'absolute',
+    top: 21,
+    left: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 999,
+    backgroundColor: 'rgba(17,24,39,0.06)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  editTitle: { fontSize: 22, fontWeight: '900', color: colors.richBlack, textAlign: 'center', letterSpacing: -0.3 },
+  editSubtitle: {
+    marginTop: 6,
+    fontSize: 13,
+    fontWeight: '700',
+    color: 'rgba(0,53,102,0.68)',
+    textAlign: 'center',
+  },
+  editTypeChip: {
+    marginTop: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(0,53,102,0.08)',
     borderWidth: 1,
-    borderColor: 'rgba(6,23,62,0.10)',
-    backgroundColor: 'rgba(255,255,255,0.86)',
+    borderColor: 'rgba(0,53,102,0.10)',
+  },
+  editTypeChipText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.richBlack,
+    textAlign: 'center',
+  },
+  editDivider: { height: 1, backgroundColor: 'rgba(6,23,62,0.08)', marginHorizontal: 18 },
+  editBody: { paddingHorizontal: 18, paddingTop: 16, paddingBottom: 16, gap: 14 },
+  editSectionCard: {
+    gap: 14,
+    padding: 16,
+    borderRadius: 22,
+    backgroundColor: 'rgba(244,248,255,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(21,76,151,0.08)',
+  },
+  editSectionHeader: {
+    gap: 4,
+    alignItems: ALIGN_RIGHT,
+  },
+  editSectionTitle: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: colors.richBlack,
+    textAlign: 'right',
+  },
+  editSectionHint: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: 'rgba(17,24,39,0.58)',
+    textAlign: 'right',
+    lineHeight: 18,
+  },
+  editFieldBlock: {
+    gap: 8,
+  },
+  editFieldLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: 'rgba(17,24,39,0.68)',
+    textAlign: 'right',
+  },
+  editFieldIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 12,
+    backgroundColor: 'rgba(240,203,70,0.16)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  editInput: {
+    height: 52,
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(21,76,151,0.10)',
+    backgroundColor: 'rgba(255,255,255,0.96)',
     color: colors.richBlack,
     fontSize: 14,
     fontWeight: '700',
@@ -1440,45 +1588,40 @@ const styles = StyleSheet.create({
   coverPreviewFallbackText: { fontSize: 12, fontWeight: '800', color: 'rgba(17,24,39,0.55)' },
   dateRow: {
     height: 52,
-    borderRadius: 14,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: 'rgba(6,23,62,0.10)',
-    backgroundColor: 'rgba(255,255,255,0.86)',
-    paddingHorizontal: 14,
+    borderColor: 'rgba(21,76,151,0.10)',
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    paddingHorizontal: 16,
     flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
   },
   dateRowText: { fontSize: 15, fontWeight: '900', color: colors.richBlack },
   editFooter: {
-    padding: 14,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(17,24,39,0.08)',
+    paddingHorizontal: 18,
+    paddingTop: 14,
+    paddingBottom: 18,
     flexDirection: ROW_DIR,
     gap: 10,
-    backgroundColor: 'rgba(255,255,255,0.98)',
-  },
-  editDangerWrap: {
-    paddingHorizontal: 14,
-    paddingTop: 10,
-    paddingBottom: 2,
-    backgroundColor: 'rgba(255,255,255,0.98)',
+    backgroundColor: 'rgba(252,253,255,0.99)',
   },
   footerBtnSecondary: {
     flex: 1,
     height: 50,
-    borderRadius: 14,
-    backgroundColor: 'rgba(17,24,39,0.06)',
+    borderRadius: 16,
+    backgroundColor: 'rgba(17,24,39,0.05)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   footerBtnSecondaryText: { fontSize: 14, fontWeight: '900', color: '#111827' },
   footerBtnDanger: {
-    height: 48,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255, 59, 48, 0.08)',
+    flex: 1,
+    height: 50,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255, 59, 48, 0.06)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 59, 48, 0.22)',
+    borderColor: 'rgba(255, 59, 48, 0.18)',
     justifyContent: 'center',
     alignItems: 'center',
     flexDirection: ROW_DIR,
@@ -1486,9 +1629,9 @@ const styles = StyleSheet.create({
   },
   footerBtnDangerText: { fontSize: 13, fontWeight: '900', color: colors.error },
   footerBtnPrimary: {
-    flex: 2,
+    flex: 1.35,
     height: 50,
-    borderRadius: 14,
+    borderRadius: 16,
     backgroundColor: colors.richBlack,
     justifyContent: 'center',
     alignItems: 'center',
@@ -1749,11 +1892,11 @@ const styles = StyleSheet.create({
   actionRow: {
     width: '100%',
     maxWidth: 560,
-    backgroundColor: 'rgba(255,255,255,0.94)',
+    backgroundColor: 'rgba(248,252,255,0.96)',
     borderRadius: 24,
     padding: 16,
     borderWidth: 1,
-    borderColor: 'rgba(204,160,0,0.12)',
+    borderColor: 'rgba(21, 76, 151, 0.08)',
     shadowColor: colors.black,
     shadowOpacity: 0.06,
     shadowRadius: 20,
@@ -1800,7 +1943,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 999,
-    backgroundColor: 'rgba(240,203,70,0.16)',
+    backgroundColor: 'rgba(21, 76, 151, 0.08)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1824,21 +1967,51 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '800',
   },
-
-  ringsRow: {
+  guestStatusGrid: {
+    gap: 10,
+  },
+  guestStatusCard: {
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: 'rgba(248,252,255,0.84)',
+    borderWidth: 1,
+    borderColor: 'rgba(21, 76, 151, 0.08)',
+  },
+  guestStatusTopRow: {
     flexDirection: ROW_DIR,
-    alignItems: 'flex-end',
-    justifyContent: 'space-around',
-    gap: 8,
-  },
-  ringWrap: { alignItems: 'center', gap: 10 },
-  ringCenter: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
   },
-  ringValue: { fontWeight: '900' },
-  ringLabel: { fontSize: 13, fontWeight: '600' },
+  guestStatusLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    textAlign: 'right',
+  },
+  guestStatusPercent: {
+    fontSize: 13,
+    fontWeight: '800',
+    textAlign: 'left',
+  },
+  guestStatusValue: {
+    marginTop: 6,
+    marginBottom: 10,
+    fontSize: 28,
+    fontWeight: '900',
+    textAlign: 'right',
+    letterSpacing: -0.5,
+  },
+  guestStatusBarTrack: {
+    height: 7,
+    borderRadius: 999,
+    backgroundColor: 'rgba(17,24,39,0.08)',
+    overflow: 'hidden',
+  },
+  guestStatusBarFill: {
+    height: '100%',
+    borderRadius: 999,
+  },
 
   grid2: {
     flexDirection: ROW_DIR,
@@ -1897,111 +2070,29 @@ const styles = StyleSheet.create({
     opacity: 0.08,
   },
 
-  tilesRow: {
+  summaryTilesRow: {
     flexDirection: ROW_DIR,
     gap: 12,
     alignItems: 'stretch',
     marginTop: 14,
   },
-
-  tileDarkOuter: {
+  summaryTile: {
     flex: 1,
     height: 120,
-  },
-  tileDark: {
-    flex: 1,
-    borderRadius: 24,
-    padding: 14,
-    justifyContent: 'space-between',
-    shadowColor: colors.black,
-    shadowOpacity: 0.20,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 6,
-    overflow: 'hidden',
-  },
-  tileDarkTopRow: {
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  tileBadge: {
-    width: 30,
-    height: 30,
-    borderRadius: 10,
-    backgroundColor: 'rgba(240,203,70,0.16)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(240,203,70,0.24)',
-  },
-  tilePercent: {
-    color: '#EEF2FF',
-    fontSize: 28,
-    fontWeight: '900',
-    textAlign: 'right',
-    letterSpacing: -0.6,
-    marginTop: -2,
-  },
-  tileDarkLabel: {
-    color: 'rgba(255,255,255,0.78)',
-    fontSize: 13,
-    fontWeight: '700',
-    textAlign: 'right',
-    marginTop: -10,
-  },
-  tileProgressTrack: {
-    height: 6,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.16)',
-    overflow: 'hidden',
-  },
-  tileProgressFill: {
-    height: 6,
-    borderRadius: 999,
-    backgroundColor: colors.gold,
-  },
-
-  tileLight: {
-    flex: 1,
-    height: 120,
-  },
-  tileLightDecorWrap: {
-    ...StyleSheet.absoluteFillObject,
-    overflow: 'hidden',
-    borderRadius: 28,
-  },
-  tileLightDecorCircle: {
-    position: 'absolute',
-    width: 120,
-    height: 120,
-    borderRadius: 999,
-    top: -55,
-    left: -40,
-    backgroundColor: 'rgba(240,203,70,0.16)',
-  },
-  tileLightDecorCircle2: {
-    position: 'absolute',
-    width: 90,
-    height: 90,
-    borderRadius: 999,
-    top: -32,
-    left: 30,
-    backgroundColor: 'rgba(6,23,62,0.08)',
   },
   tileWideOuter: {
     width: "100%",
-    minHeight: 232,
+    minHeight: 208,
     borderRadius: 24,
     padding: 14,
-    backgroundColor: "rgba(255,255,255,0.94)",
+    backgroundColor: "rgba(246,250,255,0.96)",
     borderWidth: 1,
-    borderColor: "rgba(204,160,0,0.12)",
+    borderColor: "rgba(21, 76, 151, 0.08)",
     shadowColor: colors.black,
-    shadowOpacity: 0.06,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 3,
+    shadowOpacity: 0.04,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 2,
     overflow: "hidden",
     marginBottom: 14,
   },
@@ -2026,26 +2117,26 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   rsvpHeaderValue: {
-    fontSize: 54,
+    fontSize: 46,
     fontWeight: "900",
     letterSpacing: -1.0,
-    lineHeight: 56,
+    lineHeight: 48,
     textAlign: "right",
   },
   rsvpHeaderLabelInline: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "800",
     color: "rgba(0,53,102,0.68)",
     textAlign: "right",
-    marginBottom: 8,
+    marginBottom: 6,
   },
   rsvpArrowCircle: {
     width: 36,
     height: 36,
     borderRadius: 999,
-    backgroundColor: "rgba(240,203,70,0.16)",
+    backgroundColor: "rgba(17,24,39,0.05)",
     borderWidth: 1,
-    borderColor: "rgba(204,160,0,0.16)",
+    borderColor: "rgba(17,24,39,0.08)",
     justifyContent: "center",
     alignItems: "center",
   },
@@ -2093,9 +2184,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 6,
     overflow: "hidden",
-    backgroundColor: "rgba(52, 199, 89, 0.14)",
+    backgroundColor: "rgba(255,255,255,0.72)",
     borderWidth: 1,
-    borderColor: "rgba(52, 199, 89, 0.18)",
+    borderColor: "rgba(17,24,39,0.06)",
   },
   rsvpStatCardYellow: {
     flex: 1,
@@ -2106,9 +2197,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 6,
     overflow: "hidden",
-    backgroundColor: "rgba(240,203,70,0.18)",
-    borderWidth: 2,
-    borderColor: "rgba(204,160,0,0.24)",
+    backgroundColor: "rgba(255,255,255,0.72)",
+    borderWidth: 1,
+    borderColor: "rgba(17,24,39,0.06)",
   },
   rsvpStatCardRed: {
     flex: 1,
@@ -2119,42 +2210,34 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 6,
     overflow: "hidden",
-    backgroundColor: "rgba(255, 59, 48, 0.14)",
+    backgroundColor: "rgba(255,255,255,0.72)",
     borderWidth: 1,
-    borderColor: "rgba(255, 59, 48, 0.18)",
+    borderColor: "rgba(17,24,39,0.06)",
   },
-  tileLightTopRow: {
+  summaryTileHeader: {
     flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 8,
   },
-  tileLightIconCircle: {
+  summaryTileIcon: {
     width: 34,
     height: 34,
-    borderRadius: 999,
-    backgroundColor: 'rgba(240,203,70,0.18)',
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  tileLightPercentHint: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: colors.gold,
-    textAlign: 'left',
-  },
-  tileLightValue: {
+  summaryTileValue: {
     fontSize: 28,
     fontWeight: '900',
     textAlign: 'right',
     letterSpacing: -0.6,
+    marginBottom: 12,
   },
-  tileLightLabel: {
+  summaryTileLabel: {
     fontSize: 13,
     fontWeight: '700',
-    color: 'rgba(0,53,102,0.70)',
     textAlign: 'right',
-    marginTop: 2,
   },
 
   bottomActions: {
