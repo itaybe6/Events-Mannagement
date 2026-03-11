@@ -4,6 +4,7 @@ import {
   Alert,
   Keyboard,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   SafeAreaView,
@@ -20,11 +21,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
 import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
 
+import { colors } from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
 import { useLayoutStore } from '@/store/layoutStore';
-import { ROW_DIR } from '@/lib/rtl';
+import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
 import { I18nManager } from 'react-native';
 
 type NotificationSettingRow = {
@@ -40,6 +43,88 @@ type NotificationSettingRow = {
   notification_date?: string | null;
   recipient_guest_ids?: string[] | null;
 };
+
+type SmsRunSummary = {
+  id: string;
+  notification_setting_id: string;
+  status: string;
+  claimed_at: string;
+  error?: string | null;
+};
+
+const normalizeMessage = (s: string) => String(s || '').replace(/\r\n/g, '\n').trim();
+
+type EventKind = 'wedding' | 'brit' | 'barMitzvah' | 'generic';
+
+function detectEventKind(event: any): EventKind {
+  const title = String(event?.title ?? '').toLowerCase();
+  const groom = String(event?.groom_name ?? event?.groomName ?? '').trim();
+  const bride = String(event?.bride_name ?? event?.brideName ?? '').trim();
+
+  if (
+    title.includes('ברית') ||
+    title.includes('בריתה') ||
+    title.includes('brit') ||
+    title.includes('baby') ||
+    title.includes('תינוק')
+  ) {
+    return 'brit';
+  }
+
+  if (
+    title.includes('בר מצ') ||
+    title.includes('בת מצ') ||
+    title.includes('bar mitz') ||
+    title.includes('bat mitz')
+  ) {
+    return 'barMitzvah';
+  }
+
+  if (title.includes('חתונ') || title.includes('wedding') || (groom && bride)) return 'wedding';
+  return 'generic';
+}
+
+function defaultMessageByType(args: { notificationType: string; kind: EventKind }) {
+  const { notificationType, kind } = args;
+  const eventNoun =
+    kind === 'wedding' ? 'החתונה' : kind === 'brit' ? 'הברית/ה' : kind === 'barMitzvah' ? 'בר/בת המצווה' : 'האירוע';
+
+  switch (notificationType) {
+    case 'reminder_1':
+      if (kind === 'wedding') {
+        return normalizeMessage(
+          'אורחים יקרים,\n' +
+            'בתאריך {{תאריך}} תיערך החתונה של {{שמות_חתן_כלה}} ב{{מיקום}}.\n' +
+            'לאישור הגעה: [הדביקו כאן קישור]\n' +
+            'להנחיות הגעה: [הדביקו כאן קישור]\n' +
+            'נשמח לראותכם!'
+        );
+      }
+      return normalizeMessage(
+        'שלום,\n' +
+          `בתאריך {{תאריך}} ייערך ${eventNoun} ({{שם_אירוע}}) ב{{מיקום}}.\n` +
+          'לאישור הגעה: [הדביקו כאן קישור]\n' +
+          'להנחיות הגעה: [הדביקו כאן קישור]\n' +
+          'נשמח לראותכם!'
+      );
+
+    case 'reminder_2':
+      return normalizeMessage(
+        'תזכורת:\n' +
+          '{{שם_אירוע}} בעוד שבועיים ({{תאריך}}).\n' +
+          'נשמח לאישור הגעה בקישור: [הדביקו כאן קישור]'
+      );
+
+    case 'whatsapp_event_day':
+      return normalizeMessage('היום זה היום!\n' + '{{שם_אירוע}} מתקיים היום.\n' + 'לכניסה מהירה והנחיות: [הדביקו כאן קישור]');
+
+    case 'after_1':
+      return normalizeMessage('תודה שבאתם ל{{שם_אירוע}}.\n' + 'היה לנו כיף גדול איתכם, תודה על האיחולים והאהבה.');
+
+    default:
+      return normalizeMessage('שלום,\n' + '{{שם_אירוע}} ב{{מיקום}} בתאריך {{תאריך}}.\n' + 'נשמח לראותכם!');
+  }
+}
 
 const DEFAULT_TEMPLATES: Array<Omit<NotificationSettingRow, 'id' | 'event_id'>> = [
   { notification_type: 'reminder_1', title: 'הודעה רגילה 1 (לפני האירוע)', days_from_wedding: -30, channel: 'SMS', enabled: false, message_content: '' },
@@ -179,6 +264,13 @@ export default function AdminNotificationEditorScreen() {
   const [selectedGuestIds, setSelectedGuestIds] = useState<Set<string>>(() => new Set());
   const [sendingNow, setSendingNow] = useState(false);
   const [importingPrev, setImportingPrev] = useState(false);
+  const [lastSmsRun, setLastSmsRun] = useState<SmsRunSummary | null>(null);
+  const [sendStatusRows, setSendStatusRows] = useState<
+    Array<{ guestId: string; name: string; phone?: string; guestStatus?: string; sendStatus: 'sent' | 'failed' | 'skipped'; sentAt?: string | null; error?: string | null }>
+  >([]);
+  const [sendStatusDialogOpen, setSendStatusDialogOpen] = useState(false);
+  const [sendStatusSearch, setSendStatusSearch] = useState('');
+  const [eventMeta, setEventMeta] = useState<any>(null);
 
   const previousNotificationType = useMemo(() => {
     const nt = String(notificationType || '').trim();
@@ -200,6 +292,37 @@ export default function AdminNotificationEditorScreen() {
       iconMuted: '#9CA3AF',
       danger: '#EF4444',
     };
+  }, []);
+
+  const formatHeDateTimeShort = useCallback((value: unknown) => {
+    const d = value instanceof Date ? value : new Date(String(value ?? ''));
+    if (!Number.isFinite(d.getTime())) return '';
+    const date = d.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const time = d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+    return `${date} | ${time}`;
+  }, []);
+
+  const sendStatusMeta = useCallback((s?: string | null) => {
+    const v = String(s || '').trim();
+    if (v === 'sent') return { text: 'נשלח', color: '#16a34a', bg: 'rgba(22,163,74,0.10)' };
+    if (v === 'failed') return { text: 'נכשל', color: '#ef4444', bg: 'rgba(239,68,68,0.10)' };
+    if (v === 'sending') return { text: 'בתהליך', color: '#f59e0b', bg: 'rgba(245,158,11,0.10)' };
+    if (v === 'claimed') return { text: 'ממתין לשליחה', color: '#f59e0b', bg: 'rgba(245,158,11,0.10)' };
+    if (v === 'skipped') return { text: 'דולג', color: '#64748b', bg: 'rgba(100,116,139,0.10)' };
+    return { text: 'טרם נשלח', color: '#64748b', bg: 'rgba(100,116,139,0.10)' };
+  }, []);
+  const recipientSendStatusMeta = useCallback((s?: string | null) => {
+    const v = String(s || '').trim();
+    if (v === 'sent') return { text: 'נשלח', color: '#16a34a', bg: 'rgba(22,163,74,0.10)' };
+    if (v === 'failed' || v === 'skipped') return { text: 'לא נשלח', color: '#ef4444', bg: 'rgba(239,68,68,0.10)' };
+    if (v === 'sending' || v === 'claimed') return { text: 'ממתין', color: '#f59e0b', bg: 'rgba(245,158,11,0.10)' };
+    return { text: 'לא נשלח', color: '#64748b', bg: 'rgba(100,116,139,0.10)' };
+  }, []);
+  const guestRsvpStatusMeta = useCallback((s?: string | null) => {
+    const v = String(s || '').trim();
+    if (v === 'מגיע') return { text: 'מגיע', color: '#16a34a', bg: 'rgba(22,163,74,0.10)' };
+    if (v === 'לא מגיע') return { text: 'לא מגיע', color: '#ef4444', bg: 'rgba(239,68,68,0.10)' };
+    return { text: 'ממתין', color: '#f59e0b', bg: 'rgba(245,158,11,0.10)' };
   }, []);
 
   useFocusEffect(
@@ -228,11 +351,12 @@ export default function AdminNotificationEditorScreen() {
       try {
         const { data: eventData, error: eventError } = await supabase
           .from('events')
-          .select('id, date')
+          .select('id, title, date, location, groom_name, bride_name')
           .eq('id', resolvedEventId)
           .single();
         if (eventError) throw eventError;
         const d = new Date((eventData as any)?.date);
+        setEventMeta(eventData as any);
         setEventDate(d);
 
         const { data: guestRows, error: guestError } = await supabase
@@ -317,6 +441,89 @@ export default function AdminNotificationEditorScreen() {
           }
         }
         setEditedMessage(String((base as any).message_content ?? ''));
+
+        const settingId = String((base as any)?.id ?? '').trim();
+        if (settingId && (((base as any)?.channel as string) || tpl?.channel || 'SMS') === 'SMS') {
+          const { data: runRows, error: runError } = await supabase
+            .from('scheduled_notification_sms_runs')
+            .select('id, notification_setting_id, status, claimed_at, error')
+            .eq('notification_setting_id', settingId)
+            .order('claimed_at', { ascending: false })
+            .limit(1);
+          if (runError) {
+            console.warn('Failed to load last SMS run:', runError);
+            setLastSmsRun(null);
+            setSendStatusRows([]);
+          } else {
+            const run = ((runRows as any[]) || [])[0] as any;
+            if (run) {
+              const nextRun: SmsRunSummary = {
+                id: String(run.id),
+                notification_setting_id: String(run.notification_setting_id),
+                status: String(run.status || ''),
+                claimed_at: String(run.claimed_at || ''),
+                error: run.error ? String(run.error) : null,
+              };
+              setLastSmsRun(nextRun);
+
+              const { data: recRows, error: recError } = await supabase
+                .from('scheduled_notification_sms_run_recipients')
+                .select('guest_id, status, phone, sent_at, error')
+                .eq('run_id', nextRun.id)
+                .order('created_at', { ascending: true });
+              if (recError) {
+                console.warn('Failed to load SMS run recipients:', recError);
+                setSendStatusRows([]);
+              } else {
+                const recs = (((recRows as any[]) || []).map((r) => ({
+                  guestId: String((r as any).guest_id),
+                  sendStatus: String((r as any).status) as 'sent' | 'failed' | 'skipped',
+                  phone: (r as any).phone ? String((r as any).phone) : undefined,
+                  sentAt: (r as any).sent_at ? String((r as any).sent_at) : null,
+                  error: (r as any).error ? String((r as any).error) : null,
+                })));
+                const ids = recs.map((r) => r.guestId).filter(Boolean);
+                const byId = new Map<string, { name: string; phone?: string; guestStatus?: string }>();
+                if (ids.length > 0) {
+                  const { data: gRows, error: gError } = await supabase
+                    .from('guests')
+                    .select('id, name, phone, status')
+                    .eq('event_id', resolvedEventId)
+                    .in('id', ids);
+                  if (!gError) {
+                    for (const g of (gRows as any[]) || []) {
+                      byId.set(String((g as any).id), {
+                        name: String((g as any).name ?? ''),
+                        phone: (g as any).phone ? String((g as any).phone) : undefined,
+                        guestStatus: (g as any).status ? String((g as any).status) : undefined,
+                      });
+                    }
+                  }
+                }
+                setSendStatusRows(
+                  recs.map((r) => {
+                    const g = byId.get(r.guestId);
+                    return {
+                      guestId: r.guestId,
+                      name: g?.name || '—',
+                      phone: g?.phone || r.phone,
+                      guestStatus: g?.guestStatus,
+                      sendStatus: r.sendStatus,
+                      sentAt: r.sentAt,
+                      error: r.error,
+                    };
+                  })
+                );
+              }
+            } else {
+              setLastSmsRun(null);
+              setSendStatusRows([]);
+            }
+          }
+        } else {
+          setLastSmsRun(null);
+          setSendStatusRows([]);
+        }
       } catch (e) {
         console.error('Admin editor load error:', e);
         Alert.alert('שגיאה', 'לא ניתן לטעון את ההודעה');
@@ -564,6 +771,80 @@ export default function AdminNotificationEditorScreen() {
     }
   };
 
+  const bottomSafe = Math.max(14, insets.bottom + 14);
+  const isNativeReadonly = Platform.OS !== 'web';
+  const topContentInset = Math.max(30, (insets.top || 0) + 14);
+  const currentSendStatus = sendStatusMeta(lastSmsRun?.status ?? (row?.enabled ? 'claimed' : ''));
+  const groomName = useMemo(
+    () => String((eventMeta as any)?.groom_name ?? (eventMeta as any)?.groomName ?? '').trim(),
+    [eventMeta]
+  );
+  const brideName = useMemo(
+    () => String((eventMeta as any)?.bride_name ?? (eventMeta as any)?.brideName ?? '').trim(),
+    [eventMeta]
+  );
+  const coupleNames = useMemo(() => {
+    if (groomName && brideName) return `${groomName} ו${brideName}`;
+    return groomName || brideName || '';
+  }, [brideName, groomName]);
+  const previewVars = useMemo(() => {
+    const rawTitle = String((eventMeta as any)?.title ?? '').trim();
+    const eventTitle = rawTitle || 'האירוע';
+    const rawEventDate = (eventMeta as any)?.date ? new Date((eventMeta as any).date) : null;
+    const eventDateText = rawEventDate && Number.isFinite(rawEventDate.getTime()) ? formatDmySlashes(rawEventDate) : '—';
+    const loc = String((eventMeta as any)?.location ?? '').trim();
+    const eventLocationText = loc || '—';
+
+    const vars: Record<string, string> = {
+      '{name}': 'אורח/ת',
+      '{link}': 'קישור הזמנה אישי',
+      '{שם_פרטי}': 'אורח/ת',
+      '{שם_אירוע}': eventTitle,
+      '{תאריך}': eventDateText,
+      '{מיקום}': eventLocationText,
+      '{{שם_פרטי}}': 'אורח/ת',
+      '{{שם_אירוע}}': eventTitle,
+      '{{תאריך}}': eventDateText,
+      '{{מיקום}}': eventLocationText,
+    };
+    if (groomName) {
+      vars['{שם_חתן}'] = groomName;
+      vars['{{שם_חתן}}'] = groomName;
+    }
+    if (brideName) {
+      vars['{שם_כלה}'] = brideName;
+      vars['{{שם_כלה}}'] = brideName;
+    }
+    if (coupleNames) {
+      vars['{שמות_חתן_כלה}'] = coupleNames;
+      vars['{{שמות_חתן_כלה}}'] = coupleNames;
+    }
+    return vars;
+  }, [brideName, coupleNames, eventMeta, groomName]);
+  const previewMessage = useMemo(() => {
+    const raw = normalizeMessage(String(editedMessage || ''));
+    if (raw) return raw;
+    const notificationTypeKey = String(notificationType || row?.notification_type || '').trim();
+    if (!notificationTypeKey) return '';
+    return defaultMessageByType({ notificationType: notificationTypeKey, kind: detectEventKind(eventMeta) });
+  }, [editedMessage, eventMeta, notificationType, row?.notification_type]);
+  const renderedPreviewMessage = useMemo(() => {
+    let out = previewMessage;
+    for (const [token, value] of Object.entries(previewVars)) {
+      out = out.split(token).join(value);
+    }
+    return out;
+  }, [previewMessage, previewVars]);
+  const filteredSendStatusRows = useMemo(() => {
+    const q = String(sendStatusSearch || '').trim().toLowerCase();
+    if (!q) return sendStatusRows;
+    return sendStatusRows.filter((g) => {
+      const name = String(g.name || '').toLowerCase();
+      const phone = String(g.phone || '').toLowerCase();
+      return name.includes(q) || phone.includes(q);
+    });
+  }, [sendStatusRows, sendStatusSearch]);
+
   if (loading) {
     return (
       <SafeAreaView style={[styles.page, { backgroundColor: ui.bg }]}>
@@ -575,7 +856,212 @@ export default function AdminNotificationEditorScreen() {
     );
   }
 
-  const bottomSafe = Math.max(14, insets.bottom + 14);
+  if (isNativeReadonly) {
+    return (
+      <View style={styles.nativePage}>
+        <Stack.Screen options={{ headerShown: false }} />
+        <LinearGradient colors={['#F7FAFF', '#E8F1FF', '#F2E0BA']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.nativeBg} />
+        <LinearGradient
+          colors={['rgba(255,255,255,0.68)', 'rgba(255,255,255,0)']}
+          start={{ x: 0.05, y: 0 }}
+          end={{ x: 0.75, y: 0.55 }}
+          style={styles.nativeBg}
+        />
+        <LinearGradient
+          colors={['rgba(232,196,122,0.58)', 'rgba(244,224,186,0.22)', 'rgba(244,224,186,0)']}
+          start={{ x: 1, y: 0.95 }}
+          end={{ x: 0.18, y: 0.22 }}
+          style={styles.nativeBg}
+        />
+
+        <View style={[styles.nativeTopSpacer, { paddingTop: topContentInset }]}>
+          <View style={styles.nativeTopRow}>
+            <TouchableOpacity
+              style={styles.nativeBackButton}
+              onPress={() =>
+                resolvedEventId
+                  ? router.replace(`/(admin)/admin-event-messages?eventId=${encodeURIComponent(resolvedEventId)}`)
+                  : router.replace('/(admin)/admin-events')
+              }
+              accessibilityRole="button"
+              accessibilityLabel="חזרה להודעות אוטומטיות"
+              activeOpacity={0.86}
+            >
+              <Ionicons name="chevron-forward" size={22} color={colors.primary} />
+            </TouchableOpacity>
+            <Text style={styles.nativeScreenTitle}>הודעה</Text>
+          </View>
+        </View>
+
+        <ScrollView
+          style={styles.nativeScroll}
+          contentContainerStyle={[styles.nativeContent, { paddingBottom: 28 + Math.max(24, insets.bottom + 24) }]}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.nativeHeaderCard}>
+            <Text style={styles.nativeHeaderTitle}>{row?.title || 'הודעה'}</Text>
+            <Text style={styles.nativeHeaderSubtitle} numberOfLines={2}>
+              {resolvedEventId ? 'צפייה בלבד באפליקציה. עריכה זמינה דרך המחשב.' : 'צפייה בלבד'}
+            </Text>
+          </View>
+
+          <View style={styles.nativeSection}>
+            <Text style={styles.nativeSectionTitle}>מועד שליחה</Text>
+            <View style={styles.nativeScheduleRow}>
+              <View style={styles.nativeInfoCard}>
+                <View style={styles.nativeInfoCardTop}>
+                  <Text style={styles.nativeInfoLabel}>תאריך</Text>
+                  <Ionicons name="calendar-outline" size={16} color={colors.gray[500]} />
+                </View>
+                <Text style={styles.nativeInfoValue}>
+                  {computedSendAt ? formatDmySlashes(computedSendAt) : editedSendDateYmd ? formatDmyFromYmd(editedSendDateYmd) : '—'}
+                </Text>
+              </View>
+              <View style={styles.nativeInfoCardSmall}>
+                <View style={styles.nativeInfoCardTop}>
+                  <Text style={styles.nativeInfoLabel}>שעה</Text>
+                  <Ionicons name="time-outline" size={16} color={colors.gray[500]} />
+                </View>
+                <Text style={styles.nativeInfoValue}>{editedTimeHm || '—'}</Text>
+              </View>
+            </View>
+            <View style={styles.nativeOffsetCard}>
+              <View style={styles.nativeOffsetIconWrap}>
+                <Ionicons name="hourglass-outline" size={16} color={colors.primary} />
+              </View>
+              <View style={styles.nativeOffsetTextWrap}>
+                <Text style={styles.nativeOffsetLabel}>זמן לפני האירוע</Text>
+                <Text style={styles.nativeOffsetValue}>{offsetDays === null ? '—' : formatOffsetLabel(offsetDays)}</Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.nativeSection}>
+            <Text style={styles.nativeSectionTitle}>תוכן ההודעה</Text>
+            <View style={styles.nativeMessageCard}>
+              <View style={styles.nativeMessageCardTop}>
+                <View style={styles.nativeMessageIconWrap}>
+                  <Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.primary} />
+                </View>
+                <Text style={styles.nativeMessageCardLabel}>תצוגה מקדימה</Text>
+              </View>
+              <Text style={styles.nativeMessageText}>{renderedPreviewMessage || 'אין תוכן הודעה'}</Text>
+            </View>
+          </View>
+
+          <View style={styles.nativeSection}>
+            <Text style={styles.nativeSectionTitle}>סטטוס שליחה</Text>
+            <View style={styles.nativeStatusCard}>
+              <View style={styles.nativeStatusTopRow}>
+                <View style={styles.nativeStatusLabelWrap}>
+                  <Text style={styles.nativeStatusLabel}>סטטוס</Text>
+                  <View style={[styles.nativeStatusBadge, { backgroundColor: currentSendStatus.bg }]}>
+                    <Text style={[styles.nativeStatusBadgeText, { color: currentSendStatus.color }]}>{currentSendStatus.text}</Text>
+                  </View>
+                </View>
+                <TouchableOpacity
+                  style={[
+                    styles.nativeRecipientsOpenBtn,
+                    sendStatusRows.length === 0 ? styles.nativeRecipientsOpenBtnDisabled : null,
+                  ]}
+                  onPress={() => {
+                    if (sendStatusRows.length === 0) return;
+                    setSendStatusSearch('');
+                    setSendStatusDialogOpen(true);
+                  }}
+                  disabled={sendStatusRows.length === 0}
+                  activeOpacity={0.86}
+                >
+                  <Ionicons name="people-outline" size={16} color={sendStatusRows.length === 0 ? colors.gray[400] : colors.primary} />
+                  <Text
+                    style={[
+                      styles.nativeRecipientsOpenBtnText,
+                      sendStatusRows.length === 0 ? { color: colors.gray[400] } : null,
+                    ]}
+                  >
+                    צפייה בנמענים
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.nativeStatusMeta}>
+                {lastSmsRun?.claimed_at ? `זמן שליחה: ${formatHeDateTimeShort(lastSmsRun.claimed_at)}` : 'הודעה זו טרם נשלחה בפועל.'}
+              </Text>
+              {lastSmsRun?.error ? <Text style={styles.nativeStatusError}>{lastSmsRun.error}</Text> : null}
+            </View>
+          </View>
+        </ScrollView>
+
+        <Modal visible={sendStatusDialogOpen} transparent animationType="fade" onRequestClose={() => setSendStatusDialogOpen(false)}>
+          <View style={styles.nativeDialogOverlay}>
+            <TouchableOpacity style={styles.nativeDialogBackdrop} activeOpacity={1} onPress={() => setSendStatusDialogOpen(false)} />
+            <View style={styles.nativeDialogCard}>
+              <View style={styles.nativeDialogHeader}>
+                <Text style={styles.nativeDialogTitle}>נמעני ההודעה</Text>
+                <TouchableOpacity onPress={() => setSendStatusDialogOpen(false)} style={styles.nativeDialogCloseBtn} activeOpacity={0.86}>
+                  <Ionicons name="close" size={18} color={colors.richBlack} />
+                </TouchableOpacity>
+              </View>
+
+              <TextInput
+                value={sendStatusSearch}
+                onChangeText={setSendStatusSearch}
+                placeholder="חיפוש לפי שם או טלפון..."
+                placeholderTextColor={colors.gray[500]}
+                style={styles.nativeDialogSearch}
+                textAlign="right"
+              />
+
+              <ScrollView style={styles.nativeDialogScroll} contentContainerStyle={styles.nativeRecipientsStack} showsVerticalScrollIndicator={false}>
+                {filteredSendStatusRows.length === 0 ? (
+                  <Text style={styles.nativeDialogEmpty}>לא נמצאו נמענים מתאימים.</Text>
+                ) : (
+                  filteredSendStatusRows.map((g) => {
+                    const st = recipientSendStatusMeta(g.sendStatus);
+                    const guestSt = guestRsvpStatusMeta(g.guestStatus);
+                    return (
+                      <View key={g.guestId} style={styles.nativeRecipientRow}>
+                        <View style={styles.nativeRecipientTextWrap}>
+                          <View style={styles.nativeRecipientTopRow}>
+                            <Text style={styles.nativeRecipientName} numberOfLines={1}>
+                              {g.name || '—'}
+                            </Text>
+                            <View style={[styles.nativeRecipientRsvpBadge, { backgroundColor: guestSt.bg }]}>
+                              <Text style={[styles.nativeRecipientRsvpBadgeText, { color: guestSt.color }]}>{guestSt.text}</Text>
+                            </View>
+                          </View>
+
+                          <View style={styles.nativeRecipientStatusRow}>
+                            <View style={[styles.nativeRecipientBadge, { backgroundColor: st.bg }]}>
+                              <Text style={[styles.nativeRecipientBadgeText, { color: st.color }]}>{st.text}</Text>
+                            </View>
+                          </View>
+
+                          <View style={styles.nativeRecipientInfoRow}>
+                            <Ionicons name="call-outline" size={14} color={colors.gray[500]} />
+                            <Text style={styles.nativeRecipientMeta} numberOfLines={1}>
+                              {g.phone || 'אין טלפון'}
+                            </Text>
+                          </View>
+
+                          <View style={styles.nativeRecipientInfoRow}>
+                            <Ionicons name="time-outline" size={14} color={colors.gray[500]} />
+                            <Text style={styles.nativeRecipientMeta} numberOfLines={2}>
+                              {g.sentAt ? formatHeDateTimeShort(g.sentAt) : 'לא נשלח עדיין'}
+                              {g.error ? ` · ${g.error}` : ''}
+                            </Text>
+                          </View>
+                        </View>
+                      </View>
+                    );
+                  })
+                )}
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
+      </View>
+    );
+  }
 
   return (
     <SafeAreaView style={[styles.page, { backgroundColor: ui.bg }]}>
@@ -979,6 +1465,436 @@ export default function AdminNotificationEditorScreen() {
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   page: { flex: 1 },
+  nativePage: { flex: 1, backgroundColor: '#F7FAFF' },
+  nativeBg: { ...StyleSheet.absoluteFillObject },
+  nativeTopSpacer: {
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+  },
+  nativeTopRow: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  nativeBackButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: colors.richBlack,
+    shadowOpacity: 0.14,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 6,
+  },
+  nativeScreenTitle: {
+    flex: 1,
+    fontSize: 24,
+    fontWeight: '900',
+    color: colors.richBlack,
+    textAlign: 'right',
+  },
+  nativeScroll: { flex: 1, backgroundColor: 'transparent' },
+  nativeContent: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    gap: 14,
+  },
+  nativeHeaderCard: {
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    backgroundColor: 'rgba(255,255,255,0.90)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.75)',
+    shadowColor: colors.richBlack,
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3,
+  },
+  nativeHeaderTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: colors.richBlack,
+    textAlign: 'right',
+  },
+  nativeHeaderSubtitle: {
+    marginTop: 6,
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.gray[600],
+    textAlign: 'right',
+    lineHeight: 18,
+  },
+  nativeSection: { gap: 10 },
+  nativeSectionTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: colors.richBlack,
+    textAlign: 'right',
+    paddingHorizontal: 4,
+  },
+  nativeScheduleRow: { flexDirection: ROW_DIR, alignItems: 'stretch', gap: 12 },
+  nativeInfoCard: {
+    flex: 2,
+    minHeight: 92,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    backgroundColor: 'rgba(255,255,255,0.90)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.75)',
+    justifyContent: 'space-between',
+    shadowColor: colors.richBlack,
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 2,
+  },
+  nativeInfoCardSmall: {
+    flex: 1,
+    minHeight: 92,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    backgroundColor: 'rgba(255,255,255,0.90)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.75)',
+    justifyContent: 'space-between',
+    shadowColor: colors.richBlack,
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 2,
+  },
+  nativeInfoCardTop: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  nativeInfoLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.gray[600],
+    textAlign: 'right',
+  },
+  nativeInfoValue: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: colors.richBlack,
+    textAlign: 'right',
+    writingDirection: 'ltr',
+  },
+  nativeMetaText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.gray[600],
+    textAlign: 'right',
+    paddingHorizontal: 4,
+  },
+  nativeOffsetCard: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    gap: 10,
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: 'rgba(255,255,255,0.88)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.72)',
+    shadowColor: colors.richBlack,
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 1,
+  },
+  nativeOffsetIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(29,78,216,0.10)',
+  },
+  nativeOffsetTextWrap: {
+    flex: 1,
+    alignItems: ALIGN_RIGHT,
+  },
+  nativeOffsetLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.gray[600],
+    textAlign: 'right',
+  },
+  nativeOffsetValue: {
+    marginTop: 2,
+    fontSize: 14,
+    fontWeight: '900',
+    color: colors.richBlack,
+    textAlign: 'right',
+  },
+  nativeMessageCard: {
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    minHeight: 180,
+    backgroundColor: 'rgba(255,255,255,0.90)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.75)',
+    shadowColor: colors.richBlack,
+    shadowOpacity: 0.06,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 7 },
+    elevation: 2,
+  },
+  nativeMessageCardTop: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 12,
+  },
+  nativeMessageIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(29,78,216,0.10)',
+  },
+  nativeMessageCardLabel: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: colors.gray[700],
+    textAlign: 'right',
+  },
+  nativeMessageText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.richBlack,
+    textAlign: 'right',
+    lineHeight: 24,
+  },
+  nativeStatusCard: {
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    backgroundColor: 'rgba(255,255,255,0.90)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.75)',
+    gap: 10,
+  },
+  nativeStatusTopRow: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  nativeStatusLabelWrap: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  nativeStatusLabel: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: colors.richBlack,
+    textAlign: 'right',
+  },
+  nativeStatusBadge: {
+    alignSelf: ALIGN_RIGHT,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+  },
+  nativeStatusBadgeText: {
+    fontSize: 12,
+    fontWeight: '900',
+    textAlign: 'right',
+  },
+  nativeStatusMeta: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.gray[700],
+    textAlign: 'right',
+    lineHeight: 20,
+  },
+  nativeStatusError: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.error,
+    textAlign: 'right',
+    lineHeight: 18,
+  },
+  nativeRecipientsOpenBtn: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(29,78,216,0.14)',
+  },
+  nativeRecipientsOpenBtnDisabled: {
+    borderColor: 'rgba(17,24,39,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.72)',
+  },
+  nativeRecipientsOpenBtnText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: colors.primary,
+    textAlign: 'right',
+  },
+  nativeDialogOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15,23,42,0.26)',
+    justifyContent: 'center',
+    padding: 18,
+  },
+  nativeDialogBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  nativeDialogCard: {
+    maxHeight: '78%',
+    borderRadius: 22,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 14,
+    backgroundColor: 'rgba(255,255,255,0.98)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.85)',
+    shadowColor: colors.richBlack,
+    shadowOpacity: 0.16,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 8,
+  },
+  nativeDialogHeader: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginBottom: 12,
+  },
+  nativeDialogTitle: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '900',
+    color: colors.richBlack,
+    textAlign: 'right',
+  },
+  nativeDialogCloseBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(15,23,42,0.05)',
+  },
+  nativeDialogSearch: {
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.10)',
+    paddingHorizontal: 14,
+    color: colors.richBlack,
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 12,
+  },
+  nativeDialogScroll: {
+    maxHeight: 420,
+  },
+  nativeDialogEmpty: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.gray[600],
+    textAlign: 'center',
+    paddingVertical: 18,
+  },
+  nativeRecipientsStack: {
+    gap: 10,
+  },
+  nativeRecipientRow: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.90)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.75)',
+  },
+  nativeRecipientTextWrap: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: ALIGN_RIGHT,
+  },
+  nativeRecipientTopRow: {
+    width: '100%',
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  nativeRecipientName: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: colors.richBlack,
+    textAlign: 'right',
+  },
+  nativeRecipientRsvpBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    flexShrink: 0,
+  },
+  nativeRecipientRsvpBadgeText: {
+    fontSize: 11,
+    fontWeight: '900',
+    textAlign: 'right',
+  },
+  nativeRecipientInfoRow: {
+    width: '100%',
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 6,
+  },
+  nativeRecipientStatusRow: {
+    width: '100%',
+    alignItems: ALIGN_RIGHT,
+    marginTop: 6,
+  },
+  nativeRecipientMeta: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.gray[600],
+    textAlign: 'right',
+    lineHeight: 18,
+  },
+  nativeRecipientBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  nativeRecipientBadgeText: {
+    fontSize: 12,
+    fontWeight: '900',
+    textAlign: 'right',
+  },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
   headerWrap: {

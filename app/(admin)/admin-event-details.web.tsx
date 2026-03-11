@@ -388,6 +388,17 @@ export default function AdminEventDetailsWebScreen() {
       tint: 'rgba(34,197,94,0.16)',
       onPress: () => router.push(`/(admin)/admin-guest-checkin?eventId=${event.id}`),
     },
+    {
+      key: 'seating-map',
+      step: 'שלב 7',
+      title: 'מפת הושבה',
+      subtitle: 'צפייה בנראות הסופית של מפת ההושבה וניהול המיקומים באולם.',
+      meta: `${stats.seatedPercent}% הושבו`,
+      icon: 'grid-outline' as const,
+      accent: '#111827',
+      tint: 'rgba(17,24,39,0.10)',
+      onPress: handleSeatingMap,
+    },
   ] as const;
 
   return (
@@ -489,7 +500,7 @@ export default function AdminEventDetailsWebScreen() {
                     </Text>
                   </View>
                   <View style={styles.workflowHeaderBadge}>
-                    <Text style={styles.workflowHeaderBadgeText}>6 שלבים</Text>
+                    <Text style={styles.workflowHeaderBadgeText}>{`${workflowSteps.length} שלבים`}</Text>
                   </View>
                 </View>
 

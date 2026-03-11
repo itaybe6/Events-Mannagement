@@ -13,6 +13,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '@/lib/supabase';
 import { useUserStore } from '@/store/userStore';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
@@ -24,14 +25,11 @@ import { useLayoutStore } from '@/store/layoutStore';
 import { colors } from '@/constants/colors';
 import { EventSwitcher } from '@/components/EventSwitcher';
 import BackSwipe from '@/components/BackSwipe';
-import { Image as ExpoImage } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import AppHeader, { APP_HEADER_HEIGHT_COMPACT, getAppHeaderTotalHeight } from '@/components/AppHeader';
 import { ALIGN_LEFT, ALIGN_RIGHT, IS_RTL, ROW_DIR } from '@/lib/rtl';
 
 export default function TablesList() {
   const userData = useUserStore((s) => s.userData);
-  const avatarUrl = useUserStore((s) => s.userData?.avatar_url);
   const router = useRouter();
   const segments = useSegments();
   const { eventId: queryEventId } = useLocalSearchParams<{ eventId?: string }>();
@@ -40,7 +38,6 @@ export default function TablesList() {
   const setActiveEvent = useEventSelectionStore((s) => s.setActiveEvent);
   const { setTabBarVisible } = useLayoutStore();
   const insets = useSafeAreaInsets();
-  const headerTotalHeight = getAppHeaderTotalHeight(insets.top, APP_HEADER_HEIGHT_COMPACT);
   const [tables, setTables] = useState<Table[]>([]);
   const [guests, setGuests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -57,6 +54,7 @@ export default function TablesList() {
   const [moveGuestsOpen, setMoveGuestsOpen] = useState(false);
   const [moveGuestsSaving, setMoveGuestsSaving] = useState(false);
   const [moveTargetTableId, setMoveTargetTableId] = useState<string | null>(null);
+  const [hasMultipleEvents, setHasMultipleEvents] = useState(false);
 
   const resolvedEventId =
     String(
@@ -77,45 +75,6 @@ export default function TablesList() {
   const handleBack = useCallback(() => {
     router.replace(backHref as any);
   }, [backHref, router]);
-
-  const renderHeader = useCallback(() => {
-    if (isAdminContext) {
-      return <AppHeader canGoBack onPressBack={handleBack} />;
-    }
-
-    return (
-      <AppHeader
-        variant="compact"
-        canGoBack
-        onPressBack={handleBack}
-        logoOffsetX={0}
-        rightContent={
-          <TouchableOpacity
-            onPress={() => router.push('/(couple)/brideGroomProfile')}
-            accessibilityRole="button"
-            accessibilityLabel="פרופיל"
-            activeOpacity={0.85}
-            style={styles.headerAvatarBtn}
-          >
-            {avatarUrl ? (
-              <ExpoImage
-                key={avatarUrl}
-                source={{ uri: avatarUrl }}
-                style={styles.headerAvatar}
-                contentFit="cover"
-                cachePolicy="none"
-                transition={0}
-              />
-            ) : (
-              <View style={styles.headerAvatarFallback}>
-                <Ionicons name="person" size={20} color={colors.primary} />
-              </View>
-            )}
-          </TouchableOpacity>
-        }
-      />
-    );
-  }, [avatarUrl, handleBack, isAdminContext, router]);
 
   useFocusEffect(
     useCallback(() => {
@@ -461,21 +420,26 @@ export default function TablesList() {
   if (loading) {
     return (
       <BackSwipe fallbackHref={backHref} onBack={handleBack}>
-        <Stack.Screen
-          options={{
-            header: renderHeader,
-            headerShadowVisible: false,
-            ...(isAdminContext
-              ? null
-              : {
-                  headerStyle: {
-                    height: headerTotalHeight,
-                    backgroundColor: '#FFFFFF',
-                  },
-                }),
-          }}
-        />
+        <Stack.Screen options={{ headerShown: false }} />
         <View style={styles.centered}>
+          <LinearGradient
+            colors={['#F7FAFF', '#E8F1FF', '#F2E0BA']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.bg}
+          />
+          <LinearGradient
+            colors={['rgba(255,255,255,0.68)', 'rgba(255,255,255,0)']}
+            start={{ x: 0.05, y: 0 }}
+            end={{ x: 0.75, y: 0.55 }}
+            style={styles.bgHighlight}
+          />
+          <LinearGradient
+            colors={['rgba(232,196,122,0.58)', 'rgba(244,224,186,0.22)', 'rgba(244,224,186,0)']}
+            start={{ x: 1, y: 0.95 }}
+            end={{ x: 0.18, y: 0.22 }}
+            style={styles.bgWarmGlow}
+          />
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
       </BackSwipe>
@@ -485,21 +449,26 @@ export default function TablesList() {
   if (!resolvedEventId) {
     return (
       <BackSwipe fallbackHref={backHref} onBack={handleBack}>
-        <Stack.Screen
-          options={{
-            header: renderHeader,
-            headerShadowVisible: false,
-            ...(isAdminContext
-              ? null
-              : {
-                  headerStyle: {
-                    height: headerTotalHeight,
-                    backgroundColor: '#FFFFFF',
-                  },
-                }),
-          }}
-        />
+        <Stack.Screen options={{ headerShown: false }} />
         <View style={styles.centered}>
+          <LinearGradient
+            colors={['#F7FAFF', '#E8F1FF', '#F2E0BA']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.bg}
+          />
+          <LinearGradient
+            colors={['rgba(255,255,255,0.68)', 'rgba(255,255,255,0)']}
+            start={{ x: 0.05, y: 0 }}
+            end={{ x: 0.75, y: 0.55 }}
+            style={styles.bgHighlight}
+          />
+          <LinearGradient
+            colors={['rgba(232,196,122,0.58)', 'rgba(244,224,186,0.22)', 'rgba(244,224,186,0)']}
+            start={{ x: 1, y: 0.95 }}
+            end={{ x: 0.18, y: 0.22 }}
+            style={styles.bgWarmGlow}
+          />
           <Text style={styles.errorText}>אין אירוע זמין</Text>
         </View>
       </BackSwipe>
@@ -519,217 +488,250 @@ export default function TablesList() {
     return totalPeopleSeated >= t.capacity;
   }).length;
   const totalTables = tables.length;
+  const topContentInset = Math.max(30, (insets.top || 0) + 14);
 
   return (
     <BackSwipe fallbackHref={backHref} onBack={handleBack}>
-      <Stack.Screen
-        options={{
-          header: renderHeader,
-          headerShadowVisible: false,
-          ...(isAdminContext
-            ? null
-            : {
-                headerStyle: {
-                  height: headerTotalHeight,
-                  backgroundColor: '#FFFFFF',
-                },
-              }),
-        }}
-      />
+      <Stack.Screen options={{ headerShown: false }} />
       <View style={styles.container}>
-      {/* Stats Bar */}
-      <View style={styles.statsBar}>
-        <View style={styles.statsGrid}>
-          <View style={styles.statCard}>
-            <View style={styles.statIconContainer}>
-              <Ionicons name="checkmark-circle" size={18} color="#10B981" />
-            </View>
-            <View style={styles.statContent}>
-              <Text style={styles.statValue}>{fullTables}</Text>
-              <Text style={styles.statLabel}>מלאים</Text>
-            </View>
-          </View>
-          <View style={styles.statCard}>
-            <View style={styles.statIconContainer}>
-              <Ionicons name="grid-outline" size={18} color="#3B82F6" />
-            </View>
-            <View style={styles.statContent}>
-              <Text style={styles.statValue}>{totalTables}</Text>
-              <Text style={styles.statLabel}>שולחנות</Text>
-            </View>
-          </View>
-        </View>
-      </View>
-
-      {orphanedGuests.length > 0 && (
-        <View style={styles.orphanCard}>
-          <View style={styles.orphanContent}>
-            <Ionicons name="alert-circle" size={20} color="#F59E0B" />
-            <View style={styles.orphanTextWrap}>
-              <Text style={styles.orphanTitle}>אורחים ללא שולחן</Text>
-              <Text style={styles.orphanText}>
-                {`${orphanedGuests.length} אורחים משויכים לשולחנות שלא קיימים`}
-              </Text>
-            </View>
-          </View>
-          <TouchableOpacity style={styles.orphanBtn} onPress={clearOrphanedSeating}>
-            <Ionicons name="refresh" size={16} color="#1F2937" />
-            <Text style={styles.orphanBtnText}>אפס שיוך</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      <View style={styles.eventSwitcherWrap}>
-        <EventSwitcher
-          userId={userData?.id}
-          selectedEventId={resolvedEventId}
-          onSelectEventId={handleSelectEventId}
-          label="אירוע פעיל"
+        <LinearGradient
+          colors={['#F7FAFF', '#E8F1FF', '#F2E0BA']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.bg}
         />
-      </View>
+        <LinearGradient
+          colors={['rgba(255,255,255,0.68)', 'rgba(255,255,255,0)']}
+          start={{ x: 0.05, y: 0 }}
+          end={{ x: 0.75, y: 0.55 }}
+          style={styles.bgHighlight}
+        />
+        <LinearGradient
+          colors={['rgba(232,196,122,0.58)', 'rgba(244,224,186,0.22)', 'rgba(244,224,186,0)']}
+          start={{ x: 1, y: 0.95 }}
+          end={{ x: 0.18, y: 0.22 }}
+          style={styles.bgWarmGlow}
+        />
 
-      <AppKeyboardAwareScrollView style={styles.scrollView} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollViewContent}>
-        {tables.map((table) => {
-          const tableGuests = getGuestsForTable(table.id);
-          const totalPeopleSeated = tableGuests.reduce((sum, guest) => sum + (guest.numberOfPeople || 1), 0);
-          const isEditing = editingTableId === table.id;
-          const isTableFull = totalPeopleSeated >= table.capacity;
-          
-          return (
-            <View key={table.id} style={[styles.tableCard, isTableFull && styles.tableCardFull]}>
-              <View style={styles.tableHeader}>
-                <View style={styles.tableLeft}>
-                  <View style={[styles.tableNumberBadge, isTableFull && styles.tableNumberBadgeFull]}>
-                    <Text style={[styles.tableNumberText, isTableFull && styles.tableNumberTextFull]}>
-                      {table.number}
-                    </Text>
-                  </View>
-                  <View style={styles.tableTitleWrap}>
-                    {!isEditing && (
-                      <Text style={[styles.tableTitle, isTableFull && styles.tableTitleFull]}>
-                        שולחן {table.number}
-                      </Text>
-                    )}
-                    {isEditing ? (
-                      <View style={styles.tableNameEditWrap}>
-                        <TouchableOpacity
-                          style={[styles.saveNameBtn, savingTableName ? styles.disabledButton : null]}
-                          onPress={() => handleSaveTableName(String(table.id))}
-                          disabled={savingTableName}
-                          activeOpacity={0.85}
-                          accessibilityRole="button"
-                          accessibilityLabel="שמירת שם שולחן"
-                        >
-                          <Ionicons name="checkmark" size={18} color="#FFFFFF" />
-                        </TouchableOpacity>
-                        <TextInput
-                          value={editingTableName}
-                          onChangeText={(t) => setEditingTableName(String(t || '').slice(0, 20))}
-                          placeholder="שם שולחן"
-                          placeholderTextColor="#9CA3AF"
-                          style={styles.tableNameInput}
-                          textAlign="right"
-                          maxLength={20}
-                        />
-                      </View>
-                    ) : table.name ? (
-                      <Text style={styles.tableSubtitle}>{table.name}</Text>
-                    ) : null}
-                  </View>
+        <View style={[styles.topSpacer, { paddingTop: topContentInset }]}>
+          <View style={styles.topRow}>
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={handleBack}
+              accessibilityRole="button"
+              accessibilityLabel="חזרה לעמוד האירוע"
+              activeOpacity={0.86}
+            >
+              <Ionicons name="chevron-forward" size={22} color={colors.primary} />
+            </TouchableOpacity>
+            <Text style={styles.screenTitle}>רשימת שולחנות</Text>
+          </View>
+        </View>
+
+        <AppKeyboardAwareScrollView style={styles.scrollView} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollViewContent}>
+          <View style={styles.statsBar}>
+            <View style={styles.statsGrid}>
+              <View style={styles.statCard}>
+                <View style={styles.statIconContainer}>
+                  <Ionicons name="grid-outline" size={18} color="#3B82F6" />
                 </View>
-                <View style={styles.tableRight}>
-                  <View style={[styles.capacityBadge, isTableFull && styles.capacityBadgeFull]}>
-                    <Ionicons 
-                      name="person" 
-                      size={14} 
-                      color={isTableFull ? "#10B981" : "#6B7280"} 
-                    />
-                    <Text style={[styles.capacityText, isTableFull && styles.capacityTextFull]}>
-                      {totalPeopleSeated}/{table.capacity}
-                    </Text>
-                  </View>
-                  <TouchableOpacity 
-                    style={styles.actionButton} 
-                    onPress={() => openAddGuestsModal(table)}
-                  >
-                    <Ionicons name="add-circle-outline" size={22} color="#3B82F6" />
-                  </TouchableOpacity>
-                  <TouchableOpacity 
-                    style={styles.actionButton} 
-                    onPress={() => handleEditPress(table.id)}
-                  >
-                    <Ionicons 
-                      name={isEditing ? "close-circle-outline" : "create-outline"} 
-                      size={22} 
-                      color={isEditing ? "#EF4444" : "#6B7280"} 
-                    />
-                  </TouchableOpacity>
+                <View style={styles.statContent}>
+                  <Text style={styles.statValue}>{totalTables}</Text>
+                  <Text style={styles.statLabel}>שולחנות</Text>
                 </View>
               </View>
-
-              <View style={styles.guestsContainer}>
-                {tableGuests.length > 0 ? (
-                  <>
-                    <ScrollView style={styles.guestsListScrollView} nestedScrollEnabled showsVerticalScrollIndicator={false}>
-                      <View style={styles.guestsList}>
-                        {tableGuests.map((guest) => {
-                          const isSelected = selectedGuestsToDelete.has(guest.id);
-                          return (
-                            <TouchableOpacity 
-                              key={guest.id} 
-                              style={[
-                                styles.guestChip, 
-                                isEditing && styles.guestChipEditing, 
-                                isSelected && styles.guestChipSelected
-                              ]}
-                              onPress={isEditing ? () => handleToggleGuestDeletionSelection(guest.id) : undefined}
-                              disabled={!isEditing}
-                              activeOpacity={0.7}
-                            >
-                              <View style={styles.guestChipContent}>
-                                <Text style={styles.guestChipName} numberOfLines={2}>
-                                  {guest.name}
-                                </Text>
-                                <View style={styles.peopleCountMini}>
-                                  <Text style={styles.peopleCountMiniText}>{Number(guest.numberOfPeople ?? 1) || 1}</Text>
-                                </View>
-                                {isEditing && isSelected && (
-                                  <Ionicons name="checkmark-circle" size={18} color="#3B82F6" />
-                                )}
-                              </View>
-                            </TouchableOpacity>
-                          )
-                        })}
-                      </View>
-                    </ScrollView>
-                    {isEditing && selectedGuestsToDelete.size > 0 && (
-                      <View style={styles.editActionsRow}>
-                        <TouchableOpacity
-                          style={styles.secondaryActionBtn}
-                          onPress={openMoveGuests}
-                          activeOpacity={0.85}
-                        >
-                          <Ionicons name="swap-horizontal-outline" size={16} color="#111827" />
-                          <Text style={styles.secondaryActionBtnText}>העבר לשולחן</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.deleteButton} onPress={handleRemoveGuestsFromTable} activeOpacity={0.8}>
-                          <Ionicons name="trash-outline" size={18} color="#FFFFFF" />
-                          <Text style={styles.deleteButtonText}>הסר {selectedGuestsToDelete.size}</Text>
-                        </TouchableOpacity>
-                      </View>
-                    )}
-                  </>
-                ) : (
-                  <View style={styles.emptyTable}>
-                    <Ionicons name="cafe-outline" size={28} color="#D1D5DB" />
-                    <Text style={styles.emptyTableText}>שולחן ריק</Text>
-                  </View>
-                )}
+              <View style={styles.statCard}>
+                <View style={styles.statIconContainer}>
+                  <Ionicons name="checkmark-circle" size={18} color="#10B981" />
+                </View>
+                <View style={styles.statContent}>
+                  <Text style={styles.statValue}>{fullTables}</Text>
+                  <Text style={styles.statLabel}>מלאים</Text>
+                </View>
               </View>
             </View>
-          );
-        })}
-      </AppKeyboardAwareScrollView>
+          </View>
+
+          {orphanedGuests.length > 0 && (
+            <View style={styles.orphanCard}>
+              <View style={styles.orphanContent}>
+                <Ionicons name="alert-circle" size={20} color="#F59E0B" />
+                <View style={styles.orphanTextWrap}>
+                  <Text style={styles.orphanTitle}>אורחים ללא שולחן</Text>
+                  <Text style={styles.orphanText}>
+                    {`${orphanedGuests.length} אורחים משויכים לשולחנות שלא קיימים`}
+                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity style={styles.orphanBtn} onPress={clearOrphanedSeating}>
+                <Ionicons name="refresh" size={16} color="#1F2937" />
+                <Text style={styles.orphanBtnText}>אפס שיוך</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {hasMultipleEvents ? (
+            <View style={styles.eventSwitcherWrap}>
+              <EventSwitcher
+                userId={userData?.id}
+                selectedEventId={resolvedEventId}
+                onSelectEventId={handleSelectEventId}
+                label="אירוע פעיל"
+                onHasMultipleChange={setHasMultipleEvents}
+              />
+            </View>
+          ) : (
+            <EventSwitcher
+              userId={userData?.id}
+              selectedEventId={resolvedEventId}
+              onSelectEventId={handleSelectEventId}
+              label="אירוע פעיל"
+              onHasMultipleChange={setHasMultipleEvents}
+            />
+          )}
+
+          {tables.map((table) => {
+            const tableGuests = getGuestsForTable(table.id);
+            const totalPeopleSeated = tableGuests.reduce((sum, guest) => sum + (guest.numberOfPeople || 1), 0);
+            const isEditing = editingTableId === table.id;
+            const isTableFull = totalPeopleSeated >= table.capacity;
+            
+            return (
+              <View key={table.id} style={[styles.tableCard, isTableFull && styles.tableCardFull]}>
+                <View style={styles.tableHeader}>
+                  <View style={styles.tableLeft}>
+                    <View style={[styles.tableNumberBadge, isTableFull && styles.tableNumberBadgeFull]}>
+                      <Text style={[styles.tableNumberText, isTableFull && styles.tableNumberTextFull]}>
+                        {table.number}
+                      </Text>
+                    </View>
+                    <View style={styles.tableTitleWrap}>
+                      {!isEditing && (
+                        <Text style={[styles.tableTitle, isTableFull && styles.tableTitleFull]}>
+                          שולחן {table.number}
+                        </Text>
+                      )}
+                      {isEditing ? (
+                        <View style={styles.tableNameEditWrap}>
+                          <TouchableOpacity
+                            style={[styles.saveNameBtn, savingTableName ? styles.disabledButton : null]}
+                            onPress={() => handleSaveTableName(String(table.id))}
+                            disabled={savingTableName}
+                            activeOpacity={0.85}
+                            accessibilityRole="button"
+                            accessibilityLabel="שמירת שם שולחן"
+                          >
+                            <Ionicons name="checkmark" size={18} color="#FFFFFF" />
+                          </TouchableOpacity>
+                          <TextInput
+                            value={editingTableName}
+                            onChangeText={(t) => setEditingTableName(String(t || '').slice(0, 20))}
+                            placeholder="שם שולחן"
+                            placeholderTextColor="#9CA3AF"
+                            style={styles.tableNameInput}
+                            textAlign="right"
+                            maxLength={20}
+                          />
+                        </View>
+                      ) : table.name ? (
+                        <Text style={styles.tableSubtitle}>{table.name}</Text>
+                      ) : null}
+                    </View>
+                  </View>
+                  <View style={styles.tableRight}>
+                    <View style={[styles.capacityBadge, isTableFull && styles.capacityBadgeFull]}>
+                      <Ionicons 
+                        name="person" 
+                        size={14} 
+                        color={isTableFull ? "#10B981" : "#6B7280"} 
+                      />
+                      <Text style={[styles.capacityText, isTableFull && styles.capacityTextFull]}>
+                        {totalPeopleSeated}/{table.capacity}
+                      </Text>
+                    </View>
+                    <TouchableOpacity 
+                      style={styles.actionButton} 
+                      onPress={() => openAddGuestsModal(table)}
+                    >
+                      <Ionicons name="add-circle-outline" size={22} color="#3B82F6" />
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                      style={styles.actionButton} 
+                      onPress={() => handleEditPress(table.id)}
+                    >
+                      <Ionicons 
+                        name={isEditing ? "close-circle-outline" : "create-outline"} 
+                        size={22} 
+                        color={isEditing ? "#EF4444" : "#6B7280"} 
+                      />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                <View style={styles.guestsContainer}>
+                  {tableGuests.length > 0 ? (
+                    <>
+                      <ScrollView style={styles.guestsListScrollView} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+                        <View style={styles.guestsList}>
+                          {tableGuests.map((guest) => {
+                            const isSelected = selectedGuestsToDelete.has(guest.id);
+                            return (
+                              <TouchableOpacity 
+                                key={guest.id} 
+                                style={[
+                                  styles.guestChip, 
+                                  isEditing && styles.guestChipEditing, 
+                                  isSelected && styles.guestChipSelected
+                                ]}
+                                onPress={isEditing ? () => handleToggleGuestDeletionSelection(guest.id) : undefined}
+                                disabled={!isEditing}
+                                activeOpacity={0.7}
+                              >
+                                <View style={styles.guestChipContent}>
+                                  <Text style={styles.guestChipName} numberOfLines={2}>
+                                    {guest.name}
+                                  </Text>
+                                  <View style={styles.peopleCountMini}>
+                                    <Text style={styles.peopleCountMiniText}>{Number(guest.numberOfPeople ?? 1) || 1}</Text>
+                                  </View>
+                                  {isEditing && isSelected && (
+                                    <Ionicons name="checkmark-circle" size={18} color="#3B82F6" />
+                                  )}
+                                </View>
+                              </TouchableOpacity>
+                            )
+                          })}
+                        </View>
+                      </ScrollView>
+                      {isEditing && selectedGuestsToDelete.size > 0 && (
+                        <View style={styles.editActionsRow}>
+                          <TouchableOpacity
+                            style={styles.secondaryActionBtn}
+                            onPress={openMoveGuests}
+                            activeOpacity={0.85}
+                          >
+                            <Ionicons name="swap-horizontal-outline" size={16} color="#111827" />
+                            <Text style={styles.secondaryActionBtnText}>העבר לשולחן</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity style={styles.deleteButton} onPress={handleRemoveGuestsFromTable} activeOpacity={0.8}>
+                            <Ionicons name="trash-outline" size={18} color="#FFFFFF" />
+                            <Text style={styles.deleteButtonText}>הסר {selectedGuestsToDelete.size}</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </>
+                  ) : (
+                    <View style={styles.emptyTable}>
+                      <Ionicons name="cafe-outline" size={28} color="#D1D5DB" />
+                      <Text style={styles.emptyTableText}>שולחן ריק</Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+            );
+          })}
+        </AppKeyboardAwareScrollView>
+      </View>
 
       {/* Add Guests Modal */}
       <Modal
@@ -921,44 +923,61 @@ export default function TablesList() {
           </View>
         </View>
       </Modal>
-      </View>
     </BackSwipe>
   );
 }
 
 const styles = StyleSheet.create({
-  headerAvatarBtn: {
-    width: 48,
-    height: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerAvatar: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    borderWidth: 2,
-    borderColor: '#0B1C41',
-    backgroundColor: '#FFFFFF',
-  },
-  headerAvatarFallback: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    borderWidth: 2,
-    borderColor: '#0B1C41',
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   container: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: '#F7FAFF',
+  },
+  bg: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  bgHighlight: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  bgWarmGlow: {
+    ...StyleSheet.absoluteFillObject,
   },
   centered: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  topSpacer: {
+    paddingTop: 18,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+  },
+  topRow: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  backButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: colors.richBlack,
+    shadowOpacity: 0.14,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 6,
+  },
+  screenTitle: {
+    flex: 1,
+    fontSize: 24,
+    fontWeight: '900',
+    color: colors.richBlack,
+    textAlign: 'right',
   },
   errorText: {
     fontSize: 17,
@@ -967,12 +986,21 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   statsBar: {
-    backgroundColor: '#FFFFFF',
+    marginHorizontal: 16,
+    marginTop: 4,
+    marginBottom: 14,
     paddingHorizontal: 16,
     paddingTop: 12,
     paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.88)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.75)',
+    shadowColor: colors.richBlack,
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3,
   },
   statsGrid: {
     flexDirection: ROW_DIR,
@@ -1013,18 +1041,26 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   eventSwitcherWrap: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+    marginHorizontal: 16,
+    marginTop: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.88)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.72)',
+    shadowColor: colors.richBlack,
+    shadowOpacity: 0.06,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 2,
   },
   scrollView: {
     flex: 1,
   },
   scrollViewContent: {
     paddingHorizontal: 16,
-    paddingTop: 16,
+    paddingTop: 14,
     paddingBottom: 100,
   },
   tableCard: {

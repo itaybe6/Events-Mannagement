@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { BackHandler, View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, Platform, useWindowDimensions, Modal, Alert, Pressable, TextInput, KeyboardAvoidingView } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { BackHandler, View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, Platform, useWindowDimensions, Modal, Alert, Pressable, TextInput, KeyboardAvoidingView, RefreshControl } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { colors } from '@/constants/colors';
 import { eventService } from '@/lib/services/eventService';
@@ -22,10 +22,11 @@ export default function AdminEventDetailsScreen() {
     () => (typeof id === 'string' ? id : Array.isArray(id) ? id[0] : ''),
     [id]
   );
-  const { event, setEvent, guests, userName, userAvatarUrl, loading, error, stats } =
+  const { event, setEvent, guests, userName, userAvatarUrl, loading, error, stats, refresh } =
     useAdminEventDetailsModel(eventId);
   const [avatarPreviewOpen, setAvatarPreviewOpen] = useState(false);
   const [noTablesModalOpen, setNoTablesModalOpen] = useState(false);
+  const [isPullRefreshing, setIsPullRefreshing] = useState(false);
 
   const [editOpen, setEditOpen] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
@@ -57,6 +58,22 @@ export default function AdminEventDetailsScreen() {
     });
     return () => sub.remove();
   }, [router]);
+
+  const handlePullToRefresh = useCallback(async () => {
+    if (!eventId || isPullRefreshing) return;
+    const refreshStartedAt = Date.now();
+    setIsPullRefreshing(true);
+    try {
+      await refresh({ silent: true });
+    } finally {
+      const minLoaderDurationMs = 700;
+      const remainingTime = minLoaderDurationMs - (Date.now() - refreshStartedAt);
+      if (remainingTime > 0) {
+        await new Promise((resolve) => setTimeout(resolve, remainingTime));
+      }
+      setIsPullRefreshing(false);
+    }
+  }, [eventId, isPullRefreshing, refresh]);
 
   if (loading) {
     return (
@@ -370,7 +387,8 @@ export default function AdminEventDetailsScreen() {
 
   const heroTopSpacing = 58;
   const heroBaseHeight = Math.max(420, Math.min(620, windowHeight * 0.62));
-  const heroHeight = heroBaseHeight + Math.max(0, heroTopSpacing - 22);
+  const weddingHeroExtraHeight = isWeddingEvent() ? 110 : 0;
+  const heroHeight = heroBaseHeight + Math.max(0, heroTopSpacing - 22) + weddingHeroExtraHeight;
   // Keep the end of the scroll content above the tab bar
   const tabBarBottomOffset = Platform.OS === 'ios' ? 30 : 20;
   const tabBarHeight = 65;
@@ -379,10 +397,7 @@ export default function AdminEventDetailsScreen() {
   const tabBarReserve = tabBarBottomOffset + tabBarHeight + 24;
 
   return (
-    <BackSwipe
-      fallbackHref="/(admin)/admin-events"
-      onBack={() => router.replace('/(admin)/admin-events')}
-    >
+    <View style={styles.screenRoot}>
       <View style={[styles.safeRoot, { backgroundColor: ui.bg }]}>
         <View style={styles.safe}>
         {/* App background gradient */}
@@ -428,6 +443,16 @@ export default function AdminEventDetailsScreen() {
           },
         ]}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isPullRefreshing}
+            onRefresh={() => void handlePullToRefresh()}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+            progressBackgroundColor="rgba(255,255,255,0.96)"
+            progressViewOffset={Math.max(72, insets.top + 56)}
+          />
+        }
       >
         {/* Hero (background + nav + card) - scrolls with the page */}
         <View
@@ -536,11 +561,33 @@ export default function AdminEventDetailsScreen() {
                 </View>
 
                 {isWeddingEvent() ? (
-                  <View style={styles.heroMetaRow}>
-                    <Ionicons name="heart-outline" size={18} color={ui.muted} />
-                    <Text style={[styles.heroMetaText, { color: ui.muted }]}>
-                      {`חתן: ${groomLabel()} | כלה: ${brideLabel()}`}
-                    </Text>
+                  <View style={styles.heroCoupleCard}>
+                    <View style={styles.heroCoupleHeader}>
+                      <View style={styles.heroCoupleHeaderIcon}>
+                        <Ionicons name="heart-outline" size={16} color={ui.accent} />
+                      </View>
+                      <Text style={[styles.heroCoupleHeaderText, { color: ui.muted }]}>פרטי החתונה</Text>
+                    </View>
+
+                    <View style={styles.heroCoupleChips}>
+                      <View style={styles.heroCoupleChip}>
+                        <Text style={[styles.heroCoupleChipLabel, { color: ui.muted }]}>חתן</Text>
+                        <Text style={[styles.heroCoupleChipValue, { color: ui.text }]} numberOfLines={2}>
+                          {groomLabel()}
+                        </Text>
+                      </View>
+
+                      <View style={styles.heroCoupleDivider}>
+                        <Ionicons name="heart" size={12} color={ui.accent} />
+                      </View>
+
+                      <View style={styles.heroCoupleChip}>
+                        <Text style={[styles.heroCoupleChipLabel, { color: ui.muted }]}>כלה</Text>
+                        <Text style={[styles.heroCoupleChipValue, { color: ui.text }]} numberOfLines={2}>
+                          {brideLabel()}
+                        </Text>
+                      </View>
+                    </View>
                   </View>
                 ) : null}
               </View>
@@ -552,6 +599,7 @@ export default function AdminEventDetailsScreen() {
         <View
           style={[
             styles.sheet,
+            isWeddingEvent() ? styles.sheetWeddingSpacing : null,
             {
               marginBottom: Platform.OS === 'web' ? 30 : 0,
               paddingBottom: Platform.OS === 'web' ? 24 : tabBarReserve,
@@ -697,25 +745,7 @@ export default function AdminEventDetailsScreen() {
               accessibilityLabel="לינק להזמנה"
             />
             <ActionRow
-              title="עריכת סקיצה"
-              subtitle="ניהול סידורי הושבה וסקיצות"
-              iconName="create-outline"
-              iconBg="rgba(6,23,62,0.10)"
-              iconColor={colors.richBlack}
-              onPress={() => Alert.alert('את הסקיצה ניתן לערוך רק מהאתר')}
-              accessibilityLabel="עריכת סקיצה"
-            />
-            <ActionRow
-              title="צ׳ק-אין אורחים"
-              subtitle="סימון הגעה של אורחים בזמן אמת"
-              iconName="checkbox-outline"
-              iconBg="rgba(0,53,102,0.10)"
-              iconColor={colors.yaleBlue}
-              onPress={() => router.push(`/(admin)/admin-guest-checkin?eventId=${event.id}`)}
-              accessibilityLabel="צ׳ק-אין אורחים"
-            />
-            <ActionRow
-              title="שולחנות"
+              title="רשימת שולחנות"
               subtitle="צפייה וניהול רשימת שולחנות"
               iconName="list-outline"
               iconBg="rgba(240,203,70,0.18)"
@@ -731,6 +761,24 @@ export default function AdminEventDetailsScreen() {
               iconColor={colors.yaleBlue}
               onPress={() => router.push(`/(admin)/admin-event-messages?eventId=${event.id}`)}
               accessibilityLabel="עריכת הודעות"
+            />
+            <ActionRow
+              title="אישורי הגעה"
+              subtitle="מעקב אחרי מוזמנים, סטטוסים ומי כבר אישר הגעה"
+              iconName="people-outline"
+              iconBg="rgba(240,203,70,0.18)"
+              iconColor={colors.gold}
+              onPress={() => router.push(`/(admin)/admin-rsvp-approvals?eventId=${event.id}`)}
+              accessibilityLabel="אישורי הגעה"
+            />
+            <ActionRow
+              title="צ׳ק-אין אורחים"
+              subtitle="סימון הגעה של אורחים בזמן אמת"
+              iconName="checkbox-outline"
+              iconBg="rgba(0,53,102,0.10)"
+              iconColor={colors.yaleBlue}
+              onPress={() => router.push(`/(admin)/admin-guest-checkin?eventId=${event.id}`)}
+              accessibilityLabel="צ׳ק-אין אורחים"
             />
             <ActionRow
               title="מפת הושבה"
@@ -789,20 +837,22 @@ export default function AdminEventDetailsScreen() {
 
       {/* Edit event modal */}
       <Modal transparent visible={editOpen} animationType="fade" onRequestClose={() => setEditOpen(false)}>
-        <Pressable
-          style={styles.editOverlay}
-          onPress={() => {
-            if (deleteConfirmOpen && !deleteSaving) {
-              setDeleteConfirmOpen(false);
-              return;
-            }
-            setEditOpen(false);
-          }}
-        >
+        <View style={styles.editOverlay}>
+          <Pressable
+            style={styles.editBackdrop}
+            onPress={() => {
+              if (deleteConfirmOpen && !deleteSaving) {
+                setDeleteConfirmOpen(false);
+                return;
+              }
+              setEditOpen(false);
+            }}
+          />
           <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             keyboardVerticalOffset={Platform.OS === 'ios' ? 18 : 0}
             style={styles.editKeyboardWrap}
+            pointerEvents="box-none"
           >
             <Pressable style={styles.editCard} onPress={() => null}>
               <View style={styles.editHeader}>
@@ -837,7 +887,9 @@ export default function AdminEventDetailsScreen() {
                 style={styles.editScroll}
                 contentContainerStyle={[styles.editBody, { paddingBottom: Math.max(insets.bottom + 18, 24) }]}
                 showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled"
+                keyboardShouldPersistTaps="always"
+                nestedScrollEnabled
+                keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
                 bounces={false}
                 alwaysBounceVertical={false}
                 overScrollMode="never"
@@ -1064,7 +1116,7 @@ export default function AdminEventDetailsScreen() {
               </Pressable>
             </Pressable>
           ) : null}
-        </Pressable>
+        </View>
       </Modal>
 
       {/* No tables modal (RTL, styled) */}
@@ -1114,11 +1166,12 @@ export default function AdminEventDetailsScreen() {
         </Pressable>
       </Modal>
       </View>
-    </BackSwipe>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  screenRoot: { flex: 1 },
   safeRoot: { flex: 1 },
   safe: { flex: 1, backgroundColor: 'transparent' },
 
@@ -1201,6 +1254,10 @@ const styles = StyleSheet.create({
     shadowRadius: 24,
     shadowOffset: { width: 0, height: -2 },
     elevation: 6,
+  },
+  sheetWeddingSpacing: {
+    marginTop: -132,
+    paddingTop: 30,
   },
   heroTitleWrap: {
     alignItems: 'center',
@@ -1292,6 +1349,77 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '500',
     textAlign: 'center',
+  },
+  heroCoupleCard: {
+    width: '100%',
+    maxWidth: 420,
+    marginTop: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.88)',
+    borderWidth: 1,
+    borderColor: 'rgba(6, 23, 62, 0.08)',
+    shadowColor: colors.black,
+    shadowOpacity: 0.06,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
+  },
+  heroCoupleHeader: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  heroCoupleHeaderIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(240,203,70,0.16)',
+  },
+  heroCoupleHeaderText: {
+    fontSize: 13,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  heroCoupleChips: {
+    flexDirection: ROW_DIR,
+    alignItems: 'stretch',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  heroCoupleChip: {
+    flex: 1,
+    minHeight: 78,
+    borderRadius: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    backgroundColor: 'rgba(247,250,255,0.96)',
+    borderWidth: 1,
+    borderColor: 'rgba(6, 23, 62, 0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  heroCoupleChipLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  heroCoupleChipValue: {
+    fontSize: 18,
+    fontWeight: '900',
+    lineHeight: 24,
+    textAlign: 'center',
+  },
+  heroCoupleDivider: {
+    width: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   heroWindowOuter: {
@@ -1419,10 +1547,13 @@ const styles = StyleSheet.create({
 
   editOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(6,23,62,0.40)',
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 18,
+  },
+  editBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(6,23,62,0.40)',
   },
   editKeyboardWrap: {
     width: '100%',
@@ -2007,10 +2138,12 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: 'rgba(17,24,39,0.08)',
     overflow: 'hidden',
+    alignItems: 'flex-end',
   },
   guestStatusBarFill: {
     height: '100%',
     borderRadius: 999,
+    alignSelf: 'flex-end',
   },
 
   grid2: {

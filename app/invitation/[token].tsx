@@ -51,7 +51,11 @@ export default function InvitationLandingScreen() {
   const groomName = useMemo(() => String(info?.event?.groomName ?? '').trim(), [info?.event?.groomName]);
   const brideName = useMemo(() => String(info?.event?.brideName ?? '').trim(), [info?.event?.brideName]);
   const isWedding = Boolean(groomName && brideName);
-  const eventTitle = useMemo(() => String(info?.event?.title ?? 'אירוע').trim() || 'אירוע', [info?.event?.title]);
+  const eventTitle = useMemo(() => {
+    const customInvitationTitle = String(info?.event?.invitationTitle ?? '').trim();
+    if (customInvitationTitle) return customInvitationTitle;
+    return String(info?.event?.title ?? 'אירוע').trim() || 'אירוע';
+  }, [info?.event?.invitationTitle, info?.event?.title]);
 
   const weddingDetails = useMemo(() => {
     const receptionTime = String(info?.event?.receptionTime ?? '').trim();

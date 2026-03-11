@@ -23,7 +23,7 @@ import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import { Entypo, Ionicons } from '@expo/vector-icons';
 import { useLayoutStore } from '@/store/layoutStore';
 import { Table } from '@/types';
-import { Stack, useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { Stack, useRouter, useFocusEffect, useLocalSearchParams, useSegments } from 'expo-router';
 import { colors } from '@/constants/colors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { EventSwitcher } from '@/components/EventSwitcher';
@@ -186,6 +186,7 @@ export default function BrideGroomSeating() {
   const { userData } = useUserStore();
   const { eventId: queryEventId } = useLocalSearchParams<{ eventId?: string }>();
   const router = useRouter();
+  const segments = useSegments();
   const insets = useSafeAreaInsets();
   const activeUserId = useEventSelectionStore((s) => s.activeUserId);
   const activeEventId = useEventSelectionStore((s) => s.activeEventId);
@@ -203,6 +204,18 @@ export default function BrideGroomSeating() {
     if (userData?.id) setActiveEvent(userData.id, nextEventId);
     router.replace({ pathname: './', params: { eventId: nextEventId } });
   };
+
+  const isAdminContext = useMemo(() => segments.includes('(admin)'), [segments]);
+  const eventBackHref = useMemo(() => {
+    if (resolvedEventId) {
+      return isAdminContext ? `/(admin)/admin-event-details?id=${resolvedEventId}` : `/(couple)?eventId=${resolvedEventId}`;
+    }
+    return isAdminContext ? '/(admin)/admin-events' : '/(couple)';
+  }, [isAdminContext, resolvedEventId]);
+
+  const handleBackToEvent = useCallback(() => {
+    router.replace(eventBackHref as any);
+  }, [eventBackHref, router]);
 
   const [tables, setTables] = useState<Table[]>([]);
   const [guests, setGuests] = useState<any[]>([]);
@@ -1617,6 +1630,16 @@ export default function BrideGroomSeating() {
             label="אירוע פעיל"
           />
         </View>
+
+        <TouchableOpacity
+          onPress={handleBackToEvent}
+          accessibilityRole="button"
+          accessibilityLabel="חזרה לעמוד האירוע"
+          activeOpacity={0.86}
+          style={styles.backFab}
+        >
+          <Ionicons name="chevron-forward" size={22} color={colors.primary} />
+        </TouchableOpacity>
       </View>
 
       {dragMode && (
@@ -2537,22 +2560,22 @@ const styles = StyleSheet.create({
   backFab: {
     width: 44,
     height: 44,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.82)',
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.96)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.60)',
+    borderColor: 'rgba(15,23,42,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: colors.richBlack,
-    shadowOpacity: 0.10,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 4,
+    shadowOpacity: 0.16,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 6,
   },
   eventSwitcherWrap: {
     flexShrink: 1,
     minWidth: 0,
-    maxWidth: '78%',
+    maxWidth: '72%',
   },
   statsContainer: {
     flexDirection: 'row',

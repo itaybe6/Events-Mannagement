@@ -27,7 +27,7 @@ export type AdminEventDetailsModel = {
   userName: string;
   userAvatarUrl: string;
   stats: AdminEventDetailsStats;
-  refresh: () => Promise<void>;
+  refresh: (options?: { silent?: boolean }) => Promise<void>;
 };
 
 const sumPeople = (rows: Array<{ numberOfPeople?: number }>) =>
@@ -41,7 +41,8 @@ export function useAdminEventDetailsModel(eventId: string) {
   const [userName, setUserName] = useState<string>('');
   const [userAvatarUrl, setUserAvatarUrl] = useState<string>('');
 
-  const refresh = async () => {
+  const refresh = async (options?: { silent?: boolean }) => {
+    const silent = options?.silent === true;
     if (!eventId) {
       setError('חסר מזהה אירוע');
       setEvent(null);
@@ -52,7 +53,7 @@ export function useAdminEventDetailsModel(eventId: string) {
       return;
     }
 
-    setLoading(true);
+    if (!silent) setLoading(true);
     setError(null);
 
     try {

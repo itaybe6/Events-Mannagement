@@ -21,6 +21,7 @@ import { Stack, useLocalSearchParams, useRouter, useSegments } from "expo-router
 import { AppKeyboardAwareScrollView } from "@/components/AppKeyboardAware";
 import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { colors } from "@/constants/colors";
@@ -169,6 +170,8 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
     // iPad portrait starts at 768dp width. Keep UI tablet-only from that breakpoint.
     return (Number(windowWidth) || 0) >= 768;
   }, [windowWidth]);
+  const isAdminStyledMobile = isAdminContext && Boolean(hideTopBar) && !isTablet;
+  const topContentInset = Math.max(30, (insets.top || 0) + 14);
 
   const guestsPaneWidth = useMemo(() => {
     if (!isTablet) return null;
@@ -213,6 +216,7 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
   const TAB_BAR_HEIGHT = 65;
   const TAB_BAR_BOTTOM_GAP = Platform.OS === "ios" ? 30 : 20;
   const bottomReserve = TAB_BAR_HEIGHT + TAB_BAR_BOTTOM_GAP + 18;
+  const contentBottomPadding = bottomReserve + (isAdminStyledMobile ? 42 : insets.bottom);
 
   const invitedPeople = useMemo(() => {
     return guests.reduce((sum, g) => sum + (Number(g.numberOfPeople) || 1), 0);
@@ -311,14 +315,31 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
     return (
       <BackSwipe fallbackHref={fallbackToDetails} onBack={handleBack}>
         <Stack.Screen
-          options={{
-            header: () => <AppHeader canGoBack onPressBack={handleBack} />,
-          }}
+          options={isAdminStyledMobile ? { headerShown: false } : { header: () => <AppHeader canGoBack onPressBack={handleBack} /> }}
         />
-        <SafeAreaView style={[styles.center, { paddingTop: insets.top }]}>
+        <View style={styles.screen}>
+          {isAdminStyledMobile ? (
+            <>
+              <LinearGradient colors={["#F7FAFF", "#E8F1FF", "#F2E0BA"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.bg} />
+              <LinearGradient
+                colors={["rgba(255,255,255,0.68)", "rgba(255,255,255,0)"]}
+                start={{ x: 0.05, y: 0 }}
+                end={{ x: 0.75, y: 0.55 }}
+                style={styles.bgHighlight}
+              />
+              <LinearGradient
+                colors={["rgba(232,196,122,0.58)", "rgba(244,224,186,0.22)", "rgba(244,224,186,0)"]}
+                start={{ x: 1, y: 0.95 }}
+                end={{ x: 0.18, y: 0.22 }}
+                style={styles.bgWarmGlow}
+              />
+            </>
+          ) : null}
+          <SafeAreaView style={[styles.center, isAdminStyledMobile ? styles.centerTransparent : null, { paddingTop: isAdminStyledMobile ? 0 : insets.top }]}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>טוען...</Text>
-        </SafeAreaView>
+          </SafeAreaView>
+        </View>
       </BackSwipe>
     );
   }
@@ -328,11 +349,27 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
     return (
       <BackSwipe fallbackHref={listHref} onBack={handleBack}>
         <Stack.Screen
-          options={{
-            header: () => <AppHeader canGoBack onPressBack={handleBack} />,
-          }}
+          options={isAdminStyledMobile ? { headerShown: false } : { header: () => <AppHeader canGoBack onPressBack={handleBack} /> }}
         />
-        <SafeAreaView style={[styles.center, { paddingTop: insets.top, paddingHorizontal: 20 }]}>
+        <View style={styles.screen}>
+          {isAdminStyledMobile ? (
+            <>
+              <LinearGradient colors={["#F7FAFF", "#E8F1FF", "#F2E0BA"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.bg} />
+              <LinearGradient
+                colors={["rgba(255,255,255,0.68)", "rgba(255,255,255,0)"]}
+                start={{ x: 0.05, y: 0 }}
+                end={{ x: 0.75, y: 0.55 }}
+                style={styles.bgHighlight}
+              />
+              <LinearGradient
+                colors={["rgba(232,196,122,0.58)", "rgba(244,224,186,0.22)", "rgba(244,224,186,0)"]}
+                start={{ x: 1, y: 0.95 }}
+                end={{ x: 0.18, y: 0.22 }}
+                style={styles.bgWarmGlow}
+              />
+            </>
+          ) : null}
+          <SafeAreaView style={[styles.center, isAdminStyledMobile ? styles.centerTransparent : null, { paddingTop: isAdminStyledMobile ? 0 : insets.top, paddingHorizontal: 20 }]}>
           <Text style={styles.errorTitle}>חסר מזהה אירוע</Text>
           <TouchableOpacity
             onPress={() => router.replace(listHref as any)}
@@ -343,7 +380,8 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
           >
             <Text style={styles.backBtnText}>חזרה</Text>
           </TouchableOpacity>
-        </SafeAreaView>
+          </SafeAreaView>
+        </View>
       </BackSwipe>
     );
   }
@@ -351,12 +389,42 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
   return (
     <BackSwipe fallbackHref={fallbackToDetails} onBack={handleBack}>
       <Stack.Screen
-        options={{
-          header: () => <AppHeader canGoBack onPressBack={handleBack} />,
-        }}
+        options={isAdminStyledMobile ? { headerShown: false } : { header: () => <AppHeader canGoBack onPressBack={handleBack} /> }}
       />
-      <SafeAreaView style={[styles.screen, { paddingTop: insets.top }]}>
-        {!hideTopBar ? (
+      <View style={styles.screen}>
+        {isAdminStyledMobile ? (
+          <>
+            <LinearGradient colors={["#F7FAFF", "#E8F1FF", "#F2E0BA"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.bg} />
+            <LinearGradient
+              colors={["rgba(255,255,255,0.68)", "rgba(255,255,255,0)"]}
+              start={{ x: 0.05, y: 0 }}
+              end={{ x: 0.75, y: 0.55 }}
+              style={styles.bgHighlight}
+            />
+            <LinearGradient
+              colors={["rgba(232,196,122,0.58)", "rgba(244,224,186,0.22)", "rgba(244,224,186,0)"]}
+              start={{ x: 1, y: 0.95 }}
+              end={{ x: 0.18, y: 0.22 }}
+              style={styles.bgWarmGlow}
+            />
+            <View style={[styles.topSpacer, { paddingTop: topContentInset }]}>
+              <View style={styles.topRow}>
+                <TouchableOpacity
+                  onPress={handleBack}
+                  style={styles.backButton}
+                  activeOpacity={0.86}
+                  accessibilityRole="button"
+                  accessibilityLabel="חזרה"
+                >
+                  <Ionicons name="chevron-forward" size={22} color={colors.primary} />
+                </TouchableOpacity>
+                <Text style={styles.screenTitle}>צ׳ק-אין אורחים</Text>
+              </View>
+            </View>
+          </>
+        ) : null}
+      <View style={[styles.screen, isAdminStyledMobile ? styles.screenTransparent : null, { paddingTop: isAdminStyledMobile ? 0 : insets.top }]}>
+        {!hideTopBar && !isAdminStyledMobile ? (
           <View style={styles.topBar}>
             <TouchableOpacity
               onPress={handleBack}
@@ -402,7 +470,7 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
             >
               <AppKeyboardAwareScrollView
                 showsVerticalScrollIndicator={false}
-                contentContainerStyle={[styles.content, { paddingBottom: bottomReserve + insets.bottom }]}
+                contentContainerStyle={[styles.content, { paddingBottom: contentBottomPadding }]}
                 keyboardShouldPersistTaps="handled"
               >
                 {tableFilterId ? (
@@ -479,24 +547,24 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                           accessibilityRole="button"
                           accessibilityLabel={`קטגוריה ${sec.name}`}
                         >
-                          <View style={styles.categoryHeaderLeft}>
-                            <View style={styles.categoryCountPill}>
-                              <Text style={styles.categoryCountText}>{`${sec.checkedIn}/${sec.total}`}</Text>
-                            </View>
-                            <View style={styles.categoryPctPill}>
-                              <Text style={styles.categoryPctText}>{`${pct}%`}</Text>
-                            </View>
+                          <View style={styles.categoryHeaderRight}>
                             <Ionicons
                               name={isCollapsed ? "chevron-down" : "chevron-up"}
-                              size={18}
+                              size={20}
                               color={"rgba(17,24,39,0.55)"}
                             />
-                          </View>
-
-                          <View style={styles.categoryHeaderRight}>
                             <Text style={styles.categoryTitle} numberOfLines={1}>
                               {sec.name}
                             </Text>
+                          </View>
+
+                          <View style={styles.categoryHeaderLeft}>
+                            <View style={styles.categoryPctPill}>
+                              <Text style={styles.categoryPctText}>{`${pct}%`}</Text>
+                            </View>
+                            <View style={styles.categoryCountPill}>
+                              <Text style={styles.categoryCountText}>{`${sec.checkedIn}/${sec.total}`}</Text>
+                            </View>
                           </View>
                         </TouchableOpacity>
 
@@ -865,8 +933,39 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
         ) : (
           <AppKeyboardAwareScrollView
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={[styles.content, { paddingBottom: bottomReserve + insets.bottom }]}
+            contentContainerStyle={[styles.content, isAdminStyledMobile ? styles.contentAdminMobile : null, { paddingBottom: contentBottomPadding }]}
           >
+            {isAdminStyledMobile ? (
+              <View style={styles.adminMobileIntroCard}>
+                <View style={styles.adminMobileIntroHeader}>
+                  <View style={styles.adminMobileIntroIcon}>
+                    <Ionicons name="checkbox-outline" size={18} color={colors.primary} />
+                  </View>
+                  <View style={styles.adminMobileIntroText}>
+                    <Text style={styles.adminMobileIntroTitle}>צ׳ק-אין אורחים</Text>
+                    <View style={styles.adminMobileIntroStats}>
+                      <View style={styles.adminMobileIntroStatRow}>
+                        <Text style={styles.adminMobileIntroStatValue}>{`${counts.checkedIn}/${counts.total}`}</Text>
+                        <Text style={styles.adminMobileIntroSubtitle}>קבוצות</Text>
+                      </View>
+                      <View style={styles.adminMobileIntroStatRow}>
+                        <Text style={styles.adminMobileIntroStatValue}>{`${arrivedPeople}/${invitedPeople}`}</Text>
+                        <Text style={styles.adminMobileIntroSubtitle}>אנשים</Text>
+                      </View>
+                    </View>
+                  </View>
+                  <TouchableOpacity
+                    onPress={onRefreshAll}
+                    style={styles.adminMobileRefreshBtn}
+                    activeOpacity={0.86}
+                    accessibilityRole="button"
+                    accessibilityLabel="רענון"
+                  >
+                    <Ionicons name="refresh" size={18} color={colors.primary} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : null}
             {/* Search */}
             <View style={styles.searchCard}>
               <Text>
@@ -920,24 +1019,24 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                       accessibilityRole="button"
                       accessibilityLabel={`קטגוריה ${sec.name}`}
                     >
-                      <View style={styles.categoryHeaderLeft}>
-                        <View style={styles.categoryCountPill}>
-                          <Text style={styles.categoryCountText}>{`${sec.checkedIn}/${sec.total}`}</Text>
-                        </View>
-                        <View style={styles.categoryPctPill}>
-                          <Text style={styles.categoryPctText}>{`${pct}%`}</Text>
-                        </View>
+                      <View style={styles.categoryHeaderRight}>
                         <Ionicons
                           name={isCollapsed ? "chevron-down" : "chevron-up"}
-                          size={18}
+                          size={20}
                           color={"rgba(17,24,39,0.55)"}
                         />
-                      </View>
-
-                      <View style={styles.categoryHeaderRight}>
                         <Text style={styles.categoryTitle} numberOfLines={1}>
                           {sec.name}
                         </Text>
+                      </View>
+
+                      <View style={styles.categoryHeaderLeft}>
+                        <View style={styles.categoryPctPill}>
+                          <Text style={styles.categoryPctText}>{`${pct}%`}</Text>
+                        </View>
+                        <View style={styles.categoryCountPill}>
+                          <Text style={styles.categoryCountText}>{`${sec.checkedIn}/${sec.total}`}</Text>
+                        </View>
                       </View>
                     </TouchableOpacity>
 
@@ -946,34 +1045,14 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                         {sec.data.map((g) => {
                           const checkedIn = Boolean(g.checkedIn);
                           const isSaving = savingId === g.id;
+                          const people = Number(g.numberOfPeople) || 1;
                           return (
                             <View key={g.id} style={[styles.guestRow, checkedIn && styles.guestRowChecked]}>
-                              <TouchableOpacity
-                                onPress={() => toggleCheckIn(g)}
-                                style={[styles.checkInPill, checkedIn ? styles.checkInPillOn : styles.checkInPillOff]}
-                                activeOpacity={0.9}
-                                disabled={isSaving}
-                                accessibilityRole="button"
-                                accessibilityLabel={checkedIn ? `סמן שלא הגיע: ${g.name}` : `סמן שהגיע: ${g.name}`}
-                              >
-                                {isSaving ? (
-                                  <ActivityIndicator color={checkedIn ? colors.white : colors.primary} />
-                                ) : (
-                                  <Ionicons
-                                    name={checkedIn ? "checkmark-circle" : "ellipse-outline"}
-                                    size={16}
-                                    color={checkedIn ? colors.white : colors.primary}
-                                  />
-                                )}
-                                <Text style={[styles.checkInText, checkedIn ? { color: colors.white } : { color: colors.primary }]}>
-                                  הגיע
-                                </Text>
-                              </TouchableOpacity>
-
                               <View style={styles.guestMain}>
                                 <Text style={styles.guestName} numberOfLines={1}>
                                   {g.name}
                                 </Text>
+
                                 <View style={styles.guestMetaRow}>
                                   <TouchableOpacity
                                     onPress={() => void callGuest(g.phone, g.name)}
@@ -985,29 +1064,52 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                                   >
                                     <Ionicons
                                       name="call-outline"
-                                      size={14}
+                                      size={16}
                                       color={phoneToTel(g.phone) ? colors.primary : "rgba(17,24,39,0.35)"}
                                     />
                                   </TouchableOpacity>
+
                                   <View style={styles.peoplePill}>
-                                    <Ionicons name="person" size={12} color={"rgba(17,24,39,0.65)"} />
-                                    <Text style={styles.peopleText}>{Number(g.numberOfPeople) || 1}</Text>
+                                    <Ionicons name="person" size={13} color={"rgba(17,24,39,0.65)"} />
+                                    <Text style={styles.peopleText}>{people}</Text>
+                                  </View>
+
+                                  <View
+                                    style={[
+                                      styles.statusPill,
+                                      g.status === "מגיע"
+                                        ? styles.statusComing
+                                        : g.status === "לא מגיע"
+                                        ? styles.statusNot
+                                        : styles.statusPending,
+                                    ]}
+                                  >
+                                    <Text style={styles.statusText}>{g.status}</Text>
                                   </View>
                                 </View>
                               </View>
 
-                              <View
-                                style={[
-                                  styles.statusPill,
-                                  g.status === "מגיע"
-                                    ? styles.statusComing
-                                    : g.status === "לא מגיע"
-                                    ? styles.statusNot
-                                    : styles.statusPending,
+                              <Pressable
+                                onPress={() => toggleCheckIn(g)}
+                                style={({ pressed }) => [
+                                  styles.guestCheckColumn,
+                                  checkedIn ? styles.guestCheckColumnOn : styles.guestCheckColumnOff,
+                                  pressed ? { opacity: 0.92 } : null,
+                                  isSaving ? { opacity: 0.72 } : null,
                                 ]}
+                                disabled={isSaving}
+                                accessibilityRole="button"
+                                accessibilityLabel={checkedIn ? `סמן שלא הגיע: ${g.name}` : `סמן שהגיע: ${g.name}`}
                               >
-                                <Text style={styles.statusText}>{g.status}</Text>
-                              </View>
+                                <View style={[styles.guestCheckCircle, checkedIn && styles.guestCheckCircleOn]}>
+                                  {isSaving ? (
+                                    <ActivityIndicator size={16} color={checkedIn ? colors.white : colors.primary} />
+                                  ) : checkedIn ? (
+                                    <Ionicons name="checkmark" size={18} color={colors.white} />
+                                  ) : null}
+                                </View>
+                                <Text style={[styles.guestCheckLabel, checkedIn && styles.guestCheckLabelOn]}>הגיע</Text>
+                              </Pressable>
                             </View>
                           );
                         })}
@@ -1025,20 +1127,59 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                 </View>
               ) : null}
             </View>
+            {isAdminStyledMobile ? <View style={styles.bottomContentSpacer} /> : null}
           </AppKeyboardAwareScrollView>
         )}
-      </SafeAreaView>
+      </View>
+      </View>
     </BackSwipe>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.gray[100] },
+  screenTransparent: { backgroundColor: "transparent" },
+  bg: { ...StyleSheet.absoluteFillObject },
+  bgHighlight: { ...StyleSheet.absoluteFillObject },
+  bgWarmGlow: { ...StyleSheet.absoluteFillObject },
   center: { flex: 1, backgroundColor: colors.gray[100], alignItems: "center", justifyContent: "center", gap: 10 },
+  centerTransparent: { backgroundColor: "transparent" },
   loadingText: { fontSize: 14, fontWeight: "700", color: colors.gray[600] },
   errorTitle: { fontSize: 16, fontWeight: "900", color: colors.text, textAlign: "center" },
   backBtn: { marginTop: 14, backgroundColor: colors.primary, paddingHorizontal: 18, paddingVertical: 12, borderRadius: 14 },
   backBtnText: { color: colors.white, fontWeight: "900" },
+  topSpacer: {
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+  },
+  topRow: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  backButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.96)",
+    borderWidth: 1,
+    borderColor: "rgba(15,23,42,0.08)",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: colors.richBlack,
+    shadowOpacity: 0.14,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 6,
+  },
+  screenTitle: {
+    flex: 1,
+    fontSize: 24,
+    fontWeight: "900",
+    color: colors.richBlack,
+    textAlign: "right",
+  },
 
   topBar: {
     paddingHorizontal: 14,
@@ -1068,6 +1209,57 @@ const styles = StyleSheet.create({
   topSubtitle: { marginTop: 2, fontSize: 12, fontWeight: "800", color: colors.gray[600], textAlign: "center" },
 
   content: { padding: 16, paddingTop: 6 },
+  contentAdminMobile: { paddingTop: 8 },
+  bottomContentSpacer: { height: 56 },
+  adminMobileIntroCard: {
+    marginBottom: 12,
+    padding: 14,
+    borderRadius: 22,
+    backgroundColor: "rgba(255,255,255,0.9)",
+    borderWidth: 1,
+    borderColor: "rgba(21,76,151,0.08)",
+    shadowColor: colors.black,
+    shadowOpacity: 0.06,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3,
+  },
+  adminMobileIntroHeader: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  adminMobileIntroIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: "rgba(15,69,230,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(15,69,230,0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  adminMobileIntroText: { flex: 1, alignItems: "flex-end", gap: 4 },
+  adminMobileIntroTitle: { fontSize: 15, fontWeight: "900", color: colors.text, textAlign: "right" },
+  adminMobileIntroStats: { alignItems: "flex-end", gap: 2 },
+  adminMobileIntroStatRow: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 6,
+  },
+  adminMobileIntroSubtitle: { fontSize: 12, fontWeight: "700", color: "rgba(17,24,39,0.62)", textAlign: "right" },
+  adminMobileIntroStatValue: { fontSize: 12, fontWeight: "900", color: colors.text, textAlign: "right" },
+  adminMobileRefreshBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    backgroundColor: "rgba(255,255,255,0.96)",
+    borderWidth: 1,
+    borderColor: "rgba(15,23,42,0.08)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
 
   tabletBody: { flex: 1, flexDirection: "row-reverse", alignItems: "stretch" },
   guestsPane: {
@@ -1159,27 +1351,50 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 10,
   },
-  categoryHeaderRight: { flex: 1, alignItems: "flex-end" },
-  categoryTitle: { fontSize: 16, fontWeight: "900", color: colors.text, textAlign: "right" },
-  categoryHeaderLeft: { flexDirection: "row-reverse", alignItems: "center", gap: 8 },
+  categoryHeaderRight: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "flex-start",
+    gap: 10,
+  },
+  categoryTitle: { fontSize: 16, fontWeight: "900", color: colors.text, textAlign: "right", flexShrink: 1 },
+  categoryHeaderLeft: { flexDirection: "row", alignItems: "center", gap: 8 },
   categoryCountPill: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    minWidth: 54,
+    height: 30,
     borderRadius: 999,
-    backgroundColor: "rgba(17, 82, 212, 0.08)",
+    paddingHorizontal: 10,
+    backgroundColor: "rgba(232,238,255,0.96)",
     borderWidth: 1,
-    borderColor: "rgba(17, 82, 212, 0.16)",
+    borderColor: "rgba(17, 82, 212, 0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: colors.yaleBlue,
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 1,
   },
-  categoryCountText: { fontSize: 12, fontWeight: "900", color: colors.primary },
+  categoryCountText: { fontSize: 12, fontWeight: "900", color: colors.primary, textAlign: "center" },
   categoryPctPill: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    minWidth: 58,
+    height: 30,
     borderRadius: 999,
-    backgroundColor: "rgba(52, 199, 89, 0.10)",
+    paddingHorizontal: 10,
+    backgroundColor: "rgba(232,248,238,0.96)",
     borderWidth: 1,
-    borderColor: "rgba(52, 199, 89, 0.20)",
+    borderColor: "rgba(52, 199, 89, 0.22)",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: colors.success,
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 1,
   },
-  categoryPctText: { fontSize: 12, fontWeight: "900", color: colors.success },
+  categoryPctText: { fontSize: 12, fontWeight: "900", color: colors.success, textAlign: "center" },
 
   /* ── Tablet guest card ── */
   tabletGuestCard: {
@@ -1269,43 +1484,51 @@ const styles = StyleSheet.create({
   /* shared guest primitives (still used by phone layout) */
   guestRow: {
     backgroundColor: colors.white,
-    borderRadius: 18,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
+    borderRadius: 26,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
     borderWidth: 1,
     borderColor: "rgba(0,0,0,0.06)",
     flexDirection: "row-reverse",
     alignItems: "center",
-    gap: 10,
+    justifyContent: "space-between",
+    gap: 14,
+    shadowColor: colors.black,
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 2,
   },
   guestRowChecked: {
     borderColor: "rgba(52, 199, 89, 0.22)",
     backgroundColor: "rgba(52, 199, 89, 0.06)",
   },
-  guestMain: { flex: 1, alignItems: "flex-end", gap: 2 },
-  guestName: { fontSize: 15, fontWeight: "900", color: colors.text, textAlign: "right" },
+  guestMain: { flex: 1, minWidth: 0, alignItems: "flex-end", justifyContent: "center", gap: 12 },
+  guestName: { fontSize: 17, fontWeight: "900", color: colors.text, textAlign: "right" },
   guestPhone: { fontSize: 13, fontWeight: "700", color: colors.gray[600], textAlign: "right" },
-  guestMetaRow: { width: "100%", flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between" },
+  guestMetaRow: { width: "100%", flexDirection: "row-reverse", alignItems: "center", justifyContent: "flex-start", gap: 10, flexWrap: "wrap" },
   peoplePill: {
     flexDirection: "row-reverse",
     alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
+    gap: 6,
+    minWidth: 50,
+    height: 34,
+    paddingHorizontal: 10,
     borderRadius: 999,
-    backgroundColor: "rgba(0,0,0,0.04)",
+    backgroundColor: "rgba(15,23,42,0.05)",
     borderWidth: 1,
     borderColor: "rgba(0,0,0,0.06)",
+    justifyContent: "center",
   },
   peopleText: { fontSize: 12, fontWeight: "900", color: "rgba(17,24,39,0.70)" },
 
   phoneBtn: {
-    width: 34,
-    height: 30,
+    width: 38,
+    height: 38,
     borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(17, 82, 212, 0.08)",
+    backgroundColor: "rgba(232,238,255,0.96)",
     borderWidth: 1,
     borderColor: "rgba(17, 82, 212, 0.16)",
   },
@@ -1315,17 +1538,64 @@ const styles = StyleSheet.create({
   },
 
   statusPill: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    minWidth: 76,
+    height: 34,
+    paddingHorizontal: 12,
     borderRadius: 999,
     borderWidth: 1,
-    minWidth: 64,
     alignItems: "center",
+    justifyContent: "center",
   },
-  statusText: { fontSize: 11, fontWeight: "900", color: colors.text },
+  statusText: { fontSize: 12, fontWeight: "900", color: colors.text },
   statusComing: { backgroundColor: "rgba(52, 199, 89, 0.10)", borderColor: "rgba(52, 199, 89, 0.22)" },
-  statusPending: { backgroundColor: "rgba(255, 193, 7, 0.10)", borderColor: "rgba(255, 193, 7, 0.22)" },
+  statusPending: { backgroundColor: "rgba(255, 193, 7, 0.14)", borderColor: "rgba(255, 193, 7, 0.26)" },
   statusNot: { backgroundColor: "rgba(255, 59, 48, 0.08)", borderColor: "rgba(255, 59, 48, 0.22)" },
+  guestCheckColumn: {
+    width: 64,
+    minHeight: 70,
+    borderRadius: 20,
+    paddingVertical: 8,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  guestCheckColumnOn: {
+    backgroundColor: "rgba(16,185,129,0.08)",
+    borderColor: "rgba(16,185,129,0.18)",
+  },
+  guestCheckColumnOff: {
+    backgroundColor: "rgba(255,255,255,0.92)",
+    borderColor: "rgba(15,23,42,0.08)",
+  },
+  guestCheckCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 999,
+    borderWidth: 2,
+    borderColor: colors.primary,
+    backgroundColor: "rgba(255,255,255,0.96)",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: colors.black,
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+  guestCheckCircleOn: {
+    backgroundColor: colors.success,
+    borderColor: colors.success,
+  },
+  guestCheckLabel: {
+    fontSize: 12,
+    fontWeight: "900",
+    textAlign: "center",
+    color: "rgba(17,24,39,0.58)",
+  },
+  guestCheckLabelOn: {
+    color: "#047857",
+  },
 
   arrivalSlot: { width: 118, alignItems: "center", justifyContent: "center" },
   compactStepper: {

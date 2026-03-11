@@ -16,6 +16,7 @@ import {
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { AppKeyboardAwareScrollView } from "@/components/AppKeyboardAware";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -32,7 +33,9 @@ export default function AdminRsvpApprovalsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { eventId } = useLocalSearchParams<{ eventId?: string }>();
+  const isWeb = Platform.OS === "web";
   const headerTotalHeight = getAppHeaderTotalHeight(insets.top, APP_HEADER_HEIGHT_COMPACT);
+  const topContentInset = Math.max(30, (insets.top || 0) + 14);
 
   const resolvedEventId = useMemo(() => String(eventId || "").trim(), [eventId]);
   const fallbackToDetails = useMemo(
@@ -84,15 +87,57 @@ export default function AdminRsvpApprovalsScreen() {
     return (
       <BackSwipe fallbackHref={fallbackToDetails} onBack={handleBack}>
         <Stack.Screen
-          options={{
-            headerStyle: { height: headerTotalHeight },
-            header: () => <AppHeader variant="compact" canGoBack onPressBack={handleBack} />,
-          }}
+          options={
+            isWeb
+              ? {
+                  headerStyle: { height: headerTotalHeight },
+                  header: () => <AppHeader variant="compact" canGoBack onPressBack={handleBack} />,
+                }
+              : { headerShown: false }
+          }
         />
-        <SafeAreaView style={[styles.center, { paddingTop: insets.top }]}>
+        <View style={styles.screen}>
+          {!isWeb ? (
+            <>
+              <LinearGradient
+                colors={["#F7FAFF", "#E8F1FF", "#F2E0BA"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.bg}
+              />
+              <LinearGradient
+                colors={["rgba(255,255,255,0.68)", "rgba(255,255,255,0)"]}
+                start={{ x: 0.05, y: 0 }}
+                end={{ x: 0.75, y: 0.55 }}
+                style={styles.bgHighlight}
+              />
+              <LinearGradient
+                colors={["rgba(232,196,122,0.58)", "rgba(244,224,186,0.22)", "rgba(244,224,186,0)"]}
+                start={{ x: 1, y: 0.95 }}
+                end={{ x: 0.18, y: 0.22 }}
+                style={styles.bgWarmGlow}
+              />
+              <View style={[styles.topSpacer, { paddingTop: topContentInset }]}>
+                <View style={styles.topRow}>
+                  <TouchableOpacity
+                    style={styles.backButton}
+                    onPress={handleBack}
+                    activeOpacity={0.86}
+                    accessibilityRole="button"
+                    accessibilityLabel="חזרה לעמוד האירוע"
+                  >
+                    <Ionicons name="chevron-forward" size={22} color={colors.primary} />
+                  </TouchableOpacity>
+                  <Text style={styles.screenTitle}>אישורי הגעה</Text>
+                </View>
+              </View>
+            </>
+          ) : null}
+          <View style={[styles.center, !isWeb ? styles.centerTransparent : null, { paddingTop: isWeb ? insets.top : 0 }]}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>טוען...</Text>
-        </SafeAreaView>
+          </View>
+        </View>
       </BackSwipe>
     );
   }
@@ -101,12 +146,59 @@ export default function AdminRsvpApprovalsScreen() {
     return (
       <BackSwipe fallbackHref="/(admin)/admin-events" onBack={handleBack}>
         <Stack.Screen
-          options={{
-            headerStyle: { height: headerTotalHeight },
-            header: () => <AppHeader variant="compact" canGoBack onPressBack={handleBack} />,
-          }}
+          options={
+            isWeb
+              ? {
+                  headerStyle: { height: headerTotalHeight },
+                  header: () => <AppHeader variant="compact" canGoBack onPressBack={handleBack} />,
+                }
+              : { headerShown: false }
+          }
         />
-        <SafeAreaView style={[styles.center, { paddingTop: insets.top, paddingHorizontal: 20 }]}>
+        <View style={styles.screen}>
+          {!isWeb ? (
+            <>
+              <LinearGradient
+                colors={["#F7FAFF", "#E8F1FF", "#F2E0BA"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.bg}
+              />
+              <LinearGradient
+                colors={["rgba(255,255,255,0.68)", "rgba(255,255,255,0)"]}
+                start={{ x: 0.05, y: 0 }}
+                end={{ x: 0.75, y: 0.55 }}
+                style={styles.bgHighlight}
+              />
+              <LinearGradient
+                colors={["rgba(232,196,122,0.58)", "rgba(244,224,186,0.22)", "rgba(244,224,186,0)"]}
+                start={{ x: 1, y: 0.95 }}
+                end={{ x: 0.18, y: 0.22 }}
+                style={styles.bgWarmGlow}
+              />
+              <View style={[styles.topSpacer, { paddingTop: topContentInset }]}>
+                <View style={styles.topRow}>
+                  <TouchableOpacity
+                    style={styles.backButton}
+                    onPress={handleBack}
+                    activeOpacity={0.86}
+                    accessibilityRole="button"
+                    accessibilityLabel="חזרה לרשימת אירועים"
+                  >
+                    <Ionicons name="chevron-forward" size={22} color={colors.primary} />
+                  </TouchableOpacity>
+                  <Text style={styles.screenTitle}>אישורי הגעה</Text>
+                </View>
+              </View>
+            </>
+          ) : null}
+          <View
+            style={[
+              styles.center,
+              !isWeb ? styles.centerTransparent : null,
+              { paddingTop: isWeb ? insets.top : 0, paddingHorizontal: 20 },
+            ]}
+          >
           <Text style={styles.errorTitle}>חסר מזהה אירוע</Text>
           <TouchableOpacity
             onPress={() => router.replace("/(admin)/admin-events")}
@@ -117,7 +209,8 @@ export default function AdminRsvpApprovalsScreen() {
           >
             <Text style={styles.backBtnText}>חזרה</Text>
           </TouchableOpacity>
-        </SafeAreaView>
+          </View>
+        </View>
       </BackSwipe>
     );
   }
@@ -125,19 +218,81 @@ export default function AdminRsvpApprovalsScreen() {
   return (
     <BackSwipe fallbackHref={fallbackToDetails} onBack={handleBack}>
       <Stack.Screen
-        options={{
-          headerStyle: { height: headerTotalHeight },
-          header: () => <AppHeader variant="compact" canGoBack onPressBack={handleBack} />,
-        }}
+        options={
+          isWeb
+            ? {
+                headerStyle: { height: headerTotalHeight },
+                header: () => <AppHeader variant="compact" canGoBack onPressBack={handleBack} />,
+              }
+            : { headerShown: false }
+        }
       />
-      <SafeAreaView style={[styles.screen, { paddingTop: insets.top }]}>
+      <View style={styles.screen}>
+        {!isWeb ? (
+          <>
+            <LinearGradient
+              colors={["#F7FAFF", "#E8F1FF", "#F2E0BA"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.bg}
+            />
+            <LinearGradient
+              colors={["rgba(255,255,255,0.68)", "rgba(255,255,255,0)"]}
+              start={{ x: 0.05, y: 0 }}
+              end={{ x: 0.75, y: 0.55 }}
+              style={styles.bgHighlight}
+            />
+            <LinearGradient
+              colors={["rgba(232,196,122,0.58)", "rgba(244,224,186,0.22)", "rgba(244,224,186,0)"]}
+              start={{ x: 1, y: 0.95 }}
+              end={{ x: 0.18, y: 0.22 }}
+              style={styles.bgWarmGlow}
+            />
+
+            <View style={[styles.topSpacer, { paddingTop: topContentInset }]}>
+              <View style={styles.topRow}>
+                <TouchableOpacity
+                  style={styles.backButton}
+                  onPress={handleBack}
+                  activeOpacity={0.86}
+                  accessibilityRole="button"
+                  accessibilityLabel="חזרה לעמוד האירוע"
+                >
+                  <Ionicons name="chevron-forward" size={22} color={colors.primary} />
+                </TouchableOpacity>
+                <Text style={styles.screenTitle}>אישורי הגעה</Text>
+              </View>
+            </View>
+          </>
+        ) : null}
         <AppKeyboardAwareScrollView
           showsVerticalScrollIndicator={false}
-          stickyHeaderIndices={[0]}
-          contentContainerStyle={{ paddingBottom: bottomReserve + insets.bottom }}
+          stickyHeaderIndices={isWeb ? [0] : undefined}
+          style={styles.scroll}
+          contentContainerStyle={[
+            styles.content,
+            {
+              paddingTop: isWeb ? insets.top : 8,
+              paddingBottom: bottomReserve + insets.bottom,
+            },
+          ]}
         >
           {/* Sticky header (inspired by provided design) */}
-          <View style={styles.headerSticky}>
+          <View style={[styles.headerSticky, !isWeb ? styles.headerStickyMobile : null]}>
+            {/* Search */}
+            <View style={styles.searchWrap}>
+              <Ionicons name="search" size={18} color={colors.gray[500]} style={styles.searchIcon} />
+              <TextInput
+                value={query}
+                onChangeText={setQuery}
+                placeholder="חיפוש מוזמנים..."
+                placeholderTextColor={colors.gray[500]}
+                style={styles.searchInputNew}
+                textAlign="right"
+                returnKeyType="search"
+              />
+            </View>
+
             {/* Stats pills (also filter) */}
             <ScrollView
               horizontal
@@ -190,20 +345,6 @@ export default function AdminRsvpApprovalsScreen() {
                 </Text>
               </TouchableOpacity>
             </ScrollView>
-
-            {/* Search */}
-            <View style={styles.searchWrap}>
-              <Ionicons name="search" size={18} color={colors.gray[500]} style={styles.searchIcon} />
-              <TextInput
-                value={query}
-                onChangeText={setQuery}
-                placeholder="חיפוש מוזמנים..."
-                placeholderTextColor={colors.gray[500]}
-                style={styles.searchInputNew}
-                textAlign="right"
-                returnKeyType="search"
-              />
-            </View>
 
             {/* Tabs */}
             <View style={styles.tabsRow}>
@@ -365,14 +506,58 @@ export default function AdminRsvpApprovalsScreen() {
             ) : null}
           </View>
         </AppKeyboardAwareScrollView>
-      </SafeAreaView>
+      </View>
     </BackSwipe>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.gray[100] },
+  bg: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  bgHighlight: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  bgWarmGlow: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  topSpacer: {
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+  },
+  topRow: {
+    flexDirection: ROW_DIR,
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  backButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.96)",
+    borderWidth: 1,
+    borderColor: "rgba(15,23,42,0.08)",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: colors.richBlack,
+    shadowOpacity: 0.14,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 6,
+  },
+  screenTitle: {
+    flex: 1,
+    fontSize: 24,
+    fontWeight: "900",
+    color: colors.richBlack,
+    textAlign: "right",
+  },
+  scroll: { flex: 1 },
+  content: { paddingHorizontal: 16 },
   center: { flex: 1, backgroundColor: colors.gray[100], alignItems: "center", justifyContent: "center", gap: 10 },
+  centerTransparent: { backgroundColor: "transparent" },
   loadingText: { fontSize: 14, fontWeight: "700", color: colors.gray[600] },
   errorTitle: { fontSize: 16, fontWeight: "900", color: colors.text, textAlign: "center" },
   backBtn: { marginTop: 14, backgroundColor: colors.primary, paddingHorizontal: 18, paddingVertical: 12, borderRadius: 14 },
@@ -385,6 +570,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 8,
     paddingBottom: 12,
+  },
+  headerStickyMobile: {
+    borderBottomWidth: 0,
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: "rgba(21,76,151,0.08)",
+    backgroundColor: "rgba(255,255,255,0.88)",
+    shadowColor: colors.richBlack,
+    shadowOpacity: 0.1,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 5,
+    marginBottom: 14,
   },
 
   pillsRow: { flexDirection: ROW_DIR, gap: 10, paddingRight: 0, minWidth: "100%", justifyContent: "flex-start" },
@@ -460,7 +658,7 @@ const styles = StyleSheet.create({
   tabText: { fontSize: 13, fontWeight: "800", color: colors.gray[500] },
   tabTextActive: { color: colors.primary, fontWeight: "900" },
 
-  body: { paddingHorizontal: 16, paddingTop: 12 },
+  body: { paddingHorizontal: 0, paddingTop: 0 },
 
   section: {
     backgroundColor: colors.white,

@@ -56,29 +56,38 @@ function buildInviteUrl(tokenOrCode: string) {
   return Linking.createURL(`/i/${t}`);
 }
 
-function getWebBaseUrl(): string {
-  if (Platform.OS === 'web' && typeof window !== 'undefined') {
-    return window.location.origin;
+const SITE_BASE_URL_PLACEHOLDER = 'https://rork.com';
+
+function normalizeBaseUrl(raw: unknown): string {
+  return String(raw ?? '').trim().replace(/\/+$/, '');
+}
+
+function getOriginFromUrl(raw: unknown): string {
+  const value = normalizeBaseUrl(raw);
+  if (!value) return '';
+  try {
+    return new URL(value).origin;
+  } catch {
+    const match = value.match(/^(https?:\/\/[^/]+)/i);
+    return match?.[1] ?? '';
   }
+}
+
+function getConfiguredWebBaseUrl(): string {
   const fromEnv =
     process.env.EXPO_PUBLIC_SITE_BASE_URL ?? Constants.expoConfig?.extra?.EXPO_PUBLIC_SITE_BASE_URL;
-  const base = String(fromEnv ?? '').trim().replace(/\/+$/, '');
-  return base || 'https://rork.com';
+  const base = normalizeBaseUrl(fromEnv);
+  return base === SITE_BASE_URL_PLACEHOLDER ? '' : base;
 }
 
-function buildDemoInviteUrl(eventId: string) {
+function resolveDemoInviteUrl(eventId: string, eventRsvpLink?: string): string {
   const id = String(eventId || '').trim();
   if (!id) return '';
-  const base = buildInviteUrl('demo');
-  if (!base) return '';
-  const joiner = base.includes('?') ? '&' : '?';
-  return `${base}${joiner}eventId=${encodeURIComponent(id)}`;
-}
-
-function buildDemoInviteUrlWeb(eventId: string): string {
-  const id = String(eventId || '').trim();
-  if (!id) return '';
-  const webBase = getWebBaseUrl();
+  const eventBase = getOriginFromUrl(eventRsvpLink);
+  const configuredBase = getConfiguredWebBaseUrl();
+  const webBase =
+    eventBase || configuredBase || (Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.origin : '');
+  if (!webBase) return '';
   return `${webBase}/i/demo?eventId=${encodeURIComponent(id)}`;
 }
 
@@ -165,21 +174,20 @@ export default function AdminInvitationLinksScreen() {
   }, [event?.date]);
 
   const demoUrl = useMemo(() => {
-    return event?.id ? buildDemoInviteUrl(String(event.id)) : '';
-  }, [event?.id]);
+    return event?.id ? resolveDemoInviteUrl(String(event.id), event?.rsvpLink) : '';
+  }, [event?.id, event?.rsvpLink]);
 
   const openDemo = async () => {
-    if (!event?.id) {
-      Alert.alert('דמו', 'חסר מזהה אירוע כדי לפתוח דמו.');
+    if (!event?.id || !demoUrl) {
+      Alert.alert('דמו', 'לא הוגדר עדיין דומיין חיצוני להזמנה. יש להגדיר `rsvp_link` או `EXPO_PUBLIC_SITE_BASE_URL`.');
       return;
     }
     try {
-      const webUrl = buildDemoInviteUrlWeb(String(event.id));
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        window.open(webUrl, '_blank', 'noopener,noreferrer');
+        window.open(demoUrl, '_blank', 'noopener,noreferrer');
         return;
       }
-      await Linking.openURL(webUrl);
+      await Linking.openURL(demoUrl);
     } catch (e: any) {
       const msg = e?.message ? String(e.message) : 'לא ניתן לפתוח קישור';
       Alert.alert('דמו', msg);
@@ -352,7 +360,7 @@ export default function AdminInvitationLinksScreen() {
   const isDesktop = Platform.OS === 'web' && width >= 1024;
   const isMobile = width < 768;
   const isNarrow = width < 420;
-  const stickyHeaderHeight = insets.top + 62;
+  const topContentInset = Math.max(30, (insets.top || 0) + 14);
 
   return (
     <View style={styles.page}>
@@ -374,22 +382,18 @@ export default function AdminInvitationLinksScreen() {
         end={{ x: 0.18, y: 0.22 }}
         style={styles.bgWarmGlow}
       />
-      <View style={[styles.stickyHeader, { paddingTop: insets.top, height: stickyHeaderHeight }]}>
-        <View style={styles.stickyHeaderInner}>
-          <Pressable
+      <View style={[styles.topSpacer, { paddingTop: topContentInset }]}>
+        <View style={styles.topRow}>
+          <TouchableOpacity
+            style={styles.backButton}
             onPress={() => router.replace(`/(admin)/admin-event-details?id=${encodeURIComponent(id)}`)}
-            style={({ pressed }) => [styles.stickyHeaderBackBtn, pressed ? { opacity: 0.88 } : null]}
             accessibilityRole="button"
             accessibilityLabel="בחזרה לאירוע"
+            activeOpacity={0.86}
           >
-            <Ionicons name="arrow-forward" size={18} color={colors.primary} />
-          </Pressable>
-
-          <View style={styles.stickyHeaderTitleWrap}>
-            <Text style={styles.stickyHeaderTitle}>לינק להזמנה</Text>
-          </View>
-
-          <View style={styles.stickyHeaderSideSpacer} />
+            <Ionicons name="chevron-forward" size={22} color={colors.primary} />
+          </TouchableOpacity>
+          <Text style={styles.screenTitle}>לינק להזמנה</Text>
         </View>
       </View>
       <AppKeyboardAwareScrollView
@@ -397,7 +401,7 @@ export default function AdminInvitationLinksScreen() {
           styles.content,
           isMobile ? styles.contentMobile : null,
           isNarrow ? styles.contentNarrow : null,
-          { paddingTop: stickyHeaderHeight + 24 },
+          { paddingTop: 8 },
         ]}
         showsVerticalScrollIndicator={false}
       >
@@ -416,38 +420,48 @@ export default function AdminInvitationLinksScreen() {
             </View>
 
             <View style={styles.previewWrap}>
-              <View style={styles.previewMediaWrap}>
+              <View
+                style={[
+                  styles.previewMediaWrap,
+                  isMobile ? styles.previewMediaWrapMobile : null,
+                  isNarrow ? styles.previewMediaWrapNarrow : null,
+                ]}
+              >
                 {invitationPreviewImage ? (
                   <Image
                     source={{ uri: invitationPreviewImage }}
-                    style={[styles.previewImg, isMobile ? styles.previewImgMobile : null, isNarrow ? styles.previewImgNarrow : null]}
+                    style={styles.previewImg}
                     contentFit="cover"
                     transition={0}
                   />
                 ) : (
-                  <View style={[styles.previewFallback, isMobile ? styles.previewFallbackMobile : null, isNarrow ? styles.previewFallbackNarrow : null]}>
+                  <View style={styles.previewFallback}>
                     <Ionicons name="image-outline" size={26} color={colors.gray[500]} />
                     <Text style={styles.previewFallbackText}>עדיין לא הוגדרה תמונה</Text>
                   </View>
                 )}
 
-                <Pressable
-                  onPress={() => void pickAndUploadInvitationImage()}
-                  disabled={uploading}
-                  style={({ pressed }) => [
-                    styles.previewCameraBtn,
-                    pressed ? { opacity: 0.9 } : null,
-                    uploading ? { opacity: 0.7 } : null,
-                  ]}
-                  accessibilityRole="button"
-                  accessibilityLabel={invitationPreviewImage ? 'החלפת תמונת הזמנה' : 'העלאת תמונת הזמנה'}
-                >
-                  {uploading ? (
-                    <ActivityIndicator color={colors.white} size="small" />
-                  ) : (
-                    <Ionicons name="camera-outline" size={18} color={colors.white} />
-                  )}
-                </Pressable>
+                <View pointerEvents="box-none" style={styles.previewCameraOverlay}>
+                  <Pressable
+                    onPress={() => void pickAndUploadInvitationImage()}
+                    disabled={uploading}
+                    style={({ pressed }) => [
+                      styles.previewCameraBtn,
+                      pressed ? { opacity: 0.9 } : null,
+                      uploading ? { opacity: 0.7 } : null,
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel={invitationPreviewImage ? 'החלפת תמונת הזמנה' : 'העלאת תמונת הזמנה'}
+                  >
+                    <View style={styles.previewCameraBtnInner}>
+                      {uploading ? (
+                        <ActivityIndicator color={colors.white} size="small" />
+                      ) : (
+                        <Ionicons name="camera" size={22} color={colors.white} />
+                      )}
+                    </View>
+                  </Pressable>
+                </View>
               </View>
 
               <View style={styles.previewBottom}>
@@ -486,11 +500,10 @@ export default function AdminInvitationLinksScreen() {
               </View>
               <Pressable
                 onPress={() => void openDemo()}
-                disabled={!demoUrl}
                 style={({ pressed }) => [
                   styles.demoBtnWrap,
                   !demoUrl ? styles.demoBtnDisabled : null,
-                  pressed && demoUrl ? { opacity: 0.92 } : null,
+                  pressed ? { opacity: 0.92 } : null,
                 ]}
                 accessibilityRole="button"
                 accessibilityLabel="לצפייה בדמו"
@@ -800,53 +813,37 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     opacity: 0.78,
   },
-  stickyHeader: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 20,
-    backgroundColor: 'rgba(255,255,255,0.98)',
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(15,23,42,0.06)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: colors.black,
-    shadowOpacity: 0.04,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
+  topSpacer: {
+    paddingHorizontal: 16,
+    paddingBottom: 8,
   },
-  stickyHeaderInner: {
-    flex: 1,
-    paddingHorizontal: 18,
+  topRow: {
     flexDirection: ROW_DIR,
     alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
   },
-  stickyHeaderTitleWrap: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stickyHeaderTitle: {
-    fontSize: 20,
-    fontWeight: '900',
-    color: colors.text,
-    textAlign: 'center',
-  },
-  stickyHeaderBackBtn: {
-    width: 42,
-    height: 42,
+  backButton: {
+    width: 44,
+    height: 44,
     borderRadius: 999,
-    backgroundColor: 'rgba(232,240,255,0.98)',
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(15,69,230,0.20)',
+    shadowColor: colors.richBlack,
+    shadowOpacity: 0.14,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 6,
   },
-  stickyHeaderSideSpacer: {
-    width: 42,
-    height: 42,
+  screenTitle: {
+    flex: 1,
+    fontSize: 24,
+    fontWeight: '900',
+    color: colors.richBlack,
+    textAlign: 'right',
   },
   content: { padding: 18, paddingBottom: Platform.OS === 'web' ? 40 : 110, gap: 14 },
   contentMobile: {},
@@ -898,34 +895,42 @@ const styles = StyleSheet.create({
   },
   previewMediaWrap: {
     position: 'relative',
+    height: 240,
     borderRadius: 18,
     overflow: 'hidden',
     backgroundColor: 'rgba(15,23,42,0.03)',
   },
-  previewImg: { width: '100%', height: 240 },
-  previewImgMobile: { height: 220 },
-  previewImgNarrow: { height: 210 },
-  previewFallback: { height: 240, alignItems: 'center', justifyContent: 'center', gap: 8 },
-  previewFallbackMobile: { height: 220 },
-  previewFallbackNarrow: { height: 210 },
+  previewMediaWrapMobile: { height: 220 },
+  previewMediaWrapNarrow: { height: 210 },
+  previewImg: { ...StyleSheet.absoluteFillObject },
+  previewFallback: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', gap: 8 },
   previewFallbackText: { fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'center' },
+  previewCameraOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'flex-end',
+    alignItems: 'flex-start',
+    padding: 12,
+    zIndex: 5,
+  },
   previewCameraBtn: {
-    position: 'absolute',
-    left: 12,
-    bottom: 12,
-    width: 44,
-    height: 44,
-    borderRadius: 999,
-    backgroundColor: 'rgba(6,23,62,0.88)',
+    width: 54,
+    height: 54,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.26)',
     shadowColor: colors.black,
-    shadowOpacity: 0.18,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 4,
+    shadowOpacity: 0.3,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 8,
+    zIndex: 5,
+  },
+  previewCameraBtnInner: {
+    width: 54,
+    height: 54,
+    borderRadius: 999,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   previewBottom: {
     paddingHorizontal: 6,
@@ -966,16 +971,13 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(15,69,230,0.16)',
     backgroundColor: 'rgba(15,69,230,0.06)',
     padding: 12,
-    flexDirection: ROW_DIR,
-    flexWrap: 'wrap',
-    alignItems: 'center',
+    flexDirection: 'column',
+    alignItems: 'stretch',
     gap: 10,
   },
-  demoCardTop: { flexDirection: ROW_DIR, alignItems: 'center', flex: 1, minWidth: 0, gap: 10 },
+  demoCardTop: { flexDirection: ROW_DIR, alignItems: 'center', width: '100%', minWidth: 0, gap: 10 },
   demoCardTopMobile: { flex: 0 },
   demoCardMobile: {
-    flexDirection: 'column-reverse',
-    alignItems: 'stretch',
     gap: 12,
   },
   demoIconWrap: {
@@ -991,7 +993,7 @@ const styles = StyleSheet.create({
   demoTextWrap: { flex: 1, minWidth: 0, gap: 2 },
   demoTitle: { fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'right' },
   demoSub: { fontSize: 12, fontWeight: '800', color: 'rgba(17,24,39,0.62)', textAlign: 'right', lineHeight: 18 },
-  demoBtnWrap: { alignSelf: 'stretch' },
+  demoBtnWrap: { alignSelf: 'stretch', width: '100%' },
   demoBtn: {
     height: 36,
     paddingHorizontal: 12,

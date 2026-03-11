@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { supabase } from '@/lib/supabase';
@@ -212,6 +213,7 @@ export default function AdminEventMessagesScreen() {
 
   const regular = useMemo(() => notificationSettings.filter((r) => (r.channel || 'SMS') !== 'WHATSAPP'), [notificationSettings]);
   const whatsapp = useMemo(() => notificationSettings.filter((r) => (r.channel || 'SMS') === 'WHATSAPP'), [notificationSettings]);
+  const topContentInset = Math.max(30, (insets.top || 0) + 14);
 
   const renderCardRow = (row: NotificationSettingRow, variant: 'regular' | 'whatsapp') => {
     const channel = (row.channel || (variant === 'whatsapp' ? 'WHATSAPP' : 'SMS')) as 'SMS' | 'WHATSAPP';
@@ -279,7 +281,46 @@ export default function AdminEventMessagesScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: colors.gray[50] }]}>
+    <View style={styles.safe}>
+      <Stack.Screen options={{ headerShown: false }} />
+      <LinearGradient
+        colors={['#F7FAFF', '#E8F1FF', '#F2E0BA']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.bg}
+      />
+      <LinearGradient
+        colors={['rgba(255,255,255,0.68)', 'rgba(255,255,255,0)']}
+        start={{ x: 0.05, y: 0 }}
+        end={{ x: 0.75, y: 0.55 }}
+        style={styles.bgHighlight}
+      />
+      <LinearGradient
+        colors={['rgba(232,196,122,0.58)', 'rgba(244,224,186,0.22)', 'rgba(244,224,186,0)']}
+        start={{ x: 1, y: 0.95 }}
+        end={{ x: 0.18, y: 0.22 }}
+        style={styles.bgWarmGlow}
+      />
+
+      <View style={[styles.topSpacer, { paddingTop: topContentInset }]}>
+        <View style={styles.topRow}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() =>
+              eventId
+                ? router.replace(`/(admin)/admin-event-details?id=${encodeURIComponent(eventId)}`)
+                : router.replace('/(admin)/admin-events')
+            }
+            accessibilityRole="button"
+            accessibilityLabel="חזרה לעמוד האירוע"
+            activeOpacity={0.86}
+          >
+            <Ionicons name="chevron-forward" size={22} color={colors.primary} />
+          </TouchableOpacity>
+          <Text style={styles.screenTitle}>הודעות אוטומטיות</Text>
+        </View>
+      </View>
+
       {loading ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color={colors.primary} />
@@ -337,14 +378,55 @@ export default function AdminEventMessagesScreen() {
           </View>
         </ScrollView>
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1 },
+  bg: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  bgHighlight: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  bgWarmGlow: {
+    ...StyleSheet.absoluteFillObject,
+  },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   emptyText: { fontSize: 13, fontWeight: '800' },
+  topSpacer: {
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+  },
+  topRow: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  backButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: colors.richBlack,
+    shadowOpacity: 0.14,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 6,
+  },
+  screenTitle: {
+    flex: 1,
+    fontSize: 24,
+    fontWeight: '900',
+    color: colors.richBlack,
+    textAlign: 'right',
+  },
 
   notifHeader: {
     flexDirection: ROW_DIR,
@@ -393,8 +475,8 @@ const styles = StyleSheet.create({
   },
   notifPillText: { fontSize: 12, fontWeight: '900', color: 'rgba(29,78,216,0.95)' },
 
-  scroll: { flex: 1, backgroundColor: colors.gray[50] },
-  content: { paddingTop: 20 },
+  scroll: { flex: 1, backgroundColor: 'transparent' },
+  content: { paddingTop: 12 },
 
   notificationsSection: { marginHorizontal: 20, marginBottom: 32 },
   section: { marginBottom: 28 },
