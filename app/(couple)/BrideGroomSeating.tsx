@@ -1739,10 +1739,24 @@ export default function BrideGroomSeating() {
             </Pressable>
 
             <View style={styles.modalSheetContent}>
-              <Text style={styles.modalTitle}>
-                שולחן {selectedTableForModal?.number}
-                {selectedTableForModal?.name && ` - ${selectedTableForModal.name}`}
-              </Text>
+              <View style={styles.modalHero}>
+                <View style={styles.modalHeroTitleWrap}>
+                  <Text style={styles.modalTitle}>
+                    {selectedTableForModal?.name?.trim()
+                      ? selectedTableForModal.name
+                      : `שולחן ${selectedTableForModal?.number ?? ''}`}
+                  </Text>
+                  <Text style={styles.modalHeroSubtitle}>
+                    {`שולחן ${selectedTableForModal?.number ?? ''} · ${seatedGuestsForTable.length} אורחים`}
+                  </Text>
+                </View>
+                <View style={styles.modalHeroBadge}>
+                  <Ionicons name="people-outline" size={14} color={colors.primary} />
+                  <Text style={styles.modalHeroBadgeText}>
+                    {`${peopleByTableId.get(String(selectedTableForModal?.id ?? '')) ?? 0} / ${selectedTableForModal?.capacity ?? 0}`}
+                  </Text>
+                </View>
+              </View>
 
               <View style={styles.tableNameContainer}>
                 <View style={styles.tableNameRow}>
@@ -1815,7 +1829,7 @@ export default function BrideGroomSeating() {
                     data={seatedGuestsForTable}
                     keyExtractor={(item) => String(item.id)}
                     numColumns={2}
-                    columnWrapperStyle={{ justifyContent: 'space-between' }}
+                    columnWrapperStyle={styles.seatedGuestRow}
                     renderItem={({ item }) => {
                       const id = String(item.id);
                       const selected = selectedSeatedGuestsToRemove.has(id);
@@ -1873,6 +1887,7 @@ export default function BrideGroomSeating() {
                     }}
                     nestedScrollEnabled
                     style={{ flex: 1, marginTop: 12 }}
+                    contentContainerStyle={styles.seatedGuestListContent}
                     ListEmptyComponent={<Text style={styles.emptyListText}>אין אורחים יושבים בשולחן זה</Text>}
                   />
 
@@ -2962,8 +2977,8 @@ const styles = StyleSheet.create({
   },
   tablePanelCloseBtn: {
     position: 'absolute',
-    right: 14,
-    top: 12,
+    left: 14,
+    top: 14,
     width: 40,
     height: 40,
     borderRadius: 999,
@@ -2976,10 +2991,49 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: 24,
-    fontWeight: '700',
-    marginBottom: 20,
-    textAlign: 'center',
+    fontWeight: '800',
+    textAlign: 'right',
     color: colors.text,
+    writingDirection: 'rtl',
+  },
+  modalHero: {
+    flexDirection: ROW_DIR,
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 18,
+    paddingHorizontal: 2,
+    paddingStart: 54,
+  },
+  modalHeroTitleWrap: {
+    flex: 1,
+    alignItems: ALIGN_RIGHT,
+    gap: 4,
+  },
+  modalHeroSubtitle: {
+    width: '100%',
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textLight,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  modalHeroBadge: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: 'rgba(43,140,238,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(43,140,238,0.14)',
+  },
+  modalHeroBadgeText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.primary,
+    textAlign: 'right',
     writingDirection: 'rtl',
   },
   filterContainer: {
@@ -3215,6 +3269,16 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 2,
     width: '47%',
+  },
+  seatedGuestRow: {
+    flexDirection: ROW_DIR,
+    justifyContent: 'space-between',
+    width: '100%',
+    marginBottom: 6,
+  },
+  seatedGuestListContent: {
+    paddingBottom: 12,
+    alignItems: 'stretch',
   },
   seatedGuestMain: {
     flex: 1,
@@ -3568,29 +3632,32 @@ const styles = StyleSheet.create({
   },
   tableNameContainer: {
     flexDirection: 'column',
-    marginBottom: 20,
+    marginBottom: 18,
   },
   tableNameRow: {
-    flexDirection: 'row',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 10,
   },
   tableNameInput: {
-    backgroundColor: colors.gray[50],
+    backgroundColor: 'rgba(248,250,252,0.96)',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderRadius: 12,
+    borderRadius: 14,
     fontSize: 16,
     textAlign: 'right',
     writingDirection: 'rtl',
     borderWidth: 1,
-    borderColor: colors.gray[300],
+    borderColor: 'rgba(15,23,42,0.12)',
     flex: 1,
   },
   saveNameButton: {
-    backgroundColor: colors.gray[50],
-    borderRadius: 8,
-    padding: 8,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    borderRadius: 12,
+    width: 42,
+    height: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 1,
     borderColor: colors.primary,
   },

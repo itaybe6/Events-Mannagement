@@ -1255,7 +1255,7 @@ export default function TablesListWebScreen() {
               </View>
 
               <View style={[styles.modalList, { maxHeight: Math.min(windowHeight * 0.55, 420) }]}>
-                <ScrollView showsVerticalScrollIndicator={false}>
+                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.modalListScrollContent}>
                   {filteredUnseatedGuests.length === 0 ? (
                     <View style={styles.modalEmpty}>
                       <Ionicons name="checkmark-done-outline" size={26} color={colors.gray[400]} />
@@ -2836,6 +2836,9 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(15,23,42,0.06)',
     backgroundColor: 'rgba(248,250,252,0.78)',
     boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.65)',
+  },
+  modalListScrollContent: {
+    paddingBottom: 56,
   },
   modalGrid: { padding: 14, flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 12 },
   modalEmpty: { padding: 20, alignItems: 'flex-end', justifyContent: 'center', gap: 10 },
