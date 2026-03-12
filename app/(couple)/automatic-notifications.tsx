@@ -9,8 +9,9 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors } from '@/constants/colors';
@@ -632,94 +633,70 @@ export default function AutomaticNotificationsScreen(props?: { editorPathname?: 
     } as any);
   };
 
-  const renderCardRow = (row: NotificationSettingRow) => {
-    const channel = row.channel === 'SMS' ? 'SMS' : 'WHATSAPP';
+  const regular = useMemo(() => notificationSettings.filter((r) => (r.channel || 'SMS') !== 'WHATSAPP'), [notificationSettings]);
+  const whatsapp = useMemo(() => notificationSettings.filter((r) => (r.channel || 'SMS') === 'WHATSAPP'), [notificationSettings]);
+  const topContentInset = Math.max(30, (insets.top || 0) + 14);
+
+  const renderCardRow = (row: NotificationSettingRow, variant: 'regular' | 'whatsapp') => {
+    const channel = (row.channel || (variant === 'whatsapp' ? 'WHATSAPP' : 'SMS')) as 'SMS' | 'WHATSAPP';
     const isWhatsapp = channel === 'WHATSAPP';
     const accent = isWhatsapp ? 'rgba(37,211,102,0.95)' : 'rgba(59,130,246,0.95)';
     const border = isWhatsapp ? 'rgba(37,211,102,0.18)' : 'rgba(59,130,246,0.18)';
-
-    const enabledLabel = row.enabled ? 'פעיל' : 'כבוי';
     const days = typeof row.days_from_wedding === 'number' ? row.days_from_wedding : 0;
     const whenLabel =
       days === 0 ? 'ביום האירוע' : days > 0 ? `${days}+ ימים אחרי האירוע` : `${Math.abs(days)} ימים לפני האירוע`;
-
-    const lastRun =
-      row.id && (row.channel || 'SMS') === 'SMS' ? lastSmsRunBySettingId[String(row.id)] : undefined;
-    const lastRunLabel = lastRun ? statusLabel(String(lastRun.status)) : null;
-    const lastRunAt = lastRun?.claimed_at ? formatHeDateTimeShort(lastRun.claimed_at) : '';
-    const catchup = row.id ? queuedCatchupBySettingId[String(row.id)] : undefined;
-    const showCatchup = row.notification_type === 'reminder_1' && (row.channel || 'SMS') === 'SMS' && (catchup?.count || 0) > 0;
-    const catchupText = showCatchup
-      ? `אורחים חדשים בתור: ${catchup?.count || 0}${catchup?.nextDueAt ? ` · הבא: ${formatHeDateTimeShort(catchup.nextDueAt)}` : ''}`
-      : '';
+    const enabledLabel = row.enabled ? 'פעיל' : 'כבוי';
 
     return (
-      <View
+      <TouchableOpacity
         key={row.notification_type}
-        style={[styles.notificationCard, { borderColor: border, backgroundColor: 'rgba(255,255,255,0.92)' }]}
+        onPress={() => openEdit(row)}
+        activeOpacity={0.9}
+        accessibilityRole="button"
+        accessibilityLabel={`עריכת ${row.title}`}
       >
-        <View style={[styles.whatsappAccent, { backgroundColor: accent }]} />
+        <View
+          style={[
+            styles.notificationCard,
+            { borderColor: border, backgroundColor: 'rgba(255,255,255,0.92)' },
+            isWhatsapp ? styles.notificationCardWhatsapp : null,
+          ]}
+        >
+          <View style={[styles.whatsappAccent, { backgroundColor: accent }]} />
 
-        <View style={styles.cardMain}>
-          <Text style={[styles.cardTitle, { color: colors.gray[900] }]} numberOfLines={1}>
-            {row.title}
-          </Text>
-
-          <View style={styles.cardMetaRow}>
-            <TouchableOpacity
-              style={styles.statusBtn}
-              onPress={() => toggleNotification(row)}
-              activeOpacity={0.9}
-              accessibilityRole="button"
-              accessibilityLabel={row.enabled ? 'כיבוי הודעה' : 'הפעלת הודעה'}
-            >
-              <Text style={[styles.statusText, { color: row.enabled ? accent : colors.gray[400] }]}>{enabledLabel}</Text>
-            </TouchableOpacity>
-            <Text style={[styles.metaBullet, { color: colors.gray[400] }]}>•</Text>
-            <Text style={[styles.metaText, { color: colors.gray[700] }]}>{isWhatsapp ? 'וואטסאפ' : 'SMS'}</Text>
-            <Text style={[styles.metaBullet, { color: colors.gray[400] }]}>•</Text>
-            <Text style={[styles.metaText, { color: colors.gray[700] }]} numberOfLines={1}>
-              {whenLabel}
+          <View style={styles.cardMain}>
+            <Text style={[styles.cardTitle, { color: colors.gray[900] }]} numberOfLines={1}>
+              {row.title}
             </Text>
+
+            <View style={styles.cardMetaRow}>
+              <TouchableOpacity
+                style={styles.statusBtn}
+                onPress={(e: any) => {
+                  e?.stopPropagation?.();
+                  e?.preventDefault?.();
+                  void toggleNotification(row);
+                }}
+                activeOpacity={0.9}
+                accessibilityRole="button"
+                accessibilityLabel={row.enabled ? 'כיבוי הודעה' : 'הפעלת הודעה'}
+              >
+                <Text style={[styles.statusText, { color: row.enabled ? accent : colors.gray[400] }]}>{enabledLabel}</Text>
+              </TouchableOpacity>
+              <Text style={[styles.metaBullet, { color: colors.gray[400] }]}>•</Text>
+              <Text style={[styles.metaText, { color: colors.gray[700] }]}>{isWhatsapp ? 'וואטסאפ' : 'SMS'}</Text>
+              <Text style={[styles.metaBullet, { color: colors.gray[400] }]}>•</Text>
+              <Text style={[styles.metaText, { color: colors.gray[700] }]} numberOfLines={1}>
+                {whenLabel}
+              </Text>
+            </View>
           </View>
 
-          {(row.channel || 'SMS') === 'SMS' ? (
-            <View style={{ gap: 8, alignItems: ALIGN_RIGHT }}>
-              <TouchableOpacity
-                activeOpacity={0.9}
-                onPress={() => openSendStatus(row)}
-                style={styles.sendStatusPill}
-                accessibilityRole="button"
-                accessibilityLabel="סטטוס שליחה"
-              >
-                <Ionicons name="checkmark-done-outline" size={14} color={lastRunLabel?.color || '#64748b'} />
-                <Text style={[styles.sendStatusText, { color: lastRunLabel?.color || '#64748b' }]} numberOfLines={1}>
-                  {lastRunLabel ? `${lastRunLabel.text}${lastRunAt ? ` · ${lastRunAt}` : ''}` : 'סטטוס: לא נשלח עדיין'}
-                </Text>
-              </TouchableOpacity>
-
-              {showCatchup ? (
-                <TouchableOpacity
-                  activeOpacity={0.9}
-                  onPress={() => openCatchupQueue(row)}
-                  style={styles.sendStatusPill}
-                  accessibilityRole="button"
-                  accessibilityLabel="אורחים חדשים בתור"
-                >
-                  <Ionicons name="time-outline" size={14} color={'#0f172a'} />
-                  <Text style={[styles.sendStatusText, { color: '#0f172a' }]} numberOfLines={1}>
-                    {catchupText}
-                  </Text>
-                </TouchableOpacity>
-              ) : null}
-            </View>
-          ) : null}
+          <TouchableOpacity style={styles.cardChevron} onPress={() => openEdit(row)} activeOpacity={0.9}>
+            <Ionicons name="chevron-back" size={20} color={colors.gray[500]} />
+          </TouchableOpacity>
         </View>
-
-        <TouchableOpacity style={styles.cardChevron} onPress={() => openEdit(row)} activeOpacity={0.9}>
-          <Ionicons name="chevron-back" size={20} color={colors.gray[500]} />
-        </TouchableOpacity>
-      </View>
+      </TouchableOpacity>
     );
   };
 
@@ -733,10 +710,34 @@ export default function AutomaticNotificationsScreen(props?: { editorPathname?: 
     );
   }
 
-  const notificationsPillLabel = `${notificationSettings.length} הודעות`;
-
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: ui.bg }]}>
+    <View style={styles.safe}>
+      <Stack.Screen options={{ headerShown: false }} />
+      <LinearGradient
+        colors={['#F7FAFF', '#E8F1FF', '#F2E0BA']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.bg}
+      />
+      <LinearGradient
+        colors={['rgba(255,255,255,0.68)', 'rgba(255,255,255,0)']}
+        start={{ x: 0.05, y: 0 }}
+        end={{ x: 0.75, y: 0.55 }}
+        style={styles.bgHighlight}
+      />
+      <LinearGradient
+        colors={['rgba(232,196,122,0.58)', 'rgba(244,224,186,0.22)', 'rgba(244,224,186,0)']}
+        start={{ x: 1, y: 0.95 }}
+        end={{ x: 0.18, y: 0.22 }}
+        style={styles.bgWarmGlow}
+      />
+
+      <View style={[styles.topSpacer, { paddingTop: topContentInset }]}>
+        <View style={styles.topRow}>
+          <Text style={styles.screenTitle}>הודעות אוטומטיות</Text>
+        </View>
+      </View>
+
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={[styles.content, { paddingBottom: 28 + Math.max(90, insets.bottom + 90) }]}
@@ -750,16 +751,38 @@ export default function AutomaticNotificationsScreen(props?: { editorPathname?: 
             <View style={styles.notifHeaderText}>
               <Text style={styles.notifTitle}>הודעות אוטומטיות</Text>
               <Text style={styles.notifSubtitle} numberOfLines={1}>
-                {ownerTitle ? `של ${ownerTitle}` : 'ניהול הודעות אוטומטיות (SMS / וואטסאפ)'}
+                {ownerTitle ? `של ${ownerTitle}` : resolvedEventId ? `של ${resolvedEventId}` : 'ניהול הודעות SMS ווואטסאפ'}
               </Text>
             </View>
             <View style={styles.notifPill}>
-              <Text style={styles.notifPillText}>{notificationsPillLabel}</Text>
+              <Text style={styles.notifPillText}>ניהול</Text>
             </View>
           </View>
-        </View>
-        <View style={styles.cardsStack}>
-          {notificationSettings.map((s) => renderCardRow(s))}
+
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <View style={[styles.sectionIconWrap, { backgroundColor: 'rgba(59,130,246,0.08)' }]}>
+                <Ionicons name="mail-outline" size={18} color={colors.primary} />
+              </View>
+              <Text style={[styles.sectionTitle, { color: '#1f2937' }]}>הודעות רגילות</Text>
+            </View>
+            <View style={styles.itemsStack}>{regular.map((r) => renderCardRow(r, 'regular'))}</View>
+          </View>
+
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <View
+                style={[
+                  styles.sectionIconWrap,
+                  { backgroundColor: 'rgba(34,197,94,0.10)', borderColor: 'rgba(220,252,231,1)', borderWidth: 1 },
+                ]}
+              >
+                <Ionicons name="chatbubble-ellipses-outline" size={18} color={'#25D366'} />
+              </View>
+              <Text style={[styles.sectionTitle, { color: '#1f2937' }]}>הודעות וואטסאפ</Text>
+            </View>
+            <View style={styles.itemsStack}>{whatsapp.map((r) => renderCardRow(r, 'whatsapp'))}</View>
+          </View>
         </View>
       </ScrollView>
 
@@ -869,16 +892,58 @@ export default function AutomaticNotificationsScreen(props?: { editorPathname?: 
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  bg: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  bgHighlight: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  bgWarmGlow: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  topSpacer: {
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+  },
+  topRow: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  backButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: colors.richBlack,
+    shadowOpacity: 0.14,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 6,
+  },
+  screenTitle: {
+    flex: 1,
+    fontSize: 24,
+    fontWeight: '900',
+    color: colors.richBlack,
+    textAlign: 'right',
+  },
 
   notificationsSection: {
-    marginBottom: 6,
+    marginHorizontal: 20,
+    marginBottom: 32,
   },
   notifHeader: {
     flexDirection: ROW_DIR,
@@ -927,25 +992,30 @@ const styles = StyleSheet.create({
   },
   notifPillText: { fontSize: 12, fontWeight: '900', color: 'rgba(29,78,216,0.95)' },
 
-  scroll: { flex: 1 },
+  scroll: { flex: 1, backgroundColor: 'transparent' },
   content: {
-    paddingHorizontal: 16,
-    paddingTop: 18,
-    width: '100%',
-    maxWidth: 520,
-    alignSelf: 'center',
-    gap: 22,
+    paddingTop: 12,
   },
-
-  cardsStack: { gap: 16 },
+  section: { marginBottom: 28 },
+  sectionHeader: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    gap: 10,
+    paddingHorizontal: 6,
+    marginBottom: 12,
+  },
+  sectionIconWrap: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  sectionTitle: { fontSize: 18, fontWeight: '900', textAlign: 'right' },
+  itemsStack: { gap: 16 },
 
   notificationCard: {
     position: 'relative',
-    borderWidth: 1,
     flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
     borderRadius: 16,
+    borderWidth: 1,
     paddingVertical: 20,
     paddingHorizontal: 20,
     shadowColor: colors.black,
@@ -954,6 +1024,9 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     elevation: 3,
     overflow: 'hidden',
+  },
+  notificationCardWhatsapp: {
+    borderColor: 'rgba(37,211,102,0.18)',
   },
   whatsappAccent: {
     position: 'absolute',
@@ -976,22 +1049,7 @@ const styles = StyleSheet.create({
   statusText: { fontSize: 14, fontWeight: '800' },
   metaBullet: { marginHorizontal: 10, fontSize: 14, fontWeight: '800' },
   metaText: { fontSize: 14, fontWeight: '700' },
-  cardChevron: { paddingEnd: 4, paddingStart: 8, justifyContent: 'center', alignItems: 'center' },
-
-  sendStatusPill: {
-    marginTop: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(17,24,39,0.08)',
-    backgroundColor: 'rgba(17,24,39,0.03)',
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: 8,
-  },
-  sendStatusText: { fontSize: 12, fontWeight: '700', textAlign: 'right', flexShrink: 1 },
+  cardChevron: { paddingStart: 4, paddingEnd: 8, justifyContent: 'center', alignItems: 'center' },
 
   modalOverlay: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 18 },
   modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(2,6,23,0.45)' },

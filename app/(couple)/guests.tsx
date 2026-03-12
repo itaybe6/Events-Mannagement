@@ -809,7 +809,7 @@ export default function GuestsScreen() {
                           styles.guestRow,
                           index === guestsInCat.length - 1 && styles.guestRowLast
                         ]}
-                        onLongPress={() => handleLongPressGuest(guest)}
+                        onPress={() => handleLongPressGuest(guest)}
                       >
                         <View style={styles.guestMain}>
                           <View style={styles.guestAvatar}>
@@ -928,6 +928,9 @@ export default function GuestsScreen() {
         <Pressable onPress={() => {}} style={styles.editModalSheet}>
           <BlurView intensity={20} tint="light" style={styles.editModalBlur} />
           <View style={styles.editModalContent}>
+            <View style={styles.editModalHandleWrap}>
+              <View style={styles.editModalHandle} />
+            </View>
             <View style={styles.editModalHeader}>
               <View style={styles.editModalHeaderCenter}>
                 <View style={styles.editModalTitleRow}>
@@ -963,7 +966,11 @@ export default function GuestsScreen() {
               </TouchableOpacity>
             </View>
           
-          <AppKeyboardAwareScrollView style={styles.editForm} showsVerticalScrollIndicator={false}>
+          <AppKeyboardAwareScrollView
+            style={styles.editForm}
+            contentContainerStyle={styles.editFormContent}
+            showsVerticalScrollIndicator={false}
+          >
             <View style={styles.editInputGroup}>
               <Text style={styles.editInputLabel}>שם</Text>
               <TextInput
@@ -1056,9 +1063,9 @@ export default function GuestsScreen() {
               accessibilityLabel="מחק אורח"
             >
               <Text>
-                <Ionicons name="trash-outline" size={20} color={colors.white} />
+                <Ionicons name="trash-outline" size={20} color={colors.error} />
               </Text>
-              <Text style={styles.editActionButtonText}>מחק</Text>
+              <Text style={[styles.editActionButtonText, styles.editDeleteButtonText]}>מחק</Text>
             </TouchableOpacity>
             
             <TouchableOpacity 
@@ -1591,40 +1598,53 @@ const styles = StyleSheet.create({
   },
   editModalBackdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    backgroundColor: 'rgba(6, 23, 62, 0.28)',
   },
   editModalSheet: {
     position: 'relative',
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
+    marginHorizontal: 8,
+    marginBottom: 8,
+    borderRadius: 30,
     overflow: 'hidden',
-    maxHeight: '75%',
-    minHeight: 380,
+    maxHeight: '82%',
+    minHeight: 420,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.72)',
     shadowColor: colors.black,
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.16,
     shadowRadius: 24,
-    shadowOffset: { width: 0, height: -8 },
-    elevation: 16,
+    shadowOffset: { width: 0, height: -6 },
+    elevation: 18,
   },
   editModalBlur: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: stylesApple.backgroundLight,
+    backgroundColor: 'rgba(255,255,255,0.72)',
   },
   editModalContent: {
-    backgroundColor: 'rgba(255, 255, 255, 0.85)',
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
+    backgroundColor: 'rgba(255, 255, 255, 0.94)',
+    borderRadius: 30,
     overflow: 'hidden',
+  },
+  editModalHandleWrap: {
+    alignItems: 'center',
+    paddingTop: 10,
+    paddingBottom: 2,
+  },
+  editModalHandle: {
+    width: 42,
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: 'rgba(6, 23, 62, 0.14)',
   },
   editModalHeader: {
     flexDirection: ROW_DIR,
     alignItems: 'flex-start',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 16,
+    paddingHorizontal: 22,
+    paddingTop: 14,
+    paddingBottom: 18,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0, 0, 0, 0.06)',
+    borderBottomColor: 'rgba(6, 23, 62, 0.06)',
   },
   editModalHeaderCenter: {
     flex: 1,
@@ -1637,60 +1657,65 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   editModalIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: stylesApple.primarySoft,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(0, 53, 102, 0.09)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   editModalTitle: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '900',
     color: stylesApple.text,
-    letterSpacing: -0.3,
+    letterSpacing: -0.4,
   },
   editModalSubtitle: {
-    fontSize: 14,
+    fontSize: 13,
     color: stylesApple.textMuted,
-    marginTop: 4,
-    fontWeight: '600',
+    marginTop: 6,
+    fontWeight: '700',
   },
   editModalCloseBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: 'rgba(6, 23, 62, 0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(6, 23, 62, 0.06)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   editModalActions: {
     flexDirection: ROW_DIR,
-    paddingHorizontal: 20,
+    paddingHorizontal: 22,
     paddingTop: 16,
-    paddingBottom: Platform.OS === 'ios' ? 28 : 20,
+    paddingBottom: Platform.OS === 'ios' ? 30 : 22,
     gap: 12,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(0, 0, 0, 0.06)',
-    backgroundColor: 'rgba(255, 255, 255, 0.7)',
+    borderTopColor: 'rgba(6, 23, 62, 0.06)',
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
   },
   editActionButton: {
     flex: 1,
     flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'center',
+    minHeight: 54,
     paddingVertical: 14,
-    borderRadius: 14,
+    borderRadius: 16,
     overflow: 'hidden',
   },
   editDeleteButton: {
-    backgroundColor: colors.error,
+    backgroundColor: '#FFF5F5',
+    borderWidth: 1,
+    borderColor: 'rgba(244,67,54,0.18)',
   },
   editSaveButton: {
     position: 'relative',
     shadowColor: colors.primary,
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
+    shadowOpacity: 0.24,
+    shadowRadius: 14,
     shadowOffset: { width: 0, height: 6 },
     elevation: 6,
   },
@@ -1702,6 +1727,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '800',
     marginStart: 8,
+  },
+  editDeleteButtonText: {
+    color: colors.error,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -2129,31 +2157,33 @@ const styles = StyleSheet.create({
     marginEnd: 4,
   },
   editForm: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 24,
     flexGrow: 0,
   },
+  editFormContent: {
+    paddingHorizontal: 22,
+    paddingTop: 18,
+    paddingBottom: 24,
+  },
   editInputGroup: {
-    marginBottom: 18,
+    marginBottom: 16,
   },
   editInputLabel: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: stylesApple.textMuted,
-    marginBottom: 8,
+    fontSize: 13,
+    fontWeight: '800',
+    color: 'rgba(6, 23, 62, 0.66)',
+    marginBottom: 9,
     textAlign: 'right',
     letterSpacing: -0.1,
   },
   editInputField: {
     borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 0.08)',
-    borderRadius: 14,
+    borderColor: 'rgba(6, 23, 62, 0.08)',
+    borderRadius: 16,
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingVertical: 15,
     fontSize: 16,
     color: stylesApple.text,
-    backgroundColor: stylesApple.surfaceLight,
+    backgroundColor: '#F8FBFF',
     textAlign: 'right',
   },
   inputGroup: {
@@ -2182,25 +2212,32 @@ const styles = StyleSheet.create({
     flexDirection: ROW_DIR,
     justifyContent: 'space-between',
     marginTop: 8,
+    padding: 4,
+    borderRadius: 16,
+    backgroundColor: '#F3F7FC',
+    gap: 8,
   },
   statusOption: {
     flexDirection: ROW_DIR,
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: 10,
     paddingHorizontal: 12,
-    borderRadius: 8,
-    backgroundColor: colors.gray[200],
+    borderRadius: 12,
+    backgroundColor: colors.white,
     flex: 1,
-    marginHorizontal: 4,
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(6, 23, 62, 0.06)',
   },
   statusOptionActive: {
     backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   statusOptionText: {
     fontSize: 14,
     color: colors.text,
-    marginStart: 4,
+    marginStart: 5,
+    fontWeight: '700',
   },
   statusOptionTextActive: {
     color: colors.white,

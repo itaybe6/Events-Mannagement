@@ -127,6 +127,7 @@ export default function CoupleTabsLayout() {
           name="brideGroomProfile"
           options={{
             title: "פרופיל",
+            headerShown: false,
           }}
         />
         <Tabs.Screen

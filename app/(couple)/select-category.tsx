@@ -4,6 +4,7 @@ import {
   Alert,
   Animated,
   FlatList,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -11,6 +12,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  TouchableOpacity,
   View,
   useWindowDimensions,
 } from 'react-native';
@@ -73,6 +75,7 @@ export default function SelectCategoryScreen() {
   const [newName, setNewName] = useState('');
   const [newSide, setNewSide] = useState<Side>('groom');
   const [saving, setSaving] = useState(false);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [segWidth, setSegWidth] = useState(0);
   const scrollY = useMemo(() => new Animated.Value(0), []);
 
@@ -87,6 +90,19 @@ export default function SelectCategoryScreen() {
     setTabBarVisible(false);
     return () => setTabBarVisible(true);
   }, [setTabBarVisible]);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSub = Keyboard.addListener(showEvent, () => setKeyboardVisible(true));
+    const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardVisible(false));
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   useEffect(() => {
     const load = async () => {
@@ -373,6 +389,11 @@ export default function SelectCategoryScreen() {
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={[styles.createScroll, { paddingBottom: bottomPadding + 24 }]}
+            bounces={false}
+            alwaysBounceVertical={false}
+            overScrollMode="never"
+            enableResetScrollToCoords={false}
+            scrollEnabled={keyboardVisible}
             onScroll={(event: any) => {
               scrollY.setValue(event?.nativeEvent?.contentOffset?.y ?? 0);
             }}
@@ -389,61 +410,58 @@ export default function SelectCategoryScreen() {
                   placeholder="למשל: חברים חתן"
                   placeholderTextColor={isDark ? 'rgba(241,245,249,0.35)' : 'rgba(15,23,42,0.35)'}
                   style={[styles.input, isDark && styles.inputDark]}
+                  textAlign="right"
                   returnKeyType="done"
                   blurOnSubmit={false}
                   onSubmitEditing={() => {}}
                   autoFocus
                 />
+                <View style={styles.inputIcon}>
+                  <Ionicons name="create-outline" size={18} color="#9CA3AF" />
+                </View>
               </View>
 
               {enableSides ? (
-                <>
-                  <Text style={[styles.fieldLabel, { marginTop: 22 }, isDark && styles.fieldLabelDark]}>שייך לצד</Text>
-                  <Text style={styles.fieldHint}>בחר את הצד שאליו הקטגוריה שייכת.</Text>
-                  <View style={styles.sideSection}>
-                    <View style={styles.sideRow}>
-                      {([
-                        { side: 'groom' as Side, label: 'חתן', icon: 'male' as const },
-                        { side: 'bride' as Side, label: 'כלה', icon: 'female' as const },
-                      ] as const).map((opt) => {
-                        const active = newSide === opt.side;
-                        const accent = opt.side === 'bride' ? ACCENT_PINK : ACCENT_BLUE;
-                        const soft = opt.side === 'bride' ? 'rgba(236,72,153,0.10)' : 'rgba(59,130,246,0.10)';
-                        return (
-                          <Pressable
-                            key={opt.side}
-                            onPress={() => setNewSide(opt.side)}
-                            style={({ pressed }) => [
-                              styles.sidePill,
-                              isDark && styles.sidePillDark,
-                              active
-                                ? [styles.sidePillActive, { backgroundColor: accent, borderColor: accent }]
-                                : [styles.sidePillInactive, { backgroundColor: '#FFFFFF', borderColor: 'rgba(15,23,42,0.10)' }],
-                              pressed && styles.sidePillPressed,
-                            ]}
-                          >
-                            <View
-                              style={[
-                                styles.sidePillIconCircle,
-                                active ? { backgroundColor: 'rgba(255,255,255,0.20)' } : { backgroundColor: soft },
-                              ]}
-                            >
-                              <Ionicons name={opt.icon} size={18} color={active ? '#fff' : accent} />
-                            </View>
-                            <Text style={[styles.sidePillText, { color: active ? '#fff' : accent }]}>
-                              {opt.label}
-                            </Text>
-                            {active ? (
-                              <View style={styles.sidePillCheck}>
-                                <Ionicons name="checkmark" size={12} color={accent} />
-                              </View>
-                            ) : null}
-                          </Pressable>
-                        );
-                      })}
-                    </View>
+                <View style={styles.sideSelector}>
+                  <Text style={[styles.sideSelectorLabel, isDark && styles.fieldLabelDark]}>שייך לצד:</Text>
+                  <View style={styles.sideButtons}>
+                    <TouchableOpacity
+                      onPress={() => setNewSide('groom')}
+                      activeOpacity={0.92}
+                      style={[
+                        styles.sideButton,
+                        newSide === 'groom' && styles.sideButtonActive,
+                      ]}
+                    >
+                      <Ionicons
+                        name="male"
+                        size={20}
+                        color={newSide === 'groom' ? colors.white : colors.primary}
+                      />
+                      <Text style={[styles.sideButtonText, newSide === 'groom' && styles.sideButtonTextActive]}>
+                        חתן
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      onPress={() => setNewSide('bride')}
+                      activeOpacity={0.92}
+                      style={[
+                        styles.sideButton,
+                        newSide === 'bride' && styles.sideButtonActive,
+                      ]}
+                    >
+                      <Ionicons
+                        name="female"
+                        size={20}
+                        color={newSide === 'bride' ? colors.white : colors.primary}
+                      />
+                      <Text style={[styles.sideButtonText, newSide === 'bride' && styles.sideButtonTextActive]}>
+                        כלה
+                      </Text>
+                    </TouchableOpacity>
                   </View>
-                </>
+                </View>
               ) : null}
 
               <Pressable
@@ -458,14 +476,18 @@ export default function SelectCategoryScreen() {
                 ]}
               >
                 <LinearGradient
-                  colors={isNextDisabled ? ['#CBD5E1', '#B8C3D3'] : ['#0B1E4F', '#123A8C']}
+                  colors={isNextDisabled ? ['#E2E8F0', '#CBD5E1'] : ['#0B1E4F', '#123A8C']}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 1 }}
                   style={styles.createSubmitBg}
                 />
-                <View style={styles.createSubmitInner}>
-                  <Ionicons name="add-circle-outline" size={20} color="#fff" />
-                  <Text style={styles.createSubmitText}>
+                <View style={[styles.createSubmitInner, isNextDisabled && styles.createSubmitInnerDisabled]}>
+                  <Ionicons
+                    name={isNextDisabled ? 'add-circle' : 'add-circle-outline'}
+                    size={20}
+                    color={isNextDisabled ? '#64748B' : '#fff'}
+                  />
+                  <Text style={[styles.createSubmitText, isNextDisabled && styles.createSubmitTextDisabled]}>
                     {saving ? 'מוסיף...' : 'הוסף קטגוריה'}
                   </Text>
                 </View>
@@ -885,26 +907,25 @@ const styles = StyleSheet.create({
   },
 
   /* new-category form */
-  createScroll: { paddingHorizontal: 20, paddingTop: 12 },
+  createScroll: { paddingHorizontal: 18, paddingTop: 18 },
   createCard: {
-    borderRadius: 26,
-    backgroundColor: 'rgba(255,255,255,0.78)',
+    borderRadius: 24,
+    backgroundColor: 'rgba(248,250,252,0.96)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.58)',
-    padding: 18,
-    shadowColor: '#0f172a',
-    shadowOpacity: 0.06,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 3,
+    borderColor: 'rgba(203,213,225,0.85)',
+    padding: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
   fieldLabel: {
-    fontSize: 13,
-    fontWeight: '900',
-    color: 'rgba(15,23,42,0.55)',
+    fontSize: 12,
+    fontWeight: '700',
+    color: 'rgba(100,116,139,0.95)',
     textAlign: 'right',
     marginBottom: 8,
-    letterSpacing: 0.2,
   },
   fieldLabelDark: {
     color: 'rgba(241,245,249,0.70)',
@@ -920,15 +941,19 @@ const styles = StyleSheet.create({
   },
   inputWrap: {
     backgroundColor: '#fff',
-    borderRadius: 16,
-    borderWidth: 1.5,
-    borderColor: PRIMARY_BORDER,
-    paddingHorizontal: 16,
-    paddingVertical: Platform.OS === 'ios' ? 15 : 11,
-    shadowColor: PRIMARY,
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(203,213,225,0.95)',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    minHeight: 56,
+    position: 'relative',
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.03,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
   inputWrapDark: {
@@ -937,104 +962,83 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.06,
   },
   input: {
-    fontSize: 17,
+    flex: 1,
+    fontSize: 18,
     fontWeight: '700',
     color: '#0F172A',
     textAlign: 'right',
+    paddingEnd: 34,
+    paddingStart: 10,
+    paddingVertical: 0,
   },
   inputDark: {
     color: TEXT_DARK,
   },
-  sideRow: {
-    flexDirection: ROW_DIR,
-    gap: 12,
-  },
-  sideSection: {
-    borderRadius: 22,
-    backgroundColor: 'rgba(248,250,252,0.78)',
-    borderWidth: 1,
-    borderColor: 'rgba(148,163,184,0.16)',
-    padding: 10,
-  },
-  sidePill: {
-    flex: 1,
-    minHeight: 72,
-    borderRadius: 18,
-    borderWidth: 1.5,
-    flexDirection: ROW_REVERSE_DIR,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    position: 'relative',
-    ...(Platform.OS === 'web'
-      ? ({ boxShadow: '0 6px 18px rgba(15,23,42,0.06)' } as any)
-      : {
-          shadowColor: '#0F172A',
-          shadowOpacity: 0.06,
-          shadowRadius: 10,
-          shadowOffset: { width: 0, height: 4 },
-          elevation: 2,
-        }),
-  },
-  sidePillActive: {
-    backgroundColor: PRIMARY,
-    borderColor: PRIMARY,
-    ...(Platform.OS === 'web'
-      ? ({ boxShadow: '0 10px 28px rgba(29,78,216,0.30)' } as any)
-      : { shadowOpacity: 0.18, elevation: 5 }),
-  },
-  sidePillInactive: {
-    backgroundColor: '#fff',
-    borderColor: BORDER_LIGHT,
-  },
-  sidePillPressed: {
-    opacity: 0.9,
-    transform: [{ scale: 0.985 }],
-  },
-  sidePillDark: {
-    backgroundColor: 'rgba(30,41,59,0.60)',
-  },
-  sidePillInactiveDark: {
-    borderColor: 'rgba(255,255,255,0.12)',
-  },
-  sidePillIconCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sidePillTextWrap: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: 0,
-  },
-  sidePillText: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: PRIMARY,
-    textAlign: 'center',
-    flexShrink: 1,
-  },
-  sidePillCheck: {
+  inputIcon: {
     position: 'absolute',
-    top: 8,
-    left: 8,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#FFFFFF',
+    right: 12,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sideSelector: {
+    width: '100%',
+    marginTop: 20,
+    marginBottom: 4,
+  },
+  sideSelectorLabel: {
+    fontSize: 15,
+    color: colors.text,
+    marginBottom: 8,
+    textAlign: 'right',
+    fontWeight: '700',
+  },
+  sideButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    backgroundColor: colors.gray[100],
+    borderRadius: 12,
+    padding: 4,
+    gap: 8,
+  },
+  sideButton: {
+    flex: 1,
+    minHeight: 44,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: 'rgba(37,99,235,0.18)',
+  },
+  sideButtonActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  sideButtonPressed: {
+    opacity: 0.92,
+  },
+  sideButtonText: {
+    marginStart: 8,
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  sideButtonTextActive: {
+    color: colors.white,
   },
   createSubmitOuter: {
-    marginTop: 28,
-    borderRadius: 22,
+    marginTop: 24,
+    borderRadius: 18,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(11,30,79,0.08)',
+    borderColor: 'rgba(29,78,216,0.14)',
+    backgroundColor: '#0B1E4F',
+    position: 'relative',
     ...(Platform.OS === 'web'
       ? ({ boxShadow: '0 12px 28px rgba(11,30,79,0.22)' } as any)
       : {
@@ -1056,19 +1060,26 @@ const styles = StyleSheet.create({
   },
   createSubmitBg: {
     ...StyleSheet.absoluteFillObject,
+    borderRadius: 18,
   },
   createSubmitInner: {
-    minHeight: 58,
+    minHeight: 56,
     paddingHorizontal: 18,
     flexDirection: ROW_REVERSE_DIR,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
   },
+  createSubmitInnerDisabled: {
+    backgroundColor: 'rgba(255,255,255,0.10)',
+  },
   createSubmitText: {
     fontSize: 16,
     fontWeight: '900',
     color: '#FFFFFF',
+  },
+  createSubmitTextDisabled: {
+    color: '#64748B',
   },
 
   // bottom bar removed (button moved to header)

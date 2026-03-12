@@ -26,15 +26,11 @@ export default function HomeScreen() {
   const [guests, setGuests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(() => new Date());
+  const [hasMultipleEvents, setHasMultipleEvents] = useState(false);
   const isWeb = Platform.OS === 'web';
   const isDesktopWeb = isWeb && windowWidth >= 1024;
   const AnimatedPressable = useMemo(() => Animated.createAnimatedComponent(Pressable), []);
   const scrollY = React.useRef(new Animated.Value(0)).current;
-  const mobileHeaderOpacity = scrollY.interpolate({
-    inputRange: [0, 72],
-    outputRange: [0, 1],
-    extrapolate: 'clamp',
-  });
   const mobileGradientOpacity = scrollY.interpolate({
     inputRange: [0, 160],
     outputRange: [1, 0.18],
@@ -140,6 +136,13 @@ export default function HomeScreen() {
       isComplete: safeDiff <= 0,
     };
   }, [currentEvent?.date, now]);
+
+  const eventTypeLabel = useMemo(() => {
+    const raw = String(currentEvent?.title ?? '').trim();
+    if (!raw) return 'אירוע';
+    const parts = raw.split(/(?:\s*[–—-]\s*)/g).map((p) => p.trim()).filter(Boolean);
+    return parts[0] || raw;
+  }, [currentEvent?.title]);
 
   if (!isLoggedIn) {
     return (
@@ -258,6 +261,8 @@ export default function HomeScreen() {
       <Text style={styles.countdownLabel}>{label}</Text>
     </View>
   );
+
+  const CountdownSeparator = () => <Text style={styles.countdownSeparator}>:</Text>;
 
   const ActionTile = ({
     title,
@@ -430,7 +435,7 @@ export default function HomeScreen() {
               },
             ]}
           >
-            <Animated.View style={[styles.mobileHeaderBg, { opacity: mobileHeaderOpacity }]} />
+            <View style={styles.mobileHeaderBg} />
             <Image
               source={require('../../assets/images/logoMoon.png')}
               style={styles.mobileHeaderLogo}
@@ -484,6 +489,38 @@ export default function HomeScreen() {
           {currentEvent?.invitationImageUrl ? (
             <View style={styles.heroBanner}>
               <Image source={{ uri: currentEvent.invitationImageUrl }} style={styles.heroBannerImage} resizeMode="cover" />
+              <LinearGradient
+                colors={['rgba(255,255,255,0.96)', 'rgba(255,255,255,0.86)', 'rgba(255,255,255,0)']}
+                start={{ x: 0.5, y: 1 }}
+                end={{ x: 0.5, y: 0 }}
+                style={styles.heroBannerTitleOverlay}
+              >
+                <View style={styles.heroBannerMetaRow}>
+                  <View style={styles.heroBannerTypePill}>
+                    <Text style={styles.heroBannerTypeText} numberOfLines={1}>
+                      {String(currentEvent.title || '').trim() || eventTypeLabel}
+                    </Text>
+                  </View>
+
+                  <View style={styles.heroBannerDetailsRow}>
+                    {String(currentEvent.location || '').trim() ? (
+                      <View style={styles.heroBannerVenuePill}>
+                        <Text style={styles.heroBannerVenueText} numberOfLines={1}>
+                          {String(currentEvent.location || '').trim()}
+                        </Text>
+                      </View>
+                    ) : null}
+
+                    {String(currentEvent.city || '').trim() ? (
+                      <View style={styles.heroBannerCityPill}>
+                        <Text style={styles.heroBannerCityText} numberOfLines={1}>
+                          {String(currentEvent.city || '').trim()}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+                </View>
+              </LinearGradient>
               <View style={styles.heroBannerFrame} />
             </View>
           ) : (
@@ -501,27 +538,36 @@ export default function HomeScreen() {
               )}
             </View>
           )}
-          <View style={styles.countdownSection}>
+          <LinearGradient
+            colors={['rgba(255,255,255,0.98)', 'rgba(248,251,255,0.98)', 'rgba(255,248,232,0.96)']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.countdownSection}
+          >
             <Text style={styles.countdownHeading}>הספירה לאחור החלה</Text>
             <Text style={styles.countdownSubtext}>{eventDateLabel || '--:--'}</Text>
             {countdown ? (
               <View style={styles.countdownWrap}>
                 <CountdownUnit label="ימים" value={countdown.days} />
+                <CountdownSeparator />
                 <CountdownUnit label="שעות" value={countdown.hours} />
+                <CountdownSeparator />
                 <CountdownUnit label="דקות" value={countdown.minutes} />
+                <CountdownSeparator />
                 <CountdownUnit label="שניות" value={countdown.seconds} />
               </View>
             ) : (
               <Text style={styles.heroDate}>--:--</Text>
             )}
-          </View>
+          </LinearGradient>
 
-          <View style={{ width: '100%', marginTop: 12 }}>
+          <View style={{ width: '100%', marginTop: hasMultipleEvents ? 12 : 0 }}>
             <EventSwitcher
               userId={userData?.id}
               selectedEventId={resolvedEventId}
               onSelectEventId={handleSelectEventId}
               label="אירוע פעיל"
+              onHasMultipleChange={setHasMultipleEvents}
             />
           </View>
         </View>
@@ -752,11 +798,88 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
+  heroBannerTitleOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: '52%',
+    paddingHorizontal: 22,
+    paddingBottom: 18,
+    justifyContent: 'flex-end',
+    alignItems: 'flex-end',
+  },
+  heroBannerMetaRow: {
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    gap: 8,
+    maxWidth: '92%',
+  },
+  heroBannerDetailsRow: {
+    flexDirection: 'row-reverse',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+    gap: 8,
+  },
+  heroBannerTypePill: {
+    maxWidth: '100%',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: colors.oxfordBlue,
+    alignSelf: 'flex-end',
+    shadowColor: colors.black,
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  heroBannerTypeText: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '800',
+    color: colors.white,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  heroBannerVenuePill: {
+    maxWidth: '88%',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: colors.gold,
+    alignSelf: 'flex-end',
+  },
+  heroBannerVenueText: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '800',
+    color: colors.white,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  heroBannerCityPill: {
+    maxWidth: '88%',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderWidth: 1,
+    borderColor: 'rgba(0,29,61,0.10)',
+    alignSelf: 'flex-end',
+  },
+  heroBannerCityText: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '800',
+    color: colors.oxfordBlue,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
   heroBannerFrame: {
     ...StyleSheet.absoluteFillObject,
     borderRadius: 28,
-    borderWidth: 1,
-    borderColor: 'rgba(11, 28, 65, 0.35)',
   },
   heroAvatar: {
     width: 110,
@@ -801,6 +924,17 @@ const styles = StyleSheet.create({
     width: '100%',
     marginTop: 16,
     alignItems: 'center',
+    borderRadius: 28,
+    paddingHorizontal: 14,
+    paddingTop: 18,
+    paddingBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(11, 28, 65, 0.08)',
+    shadowColor: colors.black,
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
   },
   countdownHeading: {
     fontSize: 18,
@@ -821,21 +955,14 @@ const styles = StyleSheet.create({
     width: '100%',
     marginTop: 10,
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'stretch',
-    gap: 10,
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+    gap: 6,
   },
   countdownUnit: {
-    flex: 1,
-    minHeight: 74,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: 'rgba(11, 28, 65, 0.10)',
-    backgroundColor: 'rgba(255,255,255,0.94)',
+    minWidth: 62,
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 6,
+    justifyContent: 'flex-start',
   },
   countdownValue: {
     fontSize: 24,
@@ -851,6 +978,14 @@ const styles = StyleSheet.create({
     color: colors.gray[600],
     textAlign: 'center',
     writingDirection: 'rtl',
+  },
+  countdownSeparator: {
+    marginTop: 2,
+    fontSize: 24,
+    lineHeight: 28,
+    fontWeight: '900',
+    color: colors.gray[500],
+    textAlign: 'center',
   },
   quickInfoRow: {
     marginTop: 10,

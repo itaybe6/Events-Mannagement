@@ -1,23 +1,102 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Modal, Pressable, TextInput, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, Modal, Pressable, TextInput, Platform, ActivityIndicator, ScrollView } from 'react-native';
 import { useUserStore } from '@/store/userStore';
 import { useFocusEffect, useGlobalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import * as ImagePicker from 'expo-image-picker';
 import { invitationAssetService } from '@/lib/services/invitationAssetService';
+import { avatarService } from '@/lib/services/avatarService';
 import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
+import { EventSwitcher } from '@/components/EventSwitcher';
 import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+const ui = {
+  bg: '#E8F1FF',
+  card: colors.white,
+  text: colors.text,
+  muted: colors.gray[600],
+  border: 'rgba(6,23,62,0.08)',
+  primary: colors.primary,
+  accent: colors.accent,
+  gold: colors.gold,
+  danger: colors.error,
+};
+
+function formatDateDisplay(value?: Date | string | null) {
+  const date = value instanceof Date ? value : value ? new Date(value) : null;
+  if (!date || !Number.isFinite(date.getTime())) return '';
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = String(date.getFullYear());
+  return `${day}/${month}/${year}`;
+}
+
+function InfoRow({
+  icon,
+  label,
+  value,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  value: string;
+}) {
+  return (
+    <View style={styles.infoRow}>
+      <View style={styles.infoTextWrap}>
+        <Text style={styles.infoLabel}>{label}</Text>
+        <Text style={styles.infoValue}>{value}</Text>
+      </View>
+      <View style={styles.infoIconBox}>
+        <Ionicons name={icon} size={18} color={ui.primary} />
+      </View>
+    </View>
+  );
+}
+
+function ActionCard({
+  icon,
+  title,
+  subtitle,
+  accentColor,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  subtitle: string;
+  accentColor: string;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity style={styles.actionCard} onPress={onPress} activeOpacity={0.92}>
+      <View style={[styles.actionAccent, { backgroundColor: accentColor }]} />
+      <View style={[styles.actionIconBox, { backgroundColor: `${accentColor}18` }]}>
+        <Ionicons name={icon} size={20} color={accentColor} />
+      </View>
+      <View style={styles.actionBody}>
+        <Text style={styles.actionTitle}>{title}</Text>
+        <Text style={styles.actionSubtitle}>{subtitle}</Text>
+      </View>
+      <View style={styles.actionChevron}>
+        <Ionicons name="chevron-back" size={18} color={colors.gray[500]} />
+      </View>
+    </TouchableOpacity>
+  );
+}
 
 export default function BrideGroomSettings() {
   const { userData, logout } = useUserStore();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const globalParams = useGlobalSearchParams<{ eventId?: string | string[] }>();
   const activeUserId = useEventSelectionStore((s) => s.activeUserId);
   const activeEventId = useEventSelectionStore((s) => s.activeEventId);
+  const setActiveEvent = useEventSelectionStore((s) => s.setActiveEvent);
   const [eventMeta, setEventMeta] = useState<{
     id: string;
     title: string;
@@ -29,8 +108,24 @@ export default function BrideGroomSettings() {
   } | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const AVATAR_SIZE = 104;
   const avatarUri = userData?.avatar_url?.trim() || '';
+  const [logoutModalOpen, setLogoutModalOpen] = useState(false);
+  const [eventEditorOpen, setEventEditorOpen] = useState(false);
+  const [invitationEditorOpen, setInvitationEditorOpen] = useState(false);
+  const [profileEditorOpen, setProfileEditorOpen] = useState(false);
+  const [eventSaving, setEventSaving] = useState(false);
+  const [invitationSaving, setInvitationSaving] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileAvatarUploading, setProfileAvatarUploading] = useState(false);
+  const [hasMultipleEvents, setHasMultipleEvents] = useState(false);
+  const [draftEventTitle, setDraftEventTitle] = useState('');
+  const [draftGroomName, setDraftGroomName] = useState('');
+  const [draftBrideName, setDraftBrideName] = useState('');
+  const [draftInvitationImageUrl, setDraftInvitationImageUrl] = useState('');
+  const [draftProfileName, setDraftProfileName] = useState('');
+  const [draftProfileEmail, setDraftProfileEmail] = useState('');
+  const [invitationUploading, setInvitationUploading] = useState(false);
+  const [removeInvitationConfirmOpen, setRemoveInvitationConfirmOpen] = useState(false);
 
   const queryEventId = Array.isArray(globalParams.eventId) ? globalParams.eventId[0] : globalParams.eventId;
   const resolvedEventId = useMemo(() => {
@@ -44,24 +139,6 @@ export default function BrideGroomSettings() {
     );
   }, [activeEventId, activeUserId, queryEventId, userData?.event_id, userData?.id]);
 
-  const [logoutModalOpen, setLogoutModalOpen] = useState(false);
-
-  // =============================
-  // Profile edit shortcuts (event / invitation)
-  // =============================
-  const [eventEditorOpen, setEventEditorOpen] = useState(false);
-  const [invitationEditorOpen, setInvitationEditorOpen] = useState(false);
-
-  const [draftEventTitle, setDraftEventTitle] = useState('');
-  const [draftGroomName, setDraftGroomName] = useState('');
-  const [draftBrideName, setDraftBrideName] = useState('');
-  const [draftEventDate, setDraftEventDate] = useState(''); // yyyy-mm-dd (best-effort)
-
-  const [draftRsvpLink, setDraftRsvpLink] = useState('');
-  const [draftInvitationImageUrl, setDraftInvitationImageUrl] = useState('');
-  const [invitationUploading, setInvitationUploading] = useState(false);
-  const [removeInvitationConfirmOpen, setRemoveInvitationConfirmOpen] = useState(false);
-
   const loadProfile = useCallback(() => {
     let active = true;
 
@@ -73,7 +150,6 @@ export default function BrideGroomSettings() {
 
       setLoading(true);
       try {
-        // Best-effort refresh avatar url from DB
         const { data: avatarRow } = await supabase
           .from('users')
           .select('avatar_url')
@@ -138,42 +214,169 @@ export default function BrideGroomSettings() {
 
   const performLogout = async () => {
     try {
-      // Navigate off this pushed screen before auth state flips.
-      // This avoids "GO_BACK was not handled" warnings when navigators unmount/reset on sign-out.
       router.replace('/(couple)');
       await logout();
-      // Root layout will route to onboarding; this is a safe best-effort.
       router.replace('/onboarding');
     } catch {
       Alert.alert('שגיאה', 'לא ניתן להתנתק כרגע, נסה שוב.');
     }
   };
 
-  const askLogout = () => setLogoutModalOpen(true);
-
   const groomName = String(eventMeta?.groomName ?? '').trim();
   const brideName = String(eventMeta?.brideName ?? '').trim();
   const weddingNames = groomName && brideName ? `${groomName} ו${brideName}` : '';
   const invitationImageUrl = String(eventMeta?.invitationImageUrl ?? '').trim();
+  const eventTitle = String(eventMeta?.title ?? '').trim() || 'טרם הוגדר שם אירוע';
+  const formattedEventDate = useMemo(() => {
+    if (!eventMeta?.date || !Number.isFinite(eventMeta.date.getTime())) return 'טרם נקבע תאריך';
+    try {
+      return eventMeta.date.toLocaleDateString('he-IL', {
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric',
+      });
+    } catch {
+      return eventMeta.date.toDateString();
+    }
+  }, [eventMeta?.date]);
+  const rsvpStatus = eventMeta?.rsvpLink ? 'קישור אישור הגעה פעיל' : 'אין עדיין קישור אישור הגעה';
+  const invitationStatus = invitationImageUrl ? 'יש תמונת הזמנה מעודכנת' : 'עדיין לא נוספה תמונת הזמנה';
+  const readonlyEventDateDisplay = useMemo(() => formatDateDisplay(eventMeta?.date), [eventMeta?.date]);
+
+  const askLogout = () => setLogoutModalOpen(true);
+
+  const handleSelectEventId = (nextEventId: string) => {
+    if (userData?.id) setActiveEvent(userData.id, nextEventId);
+    router.replace({
+      pathname: '/(couple)/brideGroomProfile',
+      params: { eventId: nextEventId },
+    } as any);
+  };
 
   const openEventEditor = () => {
     setDraftEventTitle(String(eventMeta?.title ?? ''));
     setDraftGroomName(String(eventMeta?.groomName ?? ''));
     setDraftBrideName(String(eventMeta?.brideName ?? ''));
-    setDraftEventDate(eventMeta?.date ? eventMeta.date.toISOString().slice(0, 10) : '');
     setEventEditorOpen(true);
   };
 
   const openInvitationEditor = () => {
-    setDraftRsvpLink(String(eventMeta?.rsvpLink ?? ''));
     setDraftInvitationImageUrl(String(eventMeta?.invitationImageUrl ?? ''));
     setInvitationEditorOpen(true);
+  };
+
+  const openProfileEditor = () => {
+    setDraftProfileName(String(userData?.name ?? ''));
+    setDraftProfileEmail(String(userData?.email ?? ''));
+    setProfileEditorOpen(true);
+  };
+
+  const pickAndUploadProfileAvatar = async () => {
+    if (!userData?.id || profileAvatarUploading) return;
+
+    try {
+      if (Platform.OS !== 'web') {
+        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!permission.granted) {
+          Alert.alert('הרשאה נדרשת', 'כדי לבחור תמונה יש לאשר גישה לגלריה');
+          return;
+        }
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.85,
+        base64: true,
+      });
+
+      if (result.canceled || !result.assets?.[0]) return;
+      const asset = result.assets[0] as any;
+
+      setProfileAvatarUploading(true);
+      const url = await avatarService.uploadUserAvatar(userData.id, {
+        uri: asset.uri,
+        fileName: asset.fileName,
+        mimeType: asset.mimeType,
+        file: asset.file,
+        base64: asset.base64,
+      });
+
+      useUserStore.setState((state) => ({
+        userData: state.userData ? { ...state.userData, avatar_url: url } : state.userData,
+      }));
+
+      Alert.alert('נשמר', 'תמונת הפרופיל עודכנה');
+    } catch (e: any) {
+      const message = e?.message ? String(e.message) : 'שגיאה לא ידועה';
+      Alert.alert('שגיאה', `לא ניתן לעדכן תמונת פרופיל.\n\n${message}`);
+    } finally {
+      setProfileAvatarUploading(false);
+    }
+  };
+
+  const saveProfileEdits = async () => {
+    if (!userData?.id || profileSaving) return;
+
+    const nextName = String(draftProfileName || '').trim();
+    const nextEmail = String(draftProfileEmail || '').trim();
+
+    if (!nextName) {
+      Alert.alert('שגיאה', 'נא להזין שם מלא');
+      return;
+    }
+
+    if (!nextEmail) {
+      Alert.alert('שגיאה', 'נא להזין כתובת אימייל');
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(nextEmail)) {
+      Alert.alert('שגיאה', 'כתובת אימייל לא תקינה');
+      return;
+    }
+
+    const nameChanged = nextName !== String(userData?.name || '');
+    const emailChanged = nextEmail !== String(userData?.email || '');
+
+    try {
+      setProfileSaving(true);
+
+      if (nameChanged || emailChanged) {
+        const { error: profileError } = await supabase
+          .from('users')
+          .update({ name: nextName, email: nextEmail })
+          .eq('id', userData.id);
+        if (profileError) throw profileError;
+      }
+
+      if (emailChanged) {
+        const { error: emailError } = await supabase.auth.updateUser({ email: nextEmail });
+        if (emailError) throw emailError;
+      }
+
+      useUserStore.setState((state) => ({
+        userData: state.userData
+          ? { ...state.userData, name: nextName, email: nextEmail }
+          : state.userData,
+      }));
+
+      setProfileEditorOpen(false);
+      Alert.alert('נשמר', 'פרטי הפרופיל נשמרו בהצלחה');
+    } catch (e) {
+      console.warn('Failed to save profile edits:', e);
+      Alert.alert('שגיאה', 'לא ניתן לשמור את פרטי הפרופיל כרגע.');
+    } finally {
+      setProfileSaving(false);
+    }
   };
 
   const pickAndUploadInvitationImage = async () => {
     const eventId = String(resolvedEventId || '').trim();
     if (!eventId) {
-      Alert.alert('שימו לב', 'לא נבחר אירוע. כדי לערוך תמונת הזמנה צריך לבחור/להיות משויך לאירוע.');
+      Alert.alert('שימו לב', 'לא נבחר אירוע. כדי לערוך תמונת הזמנה צריך לבחור או להיות משויך לאירוע.');
       return;
     }
     if (invitationUploading) return;
@@ -211,9 +414,7 @@ export default function BrideGroomSettings() {
       if (error) throw error;
 
       setDraftInvitationImageUrl(url);
-      setEventMeta((prev) =>
-        prev ? { ...prev, invitationImageUrl: url || undefined } : prev
-      );
+      setEventMeta((prev) => (prev ? { ...prev, invitationImageUrl: url || undefined } : prev));
       Alert.alert('נשמר', 'תמונת ההזמנה עודכנה');
     } catch (e: any) {
       const message = e?.message ? String(e.message) : 'שגיאה לא ידועה';
@@ -249,12 +450,11 @@ export default function BrideGroomSettings() {
 
   const saveEventEdits = async () => {
     const eventId = String(resolvedEventId || '').trim();
-    if (!eventId) return;
+    if (!eventId || eventSaving) return;
 
     const title = String(draftEventTitle || '').trim();
     const groom = String(draftGroomName || '').trim();
     const bride = String(draftBrideName || '').trim();
-    const dateStr = String(draftEventDate || '').trim();
 
     const updates: any = {
       title,
@@ -262,16 +462,8 @@ export default function BrideGroomSettings() {
       bride_name: bride || null,
     };
 
-    if (dateStr) {
-      const d = new Date(dateStr);
-      if (!Number.isFinite(d.getTime())) {
-        Alert.alert('שגיאה', 'תאריך לא תקין. השתמשו בפורמט YYYY-MM-DD');
-        return;
-      }
-      updates.date = d.toISOString();
-    }
-
     try {
+      setEventSaving(true);
       const { data, error } = await supabase
         .from('events')
         .update(updates)
@@ -292,24 +484,25 @@ export default function BrideGroomSettings() {
         });
       }
       setEventEditorOpen(false);
+      Alert.alert('נשמר', 'השינויים נשמרו בהצלחה');
     } catch (e) {
       console.warn('Failed to save event edits:', e);
       Alert.alert('שגיאה', 'לא ניתן לשמור את פרטי האירוע כרגע.');
+    } finally {
+      setEventSaving(false);
     }
   };
 
   const saveInvitationEdits = async () => {
     const eventId = String(resolvedEventId || '').trim();
-    if (!eventId) return;
-
-    const rsvpLink = String(draftRsvpLink || '').trim();
+    if (!eventId || invitationSaving) return;
 
     const updates: any = {
-      rsvp_link: rsvpLink || null,
       invitation_image_url: String(draftInvitationImageUrl || '').trim() || null,
     };
 
     try {
+      setInvitationSaving(true);
       const { data, error } = await supabase
         .from('events')
         .update(updates)
@@ -330,17 +523,19 @@ export default function BrideGroomSettings() {
         });
       }
       setInvitationEditorOpen(false);
+      Alert.alert('נשמר', 'ההזמנה נשמרה בהצלחה');
     } catch (e) {
       console.warn('Failed to save invitation edits:', e);
       Alert.alert('שגיאה', 'לא ניתן לשמור את פרטי ההזמנה כרגע.');
+    } finally {
+      setInvitationSaving(false);
     }
   };
 
   const getEventCoverSource = () => {
     const title = String(eventMeta?.title ?? '').toLowerCase();
 
-    const hasBarMitzvah =
-      title.includes('בר מצו') || title.includes('בר-מצו') || title.includes('bar mitz');
+    const hasBarMitzvah = title.includes('בר מצו') || title.includes('בר-מצו') || title.includes('bar mitz');
     const hasBaby =
       title.includes('ברית') ||
       title.includes('בריתה') ||
@@ -361,221 +556,308 @@ export default function BrideGroomSettings() {
 
   if (loading) {
     return (
-      <View style={[styles.container, styles.centered]}>
-        <Text style={styles.loadingText}>טוען הגדרות...</Text>
+      <View style={[styles.root, styles.centered]}>
+        <ActivityIndicator size="large" color={ui.primary} />
+        <Text style={styles.loadingText}>טוען פרופיל...</Text>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <View style={styles.root}>
+      <View style={styles.bg} pointerEvents="none">
+        <LinearGradient
+          colors={['#F7FAFF', '#E8F1FF', '#F2E0BA']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.bg}
+        />
+        <LinearGradient
+          colors={['rgba(255,255,255,0.72)', 'rgba(255,255,255,0)']}
+          start={{ x: 0.05, y: 0 }}
+          end={{ x: 0.7, y: 0.55 }}
+          style={styles.bgHighlight}
+        />
+        <LinearGradient
+          colors={['rgba(232,196,122,0.52)', 'rgba(244,224,186,0.18)', 'rgba(244,224,186,0)']}
+          start={{ x: 1, y: 1 }}
+          end={{ x: 0.1, y: 0.15 }}
+          style={styles.bgWarmGlow}
+        />
+      </View>
+
       <AppKeyboardAwareScrollView
-        style={styles.scrollView} 
-        contentContainerStyle={styles.scrollContent}
+        style={styles.scrollView}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 12, paddingBottom: 120 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Profile Card */}
-        <View style={styles.profileCard}>
-          <TouchableOpacity style={styles.editProfileIconButton} onPress={() => router.push('/profile-editor')}>
-            <Ionicons name="create-outline" size={20} color={colors.primary} />
-          </TouchableOpacity>
-
-          <View style={styles.eventCoverWrap}>
+        <View style={styles.heroCard}>
+          <View style={styles.heroCoverWrap}>
             <Image
               source={invitationImageUrl ? { uri: invitationImageUrl } : getEventCoverSource()}
-              style={styles.eventCoverImg}
+              style={styles.heroCoverImg}
               contentFit="cover"
               transition={150}
               cachePolicy="none"
               recyclingKey={invitationImageUrl || 'fallback-cover'}
             />
+            <LinearGradient colors={['rgba(6,23,62,0.04)', 'rgba(6,23,62,0.78)']} style={styles.heroCoverOverlay} />
+
           </View>
 
-          <View style={styles.profileContent}>
-          
-          <View style={styles.profileIconContainer}>
-            {avatarUri ? (
-              <Image
-                source={{ uri: avatarUri }}
-                style={styles.profileAvatar}
-                contentFit="cover"
-                transition={120}
-              />
-            ) : (
-              <Ionicons name="person-circle" size={AVATAR_SIZE} color={colors.primary} />
-            )}
+          <View style={styles.heroBody}>
+            <View style={styles.heroAvatarWrap}>
+              <View style={styles.heroAvatarRing}>
+                {avatarUri ? (
+                  <Image source={{ uri: avatarUri }} style={styles.heroAvatar} contentFit="cover" transition={120} />
+                ) : (
+                  <View style={styles.heroAvatarFallback}>
+                    <Ionicons name="person" size={38} color={ui.primary} />
+                  </View>
+                )}
+              </View>
+            </View>
+
+            <View style={styles.heroDatePill}>
+              <Ionicons name="calendar-outline" size={14} color={ui.primary} />
+              <Text style={styles.heroDatePillText}>{formattedEventDate}</Text>
+            </View>
+
+            <View style={styles.heroTextCol}>
+              <Text style={styles.heroName}>{eventTitle}</Text>
+              {weddingNames ? <Text style={styles.heroSubName}>{String(userData?.name || '')}</Text> : null}
+              <Text style={styles.heroEmail}>{String(userData?.email || '')}</Text>
+              {userData?.phone ? <Text style={styles.heroPhone}>{userData.phone}</Text> : null}
+            </View>
           </View>
-          <Text style={styles.profileName}>{weddingNames || userData?.name}</Text>
-          {weddingNames ? <Text style={styles.profileSubName}>{userData?.name}</Text> : null}
-          <Text style={styles.profileEmail}>{userData?.email}</Text>
-          </View>
+
         </View>
 
-        {/* Edit section (replaces duplicated message settings) */}
-        <View style={styles.notificationsSection}>
-          <View style={styles.notifHeader}>
-            <View style={styles.notifIconPill}>
-              <Ionicons name="create-outline" size={18} color={colors.primary} />
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <View style={styles.cardHeaderIcon}>
+              <Ionicons name="create-outline" size={18} color={ui.primary} />
             </View>
-            <View style={styles.notifHeaderText}>
-              <Text style={styles.notifTitle}>עריכה וניהול</Text>
-              <Text style={styles.notifSubtitle}>עריכת פרטי האירוע וההזמנה</Text>
-            </View>
-            <View style={styles.notifPill}>
-              <Text style={styles.notifPillText}>עדכון</Text>
+            <View style={styles.cardHeaderText}>
+              <Text style={styles.cardTitle}>ניהול מהיר</Text>
+              <Text style={styles.cardSubtitle}>כפתורי פעולה מעוצבים בגישה של מסך מנהל, רק מותאמים לבעלי האירוע</Text>
             </View>
           </View>
 
-          <View style={styles.cardsStack}>
-            <TouchableOpacity
-              style={[styles.notificationCard, { borderColor: 'rgba(59,130,246,0.18)', backgroundColor: 'rgba(255,255,255,0.92)' }]}
+          <View style={styles.actionsStack}>
+            <ActionCard
+              icon="calendar-outline"
+              title="עריכת פרטי אירוע"
+              subtitle="כותרת, שמות ותאריך האירוע"
+              accentColor="#2563EB"
               onPress={openEventEditor}
-              activeOpacity={0.9}
-            >
-              <View style={[styles.whatsappAccent, { backgroundColor: 'rgba(59,130,246,0.95)' }]} />
-              <View style={styles.cardMain}>
-                <Text style={[styles.cardTitle, { color: colors.gray[900] }]} numberOfLines={1}>
-                  עריכת פרטי אירוע
-                </Text>
-                <View style={styles.cardMetaRow}>
-                  <Text style={[styles.metaText, { color: colors.gray[700] }]}>כותרת</Text>
-                  <Text style={[styles.metaBullet, { color: colors.gray[400] }]}>•</Text>
-                  <Text style={[styles.metaText, { color: colors.gray[700] }]}>שמות</Text>
-                  <Text style={[styles.metaBullet, { color: colors.gray[400] }]}>•</Text>
-                  <Text style={[styles.metaText, { color: colors.gray[700] }]}>תאריך</Text>
-                </View>
-              </View>
-              <TouchableOpacity style={styles.cardChevron} onPress={openEventEditor} activeOpacity={0.9}>
-                <Ionicons name="chevron-back" size={20} color={colors.gray[500]} />
-              </TouchableOpacity>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.notificationCard, { borderColor: 'rgba(37,211,102,0.18)', backgroundColor: 'rgba(255,255,255,0.92)' }]}
+            />
+            <ActionCard
+              icon="image-outline"
+              title="עריכת הזמנה"
+              subtitle="תמונה וקישור אישור הגעה במקום אחד"
+              accentColor="#16A34A"
               onPress={openInvitationEditor}
-              activeOpacity={0.9}
-            >
-              <View style={[styles.whatsappAccent, { backgroundColor: 'rgba(37,211,102,0.95)' }]} />
-              <View style={styles.cardMain}>
-                <Text style={[styles.cardTitle, { color: colors.gray[900] }]} numberOfLines={1}>
-                  עריכת הזמנה
-                </Text>
-                <View style={styles.cardMetaRow}>
-                  <Text style={[styles.metaText, { color: colors.gray[700] }]}>קישור אישור הגעה</Text>
-                  <Text style={[styles.metaBullet, { color: colors.gray[400] }]}>•</Text>
-                  <Text style={[styles.metaText, { color: colors.gray[700] }]}>תמונה</Text>
-                </View>
-              </View>
-              <TouchableOpacity style={styles.cardChevron} onPress={openInvitationEditor} activeOpacity={0.9}>
-                <Ionicons name="chevron-back" size={20} color={colors.gray[500]} />
-              </TouchableOpacity>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.notificationCard, { borderColor: 'rgba(15,23,42,0.10)', backgroundColor: 'rgba(255,255,255,0.92)' }]}
-              onPress={() => router.push('/profile-editor')}
-              activeOpacity={0.9}
-            >
-              <View style={[styles.whatsappAccent, { backgroundColor: 'rgba(15,23,42,0.85)' }]} />
-              <View style={styles.cardMain}>
-                <Text style={[styles.cardTitle, { color: colors.gray[900] }]} numberOfLines={1}>
-                  עריכת פרופיל
-                </Text>
-                <View style={styles.cardMetaRow}>
-                  <Text style={[styles.metaText, { color: colors.gray[700] }]}>שם</Text>
-                  <Text style={[styles.metaBullet, { color: colors.gray[400] }]}>•</Text>
-                  <Text style={[styles.metaText, { color: colors.gray[700] }]}>תמונה</Text>
-                </View>
-              </View>
-              <TouchableOpacity style={styles.cardChevron} onPress={() => router.push('/profile-editor')} activeOpacity={0.9}>
-                <Ionicons name="chevron-back" size={20} color={colors.gray[500]} />
-              </TouchableOpacity>
-            </TouchableOpacity>
+            />
+            <ActionCard
+              icon="person-outline"
+              title="עריכת פרופיל"
+              subtitle="שם, אימייל ותמונת פרופיל"
+              accentColor="#0F172A"
+              onPress={openProfileEditor}
+            />
           </View>
         </View>
 
-        {/* Logout Button */}
-        <TouchableOpacity style={styles.logoutButton} onPress={askLogout}>
-          <Text style={styles.logoutButtonText}>התנתק</Text>
-        </TouchableOpacity>
+        {hasMultipleEvents ? (
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <View style={styles.cardHeaderIcon}>
+                <Ionicons name="swap-horizontal-outline" size={18} color={ui.primary} />
+              </View>
+              <View style={styles.cardHeaderText}>
+                <Text style={styles.cardTitle}>בחירת אירוע</Text>
+                <Text style={styles.cardSubtitle}>אם יש לך כמה אירועים מקושרים, אפשר לעבור מכאן בין האירועים שברצונך לנהל</Text>
+              </View>
+            </View>
+
+            <EventSwitcher
+              userId={userData?.id}
+              selectedEventId={resolvedEventId}
+              onSelectEventId={handleSelectEventId}
+              label="אירוע לניהול"
+              onHasMultipleChange={setHasMultipleEvents}
+            />
+          </View>
+        ) : (
+          <View style={styles.hiddenEventSwitcherProbe}>
+            <EventSwitcher
+              userId={userData?.id}
+              selectedEventId={resolvedEventId}
+              onSelectEventId={handleSelectEventId}
+              label="אירוע לניהול"
+              onHasMultipleChange={setHasMultipleEvents}
+            />
+          </View>
+        )}
+
+        <View style={styles.logoutPanel}>
+          <TouchableOpacity style={styles.logoutButton} onPress={askLogout} activeOpacity={0.92}>
+            <LinearGradient
+              colors={['#e53935', '#c62828', '#b71c1c']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.logoutGradient}
+            >
+              <Ionicons name="log-out-outline" size={22} color="#FFFFFF" />
+              <Text style={styles.logoutButtonText}>התנתק</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
       </AppKeyboardAwareScrollView>
 
-      {/* Event editor modal */}
       <Modal visible={eventEditorOpen} transparent animationType="fade" onRequestClose={() => setEventEditorOpen(false)}>
         <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.35)' }]}>
           <AppKeyboardAwareScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} showsVerticalScrollIndicator={false}>
             <Pressable style={styles.modalOverlayTouchable} onPress={() => setEventEditorOpen(false)} />
 
-            <View style={styles.modalCard}>
-              <View style={styles.modalHeader}>
-                <Pressable onPress={() => setEventEditorOpen(false)} style={styles.modalCloseBtn} accessibilityRole="button" accessibilityLabel="סגור">
+            <View style={[styles.modalCard, styles.eventEditorCard]}>
+              <LinearGradient
+                colors={['#F8FBFF', '#EEF4FF', '#F5E8C8']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.eventEditorHero}
+              >
+                <Pressable onPress={() => setEventEditorOpen(false)} style={styles.eventEditorCloseBtn} accessibilityRole="button" accessibilityLabel="סגור">
                   <Ionicons name="close" size={18} color={colors.gray[700]} />
                 </Pressable>
-                <View style={styles.modalHeaderTitles}>
-                  <Text style={styles.modalTitle}>עריכת פרטי אירוע</Text>
-                  <Text style={styles.modalSubtitle} numberOfLines={2}>
-                    עדכון כותרת, שמות ותאריך
-                  </Text>
+
+                <View style={styles.eventEditorHeroBadge}>
+                  <Ionicons name="sparkles-outline" size={20} color={ui.primary} />
                 </View>
-                <View style={{ width: 40 }} />
-              </View>
 
-              <View style={styles.modalDivider} />
+                <Text style={styles.eventEditorTitle}>עריכת פרטי אירוע</Text>
+                <Text style={styles.eventEditorSubtitle}>עדכנו כותרת, שמות ותאריך בעיצוב נקי שמתאים לשפה של האפליקציה</Text>
+              </LinearGradient>
 
-              <View style={styles.modalBody}>
-                <View style={styles.block}>
-                  <Text style={styles.blockLabel}>כותרת אירוע</Text>
+              <ScrollView
+                style={styles.eventEditorBodyScroll}
+                contentContainerStyle={styles.eventEditorBody}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                nestedScrollEnabled
+              >
+                <View style={styles.eventFieldCard}>
+                  <View style={styles.eventFieldHeader}>
+                    <View style={styles.eventFieldIconBox}>
+                      <Ionicons name="sparkles-outline" size={18} color={ui.primary} />
+                    </View>
+                    <View style={styles.eventFieldTitleWrap}>
+                      <Text style={styles.eventFieldLabel}>כותרת אירוע</Text>
+                      <Text style={styles.eventFieldHint}>השם הראשי שיופיע לאורך המערכת</Text>
+                    </View>
+                  </View>
                   <TextInput
                     value={draftEventTitle}
                     onChangeText={setDraftEventTitle}
-                    style={styles.simpleInput}
+                    style={[styles.simpleInput, styles.eventEditorInput]}
                     placeholder="שם האירוע"
                     placeholderTextColor="#9CA3AF"
+                    textAlign="right"
                   />
                 </View>
 
-                <View style={styles.block}>
-                  <Text style={styles.blockLabel}>שם חתן</Text>
+                <View style={styles.eventFieldCard}>
+                  <View style={styles.eventFieldHeader}>
+                    <View style={styles.eventFieldIconBox}>
+                      <Ionicons name="person-outline" size={18} color={ui.primary} />
+                    </View>
+                    <View style={styles.eventFieldTitleWrap}>
+                      <Text style={styles.eventFieldLabel}>שם חתן</Text>
+                      <Text style={styles.eventFieldHint}>השם שיופיע לצד פרטי האירוע</Text>
+                    </View>
+                  </View>
                   <TextInput
                     value={draftGroomName}
                     onChangeText={setDraftGroomName}
-                    style={styles.simpleInput}
+                    style={[styles.simpleInput, styles.eventEditorInput]}
                     placeholder="לדוגמה: דניאל"
                     placeholderTextColor="#9CA3AF"
+                    textAlign="right"
                   />
                 </View>
 
-                <View style={styles.block}>
-                  <Text style={styles.blockLabel}>שם כלה</Text>
+                <View style={styles.eventFieldCard}>
+                  <View style={styles.eventFieldHeader}>
+                    <View style={styles.eventFieldIconBox}>
+                      <Ionicons name="person-outline" size={18} color={ui.primary} />
+                    </View>
+                    <View style={styles.eventFieldTitleWrap}>
+                      <Text style={styles.eventFieldLabel}>שם כלה</Text>
+                      <Text style={styles.eventFieldHint}>השם השני שיופיע בפרופיל ובהזמנה</Text>
+                    </View>
+                  </View>
                   <TextInput
                     value={draftBrideName}
                     onChangeText={setDraftBrideName}
-                    style={styles.simpleInput}
+                    style={[styles.simpleInput, styles.eventEditorInput]}
                     placeholder="לדוגמה: נועה"
                     placeholderTextColor="#9CA3AF"
+                    textAlign="right"
                   />
                 </View>
 
-                <View style={styles.block}>
-                  <Text style={styles.blockLabel}>תאריך (YYYY-MM-DD)</Text>
+                <View style={styles.eventFieldCard}>
+                  <View style={styles.eventFieldHeader}>
+                    <View style={styles.eventFieldIconBox}>
+                      <Ionicons name="calendar-outline" size={18} color={ui.primary} />
+                    </View>
+                    <View style={styles.eventFieldTitleWrap}>
+                      <Text style={styles.eventFieldLabel}>תאריך האירוע</Text>
+                      <Text style={styles.eventFieldHint}>התאריך קבוע ומוצג לתצוגה בלבד</Text>
+                    </View>
+                  </View>
                   <TextInput
-                    value={draftEventDate}
-                    onChangeText={setDraftEventDate}
-                    style={styles.simpleInput}
-                    placeholder="2026-03-02"
+                    value={readonlyEventDateDisplay}
+                    style={[styles.simpleInput, styles.eventEditorInput, styles.eventEditorInputReadonly]}
+                    placeholder="31/03/2026"
                     placeholderTextColor="#9CA3AF"
-                    autoCapitalize="none"
+                    editable={false}
+                    selectTextOnFocus={false}
+                    showSoftInputOnFocus={false}
+                    textAlign="right"
                   />
                 </View>
-              </View>
+              </ScrollView>
 
-              <View style={styles.modalFooter}>
-                <Pressable style={styles.footerBtnSecondary} onPress={() => setEventEditorOpen(false)} accessibilityRole="button" accessibilityLabel="ביטול">
+              <View style={[styles.modalFooter, styles.eventEditorFooter]}>
+                <Pressable
+                  style={[styles.footerBtnSecondary, styles.eventEditorSecondaryBtn, eventSaving && styles.eventEditorBtnDisabled]}
+                  onPress={() => setEventEditorOpen(false)}
+                  disabled={eventSaving}
+                  accessibilityRole="button"
+                  accessibilityLabel="ביטול"
+                >
                   <Text style={styles.footerBtnSecondaryText}>ביטול</Text>
                 </Pressable>
-                <Pressable style={styles.footerBtnPrimary} onPress={saveEventEdits} accessibilityRole="button" accessibilityLabel="שמור">
-                  <Ionicons name="checkmark" size={18} color="#fff" />
-                  <Text style={styles.footerBtnPrimaryText}>שמור</Text>
+                <Pressable
+                  style={[styles.footerBtnPrimary, styles.eventEditorPrimaryBtn, eventSaving && styles.eventEditorBtnDisabled]}
+                  onPress={saveEventEdits}
+                  disabled={eventSaving}
+                  accessibilityRole="button"
+                  accessibilityLabel="שמור"
+                >
+                  {eventSaving ? (
+                    <>
+                      <ActivityIndicator size="small" color="#fff" />
+                      <Text style={styles.footerBtnPrimaryText}>שומר...</Text>
+                    </>
+                  ) : (
+                    <>
+                      <Ionicons name="checkmark" size={18} color="#fff" />
+                      <Text style={styles.footerBtnPrimaryText}>שמור</Text>
+                    </>
+                  )}
                 </Pressable>
               </View>
             </View>
@@ -583,31 +865,48 @@ export default function BrideGroomSettings() {
         </View>
       </Modal>
 
-      {/* Invitation editor modal */}
       <Modal visible={invitationEditorOpen} transparent animationType="fade" onRequestClose={() => setInvitationEditorOpen(false)}>
         <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.35)' }]}>
           <AppKeyboardAwareScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} showsVerticalScrollIndicator={false}>
             <Pressable style={styles.modalOverlayTouchable} onPress={() => setInvitationEditorOpen(false)} />
 
-            <View style={styles.modalCard}>
-              <View style={styles.modalHeader}>
-                <Pressable onPress={() => setInvitationEditorOpen(false)} style={styles.modalCloseBtn} accessibilityRole="button" accessibilityLabel="סגור">
+            <View style={[styles.modalCard, styles.invitationEditorCard]}>
+              <LinearGradient
+                colors={['#FFF9F3', '#F7F9FF', '#EEF4FF']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.invitationEditorHero}
+              >
+                <Pressable
+                  onPress={() => setInvitationEditorOpen(false)}
+                  style={styles.eventEditorCloseBtn}
+                  disabled={invitationSaving}
+                  accessibilityRole="button"
+                  accessibilityLabel="סגור"
+                >
                   <Ionicons name="close" size={18} color={colors.gray[700]} />
                 </Pressable>
-                <View style={styles.modalHeaderTitles}>
-                  <Text style={styles.modalTitle}>עריכת הזמנה</Text>
-                  <Text style={styles.modalSubtitle} numberOfLines={2}>
-                    קישור אישור הגעה ותמונה
-                  </Text>
+
+                <View style={styles.invitationEditorHeroBadge}>
+                  <Ionicons name="image-outline" size={20} color={ui.primary} />
                 </View>
-                <View style={{ width: 40 }} />
-              </View>
 
-              <View style={styles.modalDivider} />
+                <Text style={styles.eventEditorTitle}>עריכת הזמנה</Text>
+                <Text style={styles.eventEditorSubtitle}>עדכנו את תמונת ההזמנה בעיצוב אחיד, נקי ואלגנטי שמתאים לשפה של האפליקציה</Text>
+              </LinearGradient>
 
-              <View style={styles.modalBody}>
-                <View style={styles.block}>
-                  <Text style={styles.blockLabel}>תמונת הזמנה</Text>
+              <View style={styles.eventEditorBody}>
+                <View style={styles.invitationPanelCard}>
+                  <View style={styles.eventFieldHeader}>
+                    <View style={styles.eventFieldIconBox}>
+                      <Ionicons name="image-outline" size={18} color={ui.primary} />
+                    </View>
+                    <View style={styles.eventFieldTitleWrap}>
+                      <Text style={styles.eventFieldLabel}>תמונת הזמנה</Text>
+                      <Text style={styles.eventFieldHint}>בחרו תמונה מעודכנת להזמנה של האירוע</Text>
+                    </View>
+                  </View>
+
                   <View style={styles.invitationPreview}>
                     {draftInvitationImageUrl ? (
                       <Image
@@ -620,61 +919,70 @@ export default function BrideGroomSettings() {
                       />
                     ) : (
                       <View style={styles.invitationEmpty}>
-                        <Ionicons name="image-outline" size={22} color={colors.gray[600]} />
-                        <Text style={styles.invitationEmptyText}>אין הזמנה</Text>
+                        <Ionicons name="image-outline" size={26} color={colors.gray[600]} />
+                        <Text style={styles.invitationEmptyText}>אין הזמנה שמורה כרגע</Text>
                       </View>
                     )}
                   </View>
 
                   <View style={styles.invitationActionsRow}>
                     <Pressable
-                      style={[styles.invitationActionBtn, invitationUploading ? { opacity: 0.6 } : null]}
+                      style={[styles.invitationActionBtn, invitationUploading && styles.eventEditorBtnDisabled]}
                       onPress={pickAndUploadInvitationImage}
-                      disabled={invitationUploading}
+                      disabled={invitationUploading || invitationSaving}
                       accessibilityRole="button"
                       accessibilityLabel="העלה הזמנה חדשה"
                     >
                       <Ionicons name="cloud-upload-outline" size={16} color={colors.gray[800]} />
-                      <Text style={styles.invitationActionText}>העלה חדשה</Text>
+                      <Text style={styles.invitationActionText}>{invitationUploading ? 'מעלה...' : 'העלה חדשה'}</Text>
                     </Pressable>
 
                     <Pressable
                       style={[
                         styles.invitationActionBtn,
                         styles.invitationActionDanger,
-                        !draftInvitationImageUrl || invitationUploading ? { opacity: 0.5 } : null,
+                        (!draftInvitationImageUrl || invitationUploading || invitationSaving) && styles.eventEditorBtnDisabled,
                       ]}
                       onPress={removeInvitationImage}
-                      disabled={!draftInvitationImageUrl || invitationUploading}
+                      disabled={!draftInvitationImageUrl || invitationUploading || invitationSaving}
                       accessibilityRole="button"
                       accessibilityLabel="מחק הזמנה"
                     >
-                      <Ionicons name="trash-outline" size={16} color={'#991b1b'} />
+                      <Ionicons name="trash-outline" size={16} color="#991b1b" />
                       <Text style={[styles.invitationActionText, { color: '#991b1b' }]}>מחק</Text>
                     </Pressable>
                   </View>
                 </View>
-
-                <View style={styles.block}>
-                  <Text style={styles.blockLabel}>קישור אישור הגעה</Text>
-                  <TextInput
-                    value={draftRsvpLink}
-                    onChangeText={setDraftRsvpLink}
-                    style={styles.simpleInput}
-                    placeholder="https://..."
-                    placeholderTextColor="#9CA3AF"
-                    autoCapitalize="none"
-                  />
-                </View>
               </View>
 
-              <View style={styles.modalFooter}>
-                <Pressable style={styles.footerBtnSecondary} onPress={() => setInvitationEditorOpen(false)} accessibilityRole="button" accessibilityLabel="ביטול">
+              <View style={[styles.modalFooter, styles.eventEditorFooter]}>
+                <Pressable
+                  style={[styles.footerBtnSecondary, styles.eventEditorSecondaryBtn, invitationSaving && styles.eventEditorBtnDisabled]}
+                  onPress={() => setInvitationEditorOpen(false)}
+                  disabled={invitationSaving}
+                  accessibilityRole="button"
+                  accessibilityLabel="ביטול"
+                >
                   <Text style={styles.footerBtnSecondaryText}>ביטול</Text>
                 </Pressable>
-                <Pressable style={styles.footerBtnPrimary} onPress={saveInvitationEdits} accessibilityRole="button" accessibilityLabel="שמור">
-                  <Ionicons name="checkmark" size={18} color="#fff" />
-                  <Text style={styles.footerBtnPrimaryText}>שמור</Text>
+                <Pressable
+                  style={[styles.footerBtnPrimary, styles.eventEditorPrimaryBtn, invitationSaving && styles.eventEditorBtnDisabled]}
+                  onPress={saveInvitationEdits}
+                  disabled={invitationSaving}
+                  accessibilityRole="button"
+                  accessibilityLabel="שמור"
+                >
+                  {invitationSaving ? (
+                    <>
+                      <ActivityIndicator size="small" color="#fff" />
+                      <Text style={styles.footerBtnPrimaryText}>שומר...</Text>
+                    </>
+                  ) : (
+                    <>
+                      <Ionicons name="checkmark" size={18} color="#fff" />
+                      <Text style={styles.footerBtnPrimaryText}>שמור</Text>
+                    </>
+                  )}
                 </Pressable>
               </View>
             </View>
@@ -682,7 +990,172 @@ export default function BrideGroomSettings() {
         </View>
       </Modal>
 
-      {/* RTL confirmation modal for removing invitation */}
+      <Modal visible={profileEditorOpen} transparent animationType="fade" onRequestClose={() => setProfileEditorOpen(false)}>
+        <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.35)' }]}>
+          <AppKeyboardAwareScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} showsVerticalScrollIndicator={false}>
+            <Pressable style={styles.modalOverlayTouchable} onPress={() => setProfileEditorOpen(false)} />
+
+            <View style={[styles.modalCard, styles.profileEditorCard]}>
+              <LinearGradient
+                colors={['#F8FBFF', '#EEF4FF', '#F5E8C8']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.profileEditorHero}
+              >
+                <Pressable
+                  onPress={() => setProfileEditorOpen(false)}
+                  style={styles.eventEditorCloseBtn}
+                  disabled={profileSaving}
+                  accessibilityRole="button"
+                  accessibilityLabel="סגור"
+                >
+                  <Ionicons name="close" size={18} color={colors.gray[700]} />
+                </Pressable>
+
+                <View style={styles.profileEditorHeroBadge}>
+                  <Ionicons name="person-outline" size={20} color={ui.primary} />
+                </View>
+
+                <Text style={styles.eventEditorTitle}>עריכת פרופיל</Text>
+                <Text style={styles.eventEditorSubtitle}>עדכנו שם, אימייל ותמונת פרופיל באותו קו עיצובי של שאר חלונות העריכה</Text>
+              </LinearGradient>
+
+              <ScrollView
+                style={styles.eventEditorBodyScroll}
+                contentContainerStyle={styles.eventEditorBody}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                nestedScrollEnabled
+              >
+                <View style={styles.profileAvatarCard}>
+                  <View style={styles.eventFieldHeader}>
+                    <View style={styles.eventFieldIconBox}>
+                      <Ionicons name="camera-outline" size={18} color={ui.primary} />
+                    </View>
+                    <View style={styles.eventFieldTitleWrap}>
+                      <Text style={styles.eventFieldLabel}>תמונת פרופיל</Text>
+                      <Text style={styles.eventFieldHint}>בחרו תמונה חדשה לפרופיל של בעלי האירוע</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.profileAvatarEditorRow}>
+                    <TouchableOpacity
+                      style={styles.profileAvatarEditorBtn}
+                      onPress={pickAndUploadProfileAvatar}
+                      disabled={profileAvatarUploading || profileSaving}
+                      activeOpacity={0.92}
+                    >
+                      {avatarUri ? (
+                        <Image source={{ uri: avatarUri }} style={styles.profileAvatarEditorImg} contentFit="cover" transition={120} />
+                      ) : (
+                        <View style={styles.profileAvatarEditorFallback}>
+                          <Ionicons name="person" size={34} color={ui.primary} />
+                        </View>
+                      )}
+                      <View style={styles.profileAvatarEditorBadge}>
+                        {profileAvatarUploading ? (
+                          <ActivityIndicator size="small" color="#fff" />
+                        ) : (
+                          <Ionicons name="camera" size={16} color="#fff" />
+                        )}
+                      </View>
+                    </TouchableOpacity>
+
+                    <View style={styles.profileAvatarEditorMeta}>
+                      <Text style={styles.profileAvatarEditorHint}>אפשר ללחוץ על התמונה או להשתמש בכפתור כדי לבחור תמונה חדשה מהגלריה</Text>
+                      <TouchableOpacity
+                        style={[styles.invitationActionBtn, styles.profileAvatarActionBtn, (profileAvatarUploading || profileSaving) && styles.eventEditorBtnDisabled]}
+                        onPress={pickAndUploadProfileAvatar}
+                        disabled={profileAvatarUploading || profileSaving}
+                        activeOpacity={0.92}
+                      >
+                        <Ionicons name="cloud-upload-outline" size={16} color={ui.primary} />
+                        <Text style={[styles.invitationActionText, styles.profileAvatarActionText]}>
+                          {profileAvatarUploading ? 'מעלה...' : 'בחר תמונה'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </View>
+
+                <View style={styles.eventFieldCard}>
+                  <View style={styles.eventFieldHeader}>
+                    <View style={styles.eventFieldIconBox}>
+                      <Ionicons name="person-outline" size={18} color={ui.primary} />
+                    </View>
+                    <View style={styles.eventFieldTitleWrap}>
+                      <Text style={styles.eventFieldLabel}>שם מלא</Text>
+                      <Text style={styles.eventFieldHint}>השם שמוצג בפרופיל ובאזורים האישיים</Text>
+                    </View>
+                  </View>
+                  <TextInput
+                    value={draftProfileName}
+                    onChangeText={setDraftProfileName}
+                    style={[styles.simpleInput, styles.eventEditorInput]}
+                    placeholder="הזן שם מלא"
+                    placeholderTextColor="#9CA3AF"
+                    textAlign="right"
+                  />
+                </View>
+
+                <View style={styles.eventFieldCard}>
+                  <View style={styles.eventFieldHeader}>
+                    <View style={styles.eventFieldIconBox}>
+                      <Ionicons name="mail-outline" size={18} color={ui.primary} />
+                    </View>
+                    <View style={styles.eventFieldTitleWrap}>
+                      <Text style={styles.eventFieldLabel}>כתובת אימייל</Text>
+                      <Text style={styles.eventFieldHint}>כתובת המייל האישית של בעל האירוע</Text>
+                    </View>
+                  </View>
+                  <TextInput
+                    value={draftProfileEmail}
+                    onChangeText={setDraftProfileEmail}
+                    style={[styles.simpleInput, styles.eventEditorInput]}
+                    placeholder="הזן כתובת אימייל"
+                    placeholderTextColor="#9CA3AF"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    textAlign="right"
+                  />
+                </View>
+              </ScrollView>
+
+              <View style={[styles.modalFooter, styles.eventEditorFooter]}>
+                <Pressable
+                  style={[styles.footerBtnSecondary, styles.eventEditorSecondaryBtn, profileSaving && styles.eventEditorBtnDisabled]}
+                  onPress={() => setProfileEditorOpen(false)}
+                  disabled={profileSaving}
+                  accessibilityRole="button"
+                  accessibilityLabel="ביטול"
+                >
+                  <Text style={styles.footerBtnSecondaryText}>ביטול</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.footerBtnPrimary, styles.eventEditorPrimaryBtn, profileSaving && styles.eventEditorBtnDisabled]}
+                  onPress={saveProfileEdits}
+                  disabled={profileSaving}
+                  accessibilityRole="button"
+                  accessibilityLabel="שמור"
+                >
+                  {profileSaving ? (
+                    <>
+                      <ActivityIndicator size="small" color="#fff" />
+                      <Text style={styles.footerBtnPrimaryText}>שומר...</Text>
+                    </>
+                  ) : (
+                    <>
+                      <Ionicons name="checkmark" size={18} color="#fff" />
+                      <Text style={styles.footerBtnPrimaryText}>שמור</Text>
+                    </>
+                  )}
+                </Pressable>
+              </View>
+            </View>
+          </AppKeyboardAwareScrollView>
+        </View>
+      </Modal>
+
       <Modal
         visible={removeInvitationConfirmOpen}
         transparent
@@ -732,7 +1205,6 @@ export default function BrideGroomSettings() {
         </Pressable>
       </Modal>
 
-      {/* חלון התנתקות - עיצוב זהה ל-admin-profile */}
       <Modal
         visible={logoutModalOpen}
         transparent
@@ -741,7 +1213,6 @@ export default function BrideGroomSettings() {
       >
         <Pressable style={styles.loBackdrop} onPress={() => setLogoutModalOpen(false)}>
           <Pressable style={styles.loSheet} onPress={() => {}} accessibilityRole="dialog">
-
             <View style={styles.loIconWrap}>
               <View style={styles.loIconRing}>
                 <Ionicons name="log-out-outline" size={26} color="#c62828" />
@@ -781,7 +1252,6 @@ export default function BrideGroomSettings() {
                 </Pressable>
               </View>
             </View>
-
           </Pressable>
         </Pressable>
       </Modal>
@@ -790,284 +1260,325 @@ export default function BrideGroomSettings() {
 }
 
 const styles = StyleSheet.create({
-  container: {
+  root: {
     flex: 1,
-    backgroundColor: colors.gray[50],
+    backgroundColor: ui.bg,
+  },
+  bg: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  bgHighlight: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.95,
+  },
+  bgWarmGlow: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.82,
   },
   centered: {
     justifyContent: 'center',
     alignItems: 'center',
   },
   loadingText: {
-    fontSize: 16,
+    marginTop: 12,
+    fontSize: 14,
+    fontWeight: '800',
     color: colors.textLight,
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    paddingTop: 20,
-    paddingBottom: 120,
+    paddingHorizontal: 16,
+    gap: 14,
   },
-  profileCard: {
-    backgroundColor: colors.white,
-    marginHorizontal: 20,
-    borderRadius: 20,
-    alignItems: 'center',
-    shadowColor: colors.richBlack,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 2,
-    marginBottom: 32,
-    position: 'relative',
+  heroCard: {
+    backgroundColor: 'rgba(255,255,255,0.98)',
+    borderRadius: 28,
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: ui.border,
+    shadowColor: colors.black,
+    shadowOpacity: 0.06,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 3,
   },
-  eventCoverWrap: {
-    width: '100%',
-    height: 140,
-    backgroundColor: colors.gray[100],
+  heroCoverWrap: {
+    height: 200,
     position: 'relative',
+    backgroundColor: colors.gray[100],
   },
-  eventCoverImg: {
+  heroCoverImg: {
     width: '100%',
     height: '100%',
   },
-  profileContent: {
-    width: '100%',
-    alignItems: 'center',
-    paddingVertical: 24,
-    paddingHorizontal: 24,
+  heroCoverOverlay: {
+    ...StyleSheet.absoluteFillObject,
   },
-  profileIconContainer: {
-    marginTop: -52,
-    marginBottom: 16,
-  },
-  profileAvatar: {
-    width: 104,
-    height: 104,
-    borderRadius: 52,
-    borderWidth: 3,
-    borderColor: 'rgba(0,0,0,0.08)',
-    backgroundColor: colors.gray[100],
-  },
-  profileName: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 4,
-    textAlign: 'center',
-  },
-  profileSubName: {
-    marginTop: -2,
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.textLight,
-    textAlign: 'center',
-    marginBottom: 6,
-  },
-  profileEmail: {
-    fontSize: 16,
-    color: colors.textLight,
-    textAlign: 'center',
-  },
-  editProfileIconButton: {
-    position: 'absolute',
-    top: 16,
-    right: 16,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.gray[100],
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: colors.richBlack,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-    zIndex: 1,
-  },
-  notificationsSection: {
-    marginHorizontal: 20,
-    marginBottom: 32,
-  },
-  notifHeader: {
+  heroDatePill: {
     flexDirection: ROW_DIR,
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-    padding: 14,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.92)',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: 'rgba(6,23,62,0.05)',
     borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.08)',
+    borderColor: 'rgba(6,23,62,0.10)',
+    marginBottom: 12,
+  },
+  heroDatePillText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: ui.primary,
+    textAlign: 'center',
+  },
+  heroBody: {
+    marginTop: -42,
+    paddingHorizontal: 18,
+    paddingBottom: 18,
+    alignItems: 'center',
+  },
+  heroAvatarWrap: {
+    marginBottom: 14,
+  },
+  heroAvatarRing: {
+    width: 104,
+    height: 104,
+    borderRadius: 999,
+    padding: 4,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.08)',
+    shadowColor: colors.black,
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 5,
+  },
+  heroAvatar: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 999,
+  },
+  heroAvatarFallback: {
+    flex: 1,
+    borderRadius: 999,
+    backgroundColor: 'rgba(6,23,62,0.05)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroTextCol: {
+    width: '100%',
+    alignItems: 'center',
+    gap: 6,
+  },
+  heroName: {
+    fontSize: 26,
+    fontWeight: '900',
+    color: ui.primary,
+    textAlign: 'center',
+  },
+  heroSubName: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: ui.muted,
+    textAlign: 'center',
+  },
+  heroEmail: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: ui.muted,
+    textAlign: 'center',
+  },
+  heroPhone: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.gray[700],
+    textAlign: 'center',
+  },
+  card: {
+    backgroundColor: ui.card,
+    borderRadius: 24,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: ui.border,
     shadowColor: colors.black,
     shadowOpacity: 0.05,
     shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
+    shadowOffset: { width: 0, height: 8 },
     elevation: 2,
-    marginBottom: 12,
   },
-  notifIconPill: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
+  cardHeader: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 14,
+  },
+  cardHeaderIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 16,
     backgroundColor: 'rgba(6,23,62,0.06)',
     borderWidth: 1,
     borderColor: 'rgba(6,23,62,0.10)',
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  notifHeaderText: { flex: 1, alignItems: ALIGN_RIGHT },
-  notifTitle: { fontSize: 18, fontWeight: '900', color: colors.text, textAlign: 'right' },
-  notifSubtitle: {
+  cardHeaderText: {
+    flex: 1,
+    alignItems: ALIGN_RIGHT,
+  },
+  cardTitle: {
+    fontSize: 17,
+    fontWeight: '900',
+    color: ui.primary,
+    textAlign: 'right',
+  },
+  cardSubtitle: {
     marginTop: 4,
     fontSize: 12,
     fontWeight: '700',
-    color: colors.gray[600],
-    textAlign: 'right',
-    lineHeight: 16,
-  },
-  notifPill: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: 'rgba(29,78,216,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(29,78,216,0.14)',
-  },
-  notifPillText: { fontSize: 12, fontWeight: '900', color: 'rgba(29,78,216,0.95)' },
-  notifCallout: {
-    flexDirection: ROW_DIR,
-    alignItems: 'flex-start',
-    gap: 10,
-    padding: 12,
-    borderRadius: 16,
-    backgroundColor: 'rgba(6,23,62,0.04)',
-    borderWidth: 1,
-    borderColor: 'rgba(6,23,62,0.08)',
-    marginBottom: 18,
-  },
-  notifCalloutIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.08)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 1,
-  },
-  notifCalloutText: {
-    flex: 1,
-    fontSize: 12,
-    fontWeight: '800',
-    color: colors.gray[700],
+    color: ui.muted,
     textAlign: 'right',
     lineHeight: 18,
   },
-  logoutButton: {
-    backgroundColor: colors.error,
-    marginHorizontal: 20,
-    paddingVertical: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    shadowColor: colors.error,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  logoutButtonText: {
-    color: colors.white,
-    fontSize: 17,
-    fontWeight: '600',
-  },
-  notificationGroup: {
-    marginBottom: 32,
-  },
-  groupHeader: {
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    marginBottom: 12,
-    paddingHorizontal: 8,
+  infoList: {
     gap: 10,
   },
-  groupTitle: {
-    fontSize: 18,
+  infoRow: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    gap: 12,
+    padding: 14,
+    borderRadius: 18,
+    backgroundColor: 'rgba(6,23,62,0.03)',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.05)',
+  },
+  infoTextWrap: {
+    flex: 1,
+    alignItems: ALIGN_RIGHT,
+  },
+  infoLabel: {
+    fontSize: 12,
     fontWeight: '800',
-    color: '#111827',
+    color: ui.muted,
     textAlign: 'right',
   },
-  cardsStack: {
-    gap: 16,
+  infoValue: {
+    marginTop: 4,
+    fontSize: 14,
+    fontWeight: '900',
+    color: ui.text,
+    textAlign: 'right',
+    lineHeight: 20,
   },
-  notificationCard: {
+  infoIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.94)',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionsStack: {
+    gap: 12,
+  },
+  actionCard: {
     position: 'relative',
     flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
-    borderRadius: 16,
+    borderRadius: 20,
     borderWidth: 1,
-    paddingVertical: 20,
-    paddingHorizontal: 20,
+    borderColor: ui.border,
+    paddingVertical: 18,
+    paddingHorizontal: 16,
+    backgroundColor: 'rgba(255,255,255,0.96)',
     shadowColor: colors.black,
     shadowOpacity: 0.05,
-    shadowRadius: 20,
+    shadowRadius: 18,
     shadowOffset: { width: 0, height: 8 },
     elevation: 3,
     overflow: 'hidden',
   },
-  notificationCardWhatsapp: {
-    borderColor: 'rgba(37,211,102,0.18)',
-  },
-  whatsappAccent: {
+  actionAccent: {
     position: 'absolute',
     top: 0,
     bottom: 0,
     right: 0,
     width: 4,
-    borderTopRightRadius: 16,
-    borderBottomRightRadius: 16,
+    borderTopRightRadius: 20,
+    borderBottomRightRadius: 20,
   },
-  cardMain: {
-    flex: 1,
-    alignItems: ALIGN_RIGHT,
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    textAlign: 'right',
-  },
-  cardMetaRow: {
-    marginTop: 8,
-    alignSelf: ALIGN_RIGHT,
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-  },
-  statusBtn: {
-    paddingVertical: 2,
-  },
-  statusText: {
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  metaBullet: {
-    marginHorizontal: 10,
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  metaText: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  cardChevron: {
+  actionChevron: {
     paddingEnd: 4,
     paddingStart: 8,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  actionBody: {
+    flex: 1,
+    alignItems: ALIGN_RIGHT,
+    paddingHorizontal: 10,
+  },
+  actionTitle: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: ui.text,
+    textAlign: 'right',
+  },
+  actionSubtitle: {
+    marginTop: 6,
+    fontSize: 12,
+    fontWeight: '700',
+    color: ui.muted,
+    textAlign: 'right',
+    lineHeight: 18,
+  },
+  actionIconBox: {
+    width: 46,
+    height: 46,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  hiddenEventSwitcherProbe: {
+    position: 'absolute',
+    opacity: 0,
+    pointerEvents: 'none',
+  },
+  logoutPanel: {
+    marginTop: 4,
+    marginBottom: 8,
+  },
+  logoutButton: {
+    width: '100%',
+    minHeight: 62,
+    borderRadius: 22,
+    overflow: 'hidden',
+    shadowColor: '#c62828',
+    shadowOpacity: 0.22,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
+  },
+  logoutGradient: {
+    minHeight: 62,
+    borderRadius: 22,
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  logoutButtonText: {
+    color: colors.white,
+    fontSize: 18,
+    fontWeight: '900',
   },
   modalOverlay: {
     flex: 1,
@@ -1087,7 +1598,6 @@ const styles = StyleSheet.create({
   modalOverlayTouchable: {
     ...StyleSheet.absoluteFillObject,
   },
-
   modalCard: {
     width: '100%',
     maxWidth: 480,
@@ -1101,6 +1611,246 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 18 },
     elevation: 8,
     overflow: 'hidden',
+  },
+  eventEditorCard: {
+    borderColor: 'rgba(6,23,62,0.10)',
+    maxHeight: '82%',
+  },
+  invitationEditorCard: {
+    borderColor: 'rgba(6,23,62,0.10)',
+  },
+  profileEditorCard: {
+    borderColor: 'rgba(6,23,62,0.10)',
+    maxHeight: '84%',
+  },
+  eventEditorHero: {
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 16,
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(6,23,62,0.06)',
+    position: 'relative',
+  },
+  invitationEditorHero: {
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 16,
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(6,23,62,0.06)',
+    position: 'relative',
+  },
+  profileEditorHero: {
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 16,
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(6,23,62,0.06)',
+    position: 'relative',
+  },
+  eventEditorCloseBtn: {
+    position: 'absolute',
+    top: 16,
+    left: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.75)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.08)',
+  },
+  eventEditorHeroBadge: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.78)',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.08)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: colors.black,
+    shadowOpacity: 0.06,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 2,
+  },
+  invitationEditorHeroBadge: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.86)',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.08)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: colors.black,
+    shadowOpacity: 0.06,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 2,
+  },
+  profileEditorHeroBadge: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.86)',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.08)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: colors.black,
+    shadowOpacity: 0.06,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 2,
+  },
+  eventEditorTitle: {
+    marginTop: 10,
+    fontSize: 20,
+    fontWeight: '900',
+    color: ui.primary,
+    textAlign: 'center',
+  },
+  eventEditorSubtitle: {
+    marginTop: 6,
+    fontSize: 12,
+    fontWeight: '700',
+    color: ui.muted,
+    textAlign: 'center',
+    lineHeight: 18,
+    maxWidth: 270,
+  },
+  eventEditorBodyScroll: {
+    maxHeight: 360,
+  },
+  eventEditorBody: {
+    paddingHorizontal: 18,
+    paddingTop: 14,
+    paddingBottom: 18,
+    gap: 12,
+    backgroundColor: '#FFFFFF',
+  },
+  eventFieldCard: {
+    borderRadius: 22,
+    padding: 12,
+    backgroundColor: '#F8FAFD',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.06)',
+    gap: 10,
+  },
+  invitationPanelCard: {
+    borderRadius: 22,
+    padding: 14,
+    backgroundColor: '#F8FAFD',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.06)',
+    gap: 14,
+  },
+  profileAvatarCard: {
+    borderRadius: 22,
+    padding: 14,
+    backgroundColor: '#F8FAFD',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.06)',
+    gap: 14,
+  },
+  profileAvatarEditorRow: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    gap: 14,
+  },
+  profileAvatarEditorBtn: {
+    width: 92,
+    height: 92,
+    borderRadius: 46,
+    overflow: 'hidden',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.08)',
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileAvatarEditorImg: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 46,
+  },
+  profileAvatarEditorFallback: {
+    flex: 1,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(6,23,62,0.04)',
+  },
+  profileAvatarEditorBadge: {
+    position: 'absolute',
+    bottom: 6,
+    left: 6,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: ui.primary,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.92)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileAvatarEditorMeta: {
+    flex: 1,
+    alignItems: ALIGN_RIGHT,
+    gap: 10,
+  },
+  profileAvatarEditorHint: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: ui.muted,
+    textAlign: 'right',
+    lineHeight: 18,
+  },
+  profileAvatarActionBtn: {
+    alignSelf: ALIGN_RIGHT,
+    minWidth: 132,
+  },
+  profileAvatarActionText: {
+    color: ui.primary,
+  },
+  eventFieldHeader: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    gap: 12,
+  },
+  eventFieldIconBox: {
+    width: 38,
+    height: 38,
+    borderRadius: 13,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  eventFieldTitleWrap: {
+    flex: 1,
+    alignItems: ALIGN_RIGHT,
+  },
+  eventFieldLabel: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: ui.primary,
+    textAlign: 'right',
+  },
+  eventFieldHint: {
+    marginTop: 3,
+    fontSize: 10,
+    fontWeight: '700',
+    color: ui.muted,
+    textAlign: 'right',
+    lineHeight: 14,
   },
   modalHeader: {
     paddingHorizontal: 24,
@@ -1150,8 +1900,15 @@ const styles = StyleSheet.create({
     paddingBottom: 22,
     gap: 18,
   },
-  block: { gap: 10 },
-  blockLabel: { fontSize: 13, fontWeight: '900', color: '#111827', textAlign: 'right' },
+  block: {
+    gap: 10,
+  },
+  blockLabel: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: '#111827',
+    textAlign: 'right',
+  },
   simpleInput: {
     height: 52,
     borderRadius: 16,
@@ -1162,13 +1919,37 @@ const styles = StyleSheet.create({
     color: '#111827',
     writingDirection: 'rtl',
   },
+  eventEditorInput: {
+    height: 50,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.08)',
+    paddingHorizontal: 16,
+    fontSize: 16,
+    fontWeight: '900',
+    color: ui.primary,
+    shadowColor: colors.black,
+    shadowOpacity: 0.03,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 1,
+  },
+  eventEditorInputReadonly: {
+    backgroundColor: 'rgba(6,23,62,0.04)',
+    color: 'rgba(6,23,62,0.78)',
+  },
   invitationPreview: {
-    height: 220,
-    borderRadius: 18,
+    height: 190,
+    borderRadius: 20,
     overflow: 'hidden',
     backgroundColor: '#F3F4F6',
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.08)',
+    shadowColor: colors.black,
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 1,
   },
   invitationPreviewImg: {
     width: '100%',
@@ -1186,14 +1967,13 @@ const styles = StyleSheet.create({
     color: colors.gray[600],
   },
   invitationActionsRow: {
-    marginTop: 10,
     flexDirection: ROW_DIR,
     gap: 10,
   },
   invitationActionBtn: {
     flex: 1,
-    height: 46,
-    borderRadius: 16,
+    height: 48,
+    borderRadius: 18,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.10)',
@@ -1211,108 +1991,6 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: '#111827',
   },
-  segmentWrap: {
-    flexDirection: ROW_DIR,
-    gap: 6,
-    padding: 4,
-    borderRadius: 16,
-    backgroundColor: '#F3F4F6',
-  },
-  segmentBtn: {
-    flex: 1,
-    height: 42,
-    borderRadius: 14,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  segmentBtnActive: {
-    backgroundColor: '#FFFFFF',
-    shadowColor: colors.black,
-    shadowOpacity: 0.07,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 2,
-  },
-  segmentText: { fontSize: 13, fontWeight: '800', color: '#6B7280' },
-  segmentTextActive: { color: '#1d4ed8' },
-
-  timingRow: { flexDirection: ROW_DIR, alignItems: 'center', gap: 12 },
-  daysInputWrap: {
-    flex: 1,
-    height: 54,
-    borderRadius: 16,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    justifyContent: 'center',
-  },
-  daysIcon: { position: 'absolute', right: 12 },
-  daysSuffix: { position: 'absolute', left: 12, fontSize: 12, fontWeight: '700', color: '#6B7280' },
-  daysInput: {
-    paddingHorizontal: 40,
-    fontSize: 18,
-    fontWeight: '900',
-    color: '#111827',
-    height: 54,
-  },
-  computedPill: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 16,
-    backgroundColor: 'rgba(29,78,216,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(29,78,216,0.16)',
-    alignItems: ALIGN_RIGHT,
-    minWidth: 128,
-  },
-  computedLabel: { fontSize: 11, fontWeight: '800', color: 'rgba(29,78,216,0.75)' },
-  computedValue: { marginTop: 4, fontSize: 13, fontWeight: '900', color: 'rgba(29,78,216,0.95)' },
-
-  bodyDivider: { height: 1, backgroundColor: '#E5E7EB' },
-
-  messageHeaderRow: {
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  messageTools: { flexDirection: ROW_DIR, gap: 8 },
-  toolBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 12,
-    backgroundColor: '#F3F4F6',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  textareaWrap: { position: 'relative' },
-  textarea: {
-    borderWidth: 0,
-    backgroundColor: '#F3F4F6',
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#111827',
-    minHeight: 150,
-    lineHeight: 20,
-    writingDirection: 'rtl',
-  },
-  charCountPill: {
-    position: 'absolute',
-    left: 10,
-    bottom: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255,255,255,0.85)',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    opacity: 0.75,
-  },
-  charCountText: { fontSize: 11, fontWeight: '800', color: '#6B7280' },
-
   modalFooter: {
     padding: 18,
     borderTopWidth: 1,
@@ -1320,6 +1998,11 @@ const styles = StyleSheet.create({
     flexDirection: ROW_DIR,
     gap: 10,
     backgroundColor: '#FFFFFF',
+  },
+  eventEditorFooter: {
+    borderTopColor: 'rgba(6,23,62,0.08)',
+    paddingTop: 12,
+    paddingBottom: 14,
   },
   footerBtnSecondary: {
     flex: 1,
@@ -1331,7 +2014,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'transparent',
   },
-  footerBtnSecondaryText: { fontSize: 15, fontWeight: '900', color: '#111827' },
+  eventEditorSecondaryBtn: {
+    backgroundColor: '#F4F6FB',
+    borderColor: 'rgba(6,23,62,0.06)',
+    height: 50,
+  },
+  footerBtnSecondaryText: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: '#111827',
+  },
   footerBtnPrimary: {
     flex: 2,
     height: 54,
@@ -1347,23 +2039,20 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 12 },
     elevation: 4,
   },
-  footerBtnPrimaryText: { fontSize: 15, fontWeight: '900', color: '#fff' },
-  dateRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    borderWidth: 1,
-    borderColor: colors.gray[200],
-    borderRadius: 12,
-    paddingHorizontal: 15,
-    paddingVertical: 12,
+  eventEditorPrimaryBtn: {
+    backgroundColor: ui.primary,
+    shadowColor: ui.primary,
+    shadowOpacity: 0.22,
+    height: 50,
   },
-  dateDisplay: {
-    fontSize: 16,
-    color: colors.text,
+  eventEditorBtnDisabled: {
+    opacity: 0.72,
   },
-
-  /* חלון התנתקות - עיצוב זהה ל-admin-profile */
+  footerBtnPrimaryText: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: '#fff',
+  },
   loBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.45)',
@@ -1386,7 +2075,9 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 12 },
     elevation: 12,
   },
-  loIconWrap: { marginBottom: 18 },
+  loIconWrap: {
+    marginBottom: 18,
+  },
   loIconRing: {
     width: 64,
     height: 64,
@@ -1461,4 +2152,4 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     writingDirection: 'rtl',
   },
-}); 
+});

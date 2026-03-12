@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,8 +10,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
-  SafeAreaView,
-  Pressable,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -24,15 +22,17 @@ import { avatarService } from '@/lib/services/avatarService';
 import BackSwipe from '@/components/BackSwipe';
 import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
+import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
 
 export default function ProfileEditor() {
   const router = useRouter();
-  const { userData, updateUserData } = useUserStore();
+  const { userData, updateUserData, userType } = useUserStore();
   const insets = useSafeAreaInsets();
+  const isEventOwner = userType === 'event_owner';
 
   const [loading, setLoading] = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
-  const [focusedField, setFocusedField] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -50,48 +50,6 @@ export default function ProfileEditor() {
       }));
     }
   }, [userData]);
-
-  const base64ToUint8Array = (base64: string) => {
-    const cleaned = String(base64 || '').replace(/[^A-Za-z0-9+/=]/g, '');
-    const padding = cleaned.endsWith('==') ? 2 : cleaned.endsWith('=') ? 1 : 0;
-    const byteLength = (cleaned.length * 3) / 4 - padding;
-    const bytes = new Uint8Array(byteLength);
-
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-    let byteIndex = 0;
-
-    for (let i = 0; i < cleaned.length; i += 4) {
-      const c1 = chars.indexOf(cleaned[i]);
-      const c2 = chars.indexOf(cleaned[i + 1]);
-      const c3 = chars.indexOf(cleaned[i + 2]);
-      const c4 = chars.indexOf(cleaned[i + 3]);
-
-      const triple = (c1 << 18) | (c2 << 12) | ((c3 & 63) << 6) | (c4 & 63);
-      if (byteIndex < byteLength) bytes[byteIndex++] = (triple >> 16) & 0xff;
-      if (byteIndex < byteLength) bytes[byteIndex++] = (triple >> 8) & 0xff;
-      if (byteIndex < byteLength) bytes[byteIndex++] = triple & 0xff;
-    }
-
-    return bytes;
-  };
-
-  const guessContentType = (ext: string, fallback?: string | null) => {
-    if (fallback) return fallback;
-    switch (ext) {
-      case 'png':
-        return 'image/png';
-      case 'webp':
-        return 'image/webp';
-      case 'gif':
-        return 'image/gif';
-      case 'heic':
-      case 'heif':
-        return 'image/heic';
-      case 'jpg':
-      default:
-        return 'image/jpeg';
-    }
-  };
 
   const pickAndUploadAvatar = async () => {
     if (!userData?.id) return;
@@ -157,7 +115,7 @@ export default function ProfileEditor() {
     }
 
     // If user wants to change password
-    if (formData.newPassword || formData.confirmPassword) {
+    if (!isEventOwner && (formData.newPassword || formData.confirmPassword)) {
       if (!formData.currentPassword) {
         Alert.alert('שגיאה', 'נא להזין את הסיסמא הנוכחית');
         return false;
@@ -207,7 +165,7 @@ export default function ProfileEditor() {
       }
 
       // Update password if provided
-      if (formData.newPassword) {
+      if (!isEventOwner && formData.newPassword) {
         // First verify current password by trying to sign in with it
         const { error: verifyError } = await supabase.auth.signInWithPassword({
           email: userData?.email || '',
@@ -278,12 +236,12 @@ export default function ProfileEditor() {
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
           <View style={styles.header}>
-            <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+            <TouchableOpacity style={[styles.backButton, isEventOwner && styles.coupleHeaderButton]} onPress={() => router.back()}>
               <Ionicons name="arrow-back" size={24} color={colors.primary} />
             </TouchableOpacity>
-            <Text style={styles.title}>עריכת פרטים אישיים</Text>
+            <Text style={[styles.title, isEventOwner && styles.coupleTitle]}>עריכת פרטים אישיים</Text>
             <TouchableOpacity 
-              style={[styles.saveButton, loading && styles.saveButtonDisabled]} 
+              style={[styles.saveButton, isEventOwner && styles.coupleSaveButton, loading && styles.saveButtonDisabled]} 
               onPress={saveChanges}
               disabled={loading}
             >
@@ -293,10 +251,22 @@ export default function ProfileEditor() {
             </TouchableOpacity>
           </View>
 
-      <AppKeyboardAwareScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+      <AppKeyboardAwareScrollView style={styles.scrollView} contentContainerStyle={[styles.scrollContent, isEventOwner && styles.coupleScrollContent]}>
         {/* Avatar Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>תמונת פרופיל</Text>
+        <View style={[styles.section, isEventOwner && styles.coupleSection]}>
+          {isEventOwner ? (
+            <View style={styles.coupleSectionHeader}>
+              <View style={styles.coupleSectionIcon}>
+                <Ionicons name="camera-outline" size={18} color={colors.primary} />
+              </View>
+              <View style={styles.coupleSectionTextWrap}>
+                <Text style={styles.coupleSectionTitle}>תמונת פרופיל</Text>
+                <Text style={styles.coupleSectionSubtitle}>בחרו תמונה לפרופיל בעיצוב שמתאים לשפה של האפליקציה</Text>
+              </View>
+            </View>
+          ) : (
+            <Text style={styles.sectionTitle}>תמונת פרופיל</Text>
+          )}
 
           <View style={styles.avatarRow}>
             <TouchableOpacity
@@ -334,7 +304,7 @@ export default function ProfileEditor() {
                 לחץ על התמונה כדי לבחור תמונה מהגלריה
               </Text>
               <TouchableOpacity
-                style={[styles.avatarActionBtn, avatarUploading && styles.avatarActionBtnDisabled]}
+                style={[styles.avatarActionBtn, isEventOwner && styles.coupleGhostBtn, avatarUploading && styles.avatarActionBtnDisabled]}
                 onPress={pickAndUploadAvatar}
                 disabled={avatarUploading}
               >
@@ -345,13 +315,25 @@ export default function ProfileEditor() {
         </View>
 
         {/* Basic Info Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>פרטים בסיסיים</Text>
+        <View style={[styles.section, isEventOwner && styles.coupleSection]}>
+          {isEventOwner ? (
+            <View style={styles.coupleSectionHeader}>
+              <View style={styles.coupleSectionIcon}>
+                <Ionicons name="person-outline" size={18} color={colors.primary} />
+              </View>
+              <View style={styles.coupleSectionTextWrap}>
+                <Text style={styles.coupleSectionTitle}>פרטים בסיסיים</Text>
+                <Text style={styles.coupleSectionSubtitle}>עדכנו את פרטי הפרופיל במראה נקי ואחיד</Text>
+              </View>
+            </View>
+          ) : (
+            <Text style={styles.sectionTitle}>פרטים בסיסיים</Text>
+          )}
           
           <View style={styles.inputContainer}>
             <Text style={styles.inputLabel}>שם מלא</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, isEventOwner && styles.coupleInput]}
               value={formData.name}
               onChangeText={(text) => setFormData(prev => ({ ...prev, name: text }))}
               placeholder="הזן שם מלא"
@@ -363,7 +345,7 @@ export default function ProfileEditor() {
           <View style={styles.inputContainer}>
             <Text style={styles.inputLabel}>כתובת אימייל</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, isEventOwner && styles.coupleInput]}
               value={formData.email}
               onChangeText={(text) => setFormData(prev => ({ ...prev, email: text }))}
               placeholder="הזן כתובת אימייל"
@@ -376,49 +358,78 @@ export default function ProfileEditor() {
         </View>
 
         {/* Password Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>שינוי סיסמא</Text>
-          <Text style={styles.sectionSubtitle}>השאר ריק אם אינך רוצה לשנות את הסיסמא</Text>
-          
-          <View style={styles.inputContainer}>
-            <Text style={styles.inputLabel}>סיסמא נוכחית</Text>
-            <TextInput
-              style={styles.input}
-              value={formData.currentPassword}
-              onChangeText={(text) => setFormData(prev => ({ ...prev, currentPassword: text }))}
-              placeholder="הזן סיסמא נוכחית"
-              placeholderTextColor={colors.gray[500]}
-              secureTextEntry
-              textAlign="right"
-            />
-          </View>
+        {isEventOwner ? (
+          <View style={[styles.section, styles.coupleSection]}>
+            <LinearGradient
+              colors={['#F8FBFF', '#EEF4FF', '#F5E8C8']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.passwordHero}
+            >
+              <View style={styles.passwordHeroIcon}>
+                <Ionicons name="lock-closed-outline" size={20} color={colors.primary} />
+              </View>
+              <Text style={styles.passwordHeroTitle}>שינוי סיסמה</Text>
+              <Text style={styles.passwordHeroSubtitle}>לשינוי סיסמה יש לפנות למנהל המערכת</Text>
+            </LinearGradient>
 
-          <View style={styles.inputContainer}>
-            <Text style={styles.inputLabel}>סיסמא חדשה</Text>
-            <TextInput
-              style={styles.input}
-              value={formData.newPassword}
-              onChangeText={(text) => setFormData(prev => ({ ...prev, newPassword: text }))}
-              placeholder="הזן סיסמא חדשה (לפחות 6 תווים)"
-              placeholderTextColor={colors.gray[500]}
-              secureTextEntry
-              textAlign="right"
-            />
+            <View style={styles.passwordNoticeCard}>
+              <View style={styles.passwordNoticeRow}>
+                <View style={styles.passwordNoticeIcon}>
+                  <Ionicons name="information-circle-outline" size={20} color={colors.primary} />
+                </View>
+                <View style={styles.passwordNoticeTextWrap}>
+                  <Text style={styles.passwordNoticeTitle}>הסיסמה מנוהלת על ידי מנהל</Text>
+                  <Text style={styles.passwordNoticeText}>אם צריך לעדכן סיסמה או לאפס גישה, יש לפנות למנהל שיבצע את השינוי עבורך.</Text>
+                </View>
+              </View>
+            </View>
           </View>
+        ) : (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>שינוי סיסמא</Text>
+            <Text style={styles.sectionSubtitle}>השאר ריק אם אינך רוצה לשנות את הסיסמא</Text>
+            
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputLabel}>סיסמא נוכחית</Text>
+              <TextInput
+                style={styles.input}
+                value={formData.currentPassword}
+                onChangeText={(text) => setFormData(prev => ({ ...prev, currentPassword: text }))}
+                placeholder="הזן סיסמא נוכחית"
+                placeholderTextColor={colors.gray[500]}
+                secureTextEntry
+                textAlign="right"
+              />
+            </View>
 
-          <View style={styles.inputContainer}>
-            <Text style={styles.inputLabel}>אישור סיסמא חדשה</Text>
-            <TextInput
-              style={styles.input}
-              value={formData.confirmPassword}
-              onChangeText={(text) => setFormData(prev => ({ ...prev, confirmPassword: text }))}
-              placeholder="הזן שוב את הסיסמא החדשה"
-              placeholderTextColor={colors.gray[500]}
-              secureTextEntry
-              textAlign="right"
-            />
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputLabel}>סיסמא חדשה</Text>
+              <TextInput
+                style={styles.input}
+                value={formData.newPassword}
+                onChangeText={(text) => setFormData(prev => ({ ...prev, newPassword: text }))}
+                placeholder="הזן סיסמא חדשה (לפחות 6 תווים)"
+                placeholderTextColor={colors.gray[500]}
+                secureTextEntry
+                textAlign="right"
+              />
+            </View>
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputLabel}>אישור סיסמא חדשה</Text>
+              <TextInput
+                style={styles.input}
+                value={formData.confirmPassword}
+                onChangeText={(text) => setFormData(prev => ({ ...prev, confirmPassword: text }))}
+                placeholder="הזן שוב את הסיסמא החדשה"
+                placeholderTextColor={colors.gray[500]}
+                secureTextEntry
+                textAlign="right"
+              />
+            </View>
           </View>
-        </View>
+        )}
 
 
       </AppKeyboardAwareScrollView>
@@ -481,12 +492,25 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  coupleHeaderButton: {
+    backgroundColor: 'rgba(6,23,62,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.08)',
+  },
+  coupleTitle: {
+    fontWeight: '900',
+    color: colors.primary,
+  },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
     padding: 20,
     paddingBottom: 100,
+  },
+  coupleScrollContent: {
+    backgroundColor: '#E8F1FF',
+    gap: 18,
   },
   section: {
     backgroundColor: colors.white,
@@ -498,6 +522,51 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 6,
     elevation: 2,
+  },
+  coupleSection: {
+    borderRadius: 28,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.08)',
+    shadowColor: colors.black,
+    shadowOpacity: 0.05,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3,
+  },
+  coupleSectionHeader: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 16,
+  },
+  coupleSectionIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 16,
+    backgroundColor: 'rgba(6,23,62,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.10)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  coupleSectionTextWrap: {
+    flex: 1,
+    alignItems: ALIGN_RIGHT,
+  },
+  coupleSectionTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: colors.primary,
+    textAlign: 'right',
+  },
+  coupleSectionSubtitle: {
+    marginTop: 4,
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.gray[600],
+    textAlign: 'right',
+    lineHeight: 18,
   },
   sectionTitle: {
     fontSize: 18,
@@ -532,6 +601,20 @@ const styles = StyleSheet.create({
     color: colors.text,
     backgroundColor: colors.gray[50],
     writingDirection: 'rtl',
+  },
+  coupleInput: {
+    minHeight: 54,
+    borderRadius: 18,
+    borderColor: 'rgba(6,23,62,0.10)',
+    backgroundColor: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '900',
+    color: colors.primary,
+    shadowColor: colors.black,
+    shadowOpacity: 0.03,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 1,
   },
   avatarRow: {
     flexDirection: 'row-reverse',
@@ -590,6 +673,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.gray[200],
   },
+  coupleGhostBtn: {
+    backgroundColor: '#F4F6FB',
+    borderColor: 'rgba(6,23,62,0.08)',
+    borderRadius: 16,
+  },
   avatarActionBtnDisabled: {
     opacity: 0.65,
   },
@@ -597,5 +685,80 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: colors.primary,
+  },
+  passwordHero: {
+    borderRadius: 24,
+    paddingHorizontal: 18,
+    paddingTop: 20,
+    paddingBottom: 18,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.06)',
+  },
+  passwordHeroIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.80)',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  passwordHeroTitle: {
+    marginTop: 12,
+    fontSize: 22,
+    fontWeight: '900',
+    color: colors.primary,
+    textAlign: 'center',
+  },
+  passwordHeroSubtitle: {
+    marginTop: 6,
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.gray[600],
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  passwordNoticeCard: {
+    marginTop: 16,
+    borderRadius: 22,
+    padding: 16,
+    backgroundColor: '#F8FAFD',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.06)',
+  },
+  passwordNoticeRow: {
+    flexDirection: ROW_DIR,
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  passwordNoticeIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  passwordNoticeTextWrap: {
+    flex: 1,
+    alignItems: ALIGN_RIGHT,
+  },
+  passwordNoticeTitle: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: colors.primary,
+    textAlign: 'right',
+  },
+  passwordNoticeText: {
+    marginTop: 6,
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.gray[600],
+    textAlign: 'right',
+    lineHeight: 20,
   },
 }); 
