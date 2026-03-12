@@ -361,4 +361,12 @@ export const guestService = {
       side: data.side || 'groom',
     };
   },
+
+  async deleteGuestCategory(categoryId: string) {
+    const { error } = await supabase
+      .from('guest_categories')
+      .delete()
+      .eq('id', categoryId);
+    if (error) throw error;
+  },
 }; 

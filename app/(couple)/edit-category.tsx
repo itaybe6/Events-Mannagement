@@ -2,10 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  KeyboardAvoidingView,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -53,6 +51,7 @@ export default function EditCategoryScreen() {
   const [moving, setMoving] = useState(false);
 
   const [categoryName, setCategoryName] = useState('');
+  const [initialCategoryName, setInitialCategoryName] = useState('');
   const [guestsInCategory, setGuestsInCategory] = useState<any[]>([]);
   const [selectedToDelete, setSelectedToDelete] = useState<Set<string>>(new Set());
   const [categories, setCategories] = useState<any[]>([]);
@@ -85,7 +84,9 @@ export default function EditCategoryScreen() {
         eventService.getEvent(eventId),
       ]);
       const cat = (cats || []).find((c: any) => String(c.id) === categoryId);
-      setCategoryName(String(cat?.name ?? ''));
+      const nextCategoryName = String(cat?.name ?? '');
+      setCategoryName(nextCategoryName);
+      setInitialCategoryName(nextCategoryName);
       setCategories(cats || []);
       const title = String(evt?.title ?? '').trim();
       const groom = String(evt?.groomName ?? '').trim();
@@ -186,18 +187,8 @@ export default function EditCategoryScreen() {
     setSaving(true);
     try {
       await guestService.updateGuestCategory(categoryId, { name });
-      Alert.alert('נשמר', 'שם הקטגוריה עודכן בהצלחה', [
-        {
-          text: 'חזרה לרשימת אנשי קשר',
-          onPress: () => {
-            if (!eventId) {
-              router.back();
-              return;
-            }
-            router.replace({ pathname: '/contacts-list', params: { eventId } });
-          },
-        },
-      ]);
+      setInitialCategoryName(name);
+      Alert.alert('נשמר', 'שם הקטגוריה עודכן בהצלחה');
     } catch (e) {
       console.error('Save category name error:', e);
       Alert.alert('שגיאה', 'לא ניתן לעדכן את שם הקטגוריה');
@@ -240,6 +231,7 @@ export default function EditCategoryScreen() {
 
   const bottomSafe = Math.max(16, insets.bottom + 16);
   const selectedCount = selectedToDelete.size;
+  const isNameDirty = categoryName.trim() !== initialCategoryName.trim();
 
   const requestMoveToCategory = (target: any) => {
     if (!target?.id) return;
@@ -250,7 +242,10 @@ export default function EditCategoryScreen() {
     }
     if (selectedToDelete.size === 0) return;
     setPendingMoveTarget(target);
-    setConfirmMoveVisible(true);
+    setConfirmMoveVisible(false);
+    requestAnimationFrame(() => {
+      setConfirmMoveVisible(true);
+    });
   };
 
   const cancelMove = () => {
@@ -296,12 +291,26 @@ export default function EditCategoryScreen() {
     <BackSwipe onBack={goToGuests}>
       <View style={[styles.page, { backgroundColor: ui.bg }]}>
         <Stack.Screen options={{ headerShown: false }} />
+        <LinearGradient
+          pointerEvents="none"
+          colors={['#F7FAFF', '#E8F1FF', '#F2E0BA']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.pageBg}
+        />
+        <LinearGradient
+          pointerEvents="none"
+          colors={['rgba(255,255,255,0.72)', 'rgba(255,255,255,0)']}
+          start={{ x: 0.05, y: 0 }}
+          end={{ x: 0.75, y: 0.55 }}
+          style={styles.pageBgHighlight}
+        />
 
       <GuestCategorySelectionSheet
         visible={moveSheetVisible}
         title="בחר קטגוריה להעברה"
         categories={(categories || []).filter((c: any) => String(c.id) !== categoryId)}
-        selectedCategoryId={null}
+        selectedCategoryId={pendingMoveTarget ? String(pendingMoveTarget.id) : null}
         enableSides={enableSides}
         closeOnSelect={false}
         overlay={
@@ -309,13 +318,40 @@ export default function EditCategoryScreen() {
             <View style={styles.confirmBackdrop}>
               <Pressable style={StyleSheet.absoluteFill} onPress={() => (moving ? null : cancelMove())} />
               <View style={[styles.confirmCard, { backgroundColor: ui.surface, borderColor: ui.border }]}>
+                <View style={styles.confirmHeaderRow}>
+                  <LinearGradient
+                    colors={['#2F6BFF', '#135BEC']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.confirmIconBadge}
+                  >
+                    <Ionicons name="swap-horizontal" size={20} color="#fff" />
+                  </LinearGradient>
+                  <View style={styles.confirmHeaderText}>
+                    <Text style={[styles.confirmEyebrow, { color: '#135BEC' }]}>
+                      {RTL_MARK}העברת אורחים
+                    </Text>
+                    <Text style={[styles.confirmTitle, { color: ui.text }]}>
+                      {RTL_MARK}אישור העברה
+                    </Text>
+                  </View>
+                </View>
                 <View style={styles.confirmTextWrap}>
-                  <Text style={[styles.confirmTitle, { color: ui.text, textAlign: IS_RTL ? 'left' : 'right' }]}>
-                    {RTL_MARK}אישור העברה
-                  </Text>
-                  <Text style={[styles.confirmSubtitle, { color: ui.sub, textAlign: IS_RTL ? 'left' : 'right' }]}>
+                  <Text style={[styles.confirmSubtitle, { color: ui.sub }]}>
                     {RTL_MARK}האם אתה בטוח שברצונך להעביר {selectedCount} אורחים לקטגוריה "{String(pendingMoveTarget?.name ?? '')}"?
                   </Text>
+                </View>
+                <View style={styles.confirmMetaRow}>
+                  <View style={[styles.confirmMetaCard, styles.confirmMetaCardPrimary]}>
+                    <Text style={styles.confirmMetaValue}>{selectedCount}</Text>
+                    <Text style={styles.confirmMetaLabel}>אורחים נבחרו</Text>
+                  </View>
+                  <View style={styles.confirmMetaCard}>
+                    <Text style={styles.confirmMetaValueDark} numberOfLines={1}>
+                      {String(pendingMoveTarget?.name ?? '')}
+                    </Text>
+                    <Text style={styles.confirmMetaLabel}>קטגוריית יעד</Text>
+                  </View>
                 </View>
 
                 <View style={styles.confirmButtonsRow}>
@@ -326,9 +362,10 @@ export default function EditCategoryScreen() {
                     style={[
                       styles.confirmBtn,
                       styles.confirmBtnSecondary,
-                      { borderColor: ui.border, opacity: moving ? 0.6 : 1 },
+                      { borderColor: 'rgba(148,163,184,0.22)', opacity: moving ? 0.6 : 1 },
                     ]}
                   >
+                    <Ionicons name="close" size={16} color={ui.text} />
                     <Text style={[styles.confirmBtnText, { color: ui.text }]}>ביטול</Text>
                   </TouchableOpacity>
 
@@ -362,6 +399,31 @@ export default function EditCategoryScreen() {
           setCategories(prev => [...prev, created]);
           return created as any;
         }}
+        onRenameCategory={async (category, nextName) => {
+          const updated = await guestService.updateGuestCategory(String(category.id), { name: nextName.trim() });
+          setCategories(prev =>
+            prev.map((item: any) => (String(item.id) === String(category.id) ? { ...item, name: updated.name } : item))
+          );
+          setPendingMoveTarget(prev =>
+            prev && String(prev.id) === String(category.id) ? { ...prev, name: updated.name } : prev
+          );
+          return updated as any;
+        }}
+        onDeleteCategory={async (category) => {
+          if (!eventId) throw new Error('Missing eventId');
+          const guests = await guestService.getGuests(eventId);
+          const guestsInDeletedCategory = guests.filter((guest: any) => String(guest.category_id || '') === String(category.id));
+          await Promise.all(
+            guestsInDeletedCategory.map((guest: any) =>
+              guestService.updateGuest(String(guest.id), { category_id: null })
+            )
+          );
+          await guestService.deleteGuestCategory(String(category.id));
+          setCategories(prev => prev.filter((item: any) => String(item.id) !== String(category.id)));
+          setPendingMoveTarget(prev => (prev && String(prev.id) === String(category.id) ? null : prev));
+          setConfirmMoveVisible(false);
+          Alert.alert('נמחק', `הקטגוריה "${String(category.name || '')}" נמחקה`);
+        }}
       />
 
       {/* Header */}
@@ -372,20 +434,7 @@ export default function EditCategoryScreen() {
         ]}
       >
         <View style={styles.headerTopRow}>
-          <TouchableOpacity
-            onPress={saveName}
-            disabled={saving}
-            style={[
-              styles.headerSaveBtn,
-              { backgroundColor: ui.primary, opacity: saving ? 0.7 : 1 },
-            ]}
-            accessibilityRole="button"
-            accessibilityLabel="שמור"
-            activeOpacity={0.9}
-          >
-            <Ionicons name="checkmark" size={18} color="#FFFFFF" />
-            <Text style={styles.headerSaveText}>{saving ? 'שומר...' : 'שמור'}</Text>
-          </TouchableOpacity>
+          <View style={styles.headerSideSpacer} />
 
           <View style={styles.headerTitleWrap}>
             <Text style={[styles.headerTitle, { color: ui.text }]}>{headerTitle}</Text>
@@ -402,27 +451,10 @@ export default function EditCategoryScreen() {
             accessibilityLabel="חזרה"
             activeOpacity={0.9}
           >
-            <Text style={[styles.headerBackText, { color: ui.text }]}>חזור</Text>
             <Ionicons name="chevron-back" size={18} color={ui.text} />
           </TouchableOpacity>
         </View>
 
-        <View style={[styles.inputBlock, { backgroundColor: ui.inputBg, borderColor: ui.border }]}>
-          <Text style={[styles.inputLabel, { color: ui.sub }]}>שם הקטגוריה</Text>
-          <View style={[styles.inputWrap, { backgroundColor: ui.surface, borderColor: ui.border }]}>
-            <TextInput
-              value={categoryName}
-              onChangeText={setCategoryName}
-              placeholder="הזן שם"
-              placeholderTextColor="#9CA3AF"
-              style={[styles.input, { color: ui.text }]}
-              textAlign="right"
-            />
-            <View style={styles.inputIcon}>
-              <Ionicons name="create-outline" size={18} color="#9CA3AF" />
-            </View>
-          </View>
-        </View>
       </View>
 
       {loading ? (
@@ -430,18 +462,72 @@ export default function EditCategoryScreen() {
           <ActivityIndicator size="large" color={ui.primary} />
         </View>
       ) : (
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-          <AppKeyboardAwareScrollView contentContainerStyle={[styles.content, { paddingBottom: bottomSafe + 140 }]} showsVerticalScrollIndicator={false}>
+        <>
+          <AppKeyboardAwareScrollView
+            style={styles.editorScroll}
+            contentContainerStyle={[styles.content, { paddingBottom: bottomSafe + 140 }]}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            bounces={false}
+            alwaysBounceVertical={false}
+          >
+            <View style={[styles.inputBlock, styles.inputBlockInContent, { backgroundColor: ui.inputBg, borderColor: ui.border }]}>
+              <Text style={[styles.inputLabel, { color: ui.sub }]}>שם הקטגוריה</Text>
+              <View style={[styles.inputWrap, { backgroundColor: ui.surface, borderColor: ui.border }]}>
+                <TextInput
+                  value={categoryName}
+                  onChangeText={setCategoryName}
+                  placeholder="הזן שם"
+                  placeholderTextColor="#9CA3AF"
+                  style={[styles.input, { color: ui.text }]}
+                  textAlign="right"
+                />
+                <TouchableOpacity
+                  onPress={saveName}
+                  disabled={saving || !isNameDirty}
+                  accessibilityRole="button"
+                  accessibilityLabel="שמור שם קטגוריה"
+                  activeOpacity={0.9}
+                  style={[
+                    styles.inputSaveBtn,
+                    {
+                      backgroundColor: isNameDirty ? ui.primary : '#D1D5DB',
+                      opacity: saving ? 0.7 : 1,
+                    },
+                  ]}
+                >
+                  <Ionicons name="checkmark" size={18} color="#FFFFFF" />
+                </TouchableOpacity>
+                <View style={styles.inputIcon}>
+                  <Ionicons name="create-outline" size={18} color="#9CA3AF" />
+                </View>
+              </View>
+            </View>
+
             <View style={styles.sectionHeadRow}>
-              <Text style={[styles.sectionTitle, { color: '#374151' }]}>בחר אורחים למחיקה</Text>
+              <Text style={[styles.sectionTitle, { color: '#374151' }]}>בחר אורחים למחיקה/העברה</Text>
               <Text style={[styles.sectionMeta, { color: '#9CA3AF' }]}>
                 {guestsInCategory.length} אורחים
               </Text>
             </View>
 
+            <View style={styles.summaryRow}>
+              <View style={[styles.summaryCard, { backgroundColor: ui.surface, borderColor: ui.border }]}>
+                <Text style={[styles.summaryValue, { color: ui.text }]}>{guestsInCategory.length}</Text>
+                <Text style={[styles.summaryLabel, { color: ui.sub }]}>סה"כ בקטגוריה</Text>
+              </View>
+              <View style={[styles.summaryCard, { backgroundColor: ui.surface, borderColor: ui.border }]}>
+                <Text style={[styles.summaryValue, { color: ui.primary }]}>{selectedCount}</Text>
+                <Text style={[styles.summaryLabel, { color: ui.sub }]}>נבחרו למחיקה/העברה</Text>
+              </View>
+            </View>
+
             <View style={[styles.listCard, { backgroundColor: ui.surface, borderColor: ui.border }]}>
               {guestsInCategory.length === 0 ? (
-                <View style={{ paddingVertical: 18 }}>
+                <View style={styles.emptyStateCard}>
+                  <View style={styles.emptyStateIcon}>
+                    <Ionicons name="people-outline" size={22} color={ui.sub} />
+                  </View>
                   <Text style={[styles.emptyText, { color: '#6B7280' }]}>אין אורחים בקטגוריה זו</Text>
                 </View>
               ) : (
@@ -452,6 +538,10 @@ export default function EditCategoryScreen() {
                   const name = String(guest?.name ?? 'שם לא זמין');
                   const pal = avatarFor(name);
                   const last = idx === guestsInCategory.length - 1;
+                  const guestPeopleCount =
+                    String(guest?.status ?? '').trim() === 'ממתין'
+                      ? 1
+                      : Number(guest?.numberOfPeople ?? guest?.number_of_people ?? 1) || 1;
 
                   return (
                     <TouchableOpacity
@@ -468,9 +558,15 @@ export default function EditCategoryScreen() {
                         <View style={[styles.avatar, { backgroundColor: pal.bg }]}>
                           <Text style={[styles.avatarText, { color: pal.fg }]}>{initials(name)}</Text>
                         </View>
-                        <Text style={[styles.rowName, { color: '#1F2937' }]} numberOfLines={1}>
-                          {name}
-                        </Text>
+                        <View style={styles.rowTextWrap}>
+                          <Text style={[styles.rowName, { color: '#1F2937' }]} numberOfLines={1}>
+                            {name}
+                          </Text>
+                          <View style={styles.rowMetaPill}>
+                            <Ionicons name="people-outline" size={12} color="#6B7280" />
+                            <Text style={styles.rowMetaPillText}>{guestPeopleCount}</Text>
+                          </View>
+                        </View>
                       </View>
 
                       <View
@@ -505,6 +601,22 @@ export default function EditCategoryScreen() {
           >
             <View style={styles.bottomActionsRow}>
               <TouchableOpacity
+                onPress={deleteSelected}
+                disabled={selectedCount === 0 || deleting}
+                activeOpacity={0.92}
+                style={[
+                  styles.bottomBtn,
+                  styles.bottomBtnDanger,
+                  {
+                    opacity: selectedCount === 0 || deleting ? 0.6 : 1,
+                  },
+                ]}
+              >
+                <Ionicons name="trash-outline" size={20} color="#DC2626" />
+                <Text style={[styles.bottomBtnText, { color: '#DC2626' }]}>מחק נבחרים</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
                 onPress={() => setMoveSheetVisible(true)}
                 disabled={selectedCount === 0 || moving || deleting}
                 activeOpacity={0.92}
@@ -521,25 +633,9 @@ export default function EditCategoryScreen() {
                   {moving ? 'מעביר...' : `העבר (${selectedCount})`}
                 </Text>
               </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={deleteSelected}
-                disabled={selectedCount === 0 || deleting}
-                activeOpacity={0.92}
-                style={[
-                  styles.bottomBtn,
-                  styles.bottomBtnDanger,
-                  {
-                    opacity: selectedCount === 0 || deleting ? 0.6 : 1,
-                  },
-                ]}
-              >
-                <Ionicons name="trash-outline" size={20} color="#DC2626" />
-                <Text style={[styles.bottomBtnText, { color: '#DC2626' }]}>מחק נבחרים</Text>
-              </TouchableOpacity>
             </View>
           </LinearGradient>
-        </KeyboardAvoidingView>
+        </>
       )}
       </View>
     </BackSwipe>
@@ -548,9 +644,15 @@ export default function EditCategoryScreen() {
 
 const styles = StyleSheet.create({
   page: { flex: 1 },
+  pageBg: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  pageBgHighlight: {
+    ...StyleSheet.absoluteFillObject,
+  },
   confirmBackdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(15,23,42,0.52)',
+    backgroundColor: 'rgba(15,23,42,0.58)',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 18,
@@ -558,73 +660,154 @@ const styles = StyleSheet.create({
   confirmCard: {
     width: '100%',
     maxWidth: 420,
-    borderRadius: 22,
+    borderRadius: 28,
     borderWidth: 1,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOpacity: 0.16,
-    shadowRadius: 22,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 8,
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 18,
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.18,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 16 },
+    elevation: 10,
     alignItems: ALIGN_RIGHT,
+  },
+  confirmHeaderRow: {
+    width: '100%',
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 14,
+  },
+  confirmHeaderText: {
+    flex: 1,
+    alignItems: ALIGN_RIGHT,
+  },
+  confirmIconBadge: {
+    width: 50,
+    height: 50,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#135BEC',
+    shadowOpacity: 0.28,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 6,
   },
   confirmTextWrap: {
     width: '100%',
     alignSelf: 'stretch',
-    marginBottom: 20,
+    marginBottom: 14,
     alignItems: ALIGN_RIGHT,
   },
-  confirmTitle: {
-    fontSize: 18,
+  confirmEyebrow: {
+    fontSize: 12,
     fontWeight: '900',
     writingDirection: 'rtl',
+    textAlign: 'right',
     width: '100%',
-    marginBottom: 8,
+    marginBottom: 4,
+  },
+  confirmTitle: {
+    fontSize: 26,
+    fontWeight: '900',
+    writingDirection: 'rtl',
+    textAlign: 'right',
+    width: '100%',
   },
   confirmSubtitle: {
     fontSize: 14,
     fontWeight: '700',
-    lineHeight: 22,
+    lineHeight: 23,
     writingDirection: 'rtl',
+    textAlign: 'right',
     width: '100%',
-    marginTop: 8,
+  },
+  confirmMetaRow: {
+    width: '100%',
+    flexDirection: ROW_DIR,
+    gap: 10,
+    marginBottom: 16,
+  },
+  confirmMetaCard: {
+    flex: 1,
+    minHeight: 76,
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: 'rgba(148,163,184,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  confirmMetaCardPrimary: {
+    backgroundColor: '#EEF4FF',
+    borderColor: 'rgba(19,91,236,0.16)',
+  },
+  confirmMetaValue: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: '#135BEC',
+    textAlign: 'center',
+  },
+  confirmMetaValueDark: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#0F172A',
+    textAlign: 'center',
+  },
+  confirmMetaLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#64748B',
+    textAlign: 'center',
   },
   confirmButtonsRow: {
     width: '100%',
     alignSelf: 'stretch',
     flexDirection: ROW_DIR,
-    gap: 10,
+    gap: 12,
   },
   confirmBtn: {
     flex: 1,
-    height: 46,
-    borderRadius: 14,
+    height: 50,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
+    flexDirection: ROW_DIR,
+    gap: 8,
   },
   confirmBtnSecondary: {
-    backgroundColor: 'rgba(107,114,128,0.10)',
+    backgroundColor: '#F8FAFC',
     borderWidth: 1,
   },
   confirmBtnPrimary: {
     borderWidth: 0,
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
   },
   confirmBtnText: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '900',
     textAlign: 'center',
   },
   headerWrap: {
     position: 'relative',
     borderBottomWidth: 1,
-    paddingHorizontal: 18,
-    paddingBottom: 20,
-    borderBottomLeftRadius: 28,
-    borderBottomRightRadius: 28,
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+    borderBottomLeftRadius: 32,
+    borderBottomRightRadius: 32,
     shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
     elevation: 4,
     zIndex: 2,
   },
@@ -633,41 +816,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
-    marginBottom: 18,
+    marginBottom: 10,
   },
   headerBackBtn: {
-    minWidth: 92,
+    width: 42,
     height: 42,
-    borderRadius: 14,
+    borderRadius: 21,
     alignItems: 'center',
     justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 4,
     borderWidth: 1,
   },
-  headerSaveBtn: {
-    minWidth: 92,
+  headerSideSpacer: {
+    width: 42,
     height: 42,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 6,
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.16,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 4,
   },
   headerTitleWrap: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 4,
-  },
-  headerBackText: {
-    fontSize: 14,
-    fontWeight: '800',
   },
   headerTitle: {
     fontSize: 20,
@@ -676,19 +843,17 @@ const styles = StyleSheet.create({
   },
   headerSubtitle: {
     marginTop: 4,
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: '700',
     textAlign: 'center',
   },
-  headerSaveText: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#FFFFFF',
-  },
   inputBlock: {
-    borderRadius: 20,
+    borderRadius: 24,
     borderWidth: 1,
-    padding: 14,
+    padding: 16,
+  },
+  inputBlockInContent: {
+    marginBottom: 16,
   },
   inputLabel: {
     fontSize: 12,
@@ -697,9 +862,10 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   inputWrap: {
-    borderRadius: 16,
+    borderRadius: 18,
     paddingHorizontal: 14,
     paddingVertical: 12,
+    minHeight: 56,
     position: 'relative',
     flexDirection: ROW_DIR,
     alignItems: 'center',
@@ -709,54 +875,135 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 18,
     fontWeight: '700',
-    paddingEnd: 0,
-    paddingStart: 34,
+    paddingEnd: 34,
+    paddingStart: 82,
+  },
+  inputSaveBtn: {
+    position: 'absolute',
+    left: 12,
+    top: 11,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   inputIcon: {
     position: 'absolute',
-    left: 12,
+    right: 12,
     top: 0,
     bottom: 0,
     justifyContent: 'center',
     alignItems: 'center',
   },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  editorScroll: {
+    flex: 1,
+  },
   content: { paddingHorizontal: 18, paddingTop: 18 },
   sectionHeadRow: {
     flexDirection: ROW_DIR,
     alignItems: 'flex-end',
     justifyContent: 'space-between',
-    marginBottom: 10,
+    marginBottom: 12,
     paddingHorizontal: 4,
   },
-  sectionTitle: { fontSize: 14, fontWeight: '800' },
-  sectionMeta: { fontSize: 12, fontWeight: '600' },
+  sectionTitle: { fontSize: 16, fontWeight: '900' },
+  sectionMeta: { fontSize: 12, fontWeight: '700' },
+  summaryRow: {
+    flexDirection: ROW_DIR,
+    gap: 12,
+    marginBottom: 14,
+  },
+  summaryCard: {
+    flex: 1,
+    borderRadius: 20,
+    borderWidth: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+  summaryValue: {
+    fontSize: 24,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  summaryLabel: {
+    marginTop: 4,
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'center',
+    writingDirection: 'rtl',
+  },
   listCard: {
-    borderRadius: 22,
+    borderRadius: 24,
     overflow: 'hidden',
     borderWidth: 1,
     shadowColor: '#000',
-    shadowOpacity: 0.04,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.05,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
     elevation: 2,
   },
-  emptyText: { fontSize: 14, fontWeight: '600', textAlign: 'center' },
+  emptyStateCard: {
+    paddingVertical: 28,
+    paddingHorizontal: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyStateIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: 'rgba(15,23,42,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+  },
+  emptyText: { fontSize: 14, fontWeight: '700', textAlign: 'center' },
   listRow: {
     flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
     borderBottomWidth: 1,
   },
   rowLeft: { flexDirection: ROW_DIR, alignItems: 'center', gap: 12, flex: 1, paddingStart: 14 },
-  avatar: { width: 40, height: 40, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
+  avatar: { width: 44, height: 44, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
   avatarText: { fontSize: 14, fontWeight: '800' },
-  rowName: { fontSize: 15, fontWeight: '700', textAlign: 'right', flexShrink: 1 },
+  rowTextWrap: {
+    flex: 1,
+    alignItems: ALIGN_RIGHT,
+    minWidth: 0,
+  },
+  rowName: { fontSize: 15, fontWeight: '800', textAlign: 'right', flexShrink: 1 },
+  rowMetaPill: {
+    marginTop: 6,
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(15,23,42,0.06)',
+    alignSelf: ALIGN_RIGHT,
+  },
+  rowMetaPillText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#6B7280',
+    textAlign: 'right',
+  },
   checkCircle: {
-    width: 26,
-    height: 26,
+    width: 30,
+    height: 30,
     borderRadius: 999,
     borderWidth: 2,
     alignItems: 'center',
@@ -778,8 +1025,8 @@ const styles = StyleSheet.create({
   bottomActionsRow: { flexDirection: ROW_DIR, gap: 12 },
   bottomBtn: {
     flex: 1,
-    height: 54,
-    borderRadius: 999,
+    height: 56,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: ROW_DIR,
@@ -791,13 +1038,15 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   bottomBtnSecondary: {
-    backgroundColor: 'rgba(107,114,128,0.12)',
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
   },
   bottomBtnDanger: {
-    backgroundColor: '#FEF2F2',
+    backgroundColor: '#FFF5F5',
     borderWidth: 1,
-    borderColor: '#FEE2E2',
+    borderColor: '#FED7D7',
   },
-  bottomBtnText: { fontSize: 13, fontWeight: '800' },
+  bottomBtnText: { fontSize: 13, fontWeight: '900' },
 });
 

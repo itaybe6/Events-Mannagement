@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Modal, FlatList, KeyboardAvoidingView, Platform, Pressable, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Modal, FlatList, KeyboardAvoidingView, Platform, Pressable, useWindowDimensions, Animated } from 'react-native';
 import { Link, useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useUserStore } from '@/store/userStore';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
@@ -15,6 +15,7 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
 import { ALIGN_RIGHT, ROW_DIR, ROW_REVERSE_DIR } from '@/lib/rtl';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // On web, icons are ultimately rendered as text glyphs. Wrapping them in <Text>
 // prevents "Text strings must be rendered within a <Text> component" errors.
@@ -27,6 +28,8 @@ const Ionicons = (props: React.ComponentProps<typeof IoniconsIcon>) => (
 export default function GuestsScreen() {
   const { isLoggedIn, userData } = useUserStore();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const scrollY = React.useRef(new Animated.Value(0)).current;
   const { eventId: queryEventId } = useLocalSearchParams<{ eventId?: string }>();
   const activeUserId = useEventSelectionStore((s) => s.activeUserId);
   const activeEventId = useEventSelectionStore((s) => s.activeEventId);
@@ -190,6 +193,12 @@ export default function GuestsScreen() {
   const [editGuestPeopleCount, setEditGuestPeopleCount] = useState('1');
   // Category editing moved to a dedicated screen: `/(couple)/edit-category`.
 
+  const stickyTitleOpacity = scrollY.interpolate({
+    inputRange: [16, 72],
+    outputRange: [0, 1],
+    extrapolate: 'clamp',
+  });
+
   useEffect(() => {
     if (resolvedEventId) {
       loadCategories();
@@ -203,8 +212,13 @@ export default function GuestsScreen() {
   // אורחים מסוננים לפי כל הפילטרים (סינון לפי צד רק בחתונות)
   const effectiveSideFilter = isWeddingEvent ? sideFilter : null;
   const filteredGuests = guests.filter(guest => {
-    const matchesSearch = guest.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         guest.phone.includes(searchQuery);
+    const normalizedQuery = String(searchQuery || '').trim().toLowerCase();
+    const guestName = String(guest?.name || '').toLowerCase();
+    const guestPhone = String(guest?.phone || '');
+    const matchesSearch =
+      normalizedQuery.length === 0 ||
+      guestName.includes(normalizedQuery) ||
+      guestPhone.includes(normalizedQuery);
     const matchesStatus = statusFilter ? guest.status === statusFilter : true;
     
     // סינון לפי צד – רק באירוע חתונה
@@ -395,51 +409,41 @@ export default function GuestsScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.pageHeader}>
-        <EventSwitcher
-          userId={userData?.id}
-          selectedEventId={resolvedEventId}
-          onSelectEventId={handleSelectEventId}
-        />
-        <View style={{ height: 10 }} />
-
-        <View style={styles.searchRow}>
-          <View style={styles.searchContainer}>
-            <Text>
-              <Ionicons name="search" size={18} color={colors.gray[500]} style={styles.searchIcon} />
-            </Text>
-            <TextInput
-              style={styles.searchInput}
-              placeholder="חיפוש שם או טלפון..."
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              placeholderTextColor={colors.gray[500]}
-            />
-          </View>
-
-          <TouchableOpacity
-            style={styles.filterIconButton}
-            onPress={() => setFilterModalVisible(true)}
-            accessibilityRole="button"
-            accessibilityLabel="סינון"
-          >
-            <Text>
-              <Ionicons name="options-outline" size={20} color={colors.text} />
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.addIconButton}
-            onPress={importContacts}
-            accessibilityRole="button"
-            accessibilityLabel="הוספת אורח"
-          >
-            <Text>
-              <Ionicons name="add" size={22} color={colors.text} />
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+      <LinearGradient
+        pointerEvents="none"
+        colors={['#F7FAFF', '#E8F1FF', '#F2E0BA']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.bg}
+      />
+      <LinearGradient
+        pointerEvents="none"
+        colors={['rgba(255,255,255,0.68)', 'rgba(255,255,255,0)']}
+        start={{ x: 0.05, y: 0 }}
+        end={{ x: 0.75, y: 0.55 }}
+        style={styles.bgHighlight}
+      />
+      <LinearGradient
+        pointerEvents="none"
+        colors={['rgba(232,196,122,0.58)', 'rgba(244,224,186,0.22)', 'rgba(244,224,186,0)']}
+        start={{ x: 1, y: 0.95 }}
+        end={{ x: 0.18, y: 0.22 }}
+        style={styles.bgWarmGlow}
+      />
+      {Platform.OS !== 'web' ? (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.stickyTitleBar,
+            {
+              paddingTop: insets.top + 10,
+              opacity: stickyTitleOpacity,
+            },
+          ]}
+        >
+          <Text style={styles.stickyTitleText}>רשימת מוזמנים</Text>
+        </Animated.View>
+      ) : null}
 
       {/* Filter Modal */}
       <Modal
@@ -489,7 +493,7 @@ export default function GuestsScreen() {
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={styles.filterBody}
               >
-                <View>
+                <View style={styles.filterSectionFlat}>
                   <Text style={styles.filterSectionTitleApple}>סטטוס</Text>
                   <View style={styles.filterStatusGrid}>
                     {[
@@ -502,7 +506,10 @@ export default function GuestsScreen() {
                       return (
                         <TouchableOpacity
                           key={`status-${String(opt.key)}`}
-                          style={[styles.filterAppleButton, active ? styles.filterAppleButtonActive : styles.filterAppleButtonInactive]}
+                          style={[
+                            styles.filterStatusChip,
+                            active ? styles.filterAppleButtonActive : styles.filterAppleButtonInactive,
+                          ]}
                           onPress={() => setStatusFilter(opt.key as any)}
                           accessibilityRole="button"
                           accessibilityLabel={`סינון לפי סטטוס ${opt.label}`}
@@ -532,9 +539,9 @@ export default function GuestsScreen() {
                 </View>
 
                 {isWeddingEvent && (
-                <View style={{ marginTop: 18 }}>
+                <View style={[styles.filterSectionFlat, styles.filterSectionCardSpaced]}>
                   <Text style={styles.filterSectionTitleApple}>צד</Text>
-                  <View style={styles.filterSideStack}>
+                  <View style={styles.filterSideGrid}>
                     {[
                       { key: null, label: 'הכל', count: sideCounts.groom + sideCounts.bride, icon: 'people' as const },
                       { key: 'groom', label: 'חתן', count: sideCounts.groom, icon: 'male' as const },
@@ -544,16 +551,16 @@ export default function GuestsScreen() {
                       return (
                         <TouchableOpacity
                           key={`side-${String(opt.key)}`}
-                          style={[styles.filterAppleButtonFull, active ? styles.filterAppleButtonActive : styles.filterAppleButtonInactive]}
+                          style={[styles.filterAppleButtonThird, active ? styles.filterAppleButtonActive : styles.filterAppleButtonInactive]}
                           onPress={() => setSideFilter(opt.key as any)}
                           accessibilityRole="button"
                           accessibilityLabel={`סינון לפי צד ${opt.label}`}
                         >
-                          <View style={styles.filterAppleButtonLeft}>
+                          <View style={styles.filterAppleButtonCenter}>
                             <Text>
                               <Ionicons
                                 name={opt.icon}
-                                size={22}
+                                size={18}
                                 color={active ? stylesApple.primary : stylesApple.iconMuted}
                               />
                             </Text>
@@ -562,7 +569,7 @@ export default function GuestsScreen() {
                             </Text>
                           </View>
 
-                          <View style={[styles.filterAppleCountPill, active ? styles.filterAppleCountPillActive : styles.filterAppleCountPillInactive]}>
+                          <View style={[styles.filterAppleCountPill, styles.filterAppleCountPillCompact, active ? styles.filterAppleCountPillActive : styles.filterAppleCountPillInactive]}>
                             <Text style={[styles.filterAppleCountText, active ? styles.filterAppleCountTextActive : styles.filterAppleCountTextInactive]}>
                               {opt.count}
                             </Text>
@@ -575,11 +582,10 @@ export default function GuestsScreen() {
                 )}
 
                 {/* bottom padding so content doesn't hide behind action bar */}
-                <View style={{ height: 120 }} />
+                <View style={{ height: 92 }} />
               </ScrollView>
 
               <View style={styles.filterActionBar}>
-                <BlurView intensity={22} tint="light" style={styles.filterActionBarBlur} />
                 <TouchableOpacity
                   style={[styles.filterClearInline, !hasFilters && styles.filterClearInlineDisabled]}
                   disabled={!hasFilters}
@@ -703,11 +709,70 @@ export default function GuestsScreen() {
       </Modal>
 
       {/* Guests by category */}
-      <ScrollView
+      <Animated.ScrollView
         style={styles.guestList}
-        contentContainerStyle={{ paddingBottom: 80 }}
+        contentContainerStyle={styles.guestListContent}
         showsVerticalScrollIndicator={false}
+        onScroll={
+          Platform.OS !== 'web'
+            ? Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
+                useNativeDriver: false,
+              })
+            : undefined
+        }
+        scrollEventThrottle={16}
       >
+        <View style={styles.pageHeader}>
+          {Platform.OS !== 'web' ? (
+            <View style={[styles.mobileTitleWrap, { paddingTop: insets.top + 12 }]}>
+              <Text style={styles.mobilePageTitle}>רשימת מוזמנים</Text>
+            </View>
+          ) : null}
+          <EventSwitcher
+            userId={userData?.id}
+            selectedEventId={resolvedEventId}
+            onSelectEventId={handleSelectEventId}
+          />
+          <View style={{ height: 10 }} />
+
+          <View style={styles.searchRow}>
+            <View style={styles.searchContainer}>
+              <Text>
+                <Ionicons name="search" size={18} color={colors.gray[500]} style={styles.searchIcon} />
+              </Text>
+              <TextInput
+                style={styles.searchInput}
+                placeholder="חיפוש שם או טלפון..."
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                placeholderTextColor={colors.gray[500]}
+              />
+            </View>
+
+            <TouchableOpacity
+              style={styles.filterIconButton}
+              onPress={() => setFilterModalVisible(true)}
+              accessibilityRole="button"
+              accessibilityLabel="סינון"
+            >
+              <Text>
+                <Ionicons name="options-outline" size={20} color={colors.text} />
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.addIconButton}
+              onPress={importContacts}
+              accessibilityRole="button"
+              accessibilityLabel="הוספת אורח"
+            >
+              <Text>
+                <Ionicons name="add" size={22} color={colors.text} />
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
         {categories.length > 0 ? (
           categories
             .filter(cat => !effectiveSideFilter || cat.side === effectiveSideFilter) // סינון קטגוריות לפי צד (רק בחתונה)
@@ -784,7 +849,7 @@ export default function GuestsScreen() {
             <Text style={styles.emptyStateText}>אין קטגוריות עדיין. הוסף קטגוריה חדשה!</Text>
           </View>
         )}
-      </ScrollView>
+      </Animated.ScrollView>
 
     {/* Contacts Modal */}
     <Modal
@@ -1024,27 +1089,67 @@ export default function GuestsScreen() {
 }
 
 const stylesApple = {
-  primary: '#007AFF',
-  primaryDark: '#0062CC',
-  primarySoft: 'rgba(0, 122, 255, 0.13)',
-  backgroundLight: 'rgba(242, 242, 247, 0.80)',
-  surfaceLight: 'rgba(255, 255, 255, 0.65)',
-  borderLight: 'rgba(0, 0, 0, 0.05)',
-  text: '#111827',
-  textMuted: 'rgba(17, 24, 39, 0.55)',
-  iconMuted: 'rgba(17, 24, 39, 0.35)',
+  primary: colors.yaleBlue,
+  primaryDark: colors.oxfordBlue,
+  primarySoft: 'rgba(0, 53, 102, 0.10)',
+  backgroundLight: '#FFFFFF',
+  surfaceLight: '#FFFFFF',
+  borderLight: 'rgba(6, 23, 62, 0.08)',
+  text: colors.text,
+  textMuted: 'rgba(6, 23, 62, 0.60)',
+  iconMuted: 'rgba(6, 23, 62, 0.40)',
 } as const;
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.gray[100],
-    paddingTop: 12,
+    backgroundColor: '#E8F1FF',
+    paddingTop: Platform.OS === 'web' ? 12 : 0,
     paddingHorizontal: 16,
-    paddingBottom: 16,
+    paddingBottom: Platform.OS === 'web' ? 16 : 0,
+  },
+  bg: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  bgHighlight: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  bgWarmGlow: {
+    ...StyleSheet.absoluteFillObject,
   },
   pageHeader: {
     paddingBottom: 12,
+  },
+  stickyTitleBar: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(11, 28, 65, 0.06)',
+  },
+  stickyTitleText: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'center',
+    writingDirection: 'rtl',
+  },
+  mobileTitleWrap: {
+    paddingBottom: 16,
+  },
+  mobilePageTitle: {
+    fontSize: 30,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'right',
+    writingDirection: 'rtl',
   },
   headerRow: {
     flexDirection: ROW_DIR,
@@ -1075,12 +1180,14 @@ const styles = StyleSheet.create({
     position: 'relative',
     flexDirection: ROW_DIR,
     alignItems: 'center',
-    backgroundColor: colors.gray[200],
+    backgroundColor: colors.white,
     borderRadius: 20,
     paddingHorizontal: 14,
     height: 48,
     flex: 1,
     gap: 8,
+    borderWidth: 1,
+    borderColor: colors.gray[200],
   },
   searchRow: {
     flexDirection: ROW_DIR,
@@ -1130,7 +1237,7 @@ const styles = StyleSheet.create({
   },
   filterModalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.30)',
+    backgroundColor: 'rgba(6,23,62,0.24)',
     padding: 0,
   },
   filterModalOverlayNarrow: {
@@ -1159,15 +1266,15 @@ const styles = StyleSheet.create({
   filterGlassPanel: {
     position: 'relative',
     width: '100%',
-    backgroundColor: stylesApple.backgroundLight,
+    backgroundColor: '#FFFFFF',
     borderColor: stylesApple.borderLight,
     borderWidth: 1,
     overflow: 'hidden',
     shadowColor: colors.black,
-    shadowOpacity: 0.18,
-    shadowRadius: 32,
-    shadowOffset: { width: 0, height: 14 },
-    elevation: 12,
+    shadowOpacity: 0.12,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 10,
   },
   filterGlassPanelNarrow: {
     borderTopLeftRadius: 24,
@@ -1180,19 +1287,21 @@ const styles = StyleSheet.create({
     flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 18,
-    paddingTop: 18,
-    paddingBottom: 12,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 14,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0, 0, 0, 0.06)',
+    borderBottomColor: 'rgba(6, 23, 62, 0.08)',
   },
   filterCloseButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.04)',
+    backgroundColor: 'rgba(6,23,62,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.06)',
   },
   filterHeaderCenter: {
     flex: 1,
@@ -1203,7 +1312,7 @@ const styles = StyleSheet.create({
     height: 36,
   },
   filterTitle: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '900',
     color: stylesApple.text,
     letterSpacing: -0.2,
@@ -1211,108 +1320,136 @@ const styles = StyleSheet.create({
   filterHintText: {
     textAlign: 'center',
     color: stylesApple.textMuted,
-    fontSize: 13.5,
-    fontWeight: '600',
+    fontSize: 13,
+    fontWeight: '700',
     marginTop: 12,
-    marginBottom: 4,
-    paddingHorizontal: 18,
+    marginBottom: 8,
+    paddingHorizontal: 20,
   },
   filterBody: {
-    paddingHorizontal: 18,
-    paddingTop: 10,
+    paddingHorizontal: 20,
+    paddingTop: 8,
     paddingBottom: 0,
   },
+  filterSectionCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.08)',
+    borderRadius: 22,
+    padding: 12,
+  },
+  filterSectionFlat: {
+    paddingHorizontal: 2,
+    paddingVertical: 0,
+  },
+  filterSectionCardSpaced: {
+    marginTop: 12,
+  },
   filterSectionTitleApple: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '800',
-    color: stylesApple.textMuted,
+    color: colors.text,
     textAlign: 'right',
     marginBottom: 10,
     paddingHorizontal: 2,
   },
   filterStatusGrid: {
-    flexDirection: 'row',
-    flexWrap: 'nowrap',
-    justifyContent: 'flex-start',
-    alignItems: 'flex-end',
-    gap: 12,
+    flexDirection: 'row-reverse',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    alignItems: 'stretch',
+    gap: 8,
   },
-  filterSideStack: {
-    gap: 12,
+  filterSideGrid: {
+    flexDirection: 'row-reverse',
+    justifyContent: 'space-between',
+    alignItems: 'stretch',
+    gap: 8,
   },
   filterAppleButton: {
     width: '48%',
-    minWidth: 160,
-    flexGrow: 1,
+    minWidth: 0,
+    flexGrow: 0,
     flexBasis: '48%',
-    borderRadius: 14,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
     flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
-    shadowColor: colors.black,
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 2,
     transform: [{ scale: 1 }],
   },
-  filterAppleButtonFull: {
-    width: '100%',
-    borderRadius: 14,
-    paddingVertical: 14,
+  filterStatusChip: {
+    width: '48%',
+    minWidth: 0,
+    borderRadius: 16,
+    paddingVertical: 12,
     paddingHorizontal: 14,
     flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
-    shadowColor: colors.black,
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 2,
+  },
+  filterAppleButtonThird: {
+    width: '31%',
+    minWidth: 0,
+    borderRadius: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   filterAppleButtonActive: {
-    backgroundColor: stylesApple.primarySoft,
+    backgroundColor: 'rgba(0, 53, 102, 0.10)',
     borderWidth: 1,
-    borderColor: 'rgba(0, 122, 255, 0.55)',
+    borderColor: 'rgba(0, 53, 102, 0.30)',
   },
   filterAppleButtonInactive: {
-    backgroundColor: stylesApple.surfaceLight,
+    backgroundColor: '#F8FAFD',
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.02)',
+    borderColor: 'rgba(6,23,62,0.08)',
   },
   filterAppleButtonLeft: {
     flexDirection: ROW_DIR,
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
     flex: 1,
   },
+  filterAppleButtonCenter: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    width: '100%',
+  },
   filterAppleButtonText: {
-    fontSize: 15,
+    fontSize: 14,
     textAlign: 'right',
   },
   filterAppleButtonTextActive: {
     fontWeight: '800',
-    color: stylesApple.primary,
+    color: colors.oxfordBlue,
   },
   filterAppleButtonTextInactive: {
     fontWeight: '700',
-    color: stylesApple.textMuted,
+    color: colors.gray[700],
   },
   filterAppleCountPill: {
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: 8,
+    minWidth: 30,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    alignItems: 'center',
+  },
+  filterAppleCountPillCompact: {
+    marginTop: 8,
   },
   filterAppleCountPillActive: {
-    backgroundColor: 'rgba(255,255,255,0.60)',
+    backgroundColor: 'rgba(255,255,255,0.95)',
   },
   filterAppleCountPillInactive: {
-    backgroundColor: 'rgba(0,0,0,0.06)',
+    backgroundColor: 'rgba(6,23,62,0.06)',
   },
   filterAppleCountText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '900',
   },
   filterAppleCountTextActive: {
@@ -1326,27 +1463,27 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: Platform.OS === 'ios' ? 16 : 14,
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: Platform.OS === 'ios' ? 14 : 12,
     flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 14,
+    gap: 10,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(0,0,0,0.06)',
-    backgroundColor: 'rgba(255,255,255,0.60)',
-  },
-  filterActionBarBlur: {
-    ...StyleSheet.absoluteFillObject,
+    borderTopColor: 'rgba(6,23,62,0.08)',
+    backgroundColor: '#FFFFFF',
   },
   filterClearInline: {
     flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 12,
-    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.10)',
+    backgroundColor: '#F8FAFD',
   },
   filterClearInlineDisabled: {
     opacity: 0.55,
@@ -1361,16 +1498,16 @@ const styles = StyleSheet.create({
   },
   filterDonePrimary: {
     flex: 1,
-    borderRadius: 14,
+    borderRadius: 16,
     overflow: 'hidden',
     height: 48,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: stylesApple.primary,
-    shadowOpacity: 0.22,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 6,
+    shadowColor: colors.oxfordBlue,
+    shadowOpacity: 0.16,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 5,
   },
   filterDonePrimaryBg: {
     ...StyleSheet.absoluteFillObject,
@@ -1382,6 +1519,10 @@ const styles = StyleSheet.create({
   },
   guestList: {
     flex: 1,
+  },
+  guestListContent: {
+    paddingBottom: Platform.OS === 'web' ? 80 : 122,
+    flexGrow: 1,
   },
   emptyState: {
     flex: 1,
