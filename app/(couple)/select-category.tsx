@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -73,6 +74,7 @@ export default function SelectCategoryScreen() {
   const [newSide, setNewSide] = useState<Side>('groom');
   const [saving, setSaving] = useState(false);
   const [segWidth, setSegWidth] = useState(0);
+  const scrollY = useMemo(() => new Animated.Value(0), []);
 
   useFocusEffect(
     useCallback(() => {
@@ -218,54 +220,25 @@ export default function SelectCategoryScreen() {
 
   const segIndicatorWidth = segWidth > 0 ? (segWidth - 12) / 2 : 0;
   const segIndicatorLeft = segWidth > 0 ? (mode === 'existing' ? segWidth / 2 : 6) : 0;
+  const headerBgOpacity = scrollY.interpolate({
+    inputRange: [0, 36],
+    outputRange: [0, 1],
+    extrapolate: 'clamp',
+  });
 
-  return (
-    <View style={[styles.root, isDark && styles.rootDark]}>
-      <Stack.Screen options={{ headerShown: false }} />
-
-      {/* Background gradient (like the HTML design) */}
-      <LinearGradient
-        // Keep this screen in premium LIGHT style (like the provided HTML mock).
-        colors={['#F0F9FF', '#EEF2FF', '#FFF1F2']}
-        locations={[0, 0.5, 1]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={StyleSheet.absoluteFillObject}
-      />
-
-      {/* ─── header ───────────────────────────────────── */}
-      <View style={[styles.header, { paddingTop: Math.max(14, insets.top + 10) }]}>
-        <Text style={[styles.headerTitle, isDark && styles.headerTitleDark]}>בחירת קטגוריה</Text>
-
-        {/* כפתור הבא - View עוטף עם העיצוב (NativeWind דורס style על Pressable) */}
-        <Pressable
-          onPress={handleNext}
-          disabled={isNextDisabled}
-          accessibilityRole="button"
-          accessibilityLabel="הבא"
-          style={({ pressed }) => ({ opacity: !isNextDisabled && pressed ? 0.78 : 1 })}
-        >
-          <View style={[styles.headerNextBtn, isNextDisabled && styles.headerNextBtnDisabled]}>
-            <Text style={styles.headerNextBtnText}>{saving ? 'שומר...' : 'הבא'}</Text>
-            <Ionicons name="chevron-forward" size={16} color="#fff" />
-          </View>
-        </Pressable>
-
-        {/* כפתור חזרה - View עוטף עם העיצוב (NativeWind דורס style על Pressable) */}
-        <Pressable
-          onPress={goBack}
-          accessibilityRole="button"
-          accessibilityLabel="חזרה"
-          style={({ pressed }) => ({ opacity: pressed ? 0.70 : 1 })}
-        >
-          <View style={styles.headerBackBtn}>
-            <Ionicons name="chevron-back" size={16} color={NAVY} />
-            <Text style={styles.headerBackBtnText}>חזרה</Text>
-          </View>
-        </Pressable>
+  const topSection = (
+    <>
+      <View style={styles.heroCard}>
+        <Text style={styles.heroTitle}>
+          {mode === 'new' ? 'יוצרים קטגוריה חדשה' : 'בוחרים קטגוריה וממשיכים לאנשי קשר'}
+        </Text>
+        <Text style={styles.heroSubtitle}>
+          {mode === 'new'
+            ? 'תן שם ברור לקטגוריה ובחר צד, ואז נעבור ישירות לייבוא אנשי הקשר.'
+            : 'בחר קטגוריה קיימת מהרשימה כדי לשייך אליה במהירות את אנשי הקשר החדשים.'}
+        </Text>
       </View>
 
-      {/* ─── segment ──────────────────────────────────── */}
       <View style={styles.segmentContainer}>
         <View style={styles.segmentWrap} onLayout={(e) => setSegWidth(e.nativeEvent.layout.width)}>
           <View
@@ -302,8 +275,88 @@ export default function SelectCategoryScreen() {
         </View>
       </View>
 
-      {/* ─── divider ──────────────────────────────────── */}
       <View style={styles.divider} />
+    </>
+  );
+
+  return (
+    <View style={[styles.root, isDark && styles.rootDark]}>
+      <Stack.Screen options={{ headerShown: false }} />
+
+      {/* Background gradient (like the HTML design) */}
+      <LinearGradient
+        // Keep this screen in premium LIGHT style (like the provided HTML mock).
+        colors={['#F0F9FF', '#EEF2FF', '#FFF1F2']}
+        locations={[0, 0.5, 1]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFillObject}
+      />
+      <LinearGradient
+        colors={['rgba(255,255,255,0.78)', 'rgba(255,255,255,0)']}
+        start={{ x: 0.08, y: 0 }}
+        end={{ x: 0.78, y: 0.48 }}
+        style={styles.bgHighlight}
+      />
+      <LinearGradient
+        colors={['rgba(244,114,182,0.12)', 'rgba(96,165,250,0.10)', 'rgba(255,255,255,0)']}
+        start={{ x: 1, y: 0.1 }}
+        end={{ x: 0.2, y: 0.8 }}
+        style={styles.bgGlow}
+      />
+
+      {/* ─── header ───────────────────────────────────── */}
+      <View style={[styles.header, { paddingTop: Math.max(10, insets.top + 6) }]}>
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.stickyHeaderBg,
+            {
+              opacity: headerBgOpacity,
+            },
+          ]}
+        />
+        <View style={styles.headerSide}>
+          <Pressable
+            onPress={handleNext}
+            disabled={isNextDisabled}
+            accessibilityRole="button"
+            accessibilityLabel="הבא"
+            style={({ pressed }) => ({ opacity: !isNextDisabled && pressed ? 0.78 : 1 })}
+          >
+            <View style={[styles.headerNextBtnShell, isNextDisabled && styles.headerNextBtnShellDisabled]}>
+              <LinearGradient
+                colors={isNextDisabled ? ['#94A3B8', '#94A3B8'] : ['#0B1E4F', '#123A8C']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.headerNextBtnBg}
+              />
+              <View style={styles.headerNextBtn}>
+                <Ionicons name="chevron-back" size={17} color="#fff" />
+                <Text style={styles.headerNextBtnText}>{saving ? 'שומר...' : 'הבא'}</Text>
+              </View>
+            </View>
+          </Pressable>
+        </View>
+
+        <View pointerEvents="none" style={styles.headerCenter}>
+          <Text style={[styles.headerTitle, isDark && styles.headerTitleDark]}>בחירת קטגוריה</Text>
+        </View>
+
+        <View style={[styles.headerSide, styles.headerSideEnd]}>
+          {/* כפתור חזרה - View עוטף עם העיצוב (NativeWind דורס style על Pressable) */}
+          <Pressable
+            onPress={goBack}
+            accessibilityRole="button"
+            accessibilityLabel="חזרה"
+            style={({ pressed }) => ({ opacity: pressed ? 0.70 : 1 })}
+          >
+            <View style={styles.headerBackBtn}>
+              <Ionicons name="chevron-forward" size={16} color={NAVY} />
+            </View>
+          </Pressable>
+        </View>
+      </View>
 
       {/* ─── content ──────────────────────────────────── */}
       <KeyboardAvoidingView
@@ -320,64 +373,104 @@ export default function SelectCategoryScreen() {
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={[styles.createScroll, { paddingBottom: bottomPadding + 24 }]}
+            onScroll={(event: any) => {
+              scrollY.setValue(event?.nativeEvent?.contentOffset?.y ?? 0);
+            }}
+            scrollEventThrottle={16}
           >
-            {/* name field */}
-            <Text style={[styles.fieldLabel, isDark && styles.fieldLabelDark]}>שם הקטגוריה</Text>
-            <View style={[styles.inputWrap, isDark && styles.inputWrapDark]}>
-              <TextInput
-                value={newName}
-                onChangeText={setNewName}
-                placeholder="למשל: חברים חתן"
-                placeholderTextColor={isDark ? 'rgba(241,245,249,0.35)' : 'rgba(15,23,42,0.35)'}
-                style={[styles.input, isDark && styles.inputDark]}
-                returnKeyType="done"
-                blurOnSubmit={false}
-                onSubmitEditing={() => {}}
-                autoFocus
-              />
-            </View>
+            {topSection}
+            <View style={styles.createCard}>
+              {/* name field */}
+              <Text style={[styles.fieldLabel, isDark && styles.fieldLabelDark]}>שם הקטגוריה</Text>
+              <View style={[styles.inputWrap, isDark && styles.inputWrapDark]}>
+                <TextInput
+                  value={newName}
+                  onChangeText={setNewName}
+                  placeholder="למשל: חברים חתן"
+                  placeholderTextColor={isDark ? 'rgba(241,245,249,0.35)' : 'rgba(15,23,42,0.35)'}
+                  style={[styles.input, isDark && styles.inputDark]}
+                  returnKeyType="done"
+                  blurOnSubmit={false}
+                  onSubmitEditing={() => {}}
+                  autoFocus
+                />
+              </View>
 
-            {enableSides ? (
-              <>
-                <Text style={[styles.fieldLabel, { marginTop: 22 }, isDark && styles.fieldLabelDark]}>שייך לצד</Text>
-                <View style={styles.sideRow}>
-                  {([
-                    { side: 'groom' as Side, label: 'חתן', icon: 'male' as const },
-                    { side: 'bride' as Side, label: 'כלה', icon: 'female' as const },
-                  ] as const).map((opt) => {
-                    const active = newSide === opt.side;
-                    const accent = opt.side === 'bride' ? ACCENT_PINK : ACCENT_BLUE;
-                    const soft = opt.side === 'bride' ? 'rgba(236,72,153,0.10)' : 'rgba(59,130,246,0.10)';
-                    return (
-                      <Pressable
-                        key={opt.side}
-                        onPress={() => setNewSide(opt.side)}
-                        style={({ pressed }) => [
-                          styles.sidePill,
-                          isDark && styles.sidePillDark,
-                          active
-                            ? [styles.sidePillActive, { backgroundColor: accent, borderColor: accent }]
-                            : [styles.sidePillInactive, { backgroundColor: '#FFFFFF', borderColor: 'rgba(15,23,42,0.12)' }],
-                          pressed && { opacity: 0.88 },
-                        ]}
-                      >
-                        <View
-                          style={[
-                            styles.sidePillIconCircle,
-                            active ? { backgroundColor: 'rgba(255,255,255,0.22)' } : { backgroundColor: soft },
-                          ]}
-                        >
-                          <Ionicons name={opt.icon} size={18} color={active ? '#fff' : accent} style={undefined} />
-                        </View>
-                        <Text style={[styles.sidePillText, { color: accent }, active && { color: '#fff' }]}>
-                          {opt.label}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
+              {enableSides ? (
+                <>
+                  <Text style={[styles.fieldLabel, { marginTop: 22 }, isDark && styles.fieldLabelDark]}>שייך לצד</Text>
+                  <Text style={styles.fieldHint}>בחר את הצד שאליו הקטגוריה שייכת.</Text>
+                  <View style={styles.sideSection}>
+                    <View style={styles.sideRow}>
+                      {([
+                        { side: 'groom' as Side, label: 'חתן', icon: 'male' as const },
+                        { side: 'bride' as Side, label: 'כלה', icon: 'female' as const },
+                      ] as const).map((opt) => {
+                        const active = newSide === opt.side;
+                        const accent = opt.side === 'bride' ? ACCENT_PINK : ACCENT_BLUE;
+                        const soft = opt.side === 'bride' ? 'rgba(236,72,153,0.10)' : 'rgba(59,130,246,0.10)';
+                        return (
+                          <Pressable
+                            key={opt.side}
+                            onPress={() => setNewSide(opt.side)}
+                            style={({ pressed }) => [
+                              styles.sidePill,
+                              isDark && styles.sidePillDark,
+                              active
+                                ? [styles.sidePillActive, { backgroundColor: accent, borderColor: accent }]
+                                : [styles.sidePillInactive, { backgroundColor: '#FFFFFF', borderColor: 'rgba(15,23,42,0.10)' }],
+                              pressed && styles.sidePillPressed,
+                            ]}
+                          >
+                            <View
+                              style={[
+                                styles.sidePillIconCircle,
+                                active ? { backgroundColor: 'rgba(255,255,255,0.20)' } : { backgroundColor: soft },
+                              ]}
+                            >
+                              <Ionicons name={opt.icon} size={18} color={active ? '#fff' : accent} />
+                            </View>
+                            <Text style={[styles.sidePillText, { color: active ? '#fff' : accent }]}>
+                              {opt.label}
+                            </Text>
+                            {active ? (
+                              <View style={styles.sidePillCheck}>
+                                <Ionicons name="checkmark" size={12} color={accent} />
+                              </View>
+                            ) : null}
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </View>
+                </>
+              ) : null}
+
+              <Pressable
+                onPress={handleNext}
+                disabled={isNextDisabled}
+                accessibilityRole="button"
+                accessibilityLabel="הוסף קטגוריה"
+                style={({ pressed }) => [
+                  styles.createSubmitOuter,
+                  isNextDisabled && styles.createSubmitOuterDisabled,
+                  pressed && !isNextDisabled && styles.createSubmitOuterPressed,
+                ]}
+              >
+                <LinearGradient
+                  colors={isNextDisabled ? ['#CBD5E1', '#B8C3D3'] : ['#0B1E4F', '#123A8C']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.createSubmitBg}
+                />
+                <View style={styles.createSubmitInner}>
+                  <Ionicons name="add-circle-outline" size={20} color="#fff" />
+                  <Text style={styles.createSubmitText}>
+                    {saving ? 'מוסיף...' : 'הוסף קטגוריה'}
+                  </Text>
                 </View>
-              </>
-            ) : null}
+              </Pressable>
+            </View>
           </AppKeyboardAwareScrollView>
         ) : (
           <FlatList
@@ -392,6 +485,11 @@ export default function SelectCategoryScreen() {
               { paddingBottom: bottomPadding + 24, paddingHorizontal: gridSidePad },
             ]}
             showsVerticalScrollIndicator={false}
+            ListHeaderComponent={topSection}
+            onScroll={(event) => {
+              scrollY.setValue(event.nativeEvent.contentOffset.y);
+            }}
+            scrollEventThrottle={16}
             renderItem={({ item }) => {
               const isSelected = selectedId === item.id;
               const iconName: keyof typeof Ionicons.glyphMap =
@@ -471,6 +569,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F0F9FF',
   },
+  bgHighlight: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  bgGlow: {
+    ...StyleSheet.absoluteFillObject,
+  },
   rootDark: {
     backgroundColor: '#0B1220',
   },
@@ -479,17 +583,34 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingBottom: 14,
+    paddingBottom: 4,
     backgroundColor: 'transparent',
+    minHeight: 46,
+    position: 'relative',
+    zIndex: 20,
+  },
+  stickyHeaderBg: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(11,28,65,0.06)',
+  },
+  headerSide: {
+    flex: 1,
+    zIndex: 2,
+  },
+  headerSideEnd: {
+    alignItems: 'flex-end',
+  },
+  headerCenter: {
+    flex: 1.35,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   headerTitle: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
     textAlign: 'center',
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: '900',
     color: BG_TEXT,
     letterSpacing: -0.2,
@@ -499,15 +620,14 @@ const styles = StyleSheet.create({
   },
   /* כפתורי header - העיצוב על View (NativeWind דורס style על Pressable) */
   headerBackBtn: {
-    flexDirection: ROW_REVERSE_DIR,
     alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
+    justifyContent: 'center',
+    width: 40,
+    height: 40,
     zIndex: 2,
-    borderRadius: 999,
+    borderRadius: 20,
     backgroundColor: '#FFFFFF',
-    borderWidth: 2,
+    borderWidth: 1.5,
     borderColor: 'rgba(29,78,216,0.40)',
     ...(Platform.OS === 'web'
       ? ({ boxShadow: '0 2px 10px rgba(0,0,0,0.10)' } as any)
@@ -519,61 +639,61 @@ const styles = StyleSheet.create({
           elevation: 3,
         }),
   },
-  headerBackBtnText: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: NAVY,
-  },
-  headerNextBtn: {
-    flexDirection: ROW_REVERSE_DIR,
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 16,
-    paddingVertical: 9,
+  headerNextBtnShell: {
     zIndex: 2,
     borderRadius: 999,
-    backgroundColor: colors.primary,
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.4)',
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
     ...(Platform.OS === 'web'
-      ? ({ boxShadow: '0 3px 12px rgba(6,23,62,0.45)' } as any)
+      ? ({ boxShadow: '0 6px 18px rgba(6,23,62,0.35)' } as any)
       : {
-          shadowColor: colors.primary,
-          shadowOpacity: 0.38,
-          shadowRadius: 12,
-          shadowOffset: { width: 0, height: 5 },
+          shadowColor: '#0B1E4F',
+          shadowOpacity: 0.24,
+          shadowRadius: 14,
+          shadowOffset: { width: 0, height: 6 },
           elevation: 6,
         }),
   },
-  headerNextBtnDisabled: {
-    backgroundColor: '#94A3B8',
-    borderColor: '#94A3B8',
+  headerNextBtnShellDisabled: {
     ...(Platform.OS === 'web'
       ? ({ boxShadow: 'none' } as any)
-      : { shadowOpacity: 0, elevation: 0 }),
+      : { shadowOpacity: 0.12, elevation: 2 }),
+  },
+  headerNextBtnBg: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  headerNextBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    minWidth: 88,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
   },
   headerNextBtnText: {
-    fontSize: 14,
-    fontWeight: '800',
+    fontSize: 15,
+    fontWeight: '900',
     color: '#FFFFFF',
-    letterSpacing: 0.3,
+    letterSpacing: 0.1,
   },
 
   /* segment */
   segmentContainer: {
     paddingHorizontal: 20,
-    paddingBottom: 10,
-    paddingTop: 6,
+    paddingBottom: 12,
+    paddingTop: 8,
   },
   segmentWrap: {
     height: 52,
-    borderRadius: 16,
+    borderRadius: 18,
     padding: 6,
     flexDirection: ROW_DIR,
     position: 'relative',
-    backgroundColor: 'rgba(255,255,255,0.60)',
+    backgroundColor: 'rgba(255,255,255,0.72)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.50)',
+    borderColor: 'rgba(255,255,255,0.55)',
   },
   segmentIndicator: {
     position: 'absolute',
@@ -598,6 +718,36 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.55)',
     marginHorizontal: 0,
   },
+  heroCard: {
+    marginHorizontal: 20,
+    marginTop: 6,
+    marginBottom: 2,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.68)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.58)',
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.06,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
+  },
+  heroTitle: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: BG_TEXT,
+    textAlign: 'right',
+  },
+  heroSubtitle: {
+    marginTop: 6,
+    fontSize: 13,
+    lineHeight: 20,
+    fontWeight: '700',
+    color: 'rgba(30,41,59,0.68)',
+    textAlign: 'right',
+  },
 
   /* content */
   contentWrap: { flex: 1, backgroundColor: 'transparent' },
@@ -619,7 +769,7 @@ const styles = StyleSheet.create({
 
   /* grid */
   gridList: { flex: 1 },
-  gridContent: { paddingTop: 12 },
+  gridContent: { paddingTop: 6 },
   gridRow: { flexDirection: ROW_DIR },
   gridItem: {
     flex: 1,
@@ -735,7 +885,19 @@ const styles = StyleSheet.create({
   },
 
   /* new-category form */
-  createScroll: { paddingHorizontal: 20, paddingTop: 22 },
+  createScroll: { paddingHorizontal: 20, paddingTop: 12 },
+  createCard: {
+    borderRadius: 26,
+    backgroundColor: 'rgba(255,255,255,0.78)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.58)',
+    padding: 18,
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.06,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3,
+  },
   fieldLabel: {
     fontSize: 13,
     fontWeight: '900',
@@ -746,6 +908,15 @@ const styles = StyleSheet.create({
   },
   fieldLabelDark: {
     color: 'rgba(241,245,249,0.70)',
+  },
+  fieldHint: {
+    marginTop: -2,
+    marginBottom: 12,
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '700',
+    color: 'rgba(100,116,139,0.78)',
+    textAlign: 'right',
   },
   inputWrap: {
     backgroundColor: '#fff',
@@ -774,24 +945,37 @@ const styles = StyleSheet.create({
   inputDark: {
     color: TEXT_DARK,
   },
-  sideRow: { flexDirection: ROW_DIR, gap: 12 },
+  sideRow: {
+    flexDirection: ROW_DIR,
+    gap: 12,
+  },
+  sideSection: {
+    borderRadius: 22,
+    backgroundColor: 'rgba(248,250,252,0.78)',
+    borderWidth: 1,
+    borderColor: 'rgba(148,163,184,0.16)',
+    padding: 10,
+  },
   sidePill: {
     flex: 1,
-    height: 54,
-    borderRadius: 16,
-    borderWidth: 2,
-    flexDirection: ROW_DIR,
+    minHeight: 72,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    flexDirection: ROW_REVERSE_DIR,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    position: 'relative',
     ...(Platform.OS === 'web'
-      ? ({ boxShadow: '0 8px 24px rgba(15,23,42,0.10)' } as any)
+      ? ({ boxShadow: '0 6px 18px rgba(15,23,42,0.06)' } as any)
       : {
           shadowColor: '#0F172A',
-          shadowOpacity: 0.10,
-          shadowRadius: 16,
-          shadowOffset: { width: 0, height: 8 },
-          elevation: 3,
+          shadowOpacity: 0.06,
+          shadowRadius: 10,
+          shadowOffset: { width: 0, height: 4 },
+          elevation: 2,
         }),
   },
   sidePillActive: {
@@ -805,6 +989,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderColor: BORDER_LIGHT,
   },
+  sidePillPressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.985 }],
+  },
   sidePillDark: {
     backgroundColor: 'rgba(30,41,59,0.60)',
   },
@@ -812,16 +1000,75 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.12)',
   },
   sidePillIconCircle: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  sidePillTextWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 0,
   },
   sidePillText: {
     fontSize: 16,
     fontWeight: '900',
     color: PRIMARY,
+    textAlign: 'center',
+    flexShrink: 1,
+  },
+  sidePillCheck: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  createSubmitOuter: {
+    marginTop: 28,
+    borderRadius: 22,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(11,30,79,0.08)',
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 12px 28px rgba(11,30,79,0.22)' } as any)
+      : {
+          shadowColor: '#0B1E4F',
+          shadowOpacity: 0.20,
+          shadowRadius: 18,
+          shadowOffset: { width: 0, height: 8 },
+          elevation: 5,
+        }),
+  },
+  createSubmitOuterDisabled: {
+    borderColor: 'rgba(148,163,184,0.28)',
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: 'none' } as any)
+      : { shadowOpacity: 0.08, elevation: 2 }),
+  },
+  createSubmitOuterPressed: {
+    transform: [{ scale: 0.99 }],
+  },
+  createSubmitBg: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  createSubmitInner: {
+    minHeight: 58,
+    paddingHorizontal: 18,
+    flexDirection: ROW_REVERSE_DIR,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  createSubmitText: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#FFFFFF',
   },
 
   // bottom bar removed (button moved to header)

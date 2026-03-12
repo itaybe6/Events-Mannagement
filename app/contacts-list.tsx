@@ -305,6 +305,57 @@ export default function ContactsListScreen() {
     <BackSwipe>
       <View style={[styles.container, { backgroundColor: ui.bg }]}>
         <Stack.Screen options={{ headerShown: false }} />
+        <LinearGradient
+          colors={['#F0F9FF', '#EEF2FF', '#FFF1F2']}
+          locations={[0, 0.55, 1]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFillObject}
+        />
+        <LinearGradient
+          colors={['rgba(255,255,255,0.78)', 'rgba(255,255,255,0)']}
+          start={{ x: 0.05, y: 0 }}
+          end={{ x: 0.72, y: 0.48 }}
+          style={styles.bgHighlight}
+        />
+        <LinearGradient
+          colors={['rgba(29,78,216,0.10)', 'rgba(244,114,182,0.08)', 'rgba(255,255,255,0)']}
+          start={{ x: 1, y: 0.08 }}
+          end={{ x: 0.2, y: 0.82 }}
+          style={styles.bgGlow}
+        />
+
+      <View
+        style={[
+          styles.stickyTitleBar,
+          {
+            paddingTop: insets.top + 10,
+            backgroundColor: ui.surfaceSoft,
+            borderBottomColor: ui.border,
+          },
+        ]}
+      >
+        <TouchableOpacity
+          style={[styles.backBtn, styles.backBtnAbs]}
+          onPress={() => {
+            const canGoBackFn = (router as any)?.canGoBack;
+            if (typeof canGoBackFn === 'function') {
+              if (canGoBackFn()) router.back();
+              else router.replace('/(couple)/guests');
+              return;
+            }
+            router.replace('/(couple)/guests');
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="חזרה"
+        >
+          <Ionicons name="chevron-forward" size={22} color={ui.primary} />
+        </TouchableOpacity>
+
+        <View style={styles.navRow}>
+          <Text style={[styles.navTitle, { color: ui.textStrong }]}>רשימת אנשי קשר</Text>
+        </View>
+      </View>
 
       <AppKeyboardAwareFlatList
         data={filteredContacts}
@@ -314,45 +365,38 @@ export default function ContactsListScreen() {
         style={{ flex: 1, width: '100%' }}
         // NOTE: Keep the header full-width; apply horizontal padding per-item instead.
         contentContainerStyle={{ width: '100%', paddingBottom: 140 }}
-        stickyHeaderIndices={[0]}
         ListHeaderComponent={
           <View
             style={[
               styles.header,
               {
-                // Keep content below the iOS safe area (notch / status bar).
-                paddingTop: insets.top + 16,
-                backgroundColor: ui.surfaceSoft,
-                borderBottomColor: ui.border,
+                paddingTop: 14,
               },
             ]}
           >
-            <TouchableOpacity
-              // Absolute-positioned button doesn't respect parent's paddingTop,
-              // so we must offset it explicitly below the safe area.
-              style={[styles.backBtn, styles.backBtnAbs, { top: insets.top + 16 }]}
-              onPress={() => {
-                const canGoBackFn = (router as any)?.canGoBack;
-                if (typeof canGoBackFn === 'function') {
-                  if (canGoBackFn()) router.back();
-                  else router.replace('/(couple)/guests');
-                  return;
-                }
-                // Fallback: don't trigger GO_BACK warning when opened directly.
-                router.replace('/(couple)/guests');
-              }}
-              accessibilityRole="button"
-              accessibilityLabel="חזרה"
-            >
-              <Ionicons name="chevron-back" size={24} color={ui.primary} />
-              <Text style={[styles.backText, { color: ui.primary }]}>חזרה</Text>
-            </TouchableOpacity>
-
-            <View style={styles.navRow}>
-              <Text style={[styles.navTitle, { color: ui.textStrong }]}>רשימת אנשי קשר</Text>
+            <View style={styles.headerHero}>
+              <View style={styles.headerHeroTopRow}>
+                {selectedCategory ? (
+                  <View style={styles.headerHeroCategoryPill}>
+                    <MaterialIcons name="label" size={15} color={ui.primary} />
+                    <Text style={styles.headerHeroCategoryText} numberOfLines={1}>
+                      {selectedCategory.name}
+                    </Text>
+                  </View>
+                ) : null}
+                <View style={styles.headerHeroCountPill}>
+                  <Text style={styles.headerHeroCountText}>{filteredContacts.length} אנשי קשר</Text>
+                </View>
+              </View>
+              <Text style={styles.headerHeroTitle}>
+                {selectedCategory ? `מוסיפים אורחים לקטגוריה ${selectedCategory.name}` : 'בחר קטגוריה כדי להתחיל'}
+              </Text>
+              <Text style={styles.headerHeroSubtitle}>
+                סמן כמה אנשי קשר שתרצה, ונוסיף אותם ישירות לרשימת המוזמנים באפליקציה.
+              </Text>
             </View>
 
-            <View style={{ gap: 16, paddingBottom: 16 }}>
+            <View style={{ gap: 16, paddingBottom: 18 }}>
               <View style={styles.topButtonsGrid}>
                 <View style={styles.topButtonCol}>
                   <Pressable
@@ -473,6 +517,17 @@ export default function ContactsListScreen() {
                   onBlur={() => setSearchFocused(false)}
                 />
               </View>
+
+              <View style={styles.selectionSummaryRow}>
+                <View style={styles.selectionSummaryCard}>
+                  <Text style={styles.selectionSummaryValue}>{selectedContacts.size}</Text>
+                  <Text style={styles.selectionSummaryLabel}>נבחרו להוספה</Text>
+                </View>
+                <View style={styles.selectionSummaryCard}>
+                  <Text style={styles.selectionSummaryValue}>{filteredContacts.length}</Text>
+                  <Text style={styles.selectionSummaryLabel}>אנשי קשר זמינים</Text>
+                </View>
+              </View>
             </View>
           </View>
         }
@@ -506,6 +561,8 @@ export default function ContactsListScreen() {
                 <View
                   style={[
                     styles.rowCard,
+                    selected && styles.rowCardSelected,
+                    disabled && styles.rowCardDisabled,
                     {
                       backgroundColor: selected ? ui.selectedBg : pressed ? ui.pressedBg : ui.surface,
                       borderColor: selected ? ui.selectedBorder : ui.border,
@@ -538,6 +595,7 @@ export default function ContactsListScreen() {
                     <View
                       style={[
                         styles.selectCircle,
+                        selected && styles.selectCircleSelected,
                         {
                           borderColor: selected ? ui.primary : '#D1D5DB',
                           opacity: contentOpacity,
@@ -676,51 +734,124 @@ const styles = StyleSheet.create({
     width: '100%',
     alignSelf: 'stretch',
   },
-
-  header: {
+  bgHighlight: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  bgGlow: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  stickyTitleBar: {
     position: 'relative',
+    width: '100%',
+    alignSelf: 'stretch',
+    paddingHorizontal: 16,
+    paddingBottom: 12,
     borderBottomWidth: 1,
+    zIndex: 20,
+  },
+  header: {
     paddingHorizontal: 16,
     width: '100%',
     alignSelf: 'stretch',
-    ...Platform.select({
-      web: {
-        // RN-web supports sticky in many setups; harmless elsewhere.
-        position: 'sticky' as any,
-        top: 0,
-        zIndex: 30,
-        backdropFilter: 'blur(10px)' as any,
-      },
-    }),
   },
   navRow: {
+    minHeight: 42,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
   },
   backBtn: {
-    flexDirection: 'row-reverse',
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     alignItems: 'center',
-    gap: 6,
-    paddingVertical: 6,
-    paddingHorizontal: 8,
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(37,99,235,0.10)',
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
   backBtnAbs: {
     position: 'absolute',
-    left: 0,
-    top: 0,
+    right: 16,
+    bottom: 12,
     zIndex: 10,
   },
-  backText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
   navTitle: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 22,
+    fontWeight: '900',
     textAlign: 'center',
     flex: 1,
     paddingHorizontal: 56,
+  },
+  headerHero: {
+    marginBottom: 14,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.72)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.58)',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 2,
+  },
+  headerHeroTopRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginBottom: 10,
+  },
+  headerHeroCategoryPill: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+    maxWidth: '68%',
+    borderRadius: 999,
+    backgroundColor: 'rgba(29,78,216,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(29,78,216,0.18)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  headerHeroCategoryText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#1d4ed8',
+    textAlign: 'right',
+    flexShrink: 1,
+  },
+  headerHeroCountPill: {
+    borderRadius: 999,
+    backgroundColor: 'rgba(15,23,42,0.06)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  headerHeroCountText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#475569',
+    textAlign: 'center',
+  },
+  headerHeroTitle: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: '#0f172a',
+    textAlign: 'right',
+  },
+  headerHeroSubtitle: {
+    marginTop: 6,
+    fontSize: 13,
+    lineHeight: 20,
+    fontWeight: '700',
+    color: 'rgba(51,65,85,0.74)',
+    textAlign: 'right',
   },
   topButtonsGrid: {
     flexDirection: 'row-reverse',
@@ -816,14 +947,47 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
   searchInput: {
-    borderRadius: 12,
+    borderRadius: 16,
     borderWidth: 1,
-    height: 48,
+    height: 52,
     paddingRight: 42,
     paddingLeft: 14,
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 15,
+    fontWeight: '700',
     textAlign: 'right',
+  },
+  selectionSummaryRow: {
+    flexDirection: 'row-reverse',
+    gap: 10,
+  },
+  selectionSummaryCard: {
+    flex: 1,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.82)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.58)',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 1,
+  },
+  selectionSummaryValue: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#0f172a',
+    textAlign: 'center',
+  },
+  selectionSummaryLabel: {
+    marginTop: 4,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748b',
+    textAlign: 'center',
   },
   itemRow: {
     width: '100%',
@@ -832,28 +996,38 @@ const styles = StyleSheet.create({
   },
   rowCard: {
     flex: 1,
-    borderRadius: 16,
-    paddingVertical: 14,
+    borderRadius: 20,
+    paddingVertical: 15,
     paddingHorizontal: 16,
     borderWidth: 1,
     flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'space-between',
     shadowColor: '#000',
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 1,
+    shadowOpacity: 0.06,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 2,
     ...Platform.select({
       web: {
         boxShadow: '0 4px 20px -2px rgba(0, 0, 0, 0.05)' as any,
       },
     }),
   },
+  rowCardSelected: {
+    shadowColor: '#1d4ed8',
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3,
+  },
+  rowCardDisabled: {
+    opacity: 0.78,
+  },
   contactCard: {
     flex: 1,
-    borderRadius: 16,
-    paddingVertical: 14,
+    borderRadius: 20,
+    paddingVertical: 15,
     paddingHorizontal: 16,
     borderWidth: 1,
     backgroundColor: '#FFFFFF',
@@ -862,10 +1036,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     shadowColor: '#000',
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 1,
+    shadowOpacity: 0.06,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 2,
     ...Platform.select({
       web: {
         boxShadow: '0 4px 20px -2px rgba(0, 0, 0, 0.05)' as any,
@@ -918,6 +1092,9 @@ const styles = StyleSheet.create({
     marginLeft: 0,
     backgroundColor: '#FFFFFF',
   },
+  selectCircleSelected: {
+    backgroundColor: 'rgba(29,78,216,0.08)',
+  },
   selectDot: {
     width: 14,
     height: 14,
@@ -931,6 +1108,12 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     paddingHorizontal: 16,
     paddingTop: 12,
+    backgroundColor: 'rgba(248,250,252,0.92)',
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: -6 },
+    elevation: 8,
   },
   bottomButtonOuter: {
     height: 60,
