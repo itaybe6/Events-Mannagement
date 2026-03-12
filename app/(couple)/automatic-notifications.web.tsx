@@ -313,6 +313,10 @@ export default function AutomaticNotificationsWebScreen() {
       whatsapp: '#25D366',
       bgLight: '#F9FAFB',
       card: '#FFFFFF',
+      surface: '#FFFFFF',
+      surfaceMuted: 'rgba(248,250,252,1)',
+      border: 'rgba(148,163,184,0.30)',
+      danger: '#EF4444',
       text: '#111827',
       sub: '#6B7280',
     }),
@@ -376,6 +380,16 @@ export default function AutomaticNotificationsWebScreen() {
   >([]);
   const [recipientsPreviewHint, setRecipientsPreviewHint] = useState<string>('');
   const [recipientsPreviewSearch, setRecipientsPreviewSearch] = useState('');
+
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewerRow, setViewerRow] = useState<NotificationSettingRow | null>(null);
+  const [viewerRecipientsLoading, setViewerRecipientsLoading] = useState(false);
+  const [viewerRecipientsTitle, setViewerRecipientsTitle] = useState('מוזמנים');
+  const [viewerRecipientsRows, setViewerRecipientsRows] = useState<Array<{ id: string; name: string; phone?: string; status?: string }>>(
+    []
+  );
+  const [viewerRecipientsHint, setViewerRecipientsHint] = useState('');
+  const [viewerRecipientsSearch, setViewerRecipientsSearch] = useState('');
 
   const [lastSmsRunBySettingId, setLastSmsRunBySettingId] = useState<Record<string, SmsRunSummary | undefined>>({});
   const [queuedCatchupBySettingId, setQueuedCatchupBySettingId] = useState<
@@ -1246,7 +1260,7 @@ export default function AutomaticNotificationsWebScreen() {
     setRecipientsPreviewSearch('');
   };
 
-  const openRecipientsPreview = useCallback(
+  const getRecipientsPreviewData = useCallback(
     async (row: NotificationSettingRow) => {
       const nt = String(row.notification_type || '').trim();
       const ids = Array.isArray((row as any).recipient_guest_ids)
@@ -1259,41 +1273,28 @@ export default function AutomaticNotificationsWebScreen() {
       const isAutoAll = !isFlow && nt === 'reminder_1' && String((row as any)?.recipient_mode ?? '').trim() !== 'manual';
 
       if (isAutoAll && ids.length === 0) {
-        setRecipientsPreviewTitle('מוזמנים (כל האורחים)');
-        setRecipientsPreviewHint('הבחירה היא אוטומטית — ההודעה תישלח לכל האורחים באירוע.');
-        setRecipientsPreviewRows(
-          allGuests.map((g) => ({ id: String(g.id), name: String(g.name || ''), phone: g.phone, status: g.status }))
-        );
-        setRecipientsPreviewSearch('');
-        setRecipientsPreviewOpen(true);
-        return;
+        return {
+          title: 'מוזמנים (כל האורחים)',
+          hint: 'הבחירה היא אוטומטית — ההודעה תישלח לכל האורחים באירוע.',
+          rows: allGuests.map((g) => ({ id: String(g.id), name: String(g.name || ''), phone: g.phone, status: g.status })),
+        };
       }
 
       if (isAutoPending && ids.length === 0) {
         const pending = allGuests.filter((g) => String(g.status || '').trim() === 'ממתין');
-        setRecipientsPreviewTitle(isFlow ? 'מוזמנים (ממתינים)' : 'מוזמנים (ממתינים)');
-        setRecipientsPreviewHint(
-          isFlow
+        return {
+          title: 'מוזמנים (ממתינים)',
+          hint: isFlow
             ? 'הבחירה היא דינאמית — תישלח אוטומטית לכל המוזמנים במצב ממתין.'
-            : 'לא נבחרה רשימה — תישלח אוטומטית לכל הממתינים.'
-        );
-        setRecipientsPreviewRows(
-          pending.map((g) => ({ id: String(g.id), name: String(g.name || ''), phone: g.phone, status: g.status }))
-        );
-        setRecipientsPreviewSearch('');
-        setRecipientsPreviewOpen(true);
-        return;
+            : 'לא נבחרה רשימה — תישלח אוטומטית לכל הממתינים.',
+          rows: pending.map((g) => ({ id: String(g.id), name: String(g.name || ''), phone: g.phone, status: g.status })),
+        };
       }
 
       if (isFlow && recipientMode === 'prev_pending') {
         const dependsOn = String((row as any)?.depends_on_setting_id || '').trim();
         if (!dependsOn) {
-          setRecipientsPreviewTitle('מוזמנים');
-          setRecipientsPreviewHint('לא הוגדר שלב קודם.');
-          setRecipientsPreviewRows([]);
-          setRecipientsPreviewSearch('');
-          setRecipientsPreviewOpen(true);
-          return;
+          return { title: 'מוזמנים', hint: 'לא הוגדר שלב קודם.', rows: [] as any[] };
         }
         try {
           const { data: prevRun, error: runErr } = await supabase
@@ -1304,12 +1305,11 @@ export default function AutomaticNotificationsWebScreen() {
             .limit(1)
             .maybeSingle();
           if (runErr || !prevRun?.id) {
-            setRecipientsPreviewTitle('מוזמנים (שלב קודם)');
-            setRecipientsPreviewHint('אין עדיין שליחה קודמת שממנה ניתן לגזור רשימה.');
-            setRecipientsPreviewRows([]);
-            setRecipientsPreviewSearch('');
-            setRecipientsPreviewOpen(true);
-            return;
+            return {
+              title: 'מוזמנים (שלב קודם)',
+              hint: 'אין עדיין שליחה קודמת שממנה ניתן לגזור רשימה.',
+              rows: [] as any[],
+            };
           }
 
           const { data: recRows, error: recErr } = await supabase
@@ -1328,20 +1328,14 @@ export default function AutomaticNotificationsWebScreen() {
             .filter(Boolean)
             .map((g: any) => ({ id: String(g.id), name: String(g.name || ''), phone: g.phone, status: g.status }));
 
-          setRecipientsPreviewTitle('מוזמנים (ממתינים מהשלב הקודם)');
-          setRecipientsPreviewHint('מחושב לפי שליחה אחרונה של השלב הקודם + סטטוס ממתין.');
-          setRecipientsPreviewRows(selected);
-          setRecipientsPreviewSearch('');
-          setRecipientsPreviewOpen(true);
-          return;
+          return {
+            title: 'מוזמנים (ממתינים מהשלב הקודם)',
+            hint: 'מחושב לפי שליחה אחרונה של השלב הקודם + סטטוס ממתין.',
+            rows: selected,
+          };
         } catch (e) {
           console.warn('Failed to compute prev_pending preview:', e);
-          setRecipientsPreviewTitle('מוזמנים');
-          setRecipientsPreviewHint('לא ניתן לחשב כרגע את הרשימה.');
-          setRecipientsPreviewRows([]);
-          setRecipientsPreviewSearch('');
-          setRecipientsPreviewOpen(true);
-          return;
+          return { title: 'מוזמנים', hint: 'לא ניתן לחשב כרגע את הרשימה.', rows: [] as any[] };
         }
       }
 
@@ -1351,13 +1345,49 @@ export default function AutomaticNotificationsWebScreen() {
         .filter(Boolean)
         .map((g: any) => ({ id: String(g.id), name: String(g.name || ''), phone: g.phone, status: g.status }));
 
-      setRecipientsPreviewTitle('מוזמנים שנבחרו');
-      setRecipientsPreviewHint('');
-      setRecipientsPreviewRows(selected);
+      return { title: 'מוזמנים שנבחרו', hint: '', rows: selected };
+    },
+    [allGuests]
+  );
+
+  const openRecipientsPreview = useCallback(
+    async (row: NotificationSettingRow) => {
+      const data = await getRecipientsPreviewData(row);
+      setRecipientsPreviewTitle(String((data as any).title || 'מוזמנים'));
+      setRecipientsPreviewHint(String((data as any).hint || ''));
+      setRecipientsPreviewRows(((data as any).rows as any[]) || []);
       setRecipientsPreviewSearch('');
       setRecipientsPreviewOpen(true);
     },
-    [allGuests]
+    [getRecipientsPreviewData]
+  );
+
+  const closeViewer = useCallback(() => {
+    setViewerOpen(false);
+    setViewerRow(null);
+    setViewerRecipientsLoading(false);
+    setViewerRecipientsTitle('מוזמנים');
+    setViewerRecipientsRows([]);
+    setViewerRecipientsHint('');
+    setViewerRecipientsSearch('');
+  }, []);
+
+  const openViewer = useCallback(
+    async (row: NotificationSettingRow) => {
+      setViewerRow(row);
+      setViewerOpen(true);
+      setViewerRecipientsSearch('');
+      setViewerRecipientsLoading(true);
+      try {
+        const data = await getRecipientsPreviewData(row);
+        setViewerRecipientsTitle(String((data as any).title || 'מוזמנים'));
+        setViewerRecipientsHint(String((data as any).hint || ''));
+        setViewerRecipientsRows(((data as any).rows as any[]) || []);
+      } finally {
+        setViewerRecipientsLoading(false);
+      }
+    },
+    [getRecipientsPreviewData]
   );
 
   const rowsByType = useMemo(() => {
@@ -1385,13 +1415,15 @@ export default function AutomaticNotificationsWebScreen() {
   // Combine built-in cards + flow steps into one ordered list.
   // Flow steps use `sort_order` as an insertion index (1-based) among ALL cards.
   const combinedCards = useMemo(() => {
-    const templates = displayRows.map((r) => ({ kind: 'template' as const, row: r }));
-    const flows = [...flowStepsSorted]
+    type CardItem = { kind: 'template' | 'flow'; row: NotificationSettingRow };
+
+    const templates: CardItem[] = displayRows.map((r) => ({ kind: 'template', row: r }));
+    const flows: CardItem[] = [...flowStepsSorted]
       .filter((s) => !Boolean((s as any)?.ui_hidden))
       .sort((a, b) => (Number((a as any).sort_order ?? 0) || 0) - (Number((b as any).sort_order ?? 0) || 0))
-      .map((r) => ({ kind: 'flow' as const, row: r }));
+      .map((r) => ({ kind: 'flow', row: r }));
 
-    const out = [...templates];
+    const out: CardItem[] = [...templates];
     for (const f of flows) {
       const posRaw = Number((f.row as any)?.sort_order ?? 0) || 0;
       const idx = Math.max(0, Math.min(out.length, Math.floor(posRaw) - 1));
@@ -2146,7 +2178,12 @@ export default function AutomaticNotificationsWebScreen() {
         recipient_guest_ids: Array.isArray(data?.recipient_guest_ids) ? (data.recipient_guest_ids as any[]).map((x) => String(x)) : [],
         flow_id: data?.flow_id ? String(data.flow_id) : (insertPayload.flow_id ? String(insertPayload.flow_id) : null),
         sort_order: typeof data?.sort_order === 'number' ? Number(data.sort_order) : insertAt,
-        recipient_mode: data?.recipient_mode ? String(data.recipient_mode) : 'manual',
+        recipient_mode:
+          ((): NotificationSettingRow['recipient_mode'] => {
+            const s = data?.recipient_mode == null ? null : String(data.recipient_mode).trim();
+            if (s === 'manual' || s === 'all' || s === 'pending' || s === 'prev_pending') return s;
+            return 'manual';
+          })(),
         recipient_rule: data?.recipient_rule ?? insertPayload.recipient_rule ?? null,
         depends_on_setting_id: data?.depends_on_setting_id ? String(data.depends_on_setting_id) : null,
       };
@@ -2625,6 +2662,10 @@ export default function AutomaticNotificationsWebScreen() {
                           onPress={(e: any) => {
                             e?.stopPropagation?.();
                             e?.preventDefault?.();
+                            if (!canEdit) {
+                              void openViewer(row);
+                              return;
+                            }
                             if (isFlow) openFlowEditor(row);
                             else openEditor(row);
                           }}
@@ -2761,12 +2802,16 @@ export default function AutomaticNotificationsWebScreen() {
                             onPress={(e: any) => {
                               e?.stopPropagation?.();
                               e?.preventDefault?.();
+                              if (!canEdit) {
+                                void openViewer(step);
+                                return;
+                              }
                               openFlowEditor(step);
                             }}
                             style={({ pressed }: any) => [styles.editBtn, pressed ? { opacity: 0.9 } : null]}
                           >
-                            <Ionicons name="create-outline" size={16} color={ui.primary} />
-                            <Text style={[styles.editBtnText, { color: ui.primary }]}>ערוך</Text>
+                            <Ionicons name={canEdit ? 'create-outline' : 'eye-outline'} size={16} color={ui.primary} />
+                            <Text style={[styles.editBtnText, { color: ui.primary }]}>{canEdit ? 'ערוך' : 'צפייה'}</Text>
                           </Pressable>
                         </View>
                       </Pressable>
@@ -3179,7 +3224,15 @@ export default function AutomaticNotificationsWebScreen() {
 
                         <View style={styles.scheduleFieldBlock}>
                           <Text style={styles.scheduleFieldLabel}>שעה</Text>
-                          <Pressable onPress={openTimeDialog} style={({ pressed }: any) => [styles.scheduleInputRow, pressed ? { opacity: 0.96 } : null]}>
+                          <Pressable
+                            onPress={openTimeDialog}
+                            disabled={!canEdit}
+                            style={({ pressed }: any) => [
+                              styles.scheduleInputRow,
+                              !canEdit ? { opacity: 0.55 } : null,
+                              pressed ? { opacity: 0.96 } : null,
+                            ]}
+                          >
                             <Ionicons name="time-outline" size={16} color="rgba(71,85,105,1)" />
                             <Text style={styles.scheduleInputText}>{String(editDraft?.timeHm || '11:00')}</Text>
                           </Pressable>
@@ -3199,13 +3252,21 @@ export default function AutomaticNotificationsWebScreen() {
 
                       <View style={styles.scheduleCalendarCard}>
                         <View style={styles.calendarHeaderRow}>
-                          <Pressable onPress={() => setCalendarMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))} style={styles.navBtn}>
+                          <Pressable
+                            onPress={() => setCalendarMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}
+                            disabled={!canEdit}
+                            style={[styles.navBtn, !canEdit ? ({ opacity: 0.55 } as any) : null]}
+                          >
                             <Ionicons name="chevron-forward" size={18} color="#111827" />
                           </Pressable>
                           <Text style={styles.calendarMonthText}>
                             {new Date(calendarGrid.y, calendarGrid.m, 1).toLocaleDateString('he-IL', { month: 'long', year: 'numeric' })}
                           </Text>
-                          <Pressable onPress={() => setCalendarMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))} style={styles.navBtn}>
+                          <Pressable
+                            onPress={() => setCalendarMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
+                            disabled={!canEdit}
+                            style={[styles.navBtn, !canEdit ? ({ opacity: 0.55 } as any) : null]}
+                          >
                             <Ionicons name="chevron-back" size={18} color="#111827" />
                           </Pressable>
                         </View>
@@ -3230,7 +3291,7 @@ export default function AutomaticNotificationsWebScreen() {
                             return (
                               <Pressable
                                 key={idx}
-                                disabled={!c.date}
+                                disabled={!c.date || !canEdit}
                                 onPress={() => {
                                   const ev = new Date(String((event as any)?.date ?? ''));
                                   if (!Number.isFinite(ev.getTime()) || !c.date) return;
@@ -3240,6 +3301,7 @@ export default function AutomaticNotificationsWebScreen() {
                                 style={({ pressed }: any) => [
                                   styles.dayCell,
                                   isSelected ? styles.dayCellSelected : null,
+                                  !canEdit ? { opacity: 0.55 } : null,
                                   pressed && c.date ? { opacity: 0.9 } : null,
                                 ]}
                               >
@@ -3261,7 +3323,15 @@ export default function AutomaticNotificationsWebScreen() {
 
                   <View style={styles.timingRow}>
                     <View style={styles.dateInlineCol}>
-                      <Pressable onPress={openDateDialog} style={({ pressed }: any) => [styles.datePillInline, pressed ? { opacity: 0.95 } : null]}>
+                      <Pressable
+                        onPress={openDateDialog}
+                        disabled={!canEdit}
+                        style={({ pressed }: any) => [
+                          styles.datePillInline,
+                          !canEdit ? { opacity: 0.55 } : null,
+                          pressed ? { opacity: 0.95 } : null,
+                        ]}
+                      >
                         <View style={styles.datePillMeta}>
                           <Ionicons name="calendar-outline" size={14} color="rgba(79,70,229,1)" />
                           <Text style={styles.datePillLabel}>תאריך שליחה</Text>
@@ -3276,7 +3346,15 @@ export default function AutomaticNotificationsWebScreen() {
                       <Text style={styles.scheduledHintText}>{formatOffsetLabel(Number(editDraft?.days ?? 0) || 0)}</Text>
                     </View>
 
-                    <Pressable onPress={openTimeDialog} style={({ pressed }: any) => [styles.timePillInline, pressed ? { opacity: 0.95 } : null]}>
+                    <Pressable
+                      onPress={openTimeDialog}
+                      disabled={!canEdit}
+                      style={({ pressed }: any) => [
+                        styles.timePillInline,
+                        !canEdit ? { opacity: 0.55 } : null,
+                        pressed ? { opacity: 0.95 } : null,
+                      ]}
+                    >
                       <View style={styles.datePillMeta}>
                         <Ionicons name="alarm-outline" size={14} color="rgba(79,70,229,1)" />
                         <Text style={styles.datePillLabel}>שעה</Text>
@@ -3409,6 +3487,7 @@ export default function AutomaticNotificationsWebScreen() {
                       <TextInput
                         value={editDraft?.message ?? ''}
                         onChangeText={(t) => setEditDraft((d) => (d ? { ...d, message: normalizeTemplateToSingleBraces(t).slice(0, MESSAGE_MAX_CHARS) } : d))}
+                        editable={canEdit}
                         multiline
                         textAlignVertical="top"
                         style={styles.textarea}
@@ -3424,10 +3503,10 @@ export default function AutomaticNotificationsWebScreen() {
                     </View>
                     <Pressable
                       onPress={() => void sendNow()}
-                      disabled={sendingNow || !editDraft}
+                      disabled={sendingNow || !editDraft || !canEdit}
                       style={({ pressed }: any) => [
                         styles.sendNowBtnBelowContent,
-                        sendingNow || !editDraft ? styles.sendNowBtnDisabled : null,
+                        sendingNow || !editDraft || !canEdit ? styles.sendNowBtnDisabled : null,
                         pressed ? { opacity: 0.92 } : null,
                       ]}
                     >
@@ -3703,7 +3782,12 @@ export default function AutomaticNotificationsWebScreen() {
 
                           <Pressable
                             onPress={() => openRecipientsPicker(editorRow)}
-                            style={({ pressed }: any) => [styles.recipientsPrimaryBtn, pressed ? { opacity: 0.92 } : null]}
+                            disabled={!canEdit}
+                            style={({ pressed }: any) => [
+                              styles.recipientsPrimaryBtn,
+                              !canEdit ? { opacity: 0.55 } : null,
+                              pressed ? { opacity: 0.92 } : null,
+                            ]}
                           >
                             <Ionicons name="person-add-outline" size={16} color="#fff" />
                             <Text style={styles.recipientsPrimaryBtnText}>
@@ -3740,7 +3824,8 @@ export default function AutomaticNotificationsWebScreen() {
                     <View style={styles.queueCatchupActivationRow}>
                       <Pressable
                         onPress={() => setCatchupEnabled((v) => !v)}
-                        style={({ pressed }: any) => [styles.toggleBtnCatchup, pressed ? { opacity: 0.92 } : null]}
+                        disabled={!canEdit}
+                        style={({ pressed }: any) => [styles.toggleBtnCatchup, !canEdit ? { opacity: 0.55 } : null, pressed ? { opacity: 0.92 } : null]}
                         accessibilityRole="switch"
                         accessibilityState={{ checked: catchupEnabled }}
                         accessibilityLabel={catchupEnabled ? 'פעיל' : 'כבוי'}
@@ -3913,7 +3998,12 @@ export default function AutomaticNotificationsWebScreen() {
                       <View style={styles.queueCatchupActionsRow}>
                         <Pressable
                           onPress={() => void runCatchupBackfill()}
-                          style={({ pressed }: any) => [styles.queueCatchupActionBtn, pressed ? { opacity: 0.92 } : null]}
+                          disabled={!canEdit}
+                          style={({ pressed }: any) => [
+                            styles.queueCatchupActionBtn,
+                            !canEdit ? { opacity: 0.55 } : null,
+                            pressed ? { opacity: 0.92 } : null,
+                          ]}
                         >
                           <Ionicons name="add" size={16} color="#2563EB" />
                           <Text style={styles.queueCatchupActionBtnText}>הכנס לתור</Text>
@@ -4147,22 +4237,22 @@ export default function AutomaticNotificationsWebScreen() {
                               : null),
                           })
                         }
-                        disabled={saving || !editDraft}
+                        disabled={saving || !editDraft || !canEdit}
                         style={({ pressed }: any) => [
                           styles.saveBtn,
-                          saving || !editDraft ? styles.saveBtnDisabled : null,
+                          saving || !editDraft || !canEdit ? styles.saveBtnDisabled : null,
                           pressed ? { opacity: 0.92 } : null,
                         ]}
                       >
-                        <Text style={styles.saveBtnText}>{saving ? 'שומר...' : 'שמור שינויים'}</Text>
+                        <Text style={styles.saveBtnText}>{!canEdit ? 'לצפייה בלבד' : saving ? 'שומר...' : 'שמור שינויים'}</Text>
                       </Pressable>
                       {editorWizardStepId !== 'message' ? (
                         <Pressable
                           onPress={() => void sendNow()}
-                          disabled={sendingNow || !editDraft}
+                          disabled={sendingNow || !editDraft || !canEdit}
                           style={({ pressed }: any) => [
                             styles.sendNowBtn,
-                            sendingNow || !editDraft ? styles.sendNowBtnDisabled : null,
+                            sendingNow || !editDraft || !canEdit ? styles.sendNowBtnDisabled : null,
                             pressed ? { opacity: 0.92 } : null,
                           ]}
                         >
@@ -4193,15 +4283,23 @@ export default function AutomaticNotificationsWebScreen() {
                 <>
                   <Pressable
                     onPress={() => void saveDraft({ closeOnSuccess: true, toastOnSuccess: true })}
-                    disabled={saving || !editDraft}
-                    style={({ pressed }: any) => [styles.saveBtn, saving || !editDraft ? styles.saveBtnDisabled : null, pressed ? { opacity: 0.92 } : null]}
+                    disabled={saving || !editDraft || !canEdit}
+                    style={({ pressed }: any) => [
+                      styles.saveBtn,
+                      saving || !editDraft || !canEdit ? styles.saveBtnDisabled : null,
+                      pressed ? { opacity: 0.92 } : null,
+                    ]}
                   >
-                    <Text style={styles.saveBtnText}>{saving ? 'שומר...' : 'שמור שינויים'}</Text>
+                    <Text style={styles.saveBtnText}>{!canEdit ? 'לצפייה בלבד' : saving ? 'שומר...' : 'שמור שינויים'}</Text>
                   </Pressable>
                   <Pressable
                     onPress={() => void sendNow()}
-                    disabled={sendingNow || !editDraft}
-                    style={({ pressed }: any) => [styles.sendNowBtn, sendingNow || !editDraft ? styles.sendNowBtnDisabled : null, pressed ? { opacity: 0.92 } : null]}
+                    disabled={sendingNow || !editDraft || !canEdit}
+                    style={({ pressed }: any) => [
+                      styles.sendNowBtn,
+                      sendingNow || !editDraft || !canEdit ? styles.sendNowBtnDisabled : null,
+                      pressed ? { opacity: 0.92 } : null,
+                    ]}
                   >
                     <Ionicons name="paper-plane-outline" size={16} color="#fff" />
                     <Text style={styles.sendNowBtnText}>{sendingNow ? 'שולח...' : 'שלח עכשיו'}</Text>
@@ -4506,6 +4604,128 @@ export default function AutomaticNotificationsWebScreen() {
               </View>
             </View>
           ) : null}
+        </View>
+      ) : null}
+
+      {viewerOpen && viewerRow ? (
+        <View style={styles.dialogOverlay}>
+          <Pressable style={styles.pickerBackdrop} onPress={closeViewer} />
+          <View style={styles.dialogCard}>
+            <View style={styles.dialogHeader}>
+              <Text style={styles.dialogTitle}>{`צפייה: ${getDisplayTitle(viewerRow)}`}</Text>
+              <Pressable onPress={closeViewer} style={styles.dialogClose}>
+                <Ionicons name="close" size={18} color="#111827" />
+              </Pressable>
+            </View>
+
+            <View style={{ padding: 14, gap: 12 }}>
+              <View style={styles.viewerMetaRow}>
+                <View style={styles.viewerMetaPill}>
+                  <Ionicons name={String((viewerRow as any)?.channel || 'SMS') === 'WHATSAPP' ? 'logo-whatsapp' : 'chatbox-outline'} size={14} color="#0F172A" />
+                  <Text style={styles.viewerMetaText}>{String((viewerRow as any)?.channel || 'SMS')}</Text>
+                </View>
+                {viewerRow.notification_date ? (
+                  <View style={styles.viewerMetaPill}>
+                    <Ionicons name="time-outline" size={14} color="#0F172A" />
+                    <Text style={styles.viewerMetaText}>{formatHeDateTimeShort((viewerRow as any).notification_date)}</Text>
+                  </View>
+                ) : null}
+                <View style={[styles.viewerMetaPill, { backgroundColor: viewerRow.enabled ? 'rgba(34,197,94,0.12)' : 'rgba(100,116,139,0.10)' }]}>
+                  <Ionicons name={viewerRow.enabled ? 'checkmark-circle-outline' : 'remove-circle-outline'} size={14} color={viewerRow.enabled ? '#16A34A' : '#64748B'} />
+                  <Text style={[styles.viewerMetaText, { color: viewerRow.enabled ? '#166534' : '#64748B' }]}>{viewerRow.enabled ? 'פעילה' : 'כבויה'}</Text>
+                </View>
+              </View>
+
+              <View style={styles.step4TwoCol}>
+                <View style={[styles.step4PreviewCol, { backgroundColor: ui.surface, borderColor: ui.border }]}>
+                  <Text style={[styles.step4PreviewTitle, { color: ui.text }]}>תצוגה מקדימה</Text>
+                  <Text style={[styles.step4PreviewSubtitle, { color: ui.sub }]}>כך ההודעה תראה במכשיר הנייד</Text>
+                  <View style={styles.step4PhoneMockupWrap}>
+                    <IPhoneMockup
+                      model="14-pro"
+                      color="space-black"
+                      fitWidth={300}
+                      fitHeight={631}
+                      screenBg="#f8fafc"
+                      showHomeIndicator={true}
+                    >
+                      <View style={styles.step4PhoneScreenContent}>
+                        <Text style={styles.step4PhoneTime}>היום 14:30</Text>
+                        <View style={[styles.step4BubbleIn, { backgroundColor: 'rgba(226,232,240,1)' }]}>
+                          <Text style={[styles.step4BubbleText, { color: ui.text }]}>
+                            {(() => {
+                              const raw = normalizeTemplateToSingleBraces(String((viewerRow as any)?.message_content || '')).trim();
+                              const txt = raw ? renderPreviewText(raw) : '';
+                              return (txt || '—').replace(/\n/g, '\n');
+                            })()}
+                          </Text>
+                          <Text style={styles.step4BubbleTime}>14:31</Text>
+                        </View>
+                        <View style={[styles.step4BubbleOut, { backgroundColor: 'rgba(59,130,246,1)' }]}>
+                          <Text style={styles.step4BubbleTextOut}>תודה רבה! אגיע בזמן.</Text>
+                          <Text style={styles.step4BubbleTimeOut}>14:35</Text>
+                        </View>
+                      </View>
+                    </IPhoneMockup>
+                  </View>
+                </View>
+
+                <View style={styles.step4ContentCol}>
+                  <Text style={[styles.editorSectionTitle, { color: ui.text }]}>תוכן ההודעה</Text>
+                  <View style={styles.viewerMessageBox}>
+                    <Text style={styles.viewerMessageText} selectable>
+                      {normalizeTemplateToSingleBraces(String((viewerRow as any)?.message_content || '')).trim() || '—'}
+                    </Text>
+                  </View>
+
+                  <Text style={[styles.editorSectionTitle, { color: ui.text, marginTop: 16 }]}>למי זה נשלח</Text>
+                  {viewerRecipientsTitle ? <Text style={styles.recipientsPreviewHint}>{viewerRecipientsTitle}</Text> : null}
+                  {viewerRecipientsHint ? <Text style={styles.recipientsPreviewHint}>{viewerRecipientsHint}</Text> : null}
+
+                  <View style={styles.recipientsPreviewSearchRow}>
+                    <Ionicons name="search-outline" size={16} color="#64748B" />
+                    <TextInput
+                      value={viewerRecipientsSearch}
+                      onChangeText={setViewerRecipientsSearch}
+                      placeholder="חיפוש לפי שם או טלפון..."
+                      placeholderTextColor="rgba(100,116,139,0.6)"
+                      style={styles.recipientsPreviewSearchInput}
+                    />
+                  </View>
+
+                  {viewerRecipientsLoading ? (
+                    <Text style={styles.recipientsPreviewEmpty}>טוען רשימת נמענים...</Text>
+                  ) : viewerRecipientsRows.length === 0 ? (
+                    <Text style={styles.recipientsPreviewEmpty}>לא נבחרו מוזמנים.</Text>
+                  ) : (
+                    <ScrollView style={{ maxHeight: 320 }} contentContainerStyle={{ gap: 8, paddingBottom: 6 }}>
+                      {viewerRecipientsRows
+                        .filter((g) => {
+                          const q = String(viewerRecipientsSearch || '').trim().toLowerCase();
+                          if (!q) return true;
+                          const name = String(g.name || '').toLowerCase();
+                          const phone = String(g.phone || '').toLowerCase();
+                          return name.includes(q) || phone.includes(q);
+                        })
+                        .map((g) => (
+                          <View key={g.id} style={styles.recipientsPreviewRow}>
+                            <Ionicons name="person-circle-outline" size={22} color="rgba(79,70,229,0.65)" />
+                            <View style={{ flex: 1, minWidth: 0 }}>
+                              <Text style={styles.recipientsPreviewName} numberOfLines={1}>
+                                {g.name || '—'}
+                              </Text>
+                              <Text style={styles.recipientsPreviewMeta} numberOfLines={1}>
+                                {(g.status ? `${g.status} · ` : '') + (g.phone ? g.phone : 'אין טלפון')}
+                              </Text>
+                            </View>
+                          </View>
+                        ))}
+                    </ScrollView>
+                  )}
+                </View>
+              </View>
+            </View>
+          </View>
         </View>
       ) : null}
 
@@ -4952,7 +5172,7 @@ const styles = StyleSheet.create({
   daysSuffix: { fontSize: 12, fontWeight: '900', color: 'rgba(2,6,23,0.55)', textAlign: 'right' },
 
   dateRow: { marginTop: 2 },
-  datePill: {
+  datePillBlock: {
     width: '100%',
     flexDirection: 'row-reverse',
     alignItems: 'center',
@@ -5369,6 +5589,29 @@ const styles = StyleSheet.create({
   recipientsPreviewName: { fontSize: 13, fontWeight: '900', color: '#111827', textAlign: 'right' },
   recipientsPreviewMeta: { marginTop: 3, fontSize: 12, fontWeight: '800', color: '#64748B', textAlign: 'right' },
 
+  viewerMetaRow: { width: '100%', flexDirection: 'row-reverse', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-start', gap: 8 },
+  viewerMetaPill: {
+    height: 28,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    backgroundColor: 'rgba(2,6,23,0.06)',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  viewerMetaText: { fontSize: 12, fontWeight: '900', color: '#0F172A', textAlign: 'right' },
+  viewerSectionTitle: { marginTop: 2, fontSize: 13, fontWeight: '900', color: '#111827', textAlign: 'right' },
+  viewerMessageBox: {
+    width: '100%',
+    borderRadius: 12,
+    padding: 12,
+    backgroundColor: 'rgba(2,6,23,0.03)',
+    borderWidth: 1,
+    borderColor: 'rgba(2,6,23,0.08)',
+  },
+  viewerMessageText: { fontSize: 13, fontWeight: '800', color: '#111827', textAlign: 'right', lineHeight: 20, writingDirection: 'rtl' },
+
   sendStatusRow: {
     paddingHorizontal: 10,
     paddingVertical: 10,
@@ -5715,7 +5958,7 @@ const styles = StyleSheet.create({
   scheduleInputRow: { height: 44, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(2,6,23,0.12)', backgroundColor: '#fff', paddingHorizontal: 12, flexDirection: 'row-reverse', alignItems: 'center', gap: 10, justifyContent: 'flex-end' },
   scheduleInputText: { fontSize: 14, fontWeight: '900', color: '#111827', textAlign: 'right', flex: 1, writingDirection: 'ltr' },
   scheduleHintText: { fontSize: 11, fontWeight: '800', color: 'rgba(100,116,139,1)', textAlign: 'right', lineHeight: 16 },
-  scheduleSummaryCard: { display: 'grid', marginTop: 6, borderRadius: 10, padding: 12, borderWidth: 1, borderColor: 'rgba(148,163,184,0.30)', backgroundColor: 'rgba(248,250,252,1)', alignItems: 'flex-end', gap: 6 },
+  scheduleSummaryCard: { marginTop: 6, borderRadius: 10, padding: 12, borderWidth: 1, borderColor: 'rgba(148,163,184,0.30)', backgroundColor: 'rgba(248,250,252,1)', alignItems: 'flex-end', gap: 6 },
   scheduleSummaryLabel: { fontSize: 12, fontWeight: '900', color: 'rgba(15,23,42,0.72)', textAlign: 'right' },
   scheduleSummaryValue: { fontSize: 18, fontWeight: '900', color: '#111827', textAlign: 'right', writingDirection: 'ltr' },
   scheduleCalendarCard: { flex: 1, minWidth: 360, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(2,6,23,0.08)', backgroundColor: '#fff', paddingTop: 10, overflow: 'hidden' },
@@ -6323,5 +6566,5 @@ const styles = StyleSheet.create({
   whatsappBtnPrimaryText: { fontSize: 14, fontWeight: '900', color: '#fff' },
   whatsappBtnSecondary: { flex: 1, height: 44, borderRadius: 10, backgroundColor: '#fff', borderWidth: 1, borderColor: '#86EFAC', alignItems: 'center', justifyContent: 'center', ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
   whatsappBtnSecondaryText: { fontSize: 14, fontWeight: '900', color: '#16A34A' },
-});
+} as any) as any;
 

@@ -977,10 +977,13 @@ const styles = StyleSheet.create({
   actionsShell: {
     flexDirection: 'row-reverse',
     gap: 16,
-    alignItems: 'stretch',
+    // Prevent the primary action from stretching to the full height of the secondary grid
+    // on laptop-sized widths where the right column wraps to multiple rows.
+    alignItems: 'flex-start',
   },
   actionsShellStack: {
     flexDirection: 'column',
+    alignItems: 'stretch',
   },
   secondaryActionsGrid: {
     flex: 1,
