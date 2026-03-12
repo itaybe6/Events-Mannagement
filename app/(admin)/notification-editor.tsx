@@ -214,7 +214,9 @@ function formatOffsetLabel(days: number) {
 const isMissingColumn = (err: any, column: string) =>
   String(err?.code) === '42703' && String(err?.message || '').toLowerCase().includes(column.toLowerCase());
 
-export default function AdminNotificationEditorScreen() {
+type NotificationEditorViewerMode = 'admin' | 'couple';
+
+export function AdminNotificationEditorScreen({ viewerMode = 'admin' }: { viewerMode?: NotificationEditorViewerMode } = {}) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { setTabBarVisible } = useLayoutStore();
@@ -264,10 +266,22 @@ export default function AdminNotificationEditorScreen() {
   const [selectedGuestIds, setSelectedGuestIds] = useState<Set<string>>(() => new Set());
   const [sendingNow, setSendingNow] = useState(false);
   const [importingPrev, setImportingPrev] = useState(false);
+
+  const backHref = useMemo(() => {
+    if (viewerMode === 'couple') {
+      return resolvedEventId
+        ? `/(couple)/automatic-notifications?eventId=${encodeURIComponent(resolvedEventId)}`
+        : '/(couple)';
+    }
+    return resolvedEventId
+      ? `/(admin)/admin-event-messages?eventId=${encodeURIComponent(resolvedEventId)}`
+      : '/(admin)/admin-events';
+  }, [resolvedEventId, viewerMode]);
   const [lastSmsRun, setLastSmsRun] = useState<SmsRunSummary | null>(null);
   const [sendStatusRows, setSendStatusRows] = useState<
     Array<{ guestId: string; name: string; phone?: string; guestStatus?: string; sendStatus: 'sent' | 'failed' | 'skipped'; sentAt?: string | null; error?: string | null }>
   >([]);
+  const [sendStatusLoading, setSendStatusLoading] = useState(false);
   const [sendStatusDialogOpen, setSendStatusDialogOpen] = useState(false);
   const [sendStatusSearch, setSendStatusSearch] = useState('');
   const [eventMeta, setEventMeta] = useState<any>(null);
@@ -845,6 +859,71 @@ export default function AdminNotificationEditorScreen() {
     });
   }, [sendStatusRows, sendStatusSearch]);
 
+  const openSendStatusDialog = useCallback(async () => {
+    if (!lastSmsRun?.id) return;
+
+    setSendStatusSearch('');
+    setSendStatusRows([]);
+    setSendStatusDialogOpen(true);
+    setSendStatusLoading(true);
+
+    try {
+      const { data: recRows, error: recError } = await supabase
+        .from('scheduled_notification_sms_run_recipients')
+        .select('guest_id, status, phone, sent_at, error')
+        .eq('run_id', lastSmsRun.id)
+        .order('created_at', { ascending: true });
+      if (recError) throw recError;
+
+      const recs = (((recRows as any[]) || []).map((r) => ({
+        guestId: String((r as any).guest_id),
+        sendStatus: String((r as any).status) as 'sent' | 'failed' | 'skipped',
+        phone: (r as any).phone ? String((r as any).phone) : undefined,
+        sentAt: (r as any).sent_at ? String((r as any).sent_at) : null,
+        error: (r as any).error ? String((r as any).error) : null,
+      })));
+
+      const ids = recs.map((r) => r.guestId).filter(Boolean);
+      const byId = new Map<string, { name: string; phone?: string; guestStatus?: string }>();
+      if (ids.length > 0) {
+        const { data: gRows, error: gError } = await supabase
+          .from('guests')
+          .select('id, name, phone, status')
+          .eq('event_id', resolvedEventId)
+          .in('id', ids);
+        if (!gError) {
+          for (const g of (gRows as any[]) || []) {
+            byId.set(String((g as any).id), {
+              name: String((g as any).name ?? ''),
+              phone: (g as any).phone ? String((g as any).phone) : undefined,
+              guestStatus: (g as any).status ? String((g as any).status) : undefined,
+            });
+          }
+        }
+      }
+
+      setSendStatusRows(
+        recs.map((r) => {
+          const g = byId.get(r.guestId);
+          return {
+            guestId: r.guestId,
+            name: g?.name || '—',
+            phone: g?.phone || r.phone,
+            guestStatus: g?.guestStatus,
+            sendStatus: r.sendStatus,
+            sentAt: r.sentAt,
+            error: r.error,
+          };
+        })
+      );
+    } catch (e) {
+      console.warn('Failed to open SMS run recipients dialog:', e);
+      setSendStatusRows([]);
+    } finally {
+      setSendStatusLoading(false);
+    }
+  }, [lastSmsRun?.id, resolvedEventId]);
+
   if (loading) {
     return (
       <SafeAreaView style={[styles.page, { backgroundColor: ui.bg }]}>
@@ -878,11 +957,7 @@ export default function AdminNotificationEditorScreen() {
           <View style={styles.nativeTopRow}>
             <TouchableOpacity
               style={styles.nativeBackButton}
-              onPress={() =>
-                resolvedEventId
-                  ? router.replace(`/(admin)/admin-event-messages?eventId=${encodeURIComponent(resolvedEventId)}`)
-                  : router.replace('/(admin)/admin-events')
-              }
+              onPress={() => router.replace(backHref as any)}
               accessibilityRole="button"
               accessibilityLabel="חזרה להודעות אוטומטיות"
               activeOpacity={0.86}
@@ -962,21 +1037,17 @@ export default function AdminNotificationEditorScreen() {
                 <TouchableOpacity
                   style={[
                     styles.nativeRecipientsOpenBtn,
-                    sendStatusRows.length === 0 ? styles.nativeRecipientsOpenBtnDisabled : null,
+                    !lastSmsRun?.id ? styles.nativeRecipientsOpenBtnDisabled : null,
                   ]}
-                  onPress={() => {
-                    if (sendStatusRows.length === 0) return;
-                    setSendStatusSearch('');
-                    setSendStatusDialogOpen(true);
-                  }}
-                  disabled={sendStatusRows.length === 0}
+                  onPress={() => void openSendStatusDialog()}
+                  disabled={!lastSmsRun?.id}
                   activeOpacity={0.86}
                 >
-                  <Ionicons name="people-outline" size={16} color={sendStatusRows.length === 0 ? colors.gray[400] : colors.primary} />
+                  <Ionicons name="people-outline" size={16} color={!lastSmsRun?.id ? colors.gray[400] : colors.primary} />
                   <Text
                     style={[
                       styles.nativeRecipientsOpenBtnText,
-                      sendStatusRows.length === 0 ? { color: colors.gray[400] } : null,
+                      !lastSmsRun?.id ? { color: colors.gray[400] } : null,
                     ]}
                   >
                     צפייה בנמענים
@@ -1012,7 +1083,11 @@ export default function AdminNotificationEditorScreen() {
               />
 
               <ScrollView style={styles.nativeDialogScroll} contentContainerStyle={styles.nativeRecipientsStack} showsVerticalScrollIndicator={false}>
-                {filteredSendStatusRows.length === 0 ? (
+                {sendStatusLoading ? (
+                  <View style={styles.nativeDialogLoading}>
+                    <ActivityIndicator size="small" color={colors.primary} />
+                  </View>
+                ) : filteredSendStatusRows.length === 0 ? (
                   <Text style={styles.nativeDialogEmpty}>לא נמצאו נמענים מתאימים.</Text>
                 ) : (
                   filteredSendStatusRows.map((g) => {
@@ -1462,6 +1537,10 @@ export default function AdminNotificationEditorScreen() {
   );
 }
 
+export default function AdminNotificationEditorRoute() {
+  return <AdminNotificationEditorScreen />;
+}
+
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   page: { flex: 1 },
@@ -1814,6 +1893,11 @@ const styles = StyleSheet.create({
   },
   nativeDialogScroll: {
     maxHeight: 420,
+  },
+  nativeDialogLoading: {
+    paddingVertical: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   nativeDialogEmpty: {
     fontSize: 13,

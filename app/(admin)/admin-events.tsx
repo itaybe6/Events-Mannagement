@@ -13,6 +13,7 @@ import { inferEventType, MONTHS, type EventType } from '@/features/events/events
 import { useEventsListModel } from '@/features/events/useEventsListModel';
 import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
 import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
+import { useUserStore } from '@/store/userStore';
 
 const EVENT_IMAGE_BY_TYPE: Record<EventType, number> = {
   חתונה: require('../../assets/images/wedding.jpg'),
@@ -60,6 +61,8 @@ export default function AdminEventsScreen() {
   const router = useRouter();
   const typeChipsScrollRef = useRef<ScrollView | null>(null);
   const insets = useSafeAreaInsets();
+  const userType = useUserStore((state) => state.userType);
+  const isEmployeeAppUser = userType === 'employee' && Platform.OS !== 'web';
 
   const [showFilterDialog, setShowFilterDialog] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -250,11 +253,19 @@ export default function AdminEventsScreen() {
 
             <View style={styles.headerActionSlot}>
               <TouchableOpacity
-                style={styles.heroPrimaryBtn}
-                onPress={() => router.push('/(admin)/admin-events-create')}
+                style={[styles.heroPrimaryBtn, isEmployeeAppUser && styles.heroPrimaryBtnDisabled]}
+                onPress={() => {
+                  if (isEmployeeAppUser) return;
+                  router.push('/(admin)/admin-events-create');
+                }}
+                disabled={isEmployeeAppUser}
                 activeOpacity={0.88}
               >
-                <Ionicons name="add" size={22} color={colors.white} />
+                <Ionicons
+                  name="add"
+                  size={22}
+                  color={isEmployeeAppUser ? colors.gray[600] : colors.white}
+                />
               </TouchableOpacity>
             </View>
           </View>
@@ -775,6 +786,11 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 8 },
     elevation: 4,
+  },
+  heroPrimaryBtnDisabled: {
+    backgroundColor: 'rgba(201, 207, 218, 0.95)',
+    shadowColor: colors.black,
+    shadowOpacity: 0.06,
   },
   typeChipsAnimatedWrap: {
     overflow: 'hidden',

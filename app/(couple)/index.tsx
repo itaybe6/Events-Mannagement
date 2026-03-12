@@ -5,15 +5,18 @@ import { useUserStore } from '@/store/userStore';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import { colors } from '@/constants/colors';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { eventService } from '@/lib/services/eventService';
 import { guestService } from '@/lib/services/guestService';
 import { BlurView } from 'expo-blur';
 import { EventSwitcher } from '@/components/EventSwitcher';
 import { ALIGN_RIGHT, ROW_DIR, rtlText } from '@/lib/rtl';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function HomeScreen() {
   const { isLoggedIn, userData, initializeAuth } = useUserStore();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
   const { eventId: queryEventId } = useLocalSearchParams<{ eventId?: string }>();
   const activeUserId = useEventSelectionStore((s) => s.activeUserId);
@@ -23,9 +26,16 @@ export default function HomeScreen() {
   const [guests, setGuests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(() => new Date());
+  const [hasMultipleEvents, setHasMultipleEvents] = useState(false);
   const isWeb = Platform.OS === 'web';
   const isDesktopWeb = isWeb && windowWidth >= 1024;
   const AnimatedPressable = useMemo(() => Animated.createAnimatedComponent(Pressable), []);
+  const scrollY = React.useRef(new Animated.Value(0)).current;
+  const mobileGradientOpacity = scrollY.interpolate({
+    inputRange: [0, 160],
+    outputRange: [1, 0.18],
+    extrapolate: 'clamp',
+  });
 
   const resolvedEventId =
     String(
@@ -106,18 +116,33 @@ export default function HomeScreen() {
   );
 
   useEffect(() => {
-    // Keep "days left" accurate without heavy countdown UI
-    const t = setInterval(() => setNow(new Date()), 60_000);
+    const t = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(t);
   }, []);
 
-  const daysToWedding = useMemo(() => {
+  const countdown = useMemo(() => {
     const target = currentEvent?.date ? new Date(currentEvent.date).getTime() : NaN;
     const diffMs = target - now.getTime();
     if (!Number.isFinite(diffMs)) return null;
-    const msPerDay = 1000 * 60 * 60 * 24;
-    return Math.max(0, Math.ceil(diffMs / msPerDay));
+
+    const safeDiff = Math.max(0, diffMs);
+    const totalSeconds = Math.floor(safeDiff / 1000);
+
+    return {
+      days: Math.floor(totalSeconds / 86400),
+      hours: Math.floor((totalSeconds % 86400) / 3600),
+      minutes: Math.floor((totalSeconds % 3600) / 60),
+      seconds: totalSeconds % 60,
+      isComplete: safeDiff <= 0,
+    };
   }, [currentEvent?.date, now]);
+
+  const eventTypeLabel = useMemo(() => {
+    const raw = String(currentEvent?.title ?? '').trim();
+    if (!raw) return 'אירוע';
+    const parts = raw.split(/(?:\s*[–—-]\s*)/g).map((p) => p.trim()).filter(Boolean);
+    return parts[0] || raw;
+  }, [currentEvent?.title]);
 
   if (!isLoggedIn) {
     return (
@@ -143,20 +168,30 @@ export default function HomeScreen() {
     );
   }
 
-  const formatDate = (date: Date) => {
-    return new Date(date).toLocaleDateString('he-IL', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
-
-  const confirmedGuests = guests.filter(guest => guest.status === 'מגיע').length;
-  const pendingGuests = guests.filter(guest => guest.status === 'ממתין').length;
-  const totalGuests = guests.length;
-  const seatedGuests = guests.filter(guest => guest.status === 'מגיע' && guest.table_id).length;
+  const confirmedPeople = guests.reduce((sum: number, guest: any) => {
+    if (guest?.status !== 'מגיע') return sum;
+    return sum + (Number(guest?.numberOfPeople ?? guest?.number_of_people ?? 1) || 1);
+  }, 0);
+  const declinedPeople = guests.reduce((sum: number, guest: any) => {
+    if (guest?.status !== 'לא מגיע') return sum;
+    return sum + (Number(guest?.numberOfPeople ?? guest?.number_of_people ?? 1) || 1);
+  }, 0);
+  const pendingPeople = guests.reduce((sum: number, guest: any) => {
+    if (guest?.status !== 'ממתין') return sum;
+    return sum + (Number(guest?.numberOfPeople ?? guest?.number_of_people ?? 1) || 1);
+  }, 0);
+  const seatedGuests = guests.reduce((sum: number, guest: any) => {
+    const assignedTableId = String(guest?.tableId ?? guest?.table_id ?? '').trim();
+    if (guest?.status !== 'מגיע' || assignedTableId.length === 0) return sum;
+    return sum + (Number(guest?.numberOfPeople ?? guest?.number_of_people ?? 1) || 1);
+  }, 0);
+  const eventDateLabel = currentEvent?.date
+    ? new Date(currentEvent.date).toLocaleDateString('he-IL', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      })
+    : '';
 
   const getInitials = (name?: string) => {
     if (!name) return '';
@@ -180,16 +215,54 @@ export default function HomeScreen() {
     tintColor: string;
     iconBg: string;
   }) => (
-    <BlurView intensity={28} tint={Platform.OS === 'web' ? 'light' : 'light'} style={styles.statPill}>
+    <View style={styles.statPill}>
       <View style={[styles.statIconWrap, { backgroundColor: iconBg }]}>
         <Ionicons name={iconName} size={18} color={tintColor} />
       </View>
       <View style={styles.statTextWrap}>
-        <Text style={styles.statTitle}>{title}</Text>
+        <Text
+          numberOfLines={2}
+          adjustsFontSizeToFit
+          minimumFontScale={0.85}
+          style={styles.statTitle}
+        >
+          {title}
+        </Text>
         <Text style={styles.statValue}>{value}</Text>
       </View>
-    </BlurView>
+    </View>
   );
+
+  const StatusSquareCard = ({
+    title,
+    value,
+    iconName,
+    tintColor,
+    iconBg,
+  }: {
+    title: string;
+    value: string | number;
+    iconName: keyof typeof Ionicons.glyphMap;
+    tintColor: string;
+    iconBg: string;
+  }) => (
+    <View style={styles.statusSquareCard}>
+      <View style={[styles.statusSquareIconWrap, { backgroundColor: iconBg }]}>
+        <Ionicons name={iconName} size={18} color={tintColor} />
+      </View>
+      <Text style={styles.statusSquareTitle}>{title}</Text>
+      <Text style={styles.statusSquareValue}>{value}</Text>
+    </View>
+  );
+
+  const CountdownUnit = ({ label, value }: { label: string; value: number }) => (
+    <View style={styles.countdownUnit}>
+      <Text style={styles.countdownValue}>{String(value).padStart(2, '0')}</Text>
+      <Text style={styles.countdownLabel}>{label}</Text>
+    </View>
+  );
+
+  const CountdownSeparator = () => <Text style={styles.countdownSeparator}>:</Text>;
 
   const ActionTile = ({
     title,
@@ -275,17 +348,139 @@ export default function HomeScreen() {
     return inner;
   };
 
+  const primaryStatsContent = (
+    <>
+      <View style={!isWeb ? styles.statPillMobile : undefined}>
+        <StatPill
+          title="הושבו"
+          value={seatedGuests}
+          iconName="people"
+          tintColor={stylesVars.primaryBlue}
+          iconBg="rgba(19, 91, 236, 0.12)"
+        />
+      </View>
+      <View style={!isWeb ? styles.statPillMobile : undefined}>
+        <StatPill
+          title="לא הושבו"
+          value={Math.max(0, confirmedPeople - seatedGuests)}
+          iconName="alert-circle"
+          tintColor={stylesVars.red}
+          iconBg="rgba(239, 68, 68, 0.10)"
+        />
+      </View>
+    </>
+  );
+
+  const statusStatsContent = (
+    <>
+      <View style={styles.statusSquareWrapper}>
+        <StatusSquareCard
+          title="ממתין"
+          value={pendingPeople}
+          iconName="time"
+          tintColor={stylesVars.amber}
+          iconBg="rgba(245, 158, 11, 0.12)"
+        />
+      </View>
+      <View style={styles.statusSquareWrapper}>
+        <StatusSquareCard
+          title="לא מגיע"
+          value={declinedPeople}
+          iconName="close-circle"
+          tintColor={stylesVars.red}
+          iconBg="rgba(239, 68, 68, 0.10)"
+        />
+      </View>
+      <View style={styles.statusSquareWrapper}>
+        <StatusSquareCard
+          title="מגיע"
+          value={confirmedPeople}
+          iconName="checkmark-circle"
+          tintColor="#16A34A"
+          iconBg="rgba(22, 163, 74, 0.10)"
+        />
+      </View>
+    </>
+  );
+
   return (
     <View style={styles.screen}>
-      <View pointerEvents="none" style={styles.bgBlobs}>
-        <View style={styles.blobTopRight} />
-        <View style={styles.blobBottomLeft} />
-      </View>
+      {!isWeb ? (
+        <>
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.mobileTopGradient,
+              {
+                height: insets.top + 230,
+                opacity: mobileGradientOpacity,
+              },
+            ]}
+          >
+            <LinearGradient
+              colors={['#F7FAFF', '#E8F1FF', '#F2E0BA']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={StyleSheet.absoluteFill}
+            />
+          </Animated.View>
 
-      <ScrollView
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.mobileHeader,
+              {
+                height: insets.top + 72,
+                paddingTop: insets.top + 2,
+              },
+            ]}
+          >
+            <View style={styles.mobileHeaderBg} />
+            <Image
+              source={require('../../assets/images/logoMoon.png')}
+              style={styles.mobileHeaderLogo}
+              resizeMode="contain"
+            />
+          </Animated.View>
+        </>
+      ) : null}
+
+      <LinearGradient
+        pointerEvents="none"
+        colors={['#F7FAFF', '#E8F1FF', '#F2E0BA']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.bg}
+      />
+      <LinearGradient
+        pointerEvents="none"
+        colors={['rgba(255,255,255,0.68)', 'rgba(255,255,255,0)']}
+        start={{ x: 0.05, y: 0 }}
+        end={{ x: 0.75, y: 0.55 }}
+        style={styles.bgHighlight}
+      />
+      <LinearGradient
+        pointerEvents="none"
+        colors={['rgba(232,196,122,0.58)', 'rgba(244,224,186,0.22)', 'rgba(244,224,186,0)']}
+        start={{ x: 1, y: 0.95 }}
+        end={{ x: 0.18, y: 0.22 }}
+        style={styles.bgWarmGlow}
+      />
+
+      <Animated.ScrollView
         style={styles.container}
         contentContainerStyle={[styles.contentContainer, isWeb && styles.contentContainerWeb]}
+        onScroll={
+          !isWeb
+            ? Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
+                useNativeDriver: false,
+              })
+            : undefined
+        }
+        scrollEventThrottle={16}
       >
+        {!isWeb ? <View style={{ height: insets.top + 74 }} /> : null}
+
         <View style={styles.rtlDebugBanner}>
           <Text style={styles.rtlDebugText}>RTL: {String(I18nManager.isRTL)}</Text>
         </View>
@@ -294,6 +489,38 @@ export default function HomeScreen() {
           {currentEvent?.invitationImageUrl ? (
             <View style={styles.heroBanner}>
               <Image source={{ uri: currentEvent.invitationImageUrl }} style={styles.heroBannerImage} resizeMode="cover" />
+              <LinearGradient
+                colors={['rgba(255,255,255,0.96)', 'rgba(255,255,255,0.86)', 'rgba(255,255,255,0)']}
+                start={{ x: 0.5, y: 1 }}
+                end={{ x: 0.5, y: 0 }}
+                style={styles.heroBannerTitleOverlay}
+              >
+                <View style={styles.heroBannerMetaRow}>
+                  <View style={styles.heroBannerTypePill}>
+                    <Text style={styles.heroBannerTypeText} numberOfLines={1}>
+                      {String(currentEvent.title || '').trim() || eventTypeLabel}
+                    </Text>
+                  </View>
+
+                  <View style={styles.heroBannerDetailsRow}>
+                    {String(currentEvent.location || '').trim() ? (
+                      <View style={styles.heroBannerVenuePill}>
+                        <Text style={styles.heroBannerVenueText} numberOfLines={1}>
+                          {String(currentEvent.location || '').trim()}
+                        </Text>
+                      </View>
+                    ) : null}
+
+                    {String(currentEvent.city || '').trim() ? (
+                      <View style={styles.heroBannerCityPill}>
+                        <Text style={styles.heroBannerCityText} numberOfLines={1}>
+                          {String(currentEvent.city || '').trim()}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+                </View>
+              </LinearGradient>
               <View style={styles.heroBannerFrame} />
             </View>
           ) : (
@@ -311,20 +538,48 @@ export default function HomeScreen() {
               )}
             </View>
           )}
-          <Text style={styles.heroDate}>{formatDate(currentEvent.date)}</Text>
+          <LinearGradient
+            colors={['rgba(255,255,255,0.98)', 'rgba(248,251,255,0.98)', 'rgba(255,248,232,0.96)']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.countdownSection}
+          >
+            <Text style={styles.countdownHeading}>הספירה לאחור החלה</Text>
+            <Text style={styles.countdownSubtext}>{eventDateLabel || '--:--'}</Text>
+            {countdown ? (
+              <View style={styles.countdownWrap}>
+                <CountdownUnit label="ימים" value={countdown.days} />
+                <CountdownSeparator />
+                <CountdownUnit label="שעות" value={countdown.hours} />
+                <CountdownSeparator />
+                <CountdownUnit label="דקות" value={countdown.minutes} />
+                <CountdownSeparator />
+                <CountdownUnit label="שניות" value={countdown.seconds} />
+              </View>
+            ) : (
+              <Text style={styles.heroDate}>--:--</Text>
+            )}
+          </LinearGradient>
 
-          <View style={{ width: '100%', marginTop: 12 }}>
+          <View style={{ width: '100%', marginTop: hasMultipleEvents ? 12 : 0 }}>
             <EventSwitcher
               userId={userData?.id}
               selectedEventId={resolvedEventId}
               onSelectEventId={handleSelectEventId}
               label="אירוע פעיל"
+              onHasMultipleChange={setHasMultipleEvents}
             />
           </View>
         </View>
 
+        <Text style={[styles.sectionTitle, styles.sectionTitleSpacious]}>סטטוס הגעה</Text>
+        <View style={styles.statusSquaresRow}>
+          {statusStatsContent}
+        </View>
+
+        <Text style={styles.sectionTitle}>תמונת מצב</Text>
         <View style={styles.quickInfoRow}>
-          <BlurView intensity={26} tint="light" style={styles.locationCard}>
+          <View style={styles.locationCard}>
             <View style={styles.locationCardIcon}>
               <Ionicons name="location" size={18} color={stylesVars.primaryBlue} />
             </View>
@@ -334,50 +589,37 @@ export default function HomeScreen() {
                 {String(currentEvent.location || '').trim() || '—'}
               </Text>
             </View>
-          </BlurView>
+          </View>
 
-          <BlurView intensity={26} tint="light" style={styles.daysCard}>
+          <View style={styles.daysCard}>
             <View style={styles.daysCardIcon}>
               <Ionicons name="calendar-outline" size={18} color={stylesVars.primaryBlue} />
             </View>
             <View style={styles.daysCardText}>
-              <Text style={styles.daysCardTitle}>כמה ימים לאירוע</Text>
+              <Text style={styles.daysCardTitle}>ימים לאירוע</Text>
               <Text style={styles.daysCardValue}>
-                {daysToWedding === null ? '—' : daysToWedding === 0 ? 'היום' : `${daysToWedding} ימים`}
+                {countdown === null ? '—' : countdown.isComplete ? 'היום' : `${countdown.days} ימים`}
               </Text>
             </View>
-          </BlurView>
+          </View>
         </View>
 
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={[styles.statsRow, isDesktopWeb && styles.statsRowDesktop]}
-          style={styles.statsScroll}
-        >
-          <StatPill
-            title="אורחים מאושרים"
-            value={`${confirmedGuests}/${totalGuests}`}
-            iconName="people"
-            tintColor={stylesVars.primaryBlue}
-            iconBg="rgba(19, 91, 236, 0.12)"
-          />
-          <StatPill
-            title="אורחים שצריך להושיב"
-            value={Math.max(0, confirmedGuests - seatedGuests)}
-            iconName="alert-circle"
-            tintColor={stylesVars.red}
-            iconBg="rgba(239, 68, 68, 0.10)"
-          />
-          <StatPill
-            title="אורחים בהמתנה"
-            value={pendingGuests}
-            iconName="time-outline"
-            tintColor={stylesVars.amber}
-            iconBg="rgba(245, 158, 11, 0.12)"
-          />
-        </ScrollView>
+        {isWeb ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={[styles.statsRow, isDesktopWeb && styles.statsRowDesktop]}
+            style={styles.statsScroll}
+          >
+            {primaryStatsContent}
+          </ScrollView>
+        ) : (
+          <View style={[styles.statsRow, styles.statsRowMobile, styles.statsScroll]}>
+            {primaryStatsContent}
+          </View>
+        )}
 
+        <Text style={[styles.sectionTitle, styles.sectionTitleSpacious]}>פעולות מהירות</Text>
         <View style={[styles.actionsGrid, isDesktopWeb && styles.actionsGridDesktop]}>
           <View style={[styles.actionTileWrapper, isDesktopWeb && styles.actionTileWrapperWeb]}>
             <ActionTile
@@ -439,7 +681,7 @@ export default function HomeScreen() {
             />
           </View>
         </View>
-      </ScrollView>
+      </Animated.ScrollView>
     </View>
   );
 }
@@ -454,7 +696,42 @@ const stylesVars = {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#f6f6f8',
+    backgroundColor: '#E8F1FF',
+  },
+  bg: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  bgHighlight: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  bgWarmGlow: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  mobileTopGradient: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 0,
+  },
+  mobileHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 5,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+  },
+  mobileHeaderBg: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(11, 28, 65, 0.06)',
+  },
+  mobileHeaderLogo: {
+    width: 310,
+    height: 68,
   },
   center: {
     flex: 1,
@@ -469,34 +746,10 @@ const styles = StyleSheet.create({
     color: colors.text,
     textAlign: 'center',
   },
-  bgBlobs: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: Platform.OS === 'web' ? 0.6 : 0.5,
-  },
-  blobTopRight: {
-    position: 'absolute',
-    top: -80,
-    right: -90,
-    width: 520,
-    height: 520,
-    borderRadius: 520,
-    backgroundColor: 'rgba(19, 91, 236, 0.14)',
-    transform: [{ scaleX: 1.05 }],
-  },
-  blobBottomLeft: {
-    position: 'absolute',
-    bottom: -90,
-    left: -140,
-    width: 420,
-    height: 420,
-    borderRadius: 420,
-    backgroundColor: 'rgba(99, 102, 241, 0.10)',
-  },
   container: { flex: 1, backgroundColor: 'transparent' },
   contentContainer: {
     paddingHorizontal: 24,
-    // Mobile uses AppHeader (transparent ~76px). Web layout doesn't.
-    paddingTop: Platform.OS === 'web' ? 22 : 18 + 76,
+    paddingTop: Platform.OS === 'web' ? 22 : 18,
     paddingBottom: Platform.OS === 'web' ? 56 : 130,
   },
   contentContainerWeb: {
@@ -530,7 +783,7 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 260,
     marginHorizontal: -24,
-    marginTop: -108,
+    marginTop: Platform.OS === 'web' ? -108 : -44,
     borderRadius: 28,
     overflow: 'hidden',
     backgroundColor: 'rgba(255,255,255,0.92)',
@@ -545,11 +798,88 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
+  heroBannerTitleOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: '52%',
+    paddingHorizontal: 22,
+    paddingBottom: 18,
+    justifyContent: 'flex-end',
+    alignItems: 'flex-end',
+  },
+  heroBannerMetaRow: {
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    gap: 8,
+    maxWidth: '92%',
+  },
+  heroBannerDetailsRow: {
+    flexDirection: 'row-reverse',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+    gap: 8,
+  },
+  heroBannerTypePill: {
+    maxWidth: '100%',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: colors.oxfordBlue,
+    alignSelf: 'flex-end',
+    shadowColor: colors.black,
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  heroBannerTypeText: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '800',
+    color: colors.white,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  heroBannerVenuePill: {
+    maxWidth: '88%',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: colors.gold,
+    alignSelf: 'flex-end',
+  },
+  heroBannerVenueText: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '800',
+    color: colors.white,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  heroBannerCityPill: {
+    maxWidth: '88%',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderWidth: 1,
+    borderColor: 'rgba(0,29,61,0.10)',
+    alignSelf: 'flex-end',
+  },
+  heroBannerCityText: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '800',
+    color: colors.oxfordBlue,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
   heroBannerFrame: {
     ...StyleSheet.absoluteFillObject,
     borderRadius: 28,
-    borderWidth: 1,
-    borderColor: 'rgba(11, 28, 65, 0.35)',
   },
   heroAvatar: {
     width: 110,
@@ -590,6 +920,73 @@ const styles = StyleSheet.create({
     color: colors.gray[600],
     textAlign: 'center',
   },
+  countdownSection: {
+    width: '100%',
+    marginTop: 16,
+    alignItems: 'center',
+    borderRadius: 28,
+    paddingHorizontal: 14,
+    paddingTop: 18,
+    paddingBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(11, 28, 65, 0.08)',
+    shadowColor: colors.black,
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
+  },
+  countdownHeading: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'center',
+    writingDirection: 'rtl',
+  },
+  countdownSubtext: {
+    marginTop: 4,
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.gray[600],
+    textAlign: 'center',
+    writingDirection: 'rtl',
+  },
+  countdownWrap: {
+    width: '100%',
+    marginTop: 10,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+    gap: 6,
+  },
+  countdownUnit: {
+    minWidth: 62,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+  },
+  countdownValue: {
+    fontSize: 24,
+    lineHeight: 28,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'center',
+  },
+  countdownLabel: {
+    marginTop: 4,
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.gray[600],
+    textAlign: 'center',
+    writingDirection: 'rtl',
+  },
+  countdownSeparator: {
+    marginTop: 2,
+    fontSize: 24,
+    lineHeight: 28,
+    fontWeight: '900',
+    color: colors.gray[500],
+    textAlign: 'center',
+  },
   quickInfoRow: {
     marginTop: 10,
     marginBottom: 18,
@@ -603,25 +1000,25 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     flexShrink: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 20,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    borderRadius: 26,
     flexDirection: ROW_DIR,
     alignItems: 'center',
-    gap: 10,
+    gap: 12,
     borderWidth: 1,
-    borderColor: 'rgba(11, 28, 65, 0.18)',
-    backgroundColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.35)' : 'transparent',
+    borderColor: 'rgba(11, 28, 65, 0.10)',
+    backgroundColor: '#FFFFFF',
   },
   locationCardIcon: {
-    width: 42,
-    height: 42,
+    width: 46,
+    height: 46,
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(19, 91, 236, 0.10)',
+    backgroundColor: 'rgba(19, 91, 236, 0.12)',
     borderWidth: 1,
-    borderColor: 'rgba(19, 91, 236, 0.18)',
+    borderColor: 'rgba(19, 91, 236, 0.16)',
   },
   locationCardText: {
     flex: 1,
@@ -635,8 +1032,8 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   locationCardValue: {
-    marginTop: 2,
-    fontSize: 14,
+    marginTop: 4,
+    fontSize: 15,
     fontWeight: '900',
     color: colors.text,
     textAlign: 'right',
@@ -645,25 +1042,25 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     flexShrink: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 20,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    borderRadius: 26,
     flexDirection: ROW_DIR,
     alignItems: 'center',
-    gap: 10,
+    gap: 12,
     borderWidth: 1,
-    borderColor: 'rgba(11, 28, 65, 0.18)',
-    backgroundColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.35)' : 'transparent',
+    borderColor: 'rgba(11, 28, 65, 0.10)',
+    backgroundColor: '#FFFFFF',
   },
   daysCardIcon: {
-    width: 42,
-    height: 42,
+    width: 46,
+    height: 46,
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(19, 91, 236, 0.10)',
+    backgroundColor: 'rgba(19, 91, 236, 0.12)',
     borderWidth: 1,
-    borderColor: 'rgba(19, 91, 236, 0.18)',
+    borderColor: 'rgba(19, 91, 236, 0.16)',
   },
   daysCardText: {
     flex: 1,
@@ -677,8 +1074,8 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   daysCardValue: {
-    marginTop: 2,
-    fontSize: 18,
+    marginTop: 4,
+    fontSize: 20,
     fontWeight: '900',
     color: colors.text,
     textAlign: 'right',
@@ -692,42 +1089,103 @@ const styles = StyleSheet.create({
     gap: 12,
     ...(Platform.OS === 'web' ? ({ flexGrow: 1 } as any) : null),
   },
+  statsRowMobile: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    alignItems: 'stretch',
+  },
+  statPillMobile: {
+    width: '48%',
+  },
   statsRowDesktop: {
     justifyContent: 'center',
   },
   statPill: {
-    minWidth: 170,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 999,
+    minWidth: Platform.OS === 'web' ? 158 : 0,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: 24,
     flexDirection: ROW_DIR,
     alignItems: 'center',
-    gap: 10,
+    gap: 12,
     borderWidth: 1,
-    borderColor: 'rgba(11, 28, 65, 0.14)',
-    backgroundColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.35)' : 'transparent',
+    borderColor: 'rgba(11, 28, 65, 0.10)',
+    backgroundColor: '#FFFFFF',
   },
   statIconWrap: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(11, 28, 65, 0.06)',
   },
   statTextWrap: {
+    flex: 1,
+    minWidth: 0,
     alignItems: ALIGN_RIGHT,
   },
   statTitle: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '900',
     color: colors.gray[600],
-    letterSpacing: 1.0,
+    letterSpacing: 0.2,
+    lineHeight: 14,
+    textAlign: 'right',
+    writingDirection: 'rtl',
   },
   statValue: {
-    marginTop: 2,
-    fontSize: 18,
+    marginTop: 4,
+    fontSize: 20,
     fontWeight: '900',
     color: colors.text,
+  },
+  statusSquaresRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'stretch',
+    gap: 12,
+    marginBottom: 18,
+  },
+  statusSquareWrapper: {
+    flex: 1,
+  },
+  statusSquareCard: {
+    minHeight: 106,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(11, 28, 65, 0.10)',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  statusSquareIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(11, 28, 65, 0.06)',
+    marginBottom: 8,
+  },
+  statusSquareTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.gray[600],
+    textAlign: 'center',
+    writingDirection: 'rtl',
+  },
+  statusSquareValue: {
+    marginTop: 6,
+    fontSize: 22,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'center',
   },
 
   actionsHeaderRow: {
@@ -741,6 +1199,10 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: colors.text,
     textAlign: 'right',
+  },
+  sectionTitleSpacious: {
+    marginTop: 10,
+    marginBottom: 12,
   },
 
   actionsGrid: {
@@ -780,7 +1242,8 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 34,
     borderWidth: 1,
-    borderColor: 'rgba(11, 28, 65, 0.22)',
+    borderColor: 'rgba(11, 28, 65, 0.10)',
+    backgroundColor: '#FFFFFF',
     overflow: 'hidden',
     // Help prevent tiny border gaps on web during transforms
     ...(Platform.OS === 'web'
@@ -798,8 +1261,8 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 18,
     borderWidth: 1,
-    borderColor: 'rgba(11, 28, 65, 0.14)',
-    backgroundColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.55)' : 'transparent',
+    borderColor: 'rgba(11, 28, 65, 0.10)',
+    backgroundColor: '#FFFFFF',
     justifyContent: 'space-between',
   },
   actionTileInnerNoBorder: {
@@ -821,11 +1284,11 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.70)',
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(11, 28, 65, 0.14)',
+    borderColor: 'rgba(11, 28, 65, 0.10)',
   },
   actionTileDot: {
     width: 8,

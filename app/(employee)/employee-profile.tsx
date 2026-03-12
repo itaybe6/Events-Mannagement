@@ -20,6 +20,7 @@ import { Image } from "expo-image";
 import { colors } from "@/constants/colors";
 import { useUserStore } from "@/store/userStore";
 import { supabase } from "@/lib/supabase";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const ui = {
   primary: colors.primary,
@@ -32,6 +33,7 @@ const ui = {
 export default function EmployeeProfileScreen() {
   const router = useRouter();
   const { userData, logout } = useUserStore();
+  const insets = useSafeAreaInsets();
 
   const [editOpen, setEditOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -148,12 +150,16 @@ export default function EmployeeProfileScreen() {
   const TAB_BAR_HEIGHT = 65;
   const TAB_BAR_BOTTOM_GAP = Platform.OS === "ios" ? 30 : 20;
   const footerBottomOffset = TAB_BAR_HEIGHT + TAB_BAR_BOTTOM_GAP + 12;
+  const topContentInset = Math.max(20, (insets.top || 0) + 10);
 
   return (
     <View style={[styles.root, { backgroundColor: ui.bg }]}>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.content, { paddingBottom: footerBottomOffset + 160 }]}
+        contentContainerStyle={[
+          styles.content,
+          { paddingTop: topContentInset, paddingBottom: footerBottomOffset + 160 },
+        ]}
       >
         <View style={styles.topAccent} pointerEvents="none">
           <View style={styles.topAccentBlobA} />
@@ -183,107 +189,157 @@ export default function EmployeeProfileScreen() {
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>הפרטים שלי</Text>
+          <View style={styles.cardHeader}>
+            <Text style={styles.cardTitle}>הפרטים שלי</Text>
+            <View style={styles.cardHeaderBadge}>
+              <Ionicons name="person-circle-outline" size={18} color={ui.primary} />
+            </View>
+          </View>
 
-          <View style={styles.row}>
-            <Ionicons name="person-outline" size={18} color={colors.gray[600]} />
-            <Text style={styles.rowText}>{userData.name}</Text>
+          <View style={styles.infoList}>
+            <View style={styles.row}>
+              <View style={styles.rowIconWrap}>
+                <Ionicons name="person-outline" size={18} color={ui.primary} />
+              </View>
+              <Text style={styles.rowText}>{userData.name}</Text>
+            </View>
+            <View style={styles.rowDivider} />
+            <View style={styles.row}>
+              <View style={styles.rowIconWrap}>
+                <Ionicons name="mail-outline" size={18} color={ui.primary} />
+              </View>
+              <Text style={styles.rowText}>{userData.email}</Text>
+            </View>
+            <View style={styles.rowDivider} />
+            <View style={styles.row}>
+              <View style={styles.rowIconWrap}>
+                <Ionicons name="call-outline" size={18} color={ui.primary} />
+              </View>
+              <Text style={styles.rowText}>{userData.phone || "לא הוגדר"}</Text>
+            </View>
           </View>
-          <View style={styles.row}>
-            <Ionicons name="mail-outline" size={18} color={colors.gray[600]} />
-            <Text style={styles.rowText}>{userData.email}</Text>
-          </View>
-          <View style={styles.row}>
-            <Ionicons name="call-outline" size={18} color={colors.gray[600]} />
-            <Text style={styles.rowText}>{userData.phone || "לא הוגדר"}</Text>
-          </View>
-        </View>
-      </ScrollView>
 
-      {/* Bottom actions (fixed above tab bar) */}
-      <View style={[styles.footerWrap, { bottom: footerBottomOffset }]}>
-        <View style={styles.footerPanel}>
           <TouchableOpacity
             onPress={() => setEditOpen(true)}
-            style={styles.primaryBtn}
+            style={styles.editDetailsBtn}
             activeOpacity={0.92}
             accessibilityRole="button"
             accessibilityLabel="עריכת פרופיל"
           >
             <Ionicons name="create-outline" size={18} color={colors.white} />
-            <Text style={styles.primaryBtnText}>עריכת פרטים</Text>
+            <Text style={styles.editDetailsBtnText}>עריכת פרטים</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             onPress={handleLogout}
-            style={styles.dangerBtn}
+            style={styles.logoutBtn}
             activeOpacity={0.92}
             accessibilityRole="button"
             accessibilityLabel="התנתקות"
           >
-            <Ionicons name="log-out-outline" size={18} color={ui.danger} />
-            <Text style={styles.dangerBtnText}>התנתק</Text>
+            <Ionicons name="log-out-outline" size={18} color={colors.white} />
+            <Text style={styles.logoutBtnText}>התנתק</Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </ScrollView>
 
       {/* Edit modal */}
       <Modal transparent visible={editOpen} animationType="fade" onRequestClose={() => setEditOpen(false)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setEditOpen(false)}>
           <Pressable style={styles.modalCard} onPress={() => null}>
-            <AppKeyboardAwareScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-            <Text style={styles.modalTitle}>עריכת פרטים</Text>
+            <AppKeyboardAwareScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.modalScrollContent}
+            >
+              <View style={styles.modalHeader}>
+                <View style={styles.modalHeaderIcon}>
+                  <Ionicons name="create-outline" size={18} color={ui.primary} />
+                </View>
 
-            <TextInput
-              style={styles.input}
-              value={form.name}
-              onChangeText={(t) => setForm((f) => ({ ...f, name: t }))}
-              placeholder="שם מלא"
-              placeholderTextColor={colors.gray[500]}
-              textAlign="right"
-            />
-            <TextInput
-              style={styles.input}
-              value={form.email}
-              onChangeText={(t) => setForm((f) => ({ ...f, email: t }))}
-              placeholder="אימייל"
-              placeholderTextColor={colors.gray[500]}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              textAlign="right"
-            />
-            <TextInput
-              style={styles.input}
-              value={form.phone}
-              onChangeText={(t) => setForm((f) => ({ ...f, phone: t }))}
-              placeholder="טלפון (לא חובה)"
-              placeholderTextColor={colors.gray[500]}
-              keyboardType="phone-pad"
-              textAlign="right"
-            />
+                <View style={styles.modalHeaderTextWrap}>
+                  <Text style={styles.modalTitle}>עריכת פרטים</Text>
+                  <Text style={styles.modalSubtitle}>עדכן את הפרטים האישיים שלך כפי שיוצגו בפרופיל.</Text>
+                </View>
 
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                onPress={() => setEditOpen(false)}
-                style={[styles.modalBtn, styles.modalBtnGhost]}
-                activeOpacity={0.9}
-                accessibilityRole="button"
-                accessibilityLabel="ביטול"
-              >
-                <Text style={[styles.modalBtnText, { color: ui.muted }]}>ביטול</Text>
-              </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setEditOpen(false)}
+                  style={styles.modalCloseBtn}
+                  activeOpacity={0.9}
+                  accessibilityRole="button"
+                  accessibilityLabel="סגירת חלון"
+                >
+                  <Ionicons name="close" size={18} color={ui.muted} />
+                </TouchableOpacity>
+              </View>
 
-              <TouchableOpacity
-                onPress={handleSave}
-                style={[styles.modalBtn, styles.modalBtnPrimary, saving ? { opacity: 0.9 } : null]}
-                activeOpacity={0.92}
-                disabled={saving}
-                accessibilityRole="button"
-                accessibilityLabel="שמירה"
-              >
-                {saving ? <ActivityIndicator color={colors.white} /> : <Text style={[styles.modalBtnText, { color: colors.white }]}>שמור</Text>}
-              </TouchableOpacity>
-            </View>
+              <View style={styles.modalFieldsCard}>
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>שם מלא</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={form.name}
+                    onChangeText={(t) => setForm((f) => ({ ...f, name: t }))}
+                    placeholder="שם מלא"
+                    placeholderTextColor={colors.gray[500]}
+                    textAlign="right"
+                  />
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>אימייל</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={form.email}
+                    onChangeText={(t) => setForm((f) => ({ ...f, email: t }))}
+                    placeholder="אימייל"
+                    placeholderTextColor={colors.gray[500]}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    textAlign="right"
+                  />
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>טלפון</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={form.phone}
+                    onChangeText={(t) => setForm((f) => ({ ...f, phone: t }))}
+                    placeholder="טלפון (לא חובה)"
+                    placeholderTextColor={colors.gray[500]}
+                    keyboardType="phone-pad"
+                    textAlign="right"
+                  />
+                </View>
+              </View>
+
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  onPress={() => setEditOpen(false)}
+                  style={[styles.modalBtn, styles.modalBtnGhost]}
+                  activeOpacity={0.9}
+                  accessibilityRole="button"
+                  accessibilityLabel="ביטול"
+                >
+                  <Text style={[styles.modalBtnText, { color: ui.muted }]}>ביטול</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={handleSave}
+                  style={[styles.modalBtn, styles.modalBtnPrimary, saving ? { opacity: 0.9 } : null]}
+                  activeOpacity={0.92}
+                  disabled={saving}
+                  accessibilityRole="button"
+                  accessibilityLabel="שמירה"
+                >
+                  {saving ? (
+                    <ActivityIndicator color={colors.white} />
+                  ) : (
+                    <Text style={[styles.modalBtnText, { color: colors.white }]}>שמור</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
             </AppKeyboardAwareScrollView>
           </Pressable>
         </Pressable>
@@ -347,87 +403,180 @@ const styles = StyleSheet.create({
 
   card: {
     marginTop: 18,
-    backgroundColor: colors.white,
-    borderRadius: 22,
-    padding: 16,
+    backgroundColor: "rgba(255,255,255,0.95)",
+    borderRadius: 26,
+    padding: 18,
     borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.06)",
+    borderColor: "rgba(17,19,24,0.05)",
+    shadowColor: colors.black,
+    shadowOpacity: 0.06,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3,
   },
-  cardTitle: { fontSize: 16, fontWeight: "900", color: ui.text, textAlign: "right", marginBottom: 10 },
-  row: { flexDirection: "row-reverse", alignItems: "center", gap: 10, paddingVertical: 10 },
-  rowText: { flex: 1, fontSize: 14, fontWeight: "800", color: colors.gray[800], textAlign: "right" },
-
-  footerWrap: {
-    position: Platform.OS === "web" ? ("fixed" as any) : "absolute",
-    left: 0,
-    right: 0,
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    zIndex: 50,
-    elevation: 50,
-  },
-  footerPanel: {
-    width: "100%",
-    maxWidth: 520,
-    alignSelf: "center",
+  cardHeader: {
     flexDirection: "row-reverse",
-    gap: 12,
-    backgroundColor: "rgba(255,255,255,0.85)",
-    borderRadius: 22,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.06)",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 14,
   },
-  primaryBtn: {
-    flex: 2,
-    height: 52,
-    borderRadius: 16,
+  cardHeaderBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(8,33,95,0.08)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cardTitle: { fontSize: 18, fontWeight: "900", color: ui.text, textAlign: "right" },
+  infoList: {
+    backgroundColor: "rgba(245,247,251,0.7)",
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(17,19,24,0.04)",
+    overflow: "hidden",
+  },
+  row: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+  },
+  rowIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(8,33,95,0.08)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  rowDivider: {
+    height: 1,
+    marginHorizontal: 14,
+    backgroundColor: "rgba(17,19,24,0.06)",
+  },
+  rowText: { flex: 1, fontSize: 15, fontWeight: "800", color: colors.gray[800], textAlign: "right" },
+  editDetailsBtn: {
+    marginTop: 16,
+    height: 54,
+    borderRadius: 18,
     backgroundColor: ui.primary,
     flexDirection: "row-reverse",
     alignItems: "center",
     justifyContent: "center",
     gap: 10,
+    shadowColor: ui.primary,
+    shadowOpacity: 0.16,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
   },
-  primaryBtnText: { color: colors.white, fontSize: 14, fontWeight: "900" },
-  dangerBtn: {
-    flex: 1,
+  editDetailsBtnText: { color: colors.white, fontSize: 15, fontWeight: "900" },
+  logoutBtn: {
+    marginTop: 12,
     height: 52,
-    borderRadius: 16,
-    backgroundColor: "rgba(255,255,255,0.95)",
-    borderWidth: 1,
-    borderColor: "rgba(227, 77, 77, 0.35)",
+    borderRadius: 18,
+    backgroundColor: ui.danger,
     flexDirection: "row-reverse",
     alignItems: "center",
     justifyContent: "center",
     gap: 10,
+    shadowColor: ui.danger,
+    shadowOpacity: 0.16,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
   },
-  dangerBtnText: { color: ui.danger, fontSize: 14, fontWeight: "900" },
+  logoutBtnText: { color: colors.white, fontSize: 15, fontWeight: "900" },
 
-  modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.25)", padding: 18, justifyContent: "center" },
+  modalBackdrop: { flex: 1, backgroundColor: "rgba(8, 15, 34, 0.34)", padding: 18, justifyContent: "center" },
   modalCard: {
-    backgroundColor: "rgba(255,255,255,0.95)",
-    borderRadius: 24,
-    padding: 16,
-    gap: 10,
+    backgroundColor: colors.white,
+    borderRadius: 28,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.65)",
-    ...(Platform.OS === "web" ? ({ backdropFilter: "blur(16px)" } as any) : null),
+    borderColor: "rgba(17,19,24,0.06)",
+    shadowColor: colors.black,
+    shadowOpacity: 0.12,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 14 },
+    elevation: 10,
+    overflow: "hidden",
   },
-  modalTitle: { fontSize: 18, fontWeight: "900", color: ui.text, textAlign: "right", marginBottom: 4 },
+  modalScrollContent: {
+    padding: 18,
+    gap: 16,
+  },
+  modalHeader: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  modalHeaderTextWrap: {
+    flex: 1,
+    alignItems: "flex-end",
+    gap: 4,
+  },
+  modalHeaderIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 16,
+    backgroundColor: "rgba(8,33,95,0.08)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalCloseBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "rgba(17,19,24,0.05)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalTitle: { fontSize: 22, fontWeight: "900", color: ui.text, textAlign: "right" },
+  modalSubtitle: {
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: "700",
+    color: ui.muted,
+    textAlign: "right",
+  },
+  modalFieldsCard: {
+    backgroundColor: colors.white,
+    borderRadius: 22,
+    padding: 14,
+    gap: 14,
+    borderWidth: 1,
+    borderColor: "rgba(17,19,24,0.06)",
+  },
+  inputGroup: {
+    gap: 8,
+  },
+  inputLabel: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: ui.text,
+    textAlign: "right",
+  },
   input: {
-    height: 46,
-    borderRadius: 14,
-    paddingHorizontal: 14,
+    height: 50,
+    borderRadius: 16,
+    paddingHorizontal: 16,
     borderWidth: 1,
     borderColor: "rgba(17, 19, 24, 0.08)",
-    backgroundColor: "rgba(242, 244, 248, 0.7)",
+    backgroundColor: colors.white,
     color: ui.text,
     fontSize: 15,
     fontWeight: "700",
   },
-  modalActions: { flexDirection: "row-reverse", gap: 10, marginTop: 4 },
-  modalBtn: { flex: 1, height: 46, borderRadius: 14, alignItems: "center", justifyContent: "center" },
-  modalBtnGhost: { backgroundColor: "rgba(17, 19, 24, 0.04)" },
+  modalActions: { flexDirection: "row-reverse", gap: 10, marginTop: 2 },
+  modalBtn: { flex: 1, height: 50, borderRadius: 16, alignItems: "center", justifyContent: "center" },
+  modalBtnGhost: {
+    backgroundColor: "rgba(17, 19, 24, 0.04)",
+    borderWidth: 1,
+    borderColor: "rgba(17,19,24,0.06)",
+  },
   modalBtnPrimary: { backgroundColor: ui.primary },
   modalBtnText: { fontSize: 14, fontWeight: "900" },
 });

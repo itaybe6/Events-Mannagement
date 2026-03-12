@@ -13,6 +13,7 @@ import AppHeader, {
 } from "@/components/AppHeader";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AdminTabBar } from "@/components/animations/shopifytabs/admin-tab-bar";
+import { EmployeeTabBar } from "@/components/animations/shopifytabs/employee-tab-bar";
 import { AdminSharedHeader } from "@/components/animations/shopifytabs/admin-shared-header";
 import { isAdminMainTabRoute } from "@/components/animations/shopifytabs/lib/constants/admin-tabs";
 import DesktopSidebar, { type DesktopNavItem } from "@/components/desktop/DesktopSidebar";
@@ -112,6 +113,20 @@ export default function AdminTabsLayoutShared() {
     screens.push(<Tabs.Screen key="emp-users-hidden" name="users" options={{ href: null }} />);
     screens.push(
       <Tabs.Screen
+        key="emp-profile-tab"
+        name="employee-profile-tab"
+        options={{
+          title: "פרופיל",
+          ...(Platform.OS !== "web"
+            ? {
+                headerShown: false,
+              }
+            : null),
+        }}
+      />
+    );
+    screens.push(
+      <Tabs.Screen
         key="emp-admin-profile-hidden"
         name="admin-profile"
         options={{ href: null, headerShown: false }}
@@ -181,6 +196,11 @@ export default function AdminTabsLayoutShared() {
       name="admin-events"
       options={{
         title: "אירועים",
+        ...(userType === "employee" && Platform.OS !== "web"
+          ? {
+              headerShown: false,
+            }
+          : null),
         tabBarIcon: ({ focused }) => (
           <View style={styles.tabItem}>
             <View style={[styles.iconCircle, styles.centerCircle, focused && styles.iconCircleActive]}>
@@ -350,6 +370,11 @@ export default function AdminTabsLayoutShared() {
               }
 
               return <AdminTabBar {...props} />;
+            }
+          : userType === "employee" && Platform.OS !== "web"
+          ? (props) => {
+              if (!isTabBarVisible) return null;
+              return <EmployeeTabBar {...props} />;
             }
           : undefined
       }
