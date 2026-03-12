@@ -14,10 +14,12 @@ import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import BackSwipe from '@/components/BackSwipe';
 import { useAdminEventDetailsModel } from '@/features/events/useAdminEventDetailsModel';
 import { ALIGN_LEFT, ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
+import { useUserStore } from '@/store/userStore';
 
 export default function AdminEventDetailsScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
+  const userType = useUserStore((state) => state.userType);
   const eventId = useMemo(
     () => (typeof id === 'string' ? id : Array.isArray(id) ? id[0] : ''),
     [id]
@@ -48,6 +50,7 @@ export default function AdminEventDetailsScreen() {
   });
   const insets = useSafeAreaInsets();
   const { height: windowHeight, width: windowWidth } = useWindowDimensions();
+  const isEmployeeAppUser = userType === 'employee' && Platform.OS !== 'web';
 
   // Always go back to admin events list from this screen.
   useEffect(() => {
@@ -520,14 +523,24 @@ export default function AdminEventDetailsScreen() {
                     </TouchableOpacity>
 
                     <TouchableOpacity
-                      style={styles.heroAvatarEditBadge}
-                      onPress={openEditEvent}
+                      style={[
+                        styles.heroAvatarEditBadge,
+                        isEmployeeAppUser ? styles.heroAvatarEditBadgeDisabled : null,
+                      ]}
+                      onPress={() => {
+                        if (isEmployeeAppUser) return;
+                        openEditEvent();
+                      }}
                       activeOpacity={0.9}
-                      disabled={editSaving}
+                      disabled={editSaving || isEmployeeAppUser}
                       accessibilityRole="button"
                       accessibilityLabel="עריכת אירוע"
                     >
-                      <Ionicons name="create-outline" size={16} color={colors.white} />
+                      <Ionicons
+                        name="create-outline"
+                        size={16}
+                        color={isEmployeeAppUser ? colors.gray[600] : colors.white}
+                      />
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -606,59 +619,60 @@ export default function AdminEventDetailsScreen() {
             },
           ]}
         >
-          {/* RSVP approvals (top tile) */}
-          <TouchableOpacity
-            style={styles.tileWideOuter}
-            activeOpacity={0.9}
-            onPress={() => router.push(`/(admin)/admin-rsvp-approvals?eventId=${event.id}`)}
-            accessibilityRole="button"
-            accessibilityLabel="פתיחת אישורי הגעה"
-          >
-            <View style={styles.rsvpCardInner}>
-              <View style={styles.rsvpHeaderRow}>
-                <View style={styles.rsvpHeaderRight}>
-                  <View style={styles.rsvpHeaderValueRow}>
-                    <Text style={[styles.rsvpHeaderValue, { color: ui.accent }]}>{invitedPeople}</Text>
-                    <Text style={styles.rsvpHeaderLabelInline}>מוזמנים לאירוע</Text>
+          {!isEmployeeAppUser ? (
+            <TouchableOpacity
+              style={styles.tileWideOuter}
+              activeOpacity={0.9}
+              onPress={() => router.push(`/(admin)/admin-rsvp-approvals?eventId=${event.id}`)}
+              accessibilityRole="button"
+              accessibilityLabel="פתיחת אישורי הגעה"
+            >
+              <View style={styles.rsvpCardInner}>
+                <View style={styles.rsvpHeaderRow}>
+                  <View style={styles.rsvpHeaderRight}>
+                    <View style={styles.rsvpHeaderValueRow}>
+                      <Text style={[styles.rsvpHeaderValue, { color: ui.accent }]}>{invitedPeople}</Text>
+                      <Text style={styles.rsvpHeaderLabelInline}>מוזמנים לאירוע</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.rsvpHeaderLeft}>
+                    <View style={styles.rsvpArrowCircle}>
+                      <Ionicons name="chevron-back" size={18} color={"rgba(17,24,39,0.55)"} />
+                    </View>
                   </View>
                 </View>
 
-                <View style={styles.rsvpHeaderLeft}>
-                  <View style={styles.rsvpArrowCircle}>
-                    <Ionicons name="chevron-back" size={18} color={"rgba(17,24,39,0.55)"} />
+                <View style={styles.rsvpDivider} />
+
+                <View style={styles.rsvpGrid}>
+                  <View style={styles.rsvpStatCardGreen}>
+                    <View style={styles.rsvpStatIconCircle}>
+                      <Ionicons name="checkmark" size={16} color={colors.success} />
+                    </View>
+                    <Text style={styles.rsvpStatValue}>{confirmedPeople}</Text>
+                    <Text style={[styles.rsvpStatLabel, { color: colors.success }]}>אישרו</Text>
+                  </View>
+
+                  <View style={styles.rsvpStatCardYellow}>
+                    <View style={styles.rsvpStatIconCircle}>
+                      <Ionicons name="time" size={16} color={colors.warning} />
+                    </View>
+                    <Text style={styles.rsvpStatValue}>{pendingPeople}</Text>
+                    <Text style={[styles.rsvpStatLabel, { color: colors.warning }]}>ממתינים</Text>
+                  </View>
+
+                  <View style={styles.rsvpStatCardRed}>
+                    <View style={styles.rsvpStatIconCircle}>
+                      <Ionicons name="close" size={16} color={colors.error} />
+                    </View>
+                    <Text style={styles.rsvpStatValue}>{declinedPeople}</Text>
+                    <Text style={[styles.rsvpStatLabel, { color: colors.error }]}>לא</Text>
                   </View>
                 </View>
               </View>
-
-              <View style={styles.rsvpDivider} />
-
-              <View style={styles.rsvpGrid}>
-                <View style={styles.rsvpStatCardGreen}>
-                  <View style={styles.rsvpStatIconCircle}>
-                    <Ionicons name="checkmark" size={16} color={colors.success} />
-                  </View>
-                  <Text style={styles.rsvpStatValue}>{confirmedPeople}</Text>
-                  <Text style={[styles.rsvpStatLabel, { color: colors.success }]}>אישרו</Text>
-                </View>
-
-                <View style={styles.rsvpStatCardYellow}>
-                  <View style={styles.rsvpStatIconCircle}>
-                    <Ionicons name="time" size={16} color={colors.warning} />
-                  </View>
-                  <Text style={styles.rsvpStatValue}>{pendingPeople}</Text>
-                  <Text style={[styles.rsvpStatLabel, { color: colors.warning }]}>ממתינים</Text>
-                </View>
-
-                <View style={styles.rsvpStatCardRed}>
-                  <View style={styles.rsvpStatIconCircle}>
-                    <Ionicons name="close" size={16} color={colors.error} />
-                  </View>
-                  <Text style={styles.rsvpStatValue}>{declinedPeople}</Text>
-                  <Text style={[styles.rsvpStatLabel, { color: colors.error }]}>לא</Text>
-                </View>
-              </View>
-            </View>
-          </TouchableOpacity>
+            </TouchableOpacity>
+          ) : null}
 
           {/* Guest status (rings) */}
           <GlassPanel style={styles.panel}>
@@ -735,15 +749,17 @@ export default function AdminEventDetailsScreen() {
 
           {/* Bottom actions (match provided design): two stacked action cards */}
           <View style={styles.bottomActions}>
-            <ActionRow
-              title="לינק להזמנה"
-              subtitle="הגדרת תמונה/כותרת והעתקת קישורים אישיים למוזמנים"
-              iconName="link-outline"
-              iconBg="rgba(204,160,0,0.14)"
-              iconColor={colors.gold}
-              onPress={() => router.push(`/(admin)/admin-invitation-links?eventId=${event.id}`)}
-              accessibilityLabel="לינק להזמנה"
-            />
+            {!isEmployeeAppUser ? (
+              <ActionRow
+                title="לינק להזמנה"
+                subtitle="הגדרת תמונה/כותרת והעתקת קישורים אישיים למוזמנים"
+                iconName="link-outline"
+                iconBg="rgba(204,160,0,0.14)"
+                iconColor={colors.gold}
+                onPress={() => router.push(`/(admin)/admin-invitation-links?eventId=${event.id}`)}
+                accessibilityLabel="לינק להזמנה"
+              />
+            ) : null}
             <ActionRow
               title="רשימת שולחנות"
               subtitle="צפייה וניהול רשימת שולחנות"
@@ -753,24 +769,28 @@ export default function AdminEventDetailsScreen() {
               onPress={() => router.push(`/(admin)/TablesList?eventId=${event.id}`)}
               accessibilityLabel="שולחנות"
             />
-            <ActionRow
-              title="הודעות אוטומטיות"
-              subtitle="עריכה והפעלה של תזכורות והודעות וואטסאפ"
-              iconName="chatbubble-ellipses-outline"
-              iconBg="rgba(0,53,102,0.10)"
-              iconColor={colors.yaleBlue}
-              onPress={() => router.push(`/(admin)/admin-event-messages?eventId=${event.id}`)}
-              accessibilityLabel="עריכת הודעות"
-            />
-            <ActionRow
-              title="אישורי הגעה"
-              subtitle="מעקב אחרי מוזמנים, סטטוסים ומי כבר אישר הגעה"
-              iconName="people-outline"
-              iconBg="rgba(240,203,70,0.18)"
-              iconColor={colors.gold}
-              onPress={() => router.push(`/(admin)/admin-rsvp-approvals?eventId=${event.id}`)}
-              accessibilityLabel="אישורי הגעה"
-            />
+            {!isEmployeeAppUser ? (
+              <ActionRow
+                title="הודעות אוטומטיות"
+                subtitle="עריכה והפעלה של תזכורות והודעות וואטסאפ"
+                iconName="chatbubble-ellipses-outline"
+                iconBg="rgba(0,53,102,0.10)"
+                iconColor={colors.yaleBlue}
+                onPress={() => router.push(`/(admin)/admin-event-messages?eventId=${event.id}`)}
+                accessibilityLabel="עריכת הודעות"
+              />
+            ) : null}
+            {!isEmployeeAppUser ? (
+              <ActionRow
+                title="אישורי הגעה"
+                subtitle="מעקב אחרי מוזמנים, סטטוסים ומי כבר אישר הגעה"
+                iconName="people-outline"
+                iconBg="rgba(240,203,70,0.18)"
+                iconColor={colors.gold}
+                onPress={() => router.push(`/(admin)/admin-rsvp-approvals?eventId=${event.id}`)}
+                accessibilityLabel="אישורי הגעה"
+              />
+            ) : null}
             <ActionRow
               title="צ׳ק-אין אורחים"
               subtitle="סימון הגעה של אורחים בזמן אמת"
@@ -1506,6 +1526,10 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 6 },
     elevation: 4,
+  },
+  heroAvatarEditBadgeDisabled: {
+    backgroundColor: 'rgba(201, 207, 218, 0.95)',
+    shadowOpacity: 0.05,
   },
 
   previewOverlay: {
