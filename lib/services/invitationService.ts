@@ -173,7 +173,10 @@ export const invitationService = {
     const nextStatus = payload.status;
     const nextPeopleRaw = payload.numberOfPeople;
 
-    const people = nextStatus === 'מגיע' ? Math.max(1, Math.min(99, Number(nextPeopleRaw) || 1)) : null;
+    const people =
+      nextStatus === 'מגיע' || nextStatus === 'אולי מגיע'
+        ? Math.max(1, Math.min(99, Number(nextPeopleRaw) || 1))
+        : null;
     const { data, error } = await client.rpc('update_invitation_rsvp', {
       p_token: t,
       p_status: nextStatus,

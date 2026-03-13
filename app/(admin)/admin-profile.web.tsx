@@ -257,12 +257,6 @@ export default function AdminProfileWebScreen() {
   const now = new Date();
   const isCurrentYear = selectedYear === now.getFullYear();
 
-  const peakMonth = useMemo(() => {
-    if (bars12.length === 0) return null;
-    const best = [...bars12].sort((a, b) => b.value - a.value)[0];
-    return best?.value ? best : null;
-  }, [bars12]);
-
   const handleSave = async () => {
     if (!form.name.trim() || !form.email.trim()) {
       // eslint-disable-next-line no-alert
@@ -366,9 +360,6 @@ export default function AdminProfileWebScreen() {
   }
 
   const userName = String(userData.name || 'אדמין');
-  const userEmail = String(userData.email || '').trim();
-  const userPhone = String((userData as any)?.phone || '').trim();
-  const userLocation = 'ישראל';
 
   return (
     <View style={styles.page}>
@@ -396,27 +387,18 @@ export default function AdminProfileWebScreen() {
                   style={({ hovered, pressed }: any) => [
                     styles.primaryBtn,
                     Platform.OS === 'web' && hovered ? styles.primaryBtnHover : null,
-                    pressed ? { opacity: 0.92 } : null,
+                    pressed ? styles.primaryBtnPressed : null,
                     isHeroStack ? { width: '100%' } : null,
                   ]}
                 >
-                  <Ionicons name="create-outline" size={18} color={'#FFFFFF'} />
-                  <Text style={styles.primaryBtnText}>עריכת פרופיל</Text>
-                </Pressable>
-
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="שינוי סיסמה"
-                  onPress={() => setEditOpen(true)}
-                  style={({ hovered, pressed }: any) => [
-                    styles.secondaryBtn,
-                    Platform.OS === 'web' && hovered ? styles.secondaryBtnHover : null,
-                    pressed ? { opacity: 0.92 } : null,
-                    isHeroStack ? { width: '100%' } : null,
-                  ]}
-                >
-                  <Ionicons name="lock-closed-outline" size={18} color={ui.primary} />
-                  <Text style={styles.secondaryBtnText}>שינוי סיסמה</Text>
+                  {({ hovered }: any) => (
+                    <>
+                      <View style={[styles.primaryBtnIconBox, Platform.OS === 'web' && hovered ? styles.primaryBtnIconBoxHover : null]}>
+                        <Ionicons name="create-outline" size={18} color={'#FFFFFF'} />
+                      </View>
+                      <Text style={styles.primaryBtnText}>עריכת פרופיל</Text>
+                    </>
+                  )}
                 </Pressable>
               </View>
 
@@ -439,36 +421,6 @@ export default function AdminProfileWebScreen() {
                     <View style={styles.rolePill}>
                       <Ionicons name="checkmark-circle" size={16} color={ui.gold} />
                       <Text style={styles.rolePillText}>מנהל מערכת</Text>
-                    </View>
-                  </View>
-
-                  <Text style={styles.heroDesc} numberOfLines={2}>
-                    אחראי על אופרציה, ניהול אירועים וקשרי לקוחות אסטרטגיים.
-                  </Text>
-
-                  <View style={styles.metaRow}>
-                    <View style={styles.metaItem}>
-                      <Ionicons name="mail-outline" size={16} color={'rgba(100,116,139,0.95)'} />
-                      <Text
-                        style={styles.metaTextLtr}
-                        numberOfLines={1}
-                        // @ts-ignore - react-native-web supports direction
-                        dir="ltr"
-                      >
-                        {userEmail || '—'}
-                      </Text>
-                    </View>
-                    <View style={styles.metaItem}>
-                      <Ionicons name="call-outline" size={16} color={'rgba(100,116,139,0.95)'} />
-                      <Text style={styles.metaText} numberOfLines={1}>
-                        {userPhone || '—'}
-                      </Text>
-                    </View>
-                    <View style={styles.metaItem}>
-                      <Ionicons name="location-outline" size={16} color={'rgba(100,116,139,0.95)'} />
-                      <Text style={styles.metaText} numberOfLines={1}>
-                        {userLocation}
-                      </Text>
                     </View>
                   </View>
                 </View>
@@ -626,65 +578,6 @@ export default function AdminProfileWebScreen() {
               </View>
             </View>
 
-            <View style={styles.analyticsSide}>
-              <View style={styles.sideCardPrimary}>
-                <View style={styles.sideDecor1} pointerEvents="none" />
-                <View style={styles.sideDecor2} pointerEvents="none" />
-                <Text style={styles.sideTitle}>סיכום שנתי</Text>
-
-                <View style={styles.sideRows}>
-                  <View style={styles.sideRow}>
-                    <View>
-                      <Text style={styles.sideKpiLabel}>סה״כ אירועים</Text>
-                      <Text style={styles.sideKpiValue}>{yearTotalEvents.toLocaleString('he-IL')}</Text>
-                    </View>
-                    <View style={styles.sideKpiIcon}>
-                      <Ionicons name="trophy-outline" size={18} color={'rgba(255,255,255,0.90)'} />
-                    </View>
-                  </View>
-
-                  <View style={styles.sideDivider} />
-
-                  <View style={styles.sideRow}>
-                    <View>
-                      <Text style={styles.sideKpiLabel}>הכנסות/תקציב</Text>
-                      <Text style={styles.sideKpiValue}>{formatCurrencyILS(yearTotalBudget)}</Text>
-                    </View>
-                    <View style={styles.sideKpiIcon}>
-                      <Ionicons name="cash-outline" size={18} color={'rgba(34,197,94,0.95)'} />
-                    </View>
-                  </View>
-
-                  <View style={styles.sideDivider} />
-
-                  <View style={styles.sideRow}>
-                    <View>
-                      <Text style={styles.sideKpiLabel}>חודש שיא</Text>
-                      <Text style={styles.sideKpiValue}>
-                        {peakMonth ? `${peakMonth.label} · ${peakMonth.value}` : '—'}
-                      </Text>
-                    </View>
-                    <View style={styles.sideKpiIcon}>
-                      <Ionicons name="star-outline" size={18} color={ui.gold} />
-                    </View>
-                  </View>
-                </View>
-
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="הורדת דוח מלא"
-                  onPress={() => null}
-                  style={({ hovered, pressed }: any) => [
-                    styles.downloadBtn,
-                    Platform.OS === 'web' && hovered ? styles.downloadBtnHover : null,
-                    pressed ? { opacity: 0.92 } : null,
-                  ]}
-                >
-                  <Text style={styles.downloadBtnText}>הורדת דוח מלא</Text>
-                  <Ionicons name="download-outline" size={16} color={ui.primary} />
-                </Pressable>
-              </View>
-            </View>
           </View>
 
           <Text style={styles.footer}>© {new Date().getFullYear()} EventFlow Systems. כל הזכויות שמורות.</Text>
@@ -852,18 +745,19 @@ const styles = StyleSheet.create({
 
   heroCard: {
     backgroundColor: ui.card,
-    borderRadius: 24,
+    borderRadius: 28,
     borderWidth: 1,
     borderColor: ui.border,
-    padding: 20,
+    paddingHorizontal: 28,
+    paddingVertical: 28,
     overflow: 'hidden',
     position: 'relative',
     ...(Platform.OS === 'web' ? ({ direction: 'rtl', textAlign: 'right' } as any) : null),
     shadowColor: ui.primary,
-    shadowOpacity: 0.06,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 2,
+    shadowOpacity: 0.08,
+    shadowRadius: 32,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 3,
   },
   heroTopLine: { position: 'absolute', top: 0, left: 0, right: 0, height: 4 },
   heroDecor1: {
@@ -895,14 +789,15 @@ const styles = StyleSheet.create({
   },
   heroMainRowStack: { flexDirection: 'column', alignItems: 'stretch', gap: 12 },
 
-  heroActionsCol: { width: 180, gap: 10, alignItems: 'stretch', justifyContent: 'center' },
+  heroActionsCol: { width: 190, gap: 12, alignItems: 'stretch', justifyContent: 'center' },
   heroActionsColStack: { width: '100%' },
 
   heroInfoCol: {
     flex: 1,
     minWidth: 0,
     alignItems: 'flex-end',
-    gap: 8,
+    justifyContent: 'center',
+    gap: 10,
     ...(Platform.OS === 'web' ? ({ direction: 'rtl', textAlign: 'right' } as any) : null),
   },
 
@@ -912,7 +807,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
-    gap: 18,
+    gap: 22,
   },
   heroIdentityGroupStack: {
     flexDirection: 'column',
@@ -921,34 +816,38 @@ const styles = StyleSheet.create({
     gap: 12,
   },
 
-  heroAvatarCol: { width: 132, alignItems: 'flex-end', justifyContent: 'center' },
+  heroAvatarCol: { width: 148, alignItems: 'flex-end', justifyContent: 'center' },
   heroAvatarColStack: { width: '100%', alignItems: 'flex-end' },
   heroAvatarBlock: { position: 'relative' },
   heroAvatarRing: {
-    width: 112,
-    height: 112,
+    width: 130,
+    height: 130,
     borderRadius: 999,
     padding: 4,
     backgroundColor: 'rgba(15,23,42,0.04)',
-    borderWidth: 1,
-    borderColor: ui.border,
-    shadowColor: 'rgba(2,6,23,0.25)',
-    shadowOpacity: 0.12,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 3,
+    borderWidth: 1.5,
+    borderColor: 'rgba(59,130,246,0.20)',
+    shadowColor: ui.accent,
+    shadowOpacity: 0.18,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 14 },
+    elevation: 4,
   },
   heroAvatar: { width: '100%', height: '100%', borderRadius: 999 },
   heroStatusDot: {
     position: 'absolute',
-    bottom: 8,
+    bottom: 10,
     left: 10,
-    width: 14,
-    height: 14,
+    width: 16,
+    height: 16,
     borderRadius: 999,
     backgroundColor: ui.success,
     borderWidth: 3,
     borderColor: '#fff',
+    shadowColor: ui.success,
+    shadowOpacity: 0.4,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
   },
   heroInfo: { flex: 1, minWidth: 0, alignItems: 'flex-end', gap: 8 },
   heroTitleRow: {
@@ -960,66 +859,55 @@ const styles = StyleSheet.create({
     gap: 10,
     ...(Platform.OS === 'web' ? ({ textAlign: 'right' } as any) : null),
   },
-  heroName: { fontSize: 28, fontWeight: '900', color: ui.primary, textAlign: 'right' },
+  heroName: { fontSize: 32, fontWeight: '900', color: ui.primary, textAlign: 'right', letterSpacing: -0.5 },
   rolePill: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
     gap: 8,
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 999,
-    backgroundColor: 'rgba(212,175,55,0.10)',
-    borderWidth: 1,
-    borderColor: 'rgba(212,175,55,0.18)',
+    backgroundColor: 'rgba(212,175,55,0.12)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(212,175,55,0.22)',
   },
   rolePillText: { fontSize: 13, fontWeight: '900', color: 'rgba(161,98,7,0.98)', textAlign: 'right' },
-  heroDesc: { fontSize: 15, fontWeight: '600', color: ui.muted, textAlign: 'right', lineHeight: 24 },
-  metaRow: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 14, paddingTop: 4, justifyContent: 'flex-start' },
-  metaItem: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
-  metaText: { fontSize: 12, fontWeight: '700', color: 'rgba(100,116,139,0.95)', textAlign: 'right' },
-  metaTextLtr: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: 'rgba(100,116,139,0.95)',
-    // @ts-ignore - web
-    direction: 'ltr',
-    textAlign: 'left',
-    maxWidth: 260,
-  },
   heroActions: { flexDirection: 'column', gap: 10, alignSelf: 'flex-start', alignItems: 'flex-start' },
   heroActionsNarrow: { alignSelf: 'flex-start', alignItems: 'stretch', width: '100%' },
   primaryBtn: {
-    height: 44,
-    paddingHorizontal: 16,
-    borderRadius: 16,
+    height: 50,
+    paddingHorizontal: 18,
+    borderRadius: 18,
     backgroundColor: ui.primary,
     flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
+    gap: 12,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.16)',
-    shadowColor: ui.primary,
-    shadowOpacity: 0.16,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 12 },
+    borderColor: 'rgba(255,255,255,0.14)',
+    shadowColor: ui.accent,
+    shadowOpacity: 0.28,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 10 },
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer', transition: 'all 0.18s ease' } as any) : null),
   },
-  primaryBtnHover: { backgroundColor: ui.primaryLight },
-  primaryBtnText: { fontSize: 13, fontWeight: '900', color: '#fff', textAlign: 'right' },
-  secondaryBtn: {
-    height: 44,
-    paddingHorizontal: 16,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.94)',
-    borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.10)',
-    flexDirection: 'row-reverse',
+  primaryBtnHover: {
+    backgroundColor: ui.accentDark,
+    shadowOpacity: 0.4,
+    shadowRadius: 30,
+    borderColor: 'rgba(255,255,255,0.22)',
+  },
+  primaryBtnPressed: { transform: [{ scale: 0.97 }], opacity: 0.92 },
+  primaryBtnIconBox: {
+    width: 28,
+    height: 28,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.14)',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
   },
-  secondaryBtnHover: { borderColor: 'rgba(15,23,42,0.16)', backgroundColor: 'rgba(248,250,252,1)' },
-  secondaryBtnText: { fontSize: 13, fontWeight: '900', color: ui.primary, textAlign: 'right' },
+  primaryBtnIconBoxHover: { backgroundColor: 'rgba(255,255,255,0.22)' },
+  primaryBtnText: { fontSize: 14, fontWeight: '900', color: '#fff', textAlign: 'right', letterSpacing: 0.2 },
 
   statsGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 14 },
   statCard: {

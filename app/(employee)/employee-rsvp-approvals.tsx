@@ -130,6 +130,17 @@ export default function EmployeeRsvpApprovalsScreen() {
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
+                onPress={() => setStatusFilter("אולי מגיע")}
+                activeOpacity={0.9}
+                accessibilityRole="button"
+                accessibilityLabel="סינון: אולי מגיעים"
+                style={[styles.pillMaybe, statusFilter === "אולי מגיע" && styles.pillActiveMaybe]}
+              >
+                <Text style={[styles.pillTextMaybe, statusFilter === "אולי מגיע" && styles.pillTextActiveMaybe]}>
+                  {`${stats.maybe} אולי מגיעים`}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
                 onPress={() => setStatusFilter("ממתין")}
                 activeOpacity={0.9}
                 accessibilityRole="button"
@@ -172,6 +183,7 @@ export default function EmployeeRsvpApprovalsScreen() {
               {[
                 { key: "all" as const, label: "הכל" },
                 { key: "מגיע" as const, label: "אישרו" },
+                { key: "אולי מגיע" as const, label: "אולי מגיעים" },
                 { key: "ממתין" as const, label: "ממתינים" },
                 { key: "לא מגיע" as const, label: "לא מגיעים" },
               ].map((t) => {
@@ -222,9 +234,9 @@ export default function EmployeeRsvpApprovalsScreen() {
                         const isSaving = savingId === g.id;
                         const phoneOk = Boolean(sanitizePhone(g.phone));
                         // Guest status badge should be singular (Hebrew)
-                        const badgeLabel = g.status; // "מגיע" | "ממתין" | "לא מגיע"
+                        const badgeLabel = g.status; // "מגיע" | "אולי מגיע" | "ממתין" | "לא מגיע"
                         const isEditing = editingId === g.id;
-                        const showActionButtons = g.status === "ממתין" || isEditing;
+                        const showActionButtons = g.status === "ממתין" || g.status === "אולי מגיע" || isEditing;
                         return (
                           <View key={g.id} style={styles.guestItem}>
                             <View style={styles.rightGroup}>
@@ -262,6 +274,17 @@ export default function EmployeeRsvpApprovalsScreen() {
                                   </TouchableOpacity>
 
                                   <TouchableOpacity
+                                    onPress={() => setStatus(g.id, "אולי מגיע")}
+                                    style={[styles.iconBtn, styles.iconBtnMaybe]}
+                                    activeOpacity={0.9}
+                                    disabled={isSaving}
+                                    accessibilityRole="button"
+                                    accessibilityLabel={`סימון אולי מגיע עבור ${g.name}`}
+                                  >
+                                    <Ionicons name="help" size={16} color={colors.primary} />
+                                  </TouchableOpacity>
+
+                                  <TouchableOpacity
                                     onPress={() => setStatus(g.id, "מגיע")}
                                     style={[styles.iconBtn, styles.iconBtnConfirm]}
                                     activeOpacity={0.9}
@@ -294,14 +317,22 @@ export default function EmployeeRsvpApprovalsScreen() {
                                     accessibilityLabel={`שינוי סטטוס עבור ${g.name}`}
                                     style={[
                                       styles.badgeBase,
-                                      g.status === "מגיע" ? styles.badgeConfirmed : styles.badgeDeclined,
+                                      g.status === "מגיע"
+                                        ? styles.badgeConfirmed
+                                        : g.status === "אולי מגיע"
+                                          ? styles.badgeMaybe
+                                          : styles.badgeDeclined,
                                       g.status === "מגיע" ? styles.badgeOffsetComing : null,
                                     ]}
                                   >
                                     <Text
                                       style={[
                                         styles.badgeTextBase,
-                                        g.status === "מגיע" ? styles.badgeTextConfirmed : styles.badgeTextDeclined,
+                                        g.status === "מגיע"
+                                          ? styles.badgeTextConfirmed
+                                          : g.status === "אולי מגיע"
+                                            ? styles.badgeTextMaybe
+                                            : styles.badgeTextDeclined,
                                       ]}
                                     >
                                       {badgeLabel}
@@ -374,6 +405,18 @@ const styles = StyleSheet.create({
   pillTextPrimary: { fontSize: 11, fontWeight: "900", color: colors.success },
   pillActivePrimary: { backgroundColor: "rgba(52, 199, 89, 0.18)", borderColor: "rgba(52, 199, 89, 0.32)" },
   pillTextActivePrimary: { color: colors.success },
+
+  pillMaybe: {
+    backgroundColor: "rgba(17, 82, 212, 0.10)",
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderWidth: 1,
+    borderColor: "rgba(17, 82, 212, 0.18)",
+  },
+  pillTextMaybe: { fontSize: 11, fontWeight: "900", color: colors.primary },
+  pillActiveMaybe: { backgroundColor: "rgba(17, 82, 212, 0.16)", borderColor: "rgba(17, 82, 212, 0.28)" },
+  pillTextActiveMaybe: { color: colors.primary },
 
   pillPending: {
     backgroundColor: "rgba(255, 193, 7, 0.12)",
@@ -468,6 +511,8 @@ const styles = StyleSheet.create({
   badgeTextBase: { fontSize: 10, fontWeight: "900" },
   badgeConfirmed: { backgroundColor: "rgba(52, 199, 89, 0.12)", borderColor: "rgba(52, 199, 89, 0.22)" },
   badgeTextConfirmed: { color: colors.success },
+  badgeMaybe: { backgroundColor: "rgba(17, 82, 212, 0.10)", borderColor: "rgba(17, 82, 212, 0.18)" },
+  badgeTextMaybe: { color: colors.primary },
   badgeDeclined: { backgroundColor: "rgba(255, 59, 48, 0.10)", borderColor: "rgba(255, 59, 48, 0.18)" },
   badgeTextDeclined: { color: "#dc2626" },
 
@@ -484,6 +529,7 @@ const styles = StyleSheet.create({
     borderColor: "rgba(15,23,42,0.06)",
   },
   iconBtnDecline: { backgroundColor: "rgba(255, 59, 48, 0.10)", borderColor: "rgba(255, 59, 48, 0.16)" },
+  iconBtnMaybe: { backgroundColor: "rgba(17, 82, 212, 0.10)", borderColor: "rgba(17, 82, 212, 0.16)" },
   iconBtnConfirm: { backgroundColor: "rgba(17, 82, 212, 0.10)", borderColor: "rgba(17, 82, 212, 0.16)" },
 
   emptyCard: {

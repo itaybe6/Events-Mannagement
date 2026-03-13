@@ -132,7 +132,7 @@ export default function AdminInvitationLinksScreen() {
   });
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [guestFilter, setGuestFilter] = useState<'all' | 'מגיע' | 'ממתין' | 'לא מגיע'>('all');
+  const [guestFilter, setGuestFilter] = useState<'all' | 'מגיע' | 'אולי מגיע' | 'ממתין' | 'לא מגיע'>('all');
   const [guestPickerOpen, setGuestPickerOpen] = useState(false);
   const [guestSearch, setGuestSearch] = useState('');
   const [copiedGuestId, setCopiedGuestId] = useState<string | null>(null);
@@ -197,9 +197,10 @@ export default function AdminInvitationLinksScreen() {
   const counts = useMemo(() => {
     const all = Array.isArray(guests) ? guests : [];
     const confirmed = all.filter((g) => g.status === 'מגיע').length;
+    const maybe = all.filter((g) => g.status === 'אולי מגיע').length;
     const pending = all.filter((g) => g.status === 'ממתין').length;
     const declined = all.filter((g) => g.status === 'לא מגיע').length;
-    return { all: all.length, confirmed, pending, declined };
+    return { all: all.length, confirmed, maybe, pending, declined };
   }, [guests]);
 
   const filteredGuests = useMemo(() => {
@@ -711,6 +712,12 @@ export default function AdminInvitationLinksScreen() {
                   style={({ pressed }) => [styles.filterPill, guestFilter === 'ממתין' ? styles.filterPillActive : null, pressed ? { opacity: 0.92 } : null]}
                 >
                   <Text style={[styles.filterText, guestFilter === 'ממתין' ? styles.filterTextActive : null]}>ממתינים ({counts.pending})</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setGuestFilter('אולי מגיע')}
+                  style={({ pressed }) => [styles.filterPill, guestFilter === 'אולי מגיע' ? styles.filterPillActive : null, pressed ? { opacity: 0.92 } : null]}
+                >
+                  <Text style={[styles.filterText, guestFilter === 'אולי מגיע' ? styles.filterTextActive : null]}>אולי מגיעים ({counts.maybe})</Text>
                 </Pressable>
                 <Pressable
                   onPress={() => setGuestFilter('מגיע')}

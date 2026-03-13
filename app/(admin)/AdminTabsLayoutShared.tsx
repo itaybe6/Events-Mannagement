@@ -30,6 +30,7 @@ export default function AdminTabsLayoutShared() {
   const adminHeaderHeight = isAdminHeaderVisible ? insets.top + 64 : 0;
   const isAdminShopifyShell = userType === "admin";
   const currentAdminRoute = String(segments?.[1] ?? "");
+  const isGuestCheckinRoute = currentAdminRoute === "admin-guest-checkin";
   const desktopNavItems = React.useMemo<DesktopNavItem[]>(() => {
     const items: DesktopNavItem[] = [
       { href: "/(admin)/admin-events", label: "אירועים", icon: "calendar-outline" },
@@ -347,6 +348,7 @@ export default function AdminTabsLayoutShared() {
               if (!isTabBarVisible) return null;
 
               if (Platform.OS === "web") {
+                if (isGuestCheckinRoute) return null;
                 return (
                   <DesktopSidebar
                     navItems={desktopNavItems}

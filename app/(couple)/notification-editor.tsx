@@ -211,11 +211,11 @@ export default function NotificationEditorScreen() {
     []
   );
 
-  const [guestFilter, setGuestFilter] = useState<'all' | 'מגיע' | 'ממתין' | 'לא מגיע'>(
+  const [guestFilter, setGuestFilter] = useState<'all' | 'מגיע' | 'אולי מגיע' | 'ממתין' | 'לא מגיע'>(
     notificationType === 'reminder_2' ? 'ממתין' : 'all'
   );
   const [allGuests, setAllGuests] = useState<
-    Array<{ id: string; name: string; phone?: string; status: 'מגיע' | 'לא מגיע' | 'ממתין' }>
+    Array<{ id: string; name: string; phone?: string; status: 'מגיע' | 'אולי מגיע' | 'לא מגיע' | 'ממתין' }>
   >([]);
   const [selectedGuestIds, setSelectedGuestIds] = useState<Set<string>>(() => new Set());
   const [sendingNow, setSendingNow] = useState(false);
@@ -1857,7 +1857,7 @@ export default function NotificationEditorScreen() {
                   ) : (
                     <>
                       <View style={styles.filtersRow}>
-                    {(['all', 'ממתין', 'מגיע', 'לא מגיע'] as const).map((k) => (
+                    {(['all', 'ממתין', 'אולי מגיע', 'מגיע', 'לא מגיע'] as const).map((k) => (
                       <Pressable
                         key={k}
                         onPress={() => setGuestFilter(k)}

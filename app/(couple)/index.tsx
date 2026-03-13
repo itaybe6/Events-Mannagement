@@ -172,6 +172,10 @@ export default function HomeScreen() {
     if (guest?.status !== 'מגיע') return sum;
     return sum + (Number(guest?.numberOfPeople ?? guest?.number_of_people ?? 1) || 1);
   }, 0);
+  const maybePeople = guests.reduce((sum: number, guest: any) => {
+    if (guest?.status !== 'אולי מגיע') return sum;
+    return sum + (Number(guest?.numberOfPeople ?? guest?.number_of_people ?? 1) || 1);
+  }, 0);
   const declinedPeople = guests.reduce((sum: number, guest: any) => {
     if (guest?.status !== 'לא מגיע') return sum;
     return sum + (Number(guest?.numberOfPeople ?? guest?.number_of_people ?? 1) || 1);
@@ -352,15 +356,6 @@ export default function HomeScreen() {
     <>
       <View style={!isWeb ? styles.statPillMobile : undefined}>
         <StatPill
-          title="הושבו"
-          value={seatedGuests}
-          iconName="people"
-          tintColor={stylesVars.primaryBlue}
-          iconBg="rgba(19, 91, 236, 0.12)"
-        />
-      </View>
-      <View style={!isWeb ? styles.statPillMobile : undefined}>
-        <StatPill
           title="לא הושבו"
           value={Math.max(0, confirmedPeople - seatedGuests)}
           iconName="alert-circle"
@@ -373,6 +368,15 @@ export default function HomeScreen() {
 
   const statusStatsContent = (
     <>
+      <View style={styles.statusSquareWrapper}>
+        <StatusSquareCard
+          title="אולי מגיע"
+          value={maybePeople}
+          iconName="help-circle"
+          tintColor={stylesVars.primaryBlue}
+          iconBg="rgba(19, 91, 236, 0.10)"
+        />
+      </View>
       <View style={styles.statusSquareWrapper}>
         <StatusSquareCard
           title="ממתין"

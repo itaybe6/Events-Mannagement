@@ -15,6 +15,8 @@ export default function CoupleHomeWebScreen() {
   const { eventId: queryEventId } = useLocalSearchParams<{ eventId?: string }>();
   const { width: windowWidth } = useWindowDimensions();
   const isCompactDesktop = windowWidth < 1280;
+  const actionsSingleRow = windowWidth >= 1180;
+  const actionsTwoColumns = windowWidth >= 820 && windowWidth < 1180;
 
   const { isLoggedIn, userData, initializeAuth } = useUserStore();
   const activeUserId = useEventSelectionStore((s) => s.activeUserId);
@@ -74,16 +76,18 @@ export default function CoupleHomeWebScreen() {
 
   const stats = useMemo(() => {
     const confirmed = guests.filter((g) => g.status === 'מגיע').length;
+    const maybe = guests.filter((g) => g.status === 'אולי מגיע').length;
     const declined = guests.filter((g) => g.status === 'לא מגיע').length;
     const pending = guests.filter((g) => g.status === 'ממתין').length;
     const seated = guests.filter((g) => g.status === 'מגיע' && g.tableId).length;
     const needSeat = Math.max(0, confirmed - seated);
-    const responded = confirmed + declined;
+    const responded = confirmed + maybe + declined;
     const responseRate = guests.length > 0 ? Math.round((responded / guests.length) * 100) : 0;
     const seatingRate = confirmed > 0 ? Math.round((seated / confirmed) * 100) : 0;
 
     return {
       confirmed,
+      maybe,
       declined,
       pending,
       seated,
@@ -136,9 +140,10 @@ export default function CoupleHomeWebScreen() {
 
   const priorityMessage = useMemo(() => {
     if (stats.pending > 0) return `מחכים ל-${stats.pending} תשובות נוספות כדי לסגור תמונת מצב מלאה.`;
+    if (stats.maybe > 0) return `יש כרגע ${stats.maybe} אורחים במצב "אולי מגיע", כדאי לעקוב מולם לפני סגירת סידור ההושבה.`;
     if (stats.needSeat > 0) return `נותר לשבץ ${stats.needSeat} אורחים כדי להשלים את ההושבה.`;
     return 'המצב נראה מצוין. אפשר לעבור על ההודעות והשולחנות ולוודא שהכול סגור.';
-  }, [stats.needSeat, stats.pending]);
+  }, [stats.maybe, stats.needSeat, stats.pending]);
 
   if (!isLoggedIn) {
     return (
@@ -167,6 +172,11 @@ export default function CoupleHomeWebScreen() {
   const contentMaxWidth =
     windowWidth >= 1800 ? 1560 : windowWidth >= 1500 ? 1400 : windowWidth >= 1280 ? 1240 : undefined;
   const contentPaddingH = windowWidth >= 1024 ? 24 : 18;
+  const actionCardWidthStyle = actionsSingleRow
+    ? styles.actionCardWidthQuarter
+    : actionsTwoColumns
+      ? styles.actionCardWidthHalf
+      : styles.actionCardWidthFull;
 
   return (
     <View style={styles.page}>
@@ -264,22 +274,15 @@ export default function CoupleHomeWebScreen() {
             <View style={styles.sideStatsGrid}>
               <MiniStat label="סה״כ מוזמנים" value={stats.total} tone="blue" />
               <MiniStat label="מאשרים" value={stats.confirmed} tone="green" />
+              <MiniStat label="אולי מגיעים" value={stats.maybe} tone="purple" />
               <MiniStat label="ממתינים" value={stats.pending} tone="gold" />
               <MiniStat label="לא מגיעים" value={stats.declined} tone="red" />
-              <MiniStat label="שובצו" value={stats.seated} tone="blue" />
               <MiniStat label="לשיבוץ" value={stats.needSeat} tone="purple" />
             </View>
           </Surface>
         </View>
 
-        <View style={styles.sectionHeader}>
-          <View>
-            <Text style={styles.sectionTitle}>פעולות מרכזיות</Text>
-            <Text style={styles.sectionSubtitle}>כלי העבודה החשובים מסודרים לפי עדיפות</Text>
-          </View>
-        </View>
-
-        <View style={[styles.actionsShell, isCompactDesktop ? styles.actionsShellStack : null]}>
+        <View style={styles.actionsShell}>
           <ActionCard
             icon="grid-outline"
             title="סידור הושבה"
@@ -287,6 +290,7 @@ export default function CoupleHomeWebScreen() {
             caption="כניסה מהירה למפת הישיבה ולחלוקת האורחים בין השולחנות."
             badge={stats.needSeat > 0 ? 'עדיפות גבוהה' : 'מוכן'}
             primary
+            style={actionCardWidthStyle}
             onPress={() =>
               router.push({
                 pathname: '/(couple)/BrideGroomSeating',
@@ -294,48 +298,50 @@ export default function CoupleHomeWebScreen() {
               })
             }
           />
+          <ActionCard
+            icon="people-outline"
+            title="רשימת מוזמנים"
+            subtitle={stats.pending > 0 ? `${stats.pending} תשובות בהמתנה` : stats.maybe > 0 ? `${stats.maybe} אולי מגיעים` : 'כל האישורים מעודכנים'}
+            caption="ניהול אורחים, סטטוסים, מתנות ושיוך לקטגוריות."
+            badge={stats.pending > 0 || stats.maybe > 0 ? 'דורש מעקב' : undefined}
+            style={actionCardWidthStyle}
+            onPress={() =>
+              router.push({
+                pathname: '/(couple)/guests',
+                params: resolvedEventId ? { eventId: resolvedEventId } : {},
+              })
+            }
+          />
 
-          <View style={styles.secondaryActionsGrid}>
-            <ActionCard
-              icon="people-outline"
-              title="רשימת מוזמנים"
-              subtitle={stats.pending > 0 ? `${stats.pending} תשובות בהמתנה` : 'כל האישורים מעודכנים'}
-              caption="ניהול אורחים, סטטוסים, מתנות ושיוך לקטגוריות."
-              badge={stats.pending > 0 ? 'דורש מעקב' : undefined}
-              onPress={() =>
-                router.push({
-                  pathname: '/(couple)/guests',
-                  params: resolvedEventId ? { eventId: resolvedEventId } : {},
-                })
-              }
-            />
+          <ActionCard
+            icon="restaurant-outline"
+            title="ניהול שולחנות"
+            subtitle="עריכה, קיבולת וסדר ישיבה"
+            caption="עדכון כמות מקומות, שמות שולחנות ומעקב תפוסה."
+            primary
+            style={actionCardWidthStyle}
+            onPress={() =>
+              router.push({
+                pathname: '/(couple)/TablesList',
+                params: resolvedEventId ? { eventId: resolvedEventId } : {},
+              })
+            }
+          />
 
-            <ActionCard
-              icon="restaurant-outline"
-              title="ניהול שולחנות"
-              subtitle="עריכה, קיבולת וסדר ישיבה"
-              caption="עדכון כמות מקומות, שמות שולחנות ומעקב תפוסה."
-              onPress={() =>
-                router.push({
-                  pathname: '/(couple)/TablesList',
-                  params: resolvedEventId ? { eventId: resolvedEventId } : {},
-                })
-              }
-            />
-
-            <ActionCard
-              icon="chatbubble-ellipses-outline"
-              title="הודעות אוטומטיות"
-              subtitle="תזכורות ועדכונים לאורחים"
-              caption="עריכה והפעלה של הודעות וואטסאפ ותזכורות לפני האירוע."
-              onPress={() =>
-                router.push({
-                  pathname: '/(couple)/automatic-notifications',
-                  params: resolvedEventId ? { eventId: resolvedEventId } : {},
-                })
-              }
-            />
-          </View>
+          <ActionCard
+            icon="chatbubble-ellipses-outline"
+            title="הודעות אוטומטיות"
+            subtitle="תזכורות ועדכונים לאורחים"
+            caption="עריכה והפעלה של הודעות וואטסאפ ותזכורות לפני האירוע."
+            softDecor
+            style={actionCardWidthStyle}
+            onPress={() =>
+              router.push({
+                pathname: '/(couple)/automatic-notifications',
+                params: resolvedEventId ? { eventId: resolvedEventId } : {},
+              })
+            }
+          />
         </View>
 
         <View style={{ height: 24 }} />
@@ -519,6 +525,8 @@ function ActionCard({
   caption,
   badge,
   primary,
+  softDecor,
+  style,
   onPress,
 }: {
   icon: React.ComponentProps<typeof Ionicons>['name'];
@@ -527,15 +535,22 @@ function ActionCard({
   caption: string;
   badge?: string;
   primary?: boolean;
+  softDecor?: boolean;
+  style?: any;
   onPress: () => void;
 }) {
+  const [isHover, setIsHover] = useState(false);
+
   return (
     <Pressable
       accessibilityRole="button"
       onPress={onPress}
+      onHoverIn={Platform.OS === 'web' ? () => setIsHover(true) : undefined}
+      onHoverOut={Platform.OS === 'web' ? () => setIsHover(false) : undefined}
       style={({ hovered, pressed }: any) => [
         styles.actionCard,
         primary ? styles.actionCardPrimary : null,
+        style,
         Platform.OS === 'web' && hovered ? (primary ? styles.actionCardPrimaryHover : styles.actionCardHover) : null,
         pressed ? styles.pressableDown : null,
       ]}
@@ -545,10 +560,32 @@ function ActionCard({
           <View style={styles.actionCardGlowPrimaryTop} />
           <View style={styles.actionCardGlowPrimaryBottom} />
         </>
+      ) : softDecor ? (
+        <>
+          <View style={styles.actionCardGlowSoftTop} />
+          <View style={styles.actionCardGlowSoftBottom} />
+        </>
+      ) : null}
+
+      {Platform.OS === 'web' ? (
+        <View
+          pointerEvents="none"
+          style={[
+            styles.actionCardSheen,
+            primary ? styles.actionCardSheenPrimary : styles.actionCardSheenSoft,
+            isHover ? styles.actionCardSheenOn : null,
+          ]}
+        />
       ) : null}
 
       <View style={styles.actionCardHeader}>
-        <View style={[styles.actionCardIcon, primary ? styles.actionCardIconPrimary : null]}>
+        <View
+          style={[
+            styles.actionCardIcon,
+            primary ? styles.actionCardIconPrimary : null,
+            Platform.OS === 'web' && isHover ? styles.actionCardIconHover : null,
+          ]}
+        >
           <Ionicons name={icon} size={22} color={primary ? colors.white : stylesVars.primary} />
         </View>
         {badge ? (
@@ -976,26 +1013,23 @@ const styles = StyleSheet.create({
   },
   actionsShell: {
     flexDirection: 'row-reverse',
+    flexWrap: 'wrap',
     gap: 16,
-    // Prevent the primary action from stretching to the full height of the secondary grid
-    // on laptop-sized widths where the right column wraps to multiple rows.
     alignItems: 'flex-start',
   },
-  actionsShellStack: {
-    flexDirection: 'column',
-    alignItems: 'stretch',
+  actionCardWidthQuarter: {
+    width: '23.8%',
   },
-  secondaryActionsGrid: {
-    flex: 1,
-    flexDirection: 'row-reverse',
-    flexWrap: 'wrap',
-    gap: 14,
-    alignContent: 'flex-start',
+  actionCardWidthHalf: {
+    width: '48.8%',
+  },
+  actionCardWidthFull: {
+    width: '100%',
   },
   actionCard: {
-    flexGrow: 1,
-    flexBasis: 250,
-    minHeight: 200,
+    flexGrow: 0,
+    flexShrink: 0,
+    height: 260,
     padding: 20,
     borderRadius: 28,
     borderWidth: 1,
@@ -1006,6 +1040,9 @@ const styles = StyleSheet.create({
       ? ({
           cursor: 'pointer',
           boxShadow: '0 18px 42px rgba(13,28,43,0.07)',
+          transitionProperty: 'transform, box-shadow, border-color',
+          transitionDuration: '180ms',
+          transitionTimingFunction: 'cubic-bezier(0.2, 0.8, 0.2, 1)',
         } as any)
       : null),
   },
@@ -1019,8 +1056,6 @@ const styles = StyleSheet.create({
       : null),
   },
   actionCardPrimary: {
-    flex: 1.05,
-    minHeight: 250,
     backgroundColor: stylesVars.primary,
     borderColor: 'rgba(255,255,255,0.08)',
   },
@@ -1050,6 +1085,60 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: 'rgba(59,130,246,0.18)',
   },
+  actionCardGlowSoftTop: {
+    position: 'absolute',
+    top: -36,
+    right: -28,
+    width: 144,
+    height: 144,
+    borderRadius: 999,
+    backgroundColor: 'rgba(13,28,43,0.035)',
+  },
+  actionCardGlowSoftBottom: {
+    position: 'absolute',
+    bottom: -42,
+    left: -28,
+    width: 164,
+    height: 164,
+    borderRadius: 999,
+    backgroundColor: 'rgba(59,130,246,0.045)',
+  },
+  actionCardSheen: {
+    position: 'absolute',
+    top: -60,
+    left: -160,
+    width: 240,
+    height: 520,
+    opacity: 0,
+    transform: [{ rotate: '18deg' }, { translateX: -40 }],
+    ...(Platform.OS === 'web'
+      ? ({
+          transitionProperty: 'opacity, transform',
+          transitionDuration: '280ms',
+          transitionTimingFunction: 'cubic-bezier(0.2, 0.8, 0.2, 1)',
+        } as any)
+      : null),
+  },
+  actionCardSheenPrimary: {
+    ...(Platform.OS === 'web'
+      ? ({
+          backgroundImage:
+            'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.14) 45%, rgba(255,255,255,0) 100%)',
+        } as any)
+      : null),
+  },
+  actionCardSheenSoft: {
+    ...(Platform.OS === 'web'
+      ? ({
+          backgroundImage:
+            'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(59,130,246,0.10) 45%, rgba(255,255,255,0) 100%)',
+        } as any)
+      : null),
+  },
+  actionCardSheenOn: {
+    opacity: 1,
+    transform: [{ rotate: '18deg' }, { translateX: 520 }],
+  },
   actionCardHeader: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
@@ -1063,11 +1152,21 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(13,28,43,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
+    ...(Platform.OS === 'web'
+      ? ({
+          transitionProperty: 'transform, background-color, border-color',
+          transitionDuration: '180ms',
+          transitionTimingFunction: 'cubic-bezier(0.2, 0.8, 0.2, 1)',
+        } as any)
+      : null),
   },
   actionCardIconPrimary: {
     backgroundColor: 'rgba(255,255,255,0.12)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.18)',
+  },
+  actionCardIconHover: {
+    transform: [{ rotate: '-6deg' }, { scale: 1.03 }],
   },
   actionBadge: {
     paddingHorizontal: 10,
@@ -1093,6 +1192,7 @@ const styles = StyleSheet.create({
   actionCardContent: {
     marginTop: 26,
     gap: 8,
+    flex: 1,
   },
   actionCardTitle: {
     fontSize: 24,

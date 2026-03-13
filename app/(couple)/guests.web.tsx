@@ -21,7 +21,7 @@ import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import { eventService } from '@/lib/services/eventService';
 import { guestService } from '@/lib/services/guestService';
 
-type GuestStatus = 'ממתין' | 'מגיע' | 'לא מגיע';
+type GuestStatus = 'ממתין' | 'אולי מגיע' | 'מגיע' | 'לא מגיע';
 type GuestRow = {
   id: string;
   name: string;
@@ -144,13 +144,16 @@ export default function CoupleGuestsWebScreen() {
     const coming = guests
       .filter((g) => g.status === 'מגיע')
       .reduce((sum, g) => sum + (g.numberOfPeople || 1), 0);
+    const maybe = guests
+      .filter((g) => g.status === 'אולי מגיע')
+      .reduce((sum, g) => sum + (g.numberOfPeople || 1), 0);
     const pending = guests
       .filter((g) => g.status === 'ממתין')
       .reduce((sum, g) => sum + (g.numberOfPeople || 1), 0);
     const notComing = guests
       .filter((g) => g.status === 'לא מגיע')
       .reduce((sum, g) => sum + (g.numberOfPeople || 1), 0);
-    return { total, coming, pending, notComing };
+    return { total, coming, maybe, pending, notComing };
   }, [guests]);
 
   const filteredGuests = useMemo(() => {
@@ -416,6 +419,7 @@ export default function CoupleGuestsWebScreen() {
     [
       { key: null, label: 'הכל', count: guestCounts.total, tone: 'primary' },
       { key: 'מגיע', label: 'אישרו', count: guestCounts.coming, tone: 'success' },
+      { key: 'אולי מגיע', label: 'אולי מגיעים', count: guestCounts.maybe, tone: 'primary' },
       { key: 'ממתין', label: 'ממתינים', count: guestCounts.pending, tone: 'warning' },
       { key: 'לא מגיע', label: 'לא מגיעים', count: guestCounts.notComing, tone: 'danger' },
     ];
@@ -501,6 +505,7 @@ export default function CoupleGuestsWebScreen() {
             width={cardWidth}
           />
           <MetricCard title="אישרו הגעה" value={guestCounts.coming} hint={pct(guestCounts.coming, guestCounts.total)} tone="success" width={cardWidth} />
+          <MetricCard title="אולי מגיעים" value={guestCounts.maybe} hint={pct(guestCounts.maybe, guestCounts.total)} tone="primary" width={cardWidth} />
           <MetricCard title="ממתינים לתשובה" value={guestCounts.pending} hint={pct(guestCounts.pending, guestCounts.total)} tone="warning" width={cardWidth} />
           <MetricCard title="לא מגיעים" value={guestCounts.notComing} hint={pct(guestCounts.notComing, guestCounts.total)} tone="danger" width={cardWidth} />
         </View>
@@ -645,6 +650,7 @@ export default function CoupleGuestsWebScreen() {
 
                       <View style={styles.groupHeaderRight}>
                         <MiniStatDot label={`${counts.coming} אישרו`} tone="success" />
+                        <MiniStatDot label={`${counts.maybe} אולי`} tone="primary" />
                         <MiniStatDot label={`${counts.pending} ממתינים`} tone="warning" />
                         <MiniStatDot label={`${counts.notComing} לא מגיעים`} tone="danger" />
                       </View>
@@ -1008,6 +1014,7 @@ export default function CoupleGuestsWebScreen() {
               <Field label="סטטוס">
                 <View style={styles.statusRow}>
                   <StatusPill active={editStatus === 'מגיע'} tone="success" label="מגיע" onPress={() => setEditStatus('מגיע')} />
+                  <StatusPill active={editStatus === 'אולי מגיע'} tone="primary" label="אולי מגיע" onPress={() => setEditStatus('אולי מגיע')} />
                   <StatusPill active={editStatus === 'ממתין'} tone="warning" label="ממתין" onPress={() => setEditStatus('ממתין')} />
                   <StatusPill active={editStatus === 'לא מגיע'} tone="danger" label="לא מגיע" onPress={() => setEditStatus('לא מגיע')} />
                 </View>
@@ -1067,9 +1074,10 @@ function pct(n: number, total: number) {
 
 function groupCounts(list: GuestRow[]) {
   const coming = list.filter((g) => g.status === 'מגיע').length;
+  const maybe = list.filter((g) => g.status === 'אולי מגיע').length;
   const pending = list.filter((g) => g.status === 'ממתין').length;
   const notComing = list.filter((g) => g.status === 'לא מגיע').length;
-  return { coming, pending, notComing };
+  return { coming, maybe, pending, notComing };
 }
 
 function toneColor(tone: 'primary' | 'success' | 'warning' | 'danger') {
@@ -1172,7 +1180,7 @@ function StatusChip({
   );
 }
 
-function MiniStatDot({ label, tone }: { label: string; tone: 'success' | 'warning' | 'danger' }) {
+function MiniStatDot({ label, tone }: { label: string; tone: 'primary' | 'success' | 'warning' | 'danger' }) {
   const c = toneColor(tone);
   return (
     <View style={styles.miniStat}>
@@ -1201,7 +1209,8 @@ function GuestListRow({
   onEdit: () => void;
   onDelete: () => void;
 }) {
-  const statusTone = guest.status === 'מגיע' ? 'success' : guest.status === 'לא מגיע' ? 'danger' : 'warning';
+  const statusTone =
+    guest.status === 'מגיע' ? 'success' : guest.status === 'אולי מגיע' ? 'primary' : guest.status === 'לא מגיע' ? 'danger' : 'warning';
   const sc = toneColor(statusTone);
   const initials = guestInitials(guest.name);
 
@@ -1337,7 +1346,7 @@ function StatusPill({
   onPress,
 }: {
   active: boolean;
-  tone: 'success' | 'warning' | 'danger';
+  tone: 'primary' | 'success' | 'warning' | 'danger';
   label: string;
   onPress: () => void;
 }) {

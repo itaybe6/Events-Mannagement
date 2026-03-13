@@ -23,7 +23,7 @@ export type RsvpApprovalsModel = {
   setEditingId: (v: string | null) => void;
   collapsed: Set<string>;
   toggleCollapsed: (name: string) => void;
-  stats: { total: number; coming: number; pending: number; notComing: number };
+  stats: { total: number; coming: number; maybe: number; pending: number; notComing: number };
   sections: RsvpSection[];
   callGuest: (phone: string) => Promise<void>;
   setStatus: (guestId: string, status: Guest['status']) => Promise<void>;
@@ -88,9 +88,10 @@ export function useRsvpApprovalsModel(eventId: string) {
   const stats = useMemo(() => {
     const total = guests.length;
     const coming = guests.filter((g) => g.status === 'מגיע').length;
+    const maybe = guests.filter((g) => g.status === 'אולי מגיע').length;
     const pending = guests.filter((g) => g.status === 'ממתין').length;
     const notComing = guests.filter((g) => g.status === 'לא מגיע').length;
-    return { total, coming, pending, notComing };
+    return { total, coming, maybe, pending, notComing };
   }, [guests]);
 
   const guestsWithCategory = useMemo<GuestWithCategory[]>(() => {

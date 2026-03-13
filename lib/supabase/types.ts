@@ -55,7 +55,7 @@ export type Guest = {
   event_id: string;
   name: string;
   phone?: string;
-  status: 'מגיע' | 'לא מגיע' | 'ממתין';
+  status: 'מגיע' | 'אולי מגיע' | 'לא מגיע' | 'ממתין';
   table_id?: string;
   category_id?: string;
   gift_amount: number;

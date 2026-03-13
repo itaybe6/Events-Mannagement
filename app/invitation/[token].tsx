@@ -127,7 +127,10 @@ export default function InvitationLandingScreen() {
       const submitToken = String(info?.guest?.invitationCode || info?.guest?.invitationToken || '').trim();
       if (!submitToken) return;
 
-      const nextPeople = status === 'מגיע' ? Math.max(1, Math.min(99, Number(peopleCount) || 1)) : undefined;
+      const nextPeople =
+        status === 'מגיע' || status === 'אולי מגיע'
+          ? Math.max(1, Math.min(99, Number(peopleCount) || 1))
+          : undefined;
       const updatedGuest = await invitationService.updateRsvpByToken(submitToken, {
         status,
         numberOfPeople: nextPeople,
@@ -221,7 +224,7 @@ export default function InvitationLandingScreen() {
           <View style={styles.thanksMeta}>
             <Text style={styles.thanksMetaText}>
               סטטוס: {status}
-              {status === 'מגיע' ? ` · ${Math.max(1, Number(peopleCount) || 1)} אורחים` : ''}
+              {status === 'מגיע' || status === 'אולי מגיע' ? ` · ${Math.max(1, Number(peopleCount) || 1)} אורחים` : ''}
             </Text>
           </View>
           {isDemo ? (
@@ -343,19 +346,19 @@ export default function InvitationLandingScreen() {
               </Pressable>
 
               <Pressable
-                onPress={() => setStatus('ממתין')}
+                onPress={() => setStatus('אולי מגיע')}
                 style={({ pressed }) => [
                   styles.rsvpBtn,
-                  status === 'ממתין' ? styles.rsvpBtnActiveLight : null,
+                  status === 'אולי מגיע' ? styles.rsvpBtnActiveLight : null,
                   pressed ? { opacity: 0.95 } : null,
                 ]}
                 accessibilityRole="button"
-                accessibilityLabel="אולי"
+                accessibilityLabel="אולי נגיע"
               >
                 <View style={styles.rsvpIconCircle}>
                   <Ionicons name="help" size={18} color={'rgba(2,6,23,0.75)'} />
                 </View>
-                <Text style={styles.rsvpBtnText}>אולי</Text>
+                <Text style={styles.rsvpBtnText}>אולי נגיע</Text>
               </Pressable>
 
               <Pressable
@@ -375,7 +378,7 @@ export default function InvitationLandingScreen() {
               </Pressable>
             </View>
 
-            {status === 'מגיע' ? (
+            {status === 'מגיע' || status === 'אולי מגיע' ? (
               <View style={styles.countBox}>
                 <View style={styles.countRow}>
                   <Text style={styles.countLabel}>מספר אורחים</Text>

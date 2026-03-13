@@ -257,11 +257,11 @@ export function AdminNotificationEditorScreen({ viewerMode = 'admin' }: { viewer
     []
   );
 
-  const [guestFilter, setGuestFilter] = useState<'all' | 'מגיע' | 'ממתין' | 'לא מגיע'>(
+  const [guestFilter, setGuestFilter] = useState<'all' | 'מגיע' | 'אולי מגיע' | 'ממתין' | 'לא מגיע'>(
     notificationType === 'reminder_2' ? 'ממתין' : 'all'
   );
   const [allGuests, setAllGuests] = useState<
-    Array<{ id: string; name: string; phone?: string; status: 'מגיע' | 'לא מגיע' | 'ממתין' }>
+    Array<{ id: string; name: string; phone?: string; status: 'מגיע' | 'אולי מגיע' | 'לא מגיע' | 'ממתין' }>
   >([]);
   const [selectedGuestIds, setSelectedGuestIds] = useState<Set<string>>(() => new Set());
   const [sendingNow, setSendingNow] = useState(false);
@@ -335,6 +335,7 @@ export function AdminNotificationEditorScreen({ viewerMode = 'admin' }: { viewer
   const guestRsvpStatusMeta = useCallback((s?: string | null) => {
     const v = String(s || '').trim();
     if (v === 'מגיע') return { text: 'מגיע', color: '#16a34a', bg: 'rgba(22,163,74,0.10)' };
+    if (v === 'אולי מגיע') return { text: 'אולי מגיע', color: '#1d4ed8', bg: 'rgba(29,78,216,0.10)' };
     if (v === 'לא מגיע') return { text: 'לא מגיע', color: '#ef4444', bg: 'rgba(239,68,68,0.10)' };
     return { text: 'ממתין', color: '#f59e0b', bg: 'rgba(245,158,11,0.10)' };
   }, []);
@@ -1363,7 +1364,7 @@ export function AdminNotificationEditorScreen({ viewerMode = 'admin' }: { viewer
                   </Text>
 
                   <View style={styles.filtersRow}>
-                    {(['all', 'ממתין', 'מגיע', 'לא מגיע'] as const).map((k) => (
+                    {(['all', 'ממתין', 'אולי מגיע', 'מגיע', 'לא מגיע'] as const).map((k) => (
                       <Pressable
                         key={k}
                         onPress={() => setGuestFilter(k)}

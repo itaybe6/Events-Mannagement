@@ -29,6 +29,14 @@ function StatusPill({ status, count }: { status: Guest['status']; count?: number
           fg: '#166534',
           dot: '#22c55e',
         }
+      : status === 'אולי מגיע'
+        ? {
+            label: 'אולי מגיע',
+            bg: 'rgba(29, 78, 216, 0.10)',
+            bd: 'rgba(29, 78, 216, 0.18)',
+            fg: '#1d4ed8',
+            dot: '#1d4ed8',
+          }
       : status === 'ממתין'
         ? {
             label: 'ממתין',
@@ -150,6 +158,7 @@ export default function EmployeeRsvpApprovalsWebScreen() {
         <View style={styles.statsRow}>
           <StatCard label="סה״כ" value={stats.total} accent={colors.primary} />
           <StatCard label="אישרו" value={stats.coming} accent="#16a34a" />
+          <StatCard label="אולי מגיעים" value={stats.maybe} accent={colors.primary} />
           <StatCard label="ממתינים" value={stats.pending} accent="#f59e0b" />
           <StatCard label="לא מגיעים" value={stats.notComing} accent="#ef4444" />
         </View>
@@ -192,6 +201,7 @@ export default function EmployeeRsvpApprovalsWebScreen() {
                   {[
                     { key: 'all' as const, label: 'הכל' },
                     { key: 'מגיע' as const, label: 'מגיע' },
+                    { key: 'אולי מגיע' as const, label: 'אולי מגיע' },
                     { key: 'ממתין' as const, label: 'ממתין' },
                     { key: 'לא מגיע' as const, label: 'לא מגיע' },
                   ].map((it) => {
@@ -316,7 +326,7 @@ export default function EmployeeRsvpApprovalsWebScreen() {
                         const isSaving = savingId === g.id;
                         const phoneOk = Boolean(sanitizePhone(g.phone));
                         const isEditing = editingId === g.id;
-                        const showApprovalActions = g.status === 'ממתין' || isEditing;
+                        const showApprovalActions = g.status === 'ממתין' || g.status === 'אולי מגיע' || isEditing;
 
                         const tableLabel = (() => {
                           const t = String(g.tableId || '').trim();
@@ -380,6 +390,21 @@ export default function EmployeeRsvpApprovalsWebScreen() {
                                       ]}
                                     >
                                       <Ionicons name="close" size={16} color={'#ef4444'} />
+                                    </Pressable>
+
+                                    <Pressable
+                                      accessibilityRole="button"
+                                      accessibilityLabel={`סימון אולי מגיע ל${g.name}`}
+                                      onPress={() => void setStatus(g.id, 'אולי מגיע')}
+                                      disabled={isSaving}
+                                      style={({ hovered, pressed }: any) => [
+                                        styles.iconBtn,
+                                        styles.iconBtnMaybe,
+                                        Platform.OS === 'web' && hovered ? styles.iconBtnHover : null,
+                                        pressed ? { opacity: 0.92 } : null,
+                                      ]}
+                                    >
+                                      <Ionicons name="help" size={16} color={colors.primary} />
                                     </Pressable>
 
                                     <Pressable
@@ -737,6 +762,7 @@ const styles = StyleSheet.create({
   },
   iconBtnHover: { backgroundColor: 'rgba(15,23,42,0.06)' },
   iconBtnDecline: { backgroundColor: 'rgba(239, 68, 68, 0.10)', borderColor: 'rgba(239, 68, 68, 0.16)' },
+  iconBtnMaybe: { backgroundColor: 'rgba(37, 99, 235, 0.10)', borderColor: 'rgba(37, 99, 235, 0.16)' },
   iconBtnConfirm: { backgroundColor: 'rgba(37, 99, 235, 0.10)', borderColor: 'rgba(37, 99, 235, 0.16)' },
   savingOverlay: { marginRight: 6 },
 

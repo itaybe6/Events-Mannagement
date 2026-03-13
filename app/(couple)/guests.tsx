@@ -189,7 +189,7 @@ export default function GuestsScreen() {
   const [selectedGuest, setSelectedGuest] = useState<any>(null);
   const [editGuestName, setEditGuestName] = useState('');
   const [editGuestPhone, setEditGuestPhone] = useState('');
-  const [editGuestStatus, setEditGuestStatus] = useState<'ממתין' | 'מגיע' | 'לא מגיע'>('ממתין');
+  const [editGuestStatus, setEditGuestStatus] = useState<'ממתין' | 'אולי מגיע' | 'מגיע' | 'לא מגיע'>('ממתין');
   const [editGuestPeopleCount, setEditGuestPeopleCount] = useState('1');
   // Category editing moved to a dedicated screen: `/(couple)/edit-category`.
 
@@ -243,6 +243,7 @@ export default function GuestsScreen() {
   const guestCounts = {
     total: guests.reduce((sum, guest) => sum + (guest.numberOfPeople || 1), 0),
     coming: guests.filter(g => g.status === 'מגיע').reduce((sum, guest) => sum + (guest.numberOfPeople || 1), 0),
+    maybe: guests.filter(g => g.status === 'אולי מגיע').reduce((sum, guest) => sum + (guest.numberOfPeople || 1), 0),
     notComing: guests.filter(g => g.status === 'לא מגיע').reduce((sum, guest) => sum + (guest.numberOfPeople || 1), 0),
     pending: guests.filter(g => g.status === 'ממתין').reduce((sum, guest) => sum + (guest.numberOfPeople || 1), 0),
   };
@@ -384,6 +385,12 @@ export default function GuestsScreen() {
             <Ionicons name="close-circle" size={22} color={colors.error} />
           </Text>
         );
+      case 'אולי מגיע':
+        return (
+          <Text>
+            <Ionicons name="help-circle" size={22} color={colors.primary} />
+          </Text>
+        );
       case 'ממתין':
         return (
           <Text>
@@ -499,6 +506,7 @@ export default function GuestsScreen() {
                     {[
                       { key: null, label: 'הכל', count: guestCounts.total, icon: 'apps' as const },
                       { key: 'מגיע', label: 'מגיעים', count: guestCounts.coming, icon: 'checkmark-circle' as const },
+                      { key: 'אולי מגיע', label: 'אולי מגיעים', count: guestCounts.maybe, icon: 'help-circle' as const },
                       { key: 'ממתין', label: 'ממתינים', count: guestCounts.pending, icon: 'time' as const },
                       { key: 'לא מגיע', label: 'לא מגיעים', count: guestCounts.notComing, icon: 'close-circle' as const },
                     ].map(opt => {
@@ -1011,6 +1019,19 @@ export default function GuestsScreen() {
                     />
                   </Text>
                   <Text style={[styles.statusOptionText, editGuestStatus === 'ממתין' && styles.statusOptionTextActive]}>ממתין</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.statusOption, editGuestStatus === 'אולי מגיע' && styles.statusOptionActive]}
+                  onPress={() => setEditGuestStatus('אולי מגיע')}
+                >
+                  <Text>
+                    <Ionicons
+                      name="help"
+                      size={16}
+                      color={editGuestStatus === 'אולי מגיע' ? colors.white : colors.primary}
+                    />
+                  </Text>
+                  <Text style={[styles.statusOptionText, editGuestStatus === 'אולי מגיע' && styles.statusOptionTextActive]}>אולי מגיע</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.statusOption, editGuestStatus === 'מגיע' && styles.statusOptionActive]}

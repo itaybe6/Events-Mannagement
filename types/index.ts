@@ -2,7 +2,7 @@ export type Guest = {
   id: string;
   name: string;
   phone: string;
-  status: 'מגיע' | 'לא מגיע' | 'ממתין';
+  status: 'מגיע' | 'אולי מגיע' | 'לא מגיע' | 'ממתין';
   tableId: string | null;
   gift: number;
   message: string;

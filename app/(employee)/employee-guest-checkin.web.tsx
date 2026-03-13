@@ -167,7 +167,7 @@ export default function EmployeeGuestCheckinWebScreen() {
     filter,
     setFilter,
     refresh,
-    toggleCheckIn,
+    toggleCheckIn: toggleCheckInRaw,
     savingId,
     setCheckedInCount,
     savingCountId,
@@ -177,8 +177,18 @@ export default function EmployeeGuestCheckinWebScreen() {
     eventId: resolvedEventId ? resolvedEventId : null,
     errorTitle: 'שגיאה',
     errorMessage: 'לא ניתן לטעון את רשימת האורחים',
-    onCheckInSuccess: sendCheckInTableSms,
   });
+
+  const toggleCheckIn = useCallback(
+    async (guest: Guest) => {
+      const wasCheckedIn = Boolean((guest as any)?.checkedIn);
+      await toggleCheckInRaw(guest);
+      if (!wasCheckedIn) {
+        await sendCheckInTableSms(guest);
+      }
+    },
+    [sendCheckInTableSms, toggleCheckInRaw]
+  );
 
   const [moveGuest, setMoveGuest] = useState<Guest | null>(null);
   const [moveTableQuery, setMoveTableQuery] = useState('');
@@ -610,8 +620,8 @@ export default function EmployeeGuestCheckinWebScreen() {
   const guestsColWidth = useMemo(() => {
     if (!isLg) return undefined as number | undefined;
     const w = Number(width) || 0;
-    // Keep the guests "window" compact on wide screens.
-    return Math.max(420, Math.min(440, Math.round(w * 0.34)));
+    // Give the guests panel a bit more room so longer names fit better.
+    return Math.max(450, Math.min(520, Math.round(w * 0.38)));
   }, [isLg, width]);
 
   const stickyTop = useMemo(() => {
@@ -1138,11 +1148,21 @@ export default function EmployeeGuestCheckinWebScreen() {
                       getTableBaseColor={(t: any) => {
                         const selected = Boolean(selectedTableNumber) && Number(t?.number) === Number(selectedTableNumber);
                         if (selected) return '#10B981';
+                        const num = t?.number;
+                        const seated = num ? (seatedByNumber.get(Number(num)) ?? 0) : 0;
+                        const cap = Number(t?.seats ?? 0) || 0;
+                        const isFullOrOver = cap > 0 && seated >= cap;
+                        if (isFullOrOver) return '#10B981';
                         return t?.type === 'reserve' ? colors.secondary : colors.primary;
                       }}
                       getTableBackgroundAlpha={(t: any) => {
                         const selected = Boolean(selectedTableNumber) && Number(t?.number) === Number(selectedTableNumber);
                         if (selected) return 0.28;
+                        const num = t?.number;
+                        const seated = num ? (seatedByNumber.get(Number(num)) ?? 0) : 0;
+                        const cap = Number(t?.seats ?? 0) || 0;
+                        const isFullOrOver = cap > 0 && seated >= cap;
+                        if (isFullOrOver) return 0.34;
                         return t?.type === 'reserve' ? 0.18 : 0.42;
                       }}
                       selectedRingColor="#10B981"
@@ -1399,14 +1419,14 @@ const styles = StyleSheet.create({
     marginTop: 8,
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 14,
+    gap: 10,
   },
-  contentSm: { flexDirection: 'column', gap: 14 },
+  contentSm: { flexDirection: 'column', gap: 10 },
   // Keep side columns tighter to prioritize the map width.
-  guestsCol: { width: 460, flexShrink: 1, minWidth: 360 },
+  guestsCol: { width: 500, flexShrink: 1, minWidth: 400 },
   // On stacked layout (no map), keep the guests panel compact and centered.
   colSm: { width: '100%', maxWidth: 520, alignSelf: 'center' },
-  main: { flex: 1, minWidth: 520, flexShrink: 0 },
+  main: { flex: 1, minWidth: 460, flexShrink: 0 },
 
   card: {
     backgroundColor: 'rgba(255,255,255,0.96)',
@@ -1816,16 +1836,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     // Keep a consistent "name column" width so the toggle aligns vertically across rows.
-    flexBasis: 260,
+    flexBasis: 310,
     flexGrow: 1,
     flexShrink: 1,
   },
   // Fixed controls width keeps the toggle in the same X position.
-  guestRowRight: { width: 210, flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 },
+  guestRowRight: { width: 196, flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 },
   moveBtn: {
     width: 32,
     height: 32,
     borderRadius: 12,
+    marginLeft: 12,
     backgroundColor: 'rgba(15,23,42,0.04)',
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.06)',

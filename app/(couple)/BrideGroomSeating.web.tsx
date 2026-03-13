@@ -29,7 +29,7 @@ import type { Table } from '@/types';
 type GuestRow = {
   id: string;
   name: string;
-  status: 'מגיע' | 'לא מגיע' | 'ממתין';
+  status: 'מגיע' | 'אולי מגיע' | 'לא מגיע' | 'ממתין';
   table_id: string | null;
   category_id?: string | null;
   numberOfPeople?: number;
