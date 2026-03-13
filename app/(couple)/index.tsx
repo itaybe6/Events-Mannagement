@@ -352,19 +352,7 @@ export default function HomeScreen() {
     return inner;
   };
 
-  const primaryStatsContent = (
-    <>
-      <View style={!isWeb ? styles.statPillMobile : undefined}>
-        <StatPill
-          title="לא הושבו"
-          value={Math.max(0, confirmedPeople - seatedGuests)}
-          iconName="alert-circle"
-          tintColor={stylesVars.red}
-          iconBg="rgba(239, 68, 68, 0.10)"
-        />
-      </View>
-    </>
-  );
+  const notSeatedPeople = Math.max(0, confirmedPeople - seatedGuests);
 
   const statusStatsContent = (
     <>
@@ -594,34 +582,21 @@ export default function HomeScreen() {
               </Text>
             </View>
           </View>
-
           <View style={styles.daysCard}>
-            <View style={styles.daysCardIcon}>
-              <Ionicons name="calendar-outline" size={18} color={stylesVars.primaryBlue} />
+            <View
+              style={[
+                styles.daysCardIcon,
+                { backgroundColor: 'rgba(239, 68, 68, 0.10)', borderColor: 'rgba(239, 68, 68, 0.16)' },
+              ]}
+            >
+              <Ionicons name="alert-circle" size={18} color={stylesVars.red} />
             </View>
             <View style={styles.daysCardText}>
-              <Text style={styles.daysCardTitle}>ימים לאירוע</Text>
-              <Text style={styles.daysCardValue}>
-                {countdown === null ? '—' : countdown.isComplete ? 'היום' : `${countdown.days} ימים`}
-              </Text>
+              <Text style={styles.daysCardTitle}>לא הושבו</Text>
+              <Text style={styles.daysCardValue}>{notSeatedPeople}</Text>
             </View>
           </View>
         </View>
-
-        {isWeb ? (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={[styles.statsRow, isDesktopWeb && styles.statsRowDesktop]}
-            style={styles.statsScroll}
-          >
-            {primaryStatsContent}
-          </ScrollView>
-        ) : (
-          <View style={[styles.statsRow, styles.statsRowMobile, styles.statsScroll]}>
-            {primaryStatsContent}
-          </View>
-        )}
 
         <Text style={[styles.sectionTitle, styles.sectionTitleSpacious]}>פעולות מהירות</Text>
         <View style={[styles.actionsGrid, isDesktopWeb && styles.actionsGridDesktop]}>

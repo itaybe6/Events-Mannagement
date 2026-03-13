@@ -635,12 +635,6 @@ export default function AdminEventDetailsScreen() {
                       <Text style={styles.rsvpHeaderLabelInline}>מוזמנים לאירוע</Text>
                     </View>
                   </View>
-
-                  <View style={styles.rsvpHeaderLeft}>
-                    <View style={styles.rsvpArrowCircle}>
-                      <Ionicons name="chevron-back" size={18} color={"rgba(17,24,39,0.55)"} />
-                    </View>
-                  </View>
                 </View>
 
                 <View style={styles.rsvpDivider} />
@@ -2257,20 +2251,18 @@ const styles = StyleSheet.create({
   rsvpCardInner: { flex: 1, justifyContent: "space-between" },
   rsvpHeaderRow: {
     flexDirection: ROW_DIR,
-    alignItems: "flex-start",
-    justifyContent: "space-between",
+    alignItems: "center",
+    justifyContent: "center",
   },
   rsvpHeaderRight: {
-    alignItems: ALIGN_RIGHT,
+    width: "100%",
+    alignItems: "center",
     gap: 4,
-  },
-  rsvpHeaderLeft: {
-    alignItems: "flex-start",
-    justifyContent: "flex-start",
   },
   rsvpHeaderValueRow: {
     flexDirection: ROW_DIR,
     alignItems: "baseline",
+    justifyContent: "center",
     gap: 10,
   },
   rsvpHeaderValue: {
@@ -2278,24 +2270,14 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     letterSpacing: -1.0,
     lineHeight: 48,
-    textAlign: "right",
+    textAlign: "center",
   },
   rsvpHeaderLabelInline: {
     fontSize: 15,
     fontWeight: "800",
     color: "rgba(0,53,102,0.68)",
-    textAlign: "right",
+    textAlign: "center",
     marginBottom: 6,
-  },
-  rsvpArrowCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 999,
-    backgroundColor: "rgba(17,24,39,0.05)",
-    borderWidth: 1,
-    borderColor: "rgba(17,24,39,0.08)",
-    justifyContent: "center",
-    alignItems: "center",
   },
   rsvpDivider: {
     height: 1,

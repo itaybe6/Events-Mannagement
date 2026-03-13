@@ -73,17 +73,19 @@ function ActionCard({
   onPress: () => void;
 }) {
   return (
-    <TouchableOpacity style={styles.actionCard} onPress={onPress} activeOpacity={0.92}>
+    <TouchableOpacity style={styles.actionCard} onPress={onPress} activeOpacity={0.88}>
       <View style={[styles.actionAccent, { backgroundColor: accentColor }]} />
-      <View style={[styles.actionIconBox, { backgroundColor: `${accentColor}18` }]}>
-        <Ionicons name={icon} size={20} color={accentColor} />
+      <View style={[styles.actionIconBox, { backgroundColor: `${accentColor}15` }]}>
+        <Ionicons name={icon} size={22} color={accentColor} />
       </View>
       <View style={styles.actionBody}>
         <Text style={styles.actionTitle}>{title}</Text>
         <Text style={styles.actionSubtitle}>{subtitle}</Text>
       </View>
       <View style={styles.actionChevron}>
-        <Ionicons name="chevron-back" size={18} color={colors.gray[500]} />
+        <View style={[styles.actionChevronCircle, { backgroundColor: `${accentColor}12` }]}>
+          <Ionicons name="chevron-back" size={15} color={accentColor} />
+        </View>
       </View>
     </TouchableOpacity>
   );
@@ -591,7 +593,9 @@ export default function BrideGroomSettings() {
         contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 12, paddingBottom: 120 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
       >
+        {/* ── Hero Card ── */}
         <View style={styles.heroCard}>
+          {/* Cover image with overlay info */}
           <View style={styles.heroCoverWrap}>
             <Image
               source={invitationImageUrl ? { uri: invitationImageUrl } : getEventCoverSource()}
@@ -601,10 +605,34 @@ export default function BrideGroomSettings() {
               cachePolicy="none"
               recyclingKey={invitationImageUrl || 'fallback-cover'}
             />
-            <LinearGradient colors={['rgba(6,23,62,0.04)', 'rgba(6,23,62,0.78)']} style={styles.heroCoverOverlay} />
+            <LinearGradient
+              colors={['rgba(6,23,62,0.0)', 'rgba(6,23,62,0.18)', 'rgba(6,23,62,0.88)']}
+              style={styles.heroCoverOverlay}
+            />
 
+            {/* Info overlaid on the cover image */}
+            <View style={styles.heroCoverTopRow}>
+              <View style={styles.heroDatePill}>
+                <Ionicons name="calendar-outline" size={13} color="rgba(255,255,255,0.95)" />
+                <Text style={styles.heroDatePillText}>{formattedEventDate}</Text>
+              </View>
+            </View>
+
+            <View style={styles.heroCoverBottom}>
+              <Text style={styles.heroName}>{eventTitle}</Text>
+              {groomName && brideName ? (
+                <View style={styles.coupleRow}>
+                  <Text style={styles.coupleName}>{brideName}</Text>
+                  <View style={styles.coupleHeart}>
+                    <Ionicons name="heart" size={12} color={colors.gold} />
+                  </View>
+                  <Text style={styles.coupleName}>{groomName}</Text>
+                </View>
+              ) : null}
+            </View>
           </View>
 
+          {/* Avatar + user info */}
           <View style={styles.heroBody}>
             <View style={styles.heroAvatarWrap}>
               <View style={styles.heroAvatarRing}>
@@ -612,35 +640,29 @@ export default function BrideGroomSettings() {
                   <Image source={{ uri: avatarUri }} style={styles.heroAvatar} contentFit="cover" transition={120} />
                 ) : (
                   <View style={styles.heroAvatarFallback}>
-                    <Ionicons name="person" size={38} color={ui.primary} />
+                    <Ionicons name="person" size={40} color={ui.primary} />
                   </View>
                 )}
               </View>
             </View>
 
-            <View style={styles.heroDatePill}>
-              <Ionicons name="calendar-outline" size={14} color={ui.primary} />
-              <Text style={styles.heroDatePillText}>{formattedEventDate}</Text>
-            </View>
-
             <View style={styles.heroTextCol}>
-              <Text style={styles.heroName}>{eventTitle}</Text>
-              {weddingNames ? <Text style={styles.heroSubName}>{String(userData?.name || '')}</Text> : null}
+              <Text style={styles.heroUserName}>{String(userData?.name || '')}</Text>
               <Text style={styles.heroEmail}>{String(userData?.email || '')}</Text>
-              {userData?.phone ? <Text style={styles.heroPhone}>{userData.phone}</Text> : null}
+              {userData?.phone ? <Text style={styles.heroPhone}>{String(userData.phone)}</Text> : null}
             </View>
           </View>
-
         </View>
 
+        {/* ── Quick Actions Card ── */}
         <View style={styles.card}>
           <View style={styles.cardHeader}>
             <View style={styles.cardHeaderIcon}>
-              <Ionicons name="create-outline" size={18} color={ui.primary} />
+              <Ionicons name="flash-outline" size={18} color={ui.primary} />
             </View>
             <View style={styles.cardHeaderText}>
               <Text style={styles.cardTitle}>ניהול מהיר</Text>
-              <Text style={styles.cardSubtitle}>כפתורי פעולה מעוצבים בגישה של מסך מנהל, רק מותאמים לבעלי האירוע</Text>
+              <Text style={styles.cardSubtitle}>עריכת פרטי האירוע, ההזמנה והפרופיל האישי</Text>
             </View>
           </View>
 
@@ -655,7 +677,7 @@ export default function BrideGroomSettings() {
             <ActionCard
               icon="image-outline"
               title="עריכת הזמנה"
-              subtitle="תמונה וקישור אישור הגעה במקום אחד"
+              subtitle="תמונה וקישור אישור הגעה"
               accentColor="#16A34A"
               onPress={openInvitationEditor}
             />
@@ -663,7 +685,7 @@ export default function BrideGroomSettings() {
               icon="person-outline"
               title="עריכת פרופיל"
               subtitle="שם, אימייל ותמונת פרופיל"
-              accentColor="#0F172A"
+              accentColor={colors.primary}
               onPress={openProfileEditor}
             />
           </View>
@@ -1290,8 +1312,10 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 16,
-    gap: 14,
+    gap: 16,
   },
+
+  // ── Hero card ──
   heroCard: {
     backgroundColor: 'rgba(255,255,255,0.98)',
     borderRadius: 28,
@@ -1299,15 +1323,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: ui.border,
     shadowColor: colors.black,
-    shadowOpacity: 0.06,
-    shadowRadius: 22,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 3,
+    shadowOpacity: 0.08,
+    shadowRadius: 26,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 4,
   },
   heroCoverWrap: {
-    height: 200,
+    height: 230,
     position: 'relative',
-    backgroundColor: colors.gray[100],
+    backgroundColor: colors.gray[200],
   },
   heroCoverImg: {
     width: '100%',
@@ -1316,46 +1340,96 @@ const styles = StyleSheet.create({
   heroCoverOverlay: {
     ...StyleSheet.absoluteFillObject,
   },
+
+  // Text overlaid at the top of cover
+  heroCoverTopRow: {
+    position: 'absolute',
+    top: 14,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
   heroDatePill: {
     flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: 'rgba(6,23,62,0.05)',
+    backgroundColor: 'rgba(255,255,255,0.18)',
     borderWidth: 1,
-    borderColor: 'rgba(6,23,62,0.10)',
-    marginBottom: 12,
+    borderColor: 'rgba(255,255,255,0.32)',
   },
   heroDatePillText: {
     fontSize: 12,
     fontWeight: '800',
-    color: ui.primary,
+    color: 'rgba(255,255,255,0.95)',
     textAlign: 'center',
   },
-  heroBody: {
-    marginTop: -42,
-    paddingHorizontal: 18,
-    paddingBottom: 18,
+
+  // Event title + couple names at bottom of cover
+  heroCoverBottom: {
+    position: 'absolute',
+    bottom: 18,
+    left: 16,
+    right: 16,
     alignItems: 'center',
+    gap: 8,
+  },
+  heroName: {
+    fontSize: 26,
+    fontWeight: '900',
+    color: colors.white,
+    textAlign: 'center',
+    textShadowColor: 'rgba(0,0,0,0.35)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
+  },
+  coupleRow: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    gap: 8,
+  },
+  coupleName: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: 'rgba(255,255,255,0.88)',
+  },
+  coupleHeart: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: 'rgba(204,160,0,0.28)',
+    borderWidth: 1,
+    borderColor: 'rgba(204,160,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // Avatar + user info section
+  heroBody: {
+    marginTop: -50,
+    paddingHorizontal: 18,
+    paddingBottom: 22,
+    alignItems: 'center',
+    gap: 0,
   },
   heroAvatarWrap: {
     marginBottom: 14,
   },
   heroAvatarRing: {
-    width: 104,
-    height: 104,
+    width: 108,
+    height: 108,
     borderRadius: 999,
     padding: 4,
     backgroundColor: colors.white,
-    borderWidth: 1,
-    borderColor: 'rgba(6,23,62,0.08)',
+    borderWidth: 3,
+    borderColor: colors.gold,
     shadowColor: colors.black,
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
+    shadowOpacity: 0.15,
+    shadowRadius: 18,
     shadowOffset: { width: 0, height: 8 },
-    elevation: 5,
+    elevation: 8,
   },
   heroAvatar: {
     width: '100%',
@@ -1365,62 +1439,62 @@ const styles = StyleSheet.create({
   heroAvatarFallback: {
     flex: 1,
     borderRadius: 999,
-    backgroundColor: 'rgba(6,23,62,0.05)',
+    backgroundColor: 'rgba(6,23,62,0.06)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   heroTextCol: {
     width: '100%',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
   },
-  heroName: {
-    fontSize: 26,
+  heroUserName: {
+    fontSize: 22,
     fontWeight: '900',
     color: ui.primary,
     textAlign: 'center',
-  },
-  heroSubName: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: ui.muted,
-    textAlign: 'center',
+    letterSpacing: -0.3,
   },
   heroEmail: {
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '600',
     color: ui.muted,
     textAlign: 'center',
   },
   heroPhone: {
     fontSize: 13,
-    fontWeight: '700',
-    color: colors.gray[700],
+    fontWeight: '600',
+    color: colors.gray[500],
     textAlign: 'center',
   },
+
+  // ── Generic card ──
   card: {
     backgroundColor: ui.card,
     borderRadius: 24,
-    padding: 16,
+    padding: 18,
     borderWidth: 1,
     borderColor: ui.border,
     shadowColor: colors.black,
     shadowOpacity: 0.05,
     shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
+    shadowOffset: { width: 0, height: 6 },
     elevation: 2,
   },
   cardHeader: {
     flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 12,
-    marginBottom: 14,
+    marginBottom: 16,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(6,23,62,0.06)',
   },
   cardHeaderIcon: {
-    width: 42,
-    height: 42,
+    width: 44,
+    height: 44,
     borderRadius: 16,
-    backgroundColor: 'rgba(6,23,62,0.06)',
+    backgroundColor: 'rgba(6,23,62,0.07)',
     borderWidth: 1,
     borderColor: 'rgba(6,23,62,0.10)',
     alignItems: 'center',
@@ -1437,13 +1511,15 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   cardSubtitle: {
-    marginTop: 4,
+    marginTop: 3,
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '600',
     color: ui.muted,
     textAlign: 'right',
     lineHeight: 18,
   },
+
+  // ── Info rows (used inside cards) ──
   infoList: {
     gap: 10,
   },
@@ -1462,15 +1538,16 @@ const styles = StyleSheet.create({
     alignItems: ALIGN_RIGHT,
   },
   infoLabel: {
-    fontSize: 12,
-    fontWeight: '800',
+    fontSize: 11,
+    fontWeight: '700',
     color: ui.muted,
     textAlign: 'right',
+    letterSpacing: 0.3,
   },
   infoValue: {
-    marginTop: 4,
+    marginTop: 3,
     fontSize: 14,
-    fontWeight: '900',
+    fontWeight: '800',
     color: ui.text,
     textAlign: 'right',
     lineHeight: 20,
@@ -1485,6 +1562,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+
+  // ── Action cards ──
   actionsStack: {
     gap: 12,
   },
@@ -1492,18 +1571,18 @@ const styles = StyleSheet.create({
     position: 'relative',
     flexDirection: ROW_DIR,
     alignItems: 'center',
-    justifyContent: 'space-between',
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: ui.border,
+    borderColor: 'rgba(6,23,62,0.07)',
     paddingVertical: 18,
-    paddingHorizontal: 16,
-    backgroundColor: 'rgba(255,255,255,0.96)',
+    paddingHorizontal: 14,
+    paddingStart: 16,
+    backgroundColor: 'rgba(255,255,255,0.97)',
     shadowColor: colors.black,
-    shadowOpacity: 0.05,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 3,
+    shadowOpacity: 0.04,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 2,
     overflow: 'hidden',
   },
   actionAccent: {
@@ -1511,15 +1590,21 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     right: 0,
-    width: 4,
+    width: 5,
     borderTopRightRadius: 20,
     borderBottomRightRadius: 20,
   },
   actionChevron: {
-    paddingEnd: 4,
     paddingStart: 8,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  actionChevronCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   actionBody: {
     flex: 1,
@@ -1527,26 +1612,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
   actionTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '900',
     color: ui.text,
     textAlign: 'right',
   },
   actionSubtitle: {
-    marginTop: 6,
+    marginTop: 4,
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '600',
     color: ui.muted,
     textAlign: 'right',
-    lineHeight: 18,
+    lineHeight: 17,
   },
   actionIconBox: {
-    width: 46,
-    height: 46,
-    borderRadius: 16,
+    width: 50,
+    height: 50,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
   },
+
+  // ── Hidden probe + logout ──
   hiddenEventSwitcherProbe: {
     position: 'absolute',
     opacity: 0,
@@ -1558,17 +1645,17 @@ const styles = StyleSheet.create({
   },
   logoutButton: {
     width: '100%',
-    minHeight: 62,
+    minHeight: 58,
     borderRadius: 22,
     overflow: 'hidden',
-    shadowColor: '#c62828',
-    shadowOpacity: 0.22,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
+    shadowColor: '#b71c1c',
+    shadowOpacity: 0.28,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
     elevation: 6,
   },
   logoutGradient: {
-    minHeight: 62,
+    minHeight: 58,
     borderRadius: 22,
     flexDirection: ROW_DIR,
     alignItems: 'center',
@@ -1577,8 +1664,9 @@ const styles = StyleSheet.create({
   },
   logoutButtonText: {
     color: colors.white,
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '900',
+    letterSpacing: 0.2,
   },
   modalOverlay: {
     flex: 1,
