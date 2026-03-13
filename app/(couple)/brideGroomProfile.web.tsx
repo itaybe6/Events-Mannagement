@@ -12,7 +12,6 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import DesktopTopBar, { TopBarIconButton } from '@/components/desktop/DesktopTopBar';
 import { colors } from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
@@ -62,7 +61,6 @@ export default function BrideGroomProfileWebScreen() {
 
       setLoading(true);
       try {
-        // Best-effort refresh avatar url from DB
         const { data: avatarRow } = await supabase
           .from('users')
           .select('avatar_url')
@@ -118,9 +116,6 @@ export default function BrideGroomProfileWebScreen() {
   const brideName = String(eventMeta?.brideName ?? '').trim();
   const weddingNames = groomName && brideName ? `${groomName} ו${brideName}` : '';
 
-  const displayTitle = weddingNames || String(userData?.name || 'פרופיל').trim() || 'פרופיל';
-  const displaySubtitle = eventMeta?.title ? `אירוע: ${String(eventMeta.title).trim()}` : 'פרטי משתמש ואירוע';
-
   const dateLabel = useMemo(() => {
     const d = eventMeta?.date ? new Date(eventMeta.date) : null;
     if (!d || !Number.isFinite(d.getTime())) return '';
@@ -130,14 +125,6 @@ export default function BrideGroomProfileWebScreen() {
   const handleLogout = async () => {
     await logout();
     router.replace('/login');
-  };
-
-  const openAutomaticNotifications = () => {
-    if (!resolvedEventId) return;
-    router.push({
-      pathname: '/(couple)/automatic-notifications',
-      params: { eventId: resolvedEventId },
-    } as any);
   };
 
   const openRsvpLink = async () => {
@@ -157,265 +144,291 @@ export default function BrideGroomProfileWebScreen() {
         <View style={styles.shapeBottomLeft} />
       </View>
 
-      <DesktopTopBar
-        title={displayTitle}
-        subtitle={displaySubtitle}
-        rightActions={
-          <>
-            <TopBarIconButton icon="create-outline" label="עריכת פרופיל" onPress={() => router.push('/profile-editor')} />
-            <TopBarIconButton
-              icon="chatbubble-ellipses-outline"
-              label="הודעות אוטומטיות"
-              onPress={openAutomaticNotifications}
-              disabled={!resolvedEventId}
-            />
-          </>
-        }
-        leftActions={<TopBarIconButton icon="log-out-outline" label="התנתקות" onPress={handleLogout} />}
-      />
-
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <View style={styles.contentOuter}>
-          <View style={styles.card}>
-            <View style={styles.cardHeaderRow}>
-              <View style={styles.cardHeaderIcon}>
-                <Ionicons name="person-outline" size={18} color={colors.primary} />
-              </View>
-              <Text style={styles.cardTitle}>פרטי חשבון</Text>
-            </View>
 
-            <View style={[styles.profileRow, isWide ? styles.profileRowWide : null]}>
-              <View style={styles.avatarRing}>
+        {/* ── Hero Card ── */}
+        <View style={styles.heroOuter}>
+        <View style={styles.hero}>
+          <View pointerEvents="none" style={styles.heroOverlay} />
+          <View pointerEvents="none" style={styles.heroPatternDots} />
+
+          <View style={[styles.heroContent, isWide ? styles.heroContentWide : null]}>
+            {/* Avatar */}
+            <View style={styles.heroAvatarWrap}>
+              <View style={styles.heroAvatarGlow} />
+              <View style={styles.heroAvatarRing}>
                 {avatarUri ? (
-                  <Image source={{ uri: avatarUri }} style={styles.avatarImg} contentFit="cover" transition={120} />
+                  <Image source={{ uri: avatarUri }} style={styles.heroAvatarImg} contentFit="cover" transition={180} />
                 ) : (
-                  <Ionicons name="person-circle" size={92} color={colors.primary} />
+                  <Ionicons name="person-circle" size={90} color="rgba(255,255,255,0.45)" />
                 )}
               </View>
+            </View>
 
-              <View style={styles.profileMeta}>
-                <Text style={styles.profileName} numberOfLines={1}>
-                  {weddingNames || String(userData?.name || '').trim() || 'משתמש'}
+            {/* Names + info */}
+            <View style={styles.heroInfo}>
+              {weddingNames ? (
+                <View style={styles.heroNamesRow}>
+                  <Ionicons name="heart" size={14} color={colors.gold} />
+                  <Text style={styles.heroNames}>{weddingNames}</Text>
+                  <Ionicons name="heart" size={14} color={colors.gold} />
+                </View>
+              ) : (
+                <Text style={styles.heroNames}>
+                  {String(userData?.name || 'פרופיל').trim()}
                 </Text>
-                {weddingNames ? (
-                  <Text style={styles.profileSub} numberOfLines={1}>
-                    {String(userData?.name || '').trim()}
+              )}
+
+              {weddingNames ? (
+                <Text style={styles.heroUserName} numberOfLines={1}>
+                  {String(userData?.name || '').trim()}
+                </Text>
+              ) : null}
+
+              <Text style={styles.heroEmail} numberOfLines={1}>
+                {String(userData?.email || '').trim()}
+              </Text>
+
+              {dateLabel ? (
+                <View style={styles.heroDatePill}>
+                  <Ionicons name="calendar-outline" size={13} color={colors.gold} />
+                  <Text style={styles.heroDateText}>{dateLabel}</Text>
+                </View>
+              ) : null}
+
+              {eventMeta?.title ? (
+                <View style={styles.heroEventPill}>
+                  <Ionicons name="sparkles-outline" size={12} color="rgba(255,255,255,0.6)" />
+                  <Text style={styles.heroEventText} numberOfLines={1}>
+                    {String(eventMeta.title).trim()}
                   </Text>
-                ) : null}
-                <Text style={styles.profileEmail} numberOfLines={1}>
-                  {String(userData?.email || '').trim()}
-                </Text>
-              </View>
+                </View>
+              ) : null}
+            </View>
 
-              <View style={[styles.actionsRow, !isWide ? styles.actionsRowStack : null]}>
-                <PrimaryButton label="עריכת פרופיל" icon="create-outline" onPress={() => router.push('/profile-editor')} />
-                <PrimaryButton
-                  label="הודעות אוטומטיות"
-                  icon="chatbubble-ellipses-outline"
-                  onPress={openAutomaticNotifications}
-                  disabled={!resolvedEventId}
-                />
-                <SecondaryButton label="התנתקות" icon="log-out-outline" onPress={handleLogout} danger />
-              </View>
+            {/* Action buttons */}
+            <View style={styles.heroActions}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="עריכת פרופיל"
+                onPress={() => router.push('/profile-editor')}
+                style={({ pressed, hovered }: any) => [
+                  styles.heroBtn,
+                  Platform.OS === 'web' && hovered ? styles.heroBtnHover : null,
+                  pressed ? styles.heroBtnPressed : null,
+                ]}
+              >
+                <Ionicons name="create-outline" size={16} color={colors.primary} />
+                <Text style={styles.heroBtnText}>עריכת פרופיל</Text>
+              </Pressable>
+
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="התנתקות"
+                onPress={handleLogout}
+                style={({ pressed, hovered }: any) => [
+                  styles.heroBtn,
+                  styles.heroBtnDanger,
+                  Platform.OS === 'web' && hovered ? styles.heroBtnDangerHover : null,
+                  pressed ? styles.heroBtnPressed : null,
+                ]}
+              >
+                <Ionicons name="log-out-outline" size={16} color="#dc2626" />
+                <Text style={[styles.heroBtnText, styles.heroBtnTextDanger]}>התנתקות</Text>
+              </Pressable>
             </View>
           </View>
+        </View>
+        </View>
 
+        {/* ── Body ── */}
+        <View style={styles.contentOuter}>
           <View style={[styles.grid, isWide ? styles.gridWide : null]}>
+
+            {/* Main column: Event details */}
             <View style={[styles.col, styles.mainCol]}>
-              <View style={styles.card}>
+              <View style={[styles.card, isWide ? styles.equalHeightCard : null]}>
                 <View style={styles.cardHeaderRow}>
-                  <View
-                    style={[
-                      styles.cardHeaderIcon,
-                      { backgroundColor: 'rgba(16,185,129,0.12)', borderColor: 'rgba(16,185,129,0.18)' },
-                    ]}
-                  >
-                    <Ionicons name="calendar-outline" size={18} color="rgba(16,185,129,0.95)" />
+                  <View style={[styles.cardHeaderIcon, { backgroundColor: 'rgba(16,185,129,0.10)', borderColor: 'rgba(16,185,129,0.18)' }]}>
+                    <Ionicons name="calendar-outline" size={18} color="rgba(16,185,129,0.9)" />
                   </View>
-                  <Text style={styles.cardTitle}>פרטי אירוע</Text>
+                  <Text style={styles.cardTitle}>פרטי האירוע</Text>
                 </View>
 
                 {loading ? (
                   <View style={styles.skeletonBlock}>
                     <View style={styles.skeletonLine} />
-                    <View style={[styles.skeletonLine, { width: '72%' }]} />
-                    <View style={[styles.skeletonLine, { width: '60%' }]} />
+                    <View style={[styles.skeletonLine, { width: '70%' }]} />
+                    <View style={[styles.skeletonLine, { width: '55%' }]} />
                   </View>
                 ) : !resolvedEventId ? (
                   <View style={styles.emptyState}>
+                    <View style={styles.emptyIconWrap}>
+                      <Ionicons name="calendar-outline" size={28} color="rgba(15,23,42,0.22)" />
+                    </View>
                     <Text style={styles.emptyTitle}>לא נבחר אירוע</Text>
                     <Text style={styles.emptySubtitle}>בחרו אירוע כדי לראות פרטים וקישורים.</Text>
                   </View>
                 ) : !eventMeta ? (
                   <View style={styles.emptyState}>
+                    <View style={styles.emptyIconWrap}>
+                      <Ionicons name="alert-circle-outline" size={28} color="rgba(15,23,42,0.22)" />
+                    </View>
                     <Text style={styles.emptyTitle}>לא נמצאו פרטי אירוע</Text>
                     <Text style={styles.emptySubtitle}>ייתכן שהאירוע נמחק או שאין הרשאה.</Text>
                   </View>
                 ) : (
-                  <View style={styles.kvList}>
-                    <View style={styles.kvRow}>
-                      <Text style={styles.kvLabel}>שם האירוע</Text>
-                      <Text style={styles.kvValue} numberOfLines={2}>
-                        {String(eventMeta.title || '').trim() || '-'}
-                      </Text>
+                  <View style={styles.eventBody}>
+                    <View style={styles.fieldsGrid}>
+                      <FieldBlock
+                        icon="text-outline"
+                        label="שם האירוע"
+                        value={String(eventMeta.title || '').trim() || '-'}
+                        accentColor="rgba(16,185,129,0.75)"
+                      />
+                      <FieldBlock
+                        icon="calendar-outline"
+                        label="תאריך"
+                        value={dateLabel || '-'}
+                        accentColor="rgba(99,102,241,0.75)"
+                      />
+                      <FieldBlock
+                        icon="man-outline"
+                        label="חתן"
+                        value={groomName || '-'}
+                        accentColor="rgba(59,130,246,0.75)"
+                      />
+                      <FieldBlock
+                        icon="woman-outline"
+                        label="כלה"
+                        value={brideName || '-'}
+                        accentColor="rgba(236,72,153,0.75)"
+                      />
                     </View>
-                    <View style={styles.kvRow}>
-                      <Text style={styles.kvLabel}>תאריך</Text>
-                      <Text style={styles.kvValue} numberOfLines={1}>
-                        {dateLabel || '-'}
-                      </Text>
-                    </View>
-                    <View style={styles.kvRow}>
-                      <Text style={styles.kvLabel}>חתן</Text>
-                      <Text style={styles.kvValue} numberOfLines={1}>
-                        {groomName || '-'}
-                      </Text>
-                    </View>
-                    <View style={styles.kvRow}>
-                      <Text style={styles.kvLabel}>כלה</Text>
-                      <Text style={styles.kvValue} numberOfLines={1}>
-                        {brideName || '-'}
-                      </Text>
-                    </View>
-                    <View style={styles.kvRow}>
-                      <Text style={styles.kvLabel}>קישור אישור הגעה</Text>
-                      <View style={styles.kvInlineActions}>
-                        <Text style={[styles.kvValue, { maxWidth: isWide ? 520 : 260 }]} numberOfLines={1}>
+
+                    <View style={styles.rsvpCard}>
+                      <View style={styles.rsvpInfo}>
+                        <Text style={styles.rsvpLabel}>קישור אישור הגעה</Text>
+                        <Text style={styles.rsvpUrl} numberOfLines={1}>
                           {String(eventMeta.rsvpLink || '').trim() || '-'}
                         </Text>
-                        <Pressable
-                          accessibilityRole="button"
-                          accessibilityLabel="פתח קישור"
-                          onPress={openRsvpLink}
-                          disabled={!String(eventMeta.rsvpLink || '').trim()}
-                          style={({ pressed, hovered }: any) => [
-                            styles.linkPill,
-                            Platform.OS === 'web' && hovered ? styles.linkPillHover : null,
-                            pressed ? styles.linkPillPressed : null,
-                            !String(eventMeta.rsvpLink || '').trim() ? { opacity: 0.5 } : null,
-                          ]}
-                        >
-                          <Ionicons name="open-outline" size={16} color={colors.primary} />
-                          <Text style={styles.linkPillText}>פתח</Text>
-                        </Pressable>
                       </View>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="פתח קישור"
+                        onPress={openRsvpLink}
+                        disabled={!String(eventMeta.rsvpLink || '').trim()}
+                        style={({ pressed, hovered }: any) => [
+                          styles.linkPill,
+                          Platform.OS === 'web' && hovered ? styles.linkPillHover : null,
+                          pressed ? styles.linkPillPressed : null,
+                          !String(eventMeta.rsvpLink || '').trim() ? { opacity: 0.4 } : null,
+                        ]}
+                      >
+                        <Ionicons name="open-outline" size={15} color={colors.primary} />
+                        <Text style={styles.linkPillText}>פתח</Text>
+                      </Pressable>
                     </View>
                   </View>
                 )}
               </View>
             </View>
 
-            <View style={[styles.col, styles.sideCol, isWide ? styles.sideColStagger : null]}>
-              <View style={styles.card}>
+            {/* Sidebar */}
+            <View style={[styles.col, styles.sideCol]}>
+              <View style={[styles.card, isWide ? styles.equalHeightCard : null]}>
                 <View style={styles.cardHeaderRow}>
-                  <View
-                    style={[
-                      styles.cardHeaderIcon,
-                      { backgroundColor: 'rgba(99,102,241,0.10)', borderColor: 'rgba(99,102,241,0.18)' },
-                    ]}
-                  >
-                    <Ionicons name="sparkles-outline" size={18} color="rgba(99,102,241,0.95)" />
+                  <View style={[styles.cardHeaderIcon, { backgroundColor: 'rgba(99,102,241,0.10)', borderColor: 'rgba(99,102,241,0.18)' }]}>
+                    <Ionicons name="sparkles-outline" size={18} color="rgba(99,102,241,0.9)" />
                   </View>
                   <Text style={styles.cardTitle}>טיפים מהירים</Text>
                 </View>
 
                 <View style={styles.tipsGrid}>
-                  <TipItem icon="create-outline" title="עדכנו פרטים" subtitle="שמרו על שם ותמונה מעודכנים." />
-                  <TipItem icon="chatbubble-ellipses-outline" title="הודעות אוטומטיות" subtitle="הגדירו תזמונים ותוכן מראש." />
-                  <TipItem icon="shield-checkmark-outline" title="בטיחות" subtitle="התנתקו ממחשבים משותפים." />
+                  <TipItem
+                    icon="create-outline"
+                    color="rgba(99,102,241,0.9)"
+                    bg="rgba(99,102,241,0.08)"
+                    title="עדכנו פרטים"
+                    subtitle="שמרו על שם ותמונת פרופיל מעודכנים."
+                  />
+                  <TipItem
+                    icon="people-outline"
+                    color="rgba(16,185,129,0.9)"
+                    bg="rgba(16,185,129,0.08)"
+                    title="ניהול אורחים"
+                    subtitle="עקבו אחר אישורי הגעה ורשימות מוזמנים."
+                  />
+                  <TipItem
+                    icon="shield-checkmark-outline"
+                    color="rgba(239,68,68,0.8)"
+                    bg="rgba(239,68,68,0.07)"
+                    title="בטיחות"
+                    subtitle="התנתקו תמיד ממחשבים משותפים."
+                  />
+                  <TipItem
+                    icon="notifications-outline"
+                    color="rgba(245,158,11,0.9)"
+                    bg="rgba(245,158,11,0.08)"
+                    title="תזכורות"
+                    subtitle="הגדירו הודעות אוטומטיות מראש."
+                  />
                 </View>
               </View>
             </View>
           </View>
 
-          <View style={{ height: 16 }} />
+          <View style={{ height: 24 }} />
         </View>
       </ScrollView>
     </View>
   );
 }
 
-function PrimaryButton({
-  label,
+function FieldBlock({
   icon,
-  onPress,
-  disabled,
+  label,
+  value,
+  accentColor,
 }: {
-  label: string;
   icon: keyof typeof Ionicons.glyphMap;
-  onPress: () => void;
-  disabled?: boolean;
+  label: string;
+  value: string;
+  accentColor: string;
 }) {
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      onPress={onPress}
-      disabled={disabled}
-      style={({ pressed, hovered }: any) => [
-        styles.btnPrimary,
-        Platform.OS === 'web' && hovered && !disabled ? styles.btnPrimaryHover : null,
-        pressed && !disabled ? styles.btnPressed : null,
-        disabled ? styles.btnDisabled : null,
-      ]}
-    >
-      <Ionicons name={icon} size={18} color="#fff" />
-      <Text style={styles.btnPrimaryText} numberOfLines={1}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
-function SecondaryButton({
-  label,
-  icon,
-  onPress,
-  disabled,
-  danger,
-}: {
-  label: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  onPress: () => void;
-  disabled?: boolean;
-  danger?: boolean;
-}) {
-  const isDanger = Boolean(danger);
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      onPress={onPress}
-      disabled={disabled}
-      style={({ pressed, hovered }: any) => [
-        styles.btnSecondary,
-        isDanger ? styles.btnSecondaryDanger : null,
-        Platform.OS === 'web' && hovered && !disabled ? styles.btnSecondaryHover : null,
-        pressed && !disabled ? styles.btnPressed : null,
-        disabled ? styles.btnDisabled : null,
-      ]}
-    >
-      <Ionicons name={icon} size={18} color={isDanger ? 'rgba(239,68,68,0.95)' : colors.primary} />
-      <Text style={[styles.btnSecondaryText, isDanger ? styles.btnSecondaryTextDanger : null]} numberOfLines={1}>
-        {label}
-      </Text>
-    </Pressable>
+    <View style={styles.fieldBlock}>
+      <View style={[styles.fieldAccentBar, { backgroundColor: accentColor }]} />
+      <View style={styles.fieldBlockBody}>
+        <View style={styles.fieldLabelRow}>
+          <Ionicons name={icon} size={11} color={colors.gray[500]} />
+          <Text style={styles.fieldLabel}>{label}</Text>
+        </View>
+        <Text style={styles.fieldValue} numberOfLines={2}>
+          {value}
+        </Text>
+      </View>
+    </View>
   );
 }
 
 function TipItem({
   icon,
+  color,
+  bg,
   title,
   subtitle,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
+  color: string;
+  bg: string;
   title: string;
   subtitle: string;
 }) {
   return (
     <View style={styles.tipCard}>
-      <View style={styles.tipIcon}>
-        <Ionicons name={icon} size={18} color={colors.primary} />
+      <View style={[styles.tipIcon, { backgroundColor: bg }]}>
+        <Ionicons name={icon} size={17} color={color} />
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text style={styles.tipTitle} numberOfLines={1}>
@@ -432,8 +445,8 @@ function TipItem({
 const styles = StyleSheet.create({
   page: {
     flex: 1,
-    backgroundColor: '#f6f7f8',
-    // @ts-expect-error - react-native-web supports direction
+    backgroundColor: '#eef0f5',
+    // @ts-expect-error
     direction: 'rtl',
   },
 
@@ -443,297 +456,481 @@ const styles = StyleSheet.create({
   },
   shapeTopRight: {
     position: 'absolute',
-    top: -120,
-    right: -120,
-    width: 720,
-    height: 720,
+    top: -60,
+    right: -60,
+    width: 560,
+    height: 560,
     borderRadius: 9999,
     ...(Platform.OS === 'web'
       ? ({
-          backgroundImage: 'radial-gradient(circle, rgba(59,130,246,0.10) 0%, rgba(255,255,255,0) 70%)',
+          backgroundImage: 'radial-gradient(circle, rgba(6,23,62,0.07) 0%, rgba(255,255,255,0) 70%)',
         } as any)
-      : { backgroundColor: 'rgba(59,130,246,0.10)' }),
+      : { backgroundColor: 'rgba(6,23,62,0.07)' }),
   },
   shapeBottomLeft: {
     position: 'absolute',
-    bottom: -140,
-    left: -160,
-    width: 860,
-    height: 860,
+    bottom: -80,
+    left: -80,
+    width: 660,
+    height: 660,
     borderRadius: 9999,
     ...(Platform.OS === 'web'
       ? ({
-          backgroundImage: 'radial-gradient(circle, rgba(139,92,246,0.07) 0%, rgba(255,255,255,0) 70%)',
+          backgroundImage: 'radial-gradient(circle, rgba(204,160,0,0.07) 0%, rgba(255,255,255,0) 70%)',
         } as any)
-      : { backgroundColor: 'rgba(139,92,246,0.07)' }),
+      : { backgroundColor: 'rgba(204,160,0,0.07)' }),
   },
 
   scroll: { flex: 1 },
-  scrollContent: { paddingBottom: 28 },
+  scrollContent: { paddingBottom: 36 },
 
+  // ── Hero ──────────────────────────────────────────────────────────────────
+  heroOuter: {
+    paddingHorizontal: 22,
+    paddingTop: 22,
+    maxWidth: 1240,
+    width: '100%',
+    alignSelf: 'center',
+  },
+  hero: {
+    borderRadius: 28,
+    overflow: 'hidden',
+    paddingVertical: 40,
+    paddingHorizontal: 36,
+    position: 'relative',
+    backgroundColor: '#001D3D',
+    borderWidth: 1,
+    borderColor: 'rgba(204,160,0,0.22)',
+    ...(Platform.OS === 'web'
+      ? ({
+          backgroundImage: 'linear-gradient(135deg, #06173e 0%, #001D3D 55%, #003566 100%)',
+          boxShadow: '0 4px 6px rgba(0,0,0,0.07), 0 20px 60px rgba(6,23,62,0.22), inset 0 1px 0 rgba(255,255,255,0.06)',
+        } as any)
+      : null),
+  },
+  heroOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    ...(Platform.OS === 'web'
+      ? ({
+          backgroundImage: [
+            'radial-gradient(ellipse at 90% 10%, rgba(204,160,0,0.18) 0%, transparent 50%)',
+            'radial-gradient(ellipse at 5% 90%, rgba(0,53,102,0.6) 0%, transparent 50%)',
+          ].join(', '),
+          pointerEvents: 'none',
+        } as any)
+      : null),
+  },
+  heroPatternDots: {
+    ...StyleSheet.absoluteFillObject,
+    ...(Platform.OS === 'web'
+      ? ({
+          backgroundImage: 'radial-gradient(rgba(255,255,255,0.055) 1px, transparent 1px)',
+          backgroundSize: '26px 26px',
+          pointerEvents: 'none',
+        } as any)
+      : null),
+  },
+
+  heroContent: {
+    width: '100%',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 28,
+    flexWrap: 'wrap',
+  },
+  heroContentWide: {
+    flexWrap: 'nowrap',
+  },
+
+  heroAvatarWrap: {
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroAvatarGlow: {
+    position: 'absolute',
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    ...(Platform.OS === 'web'
+      ? ({
+          boxShadow: '0 0 40px rgba(204,160,0,0.30), 0 0 80px rgba(204,160,0,0.10)',
+          pointerEvents: 'none',
+        } as any)
+      : null),
+  },
+  heroAvatarRing: {
+    width: 112,
+    height: 112,
+    borderRadius: 56,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 3,
+    borderColor: colors.gold,
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  heroAvatarImg: { width: 112, height: 112 },
+
+  heroInfo: {
+    flex: 1,
+    minWidth: 220,
+    alignItems: 'flex-end',
+    gap: 5,
+  },
+  heroNamesRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 9,
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+  },
+  heroNames: {
+    fontSize: 27,
+    fontWeight: '900',
+    color: '#ffffff',
+    textAlign: 'right',
+    writingDirection: 'rtl',
+    letterSpacing: 0.3,
+    ...(Platform.OS === 'web'
+      ? ({ textShadow: '0 2px 12px rgba(0,0,0,0.25)' } as any)
+      : null),
+  },
+  heroUserName: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.60)',
+    textAlign: 'right',
+    writingDirection: 'rtl',
+    marginTop: 1,
+  },
+  heroEmail: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.45)',
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  heroDatePill: {
+    marginTop: 8,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(204,160,0,0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(204,160,0,0.32)',
+    paddingHorizontal: 13,
+    paddingVertical: 6,
+    borderRadius: 999,
+    alignSelf: 'flex-end',
+  },
+  heroDateText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.gold,
+    writingDirection: 'rtl',
+  },
+  heroEventPill: {
+    marginTop: 4,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 999,
+    alignSelf: 'flex-end',
+  },
+  heroEventText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.58)',
+    writingDirection: 'rtl',
+  },
+
+  heroActions: {
+    gap: 10,
+    alignItems: 'stretch',
+    minWidth: 168,
+  },
+  heroBtn: {
+    height: 44,
+    paddingHorizontal: 22,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    ...(Platform.OS === 'web'
+      ? ({
+          cursor: 'pointer',
+          transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.14)',
+        } as any)
+      : null),
+  },
+  heroBtnHover: {
+    ...(Platform.OS === 'web'
+      ? ({ transform: 'translateY(-2px)', boxShadow: '0 6px 18px rgba(0,0,0,0.20)' } as any)
+      : null),
+  },
+  heroBtnPressed: { opacity: 0.88 },
+  heroBtnText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.primary,
+    writingDirection: 'rtl',
+  },
+  heroBtnDanger: {
+    backgroundColor: 'rgba(254,226,226,0.96)',
+  },
+  heroBtnDangerHover: {
+    ...(Platform.OS === 'web'
+      ? ({ transform: 'translateY(-2px)', boxShadow: '0 6px 18px rgba(220,38,38,0.18)' } as any)
+      : null),
+  },
+  heroBtnTextDanger: { color: '#dc2626' },
+
+  // ── Body ─────────────────────────────────────────────────────────────────
   contentOuter: {
-    paddingHorizontal: 18,
-    paddingTop: 18,
+    paddingHorizontal: 22,
+    paddingTop: 26,
     width: '100%',
     maxWidth: 1240,
     alignSelf: 'center',
   },
 
-  grid: {
-    marginTop: 16,
-    gap: 16,
-  },
+  grid: { gap: 20 },
   gridWide: {
     flexDirection: 'row-reverse',
-    alignItems: 'flex-start',
+    alignItems: 'stretch',
   },
-  col: {
-    minWidth: 0,
-    gap: 16,
-  },
-  mainCol: {
-    flex: 1,
-  },
+  col: { minWidth: 0, gap: 20 },
+  mainCol: { flex: 1 },
   sideCol: {
-    flexBasis: 420,
+    flexBasis: 380,
     flexGrow: 0,
     flexShrink: 0,
-    alignSelf: 'flex-start',
+    alignSelf: 'stretch',
   },
-  sideColStagger: {
-    marginTop: 22,
+  equalHeightCard: {
+    flex: 1,
   },
 
+  // ── Card ─────────────────────────────────────────────────────────────────
   card: {
     borderRadius: 22,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.08)',
-    backgroundColor: 'rgba(255,255,255,0.78)',
-    padding: 18,
+    borderColor: 'rgba(15,23,42,0.07)',
+    backgroundColor: 'rgba(255,255,255,0.94)',
+    padding: 24,
     ...(Platform.OS === 'web'
       ? ({
-          backdropFilter: 'blur(10px)',
-          WebkitBackdropFilter: 'blur(10px)',
-          boxShadow: '0 0 0 1px rgba(11,48,65,0.02), 0 14px 40px rgba(11,48,65,0.08)',
+          backdropFilter: 'blur(14px)',
+          WebkitBackdropFilter: 'blur(14px)',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.04), 0 10px 40px rgba(6,23,62,0.07)',
         } as any)
       : null),
   },
   cardHeaderRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    marginBottom: 12,
+    marginBottom: 20,
+    justifyContent: 'flex-end',
   },
   cardHeaderIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 14,
+    width: 36,
+    height: 36,
+    borderRadius: 13,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(15,69,230,0.08)',
     borderWidth: 1,
-    borderColor: 'rgba(15,69,230,0.14)',
   },
   cardTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '900',
     color: colors.text,
     textAlign: 'right',
     writingDirection: 'rtl',
+    letterSpacing: 0.1,
   },
 
-  profileRow: {
+  // ── Event fields ──────────────────────────────────────────────────────────
+  eventBody: { gap: 12 },
+  fieldsGrid: { gap: 10 },
+
+  fieldBlock: {
+    flexDirection: 'row-reverse',
+    borderRadius: 14,
+    overflow: 'hidden',
+    backgroundColor: '#f8f9fc',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.05)',
+  },
+  fieldAccentBar: {
+    width: 4,
+    borderRadius: 0,
+  },
+  fieldBlockBody: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    gap: 4,
+  },
+  fieldLabelRow: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
-    gap: 14,
+    gap: 4,
   },
-  profileRowWide: {
-    alignItems: 'flex-start',
-  },
-  avatarRing: {
-    width: 98,
-    height: 98,
-    borderRadius: 49,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.10)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    overflow: 'hidden',
-  },
-  avatarImg: { width: 98, height: 98 },
-  profileMeta: { flex: 1, minWidth: 0, alignItems: 'flex-end' },
-  profileName: { fontSize: 18, fontWeight: '900', color: colors.text, textAlign: 'right', writingDirection: 'rtl' },
-  profileSub: {
-    marginTop: 2,
-    fontSize: 12,
-    fontWeight: '900',
-    color: colors.gray[600],
-    textAlign: 'right',
-    writingDirection: 'rtl',
-  },
-  profileEmail: {
-    marginTop: 6,
-    fontSize: 13,
+  fieldLabel: {
+    fontSize: 11,
     fontWeight: '800',
-    color: colors.gray[600],
+    color: colors.gray[500],
     textAlign: 'right',
     writingDirection: 'rtl',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
   },
-
-  divider: {
-    height: 1,
-    backgroundColor: 'rgba(15,23,42,0.08)',
-    marginVertical: 14,
-  },
-
-  kvList: { gap: 10 },
-  kvRow: { gap: 6 },
-  kvLabel: {
-    fontSize: 12,
-    fontWeight: '900',
-    color: colors.gray[600],
-    textAlign: 'right',
-    writingDirection: 'rtl',
-  },
-  kvValue: {
+  fieldValue: {
     fontSize: 14,
     fontWeight: '800',
     color: colors.text,
     textAlign: 'right',
     writingDirection: 'rtl',
   },
-  kvInlineActions: {
+
+  // ── RSVP row ─────────────────────────────────────────────────────────────
+  rsvpCard: {
+    borderRadius: 14,
+    backgroundColor: '#f8f9fc',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.05)',
+    padding: 14,
     flexDirection: 'row-reverse',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
+    gap: 12,
   },
-
-  actionsStack: { marginTop: 16, gap: 10 },
-  actionsRow: {
+  rsvpInfo: {
     flex: 1,
     minWidth: 0,
-    gap: 10,
-    justifyContent: 'flex-start',
-    alignItems: 'stretch',
+    alignItems: 'flex-end',
+    gap: 3,
   },
-  actionsRowStack: {
-    width: '100%',
-    marginTop: 14,
+  rsvpLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.gray[500],
+    textAlign: 'right',
+    writingDirection: 'rtl',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
   },
-  btnPrimary: {
-    height: 48,
-    borderRadius: 16,
-    backgroundColor: colors.primary,
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  rsvpUrl: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.text,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+    opacity: 0.65,
   },
-  btnPrimaryHover: { backgroundColor: '#1347d4' },
-  btnPrimaryText: { fontSize: 14, fontWeight: '900', color: '#fff', writingDirection: 'rtl' },
-  btnSecondary: {
-    height: 48,
-    borderRadius: 16,
-    backgroundColor: 'rgba(15,69,230,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(15,69,230,0.14)',
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
-  },
-  btnSecondaryHover: { backgroundColor: 'rgba(15,69,230,0.12)' },
-  btnSecondaryText: { fontSize: 14, fontWeight: '900', color: colors.primary, writingDirection: 'rtl' },
-  btnSecondaryDanger: {
-    backgroundColor: 'rgba(239,68,68,0.08)',
-    borderColor: 'rgba(239,68,68,0.16)',
-  },
-  btnSecondaryTextDanger: { color: 'rgba(239,68,68,0.95)' },
-  btnPressed: { opacity: 0.92, transform: [{ scale: 0.99 }] },
-  btnDisabled: { opacity: 0.55 },
 
   linkPill: {
-    height: 34,
-    paddingHorizontal: 12,
+    height: 38,
+    paddingHorizontal: 16,
     borderRadius: 999,
     flexDirection: 'row-reverse',
     alignItems: 'center',
-    justifyContent: 'center',
     gap: 6,
-    backgroundColor: 'rgba(15,69,230,0.08)',
+    backgroundColor: 'rgba(6,23,62,0.07)',
     borderWidth: 1,
-    borderColor: 'rgba(15,69,230,0.14)',
+    borderColor: 'rgba(6,23,62,0.13)',
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
-  linkPillHover: { backgroundColor: 'rgba(15,69,230,0.12)' },
-  linkPillPressed: { opacity: 0.92 },
-  linkPillText: { fontSize: 12, fontWeight: '900', color: colors.primary, writingDirection: 'rtl' },
-
-  skeletonBlock: { gap: 10, marginTop: 6 },
-  skeletonLine: {
-    height: 14,
-    borderRadius: 999,
-    backgroundColor: 'rgba(15,23,42,0.08)',
-    width: '86%',
-    alignSelf: 'flex-end',
-  },
-
-  emptyState: {
-    marginTop: 8,
-    paddingVertical: 18,
-    paddingHorizontal: 14,
-    borderRadius: 18,
-    backgroundColor: 'rgba(15,23,42,0.04)',
-    borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.06)',
-    alignItems: 'flex-end',
-    gap: 6,
-  },
-  emptyTitle: { fontSize: 14, fontWeight: '900', color: colors.text, textAlign: 'right', writingDirection: 'rtl' },
-  emptySubtitle: {
+  linkPillHover: { backgroundColor: 'rgba(6,23,62,0.11)' },
+  linkPillPressed: { opacity: 0.88 },
+  linkPillText: {
     fontSize: 12,
-    fontWeight: '800',
-    color: colors.gray[600],
-    textAlign: 'right',
+    fontWeight: '900',
+    color: colors.primary,
     writingDirection: 'rtl',
   },
 
-  tipsGrid: {
-    gap: 10,
+  // ── Skeletons ─────────────────────────────────────────────────────────────
+  skeletonBlock: { gap: 11, marginTop: 4 },
+  skeletonLine: {
+    height: 14,
+    borderRadius: 999,
+    backgroundColor: 'rgba(15,23,42,0.07)',
+    width: '88%',
+    alignSelf: 'flex-end',
   },
-  tipCard: {
-    flexDirection: 'row-reverse',
+
+  // ── Empty state ───────────────────────────────────────────────────────────
+  emptyState: {
+    paddingVertical: 32,
     alignItems: 'center',
     gap: 10,
-    padding: 12,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.70)',
-    borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.06)',
   },
-  tipIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 14,
-    backgroundColor: 'rgba(15,69,230,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(15,69,230,0.14)',
+  emptyIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(15,23,42,0.04)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  tipTitle: { fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'right', writingDirection: 'rtl' },
+  emptyTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'center',
+    writingDirection: 'rtl',
+  },
+  emptySubtitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.gray[600],
+    textAlign: 'center',
+    writingDirection: 'rtl',
+  },
+
+  // ── Tips ─────────────────────────────────────────────────────────────────
+  tipsGrid: { gap: 10 },
+  tipCard: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 12,
+    padding: 14,
+    borderRadius: 16,
+    backgroundColor: '#f8f9fc',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.05)',
+  },
+  tipIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tipTitle: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
   tipSubtitle: {
     marginTop: 2,
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: '700',
     color: colors.gray[600],
     textAlign: 'right',
     writingDirection: 'rtl',
   },
 });
-

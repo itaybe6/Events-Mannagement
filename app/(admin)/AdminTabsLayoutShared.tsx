@@ -29,6 +29,7 @@ export default function AdminTabsLayoutShared() {
   const headerTotalHeight = getAppHeaderTotalHeight(insets.top, APP_HEADER_HEIGHT_COMPACT);
   const adminHeaderHeight = isAdminHeaderVisible ? insets.top + 64 : 0;
   const isAdminShopifyShell = userType === "admin";
+  const isEmployeeWebShell = userType === "employee" && Platform.OS === "web";
   const currentAdminRoute = String(segments?.[1] ?? "");
   const isGuestCheckinRoute = currentAdminRoute === "admin-guest-checkin";
   const desktopNavItems = React.useMemo<DesktopNavItem[]>(() => {
@@ -47,6 +48,18 @@ export default function AdminTabsLayoutShared() {
 
     return items;
   }, [userType]);
+
+  const desktopNavItemsWeb = React.useMemo<DesktopNavItem[]>(() => {
+    // On web, employees still work inside /(admin) screens (events/check-in),
+    // but should get a minimal sidebar rather than the default tab bar.
+    if (userType === "employee") {
+      return [
+        { href: "/(admin)/admin-events", label: "אירועים", icon: "calendar-outline" },
+        { href: "/(admin)/employee-profile-tab", label: "פרופיל", icon: "person-circle" },
+      ];
+    }
+    return desktopNavItems;
+  }, [desktopNavItems, userType]);
 
   const hideBackOnThisRoute =
     segments?.[0] === "(admin)" &&
@@ -343,37 +356,39 @@ export default function AdminTabsLayoutShared() {
   return (
     <Tabs
       tabBar={
-        isAdminShopifyShell
+        Platform.OS === "web"
+          ? () => {
+              if (!isTabBarVisible) return null;
+              if (isGuestCheckinRoute) return null;
+              if (!isAdminShopifyShell && !isEmployeeWebShell) return null;
+
+              return (
+                <DesktopSidebar
+                  navItems={desktopNavItemsWeb}
+                  footer={
+                    <Pressable
+                      onPress={handleLogout}
+                      accessibilityRole="button"
+                      accessibilityLabel="התנתקות"
+                      style={({ hovered, pressed }: any) => [
+                        styles.logoutBtn,
+                        Platform.OS === "web" && hovered ? styles.logoutBtnHover : null,
+                        pressed ? styles.logoutBtnPressed : null,
+                      ]}
+                    >
+                      <Ionicons name="log-out-outline" size={18} color={colors.white} />
+                      <Text style={styles.logoutBtnText}>התנתק</Text>
+                    </Pressable>
+                  }
+                />
+              );
+            }
+          : isAdminShopifyShell
           ? (props) => {
               if (!isTabBarVisible) return null;
-
-              if (Platform.OS === "web") {
-                if (isGuestCheckinRoute) return null;
-                return (
-                  <DesktopSidebar
-                    navItems={desktopNavItems}
-                    footer={
-                      <Pressable
-                        onPress={handleLogout}
-                        accessibilityRole="button"
-                        accessibilityLabel="התנתקות"
-                        style={({ hovered, pressed }: any) => [
-                          styles.logoutBtn,
-                          Platform.OS === "web" && hovered ? styles.logoutBtnHover : null,
-                          pressed ? styles.logoutBtnPressed : null,
-                        ]}
-                      >
-                        <Ionicons name="log-out-outline" size={18} color={colors.white} />
-                        <Text style={styles.logoutBtnText}>התנתק</Text>
-                      </Pressable>
-                    }
-                  />
-                );
-              }
-
               return <AdminTabBar {...props} />;
             }
-          : userType === "employee" && Platform.OS !== "web"
+          : userType === "employee"
           ? (props) => {
               if (!isTabBarVisible) return null;
               return <EmployeeTabBar {...props} />;

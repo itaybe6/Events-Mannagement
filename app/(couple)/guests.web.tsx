@@ -427,7 +427,8 @@ export default function CoupleGuestsWebScreen() {
   const cardWidth = useMemo(() => {
     if (contentWidth < 640) return '100%';
     if (contentWidth < 980) return '48%';
-    return '23.5%';
+    if (contentWidth < 1180) return '31.8%';
+    return '19.2%';
   }, [contentWidth]);
 
   const guestItemWidth = useMemo(() => {
@@ -437,9 +438,9 @@ export default function CoupleGuestsWebScreen() {
     // - desktop+: compact fixed widths (cleaner, narrower cards)
     if (contentWidth < 720) return '100%';
     if (contentWidth < 1100) return '48%';
-    if (contentWidth < 1480) return 260;
-    if (contentWidth < 1720) return 240;
-    return 220;
+    if (contentWidth < 1480) return 286;
+    if (contentWidth < 1720) return 266;
+    return 246;
   }, [contentWidth]);
 
   // Compact cards look cleaner than large square tiles for guests lists.
@@ -1225,69 +1226,58 @@ function GuestListRow({
     >
       {() => (
         <>
-          {/* Checkbox (top-left), like the provided design */}
-          <Pressable
-            accessibilityRole="checkbox"
-            accessibilityState={{ checked }}
-            accessibilityLabel={checked ? 'הסר בחירה' : 'בחר אורח'}
-            onPress={onToggleCheck}
-            style={({ hovered, pressed }: any) => [
-              styles.checkbox,
-              styles.guestCheckboxAbs,
-              checked ? styles.checkboxChecked : null,
-              Platform.OS === 'web' && hovered ? styles.checkboxHover : null,
-              pressed ? styles.btnPressed : null,
-            ]}
-          >
-            {checked ? <Ionicons name="checkmark" size={14} color={colors.white} /> : null}
-          </Pressable>
-
+          {/* Header: Avatar + Name/Status + Checkbox */}
           <View style={styles.guestCardHeader}>
-            <View style={styles.guestHeaderLeft}>
-              <View style={styles.guestAvatar}>
-                <Text style={styles.guestAvatarText}>{initials}</Text>
-              </View>
-              <View style={styles.guestCardTitleWrap}>
-                <View style={styles.guestTitleRow}>
-                  <Text style={styles.guestCardName} numberOfLines={1}>
-                    {guest.name}
-                  </Text>
-                </View>
+            <View style={[styles.guestAvatar, { backgroundColor: sc.soft }]}>
+              <Text style={[styles.guestAvatarText, { color: sc.text }]}>{initials}</Text>
+            </View>
 
-                <View
-                  style={[
-                    styles.statusPill,
-                    styles.statusPillInline,
-                    { backgroundColor: sc.soft, borderColor: 'rgba(0,0,0,0.06)' },
-                  ]}
-                >
-                  <View style={[styles.statusDot, { backgroundColor: sc.main }]} />
-                  <Text style={[styles.statusText, { color: sc.text }]}>{guest.status}</Text>
-                </View>
-
-                <View style={styles.guestDetailsRow}>
-                  <View style={[styles.guestInfoPill, styles.guestInfoPillWide]}>
-                    <View style={styles.guestPhoneRow}>
-                      <Ionicons name="call-outline" size={12} color={colors.gray[500]} />
-                      <Text style={styles.guestCardPhone} numberOfLines={1}>
-                        {guest.phone}
-                      </Text>
-                    </View>
-                  </View>
-                  <View style={styles.guestInfoPill}>
-                    <Ionicons name="people-outline" size={14} color={colors.gray[600]} />
-                    <Text style={styles.guestInfoText}>כמות {guest.numberOfPeople || 1}</Text>
-                  </View>
-                </View>
+            <View style={styles.guestCardTitleWrap}>
+              <Text style={styles.guestCardName} numberOfLines={1}>
+                {guest.name}
+              </Text>
+              <View
+                style={[
+                  styles.statusPill,
+                  styles.statusPillInline,
+                  { backgroundColor: sc.soft, borderColor: 'rgba(0,0,0,0.06)' },
+                ]}
+              >
+                <View style={[styles.statusDot, { backgroundColor: sc.main }]} />
+                <Text style={[styles.statusText, { color: sc.text }]}>{guest.status}</Text>
               </View>
+            </View>
+
+            <Pressable
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked }}
+              accessibilityLabel={checked ? 'הסר בחירה' : 'בחר אורח'}
+              onPress={onToggleCheck}
+              style={({ hovered, pressed }: any) => [
+                styles.checkbox,
+                checked ? styles.checkboxChecked : null,
+                Platform.OS === 'web' && hovered ? styles.checkboxHover : null,
+                pressed ? styles.btnPressed : null,
+              ]}
+            >
+              {checked ? <Ionicons name="checkmark" size={14} color={colors.white} /> : null}
+            </Pressable>
+          </View>
+
+          {/* Info: Count */}
+          <View style={styles.guestDetailsRow}>
+            <View style={styles.guestInfoPill}>
+              <Ionicons name="people-outline" size={13} color={colors.gray[500]} />
+              <Text style={styles.guestInfoText}>כמות {guest.numberOfPeople || 1}</Text>
             </View>
           </View>
 
+          {/* Footer: Phone + Actions */}
           <View style={styles.guestCardFooterBar}>
-            <View style={[styles.guestSelectionPill, checked ? styles.guestSelectionPillActive : null]}>
-              <Ionicons name={checked ? 'checkmark-circle' : 'ellipse-outline'} size={14} color={checked ? colors.primary : colors.gray[400]} />
-              <Text style={[styles.guestSelectionText, checked ? styles.guestSelectionTextActive : null]}>
-                {checked ? 'נבחר' : 'סמן לבחירה'}
+            <View style={[styles.guestInfoPill, { flex: 1, minWidth: 0 }]}>
+              <Ionicons name="call-outline" size={13} color={colors.gray[500]} />
+              <Text style={styles.guestCardPhone} numberOfLines={1}>
+                {guest.phone}
               </Text>
             </View>
             <View style={styles.guestCardActions}>
@@ -1847,189 +1837,91 @@ const styles = StyleSheet.create({
   checkboxHover: { borderColor: 'rgba(6,23,62,0.35)' },
   checkboxChecked: { backgroundColor: colors.primary, borderColor: colors.primary },
   guestCard: {
-    padding: 16,
+    padding:10,
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.07)',
-    borderRadius: 22,
+    borderRadius: 20,
     backgroundColor: colors.white,
     gap: 14,
     // @ts-expect-error - react-native-web supports direction
     direction: 'rtl',
     // @ts-expect-error - react-native-web supports boxShadow
-    boxShadow: '0 1px 2px rgba(16,24,40,0.03), 0 12px 28px rgba(16,24,40,0.07)',
-    minHeight: 172,
-    position: 'relative',
+    boxShadow: '0 1px 3px rgba(16,24,40,0.04), 0 8px 24px rgba(16,24,40,0.07)',
   },
   guestCardSquare: {
     aspectRatio: 1,
   },
   guestCardHeader: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: 10,
-    minWidth: 0,
-    ...(Platform.OS === 'web' ? ({ direction: 'ltr' } as any) : null),
-  },
-  // Left side cluster: checkbox + name/phone, pinned to the left edge.
-  guestHeaderLeft: {
-    flex: 1,
-    minWidth: 0,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'flex-start',
+    alignItems: 'center',
     gap: 12,
-    ...(Platform.OS === 'web' ? ({ direction: 'ltr' } as any) : null),
+    minWidth: 0,
   },
   guestAvatar: {
-    width: 44,
-    height: 44,
+    width: 50,
+    height: 50,
     borderRadius: 16,
-    backgroundColor: 'rgba(6,23,62,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
   },
-  guestAvatarText: { fontSize: 13, fontWeight: '900', color: colors.primary, textAlign: 'center' },
-  guestCardTitleWrap: { flex: 1, minWidth: 0, alignItems: 'stretch', gap: 10, paddingLeft: 18, paddingTop: 2 },
-  guestTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'flex-start',
-    width: '100%',
-    ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
-  },
-  guestCardName: { fontSize: 15, fontWeight: '900', color: colors.text, textAlign: 'left', lineHeight: 20 },
+  guestAvatarText: { fontSize: 15, fontWeight: '900', color: colors.primary, textAlign: 'center' },
+  guestCardTitleWrap: { flex: 1, minWidth: 0, gap: 6 },
+  guestCardName: { fontSize: 16, fontWeight: '900', color: colors.text, textAlign: 'right', lineHeight: 22 },
   guestDetailsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-start',
-    gap: 10,
-    flexWrap: 'wrap',
-    ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
-  },
-  guestInfoPill: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 12,
-    backgroundColor: 'rgba(248,250,252,0.95)',
-    borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.06)',
-  },
-  guestInfoPillWide: {
-    maxWidth: '100%',
-    minHeight: 38,
-  },
-  guestPhoneRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    ...(Platform.OS === 'web' ? ({ direction: 'ltr' } as any) : null),
-  },
-  guestCardPhone: {
-    fontSize: 11.5,
-    fontWeight: '800',
-    color: colors.gray[600],
-    // Keep phone numbers readable (LTR) but anchor them to the RTL layout.
-    // @ts-expect-error - react-native-web supports direction
-    direction: 'ltr',
-    textAlign: 'left',
-    alignSelf: 'flex-start',
-  },
-  guestInfoText: { fontSize: 11.5, fontWeight: '900', color: colors.gray[700], textAlign: 'right', writingDirection: 'rtl' },
-  // Quantity row pinned to the left.
-  guestCardMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    ...(Platform.OS === 'web' ? ({ direction: 'ltr' } as any) : null),
-  },
-  guestCardMetaPill: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: 'rgba(248,250,252,0.95)',
-    borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.07)',
-  },
-  guestCardMetaText: { fontSize: 11, fontWeight: '900', color: colors.gray[700], textAlign: 'left' },
-  guestBottom: {
-    position: 'absolute',
-    bottom: 14,
-    right: 14,
-    left: 14,
-    // Anchor the info cluster to the physical right edge.
-    alignItems: 'stretch',
-    justifyContent: 'flex-start',
-    gap: 10,
-    maxWidth: '100%',
-    paddingLeft: 74,
-  },
-  guestBottomTopRow: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'flex-start',
     gap: 8,
     flexWrap: 'wrap',
   },
-  guestBottomActions: {
+  guestInfoPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 11,
+    backgroundColor: 'rgba(248,250,252,0.98)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.06)',
+  },
+  guestCardPhone: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.gray[600],
+    // @ts-ignore - react-native-web supports direction
+    direction: 'ltr',
+    textAlign: 'left',
+    flex: 1,
+  },
+  guestInfoText: { fontSize: 13, fontWeight: '700', color: colors.gray[700], textAlign: 'right', writingDirection: 'rtl' },
+  guestCardFooterBar: {
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(15,23,42,0.06)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  guestCardActions: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     flexShrink: 0,
     ...(Platform.OS === 'web' ? ({ direction: 'ltr' } as any) : null),
   },
-  guestCardActionsAbs: {
-    position: 'absolute',
-    left: 14,
-    bottom: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    zIndex: 3,
-    ...(Platform.OS === 'web' ? ({ direction: 'ltr' } as any) : null),
-  },
-  guestCardFooter: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    gap: 6,
-    marginTop: 'auto',
-  },
-  guestCardFooterBar: {
-    marginTop: 'auto',
-    paddingTop: 14,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(15,23,42,0.06)',
-    flexDirection: 'column',
-    alignItems: 'stretch',
-    justifyContent: 'flex-start',
-    gap: 10,
-  },
-  guestCardActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    alignSelf: 'flex-start',
-    ...(Platform.OS === 'web' ? ({ direction: 'ltr' } as any) : null),
-  },
   guestSelectionPill: {
-    flexDirection: 'row-reverse',
+    flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 10,
     backgroundColor: 'rgba(248,250,252,0.9)',
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.06)',
-    alignSelf: 'stretch',
+    flex: 1,
     justifyContent: 'center',
   },
   guestSelectionPillActive: {
@@ -2037,8 +1929,8 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(37,99,235,0.16)',
   },
   guestSelectionText: {
-    fontSize: 11,
-    fontWeight: '800',
+    fontSize: 11.5,
+    fontWeight: '700',
     color: colors.gray[500],
     textAlign: 'right',
     writingDirection: 'rtl',
@@ -2079,12 +1971,7 @@ const styles = StyleSheet.create({
     // @ts-expect-error - react-native-web supports boxShadow
     boxShadow: '0 6px 14px rgba(16,24,40,0.06)',
   },
-  guestCheckboxAbs: {
-    position: 'absolute',
-    top: 14,
-    left: 14,
-    zIndex: 2,
-  },
+  guestCheckboxAbs: {},
   iconBtnHover: { borderColor: 'rgba(6,23,62,0.18)', backgroundColor: colors.white },
   iconBtnDangerHover: { borderColor: 'rgba(244,63,94,0.22)', backgroundColor: 'rgba(244,63,94,0.06)' },
 

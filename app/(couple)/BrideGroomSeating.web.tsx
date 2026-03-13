@@ -199,10 +199,11 @@ export default function BrideGroomSeatingWebScreen() {
 
   const isNarrow = windowWidth < 980;
   const leftColWidth = useMemo(() => {
-    // Side column (Guests + Tables). Keep it a bit narrower.
-    if (windowWidth < 1100) return 260;
-    if (windowWidth < 1400) return 300;
-    return 330;
+    // Side column (Guests + Tables).
+    // Web: make it wider so the guest list feels comfortable on desktop.
+    if (windowWidth < 1100) return 320;
+    if (windowWidth < 1400) return 380;
+    return 420;
   }, [windowWidth]);
 
   const mapCardHeight = useMemo(() => {
@@ -1046,9 +1047,9 @@ export default function BrideGroomSeatingWebScreen() {
     );
   }
 
-  const contentMaxWidth =
-    windowWidth >= 1900 ? 1720 : windowWidth >= 1600 ? 1520 : windowWidth >= 1400 ? 1320 : undefined;
-  const contentPaddingH = windowWidth >= 1100 ? 24 : 16;
+  // Web: let the seating map use the full available width (no centered maxWidth),
+  // so the map doesn't look "boxed" with large side gutters on wide screens.
+  const contentPaddingH = windowWidth >= 1100 ? 20 : 12;
 
   const goToEventPage = () => {
     router.replace({
@@ -1074,7 +1075,7 @@ export default function BrideGroomSeatingWebScreen() {
         style={styles.scroll}
         contentContainerStyle={[
           styles.container,
-          { paddingHorizontal: contentPaddingH, ...(contentMaxWidth ? { maxWidth: contentMaxWidth } : null) },
+          { paddingHorizontal: contentPaddingH },
         ]}
         showsVerticalScrollIndicator={false}
       >
@@ -1273,10 +1274,10 @@ export default function BrideGroomSeatingWebScreen() {
 
                     {quickSeatFilter !== 'seated' ? (
                       <View style={styles.quickGuestFiltersRow}>
-                        {[
-                          { key: 'all' as const, label: 'הכל' },
-                          { key: 'arriving' as const, label: 'מגיע' },
-                        ].map((f) => {
+                        {([
+                          { key: 'all', label: 'הכל' },
+                          { key: 'arriving', label: 'מגיע' },
+                        ] as Array<{ key: QuickStatusFilterKey; label: string }>).map((f) => {
                         const active = quickStatusFilter === f.key;
                         const tone =
                           f.key === 'arriving' ? 'green' : f.key === 'not_arriving' ? 'red' : f.key === 'pending' ? 'yellow' : 'neutral';
@@ -1540,7 +1541,7 @@ export default function BrideGroomSeatingWebScreen() {
                 </View>
               </View>
 
-              <View style={{ flex: 1, minHeight: mapCardHeight }}>
+              <View style={styles.mapBody}>
                 {webSketch ? (
                   <SeatingGridReadonly
                     gridCols={webSketchWithNames?.gridCols ?? webSketch.gridCols}
@@ -1549,8 +1550,7 @@ export default function BrideGroomSeatingWebScreen() {
                     zones={webSketchWithNames?.zones ?? webSketch.zones}
                     labels={webSketchWithNames?.labels ?? webSketch.labels}
                     hideTableType
-                    autoFitZoomMultiplier={isNarrow ? 1.02 : 0.9}
-                    tableTextScale={isNarrow ? 1 : 0.78}
+                    autoFitZoomMultiplier={isNarrow ? 1.06 : 1.08}
                     useBaseColorAsWebBackground
                     showTableBorder={false}
                     getTableBaseColor={(t: any) => {
@@ -2798,6 +2798,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(15,23,42,0.06)',
   },
+  mapBody: { flex: 1, minHeight: 0 },
   mapHeaderText: {
     flex: 1,
     minWidth: 0,
