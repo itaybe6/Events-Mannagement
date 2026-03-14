@@ -1,14 +1,15 @@
 import React from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import { Pressable, Platform, StyleSheet, Text, View } from 'react-native';
 import { usePathname, useRouter } from 'expo-router';
 
 import { colors } from '@/constants/colors';
 
 const NAV_ITEMS = [
-  { href: '/(admin)/admin-events', label: 'לוח בקרה' },
-  { href: '/(admin)/admin-events-list', label: 'אירועים' },
-  { href: '/(admin)/users', label: 'משתמשים' },
-  { href: '/(admin)/admin-profile', label: 'פרופיל' },
+  { href: '/(admin)/admin-events', label: 'לוח בקרה', icon: 'speedometer-outline' },
+  { href: '/(admin)/admin-events-list', label: 'אירועים', icon: 'calendar-outline' },
+  { href: '/(admin)/users', label: 'משתמשים', icon: 'people-outline' },
+  { href: '/(admin)/admin-profile', label: 'פרופיל', icon: 'person-outline' },
 ] as const;
 
 function normalizeHref(path: string) {
@@ -44,7 +45,14 @@ export default function AdminWebTopNav({ inset = false }: Props) {
               pressed ? styles.itemPressed : null,
             ]}
           >
-            <Text style={[styles.text, active ? styles.textActive : null]}>{item.label}</Text>
+            <View style={styles.itemContent}>
+              <Ionicons
+                name={item.icon}
+                size={16}
+                color={active ? '#FFFFFF' : '#6C7A90'}
+              />
+              <Text style={[styles.text, active ? styles.textActive : null]}>{item.label}</Text>
+            </View>
           </Pressable>
         );
       })}
@@ -72,6 +80,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  itemContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
   },
   itemActive: {
     backgroundColor: colors.primary,

@@ -1,16 +1,17 @@
 import React from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { usePathname, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 
 import { colors } from '@/constants/colors';
 
 const NAV_ITEMS = [
-  { href: '/(couple)', label: 'בית' },
-  { href: '/(couple)/guests', label: 'אישורי הגעה' },
-  { href: '/(couple)/BrideGroomSeating', label: 'מפת הושבה' },
-  { href: '/(couple)/TablesList', label: 'רשימת שולחנות' },
-  { href: '/(couple)/automatic-notifications', label: 'עריכת הודעות' },
-  { href: '/(couple)/brideGroomProfile', label: 'פרופיל' },
+  { href: '/(couple)', label: 'בית', icon: 'home-outline' },
+  { href: '/(couple)/guests', label: 'אישורי הגעה', icon: 'checkbox-outline' },
+  { href: '/(couple)/BrideGroomSeating', label: 'מפת הושבה', icon: 'grid-outline' },
+  { href: '/(couple)/TablesList', label: 'רשימת שולחנות', icon: 'list-outline' },
+  { href: '/(couple)/automatic-notifications', label: 'עריכת הודעות', icon: 'chatbox-ellipses-outline' },
+  { href: '/(couple)/brideGroomProfile', label: 'פרופיל', icon: 'person-outline' },
 ] as const;
 
 function normalizeHref(path: string) {
@@ -51,7 +52,14 @@ export default function CoupleWebTopNav({ eventId }: Props) {
               pressed ? styles.itemPressed : null,
             ]}
           >
-            <Text style={[styles.text, active ? styles.textActive : null]}>{item.label}</Text>
+            <View style={styles.itemContent}>
+              <Ionicons
+                name={item.icon}
+                size={16}
+                color={active ? '#FFFFFF' : '#6C7A90'}
+              />
+              <Text style={[styles.text, active ? styles.textActive : null]}>{item.label}</Text>
+            </View>
           </Pressable>
         );
       })}
@@ -76,6 +84,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  itemContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
   },
   itemActive: {
     backgroundColor: colors.primary,
