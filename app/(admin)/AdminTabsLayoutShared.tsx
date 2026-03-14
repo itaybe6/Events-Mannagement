@@ -34,7 +34,8 @@ export default function AdminTabsLayoutShared() {
   const isGuestCheckinRoute = currentAdminRoute === "admin-guest-checkin";
   const desktopNavItems = React.useMemo<DesktopNavItem[]>(() => {
     const items: DesktopNavItem[] = [
-      { href: "/(admin)/admin-events", label: "אירועים", icon: "calendar-outline" },
+      { href: "/(admin)/admin-events", label: "לוח בקרה", icon: "grid-outline" },
+      { href: "/(admin)/admin-events-list", label: "אירועים", icon: "calendar-outline" },
     ];
 
     if (userType !== "employee" && Platform.OS !== "web") {
@@ -65,6 +66,7 @@ export default function AdminTabsLayoutShared() {
     segments?.[0] === "(admin)" &&
     (currentAdminRoute === "admin-profile" ||
       currentAdminRoute === "admin-events" ||
+      currentAdminRoute === "admin-events-list" ||
       currentAdminRoute === "admin-search");
 
   const handleAdminHeaderBack = (canGoBack: boolean, goBack: () => void) => {
@@ -209,7 +211,7 @@ export default function AdminTabsLayoutShared() {
       key="admin-events"
       name="admin-events"
       options={{
-        title: "אירועים",
+        title: "לוח בקרה",
         ...(userType === "employee" && Platform.OS !== "web"
           ? {
               headerShown: false,
@@ -246,6 +248,22 @@ export default function AdminTabsLayoutShared() {
             </Text>
           </View>
         ),
+      }}
+    />
+  );
+
+  screens.push(
+    <Tabs.Screen
+      key="admin-events-list"
+      name="admin-events-list"
+      options={{
+        title: "אירועים",
+        href: null,
+        ...(Platform.OS !== "web"
+          ? {
+              headerShown: false,
+            }
+          : null),
       }}
     />
   );
@@ -360,11 +378,13 @@ export default function AdminTabsLayoutShared() {
           ? () => {
               if (!isTabBarVisible) return null;
               if (isGuestCheckinRoute) return null;
-              if (!isAdminShopifyShell && !isEmployeeWebShell) return null;
+              if (isAdminShopifyShell) return null;
+              if (!isEmployeeWebShell) return null;
 
               return (
                 <DesktopSidebar
                   navItems={desktopNavItemsWeb}
+                  variant={userType === "admin" ? "admin" : "default"}
                   footer={
                     <Pressable
                       onPress={handleLogout}
@@ -372,12 +392,23 @@ export default function AdminTabsLayoutShared() {
                       accessibilityLabel="התנתקות"
                       style={({ hovered, pressed }: any) => [
                         styles.logoutBtn,
-                        Platform.OS === "web" && hovered ? styles.logoutBtnHover : null,
+                        userType === "admin" ? styles.logoutBtnAdmin : null,
+                        Platform.OS === "web" && hovered
+                          ? userType === "admin"
+                            ? styles.logoutBtnAdminHover
+                            : styles.logoutBtnHover
+                          : null,
                         pressed ? styles.logoutBtnPressed : null,
                       ]}
                     >
-                      <Ionicons name="log-out-outline" size={18} color={colors.white} />
-                      <Text style={styles.logoutBtnText}>התנתק</Text>
+                      <Ionicons
+                        name="log-out-outline"
+                        size={18}
+                        color={userType === "admin" ? "#C45454" : colors.white}
+                      />
+                      <Text style={[styles.logoutBtnText, userType === "admin" ? styles.logoutBtnTextAdmin : null]}>
+                        התנתק
+                      </Text>
                     </Pressable>
                   }
                 />
@@ -602,8 +633,25 @@ const styles = StyleSheet.create({
     gap: 8,
     backgroundColor: "#D64545",
   },
+  logoutBtnAdmin: {
+    minHeight: 52,
+    borderRadius: 18,
+    justifyContent: "flex-end",
+    paddingHorizontal: 18,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "rgba(6,23,62,0.06)",
+    shadowColor: "#D64545",
+    shadowOpacity: 0.02,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+  },
   logoutBtnHover: {
     backgroundColor: "#C73A3A",
+  },
+  logoutBtnAdminHover: {
+    backgroundColor: "#FDF6F6",
+    borderColor: "rgba(212,84,84,0.18)",
   },
   logoutBtnPressed: {
     opacity: 0.92,
@@ -614,5 +662,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "800",
     textAlign: "center",
+  },
+  logoutBtnTextAdmin: {
+    color: "#C45454",
+    fontWeight: "900",
   },
 });

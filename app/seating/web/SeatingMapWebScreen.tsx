@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { useUserStore } from '@/store/userStore';
@@ -48,6 +48,7 @@ export default function SeatingMapWebScreen() {
   const router = useRouter();
   const userType = useUserStore(s => s.userType);
   const api = useSeatingState();
+  const { width } = useWindowDimensions();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -377,11 +378,6 @@ export default function SeatingMapWebScreen() {
   }, [saveMap]);
 
   const goBackToEvent = useCallback(() => {
-    const r: any = router as any;
-    if (typeof r?.canGoBack === 'function' && r.canGoBack()) {
-      router.back();
-      return;
-    }
     if (eventId) {
       if (userType === 'admin') {
         router.replace(`/(admin)/admin-event-details?id=${encodeURIComponent(eventId)}`);
@@ -417,6 +413,8 @@ export default function SeatingMapWebScreen() {
     goBackToEvent();
   }, [goBackToEvent, saveMap]);
 
+  const isLaptopCompact = width <= 1440;
+
   return (
     <View style={styles.root}>
       {leaveDialogOpen ? (
@@ -448,7 +446,7 @@ export default function SeatingMapWebScreen() {
           </View>
         </View>
       ) : null}
-      <View style={styles.row}>
+      <View style={[styles.row, isLaptopCompact ? styles.rowCompact : null]}>
         <TableSidebar
           onBack={onBack}
           onAddTable={onAddTable}
@@ -461,9 +459,10 @@ export default function SeatingMapWebScreen() {
           gridCols={api.gridCols}
           gridRows={api.gridRows}
           onSetGrid={(cols, rows) => api.setGrid(cols, rows)}
+          compact={isLaptopCompact}
         />
 
-        <View style={styles.canvas}>
+        <View style={[styles.canvas, isLaptopCompact ? styles.canvasCompact : null]}>
           <SeatingGrid api={api} />
         </View>
       </View>
@@ -472,10 +471,43 @@ export default function SeatingMapWebScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#e5e7eb' },
+  root: {
+    flex: 1,
+    backgroundColor: '#F7FAFF',
+    ...(Platform.OS === 'web'
+      ? ({
+          backgroundImage:
+            'radial-gradient(circle at top right, rgba(25,93,230,0.14), rgba(25,93,230,0) 40%), radial-gradient(circle at top left, rgba(232,241,255,0.95), rgba(232,241,255,0) 34%), radial-gradient(circle at bottom left, rgba(242,224,186,0.24), rgba(242,224,186,0) 30%)',
+        } as any)
+      : null),
+  },
   // In RTL, `row` already lays out right-to-left. Using `row-reverse` would put the sidebar on the left.
-  row: { flex: 1, flexDirection: 'row' },
-  canvas: { flex: 1 },
+  row: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: 14,
+    padding: 14,
+  },
+  rowCompact: {
+    gap: 10,
+    padding: 10,
+  },
+  canvas: {
+    flex: 1,
+    minWidth: 0,
+    borderRadius: 26,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.06)',
+    backgroundColor: 'rgba(255,255,255,0.70)',
+    shadowColor: '#0b1c41',
+    shadowOpacity: 0.06,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+  },
+  canvasCompact: {
+    borderRadius: 22,
+  },
 
   leaveOverlay: {
     ...(StyleSheet.absoluteFill as any),

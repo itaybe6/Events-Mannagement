@@ -18,6 +18,7 @@ import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import { colors } from '@/constants/colors';
 import { userService } from '@/lib/services/userService';
 import { eventService } from '@/lib/services/eventService';
+import AdminWebPageHeader from '@/components/desktop/AdminWebPageHeader';
 
 const EVENT_TYPES = [
   { label: 'חתונה', value: 'חתונה', icon: 'heart' as const, hint: 'יום מיוחד לזוג' },
@@ -106,16 +107,18 @@ export default function AdminEventsCreateWebScreen() {
       Boolean(form.user_id),
       Boolean(form.eventType),
       Boolean(form.date && form.eventName.trim()),
+      Boolean(isFormValid),
     ];
     const done = parts.filter(Boolean).length;
     return Math.round((done / parts.length) * 100);
-  }, [form.date, form.eventName, form.eventType, form.user_id]);
+  }, [form.date, form.eventName, form.eventType, form.user_id, isFormValid]);
 
   const currentStep = useMemo(() => {
     if (!form.user_id) return 1;
     if (!form.eventType) return 2;
-    return 3;
-  }, [form.eventType, form.user_id]);
+    if (!isFormValid) return 3;
+    return 4;
+  }, [form.eventType, form.user_id, isFormValid]);
 
   const handleAddEvent = async () => {
     if (!isFormValid) return;
@@ -185,6 +188,8 @@ export default function AdminEventsCreateWebScreen() {
     setShowDatePicker(true);
   };
 
+  const selectedTypeMeta = EVENT_TYPES.find((item) => item.value === form.eventType) ?? null;
+
   return (
     <View style={styles.page}>
       <View style={shellStyle}>
@@ -194,16 +199,76 @@ export default function AdminEventsCreateWebScreen() {
             contentContainerStyle={[styles.mainContent, !isLg ? styles.mainContentMobile : null]}
             showsVerticalScrollIndicator={false}
           >
-            <View style={styles.hero}>
-              <View style={styles.progressWrap}>
-                <View style={styles.progressRow}>
-                  <Text style={styles.progressMeta}>{`שלב ${currentStep} מתוך 3`}</Text>
-                  <Text style={styles.progressMeta}>{`${completion}%`}</Text>
+            <View style={styles.heroShell}>
+              <AdminWebPageHeader
+                eyebrow="ניהול אירועים"
+                title="הוספת אירוע"
+                subtitle="יצירת אירוע חדש במערכת בצורה מסודרת, מהירה ונקייה לפי שלבי העבודה."
+                showNav={false}
+                useDefaultActions={false}
+                leading={
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="חזרה לעמוד הקודם"
+                    onPress={() => router.replace('/(admin)/admin-events-list')}
+                    style={({ hovered, pressed }: any) => [
+                      styles.backHeaderBtn,
+                      Platform.OS === 'web' && hovered ? styles.backHeaderBtnHover : null,
+                      pressed ? styles.backHeaderBtnPressed : null,
+                    ]}
+                  >
+                    <Ionicons name="arrow-forward" size={16} color={stylesTokens.text} />
+                    <Text style={styles.backHeaderBtnText}>חזרה</Text>
+                  </Pressable>
+                }
+              />
+
+              <View style={styles.heroCard}>
+                <View style={styles.heroCardTopRow}>
+                  <View style={styles.heroTitleWrap}>
+                    <Text style={styles.heroEyebrow}>אירוע חדש במערכת</Text>
+                    <Text style={styles.heroTitle}>בונים אירוע חדש ב-4 שלבים פשוטים</Text>
+                    <Text style={styles.heroSubtitle}>בחירת לקוח, סוג אירוע ופרטים כלליים במעטפת אחת ברורה ונקייה.</Text>
+                  </View>
+
+                  <View style={styles.heroPill}>
+                    <Text style={styles.heroPillValue}>{completion}%</Text>
+                    <Text style={styles.heroPillLabel}>הושלם</Text>
+                  </View>
                 </View>
-                <View style={styles.progressTrack}>
-                  <View style={[styles.progressFill, { width: `${completion}%` } as any]} />
+
+                <View style={styles.progressWrap}>
+                  <View style={styles.progressRow}>
+                    <Text style={styles.progressMeta}>{`שלב ${currentStep} מתוך 4`}</Text>
+                    <Text style={styles.progressMeta}>{isFormValid ? 'מוכן ליצירה' : 'בטיוטה'}</Text>
+                  </View>
+                  <View style={styles.progressTrack}>
+                    <View style={[styles.progressFill, { width: `${completion}%` } as any]} />
+                  </View>
+                </View>
+
+                <View style={styles.heroStatsRow}>
+                  <View style={styles.heroStatCard}>
+                    <Text style={styles.heroStatLabel}>לקוח</Text>
+                    <Text style={styles.heroStatValue} numberOfLines={1}>
+                      {selectedUser ? selectedUser.name : 'טרם נבחר'}
+                    </Text>
+                  </View>
+                  <View style={styles.heroStatCard}>
+                    <Text style={styles.heroStatLabel}>סוג אירוע</Text>
+                    <Text style={styles.heroStatValue} numberOfLines={1}>
+                      {selectedTypeMeta?.label ?? 'טרם נבחר'}
+                    </Text>
+                  </View>
+                  <View style={styles.heroStatCard}>
+                    <Text style={styles.heroStatLabel}>תאריך</Text>
+                    <Text style={styles.heroStatValue} numberOfLines={1}>
+                      {form.date ? formatDate(form.date) : 'טרם נבחר'}
+                    </Text>
+                  </View>
                 </View>
               </View>
+
             </View>
 
             <View style={styles.section}>
@@ -413,99 +478,107 @@ export default function AdminEventsCreateWebScreen() {
                 </View>
               </View>
             </View>
-          </ScrollView>
 
-          {isLg ? (
-            <View style={styles.side}>
-              <View style={styles.sideSticky}>
-                <View style={styles.summaryCard}>
-                  <Text style={styles.summaryTitle}>סיכום אירוע</Text>
+            <View style={styles.divider} />
 
-                  <View style={styles.summaryList}>
-                    <View style={styles.summaryItem}>
-                      <View style={styles.summaryText}>
-                        <Text style={styles.summaryLabel}>סוג אירוע</Text>
-                        <Text style={styles.summaryValue}>{form.eventType || 'טרם נבחר'}</Text>
-                      </View>
-                      <View style={styles.summaryIconCircle}>
-                        <Ionicons name="pricetag-outline" size={18} color={stylesTokens.white} />
-                      </View>
+            <View style={styles.section}>
+              <View style={styles.sectionTitleRow}>
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>4</Text>
+                </View>
+                <Text style={styles.sectionTitle}>סיכום האירוע</Text>
+              </View>
+
+              <View style={styles.summaryInlineCard}>
+                <View style={styles.summaryInlineHeader}>
+                  <View style={styles.summaryInlineTitleWrap}>
+                    <Text style={styles.summaryInlineEyebrow}>סיכום חכם</Text>
+                    <Text style={styles.summaryInlineTitle}>סיכום האירוע</Text>
+                    <Text style={styles.summaryInlineSubtitle}>כל הפרטים שבחרת מרוכזים כאן לפני היצירה.</Text>
+                  </View>
+
+                  <View style={[styles.statusChipInline, isFormValid ? styles.statusChipInlineReady : null]}>
+                    <Text style={[styles.statusChipInlineText, isFormValid ? styles.statusChipInlineTextReady : null]}>
+                      {isFormValid ? 'מוכן לשמירה' : 'טיוטה חדשה'}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.summaryInlineGrid}>
+                  <View style={styles.summaryInlineItem}>
+                    <View style={styles.summaryInlineIconCircle}>
+                      <Ionicons name="pricetag-outline" size={18} color={stylesTokens.primary} />
                     </View>
-
-                    <View style={styles.summaryItem}>
-                      <View style={styles.summaryText}>
-                        <Text style={styles.summaryLabel}>שם האירוע</Text>
-                        <Text style={styles.summaryValue}>{form.eventName.trim() ? form.eventName.trim() : 'טרם נבחר'}</Text>
-                      </View>
-                      <View style={styles.summaryIconCircle}>
-                        <Ionicons name="text-outline" size={18} color={stylesTokens.white} />
-                      </View>
-                    </View>
-
-                    <View style={styles.summaryItem}>
-                      <View style={styles.summaryText}>
-                        <Text style={styles.summaryLabel}>תאריך</Text>
-                        <Text style={styles.summaryValue}>{form.date ? formatDate(form.date) : 'טרם נבחר'}</Text>
-                      </View>
-                      <View style={styles.summaryIconCircle}>
-                        <Ionicons name="calendar-outline" size={18} color={stylesTokens.white} />
-                      </View>
-                    </View>
-
-                    <View style={styles.summaryItem}>
-                      <View style={styles.summaryText}>
-                        <Text style={styles.summaryLabel}>מיקום</Text>
-                        <Text style={[styles.summaryValue, !form.location.trim() ? styles.summaryValueMuted : null]} numberOfLines={2}>
-                          {form.location.trim() ? `${form.location.trim()}${form.city.trim() ? `, ${form.city.trim()}` : ''}` : 'לא צוין מיקום'}
-                        </Text>
-                      </View>
-                      <View style={styles.summaryIconCircle}>
-                        <Ionicons name="pin-outline" size={18} color={stylesTokens.white} />
-                      </View>
-                    </View>
-
-                    <View style={styles.summaryItem}>
-                      <View style={styles.summaryText}>
-                        <Text style={styles.summaryLabel}>לקוח</Text>
-                        <Text style={styles.summaryValue}>{selectedUser ? selectedUser.name : '—'}</Text>
-                      </View>
-                      <View style={[styles.summaryIconCircle, styles.summaryIconCircleMuted]}>
-                        <Ionicons name="person-outline" size={18} color={'rgba(255,255,255,0.86)'} />
-                      </View>
+                    <View style={styles.summaryInlineText}>
+                      <Text style={styles.summaryInlineLabel}>סוג אירוע</Text>
+                      <Text style={styles.summaryInlineValue}>{form.eventType || 'טרם נבחר'}</Text>
                     </View>
                   </View>
 
-                  <View style={styles.summaryFooter}>
-                    <View style={styles.statusRow}>
-                      <View style={[styles.statusChip, isFormValid ? styles.statusChipReady : null]}>
-                        <Text style={[styles.statusChipText, isFormValid ? styles.statusChipTextReady : null]}>
-                          {isFormValid ? 'מוכן לשמירה' : 'טיוטה חדשה'}
-                        </Text>
-                      </View>
-                      <Text style={styles.statusLabel}>סטטוס</Text>
+                  <View style={styles.summaryInlineItem}>
+                    <View style={styles.summaryInlineIconCircle}>
+                      <Ionicons name="text-outline" size={18} color={stylesTokens.primary} />
                     </View>
-
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="צור אירוע"
-                      disabled={!isFormValid || saving}
-                      onPress={() => void handleAddEvent()}
-                      style={({ hovered, pressed }: any) => [
-                        styles.summaryCTA,
-                        (!isFormValid || saving) ? { opacity: 0.55 } : null,
-                        Platform.OS === 'web' && hovered ? styles.primaryCTAHover : null,
-                        pressed ? { opacity: 0.92 } : null,
-                      ]}
-                    >
-                      {saving ? <ActivityIndicator color={stylesTokens.white} /> : <Ionicons name="add" size={18} color={stylesTokens.white} />}
-                      <Text style={styles.primaryCTAText}>{saving ? 'שומר...' : 'צור אירוע'}</Text>
-                      <Ionicons name="arrow-forward" size={18} color={stylesTokens.white} />
-                    </Pressable>
+                    <View style={styles.summaryInlineText}>
+                      <Text style={styles.summaryInlineLabel}>שם האירוע</Text>
+                      <Text style={styles.summaryInlineValue}>{form.eventName.trim() ? form.eventName.trim() : 'טרם נבחר'}</Text>
+                    </View>
                   </View>
+
+                  <View style={styles.summaryInlineItem}>
+                    <View style={styles.summaryInlineIconCircle}>
+                      <Ionicons name="calendar-outline" size={18} color={stylesTokens.primary} />
+                    </View>
+                    <View style={styles.summaryInlineText}>
+                      <Text style={styles.summaryInlineLabel}>תאריך</Text>
+                      <Text style={styles.summaryInlineValue}>{form.date ? formatDate(form.date) : 'טרם נבחר'}</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.summaryInlineItem}>
+                    <View style={styles.summaryInlineIconCircle}>
+                      <Ionicons name="pin-outline" size={18} color={stylesTokens.primary} />
+                    </View>
+                    <View style={styles.summaryInlineText}>
+                      <Text style={styles.summaryInlineLabel}>מיקום</Text>
+                      <Text style={[styles.summaryInlineValue, !form.location.trim() ? styles.summaryInlineValueMuted : null]} numberOfLines={2}>
+                        {form.location.trim() ? `${form.location.trim()}${form.city.trim() ? `, ${form.city.trim()}` : ''}` : 'לא צוין מיקום'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.summaryInlineItem}>
+                    <View style={[styles.summaryInlineIconCircle, styles.summaryInlineIconCircleMuted]}>
+                      <Ionicons name="person-outline" size={18} color={stylesTokens.primary} />
+                    </View>
+                    <View style={styles.summaryInlineText}>
+                      <Text style={styles.summaryInlineLabel}>לקוח</Text>
+                      <Text style={styles.summaryInlineValue}>{selectedUser ? selectedUser.name : '—'}</Text>
+                    </View>
+                  </View>
+                </View>
+
+                <View style={styles.summaryInlineFooter}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="צור אירוע"
+                    disabled={!isFormValid || saving}
+                    onPress={() => void handleAddEvent()}
+                    style={({ hovered, pressed }: any) => [
+                      styles.summaryInlineCTA,
+                      !isFormValid || saving ? { opacity: 0.55 } : null,
+                      Platform.OS === 'web' && hovered ? styles.primaryCTAHover : null,
+                      pressed ? { opacity: 0.92 } : null,
+                    ]}
+                  >
+                    {saving ? <ActivityIndicator color={stylesTokens.white} /> : <Ionicons name="add" size={18} color={stylesTokens.white} />}
+                    <Text style={styles.primaryCTAText}>{saving ? 'שומר...' : 'צור אירוע'}</Text>
+                    <Ionicons name="arrow-forward" size={18} color={stylesTokens.white} />
+                  </Pressable>
                 </View>
               </View>
             </View>
-          ) : null}
+          </ScrollView>
 
         </View>
       </View>
@@ -791,7 +864,7 @@ export default function AdminEventsCreateWebScreen() {
 const stylesTokens = {
   primary: '#162d9c',
   primaryHover: '#112275',
-  bgLight: '#F9F9FB',
+  bgLight: '#F4F7FB',
   surface: '#FFFFFF',
   border: '#E5E7EB',
   text: '#111217',
@@ -803,7 +876,13 @@ const stylesTokens = {
 const styles = StyleSheet.create({
   page: {
     flex: 1,
-    backgroundColor: stylesTokens.bgLight,
+    backgroundColor: '#F7FAFF',
+    ...(Platform.OS === 'web'
+      ? ({
+          backgroundImage:
+            'radial-gradient(circle at top right, rgba(25,93,230,0.14), rgba(25,93,230,0) 40%), radial-gradient(circle at top left, rgba(232,241,255,0.95), rgba(232,241,255,0) 34%), radial-gradient(circle at bottom left, rgba(242,224,186,0.34), rgba(242,224,186,0) 32%), radial-gradient(circle at bottom center, rgba(240,203,70,0.12), rgba(240,203,70,0) 26%)',
+        } as any)
+      : null),
   },
 
   // Top header removed per request.
@@ -828,7 +907,109 @@ const styles = StyleSheet.create({
   mainContent: { gap: 18, paddingBottom: 40 },
   mainContentMobile: { paddingBottom: 130 },
 
-  hero: { gap: 8 },
+  heroShell: { gap: 18 },
+  backHeaderBtn: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    minWidth: 0,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 999,
+    backgroundColor: '#F8FAFD',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.08)',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  backHeaderBtnHover: {
+    backgroundColor: '#FFFFFF',
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 8px 18px rgba(11,28,65,0.06)' } as any) : null),
+  },
+  backHeaderBtnPressed: {
+    opacity: 0.92,
+    transform: [{ scale: 0.985 }],
+  },
+  backHeaderBtnText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: stylesTokens.text,
+    textAlign: 'right',
+  },
+  heroCard: {
+    backgroundColor: 'rgba(255,255,255,0.98)',
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: 'rgba(25,93,230,0.08)',
+    padding: 24,
+    gap: 20,
+    ...(Platform.OS === 'web'
+      ? ({
+          boxShadow: '0 12px 30px rgba(11,28,65,0.05)',
+          backgroundImage: 'linear-gradient(135deg, rgba(248,250,253,0.98), rgba(247,250,255,0.98) 55%, rgba(255,250,240,0.95))',
+        } as any)
+      : {
+          shadowColor: '#0B1C41',
+          shadowOpacity: 0.06,
+          shadowRadius: 20,
+          shadowOffset: { width: 0, height: 10 },
+        }),
+  },
+  heroCardTopRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 16,
+    flexWrap: 'wrap',
+  },
+  heroTitleWrap: {
+    flex: 1,
+    minWidth: 280,
+    alignItems: 'stretch',
+    gap: 6,
+  },
+  heroEyebrow: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#195DE6',
+    textAlign: 'right',
+  },
+  heroTitle: {
+    fontSize: 26,
+    fontWeight: '900',
+    color: stylesTokens.text,
+    textAlign: 'right',
+  },
+  heroSubtitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: stylesTokens.textMuted,
+    textAlign: 'right',
+    lineHeight: 20,
+  },
+  heroPill: {
+    minWidth: 112,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 18,
+    backgroundColor: '#EEF4FF',
+    borderWidth: 1,
+    borderColor: 'rgba(25,93,230,0.16)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroPillValue: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#195DE6',
+    textAlign: 'center',
+  },
+  heroPillLabel: {
+    marginTop: 4,
+    fontSize: 11,
+    fontWeight: '700',
+    color: stylesTokens.textMuted,
+    textAlign: 'center',
+  },
 
   progressWrap: { marginTop: 10, gap: 10 },
   progressRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' },
@@ -839,6 +1020,167 @@ const styles = StyleSheet.create({
     backgroundColor: stylesTokens.primary,
     borderRadius: 999,
     ...(Platform.OS === 'web' ? ({ boxShadow: '0 0 10px rgba(22,45,156,0.35)' } as any) : null),
+  },
+  heroStatsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    flexWrap: 'wrap',
+  },
+  heroStatCard: {
+    flexGrow: 1,
+    flexBasis: 220,
+    minWidth: 200,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 18,
+    backgroundColor: '#F8FBFF',
+    borderWidth: 1,
+    borderColor: 'rgba(25,93,230,0.08)',
+    gap: 6,
+  },
+  heroStatLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: stylesTokens.textMuted,
+    textAlign: 'right',
+  },
+  heroStatValue: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: stylesTokens.text,
+    textAlign: 'right',
+  },
+  summaryInlineCard: {
+    backgroundColor: '#FCFDFF',
+    borderRadius: 24,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(25,93,230,0.08)',
+    gap: 18,
+    ...(Platform.OS === 'web'
+      ? ({
+          boxShadow: '0 8px 24px rgba(11,28,65,0.05)',
+          backgroundImage: 'linear-gradient(180deg, rgba(247,250,255,0.95), rgba(255,255,255,0.98))',
+        } as any)
+      : null),
+  },
+  summaryInlineHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 14,
+    flexWrap: 'wrap',
+  },
+  summaryInlineTitleWrap: {
+    flex: 1,
+    minWidth: 260,
+    gap: 4,
+    alignItems: 'stretch',
+  },
+  summaryInlineEyebrow: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: stylesTokens.primary,
+    textAlign: 'right',
+  },
+  summaryInlineTitle: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: stylesTokens.text,
+    textAlign: 'right',
+  },
+  summaryInlineSubtitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: stylesTokens.textMuted,
+    textAlign: 'right',
+  },
+  statusChipInline: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: '#F3F6FB',
+    borderWidth: 1,
+    borderColor: 'rgba(17, 24, 39, 0.08)',
+  },
+  statusChipInlineReady: {
+    backgroundColor: '#EEF4FF',
+    borderColor: 'rgba(22,45,156,0.16)',
+  },
+  statusChipInlineText: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: stylesTokens.textMuted,
+    textAlign: 'center',
+  },
+  statusChipInlineTextReady: {
+    color: stylesTokens.primary,
+  },
+  summaryInlineGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 14,
+  },
+  summaryInlineItem: {
+    flexGrow: 1,
+    flexBasis: 220,
+    minWidth: 220,
+    borderRadius: 18,
+    padding: 16,
+    backgroundColor: '#F8FBFF',
+    borderWidth: 1,
+    borderColor: 'rgba(25,93,230,0.08)',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  summaryInlineIconCircle: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: '#EAF1FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  summaryInlineIconCircleMuted: {
+    backgroundColor: '#F3F6FB',
+  },
+  summaryInlineText: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'stretch',
+  },
+  summaryInlineLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: stylesTokens.textMuted,
+    textAlign: 'right',
+  },
+  summaryInlineValue: {
+    marginTop: 4,
+    fontSize: 14,
+    fontWeight: '900',
+    color: stylesTokens.text,
+    textAlign: 'right',
+  },
+  summaryInlineValueMuted: {
+    color: stylesTokens.textMuted,
+    fontWeight: '700',
+  },
+  summaryInlineFooter: {
+    alignItems: 'flex-end',
+  },
+  summaryInlineCTA: {
+    minWidth: 220,
+    height: 52,
+    borderRadius: 18,
+    backgroundColor: stylesTokens.primary,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer', boxShadow: '0 12px 24px rgba(22,45,156,0.20)' } as any) : null),
   },
 
   section: { gap: 12 },
@@ -855,7 +1197,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 999,
-    backgroundColor: 'rgba(22,45,156,0.10)',
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -879,15 +1221,15 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 18,
     borderWidth: 2,
-    borderColor: 'transparent',
-    backgroundColor: stylesTokens.surface,
+    borderColor: 'rgba(25,93,230,0.04)',
+    backgroundColor: '#FCFDFF',
     ...(Platform.OS === 'web'
       ? ({ boxShadow: '0 4px 20px -2px rgba(0, 0, 0, 0.05)', cursor: 'pointer' } as any)
       : null),
   },
   typeCardDesktop: { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0 },
   typeCardHover: {
-    borderColor: '#E5E7EB',
+    borderColor: 'rgba(25,93,230,0.12)',
     ...(Platform.OS === 'web' ? ({ boxShadow: '0 10px 30px -6px rgba(17,24,39,0.10)' } as any) : null),
   },
   typeCardActive: {
@@ -898,11 +1240,11 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 14,
-    backgroundColor: 'rgba(22,45,156,0.10)',
+    backgroundColor: '#EAF1FF',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  typeIconActive: { backgroundColor: 'rgba(22,45,156,0.12)' },
+  typeIconActive: { backgroundColor: '#DCE8FF' },
   typeText: { marginTop: 12, gap: 4 },
   typeTitle: { fontSize: 16, fontWeight: '900', color: stylesTokens.text, textAlign: 'right' },
   typeHint: { fontSize: 12, fontWeight: '600', color: stylesTokens.textMuted, textAlign: 'right', lineHeight: 17 },
@@ -911,11 +1253,11 @@ const styles = StyleSheet.create({
   divider: { height: 1, backgroundColor: stylesTokens.border, marginVertical: 8 },
 
   card: {
-    backgroundColor: stylesTokens.surface,
+    backgroundColor: '#FCFDFF',
     borderRadius: 18,
     padding: 18,
     borderWidth: 1,
-    borderColor: 'rgba(17, 24, 39, 0.06)',
+    borderColor: 'rgba(25,93,230,0.08)',
     ...(Platform.OS === 'web' ? ({ boxShadow: '0 4px 20px -2px rgba(0, 0, 0, 0.05)' } as any) : null),
   },
 
@@ -926,8 +1268,8 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingHorizontal: 12,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
-    backgroundColor: '#F9FAFB',
+    borderColor: 'rgba(25,93,230,0.10)',
+    backgroundColor: '#F7FAFF',
     flexDirection: 'row-reverse',
     alignItems: 'center',
     gap: 10,
@@ -937,7 +1279,7 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 12,
-    backgroundColor: 'rgba(17, 24, 39, 0.04)',
+    backgroundColor: '#EEF4FF',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -954,16 +1296,16 @@ const styles = StyleSheet.create({
     marginTop: 10,
     height: 46,
     borderRadius: 14,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: '#F7FAFF',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: 'rgba(25,93,230,0.10)',
     paddingHorizontal: 12,
     paddingRight: 40,
     fontSize: 14,
     fontWeight: '800',
     color: stylesTokens.text,
   },
-  inputHover: { backgroundColor: '#F3F4F6' },
+  inputHover: { backgroundColor: '#F0F6FF' },
   inputFocused: {
     backgroundColor: stylesTokens.surface,
     borderColor: stylesTokens.primary,
@@ -976,8 +1318,8 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingHorizontal: 12,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
-    backgroundColor: '#F9FAFB',
+    borderColor: 'rgba(25,93,230,0.10)',
+    backgroundColor: '#F7FAFF',
     flexDirection: 'row-reverse',
     alignItems: 'center',
     gap: 12,
@@ -987,7 +1329,7 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 14,
-    backgroundColor: 'rgba(22,45,156,0.08)',
+    backgroundColor: '#EAF1FF',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1010,77 +1352,6 @@ const styles = StyleSheet.create({
     writingDirection: 'rtl',
   },
   miniHint: { marginTop: 10, fontSize: 12, fontWeight: '600', color: stylesTokens.textMuted, textAlign: 'right', lineHeight: 17 },
-
-  side: { width: 380, minWidth: 340, flexShrink: 0 },
-  sideSticky: {
-    gap: 14,
-    ...(Platform.OS === 'web' ? ({ position: 'sticky', top: 120 } as any) : null),
-  },
-
-  summaryCard: {
-    backgroundColor: '#0f1f6d',
-    borderRadius: 18,
-    padding: 18,
-    borderWidth: 0,
-    ...(Platform.OS === 'web'
-      ? ({
-          backgroundImage: 'linear-gradient(135deg, #162d9c, #0f1f6d)',
-          boxShadow: '0 20px 60px rgba(17,24,39,0.18)',
-        } as any)
-      : null),
-  },
-  summaryTitle: { width: '100%', fontSize: 16, fontWeight: '900', color: stylesTokens.white, textAlign: 'right', marginBottom: 12 },
-  summaryList: { gap: 14 },
-  summaryItem: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, verticalAlign: 'bottom' as any },
-  summaryIconCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  summaryIconCircleMuted: { backgroundColor: 'rgba(255,255,255,0.12)' },
-  summaryText: { flex: 1, minWidth: 0, alignItems: 'stretch' },
-  summaryLabel: {
-    width: '100%',
-    fontSize: 10,
-    fontWeight: '900',
-    color: 'rgba(255,255,255,0.75)',
-    textAlign: 'right',
-    writingDirection: 'rtl',
-  },
-  summaryValue: {
-    width: '100%',
-    marginTop: 2,
-    fontSize: 14,
-    fontWeight: '800',
-    color: stylesTokens.white,
-    textAlign: 'right',
-    writingDirection: 'rtl',
-  },
-  summaryValueMuted: { color: 'rgba(255,255,255,0.62)', fontStyle: 'italic' },
-
-  summaryFooter: { marginTop: 16, paddingTop: 14, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.14)', gap: 12 },
-  statusRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' },
-  statusLabel: { fontSize: 12, fontWeight: '700', color: 'rgba(255,255,255,0.75)', textAlign: 'right' },
-  statusChip: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.16)' },
-  statusChipReady: { backgroundColor: 'rgba(16, 185, 129, 0.22)' },
-  statusChipText: { fontSize: 11, fontWeight: '900', color: 'rgba(255,255,255,0.90)', textAlign: 'right' },
-  statusChipTextReady: { color: '#A7F3D0' },
-
-  summaryCTA: {
-    height: 52,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.22)',
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
-  },
 
   primaryCTA: {
     height: 52,

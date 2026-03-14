@@ -12,7 +12,6 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -25,6 +24,7 @@ import { supabase } from '@/lib/supabase';
 import { avatarService } from '@/lib/services/avatarService';
 import type { Event } from '@/types';
 import AdminProfileScreen from './admin-profile';
+import AdminWebPageHeader from '@/components/desktop/AdminWebPageHeader';
 
 const ui = {
   bgLight: '#f6f6f8',
@@ -134,20 +134,15 @@ function StatCard({
 }
 
 export default function AdminProfileWebScreen() {
-  const router = useRouter();
   const { width } = useWindowDimensions();
 
   if (width < 900) {
     return <AdminProfileScreen />;
   }
 
-  // On web we render inside the admin sidebar layout (sticky 270px sidebar).
-  // Use "content width" so breakpoints reflect available space, not full viewport.
-  const sidebarWidth = Platform.OS === 'web' ? 270 : 0;
-  const contentWidth = Math.max(0, width - sidebarWidth);
+  const contentWidth = Math.max(0, width);
   const isWide = contentWidth >= 1100;
   const isTightBars = contentWidth < 980;
-  const maxContentWidth = contentWidth >= 1900 ? 1600 : contentWidth >= 1600 ? 1480 : 1120;
   const [heroWidth, setHeroWidth] = useState(0);
   const isHeroStack = heroWidth > 0 ? heroWidth < 520 : contentWidth < 520;
 
@@ -364,7 +359,9 @@ export default function AdminProfileWebScreen() {
   return (
     <View style={styles.page}>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <View style={[styles.container, { maxWidth: maxContentWidth }]}>
+        <View style={styles.container}>
+          <AdminWebPageHeader eyebrow="חשבון מנהל" title="פרופיל מנהל" />
+
           {/* HERO */}
           <View
             style={styles.heroCard}
@@ -713,20 +710,27 @@ export default function AdminProfileWebScreen() {
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: ui.bgLight },
+  page: {
+    flex: 1,
+    backgroundColor: '#F7FAFF',
+    ...(Platform.OS === 'web'
+      ? ({
+          backgroundImage:
+            'radial-gradient(circle at top right, rgba(25,93,230,0.14), rgba(25,93,230,0) 40%), radial-gradient(circle at top left, rgba(232,241,255,0.95), rgba(232,241,255,0) 34%), radial-gradient(circle at bottom left, rgba(242,224,186,0.34), rgba(242,224,186,0) 32%), radial-gradient(circle at bottom center, rgba(240,203,70,0.12), rgba(240,203,70,0) 26%)',
+        } as any)
+      : null),
+  },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
   scroll: { flex: 1 },
-  // Align the page content to the right (RTL) on wide desktop.
-  // We keep a small right padding so cards won't touch the edge.
-  scrollContent: { paddingVertical: 18, paddingBottom: 28, paddingLeft: 18, paddingRight: 8, alignItems: 'flex-end' },
-  // On web we want the content to hug the right sidebar (RTL) instead of being centered,
-  // while still keeping a max width on large displays.
+  scrollContent: {
+    paddingHorizontal: 24,
+    paddingTop: 24,
+    paddingBottom: 32,
+    gap: 22,
+  },
   container: {
     width: '100%',
-    alignSelf: 'flex-end',
-    // Force right pinning in react-native-web (more reliable than alignSelf alone).
-    ...(Platform.OS === 'web' ? ({ marginLeft: 'auto', marginRight: 0 } as any) : null),
     gap: 18,
   },
 

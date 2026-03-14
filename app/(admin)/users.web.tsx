@@ -18,6 +18,7 @@ import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 
 import { colors } from '@/constants/colors';
+import AdminWebPageHeader from '@/components/desktop/AdminWebPageHeader';
 import { useDemoUsersStore } from '@/store/demoUsersStore';
 import { useUsersModel, type UserFilter } from '@/features/users/useUsersModel';
 import { userService, type UserWithMetadata } from '@/lib/services/userService';
@@ -277,6 +278,8 @@ export default function UsersWebScreen() {
   return (
     <View style={styles.page}>
       <View style={styles.filterBarOuter}>
+        <AdminWebPageHeader eyebrow="משתמשים" title="ניהול משתמשים" />
+
         {/* Card 1: Search */}
         <View style={styles.searchCard}>
           <View style={styles.searchCardHeader}>
@@ -938,9 +941,18 @@ export default function UsersWebScreen() {
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: '#f6f7f9' },
+  page: {
+    flex: 1,
+    backgroundColor: '#F7FAFF',
+    ...(Platform.OS === 'web'
+      ? ({
+          backgroundImage:
+            'radial-gradient(circle at top right, rgba(25,93,230,0.14), rgba(25,93,230,0) 40%), radial-gradient(circle at top left, rgba(232,241,255,0.95), rgba(232,241,255,0) 34%), radial-gradient(circle at bottom left, rgba(242,224,186,0.34), rgba(242,224,186,0) 32%), radial-gradient(circle at bottom center, rgba(240,203,70,0.12), rgba(240,203,70,0) 26%)',
+        } as any)
+      : null),
+  },
 
-  filterBarOuter: { paddingHorizontal: 32, paddingBottom: 16, paddingTop: 18, gap: 12 },
+  filterBarOuter: { paddingHorizontal: 24, paddingBottom: 0, paddingTop: 24, gap: 12 },
   searchCard: {
     backgroundColor: colors.white,
     borderRadius: 18,
@@ -992,8 +1004,8 @@ const styles = StyleSheet.create({
 
   contentRow: {
     flex: 1,
-    paddingHorizontal: 32,
-    paddingBottom: 24,
+    paddingHorizontal: 24,
+    paddingBottom: 32,
     flexDirection: 'row-reverse',
     alignItems: 'flex-start',
     gap: 16,
