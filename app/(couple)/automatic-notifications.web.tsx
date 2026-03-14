@@ -4,6 +4,8 @@ import { useWindowDimensions } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
+import AdminWebPageHeader from '@/components/desktop/AdminWebPageHeader';
+import { colors } from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
 import { eventService } from '@/lib/services/eventService';
 import { useUserStore } from '@/store/userStore';
@@ -291,11 +293,13 @@ export default function AutomaticNotificationsWebScreen() {
   const { userData, userType } = useUserStore();
   const canEdit = userType === 'admin' || userType === 'employee';
   const isReadOnly = !canEdit;
-  const params = useLocalSearchParams<{ eventId?: string | string[] }>();
+  const showAdminChrome = canEdit;
+  const params = useLocalSearchParams<{ eventId?: string | string[]; returnTo?: string | string[] }>();
   const activeUserId = useEventSelectionStore((s) => s.activeUserId);
   const activeEventId = useEventSelectionStore((s) => s.activeEventId);
 
   const queryEventId = typeof params.eventId === 'string' ? params.eventId : Array.isArray(params.eventId) ? params.eventId[0] : undefined;
+  const queryReturnTo = typeof params.returnTo === 'string' ? params.returnTo : Array.isArray(params.returnTo) ? params.returnTo[0] : undefined;
   const resolvedEventId = useMemo(() => {
     return (
       String(
@@ -306,6 +310,16 @@ export default function AutomaticNotificationsWebScreen() {
       ).trim() || null
     );
   }, [activeEventId, activeUserId, queryEventId, userData?.event_id, userData?.id]);
+  const backHref = useMemo(() => {
+    if (queryReturnTo) return String(queryReturnTo);
+    if (showAdminChrome) {
+      return resolvedEventId ? `/(admin)/admin-event-details?id=${encodeURIComponent(resolvedEventId)}` : '/(admin)/admin-events';
+    }
+    return resolvedEventId ? `/(couple)?eventId=${encodeURIComponent(resolvedEventId)}` : '/(couple)';
+  }, [queryReturnTo, resolvedEventId, showAdminChrome]);
+  const handleBackPress = useCallback(() => {
+    router.replace(backHref as any);
+  }, [backHref, router]);
 
   const ui = useMemo(
     () => ({
@@ -1434,6 +1448,15 @@ export default function AutomaticNotificationsWebScreen() {
 
   const timelineRows = useMemo(() => combinedCards.map((c) => c.row), [combinedCards]);
   const timelineUseScroll = timelineRows.length > 6;
+  const adminHeaderMetaItems = useMemo(
+    () =>
+      showAdminChrome
+        ? [subtitleFromEvent(event), formatHeDate((event as any)?.date), timelineRows.length ? `${timelineRows.length} הודעות` : '']
+            .filter(Boolean)
+            .map((item) => String(item))
+        : [],
+    [event, showAdminChrome, timelineRows.length]
+  );
 
   const iconForType = (row: NotificationSettingRow) => {
     const t = row.notification_type;
@@ -1442,6 +1465,56 @@ export default function AutomaticNotificationsWebScreen() {
     if (t.includes('reminder_2')) return 'calendar-outline';
     if (t.includes('after')) return 'heart-outline';
     return 'mail-outline';
+  };
+
+  const getRowTone = (row: NotificationSettingRow, isFlow = false) => {
+    const t = String(row.notification_type || '').trim();
+    if (String(row.channel || 'SMS') === 'WHATSAPP') {
+      return {
+        accent: '#22C55E',
+        soft: 'rgba(34,197,94,0.10)',
+        border: 'rgba(34,197,94,0.18)',
+        icon: 'rgba(34,197,94,0.14)',
+      };
+    }
+    if (isFlow) {
+      return {
+        accent: '#8B5CF6',
+        soft: 'rgba(139,92,246,0.10)',
+        border: 'rgba(139,92,246,0.18)',
+        icon: 'rgba(139,92,246,0.14)',
+      };
+    }
+    if (t.includes('reminder_1')) {
+      return {
+        accent: '#2563EB',
+        soft: 'rgba(37,99,235,0.10)',
+        border: 'rgba(37,99,235,0.18)',
+        icon: 'rgba(37,99,235,0.14)',
+      };
+    }
+    if (t.includes('reminder_2')) {
+      return {
+        accent: '#4F46E5',
+        soft: 'rgba(79,70,229,0.10)',
+        border: 'rgba(79,70,229,0.18)',
+        icon: 'rgba(79,70,229,0.14)',
+      };
+    }
+    if (t.includes('after')) {
+      return {
+        accent: '#F59E0B',
+        soft: 'rgba(245,158,11,0.12)',
+        border: 'rgba(245,158,11,0.20)',
+        icon: 'rgba(245,158,11,0.16)',
+      };
+    }
+    return {
+      accent: '#0F172A',
+      soft: 'rgba(15,23,42,0.06)',
+      border: 'rgba(15,23,42,0.10)',
+      icon: 'rgba(15,23,42,0.08)',
+    };
   };
 
   const toggleNotification = async (row: NotificationSettingRow) => {
@@ -2329,7 +2402,7 @@ export default function AutomaticNotificationsWebScreen() {
   if (loading) {
     return (
       <View style={styles.page}>
-        <View style={[styles.bg, { backgroundColor: ui.bgLight }]} />
+        <View style={[styles.bg, { backgroundColor: showAdminChrome ? '#E8F1FF' : ui.bgLight }]} />
         <View style={styles.center}>
           <ActivityIndicator size="large" color={ui.primary} />
           <Text style={styles.centerText}>טוען...</Text>
@@ -2341,10 +2414,10 @@ export default function AutomaticNotificationsWebScreen() {
   if (!resolvedEventId || !event) {
     return (
       <View style={styles.page}>
-        <View style={[styles.bg, { backgroundColor: ui.bgLight }]} />
+        <View style={[styles.bg, { backgroundColor: showAdminChrome ? '#E8F1FF' : ui.bgLight }]} />
         <View style={styles.center}>
           <Text style={styles.centerText}>לא נמצא אירוע.</Text>
-          <Pressable onPress={() => router.back()} style={styles.backInline}>
+          <Pressable onPress={handleBackPress} style={styles.backInline}>
             <Ionicons name="arrow-forward" size={18} color={ui.primary} />
             <Text style={[styles.backInlineText, { color: ui.primary }]}>חזרה</Text>
           </Pressable>
@@ -2356,10 +2429,10 @@ export default function AutomaticNotificationsWebScreen() {
   if (!settingsSupported) {
     return (
       <View style={styles.page}>
-        <View style={[styles.bg, { backgroundColor: ui.bgLight }]} />
+        <View style={[styles.bg, { backgroundColor: showAdminChrome ? '#E8F1FF' : ui.bgLight }]} />
         <View style={styles.center}>
           <Text style={styles.centerText}>הגדרות הודעות לא זמינות (אין טבלה notification_settings).</Text>
-          <Pressable onPress={() => router.back()} style={styles.backInline}>
+          <Pressable onPress={handleBackPress} style={styles.backInline}>
             <Ionicons name="arrow-forward" size={18} color={ui.primary} />
             <Text style={[styles.backInlineText, { color: ui.primary }]}>חזרה</Text>
           </Pressable>
@@ -2369,26 +2442,99 @@ export default function AutomaticNotificationsWebScreen() {
   }
 
   return (
-    <View style={styles.page}>
-      <View style={[styles.bg, { backgroundColor: ui.bgLight }]} />
+    <View style={[styles.page, showAdminChrome ? styles.pageAdmin : null]}>
+      <View style={[styles.bg, { backgroundColor: showAdminChrome ? '#E8F1FF' : ui.bgLight }]} />
 
-      <View style={styles.body}>
+      <View style={[styles.body, showAdminChrome ? styles.bodyAdmin : null]}>
         {/* תוכן מרכזי */}
-        <ScrollView style={styles.mainCol} contentContainerStyle={styles.mainColContent} showsVerticalScrollIndicator={false}>
-          {/* Timeline */}
-          <View style={styles.timelineCard}>
-            <View style={styles.timelineHeaderRow}>
-              <View style={{ width: 180 }} />
-              <View style={styles.timelineHeaderCenter}>
-                <Text style={styles.timelineHeaderTitle}>הודעות אוטומטיות</Text>
-                {isReadOnly ? <Text style={styles.timelineHeaderSubtitle}>תצוגת צפייה בלבד</Text> : null}
-              </View>
-              <View style={styles.timelineHeaderLeft}>
-                <Pressable onPress={() => router.back()} style={styles.backSmall} accessibilityRole="button" accessibilityLabel="חזרה">
-                  <Ionicons name="arrow-forward" size={18} color="#4b5563" />
-                </Pressable>
-              </View>
+        <ScrollView
+          style={[styles.mainCol, showAdminChrome ? styles.mainColAdmin : null]}
+          contentContainerStyle={[styles.mainColContent, showAdminChrome ? styles.mainColContentAdmin : null]}
+          showsVerticalScrollIndicator={false}
+        >
+          {showAdminChrome ? (
+            <View style={styles.heroShell}>
+              <AdminWebPageHeader
+                eyebrow="ניהול הודעות"
+                title="עריכת הודעות"
+                subtitleContent={
+                  <View style={styles.headerSubtitleBar}>
+                    <View style={styles.headerSubtitleMetaGroup}>
+                      {adminHeaderMetaItems.map((item) => (
+                        <View key={item} style={styles.headerSubtitleMetaChip}>
+                          <Text style={styles.headerSubtitleMetaText}>{item}</Text>
+                        </View>
+                      ))}
+                    </View>
+                    {canEdit ? (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="הוסף הודעה חדשה"
+                        onPress={openAddWizard}
+                        style={({ hovered, pressed }: any) => [
+                          styles.headerSubtitleActionBtn,
+                          Platform.OS === 'web' && hovered ? styles.headerSubtitleActionBtnHover : null,
+                          pressed ? { opacity: 0.92 } : null,
+                        ]}
+                      >
+                        <Ionicons name="add" size={16} color={colors.white} />
+                        <Text style={styles.headerSubtitleActionBtnText}>הוסף הודעה חדשה</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                }
+                showNav={false}
+                useDefaultActions={false}
+                leading={
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="חזרה"
+                    onPress={handleBackPress}
+                    style={({ hovered, pressed }: any) => [
+                      styles.backHeaderBtn,
+                      Platform.OS === 'web' && hovered ? styles.backHeaderBtnHover : null,
+                      pressed ? styles.backHeaderBtnPressed : null,
+                    ]}
+                  >
+                    <Ionicons name="arrow-forward" size={16} color={colors.text} />
+                    <Text style={styles.backHeaderBtnText}>חזרה</Text>
+                  </Pressable>
+                }
+                actions={
+                  ownerTitle ? (
+                    <View style={styles.headerOwnerBadge}>
+                      <Ionicons name="person-outline" size={15} color={colors.gray[600]} />
+                      <Text style={styles.headerOwnerName} numberOfLines={1}>
+                        {ownerTitle}
+                      </Text>
+                    </View>
+                  ) : null
+                }
+              />
             </View>
+          ) : null}
+
+          {/* Timeline */}
+          <View style={[styles.timelineCard, showAdminChrome ? styles.timelineCardAdmin : null]}>
+            {showAdminChrome ? (
+              <View style={styles.timelineSectionHeader}>
+                <Text style={styles.timelineSectionTitle}>ציר הודעות</Text>
+                <Text style={styles.timelineSectionSubtitle}>בחירה מהירה של כל הודעה לעריכה, תזמון ושליחה.</Text>
+              </View>
+            ) : (
+              <View style={styles.timelineHeaderRow}>
+                <View style={{ width: 180 }} />
+                <View style={styles.timelineHeaderCenter}>
+                  <Text style={styles.timelineHeaderTitle}>הודעות אוטומטיות</Text>
+                  {isReadOnly ? <Text style={styles.timelineHeaderSubtitle}>תצוגת צפייה בלבד</Text> : null}
+                </View>
+                <View style={styles.timelineHeaderLeft}>
+                  <Pressable onPress={handleBackPress} style={styles.backSmall} accessibilityRole="button" accessibilityLabel="חזרה">
+                    <Ionicons name="arrow-forward" size={18} color="#4b5563" />
+                  </Pressable>
+                </View>
+              </View>
+            )}
             {timelineUseScroll ? (
               <ScrollView
                 horizontal
@@ -2399,6 +2545,7 @@ export default function AutomaticNotificationsWebScreen() {
                 {timelineRows.map((row, idx) => {
                   const active = row.notification_type === selectedType;
                   const abs = Math.abs(row.days_from_wedding);
+                  const tone = getRowTone(row, String(row.notification_type || '').startsWith('flow_step:'));
                   const label =
                     row.days_from_wedding === 0
                       ? 'יום האירוע'
@@ -2416,12 +2563,42 @@ export default function AutomaticNotificationsWebScreen() {
 
                   return (
                     <React.Fragment key={row.notification_type}>
-                      <Pressable onPress={() => setSelectedType(row.notification_type)} style={styles.timelineItemScroll}>
-                        <Text style={[styles.timelineLabel, active ? { color: ui.primary, fontWeight: '900' } : null]}>{label}</Text>
-                        <View style={[styles.timelineDot, active ? { backgroundColor: ui.primary } : null]}>
-                          {row.days_from_wedding === 0 ? <Ionicons name="calendar" size={20} color="#fff" /> : null}
+                      <Pressable
+                        onPress={() => setSelectedType(row.notification_type)}
+                        style={[
+                          styles.timelineItemScroll,
+                          showAdminChrome ? styles.timelineItemAdmin : null,
+                          showAdminChrome
+                            ? {
+                                borderColor: active ? tone.accent : tone.border,
+                                backgroundColor: active ? tone.soft : '#FBFCFF',
+                              }
+                            : null,
+                        ]}
+                      >
+                        {showAdminChrome ? (
+                          <View style={styles.timelineStepBadge}>
+                            <Text style={styles.timelineStepBadgeText}>{String(idx + 1).padStart(2, '0')}</Text>
+                          </View>
+                        ) : null}
+                        <Text style={[styles.timelineLabel, active ? { color: tone.accent, fontWeight: '900' } : null]}>{label}</Text>
+                        <View
+                          style={[
+                            styles.timelineDot,
+                            showAdminChrome ? styles.timelineDotAdmin : null,
+                            {
+                              backgroundColor: active ? tone.accent : tone.icon,
+                              borderColor: active ? tone.accent : tone.border,
+                            },
+                          ]}
+                        >
+                          {row.days_from_wedding === 0 ? (
+                            <Ionicons name="calendar" size={showAdminChrome ? 16 : 20} color={active ? '#fff' : tone.accent} />
+                          ) : (
+                            <Text style={[styles.timelineDotNumber, { color: active ? '#fff' : tone.accent }]}>{idx + 1}</Text>
+                          )}
                         </View>
-                        {active ? <View style={[styles.timelineActiveLine, { backgroundColor: ui.primary }]} /> : null}
+                        {active ? <View style={[styles.timelineActiveLine, { backgroundColor: tone.accent }]} /> : null}
                         <Text style={[styles.timelineTitle, active ? { color: '#1f2937', fontWeight: '900' } : null]} numberOfLines={1}>
                           {getDisplayTitle(row)}
                         </Text>
@@ -2438,6 +2615,7 @@ export default function AutomaticNotificationsWebScreen() {
                 {timelineRows.map((row, idx) => {
                 const active = row.notification_type === selectedType;
                 const abs = Math.abs(row.days_from_wedding);
+                const tone = getRowTone(row, String(row.notification_type || '').startsWith('flow_step:'));
                 const label =
                   row.days_from_wedding === 0 ? 'יום האירוע' : row.days_from_wedding < 0 ? `לפני ${abs} יום` : `אחרי ${abs} יום`;
                 const sendAt = (() => {
@@ -2451,12 +2629,42 @@ export default function AutomaticNotificationsWebScreen() {
 
                 return (
                   <React.Fragment key={row.notification_type}>
-                    <Pressable onPress={() => setSelectedType(row.notification_type)} style={styles.timelineItem}>
-                      <Text style={[styles.timelineLabel, active ? { color: ui.primary, fontWeight: '900' } : null]}>{label}</Text>
-                      <View style={[styles.timelineDot, active ? { backgroundColor: ui.primary } : null]}>
-                        {row.days_from_wedding === 0 ? <Ionicons name="calendar" size={20} color="#fff" /> : null}
+                    <Pressable
+                      onPress={() => setSelectedType(row.notification_type)}
+                      style={[
+                        styles.timelineItem,
+                        showAdminChrome ? styles.timelineItemAdmin : null,
+                        showAdminChrome
+                          ? {
+                              borderColor: active ? tone.accent : tone.border,
+                              backgroundColor: active ? tone.soft : '#FBFCFF',
+                            }
+                          : null,
+                      ]}
+                    >
+                      {showAdminChrome ? (
+                        <View style={styles.timelineStepBadge}>
+                          <Text style={styles.timelineStepBadgeText}>{String(idx + 1).padStart(2, '0')}</Text>
+                        </View>
+                      ) : null}
+                      <Text style={[styles.timelineLabel, active ? { color: tone.accent, fontWeight: '900' } : null]}>{label}</Text>
+                      <View
+                        style={[
+                          styles.timelineDot,
+                          showAdminChrome ? styles.timelineDotAdmin : null,
+                          {
+                            backgroundColor: active ? tone.accent : tone.icon,
+                            borderColor: active ? tone.accent : tone.border,
+                          },
+                        ]}
+                      >
+                        {row.days_from_wedding === 0 ? (
+                          <Ionicons name="calendar" size={showAdminChrome ? 16 : 20} color={active ? '#fff' : tone.accent} />
+                        ) : (
+                          <Text style={[styles.timelineDotNumber, { color: active ? '#fff' : tone.accent }]}>{idx + 1}</Text>
+                        )}
                       </View>
-                      {active ? <View style={[styles.timelineActiveLine, { backgroundColor: ui.primary }]} /> : null}
+                      {active ? <View style={[styles.timelineActiveLine, { backgroundColor: tone.accent }]} /> : null}
                       <Text style={[styles.timelineTitle, active ? { color: '#1f2937', fontWeight: '900' } : null]} numberOfLines={1}>
                         {getDisplayTitle(row)}
                       </Text>
@@ -2478,6 +2686,7 @@ export default function AutomaticNotificationsWebScreen() {
                 const row = item.row;
                 const selected = row.notification_type === selectedType;
                 const number = String(idx + 1).padStart(2, '0');
+                const tone = getRowTone(row, item.kind === 'flow');
                 const lastRun =
                   row.id && (row.channel || 'SMS') === 'SMS' ? lastSmsRunBySettingId[String(row.id)] : undefined;
                 const lastRunLabel = lastRun ? statusLabel(String(lastRun.status)) : null;
@@ -2510,6 +2719,24 @@ export default function AutomaticNotificationsWebScreen() {
                 const isAutoAllRecipients =
                   !isFlow && String(row.notification_type || '').trim() === 'reminder_1' && String((row as any)?.recipient_mode || '').trim() === 'all';
                 const autoAllCountText = isAutoAllRecipients ? `סה״כ אורחים: ${allGuests.length}` : '';
+                const cardSendAt = (() => {
+                  const raw = (row as any)?.notification_date;
+                  const d = raw ? new Date(String(raw)) : null;
+                  if (d && Number.isFinite(d.getTime())) return d;
+                  return computeNotificationDateTime((event as any)?.date, row.days_from_wedding ?? 0, '11:00');
+                })();
+                const cardDateLabel = formatHeDate(cardSendAt) || '—';
+                const cardTimeLabel = cardSendAt ? formatTime(cardSendAt) : '';
+                const cardScheduleLabel = [cardDateLabel, cardTimeLabel].filter(Boolean).join(' · ');
+                const cardChannelLabel = (row.channel || 'SMS') === 'WHATSAPP' ? 'WhatsApp' : 'SMS';
+                const sendStatusTitle = lastRunLabel?.text || 'טרם נשלח';
+                const sendStatusMeta = lastRunAt || 'לחץ לצפייה בפירוט';
+                const catchupCountLabel = showCatchup ? `${catchup?.count || 0} אורחים בתור` : '';
+                const catchupMeta = showCatchup
+                  ? catchup?.nextDueAt
+                    ? `הבא: ${formatHeDateTimeShort(catchup.nextDueAt)}`
+                    : 'לחץ לצפייה בתור'
+                  : '';
 
                 return (
                   <Pressable
@@ -2517,17 +2744,36 @@ export default function AutomaticNotificationsWebScreen() {
                     onPress={() => setSelectedType(row.notification_type)}
                     style={({ hovered }: any) => [
                       styles.messageCard,
+                      showAdminChrome ? styles.messageCardAdmin : null,
                       selected ? styles.messageCardSelected : null,
+                      showAdminChrome ? { borderColor: selected ? tone.accent : tone.border } : selected ? { borderColor: ui.primary } : null,
                       Platform.OS === 'web' && hovered && !selected ? styles.messageCardHover : null,
                     ]}
                   >
+                    {showAdminChrome ? <View style={[styles.cardAccentBar, { backgroundColor: tone.accent }]} /> : null}
                     <View style={styles.cardTopRow}>
+                      {showAdminChrome ? (
+                        <View style={styles.cardTopMeta}>
+                          <View style={[styles.cardStageBadge, { backgroundColor: tone.soft, borderColor: tone.border }]}>
+                            <Text style={[styles.cardStageBadgeText, { color: tone.accent }]}>{`שלב ${number}`}</Text>
+                          </View>
+                          <View style={styles.cardChannelBadge}>
+                            <Text style={styles.cardChannelBadgeText}>{cardChannelLabel}</Text>
+                          </View>
+                        </View>
+                      ) : null}
                       <Text style={styles.cardNumber}>{number}</Text>
-                      <View style={[styles.cardIconWrap, selected ? { backgroundColor: ui.primary } : null]}>
+                      <View
+                        style={[
+                          styles.cardIconWrap,
+                          showAdminChrome ? styles.cardIconWrapAdmin : null,
+                          { backgroundColor: selected ? tone.accent : tone.icon },
+                        ]}
+                      >
                         <Ionicons
                           name={(isFlow ? 'layers-outline' : (iconForType(row) as any)) as any}
                           size={20}
-                          color={selected ? '#fff' : ui.primary}
+                          color={selected ? '#fff' : tone.accent}
                         />
                       </View>
                     </View>
@@ -2537,7 +2783,7 @@ export default function AutomaticNotificationsWebScreen() {
                     </Text>
 
                     <View style={styles.cardMetaRow}>
-                      <Ionicons name="time-outline" size={14} color="#9ca3af" />
+                      <Ionicons name="time-outline" size={14} color={tone.accent} />
                       <Text style={styles.cardMetaText}>
                         {formatOffsetLabel(Number((row as any).days_from_wedding ?? 0) || 0)}
                       </Text>
@@ -2550,37 +2796,69 @@ export default function AutomaticNotificationsWebScreen() {
                         />
                       ) : null}
                     </View>
-
-                    {(row.channel || 'SMS') === 'SMS' ? (
-                      <View style={{ alignSelf: 'stretch', gap: 8 }}>
-                        <Pressable
-                          onPress={(e: any) => {
-                            e?.stopPropagation?.();
-                            e?.preventDefault?.();
-                            void openSendStatus(row);
-                          }}
-                          style={({ pressed }: any) => [styles.sendStatusPill, pressed ? { opacity: 0.9 } : null]}
-                        >
-                          <Ionicons name="checkmark-done-outline" size={14} color={lastRunLabel?.color || 'rgba(100,116,139,1)'} />
-                          <Text style={[styles.sendStatusText, { color: lastRunLabel?.color || 'rgba(100,116,139,1)' }]} numberOfLines={1}>
-                            {lastRunLabel ? `${lastRunLabel.text}${lastRunAt ? ` · ${lastRunAt}` : ''}` : 'סטטוס: לא נשלח עדיין'}
+                    {showAdminChrome ? (
+                      <View style={styles.cardInsightsGrid}>
+                        <View style={[styles.cardInsightCard, styles.cardInsightCardStatic, { backgroundColor: tone.soft, borderColor: tone.border }]}>
+                          <View style={styles.cardInsightTopRow}>
+                            <View style={[styles.cardInsightIconWrap, { backgroundColor: tone.icon }]}>
+                              <Ionicons name="calendar-outline" size={15} color={tone.accent} />
+                            </View>
+                            <Text style={styles.cardInsightLabel}>מועד שליחה</Text>
+                          </View>
+                          <Text style={[styles.cardInsightValue, { color: tone.accent }]} numberOfLines={1}>
+                            {cardScheduleLabel}
                           </Text>
-                        </Pressable>
+                          <Text style={[styles.cardInsightMeta, { color: tone.accent }]}>התזמון שנקבע להודעה</Text>
+                        </View>
 
-                        {showCatchup ? (
-                          <Pressable
-                            onPress={(e: any) => {
-                              e?.stopPropagation?.();
-                              e?.preventDefault?.();
-                              void openCatchupQueue(row);
-                            }}
-                            style={({ pressed }: any) => [styles.sendStatusPill, pressed ? { opacity: 0.9 } : null]}
-                          >
-                            <Ionicons name="time-outline" size={14} color={'rgba(2,6,23,0.75)'} />
-                            <Text style={[styles.sendStatusText, { color: 'rgba(2,6,23,0.75)' }]} numberOfLines={1}>
-                              {catchupText}
-                            </Text>
-                          </Pressable>
+                        {(row.channel || 'SMS') === 'SMS' ? (
+                          <>
+                            <Pressable
+                              onPress={(e: any) => {
+                                e?.stopPropagation?.();
+                                e?.preventDefault?.();
+                                void openSendStatus(row);
+                              }}
+                              style={({ pressed }: any) => [styles.cardInsightCard, styles.cardInsightCardInteractive, pressed ? { opacity: 0.92 } : null]}
+                            >
+                              <View style={styles.cardInsightTopRow}>
+                                <View style={[styles.cardInsightIconWrap, { backgroundColor: 'rgba(15,23,42,0.05)' }]}>
+                                  <Ionicons name="checkmark-done-outline" size={15} color={lastRunLabel?.color || 'rgba(100,116,139,1)'} />
+                                </View>
+                                <Text style={styles.cardInsightLabel}>סטטוס שליחה</Text>
+                              </View>
+                              <Text style={[styles.cardInsightValue, { color: lastRunLabel?.color || 'rgba(51,65,85,1)' }]} numberOfLines={1}>
+                                {sendStatusTitle}
+                              </Text>
+                              <Text style={styles.cardInsightMeta} numberOfLines={1}>
+                                {sendStatusMeta}
+                              </Text>
+                            </Pressable>
+
+                            {showCatchup ? (
+                              <Pressable
+                                onPress={(e: any) => {
+                                  e?.stopPropagation?.();
+                                  e?.preventDefault?.();
+                                  void openCatchupQueue(row);
+                                }}
+                                style={({ pressed }: any) => [styles.cardInsightCard, styles.cardInsightCardInteractive, pressed ? { opacity: 0.92 } : null]}
+                              >
+                                <View style={styles.cardInsightTopRow}>
+                                  <View style={[styles.cardInsightIconWrap, { backgroundColor: 'rgba(59,130,246,0.10)' }]}>
+                                    <Ionicons name="people-outline" size={15} color="rgba(37,99,235,1)" />
+                                  </View>
+                                  <Text style={styles.cardInsightLabel}>אורחים חדשים בתור</Text>
+                                </View>
+                                <Text style={[styles.cardInsightValue, { color: 'rgba(15,23,42,0.92)' }]} numberOfLines={1}>
+                                  {catchupCountLabel}
+                                </Text>
+                                <Text style={styles.cardInsightMeta} numberOfLines={1}>
+                                  {catchupMeta}
+                                </Text>
+                              </Pressable>
+                            ) : null}
+                          </>
                         ) : null}
                       </View>
                     ) : null}
@@ -2824,22 +3102,6 @@ export default function AutomaticNotificationsWebScreen() {
           ) : null}
         </ScrollView>
       </View>
-
-      {/* FAB: Add flow step (like Users page) */}
-      {canEdit ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="הוסף כרטיסיה"
-          onPress={openAddWizard}
-          style={({ hovered, pressed }: any) => [
-            styles.fabAddStep,
-            Platform.OS === 'web' && hovered ? styles.fabAddStepHover : null,
-            pressed ? { opacity: 0.92 } : null,
-          ]}
-        >
-          <Ionicons name="add" size={22} color="#fff" />
-        </Pressable>
-      ) : null}
 
       {/* Add Step Wizard (2-step form) */}
       {addWizardOpen ? (
@@ -5083,6 +5345,9 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
     backgroundColor: 'transparent',
   },
+  pageAdmin: {
+    backgroundColor: '#E8F1FF',
+  },
 
   bg: {
     ...StyleSheet.absoluteFillObject,
@@ -5094,6 +5359,125 @@ const styles = StyleSheet.create({
   backInlineText: { fontSize: 13, fontWeight: '900' },
 
   body: { flex: 1, minHeight: 0 },
+  bodyAdmin: {
+    width: '100%',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 20,
+    paddingTop: 18,
+  },
+  heroShell: { gap: 18 },
+  backHeaderBtn: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    minWidth: 0,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 999,
+    backgroundColor: '#F8FAFD',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.08)',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  backHeaderBtnHover: {
+    backgroundColor: '#FFFFFF',
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 8px 18px rgba(11,28,65,0.06)' } as any) : null),
+  },
+  backHeaderBtnPressed: {
+    opacity: 0.92,
+    transform: [{ scale: 0.985 }],
+  },
+  backHeaderBtnText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.text,
+    textAlign: 'right',
+  },
+  headerSubtitleBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    flexWrap: 'wrap',
+  },
+  headerSubtitleMetaGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    gap: 10,
+    flexWrap: 'nowrap',
+    flex: 1,
+  },
+  headerSubtitleMetaChip: {
+    minHeight: 32,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: '#F8FAFD',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.07)',
+    ...(Platform.OS === 'web'
+      ? ({
+          boxShadow: '0 4px 12px rgba(11,28,65,0.04)',
+        } as any)
+      : null),
+  },
+  headerSubtitleMetaText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.gray[600],
+    textAlign: 'right',
+  },
+  headerSubtitleActionBtn: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    minHeight: 38,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: colors.primary,
+    borderWidth: 1,
+    borderColor: 'rgba(25,93,230,0.18)',
+    flexShrink: 0,
+    ...(Platform.OS === 'web'
+      ? ({
+          cursor: 'pointer',
+          boxShadow: '0 10px 22px rgba(25,93,230,0.18)',
+        } as any)
+      : null),
+  },
+  headerSubtitleActionBtnHover: {
+    backgroundColor: '#134FC5',
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 12px 24px rgba(25,93,230,0.22)' } as any) : null),
+  },
+  headerSubtitleActionBtnText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: colors.white,
+    textAlign: 'right',
+  },
+  headerOwnerBadge: {
+    maxWidth: '100%',
+    flexDirection: 'row',
+    flexWrap: 'nowrap',
+    alignItems: 'center',
+    gap: 10,
+    minWidth: 0,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: '#F8FAFD',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+  },
+  headerOwnerName: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.text,
+    textAlign: 'right',
+  },
 
   formBlock: { gap: 8 },
   timeBlock: { alignItems: 'flex-end', width: '100%' },
@@ -6049,7 +6433,9 @@ const styles = StyleSheet.create({
 
   // Main column (מרכז)
   mainCol: { flex: 1, minWidth: 0, backgroundColor: '#fff' },
+  mainColAdmin: { backgroundColor: 'transparent' },
   mainColContent: { padding: 24, paddingBottom: 40, gap: 20 },
+  mainColContentAdmin: { paddingHorizontal: 0, paddingTop: 0, paddingBottom: 40, gap: 18 },
 
   timelineCard: {
     borderRadius: 12,
@@ -6058,6 +6444,28 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E5E7EB',
     ...(Platform.OS === 'web' ? ({ boxShadow: '0 4px 16px rgba(0,0,0,0.04)' } as any) : null),
+  },
+  timelineCardAdmin: {
+    borderRadius: 24,
+    padding: 22,
+    borderColor: 'rgba(6,23,62,0.06)',
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 8px 24px rgba(11,28,65,0.04)' } as any) : null),
+  },
+  timelineSectionHeader: {
+    gap: 4,
+    marginBottom: 16,
+  },
+  timelineSectionTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'right',
+  },
+  timelineSectionSubtitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.gray[600],
+    textAlign: 'right',
   },
 
   timelineHeaderRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
@@ -6089,6 +6497,16 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? ({ direction: 'ltr' } as any) : null),
   },
   timelineItem: { alignItems: 'center', gap: 8, flex: 1, ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
+  timelineItemAdmin: {
+    minHeight: 168,
+    paddingHorizontal: 12,
+    paddingVertical: 14,
+    borderRadius: 20,
+    borderWidth: 1,
+    justifyContent: 'flex-start',
+    backgroundColor: '#FBFCFF',
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 10px 24px rgba(11,28,65,0.04)' } as any) : null),
+  },
   timelineScroller: { width: '100%' },
   timelineRowScroll: {
     flexDirection: 'row',
@@ -6104,21 +6522,49 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
+  timelineStepBadge: {
+    minWidth: 42,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 6px 14px rgba(11,28,65,0.05)' } as any) : null),
+  },
+  timelineStepBadgeText: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: 'rgba(100,116,139,1)',
+    textAlign: 'center',
+    writingDirection: 'ltr',
+  },
   timelineLabel: { fontSize: 12, fontWeight: '800', color: '#9CA3AF', textAlign: 'center' },
   timelineDot: {
     width: 14,
     height: 14,
     borderRadius: 999,
     backgroundColor: '#D1D5DB',
+    borderWidth: 1,
+    borderColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  timelineDotAdmin: {
+    width: 38,
+    height: 38,
+  },
+  timelineDotNumber: {
+    fontSize: 13,
+    fontWeight: '900',
+    textAlign: 'center',
   },
   timelineActiveLine: { width: 2, height: 26, marginVertical: 2 },
   timelineTitle: { fontSize: 13, fontWeight: '800', color: '#9CA3AF', textAlign: 'center' },
   timelineDate: { fontSize: 11, fontWeight: '900', color: '#111827', textAlign: 'center', marginTop: 2, writingDirection: 'ltr' },
   timelineTime: { fontSize: 12, fontWeight: '900', color: '#111827', textAlign: 'center', marginTop: 1, writingDirection: 'ltr' },
-  timelineConnector: { width: 60, height: 1, backgroundColor: '#E5E7EB', alignSelf: 'center', marginBottom: 50 },
-  timelineConnectorScroll: { width: 42, height: 1, backgroundColor: '#E5E7EB', alignSelf: 'center', marginTop: 28 },
+  timelineConnector: { width: 60, height: 1, backgroundColor: '#D9E2F2', alignSelf: 'center', marginBottom: 76 },
+  timelineConnectorScroll: { width: 42, height: 1, backgroundColor: '#D9E2F2', alignSelf: 'center', marginTop: 48 },
 
   cardsContainer: { gap: 16 },
   cardsRow: {
@@ -6340,17 +6786,107 @@ const styles = StyleSheet.create({
     borderColor: '#F3F4F6',
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer', boxShadow: '0 6px 20px rgba(0,0,0,0.05)' } as any) : null),
   },
-  messageCardHover: { borderColor: '#E5E7EB' },
+  messageCardAdmin: {
+    position: 'relative',
+    overflow: 'hidden',
+    borderRadius: 22,
+    padding: 20,
+    backgroundColor: '#FFFFFF',
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 10px 28px rgba(11,28,65,0.05)' } as any) : null),
+  },
+  messageCardHover: {
+    borderColor: '#D8E3F8',
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 14px 30px rgba(11,28,65,0.08)' } as any) : null),
+  },
   messageCardSelected: { borderColor: '#4F46E5', ...(Platform.OS === 'web' ? ({ boxShadow: '0 8px 28px rgba(79,70,229,0.12)' } as any) : null) },
+  cardAccentBar: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    left: 0,
+    height: 4,
+  },
 
   cardTopRow: { flexDirection: 'row-reverse', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12 },
-  cardNumber: { fontSize: 36, fontWeight: '900', color: '#F3F4F6' },
+  cardTopMeta: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, flexWrap: 'wrap', maxWidth: '70%' },
+  cardStageBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  cardStageBadgeText: {
+    fontSize: 11,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  cardChannelBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(15,23,42,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.06)',
+  },
+  cardChannelBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: 'rgba(71,85,105,1)',
+    textAlign: 'center',
+  },
+  cardNumber: { fontSize: 36, fontWeight: '900', color: '#EEF2FF' },
   cardIconWrap: { width: 40, height: 40, borderRadius: 10, backgroundColor: 'rgba(79,70,229,0.08)', alignItems: 'center', justifyContent: 'center' },
+  cardIconWrapAdmin: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+  },
 
-  cardTitle: { fontSize: 20, fontWeight: '900', color: '#111827', textAlign: 'right', marginBottom: 10 },
+  cardTitle: { fontSize: 20, fontWeight: '900', color: '#111827', textAlign: 'right', marginBottom: 10, marginTop: 2 },
 
   cardMetaRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginBottom: 14 },
   cardMetaText: { fontSize: 13, fontWeight: '800', color: '#6B7280', textAlign: 'right', flexShrink: 1 },
+  cardInsightsGrid: { marginTop: -2, marginBottom: 12, flexDirection: 'row', flexWrap: 'wrap', gap: 10, alignSelf: 'stretch' },
+  cardInsightCard: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 180,
+    minWidth: 180,
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    gap: 6,
+  },
+  cardInsightCardStatic: {},
+  cardInsightCardInteractive: {
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderColor: 'rgba(2,6,23,0.08)',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  cardInsightTopRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  cardInsightIconWrap: { width: 28, height: 28, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  cardInsightLabel: { fontSize: 11, fontWeight: '900', color: 'rgba(100,116,139,1)', textAlign: 'right', flexShrink: 1 },
+  cardInsightValue: { fontSize: 14, fontWeight: '900', textAlign: 'right', flexShrink: 1 },
+  cardInsightMeta: { fontSize: 11, fontWeight: '700', color: 'rgba(100,116,139,0.92)', textAlign: 'right', flexShrink: 1 },
+  cardSchedulePill: {
+    marginTop: -2,
+    marginBottom: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  cardSchedulePillText: {
+    fontSize: 12,
+    fontWeight: '900',
+    textAlign: 'right',
+    flexShrink: 1,
+    writingDirection: 'ltr',
+  },
 
   sendStatusPill: {
     marginTop: -4,

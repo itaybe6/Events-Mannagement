@@ -24,6 +24,7 @@ type Props = {
   gridRows: number;
   onSetGrid: (cols: number, rows: number) => void;
   compact?: boolean;
+  hideHeader?: boolean;
 };
 
 export function TableSidebar({
@@ -39,6 +40,7 @@ export function TableSidebar({
   gridRows,
   onSetGrid,
   compact = false,
+  hideHeader = false,
 }: Props) {
   const [tab, setTab] = useState<TabKey>('tables');
 
@@ -70,26 +72,28 @@ export function TableSidebar({
       <View pointerEvents="none" style={styles.sidebarGlowPrimary} />
       <View pointerEvents="none" style={styles.sidebarGlowSecondary} />
 
-      <View style={styles.header}>
-        <View style={styles.headerBadge}>
-          <Ionicons name="color-wand-outline" size={14} color="#195DE6" />
-          <Text style={styles.headerBadgeText}>עיצוב סקיצה</Text>
-        </View>
-        <View style={styles.headerRow}>
-          <View style={styles.headerTextWrap}>
-            <Text style={styles.title}>מפת הושבה</Text>
-            <Text style={styles.subtitle}>סדרו את מפת השולחנות של האירוע</Text>
+      {!hideHeader ? (
+        <View style={styles.header}>
+          <View style={styles.headerBadge}>
+            <Ionicons name="color-wand-outline" size={14} color="#195DE6" />
+            <Text style={styles.headerBadgeText}>עיצוב סקיצה</Text>
           </View>
+          <View style={styles.headerRow}>
+            <View style={styles.headerTextWrap}>
+              <Text style={styles.title}>מפת הושבה</Text>
+              <Text style={styles.subtitle}>סדרו את מפת השולחנות של האירוע</Text>
+            </View>
 
-          <Pressable
-            onPress={onBack}
-            style={({ pressed }) => [styles.backBtn, pressed && { opacity: 0.85 }]}
-            hitSlop={10}
-          >
-            <Ionicons name="chevron-forward" size={22} color="rgba(17,24,39,0.70)" />
-          </Pressable>
+            <Pressable
+              onPress={onBack}
+              style={({ pressed }) => [styles.backBtn, pressed && { opacity: 0.85 }]}
+              hitSlop={10}
+            >
+              <Ionicons name="chevron-forward" size={22} color="rgba(17,24,39,0.70)" />
+            </Pressable>
+          </View>
         </View>
-      </View>
+      ) : null}
 
       <View style={styles.tabsRow}>
         <TabButton label="שולחנות" active={tab === 'tables'} onPress={() => setTab('tables')} />

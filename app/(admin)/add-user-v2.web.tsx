@@ -21,6 +21,7 @@ import { useDemoUsersStore } from '@/store/demoUsersStore';
 import { authService } from '@/lib/services/authService';
 import { userService, type UserWithMetadata } from '@/lib/services/userService';
 import { avatarService, type UploadableImage } from '@/lib/services/avatarService';
+import AdminWebPageHeader from '@/components/desktop/AdminWebPageHeader';
 
 type UserType = 'event_owner' | 'admin' | 'employee';
 
@@ -70,12 +71,7 @@ export default function AddUserV2WebScreen() {
   });
 
   const goBackOrUsers = useCallback(() => {
-    const canGoBack = typeof (router as any)?.canGoBack === 'function' ? (router as any).canGoBack() : false;
-    if (canGoBack) {
-      router.back();
-      return;
-    }
-    router.replace('/users');
+    router.replace('/(admin)/users');
   }, [router]);
 
   const canSubmit = useMemo(() => {
@@ -266,45 +262,43 @@ export default function AddUserV2WebScreen() {
 
   return (
     <View style={styles.page}>
-      <View style={styles.topBar}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="חזרה לרשימה"
-          onPress={goBackOrUsers}
-          style={({ hovered, pressed }: any) => [
-            styles.backBtn,
-            Platform.OS === 'web' && hovered ? styles.backBtnHover : null,
-            pressed ? styles.backBtnPressed : null,
-          ]}
-        >
-          <MaterialIcons name="arrow-forward" size={18} color={colors.gray[700]} style={styles.backBtnIcon} />
-          <Text style={styles.backBtnText}>חזרה לרשימה</Text>
-        </Pressable>
-      </View>
-
       <ScrollView
         style={styles.main}
         contentContainerStyle={styles.mainContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <View style={styles.headerGlow} pointerEvents="none" />
-            <View style={styles.headerGlow2} pointerEvents="none" />
-
-            <View style={styles.headerText}>
-              <Text style={styles.title}>יצירת משתמש חדש</Text>
-              <Text style={styles.subtitle}>הוספת משתמש למערכת וניהול תפקידים והרשאות — הכל לפי צבעי המותג.</Text>
-            </View>
-
-            <View style={styles.headerIcon} pointerEvents="none">
-              <View style={styles.headerIconInner}>
-                <MaterialIcons name="person-add-alt-1" size={42} color={colors.primary} />
+        <View style={styles.heroShell}>
+          <AdminWebPageHeader
+            eyebrow="משתמשים"
+            title="הוספת משתמש חדש"
+            subtitle="פרטים אישיים • תפקיד והרשאות • אבטחת חשבון"
+            showNav={false}
+            useDefaultActions={false}
+            leading={
+              <View style={styles.pageHeaderIcon}>
+                <MaterialIcons name="person-add-alt-1" size={28} color={colors.primary} />
               </View>
-            </View>
-          </View>
+            }
+            actions={
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="חזרה לרשימת המשתמשים"
+                onPress={goBackOrUsers}
+                style={({ hovered, pressed }: any) => [
+                  styles.backBtn,
+                  Platform.OS === 'web' && hovered ? styles.backBtnHover : null,
+                  pressed ? styles.backBtnPressed : null,
+                ]}
+              >
+                <MaterialIcons name="arrow-forward" size={18} color={colors.gray[700]} style={styles.backBtnIcon} />
+                <Text style={styles.backBtnText}>חזרה לרשימה</Text>
+              </Pressable>
+            }
+          />
+        </View>
 
+        <View style={styles.card}>
           <View style={styles.cardBody}>
             {checking ? (
               <View style={styles.bannerInfo}>
@@ -603,6 +597,11 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     alignItems: 'stretch',
     justifyContent: 'flex-start',
+    gap: 18,
+  },
+
+  heroShell: {
+    width: '100%',
   },
 
   card: {
@@ -619,6 +618,22 @@ const styles = StyleSheet.create({
     shadowRadius: 40,
     elevation: 10,
   },
+
+  pageHeaderIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: `rgba(${BRAND_RGB.primary}, 0.10)`,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.06,
+    shadowRadius: 20,
+    ...(Platform.OS === 'web' ? ({ boxShadow: `0 8px 24px rgba(${BRAND_RGB.primary}, 0.08)` } as any) : null),
+  } as any,
 
   cardHeader: {
     position: 'relative',

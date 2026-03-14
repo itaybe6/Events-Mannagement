@@ -23,6 +23,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors } from '@/constants/colors';
+import AdminWebPageHeader from '@/components/desktop/AdminWebPageHeader';
 import { useAdminEventDetailsModel } from '@/features/events/useAdminEventDetailsModel';
 import { eventService } from '@/lib/services/eventService';
 import { invitationAssetService } from '@/lib/services/invitationAssetService';
@@ -359,60 +360,106 @@ export default function AdminInvitationLinksScreen() {
   }
 
   const isDesktop = Platform.OS === 'web' && width >= 1024;
+  const isDesktopWide = Platform.OS === 'web' && width >= 1400;
+  const isLaptopDesktop = isDesktop && !isDesktopWide;
   const isMobile = width < 768;
   const isNarrow = width < 420;
+  const shouldStackDesktopFields = isNarrow || isLaptopDesktop;
   const topContentInset = Math.max(30, (insets.top || 0) + 14);
 
   return (
-    <View style={styles.page}>
-      <LinearGradient
-        colors={['#F7FAFF', '#E8F1FF', '#F2E0BA']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.bg}
-      />
-      <LinearGradient
-        colors={['rgba(255,255,255,0.68)', 'rgba(255,255,255,0)']}
-        start={{ x: 0.05, y: 0 }}
-        end={{ x: 0.75, y: 0.55 }}
-        style={styles.bgHighlight}
-      />
-      <LinearGradient
-        colors={['rgba(232,196,122,0.58)', 'rgba(244,224,186,0.22)', 'rgba(244,224,186,0)']}
-        start={{ x: 1, y: 0.95 }}
-        end={{ x: 0.18, y: 0.22 }}
-        style={styles.bgWarmGlow}
-      />
-      <View style={[styles.topSpacer, { paddingTop: topContentInset }]}>
-        <View style={styles.topRow}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => router.replace(`/(admin)/admin-event-details?id=${encodeURIComponent(id)}`)}
-            accessibilityRole="button"
-            accessibilityLabel="בחזרה לאירוע"
-            activeOpacity={0.86}
-          >
-            <Ionicons name="chevron-forward" size={22} color={colors.primary} />
-          </TouchableOpacity>
-          <Text style={styles.screenTitle}>לינק להזמנה</Text>
+    <View style={[styles.page, isDesktop ? styles.pageDesktop : null]}>
+      {!isDesktop ? (
+        <>
+          <LinearGradient
+            colors={['#F7FAFF', '#E8F1FF', '#F2E0BA']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.bg}
+          />
+          <LinearGradient
+            colors={['rgba(255,255,255,0.68)', 'rgba(255,255,255,0)']}
+            start={{ x: 0.05, y: 0 }}
+            end={{ x: 0.75, y: 0.55 }}
+            style={styles.bgHighlight}
+          />
+          <LinearGradient
+            colors={['rgba(232,196,122,0.58)', 'rgba(244,224,186,0.22)', 'rgba(244,224,186,0)']}
+            start={{ x: 1, y: 0.95 }}
+            end={{ x: 0.18, y: 0.22 }}
+            style={styles.bgWarmGlow}
+          />
+        </>
+      ) : null}
+      {!isDesktop ? (
+        <View style={[styles.topSpacer, { paddingTop: topContentInset }]}>
+          <View style={styles.topRow}>
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={() => router.replace(`/(admin)/admin-event-details?id=${encodeURIComponent(id)}`)}
+              accessibilityRole="button"
+              accessibilityLabel="בחזרה לאירוע"
+              activeOpacity={0.86}
+            >
+              <Ionicons name="chevron-forward" size={22} color={colors.primary} />
+            </TouchableOpacity>
+            <Text style={styles.screenTitle}>לינק להזמנה</Text>
+          </View>
         </View>
-      </View>
+      ) : null}
       <AppKeyboardAwareScrollView
         contentContainerStyle={[
           styles.content,
           isMobile ? styles.contentMobile : null,
+          isDesktopWide ? styles.contentDesktop : null,
+          isLaptopDesktop ? styles.contentDesktopLaptop : null,
           isNarrow ? styles.contentNarrow : null,
           { paddingTop: 8 },
         ]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={[styles.topGrid, isDesktop ? styles.topGridDesktop : null]}>
+        {isDesktop ? (
+          <View style={styles.desktopHeroShell}>
+            <AdminWebPageHeader
+              eyebrow={String(event.title ?? 'האירוע')}
+              title="לינק להזמנה"
+              subtitle="ניהול קישור, תצוגה ותוכן עמוד ההזמנה של האירוע."
+              showNav={false}
+              useDefaultActions={false}
+              leading={
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="חזרה לעמוד האירוע"
+                  onPress={() => router.replace(`/(admin)/admin-event-details?id=${encodeURIComponent(id)}`)}
+                  style={({ hovered, pressed }: any) => [
+                    styles.webBackBtn,
+                    Platform.OS === 'web' && hovered ? styles.webBackBtnHover : null,
+                    pressed ? styles.webBackBtnPressed : null,
+                  ]}
+                >
+                  <Ionicons name="arrow-forward" size={16} color={colors.text} />
+                  <Text style={styles.webBackBtnText}>חזרה</Text>
+                </Pressable>
+              }
+            />
+          </View>
+        ) : null}
+
+        <View style={[styles.topGrid, isDesktopWide ? styles.topGridDesktop : null, isLaptopDesktop ? styles.topGridDesktopLaptop : null]}>
           {/* Preview */}
-          <View style={[styles.card, isMobile ? styles.cardMobile : null, isDesktop ? styles.previewCardDesktop : null]}>
+          <View
+            style={[
+              styles.card,
+              isMobile ? styles.cardMobile : null,
+              isDesktopWide ? styles.cardDesktop : null,
+              isDesktopWide ? styles.previewCardDesktop : null,
+              isLaptopDesktop ? styles.previewCardDesktopLaptop : null,
+            ]}
+          >
             <View style={styles.cardHeaderRow}>
               <View style={styles.cardHeaderTextWrap}>
-                <Text style={styles.cardTitle}>תצוגה מקדימה</Text>
-                <Text style={styles.cardSubtitle}>כך עמוד ההזמנה ייראה למוזמנים שלך</Text>
+                <Text style={[styles.cardTitle, isDesktopWide ? styles.cardTitleDesktop : null]}>תצוגה מקדימה</Text>
+                <Text style={[styles.cardSubtitle, isDesktopWide ? styles.cardSubtitleDesktop : null]}>כך עמוד ההזמנה ייראה למוזמנים שלך</Text>
               </View>
               <View style={styles.badge}>
                 <Ionicons name="image-outline" size={14} color={colors.primary} />
@@ -420,11 +467,12 @@ export default function AdminInvitationLinksScreen() {
               </View>
             </View>
 
-            <View style={styles.previewWrap}>
+            <View style={[styles.previewWrap, isDesktopWide ? styles.previewWrapDesktop : null]}>
               <View
                 style={[
                   styles.previewMediaWrap,
                   isMobile ? styles.previewMediaWrapMobile : null,
+                  isLaptopDesktop ? styles.previewMediaWrapLaptop : null,
                   isNarrow ? styles.previewMediaWrapNarrow : null,
                 ]}
               >
@@ -487,7 +535,7 @@ export default function AdminInvitationLinksScreen() {
               </View>
             </View>
 
-            <View style={[styles.demoCard, isMobile ? styles.demoCardMobile : null]}>
+            <View style={[styles.demoCard, isMobile ? styles.demoCardMobile : null, isDesktop ? styles.demoCardDesktop : null]}>
               <View style={[styles.demoCardTop, isMobile ? styles.demoCardTopMobile : null]}>
                 <View style={styles.demoIconWrap}>
                   <Ionicons name="globe-outline" size={18} color={colors.primary} />
@@ -518,11 +566,19 @@ export default function AdminInvitationLinksScreen() {
           </View>
 
           {/* Form */}
-          <View style={[styles.card, isMobile ? styles.cardMobile : null, isDesktop ? styles.formCardDesktop : null]}>
+          <View
+            style={[
+              styles.card,
+              isMobile ? styles.cardMobile : null,
+              isDesktopWide ? styles.cardDesktop : null,
+              isDesktopWide ? styles.formCardDesktop : null,
+              isLaptopDesktop ? styles.formCardDesktopLaptop : null,
+            ]}
+          >
             <View style={styles.cardHeaderRow}>
               <View style={styles.cardHeaderTextWrap}>
-                <Text style={styles.cardTitle}>הגדרות הזמנה</Text>
-                <Text style={styles.cardSubtitle}>ערוך את התוכן שיוצג בדף ההזמנה שלך</Text>
+                <Text style={[styles.cardTitle, isDesktopWide ? styles.cardTitleDesktop : null]}>הגדרות הזמנה</Text>
+                <Text style={[styles.cardSubtitle, isDesktopWide ? styles.cardSubtitleDesktop : null]}>ערוך את התוכן שיוצג בדף ההזמנה שלך</Text>
               </View>
               <View style={[styles.badge, { backgroundColor: 'rgba(2,6,23,0.04)' }]}>
                 <Ionicons name={isWedding ? 'heart-outline' : 'pricetag-outline'} size={14} color={'rgba(2,6,23,0.72)'} />
@@ -532,9 +588,14 @@ export default function AdminInvitationLinksScreen() {
 
             {isWedding ? (
               <>
-                <View style={styles.formSectionCard}>
+                <View
+                  style={[
+                    styles.formSectionCard,
+                    isDesktopWide ? styles.formSectionCardDesktop : null,
+                  ]}
+                >
                   <Text style={styles.sectionTitle}>שמות</Text>
-                  <View style={[styles.row, isNarrow ? styles.rowStack : null]}>
+                  <View style={[styles.row, shouldStackDesktopFields ? styles.rowStack : null]}>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.label}>שם החתן *</Text>
                       <TextInput
@@ -560,9 +621,14 @@ export default function AdminInvitationLinksScreen() {
                   </View>
                 </View>
 
-                <View style={styles.formSectionCard}>
+                <View
+                  style={[
+                    styles.formSectionCard,
+                    isDesktopWide ? styles.formSectionCardDesktop : null,
+                  ]}
+                >
                   <Text style={styles.sectionTitle}>זמנים (אופציונלי)</Text>
-                  <View style={[styles.row, isNarrow ? styles.rowStack : null]}>
+                  <View style={[styles.row, shouldStackDesktopFields ? styles.rowStack : null]}>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.label}>שעת קבלת פנים</Text>
                       <TextInput
@@ -588,9 +654,14 @@ export default function AdminInvitationLinksScreen() {
                   </View>
                 </View>
 
-                <View style={styles.formSectionCard}>
+                <View
+                  style={[
+                    styles.formSectionCard,
+                    isDesktopWide ? styles.formSectionCardDesktop : null,
+                  ]}
+                >
                   <Text style={styles.sectionTitle}>הורים (אופציונלי)</Text>
-                  <View style={[styles.row, isNarrow ? styles.rowStack : null]}>
+                  <View style={[styles.row, shouldStackDesktopFields ? styles.rowStack : null]}>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.label}>הורי הכלה</Text>
                       <TextInput
@@ -617,7 +688,12 @@ export default function AdminInvitationLinksScreen() {
                 </View>
               </>
             ) : (
-              <View style={styles.formSectionCard}>
+              <View
+                style={[
+                  styles.formSectionCard,
+                  isDesktopWide ? styles.formSectionCardDesktop : null,
+                ]}
+              >
                 <Text style={styles.sectionTitle}>כותרת</Text>
                 <Text style={styles.label}>כותרת להזמנה *</Text>
                 <TextInput
@@ -631,12 +707,12 @@ export default function AdminInvitationLinksScreen() {
               </View>
             )}
 
-            <View style={styles.formFooter}>
+            <View style={[styles.formFooter, isDesktopWide ? styles.formFooterDesktop : null]}>
               <TouchableOpacity
                 onPress={() => void save()}
                 disabled={saving}
                 activeOpacity={0.9}
-                style={[styles.saveSimpleBtn, saving ? { opacity: 0.8 } : null]}
+                style={[styles.saveSimpleBtn, isDesktopWide ? styles.saveSimpleBtnDesktop : null, saving ? { opacity: 0.8 } : null]}
                 accessibilityRole="button"
                 accessibilityLabel="שמור שינויים"
               >
@@ -809,6 +885,15 @@ export default function AdminInvitationLinksScreen() {
 
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: '#E8F1FF' },
+  pageDesktop: {
+    backgroundColor: '#F7FAFF',
+    ...(Platform.OS === 'web'
+      ? ({
+          backgroundImage:
+            'radial-gradient(circle at top right, rgba(25,93,230,0.14), rgba(25,93,230,0) 40%), radial-gradient(circle at top left, rgba(232,241,255,0.95), rgba(232,241,255,0) 34%), radial-gradient(circle at bottom left, rgba(242,224,186,0.34), rgba(242,224,186,0) 32%), radial-gradient(circle at bottom center, rgba(240,203,70,0.12), rgba(240,203,70,0) 26%)',
+        } as any)
+      : null),
+  },
   bg: {
     ...StyleSheet.absoluteFillObject,
   },
@@ -853,6 +938,20 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   content: { padding: 18, paddingBottom: Platform.OS === 'web' ? 40 : 110, gap: 14 },
+  contentDesktop: {
+    width: '100%',
+    maxWidth: 1680,
+    alignSelf: 'center',
+    paddingHorizontal: 24,
+    paddingTop: 22,
+    gap: 18,
+  },
+  contentDesktopLaptop: {
+    maxWidth: 1240,
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    gap: 16,
+  },
   contentMobile: {},
   contentNarrow: { padding: 14, gap: 12 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 24 },
@@ -880,14 +979,79 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? ({ boxShadow: '0 10px 26px rgba(2,6,23,0.06)' } as any) : null),
   },
   cardMobile: { padding: 16, gap: 12 },
+  cardDesktop: {
+    borderRadius: 24,
+    padding: 18,
+    gap: 14,
+    borderColor: 'rgba(6,23,62,0.06)',
+    backgroundColor: 'rgba(255,255,255,0.97)',
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 14px 34px rgba(11,28,65,0.06)' } as any) : null),
+  },
   topGrid: { gap: 14 },
-  topGridDesktop: { flexDirection: ROW_DIR, alignItems: 'flex-start' },
-  previewCardDesktop: { flex: 1, minWidth: 420, maxWidth: 560 },
-  formCardDesktop: { flex: 1, minWidth: 520 },
+  topGridDesktop: { flexDirection: ROW_DIR, alignItems: 'stretch', gap: 18 },
+  topGridDesktopLaptop: {
+    flexDirection: 'row',
+    ...(Platform.OS === 'web'
+      ? ({
+          display: 'grid',
+        } as any)
+      : null),
+    alignItems: 'stretch',
+    width: '100%',
+    gap: 16,
+  },
+  desktopHeroShell: {
+    marginBottom: 6,
+  },
+  webBackBtn: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+  },
+  webBackBtnHover: {
+    backgroundColor: '#F8FAFD',
+    borderColor: 'rgba(15,69,230,0.12)',
+  },
+  webBackBtnPressed: {
+    opacity: 0.92,
+  },
+  webBackBtnText: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '900',
+    textAlign: 'right',
+  },
+  previewCardDesktop: { flex: 0.92, minWidth: 520, maxWidth: 660, alignSelf: 'stretch' },
+  previewCardDesktopLaptop: {
+    flex: 0,
+    width: '100%',
+    minWidth: 0,
+    maxWidth: '100%',
+    marginBottom: 10,
+    backgroundColor: '#FFFFFF',
+    zIndex: 1,
+  },
+  formCardDesktop: { flex: 1.4, minWidth: 760, alignSelf: 'stretch' },
+  formCardDesktopLaptop: {
+    flex: 0,
+    width: '100%',
+    minWidth: 0,
+    marginTop: 6,
+    backgroundColor: '#FFFFFF',
+    zIndex: 2,
+  },
   cardHeaderRow: { flexDirection: ROW_DIR, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   cardHeaderTextWrap: { flex: 1, minWidth: 0, gap: 4 },
   cardTitle: { fontSize: 15, fontWeight: '900', color: colors.text, textAlign: 'right' },
   cardSubtitle: { fontSize: 12, fontWeight: '700', color: 'rgba(17,24,39,0.58)', textAlign: 'right', lineHeight: 18 },
+  cardTitleDesktop: { fontSize: 18, color: '#102A56' },
+  cardSubtitleDesktop: { fontSize: 13, lineHeight: 19 },
 
   badge: { flexDirection: ROW_DIR, gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(15,69,230,0.08)' },
   badgeText: { fontSize: 12, fontWeight: '900', color: colors.primary, textAlign: 'right' },
@@ -899,6 +1063,16 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.90)',
     padding: 10,
     gap: 10,
+  },
+  previewWrapDesktop: {
+    borderRadius: 24,
+    padding: 14,
+    gap: 14,
+    borderColor: 'rgba(15,23,42,0.08)',
+    backgroundColor: '#FBFCFF',
+  },
+  previewMediaWrapLaptop: {
+    height: 280,
   },
   previewMediaWrap: {
     position: 'relative',
@@ -982,6 +1156,12 @@ const styles = StyleSheet.create({
     alignItems: 'stretch',
     gap: 10,
   },
+  demoCardDesktop: {
+    borderRadius: 18,
+    padding: 14,
+    backgroundColor: 'rgba(15,69,230,0.05)',
+    borderColor: 'rgba(15,69,230,0.14)',
+  },
   demoCardTop: { flexDirection: ROW_DIR, alignItems: 'center', width: '100%', minWidth: 0, gap: 10 },
   demoCardTopMobile: { flex: 0 },
   demoCardMobile: {
@@ -1031,6 +1211,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(15,69,230,0.08)',
   },
+  formSectionCardDesktop: {
+    padding: 16,
+    borderRadius: 20,
+    backgroundColor: 'rgba(249,251,255,0.98)',
+    borderColor: 'rgba(15,69,230,0.07)',
+  },
   sectionTitle: { marginTop: 2, marginBottom: 8, fontSize: 13, fontWeight: '900', color: 'rgba(17,24,39,0.82)', textAlign: 'right' },
   label: { marginTop: 2, fontSize: 12, fontWeight: '900', color: colors.text, textAlign: 'right' },
   input: {
@@ -1054,6 +1240,10 @@ const styles = StyleSheet.create({
     paddingTop: 14,
     borderTopWidth: 1,
     borderTopColor: 'rgba(15,69,230,0.08)',
+  },
+  formFooterDesktop: {
+    marginTop: 18,
+    paddingTop: 18,
   },
   primaryBtn: {
     flex: 1,
@@ -1081,6 +1271,11 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 8 },
     elevation: 5,
+  },
+  saveSimpleBtnDesktop: {
+    height: 56,
+    borderRadius: 18,
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 16px 28px rgba(15,69,230,0.20)' } as any) : null),
   },
   saveSimpleBtnText: {
     fontSize: 15,

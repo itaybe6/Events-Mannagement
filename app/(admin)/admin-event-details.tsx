@@ -17,15 +17,16 @@ import { ALIGN_LEFT, ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
 import { useUserStore } from '@/store/userStore';
 
 export default function AdminEventDetailsScreen() {
-  const { id } = useLocalSearchParams();
+  const { id, eventId } = useLocalSearchParams();
   const router = useRouter();
   const userType = useUserStore((state) => state.userType);
-  const eventId = useMemo(
-    () => (typeof id === 'string' ? id : Array.isArray(id) ? id[0] : ''),
-    [id]
-  );
+  const resolvedEventId = useMemo(() => {
+    const fromId = typeof id === 'string' ? id : Array.isArray(id) ? id[0] : '';
+    const fromEventId = typeof eventId === 'string' ? eventId : Array.isArray(eventId) ? eventId[0] : '';
+    return fromId || fromEventId || '';
+  }, [eventId, id]);
   const { event, setEvent, guests, userName, userAvatarUrl, loading, error, stats, refresh } =
-    useAdminEventDetailsModel(eventId);
+    useAdminEventDetailsModel(resolvedEventId);
   const [avatarPreviewOpen, setAvatarPreviewOpen] = useState(false);
   const [noTablesModalOpen, setNoTablesModalOpen] = useState(false);
   const [isPullRefreshing, setIsPullRefreshing] = useState(false);
@@ -63,7 +64,7 @@ export default function AdminEventDetailsScreen() {
   }, [router]);
 
   const handlePullToRefresh = useCallback(async () => {
-    if (!eventId || isPullRefreshing) return;
+    if (!resolvedEventId || isPullRefreshing) return;
     const refreshStartedAt = Date.now();
     setIsPullRefreshing(true);
     try {
@@ -76,7 +77,7 @@ export default function AdminEventDetailsScreen() {
       }
       setIsPullRefreshing(false);
     }
-  }, [eventId, isPullRefreshing, refresh]);
+  }, [resolvedEventId, isPullRefreshing, refresh]);
 
   if (loading) {
     return (
@@ -770,7 +771,11 @@ export default function AdminEventDetailsScreen() {
                 iconName="chatbubble-ellipses-outline"
                 iconBg="rgba(0,53,102,0.10)"
                 iconColor={colors.yaleBlue}
-                onPress={() => router.push(`/(admin)/admin-event-messages?eventId=${event.id}`)}
+                onPress={() =>
+                  router.push(
+                    `/(admin)/admin-event-messages?eventId=${event.id}&returnTo=${encodeURIComponent(`/(admin)/admin-event-details?id=${event.id}`)}`
+                  )
+                }
                 accessibilityLabel="עריכת הודעות"
               />
             ) : null}
@@ -791,7 +796,11 @@ export default function AdminEventDetailsScreen() {
               iconName="checkbox-outline"
               iconBg="rgba(0,53,102,0.10)"
               iconColor={colors.yaleBlue}
-              onPress={() => router.push(`/(admin)/admin-guest-checkin?eventId=${event.id}`)}
+              onPress={() =>
+                router.push(
+                  `/(admin)/admin-guest-checkin?eventId=${event.id}&returnTo=${encodeURIComponent(`/(admin)/admin-event-details?id=${event.id}`)}`
+                )
+              }
               accessibilityLabel="צ׳ק-אין אורחים"
             />
             <ActionRow

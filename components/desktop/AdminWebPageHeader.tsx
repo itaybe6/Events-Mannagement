@@ -100,6 +100,9 @@ const styles = StyleSheet.create({
     minHeight: 132,
     paddingHorizontal: 22,
     paddingVertical: 20,
+    position: 'relative',
+    overflow: 'visible',
+    zIndex: 20,
     borderRadius: 24,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
@@ -120,6 +123,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    position: 'relative',
+    overflow: 'visible',
+    zIndex: 21,
     gap: 18,
     minHeight: 50,
     flexWrap: 'wrap',
@@ -135,9 +141,9 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   logoWrap: {
-    width: 64,
-    height: 64,
-    borderRadius: 18,
+    width: 82,
+    height: 82,
+    borderRadius: 22,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: 'rgba(25,93,230,0.10)',
@@ -149,8 +155,8 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
   },
   logoImg: {
-    width: '78%',
-    height: '78%',
+    width: '88%',
+    height: '88%',
   },
   textWrap: {
     flex: 1,
@@ -167,7 +173,7 @@ const styles = StyleSheet.create({
   eyebrow: {
     fontSize: 12,
     fontWeight: '800',
-    color: '#195DE6',
+    color: colors.secondary,
     textAlign: 'right',
   },
   title: {
@@ -182,6 +188,9 @@ const styles = StyleSheet.create({
     gap: 12,
     flexShrink: 0,
     flexWrap: 'wrap',
+    position: 'relative',
+    overflow: 'visible',
+    zIndex: 22,
   },
   subtitleSection: {
     gap: 10,

@@ -641,8 +641,9 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
           {api.tables.map(t => {
             const sz = tableCellSize(t.type, t.seats, t.orientation);
             const isSelected = selected.has(t.id);
-            const color =
-              t.type === 'reserve' ? '#F59E0B' : t.type === 'knight' ? '#7C3AED' : '#2563EB';
+            const color = t.type === 'reserve' ? '#F0CB46' : '#06173E';
+            const tableFill = t.type === 'reserve' ? 'rgba(240,203,70,0.72)' : 'rgba(6,23,62,0.90)';
+            const tableBorder = t.type === 'reserve' ? '#F0CB46' : '#FFFFFF';
             return (
               <View
                 key={t.id}
@@ -654,8 +655,8 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
                     top: t.gridY * CELL_SIZE,
                     width: sz.w * CELL_SIZE,
                     height: sz.h * CELL_SIZE,
-                    backgroundColor: `${color}22`,
-                    borderColor: `${color}55`,
+                    backgroundColor: tableFill,
+                    borderColor: tableBorder,
                   },
                   isSelected ? styles.selectedRing : null,
                 ]}
@@ -666,8 +667,8 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
                     } as any)
                   : null)}
               >
-                <Text style={[styles.tableNum, { color }]}>{t.number ?? ''}</Text>
-                <Text style={styles.tableType}>{TABLE_LABELS[t.type]}</Text>
+                <Text style={[styles.tableNum, styles.tableTextOnDark]}>{t.number ?? ''}</Text>
+                <Text style={[styles.tableType, styles.tableTextOnDark]}>{TABLE_LABELS[t.type]}</Text>
               </View>
             );
           })}
@@ -788,23 +789,25 @@ function InlineEditor({
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#e5e7eb' },
+  root: { flex: 1, backgroundColor: 'transparent' },
   workArea: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 18,
+    padding: 0,
     ...(Platform.OS === 'web'
       ? ({ overflow: 'auto', userSelect: 'none', WebkitUserSelect: 'none' } as any)
       : null),
   },
   gridWrap: {
-    backgroundColor: '#fff',
+    backgroundColor: '#F1F5F9',
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: 'rgba(148,163,184,0.70)',
+    borderColor: 'rgba(203,213,225,0.85)',
     overflow: 'hidden',
-    ...(Platform.OS === 'web' ? ({ userSelect: 'none', WebkitUserSelect: 'none' } as any) : null),
+    ...(Platform.OS === 'web'
+      ? ({ userSelect: 'none', WebkitUserSelect: 'none', boxShadow: '0 14px 34px rgba(148,163,184,0.18)' } as any)
+      : null),
   },
 
   table: {
@@ -834,6 +837,7 @@ const styles = StyleSheet.create({
     color: 'rgba(17,24,39,0.60)',
     ...(Platform.OS === 'web' ? ({ userSelect: 'none', WebkitUserSelect: 'none', pointerEvents: 'none' } as any) : null),
   },
+  tableTextOnDark: { color: 'rgba(255,255,255,0.96)' },
 
   zone: {
     position: 'absolute',
@@ -871,7 +875,7 @@ const styles = StyleSheet.create({
 
   selectedRing: {
     borderWidth: 2,
-    borderColor: 'rgba(43,140,238,0.95)',
+    borderColor: '#10B981',
   },
 
   marquee: {

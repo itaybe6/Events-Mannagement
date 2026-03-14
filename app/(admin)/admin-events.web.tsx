@@ -2848,6 +2848,7 @@ export default function AdminEventsWebScreen() {
               <View style={dashboardStyles.chartBarsWrap}>
                 {bars12.map((bar) => {
                   const isCurrentMonth = isCurrentYear && bar.monthIndex === now.getMonth();
+                  const hasValue = bar.value > 0;
                   const pct = bar.value === 0 ? 0 : Math.max(0.06, bar.value / maxBar);
 
                   return (
@@ -2873,7 +2874,7 @@ export default function AdminEventsWebScreen() {
                             <View style={dashboardStyles.chartBarBg} />
                             <LinearGradient
                               colors={
-                                isCurrentMonth
+                                hasValue
                                   ? ['#1D4ED8', '#3B82F6']
                                   : ['rgba(11,27,61,0.18)', 'rgba(59,130,246,0.10)']
                               }
@@ -3179,88 +3180,7 @@ export default function AdminEventsWebScreen() {
         <View style={[dashboardStyles.contentGrid, isCompactDesktop ? dashboardStyles.contentGridCompact : null]}>
           <View style={dashboardStyles.dashboardMainColumn}>
             <View style={dashboardStyles.sectionCard}>
-              <View style={dashboardStyles.sectionHeader}>
-                <View style={dashboardStyles.sectionHeaderTextWrap}>
-                  <Text style={dashboardStyles.sectionEyebrow}>אירועים אחרונים</Text>
-                  <Text style={dashboardStyles.sectionTitle}>הפעילות האחרונה במערכת</Text>
-                </View>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="מעבר לכל האירועים"
-                  onPress={() => router.push('/(admin)/admin-events-list')}
-                  style={({ hovered, pressed }: any) => [
-                    dashboardStyles.inlineActionBtn,
-                    Platform.OS === 'web' && hovered ? dashboardStyles.inlineActionBtnHover : null,
-                    pressed ? dashboardStyles.actionPressed : null,
-                  ]}
-                >
-                  <Text style={dashboardStyles.inlineActionBtnText}>לכל האירועים</Text>
-                </Pressable>
-              </View>
-
-              {loading ? (
-                <View style={dashboardStyles.sectionState}>
-                  <ActivityIndicator color={colors.primary} />
-                  <Text style={dashboardStyles.sectionStateText}>טוען אירועים...</Text>
-                </View>
-              ) : (
-                <View style={dashboardStyles.recentEventsList}>
-                  {recentEvents.map((event) => {
-                    const coverSource: any = String(event.invitationImageUrl ?? '').trim()
-                      ? { uri: String(event.invitationImageUrl).trim() }
-                      : getHeroImageSource(event.title);
-                    const eventType = inferEventType(event.title) || 'חתונה';
-                    const eventTypeMeta = EVENT_TYPE_META[eventType as keyof typeof EVENT_TYPE_META] ?? EVENT_TYPE_META['אירוע חברה'];
-
-                    return (
-                      <Pressable
-                        key={event.id}
-                        accessibilityRole="button"
-                        accessibilityLabel={`פתיחת אירוע ${event.title}`}
-                        onPress={() => router.push({ pathname: '/(admin)/admin-event-details', params: { id: event.id } })}
-                        style={({ hovered, pressed }: any) => [
-                          dashboardStyles.recentEventItem,
-                          Platform.OS === 'web' && hovered ? dashboardStyles.recentEventItemHover : null,
-                          pressed ? dashboardStyles.actionPressed : null,
-                        ]}
-                      >
-                        <View style={dashboardStyles.recentEventThumbWrap}>
-                          <Image source={coverSource} style={dashboardStyles.recentEventThumb} contentFit="cover" transition={0} />
-                        </View>
-
-                        <View style={dashboardStyles.recentEventContent}>
-                          <View style={dashboardStyles.recentEventTitleRow}>
-                            <Text style={dashboardStyles.recentEventTitle} numberOfLines={1}>
-                              {event.title}
-                            </Text>
-                            <View
-                              style={[
-                                dashboardStyles.recentEventTypeBadge,
-                                { backgroundColor: eventTypeMeta.background, borderColor: eventTypeMeta.border },
-                              ]}
-                            >
-                              <Text style={[dashboardStyles.recentEventTypeBadgeText, { color: eventTypeMeta.text }]}>{eventType}</Text>
-                            </View>
-                          </View>
-                          <Text style={dashboardStyles.recentEventSubtitle} numberOfLines={1}>
-                            {getEventSubtitle(event) || 'ללא פרטים נוספים'}
-                          </Text>
-                          <View style={dashboardStyles.recentEventMetaRow}>
-                            <Text style={dashboardStyles.recentEventMetaText}>{formatDateLabel(event.date)}</Text>
-                            <View style={dashboardStyles.metaDot} />
-                            <Text style={dashboardStyles.recentEventMetaText} numberOfLines={1}>
-                              {[event.location, event.city].filter(Boolean).join(' • ') || 'ללא מיקום'}
-                            </Text>
-                          </View>
-                        </View>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              )}
-
-              <View style={dashboardStyles.overviewStatsSection}>
-                <View style={dashboardStyles.overviewStatsDivider} />
+              <View style={[dashboardStyles.overviewStatsSection, dashboardStyles.overviewStatsSectionFirst]}>
                 <View style={dashboardStyles.overviewStatsHeader}>
                   <Text style={dashboardStyles.overviewStatsEyebrow}>מדדי פרופיל</Text>
                   <Text style={dashboardStyles.overviewStatsTitle}>תמונת שנה מהירה</Text>
@@ -3278,6 +3198,89 @@ export default function AdminEventsWebScreen() {
                     />
                   ))}
                 </View>
+              </View>
+
+              <View style={dashboardStyles.recentEventsSection}>
+                <View style={dashboardStyles.overviewStatsDivider} />
+                <View style={dashboardStyles.sectionHeader}>
+                  <View style={dashboardStyles.sectionHeaderTextWrap}>
+                    <Text style={dashboardStyles.sectionEyebrow}>אירועים אחרונים</Text>
+                    <Text style={dashboardStyles.sectionTitle}>הפעילות האחרונה במערכת</Text>
+                  </View>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="מעבר לכל האירועים"
+                    onPress={() => router.push('/(admin)/admin-events-list')}
+                    style={({ hovered, pressed }: any) => [
+                      dashboardStyles.inlineActionBtn,
+                      Platform.OS === 'web' && hovered ? dashboardStyles.inlineActionBtnHover : null,
+                      pressed ? dashboardStyles.actionPressed : null,
+                    ]}
+                  >
+                    <Text style={dashboardStyles.inlineActionBtnText}>לכל האירועים</Text>
+                  </Pressable>
+                </View>
+
+                {loading ? (
+                  <View style={dashboardStyles.sectionState}>
+                    <ActivityIndicator color={colors.primary} />
+                    <Text style={dashboardStyles.sectionStateText}>טוען אירועים...</Text>
+                  </View>
+                ) : (
+                  <View style={dashboardStyles.recentEventsList}>
+                    {recentEvents.map((event) => {
+                      const coverSource: any = String(event.invitationImageUrl ?? '').trim()
+                        ? { uri: String(event.invitationImageUrl).trim() }
+                        : getHeroImageSource(event.title);
+                      const eventType = inferEventType(event.title) || 'חתונה';
+                      const eventTypeMeta = EVENT_TYPE_META[eventType as keyof typeof EVENT_TYPE_META] ?? EVENT_TYPE_META['אירוע חברה'];
+
+                      return (
+                        <Pressable
+                          key={event.id}
+                          accessibilityRole="button"
+                          accessibilityLabel={`פתיחת אירוע ${event.title}`}
+                          onPress={() => router.push({ pathname: '/(admin)/admin-event-details', params: { id: event.id } })}
+                          style={({ hovered, pressed }: any) => [
+                            dashboardStyles.recentEventItem,
+                            Platform.OS === 'web' && hovered ? dashboardStyles.recentEventItemHover : null,
+                            pressed ? dashboardStyles.actionPressed : null,
+                          ]}
+                        >
+                          <View style={dashboardStyles.recentEventThumbWrap}>
+                            <Image source={coverSource} style={dashboardStyles.recentEventThumb} contentFit="cover" transition={0} />
+                          </View>
+
+                          <View style={dashboardStyles.recentEventContent}>
+                            <View style={dashboardStyles.recentEventTitleRow}>
+                              <Text style={dashboardStyles.recentEventTitle} numberOfLines={1}>
+                                {event.title}
+                              </Text>
+                              <View
+                                style={[
+                                  dashboardStyles.recentEventTypeBadge,
+                                  { backgroundColor: eventTypeMeta.background, borderColor: eventTypeMeta.border },
+                                ]}
+                              >
+                                <Text style={[dashboardStyles.recentEventTypeBadgeText, { color: eventTypeMeta.text }]}>{eventType}</Text>
+                              </View>
+                            </View>
+                            <Text style={dashboardStyles.recentEventSubtitle} numberOfLines={1}>
+                              {getEventSubtitle(event) || 'ללא פרטים נוספים'}
+                            </Text>
+                            <View style={dashboardStyles.recentEventMetaRow}>
+                              <Text style={dashboardStyles.recentEventMetaText}>{formatDateLabel(event.date)}</Text>
+                              <View style={dashboardStyles.metaDot} />
+                              <Text style={dashboardStyles.recentEventMetaText} numberOfLines={1}>
+                                {[event.location, event.city].filter(Boolean).join(' • ') || 'ללא מיקום'}
+                              </Text>
+                            </View>
+                          </View>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                )}
               </View>
             </View>
 
@@ -3497,12 +3500,6 @@ const dashboardStyles = StyleSheet.create({
   },
   heroShell: {
     gap: 18,
-    ...(Platform.OS === 'web'
-      ? ({
-          backgroundImage:
-            'radial-gradient(circle at top right, rgba(25,93,230,0.14), rgba(25,93,230,0) 40%), radial-gradient(circle at bottom left, rgba(242,224,186,0.22), rgba(242,224,186,0) 34%)',
-        } as any)
-      : null),
   },
   heroCard: {
     backgroundColor: 'rgba(255,255,255,0.96)',
@@ -4489,9 +4486,16 @@ const dashboardStyles = StyleSheet.create({
     marginTop: 22,
     gap: 16,
   },
+  overviewStatsSectionFirst: {
+    marginTop: 0,
+  },
   overviewStatsDivider: {
     height: 1,
     backgroundColor: 'rgba(6,23,62,0.08)',
+  },
+  recentEventsSection: {
+    marginTop: 22,
+    gap: 16,
   },
   overviewStatsHeader: {
     gap: 4,

@@ -338,7 +338,10 @@ export default function CoupleHomeWebScreen() {
             onPress={() =>
               router.push({
                 pathname: '/(couple)/automatic-notifications',
-                params: resolvedEventId ? { eventId: resolvedEventId } : {},
+                params: {
+                  ...(resolvedEventId ? { eventId: resolvedEventId } : {}),
+                  returnTo: resolvedEventId ? `/(couple)?eventId=${encodeURIComponent(resolvedEventId)}` : '/(couple)',
+                },
               })
             }
           />

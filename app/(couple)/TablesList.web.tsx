@@ -15,7 +15,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter, useSegments } from 'expo-router';
 
-import DesktopTopBar, { TopBarIconButton } from '@/components/desktop/DesktopTopBar';
+import AdminWebPageHeader from '@/components/desktop/AdminWebPageHeader';
 import { colors } from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
@@ -208,6 +208,7 @@ export default function TablesListWebScreen() {
       return cap > 0 && seated >= cap;
     }).length;
   }, [tables, guestsByTableId]);
+  const emptyTablesCount = useMemo(() => tables.filter((t) => peopleCountAtTable(String(t.id)) <= 0).length, [tables, guestsByTableId]);
 
   const selectedTable = useMemo(() => {
     if (!selectedTableId) return null;
@@ -483,7 +484,10 @@ export default function TablesListWebScreen() {
   };
 
   const goToSeatingMap = () => {
-    router.push({ pathname: '/(couple)/BrideGroomSeating', params: resolvedEventId ? { eventId: resolvedEventId } : {} });
+    router.push({
+      pathname: isAdminContext ? ('/(admin)/seating-map' as any) : '/(couple)/BrideGroomSeating',
+      params: resolvedEventId ? { eventId: resolvedEventId } : {},
+    });
   };
 
   const normalizeTableLabel = (value: string) => value.replace(/\s+/g, ' ').trim();
@@ -565,11 +569,18 @@ export default function TablesListWebScreen() {
       { key: 'all', label: 'הכל', count: tables.length, tone: 'primary' },
       { key: 'full', label: 'מלאים', count: fullTablesCount, tone: 'success' },
       { key: 'not_full', label: 'לא מלאים', count: Math.max(0, tables.length - fullTablesCount), tone: 'warning' },
-      { key: 'empty', label: 'ריקים', count: tables.filter((t) => peopleCountAtTable(String(t.id)) <= 0).length, tone: 'danger' },
+      { key: 'empty', label: 'ריקים', count: emptyTablesCount, tone: 'danger' },
     ];
 
   const sideWidth = contentWidth < 1240 ? 420 : 480;
   const guestCardWidth = isNarrow ? '100%' : contentWidth < 1320 ? '48%' : contentWidth < 1600 ? '31.5%' : 290;
+  const adminHeaderStats = [
+    { key: 'tables', label: 'שולחנות', value: tables.length },
+    { key: 'full', label: 'מלאים', value: fullTablesCount },
+    { key: 'empty', label: 'ריקים', value: emptyTablesCount },
+    { key: 'waiting', label: 'ממתינים לשיבוץ', value: unseatedGuestsArriving.length },
+  ];
+  const selectedTableSummary = selectedTable ? getTableDisplayTitle(selectedTable) : 'עדיין לא נבחר שולחן';
 
   const renderSelectedGuestCard = (g: GuestRow) => {
     const gid = String(g.id);
@@ -693,7 +704,7 @@ export default function TablesListWebScreen() {
     }
 
     return (
-      <View style={styles.guestsSection}>
+      <View style={[styles.guestsSection, isAdminContext ? styles.guestsSectionAdmin : null]}>
         <View style={styles.guestsSectionHeader}>
           <View style={styles.guestsSectionTitleWrap}>
             <Text style={styles.guestsSectionTitle}>מוזמנים בשולחן</Text>
@@ -711,41 +722,116 @@ export default function TablesListWebScreen() {
 
   return (
     <View style={[styles.page, isAdminContext ? styles.pageAdmin : null]}>
-      <View pointerEvents="none" style={styles.bgShapes}>
-        <View style={styles.shapeTopRight} />
-        <View style={styles.shapeBottomLeft} />
-      </View>
+      {!isAdminContext ? (
+        <View pointerEvents="none" style={styles.bgShapes}>
+          <View style={styles.shapeTopRight} />
+          <View style={styles.shapeBottomLeft} />
+        </View>
+      ) : null}
 
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={[
           styles.container,
           isAdminContext ? styles.containerAdmin : null,
-          { paddingHorizontal: contentPaddingH, ...(contentMaxWidth ? { maxWidth: contentMaxWidth } : null) },
+          {
+            paddingHorizontal: contentPaddingH,
+            ...(!isAdminContext && contentMaxWidth ? { maxWidth: contentMaxWidth } : null),
+          },
         ]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.pageTopBar}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="חזרה"
-            onPress={handleBack}
-            style={({ hovered, pressed }: any) => [
-              styles.backBtn,
-              Platform.OS === 'web' && hovered ? styles.backBtnHover : null,
-              pressed ? styles.btnPressed : null,
-            ]}
-          >
-            <Ionicons name="arrow-forward" size={18} color={colors.gray[800]} />
-          </Pressable>
-        </View>
+        {isAdminContext ? (
+          <View style={styles.adminHeroShell}>
+            <AdminWebPageHeader
+              eyebrow="ניהול אירוע"
+              title="רשימת שולחנות"
+              subtitle="ניהול מהיר של תפוסה, מושבים ואורחים בכל שולחן מתוך מסך אחד."
+              subtitleContent={
+                <View style={styles.adminHeaderMetaBar}>
+                  <View style={styles.adminHeaderMetaGroup}>
+                    {adminHeaderStats.map((item) => (
+                      <View key={item.key} style={styles.adminHeaderStatChip}>
+                        <Text style={styles.adminHeaderStatValue}>{item.value}</Text>
+                        <Text style={styles.adminHeaderStatLabel}>{item.label}</Text>
+                      </View>
+                    ))}
+                  </View>
+
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="מעבר למפת הושבה"
+                    onPress={goToSeatingMap}
+                    style={({ hovered, pressed }: any) => [
+                      styles.adminHeaderActionBtn,
+                      Platform.OS === 'web' && hovered ? styles.adminHeaderActionBtnHover : null,
+                      pressed ? styles.btnPressed : null,
+                    ]}
+                  >
+                    <Ionicons name="map-outline" size={16} color={colors.primary} />
+                    <Text style={styles.adminHeaderActionBtnText}>מפת הושבה</Text>
+                  </Pressable>
+                </View>
+              }
+              actions={
+                <View style={styles.adminHeaderSelectionBadge}>
+                  <Ionicons name="albums-outline" size={15} color={colors.primary} />
+                  <Text style={styles.adminHeaderSelectionText} numberOfLines={1}>
+                    {selectedTableSummary}
+                  </Text>
+                </View>
+              }
+              showNav={false}
+              useDefaultActions={false}
+              leading={
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="חזרה"
+                  onPress={handleBack}
+                  style={({ hovered, pressed }: any) => [
+                    styles.adminBackBtn,
+                    Platform.OS === 'web' && hovered ? styles.adminBackBtnHover : null,
+                    pressed ? styles.btnPressed : null,
+                  ]}
+                >
+                  <Ionicons name="arrow-forward" size={16} color={colors.text} />
+                  <Text style={styles.adminBackBtnText}>חזרה</Text>
+                </Pressable>
+              }
+            />
+          </View>
+        ) : (
+          <View style={styles.pageTopBar}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="חזרה"
+              onPress={handleBack}
+              style={({ hovered, pressed }: any) => [
+                styles.backBtn,
+                Platform.OS === 'web' && hovered ? styles.backBtnHover : null,
+                pressed ? styles.btnPressed : null,
+              ]}
+            >
+              <Ionicons name="arrow-forward" size={18} color={colors.gray[800]} />
+            </Pressable>
+          </View>
+        )}
 
         <View style={[styles.mainRow, isNarrow ? styles.mainRowNarrow : null]}>
           {isNarrow ? (
             <>
               {/* On narrow screens, show list first (top), then details */}
               <View style={[styles.sideCol, !isNarrow ? { width: sideWidth } : null]}>{/* Tables list */}
-                <View style={styles.card}>
+                <View style={[styles.card, isAdminContext ? styles.cardAdmin : null]}>
+                  {isAdminContext ? (
+                    <View style={styles.adminSectionHeader}>
+                      <View style={styles.adminSectionHeaderText}>
+                        <Text style={styles.adminSectionEyebrow}>רשימה וסינון</Text>
+                        <Text style={styles.adminSectionTitle}>בחירת שולחן</Text>
+                        <Text style={styles.adminSectionSubtitle}>חיפוש מהיר ומעבר בין כל שולחנות האירוע לפי סטטוס תפוסה.</Text>
+                      </View>
+                    </View>
+                  ) : null}
                   <View style={styles.searchWrap}>
                     <View style={styles.searchIconRight}>
                       <Ionicons name="search" size={18} color={colors.gray[500]} />
@@ -755,7 +841,7 @@ export default function TablesListWebScreen() {
                       onChangeText={setTableQuery}
                       placeholder="חיפוש לפי מספר / שם שולחן..."
                       placeholderTextColor={colors.gray[500]}
-                      style={styles.searchInput}
+                      style={[styles.searchInput, isAdminContext ? styles.searchInputAdmin : null]}
                     />
                   </View>
 
@@ -795,7 +881,7 @@ export default function TablesListWebScreen() {
                       </Pressable>
                     </View>
                   ) : (
-                    <View style={[styles.tableList, { maxHeight: Math.min(520, windowHeight * 0.55) }]}>
+                    <View style={[styles.tableList, isAdminContext ? styles.tableListAdmin : null, { maxHeight: Math.min(520, windowHeight * 0.55) }]}>
                       <ScrollView showsVerticalScrollIndicator={false}>
                         <View style={styles.tableListInner}>
                           {filteredTables.map((t) => {
@@ -814,6 +900,7 @@ export default function TablesListWebScreen() {
                                 onPress={() => selectTable(tid)}
                                 style={({ hovered, pressed }: any) => [
                                   styles.tableRow,
+                                  isAdminContext ? styles.tableRowAdmin : null,
                                   selected ? styles.tableRowSelected : null,
                                   isFull ? styles.tableRowFull : null,
                                   Platform.OS === 'web' && hovered && !selected ? styles.tableRowHover : null,
@@ -852,7 +939,7 @@ export default function TablesListWebScreen() {
               </View>
 
               <View style={styles.detailCol}>{/* Details */}
-                <View style={styles.card}>
+                <View style={[styles.card, isAdminContext ? styles.cardAdmin : null]}>
                   {!selectedTable ? (
                     <View style={styles.emptyBox}>
                       <Ionicons name="information-circle-outline" size={26} color={colors.gray[400]} />
@@ -861,7 +948,16 @@ export default function TablesListWebScreen() {
                     </View>
                   ) : (
                     <>
-                      <View style={styles.detailHeader}>
+                      {isAdminContext ? (
+                        <View style={styles.adminSectionHeader}>
+                          <View style={styles.adminSectionHeaderText}>
+                            <Text style={styles.adminSectionEyebrow}>פרטי שולחן</Text>
+                            <Text style={styles.adminSectionTitle}>ניהול מוזמנים</Text>
+                            <Text style={styles.adminSectionSubtitle}>צפייה ברשימת היושבים, עריכה מהירה והעברת מוזמנים בין שולחנות.</Text>
+                          </View>
+                        </View>
+                      ) : null}
+                      <View style={[styles.detailHeader, isAdminContext ? styles.detailHeaderAdmin : null]}>
                         <View style={styles.detailTitleWrap}>
                           <Text style={styles.detailTitle} numberOfLines={1}>
                             {getTableDisplayTitle(selectedTable)}
@@ -945,7 +1041,7 @@ export default function TablesListWebScreen() {
             <>
               {/* Desktop/Wide: details on the left, list on the right */}
               <View style={styles.detailCol}>
-                <View style={styles.card}>
+                <View style={[styles.card, isAdminContext ? styles.cardAdmin : null]}>
                   {!selectedTable ? (
                     <View style={styles.emptyBox}>
                       <Ionicons name="information-circle-outline" size={26} color={colors.gray[400]} />
@@ -954,7 +1050,16 @@ export default function TablesListWebScreen() {
                     </View>
                   ) : (
                     <>
-                      <View style={styles.detailHeader}>
+                      {isAdminContext ? (
+                        <View style={styles.adminSectionHeader}>
+                          <View style={styles.adminSectionHeaderText}>
+                            <Text style={styles.adminSectionEyebrow}>פרטי שולחן</Text>
+                            <Text style={styles.adminSectionTitle}>ניהול מוזמנים</Text>
+                            <Text style={styles.adminSectionSubtitle}>צפייה ברשימת היושבים, עריכה מהירה והעברת מוזמנים בין שולחנות.</Text>
+                          </View>
+                        </View>
+                      ) : null}
+                      <View style={[styles.detailHeader, isAdminContext ? styles.detailHeaderAdmin : null]}>
                         <View style={styles.detailTitleWrap}>
                           <Text style={styles.detailTitle} numberOfLines={1}>
                             {getTableDisplayTitle(selectedTable)}
@@ -1035,7 +1140,16 @@ export default function TablesListWebScreen() {
               </View>
 
               <View style={[styles.sideCol, { width: sideWidth }]}>
-                <View style={styles.card}>
+                <View style={[styles.card, isAdminContext ? styles.cardAdmin : null]}>
+                  {isAdminContext ? (
+                    <View style={styles.adminSectionHeader}>
+                      <View style={styles.adminSectionHeaderText}>
+                        <Text style={styles.adminSectionEyebrow}>רשימה וסינון</Text>
+                        <Text style={styles.adminSectionTitle}>בחירת שולחן</Text>
+                        <Text style={styles.adminSectionSubtitle}>חיפוש מהיר ומעבר בין כל שולחנות האירוע לפי סטטוס תפוסה.</Text>
+                      </View>
+                    </View>
+                  ) : null}
                   <View style={styles.searchWrap}>
                     <View style={styles.searchIconRight}>
                       <Ionicons name="search" size={18} color={colors.gray[500]} />
@@ -1045,7 +1159,7 @@ export default function TablesListWebScreen() {
                       onChangeText={setTableQuery}
                       placeholder="חיפוש לפי מספר / שם שולחן..."
                       placeholderTextColor={colors.gray[500]}
-                      style={styles.searchInput}
+                      style={[styles.searchInput, isAdminContext ? styles.searchInputAdmin : null]}
                     />
                   </View>
 
@@ -1085,7 +1199,7 @@ export default function TablesListWebScreen() {
                       </Pressable>
                     </View>
                   ) : (
-                    <View style={[styles.tableList, { maxHeight: Math.min(720, windowHeight * 0.72) }]}>
+                    <View style={[styles.tableList, isAdminContext ? styles.tableListAdmin : null, { maxHeight: Math.min(720, windowHeight * 0.72) }]}>
                       <ScrollView showsVerticalScrollIndicator={false}>
                         <View style={styles.tableListInner}>
                           {filteredTables.map((t) => {
@@ -1104,6 +1218,7 @@ export default function TablesListWebScreen() {
                                 onPress={() => selectTable(tid)}
                                 style={({ hovered, pressed }: any) => [
                                   styles.tableRow,
+                                  isAdminContext ? styles.tableRowAdmin : null,
                                   selected ? styles.tableRowSelected : null,
                                   isFull ? styles.tableRowFull : null,
                                   Platform.OS === 'web' && hovered && !selected ? styles.tableRowHover : null,
@@ -1950,6 +2065,7 @@ const styles = StyleSheet.create({
     direction: 'rtl',
   },
   pageAdmin: {
+    backgroundColor: '#E8F1FF',
     ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
   },
   scroll: { flex: 1 },
@@ -1962,7 +2078,119 @@ const styles = StyleSheet.create({
     direction: 'rtl',
   },
   containerAdmin: {
+    paddingTop: 24,
     ...(Platform.OS === 'web' ? ({ alignSelf: 'stretch', direction: 'rtl' } as any) : null),
+  },
+  adminHeroShell: {
+    width: '100%',
+  },
+  adminHeaderMetaBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    flexWrap: 'wrap',
+    ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
+  },
+  adminHeaderMetaGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flexWrap: 'wrap',
+    ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
+  },
+  adminHeaderStatChip: {
+    minHeight: 34,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: '#F8FAFD',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.07)',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+  },
+  adminHeaderStatValue: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'right',
+  },
+  adminHeaderStatLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.gray[600],
+    textAlign: 'right',
+  },
+  adminHeaderActionBtn: {
+    minHeight: 40,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(15,69,230,0.14)',
+    backgroundColor: 'rgba(15,69,230,0.08)',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  adminHeaderActionBtnHover: {
+    backgroundColor: 'rgba(15,69,230,0.12)',
+  },
+  adminHeaderActionBtnText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.primary,
+    textAlign: 'right',
+  },
+  adminHeaderSelectionBadge: {
+    maxWidth: 260,
+    minHeight: 40,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(15,69,230,0.10)',
+    backgroundColor: 'rgba(15,69,230,0.06)',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+  },
+  adminHeaderSelectionText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.text,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  adminBackBtn: {
+    minHeight: 42,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    ...(Platform.OS === 'web'
+      ? ({
+          cursor: 'pointer',
+          boxShadow: '0 4px 12px rgba(11,28,65,0.04)',
+        } as any)
+      : null),
+  },
+  adminBackBtnHover: {
+    backgroundColor: '#F8FAFD',
+    borderColor: 'rgba(15,69,230,0.14)',
+  },
+  adminBackBtnText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.text,
+    textAlign: 'right',
   },
 
   bgShapes: {
@@ -2065,6 +2293,45 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     boxShadow: '0 2px 6px rgba(16,24,40,0.04), 0 22px 44px rgba(16,24,40,0.08)',
   },
+  cardAdmin: {
+    borderColor: 'rgba(6,23,62,0.06)',
+    ...(Platform.OS === 'web'
+      ? ({
+          boxShadow: '0 8px 24px rgba(11,28,65,0.04)',
+        } as any)
+      : null),
+  },
+  adminSectionHeader: {
+    marginBottom: 12,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(15,23,42,0.06)',
+  },
+  adminSectionHeaderText: {
+    alignItems: 'stretch',
+    gap: 4,
+  },
+  adminSectionEyebrow: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.primary,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  adminSectionTitle: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  adminSectionSubtitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.gray[600],
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
 
   cardHeaderRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' },
   cardTitleWrap: { alignItems: 'flex-end', gap: 2, flex: 1, minWidth: 240 },
@@ -2085,6 +2352,10 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: colors.text,
     textAlign: 'right',
+  },
+  searchInputAdmin: {
+    backgroundColor: '#f7f9fc',
+    borderColor: 'rgba(15,23,42,0.08)',
   },
 
   chipsRow: {
@@ -2119,6 +2390,7 @@ const styles = StyleSheet.create({
   chipCountTextCompact: { fontSize: 10 },
 
   tableList: { marginTop: 6, borderRadius: 18, borderWidth: 1, borderColor: 'rgba(15,23,42,0.06)', backgroundColor: 'rgba(248,250,252,0.70)' },
+  tableListAdmin: { backgroundColor: '#FBFCFF', borderColor: 'rgba(15,69,230,0.08)' },
   tableListInner: { padding: 10, gap: 10 },
   tableRow: {
     padding: 12,
@@ -2128,6 +2400,14 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     gap: 10,
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  tableRowAdmin: {
+    borderColor: 'rgba(15,23,42,0.06)',
+    ...(Platform.OS === 'web'
+      ? ({
+          boxShadow: '0 8px 20px rgba(15,23,42,0.04)',
+        } as any)
+      : null),
   },
   tableRowHover: {
     borderColor: 'rgba(6,23,62,0.20)',
@@ -2188,6 +2468,10 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(248,250,252,0.82)',
     ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
   },
+  detailHeaderAdmin: {
+    backgroundColor: '#F8FAFD',
+    borderColor: 'rgba(15,69,230,0.08)',
+  },
   detailTitleWrap: { flex: 1, minWidth: 280, alignItems: 'stretch', gap: 10 },
   detailTitle: {
     width: '100%',
@@ -2230,6 +2514,10 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(15,23,42,0.06)',
     backgroundColor: 'rgba(248,250,252,0.74)',
     boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.7)',
+  },
+  guestsSectionAdmin: {
+    backgroundColor: '#F8FAFD',
+    borderColor: 'rgba(15,69,230,0.08)',
   },
   guestsSectionHeader: {
     flexDirection: 'row',

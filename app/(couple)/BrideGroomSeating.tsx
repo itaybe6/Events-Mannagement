@@ -1386,9 +1386,9 @@ export default function BrideGroomSeating() {
             const seated = Number.isFinite(num) ? (seatedByNumber.get(num) ?? 0) : 0;
             const full = cap > 0 && seated >= cap;
             const over = cap > 0 && seated > cap;
-            if (over) return '#059669';
-            if (full) return '#10B981';
-            return t?.type === 'reserve' ? '#F59E0B' : '#06173d';
+            if (over) return '#06173d';
+            if (full) return '#06173d';
+            return t?.type === 'reserve' ? colors.warning : '#06173d';
           }}
           getTableBackgroundAlpha={(t: any) => {
             const num = Number(t?.number);
@@ -1396,9 +1396,9 @@ export default function BrideGroomSeating() {
             const seated = Number.isFinite(num) ? (seatedByNumber.get(num) ?? 0) : 0;
             const full = cap > 0 && seated >= cap;
             const over = cap > 0 && seated > cap;
-            if (over) return 0.34;
-            if (full) return 0.24;
-            return t?.type === 'reserve' ? 0.18 : 0.82;
+            if (over) return 0.82;
+            if (full) return 0.82;
+            return t?.type === 'reserve' ? 0.32 : 0.82;
           }}
           getTableTooltip={(t: any) => {
             const num = t?.number;
@@ -1412,7 +1412,7 @@ export default function BrideGroomSeating() {
             if (!num) return null;
             const seated = seatedByNumber.get(Number(num)) ?? 0;
             const cap = Number(t?.seats ?? 0) || 0;
-            return cap ? `${cap} / ${seated}` : String(seated);
+            return cap ? `${seated}/${cap}` : String(seated);
           }}
           onPressTableNumber={(num: number | undefined, origin?: { x: number; y: number }) => {
             if (!num) return;
@@ -1439,7 +1439,7 @@ export default function BrideGroomSeating() {
             if (!num) return null;
             const seated = seatedByNumber.get(Number(num)) ?? 0;
             const cap = Number(t?.seats ?? 0) || 0;
-            return cap ? `${cap} / ${seated}` : String(seated);
+            return cap ? `${seated}/${cap}` : String(seated);
           }}
         />
       )}

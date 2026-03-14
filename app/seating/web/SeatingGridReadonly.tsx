@@ -65,6 +65,7 @@ export function SeatingGridReadonly({
   getTableBaseColor,
   getTableBackgroundAlpha,
   getTableBorderAlpha,
+  getTableBorderColor,
   showTableBorder,
   isTableSelected,
   selectedRingColor,
@@ -85,6 +86,7 @@ export function SeatingGridReadonly({
   getTableBaseColor?: (t: TableItem) => string | null;
   getTableBackgroundAlpha?: (t: TableItem) => number | null;
   getTableBorderAlpha?: (t: TableItem) => number | null;
+  getTableBorderColor?: (t: TableItem) => string | null;
   showTableBorder?: boolean;
   isTableSelected?: (t: TableItem) => boolean;
   selectedRingColor?: string;
@@ -163,7 +165,6 @@ export function SeatingGridReadonly({
   const tableNumFontSize = Math.round(18 * textScale);
   const tableNameFontSize = Math.round(12 * textScale);
   const tableTypeFontSize = Math.round(11 * textScale);
-  const tableSubFontSize = Math.round(12 * textScale);
 
   useEffect(() => {
     fitZoomRef.current = fitZoomAdjusted;
@@ -269,7 +270,7 @@ export function SeatingGridReadonly({
           <View style={[styles.gridInner, { width: baseW, height: baseH, transform: [{ scale: zoom }] }]}>
             <Svg width={baseW} height={baseH} style={StyleSheet.absoluteFill as any}>
               {/* Keep a solid background (no grid pattern). */}
-              <Rect x="0" y="0" width="100%" height="100%" fill="#ffffff" />
+              <Rect x="0" y="0" width="100%" height="100%" fill="#F1F5F9" />
             </Svg>
 
             {/* Zones */}
@@ -327,7 +328,7 @@ export function SeatingGridReadonly({
                     : base;
 
               const borderColor = isWeb
-                ? '#FFFFFF'
+                ? (getTableBorderColor?.(t) ?? '#FFFFFF')
                 : typeof borderAlpha === 'number' && isHex6(base)
                   ? hexToRgba(base, clampAlpha(borderAlpha))
                   : isHex6(base)
@@ -335,8 +336,12 @@ export function SeatingGridReadonly({
                     : 'rgba(15,23,42,0.18)';
 
               const tip = getTableTooltip?.(t) ?? null;
-              const sub = getTableSubLabel?.(t) ?? null;
+              const rawSub = getTableSubLabel?.(t) ?? null;
+              const sub = typeof rawSub === 'string' ? rawSub.replace(/\s*\/\s*/g, '/').trim() : rawSub;
               const name = String((t as any)?.name ?? '').trim();
+              const isKnightTable = t.type === 'knight';
+              const resolvedTableNumFontSize = Math.max(12, Math.round((isKnightTable ? 14 : 18) * textScale));
+              const tableSubFontSize = Math.max(8, Math.round((isKnightTable ? 9 : 12) * textScale));
               return (
                 <Pressable
                   key={t.id}
@@ -389,36 +394,44 @@ export function SeatingGridReadonly({
                     },
                   ]}
                 >
-                  <Text style={[styles.tableNum, { color: isWeb ? webAccent : base, fontSize: tableNumFontSize }]}>{t.number ?? ''}</Text>
-                  {name ? (
-                    <Text
-                      style={[
-                        styles.tableName,
-                        { fontSize: tableNameFontSize },
-                        isWeb && onDarkWeb ? styles.tableNameOnDark : null,
-                      ]}
-                      numberOfLines={2}
-                    >
-                      {name}
+                  <View style={[styles.tableContent, isKnightTable ? styles.tableContentKnight : null]}>
+                    <Text style={[styles.tableNum, { color: isWeb ? webAccent : base, fontSize: resolvedTableNumFontSize }]}>
+                      {t.number ?? ''}
                     </Text>
-                  ) : null}
-                  {!hideTableType ? (
-                    <Text style={[styles.tableType, { fontSize: tableTypeFontSize }, isWeb && onDarkWeb ? styles.tableTextOnDark : null]}>
-                      {TABLE_LABELS[t.type]}
-                    </Text>
-                  ) : null}
-                  {sub ? (
-                    <Text
-                      style={[
-                        styles.tableSub,
-                        { fontSize: tableSubFontSize },
-                        isWeb && onDarkWeb ? styles.tableTextOnDark : null,
-                        selectedWeb ? styles.tableSubSelected : null,
-                      ]}
-                    >
-                      {sub}
-                    </Text>
-                  ) : null}
+                    {name ? (
+                      <Text
+                        style={[
+                          styles.tableName,
+                          { fontSize: tableNameFontSize },
+                          isWeb && onDarkWeb ? styles.tableNameOnDark : null,
+                        ]}
+                        numberOfLines={2}
+                      >
+                        {name}
+                      </Text>
+                    ) : null}
+                    {!hideTableType ? (
+                      <Text style={[styles.tableType, { fontSize: tableTypeFontSize }, isWeb && onDarkWeb ? styles.tableTextOnDark : null]}>
+                        {TABLE_LABELS[t.type]}
+                      </Text>
+                    ) : null}
+                    {sub ? (
+                      <Text
+                        style={[
+                          styles.tableSub,
+                          isKnightTable ? styles.tableSubKnight : null,
+                          { fontSize: tableSubFontSize },
+                          isWeb && onDarkWeb ? styles.tableTextOnDark : null,
+                          selectedWeb ? styles.tableSubSelected : null,
+                        ]}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.72}
+                      >
+                        {sub}
+                      </Text>
+                    ) : null}
+                  </View>
                 </Pressable>
               );
             })}
@@ -455,23 +468,39 @@ const styles = StyleSheet.create({
     position: 'absolute',
     zIndex: 2000,
     maxWidth: 220,
-    borderRadius: 10,
-    backgroundColor: 'rgba(17,24,39,0.86)',
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    borderRadius: 14,
+    backgroundColor: '#E2E8F0',
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderWidth: 1,
+    borderColor: 'rgba(148,163,184,0.32)',
+    shadowColor: '#94A3B8',
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 8px 22px rgba(15,23,42,0.12)' } as any) : null),
   },
   tooltipText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '800',
+    color: '#2563EB',
+    fontSize: 13,
+    fontWeight: '900',
+    textAlign: 'center',
+    lineHeight: 18,
   },
   gridWrap: {
-    backgroundColor: '#fff',
+    backgroundColor: '#F1F5F9',
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: 'rgba(148,163,184,0.55)',
+    borderColor: 'rgba(203,213,225,0.85)',
     overflow: 'hidden',
     alignSelf: 'center',
+    shadowColor: '#94A3B8',
+    shadowOpacity: 0.22,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 3,
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 14px 34px rgba(148,163,184,0.18)' } as any) : null),
   },
   gridInner: {
     position: 'absolute',
@@ -495,11 +524,36 @@ const styles = StyleSheet.create({
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 10 },
   },
-  tableNum: { fontSize: 18, fontWeight: '900' },
+  tableContent: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+    paddingHorizontal: 2,
+  },
+  tableContentKnight: {
+    gap: 0,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+  },
+  tableNum: { fontSize: 18, fontWeight: '900', lineHeight: 20 },
   tableName: { marginTop: 3, fontSize: 12, fontWeight: '900', color: colors.gold, textAlign: 'center' },
   tableNameOnDark: { color: colors.gold },
   tableType: { marginTop: 2, fontSize: 11, fontWeight: '800', color: 'rgba(51,65,85,0.55)' },
-  tableSub: { marginTop: 3, fontSize: 12, fontWeight: '900', color: 'rgba(51,65,85,0.55)' },
+  tableSub: {
+    marginTop: 1,
+    fontSize: 12,
+    fontWeight: '900',
+    color: 'rgba(51,65,85,0.55)',
+    textAlign: 'center',
+    lineHeight: 11,
+    ...(Platform.OS === 'web' ? ({ whiteSpace: 'nowrap', maxWidth: '92%' } as any) : null),
+  },
+  tableSubKnight: {
+    marginTop: 0,
+    lineHeight: 9,
+    maxWidth: '88%',
+  },
   tableSubSelected: { color: 'rgba(180,83,9,0.78)' },
   tableTextOnDark: { color: 'rgba(255,255,255,0.92)' },
 

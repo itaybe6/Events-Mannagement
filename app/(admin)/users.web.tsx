@@ -20,17 +20,15 @@ import { Image } from 'expo-image';
 import { colors } from '@/constants/colors';
 import AdminWebPageHeader from '@/components/desktop/AdminWebPageHeader';
 import { useDemoUsersStore } from '@/store/demoUsersStore';
+import { useUserStore } from '@/store/userStore';
 import { useUsersModel, type UserFilter } from '@/features/users/useUsersModel';
 import { userService, type UserWithMetadata } from '@/lib/services/userService';
 import { eventService } from '@/lib/services/eventService';
 import type { Event } from '@/types';
 import UsersScreen from './users';
 
-type RoleFilter = Exclude<UserFilter, 'all'>;
-
-const DEFAULT_FILTER: RoleFilter = 'event_owner';
-
-const ROLE_FILTERS: Array<{ label: string; value: RoleFilter }> = [
+const ROLE_FILTERS: Array<{ label: string; value: UserFilter }> = [
+  { label: 'הכל', value: 'all' },
   { label: 'בעלי אירוע', value: 'event_owner' },
   { label: 'עובדים', value: 'employee' },
   { label: 'מנהלים', value: 'admin' },
@@ -63,7 +61,7 @@ function formatHebrewDate(value?: string | Date) {
 }
 
 export default function UsersWebScreen() {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
 
   if (width < 900) {
     return <UsersScreen />;
@@ -71,6 +69,7 @@ export default function UsersWebScreen() {
 
   const router = useRouter();
   const demoUsers = useDemoUsersStore((s) => s.users);
+  const currentUserType = useUserStore((s) => s.userType);
 
   const {
     users,
@@ -99,6 +98,8 @@ export default function UsersWebScreen() {
   const [eventsError, setEventsError] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
+  const [passwordSaving, setPasswordSaving] = useState(false);
   const [editForm, setEditForm] = useState<{
     name: string;
     email: string;
@@ -107,6 +108,7 @@ export default function UsersWebScreen() {
     password: string;
     confirmPassword: string;
   }>({ name: '', email: '', phone: '', userType: 'event_owner', password: '', confirmPassword: '' });
+  const [passwordForm, setPasswordForm] = useState({ password: '', confirmPassword: '' });
 
   useEffect(() => {
     void refreshUsers();
@@ -173,6 +175,11 @@ export default function UsersWebScreen() {
   }, [users]);
 
   const totalFiltered = filteredUsers.length;
+  const tableBodyMaxHeight = Math.max(height - 340, 320);
+  const isLaptopModalStacked = width < 960;
+  const isCompactModalHeader = width < 900;
+  const userModalMaxHeight = Math.max(height - 56, 560);
+  const canManagePasswords = currentUserType === 'admin';
 
   const confirmDelete = (u: UserWithMetadata) => {
     Alert.alert('מחיקת משתמש', `האם אתה בטוח שברצונך למחוק את "${u.name}"?`, [
@@ -205,6 +212,18 @@ export default function UsersWebScreen() {
     setShowUserModal(false);
     setEditOpen(true);
   }, [selectedUser, setShowUserModal]);
+
+  const openPasswordDialog = useCallback(() => {
+    if (!selectedUser) return;
+    if (!canManagePasswords) {
+      Alert.alert('אין הרשאה', 'רק מנהל יכול לשנות סיסמה למשתמש.');
+      return;
+    }
+
+    setPasswordForm({ password: '', confirmPassword: '' });
+    setShowUserModal(false);
+    setPasswordOpen(true);
+  }, [canManagePasswords, selectedUser, setShowUserModal]);
 
   const saveEdit = useCallback(async () => {
     if (!selectedUser) return;
@@ -275,8 +294,52 @@ export default function UsersWebScreen() {
     }
   }, [editForm, editSaving, isDemoMode, selectedUser, setSelectedUser, setUsers]);
 
+  const savePasswordChange = useCallback(async () => {
+    if (!selectedUser) return;
+    if (!canManagePasswords) {
+      Alert.alert('אין הרשאה', 'רק מנהל יכול לשנות סיסמה למשתמש.');
+      return;
+    }
+    if (passwordSaving) return;
+
+    const nextPassword = passwordForm.password;
+    const confirm = passwordForm.confirmPassword;
+
+    if (!nextPassword || !confirm) {
+      Alert.alert('שגיאה', 'יש למלא סיסמה חדשה ואישור סיסמה.');
+      return;
+    }
+
+    if (nextPassword.length < 6) {
+      Alert.alert('שגיאה', 'הסיסמה חייבת להכיל לפחות 6 תווים.');
+      return;
+    }
+
+    if (nextPassword !== confirm) {
+      Alert.alert('שגיאה', 'הסיסמאות אינן תואמות.');
+      return;
+    }
+
+    setPasswordSaving(true);
+    try {
+      if (!isDemoMode) {
+        await userService.adminUpdateUser(selectedUser.id, { password: nextPassword });
+      }
+
+      setPasswordOpen(false);
+      setPasswordForm({ password: '', confirmPassword: '' });
+      Alert.alert('נשמר', isDemoMode ? 'מצב דמו: הסיסמה עודכנה מקומית.' : 'הסיסמה עודכנה בהצלחה.');
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'שגיאה לא ידועה';
+      Alert.alert('שגיאה', `לא ניתן לעדכן סיסמה.\n\n${msg}`);
+    } finally {
+      setPasswordSaving(false);
+    }
+  }, [canManagePasswords, isDemoMode, passwordForm, passwordSaving, selectedUser]);
+
   return (
-    <View style={styles.page}>
+    <>
+      <ScrollView style={styles.page} contentContainerStyle={styles.pageScrollContent} showsVerticalScrollIndicator={false}>
       <View style={styles.filterBarOuter}>
         <AdminWebPageHeader eyebrow="משתמשים" title="ניהול משתמשים" />
 
@@ -287,46 +350,64 @@ export default function UsersWebScreen() {
             <Text style={styles.searchCardTitle}>חיפוש</Text>
           </View>
 
-          <View style={styles.searchWrapInline}>
-            <Ionicons name="search" size={18} color={colors.gray[500]} style={styles.searchIconInline} />
-            <TextInput
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              placeholder="חיפוש משתמש..."
-              placeholderTextColor={colors.gray[500]}
-              style={styles.searchInputInline}
-              textAlign="right"
-              returnKeyType="search"
-              autoCapitalize="none"
-            />
-          </View>
-        </View>
+          <View style={styles.searchControlsRow}>
+            <View style={styles.searchWrapInline}>
+              <Ionicons name="search" size={18} color={colors.gray[500]} style={styles.searchIconInline} />
+              <TextInput
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                placeholder="חיפוש משתמש..."
+                placeholderTextColor={colors.gray[500]}
+                style={styles.searchInputInline}
+                textAlign="right"
+                returnKeyType="search"
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="off"
+                textContentType="none"
+                importantForAutofill="no"
+              />
+            </View>
 
-        {/* Role filter tags (no card background) */}
-        <View style={styles.tagsRow}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.roleChipsRow}>
-            {ROLE_FILTERS.map((f) => {
-              const active = userFilter === f.value;
-              return (
-                <Pressable
-                  key={f.value}
-                  accessibilityRole="button"
-                  accessibilityLabel={`סינון לפי ${f.label}`}
-                  onPress={() => setUserFilter(f.value)}
-                  style={({ hovered, pressed }: any) => [
-                    styles.roleChip,
-                    active ? styles.roleChipActive : null,
-                    Platform.OS === 'web' && hovered ? styles.roleChipHover : null,
-                    pressed ? { opacity: 0.92 } : null,
-                  ]}
-                >
-                  <Text style={[styles.roleChipText, active ? styles.roleChipTextActive : null]}>
-                    {f.label} ({counts[f.value] ?? 0})
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="משתמש חדש"
+              onPress={() => router.push('/(admin)/add-user-v2')}
+              style={({ hovered, pressed }: any) => [
+                styles.createButtonInline,
+                Platform.OS === 'web' && hovered ? styles.createButtonInlineHover : null,
+                pressed ? { opacity: 0.92 } : null,
+              ]}
+            >
+              <Ionicons name="add" size={18} color={colors.white} />
+              <Text style={styles.createButtonInlineText}>משתמש חדש</Text>
+            </Pressable>
+          </View>
+          <View style={styles.tagsRow}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.roleChipsRow}>
+              {ROLE_FILTERS.map((f) => {
+                const active = userFilter === f.value;
+                return (
+                  <Pressable
+                    key={f.value}
+                    accessibilityRole="button"
+                    accessibilityLabel={`סינון לפי ${f.label}`}
+                    onPress={() => setUserFilter(f.value)}
+                    style={({ hovered, pressed }: any) => [
+                      styles.roleChip,
+                      active ? styles.roleChipActive : null,
+                      Platform.OS === 'web' && hovered ? styles.roleChipHover : null,
+                      pressed ? { opacity: 0.92 } : null,
+                    ]}
+                  >
+                    <Text style={[styles.roleChipText, active ? styles.roleChipTextActive : null]}>
+                      {f.label} ({counts[f.value] ?? 0})
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
         </View>
       </View>
 
@@ -354,7 +435,11 @@ export default function UsersWebScreen() {
               <Text style={styles.emptyText}>נסה לשנות את החיפוש או הסינון</Text>
             </View>
           ) : (
-            <ScrollView style={styles.rowsScroll} contentContainerStyle={styles.rowsScrollContent} showsVerticalScrollIndicator={false}>
+            <ScrollView
+              style={[styles.rowsScroll, { maxHeight: tableBodyMaxHeight }]}
+              contentContainerStyle={styles.rowsScrollContent}
+              showsVerticalScrollIndicator={false}
+            >
               {filteredUsers.map((u) => {
                 const hasAvatar = !!u.avatar_url && !avatarLoadErrors[u.id];
                 const joined = u.created_at ? new Date(u.created_at).toLocaleDateString('he-IL') : '—';
@@ -445,24 +530,8 @@ export default function UsersWebScreen() {
             <Text style={styles.tableFooterText}>מציג {totalFiltered} משתמשים</Text>
           </View>
         </View>
-
       </View>
-
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="משתמש חדש"
-        // NOTE: `.web` is a filename suffix, not part of the Expo Router path.
-        // Navigating to `/(admin)/add-user-v2` will automatically pick `add-user-v2.web.tsx` on web.
-        onPress={() => router.push('/(admin)/add-user-v2')}
-        style={({ hovered, pressed }: any) => [
-          styles.fabCreate,
-          Platform.OS === 'web' && hovered ? styles.fabCreateHover : null,
-          pressed ? { opacity: 0.92 } : null,
-        ]}
-      >
-        <Ionicons name="add" size={20} color={colors.white} />
-        <Text style={styles.fabCreateText}>משתמש חדש</Text>
-      </Pressable>
+      </ScrollView>
 
       <Modal
         transparent
@@ -471,20 +540,28 @@ export default function UsersWebScreen() {
         onRequestClose={() => setShowUserModal(false)}
       >
         <Pressable style={styles.userModalBackdrop} onPress={() => setShowUserModal(false)}>
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ width: '100%' }}>
-            <Pressable style={styles.userModalCard} onPress={(e) => e.stopPropagation()}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={[styles.userModalKeyboardShell, { maxHeight: userModalMaxHeight }]}
+          >
+            <Pressable
+              style={[
+                styles.userModalCard,
+                isLaptopModalStacked ? styles.userModalCardCompact : null,
+                { maxHeight: userModalMaxHeight },
+              ]}
+              onPress={(e) => e.stopPropagation()}
+            >
               {selectedUser ? (
                 <>
-                  <View style={styles.userModalGlowPrimary} pointerEvents="none" />
-                  <View style={styles.userModalGlowSecondary} pointerEvents="none" />
-
-                  <View style={styles.userModalHeader}>
+                  <View style={[styles.userModalHeader, isCompactModalHeader ? styles.userModalHeaderCompact : null]}>
                     <Pressable
                       accessibilityRole="button"
                       accessibilityLabel="סגירת חלון המשתמש"
                       onPress={() => setShowUserModal(false)}
                       style={({ hovered, pressed }: any) => [
                         styles.userModalCloseBtn,
+                        isCompactModalHeader ? styles.userModalCloseBtnCompact : null,
                         Platform.OS === 'web' && hovered ? styles.userModalCloseBtnHover : null,
                         pressed ? { opacity: 0.92 } : null,
                       ]}
@@ -492,7 +569,7 @@ export default function UsersWebScreen() {
                       <Ionicons name="close" size={18} color={colors.gray[700]} />
                     </Pressable>
 
-                    <View style={styles.userModalHero}>
+                    <View style={[styles.userModalHero, isLaptopModalStacked ? styles.userModalHeroStacked : null]}>
                       <View style={styles.userModalAvatarShell}>
                         <View style={styles.userModalAvatarRing}>
                           {selectedUser.avatar_url && !avatarLoadErrors[selectedUser.id] ? (
@@ -529,14 +606,21 @@ export default function UsersWebScreen() {
                         </Pressable>
                       </View>
 
-                      <View style={styles.userModalHeroText}>
+                      <View style={[styles.userModalHeroText, isLaptopModalStacked ? styles.userModalHeroTextStacked : null]}>
                         <View style={styles.userModalBadge}>
                           <Ionicons name="shield-checkmark-outline" size={14} color={colors.secondary} />
                           <Text style={styles.userModalBadgeText}>{getUserTypeLabel(selectedUser.userType)}</Text>
                         </View>
-                        <Text style={styles.userModalTitle}>{selectedUser.name}</Text>
-                        <Text style={styles.userModalSubtitle}>
-                          פרופיל משתמש מלא עם פרטי קשר, סטטוס והרשומות המקושרות אליו
+                        <Text style={[styles.userModalTitle, isCompactModalHeader ? styles.userModalTitleCompact : null]}>
+                          {selectedUser.name}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.userModalSubtitle,
+                            isLaptopModalStacked ? styles.userModalSubtitleStacked : null,
+                          ]}
+                        >
+                          פרטי קשר, הרשאות ואירועים מקושרים במקום אחד
                         </Text>
                       </View>
                     </View>
@@ -544,26 +628,13 @@ export default function UsersWebScreen() {
 
                   <ScrollView
                     style={styles.userModalScroll}
-                    contentContainerStyle={styles.userModalScrollContent}
+                    contentContainerStyle={[
+                      styles.userModalScrollContent,
+                      isCompactModalHeader ? styles.userModalScrollContentCompact : null,
+                    ]}
                     showsVerticalScrollIndicator={false}
                   >
                     <View style={styles.userModalStatsRow}>
-                      <View style={styles.userModalStatCard}>
-                        <Text style={styles.userModalStatValue}>{eventsLoading ? '...' : linkedEvents.length}</Text>
-                        <Text style={styles.userModalStatLabel}>אירועים מקושרים</Text>
-                      </View>
-                      <View style={styles.userModalStatCard}>
-                        <Text style={styles.userModalStatValue}>{formatHebrewDate(selectedUser.created_at)}</Text>
-                        <Text style={styles.userModalStatLabel}>תאריך הצטרפות</Text>
-                      </View>
-                      <View style={styles.userModalStatCard}>
-                        <Text style={styles.userModalStatValue}>{formatHebrewDate(selectedUser.updated_at)}</Text>
-                        <Text style={styles.userModalStatLabel}>עדכון אחרון</Text>
-                      </View>
-                    </View>
-
-                    <View style={styles.userModalSection}>
-                      <Text style={styles.userModalSectionTitle}>פרטי משתמש</Text>
                       <View style={styles.userModalInfoGrid}>
                         <View style={styles.userModalInfoCard}>
                           <View style={[styles.userModalInfoIconWrap, styles.userModalInfoIconRole]}>
@@ -571,17 +642,17 @@ export default function UsersWebScreen() {
                           </View>
                           <View style={styles.userModalInfoText}>
                             <Text style={styles.userModalInfoLabel}>תפקיד</Text>
-                            <Text style={styles.userModalInfoValue}>{getUserTypeLabel(selectedUser.userType)}</Text>
+                            <Text style={styles.userModalInfoValue} numberOfLines={1}>{getUserTypeLabel(selectedUser.userType)}</Text>
                           </View>
                         </View>
 
-                        <View style={styles.userModalInfoCard}>
+                        <View style={[styles.userModalInfoCard, styles.userModalInfoCardEmail]}>
                           <View style={[styles.userModalInfoIconWrap, styles.userModalInfoIconEmail]}>
                             <Ionicons name="mail-outline" size={18} color="#F97316" />
                           </View>
                           <View style={styles.userModalInfoText}>
                             <Text style={styles.userModalInfoLabel}>אימייל</Text>
-                            <Text style={[styles.userModalInfoValue, styles.userModalInfoValueLtr]}>
+                            <Text style={[styles.userModalInfoValue, styles.userModalInfoValueLtr, styles.userModalInfoValueWrap]}>
                               {selectedUser.email}
                             </Text>
                           </View>
@@ -593,7 +664,7 @@ export default function UsersWebScreen() {
                           </View>
                           <View style={styles.userModalInfoText}>
                             <Text style={styles.userModalInfoLabel}>טלפון</Text>
-                            <Text style={[styles.userModalInfoValue, styles.userModalInfoValueLtr]}>
+                            <Text style={[styles.userModalInfoValue, styles.userModalInfoValueLtr]} numberOfLines={1}>
                               {selectedUser.phone || '—'}
                             </Text>
                           </View>
@@ -605,118 +676,157 @@ export default function UsersWebScreen() {
                           </View>
                           <View style={styles.userModalInfoText}>
                             <Text style={styles.userModalInfoLabel}>תאריך יצירה</Text>
-                            <Text style={styles.userModalInfoValue}>{formatHebrewDate(selectedUser.created_at)}</Text>
+                            <Text style={styles.userModalInfoValue} numberOfLines={1}>{formatHebrewDate(selectedUser.created_at)}</Text>
                           </View>
                         </View>
                       </View>
                     </View>
 
-                    <View style={styles.userModalSection}>
-                      <View style={styles.userModalSectionHeader}>
-                        <Text style={styles.userModalSectionTitle}>אירועים מקושרים</Text>
-                        <View style={styles.userModalSectionBadge}>
-                          <Text style={styles.userModalSectionBadgeText}>{linkedEvents.length}</Text>
-                        </View>
-                      </View>
-
-                      {eventsLoading ? (
-                        <View style={styles.userModalEventsState}>
-                          <ActivityIndicator size="small" color={colors.primary} />
-                          <Text style={styles.userModalEventsStateText}>טוען אירועים...</Text>
-                        </View>
-                      ) : eventsError ? (
-                        <View style={styles.userModalEventsEmpty}>
-                          <Ionicons name="alert-circle-outline" size={20} color={colors.error} />
-                          <Text style={styles.userModalEventsEmptyTitle}>אירעה שגיאה בטעינת האירועים</Text>
-                          <Text style={styles.userModalEventsEmptyText}>{eventsError}</Text>
-                        </View>
-                      ) : linkedEvents.length === 0 ? (
-                        <View style={styles.userModalEventsEmpty}>
-                          <Ionicons name="calendar-clear-outline" size={20} color={colors.gray[500]} />
-                          <Text style={styles.userModalEventsEmptyTitle}>אין עדיין אירועים מקושרים</Text>
-                          <Text style={styles.userModalEventsEmptyText}>
-                            כשהמשתמש יקושר לאירועים, הם יופיעו כאן בצורה מסודרת.
-                          </Text>
-                        </View>
-                      ) : (
-                        <View style={styles.userModalEventsList}>
-                          {linkedEvents.map((eventItem) => (
-                            <View key={eventItem.id} style={styles.userModalEventCard}>
-                              <View style={styles.userModalEventHeader}>
-                                <View style={styles.userModalEventDateBadge}>
-                                  <Ionicons name="sparkles-outline" size={14} color={colors.secondary} />
-                                  <Text style={styles.userModalEventDateBadgeText}>
-                                    {formatHebrewDate(eventItem.date)}
-                                  </Text>
-                                </View>
-                                <Text style={styles.userModalEventTitle} numberOfLines={1}>
-                                  {eventItem.title}
-                                </Text>
-                              </View>
-
-                              <View style={styles.userModalEventMetaRow}>
-                                <View style={styles.userModalEventMetaPill}>
-                                  <Ionicons name="location-outline" size={14} color={colors.primary} />
-                                  <Text style={styles.userModalEventMetaText} numberOfLines={1}>
-                                    {eventItem.location || 'ללא מיקום'}
-                                  </Text>
-                                </View>
-                                <View style={styles.userModalEventMetaPill}>
-                                  <Ionicons name="business-outline" size={14} color={colors.primary} />
-                                  <Text style={styles.userModalEventMetaText} numberOfLines={1}>
-                                    {eventItem.city || 'ללא עיר'}
-                                  </Text>
-                                </View>
-                              </View>
+                    <View
+                      style={[
+                        styles.userModalDashboardGrid,
+                        isLaptopModalStacked ? styles.userModalDashboardGridStacked : null,
+                      ]}
+                    >
+                      <View style={styles.userModalMainColumn}>
+                        <View style={[styles.userModalPanel, styles.userModalEventsPanel]}>
+                          <View style={styles.userModalSectionHeader}>
+                            <Text style={styles.userModalSectionTitle}>אירועים מקושרים</Text>
+                            <View style={styles.userModalSectionBadge}>
+                              <Text style={styles.userModalSectionBadgeText}>{linkedEvents.length}</Text>
                             </View>
-                          ))}
+                          </View>
+                          {eventsLoading ? (
+                            <View style={styles.userModalEventsState}>
+                              <ActivityIndicator size="small" color={colors.primary} />
+                              <Text style={styles.userModalEventsStateText}>טוען אירועים...</Text>
+                            </View>
+                          ) : eventsError ? (
+                            <View style={styles.userModalEventsEmpty}>
+                              <Ionicons name="alert-circle-outline" size={20} color={colors.error} />
+                              <Text style={styles.userModalEventsEmptyTitle}>אירעה שגיאה בטעינת האירועים</Text>
+                              <Text style={styles.userModalEventsEmptyText}>{eventsError}</Text>
+                            </View>
+                          ) : linkedEvents.length === 0 ? (
+                            <View style={styles.userModalEventsEmpty}>
+                              <Ionicons name="calendar-clear-outline" size={20} color={colors.gray[500]} />
+                              <Text style={styles.userModalEventsEmptyTitle}>אין עדיין אירועים מקושרים</Text>
+                              <Text style={styles.userModalEventsEmptyText}>
+                                כשהמשתמש יקושר לאירועים, הם יופיעו כאן בצורה מסודרת.
+                              </Text>
+                            </View>
+                          ) : (
+                            <View style={styles.userModalEventsList}>
+                              {linkedEvents.map((eventItem) => (
+                                <View key={eventItem.id} style={styles.userModalEventCard}>
+                                  <View style={styles.userModalEventHeader}>
+                                    <View style={styles.userModalEventDateBadge}>
+                                      <Ionicons name="sparkles-outline" size={14} color={colors.secondary} />
+                                      <Text style={styles.userModalEventDateBadgeText}>
+                                        {formatHebrewDate(eventItem.date)}
+                                      </Text>
+                                    </View>
+                                    <Text style={styles.userModalEventTitle} numberOfLines={1}>
+                                      {eventItem.title}
+                                    </Text>
+                                  </View>
+
+                                  <View style={styles.userModalEventMetaRow}>
+                                    <View style={styles.userModalEventMetaPill}>
+                                      <Ionicons name="location-outline" size={14} color={colors.primary} />
+                                      <Text style={styles.userModalEventMetaText} numberOfLines={1}>
+                                        {eventItem.location || 'ללא מיקום'}
+                                      </Text>
+                                    </View>
+                                    <View style={styles.userModalEventMetaPill}>
+                                      <Ionicons name="business-outline" size={14} color={colors.primary} />
+                                      <Text style={styles.userModalEventMetaText} numberOfLines={1}>
+                                        {eventItem.city || 'ללא עיר'}
+                                      </Text>
+                                    </View>
+                                  </View>
+                                </View>
+                              ))}
+                            </View>
+                          )}
                         </View>
-                      )}
-                    </View>
-
-                    <View style={styles.userModalActions}>
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel="עריכת משתמש"
-                        onPress={openEdit}
-                        style={({ hovered, pressed }: any) => [
-                          styles.userModalActionBtn,
-                          styles.userModalActionBtnPrimary,
-                          Platform.OS === 'web' && hovered ? styles.userModalActionBtnPrimaryHover : null,
-                          pressed ? { opacity: 0.92 } : null,
-                        ]}
-                      >
-                        <Ionicons name="create-outline" size={16} color={colors.white} />
-                        <Text style={styles.userModalActionBtnPrimaryText}>ערוך משתמש</Text>
-                      </Pressable>
-
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel="מחיקת משתמש"
-                        onPress={() => {
-                          setShowUserModal(false);
-                          confirmDelete(selectedUser);
-                        }}
-                        style={({ hovered, pressed }: any) => [
-                          styles.userModalActionBtn,
-                          styles.userModalActionBtnDanger,
-                          Platform.OS === 'web' && hovered ? styles.userModalActionBtnDangerHover : null,
-                          pressed ? { opacity: 0.92 } : null,
-                        ]}
-                      >
-                        <Ionicons name="trash-outline" size={16} color={colors.white} />
-                        <Text style={styles.userModalActionBtnDangerText}>מחק משתמש</Text>
-                      </Pressable>
-                    </View>
-
-                    {isDemoMode ? (
-                      <View style={styles.userModalDemoNote}>
-                        <Ionicons name="information-circle-outline" size={16} color={colors.gray[600]} />
-                        <Text style={styles.userModalDemoNoteText}>
-                          מצב דמו: חלק מהפעולות אינן נשמרות בדאטאבייס.
-                        </Text>
                       </View>
-                    ) : null}
+
+                      <View
+                        style={[
+                          styles.userModalSideColumn,
+                          isLaptopModalStacked ? styles.userModalSideColumnStacked : null,
+                        ]}
+                      >
+                        <View style={styles.userModalPanel}>
+                          <View style={styles.userModalActionsBlock}>
+                            <View style={styles.userModalSectionHeader}>
+                              <Text style={styles.userModalSectionTitle}>פעולות מהירות</Text>
+                            </View>
+                          <View style={styles.userModalActions}>
+                            <Pressable
+                              accessibilityRole="button"
+                              accessibilityLabel="עריכת משתמש"
+                              onPress={openEdit}
+                              style={({ hovered, pressed }: any) => [
+                                styles.userModalActionBtn,
+                                styles.userModalActionBtnPrimary,
+                                Platform.OS === 'web' && hovered ? styles.userModalActionBtnPrimaryHover : null,
+                                pressed ? { opacity: 0.92 } : null,
+                              ]}
+                            >
+                              <Ionicons name="create-outline" size={16} color={colors.primary} />
+                              <Text style={styles.userModalActionBtnPrimaryText}>ערוך משתמש</Text>
+                            </Pressable>
+
+                            {canManagePasswords ? (
+                              <Pressable
+                                accessibilityRole="button"
+                                accessibilityLabel="שינוי סיסמה"
+                                onPress={openPasswordDialog}
+                                style={({ hovered, pressed }: any) => [
+                                  styles.userModalActionBtn,
+                                  styles.userModalActionBtnSecondary,
+                                  Platform.OS === 'web' && hovered ? styles.userModalActionBtnSecondaryHover : null,
+                                  pressed ? { opacity: 0.92 } : null,
+                                ]}
+                              >
+                                <Ionicons name="lock-closed-outline" size={16} color={colors.secondary} />
+                                <Text style={styles.userModalActionBtnSecondaryText}>שינוי סיסמה</Text>
+                              </Pressable>
+                            ) : null}
+
+                            <Pressable
+                              accessibilityRole="button"
+                              accessibilityLabel="מחיקת משתמש"
+                              onPress={() => {
+                                setShowUserModal(false);
+                                confirmDelete(selectedUser);
+                              }}
+                              style={({ hovered, pressed }: any) => [
+                                styles.userModalActionBtn,
+                                styles.userModalActionBtnDanger,
+                                Platform.OS === 'web' && hovered ? styles.userModalActionBtnDangerHover : null,
+                                pressed ? { opacity: 0.92 } : null,
+                              ]}
+                            >
+                              <Ionicons name="trash-outline" size={16} color="#C24141" />
+                              <Text style={styles.userModalActionBtnDangerText}>מחק משתמש</Text>
+                            </Pressable>
+                          </View>
+
+                          {isDemoMode ? (
+                            <View style={styles.userModalDemoNote}>
+                              <Ionicons name="information-circle-outline" size={16} color={colors.gray[600]} />
+                              <Text style={styles.userModalDemoNoteText}>
+                                מצב דמו: חלק מהפעולות אינן נשמרות בדאטאבייס.
+                              </Text>
+                            </View>
+                          ) : null}
+                        </View>
+                      </View>
+                    </View>
+                  </View>
                   </ScrollView>
                 </>
               ) : null}
@@ -872,6 +982,10 @@ export default function UsersWebScreen() {
                           style={styles.editInput}
                           secureTextEntry
                           textAlign="right"
+                          autoCorrect={false}
+                          autoComplete="new-password"
+                          textContentType="newPassword"
+                          importantForAutofill="no"
                         />
                       </View>
                     </View>
@@ -890,6 +1004,10 @@ export default function UsersWebScreen() {
                           style={styles.editInput}
                           secureTextEntry
                           textAlign="right"
+                          autoCorrect={false}
+                          autoComplete="new-password"
+                          textContentType="newPassword"
+                          importantForAutofill="no"
                         />
                       </View>
                     </View>
@@ -936,7 +1054,134 @@ export default function UsersWebScreen() {
           </KeyboardAvoidingView>
         </Pressable>
       </Modal>
-    </View>
+
+      <Modal transparent visible={passwordOpen} animationType="fade" onRequestClose={() => setPasswordOpen(false)}>
+        <Pressable style={styles.editBackdrop} onPress={() => setPasswordOpen(false)}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ width: '100%' }}>
+            <Pressable style={[styles.editCard, styles.passwordCard]} onPress={(e) => e.stopPropagation()}>
+              <View style={styles.editHeader}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="סגירת חלון שינוי סיסמה"
+                  onPress={() => setPasswordOpen(false)}
+                  style={({ hovered, pressed }: any) => [
+                    styles.editCloseBtn,
+                    Platform.OS === 'web' && hovered ? styles.editCloseBtnHover : null,
+                    pressed ? { opacity: 0.92 } : null,
+                  ]}
+                >
+                  <Ionicons name="close" size={18} color={colors.gray[700]} />
+                </Pressable>
+
+                <View style={styles.editHeaderText}>
+                  <View style={styles.editBadge}>
+                    <Ionicons name="lock-closed-outline" size={14} color={colors.secondary} />
+                    <Text style={styles.editBadgeText}>שינוי סיסמה</Text>
+                  </View>
+                  <Text style={styles.editTitle}>עדכון סיסמה למשתמש</Text>
+                  <Text style={styles.editSubtitle}>
+                    כאן אפשר להגדיר סיסמה חדשה עבור {selectedUser?.name || 'המשתמש'}.
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.passwordBody}>
+                <View style={[styles.editSection, styles.passwordSection]}>
+                <View style={styles.editSectionHeader}>
+                  <Text style={styles.editSectionTitle}>סיסמה חדשה</Text>
+                  <Text style={styles.editSectionHint}>הפעולה זמינה רק למנהל, והסיסמה חייבת להכיל לפחות 6 תווים.</Text>
+                </View>
+
+                  <View style={[styles.editGrid, styles.passwordGrid]}>
+                    <View style={[styles.editField, styles.passwordField]}>
+                      <Text style={styles.editFieldLabel}>סיסמה חדשה</Text>
+                      <View style={styles.editInputWrap}>
+                        <View style={[styles.editInputIconWrap, styles.editInputIconNeutral]}>
+                          <Ionicons name="lock-closed-outline" size={18} color={colors.gray[700]} />
+                        </View>
+                        <TextInput
+                          value={passwordForm.password}
+                          onChangeText={(t) => setPasswordForm((p) => ({ ...p, password: t }))}
+                          placeholder="הזן סיסמה חדשה"
+                          placeholderTextColor={colors.gray[500]}
+                          style={styles.editInput}
+                          secureTextEntry
+                          textAlign="right"
+                          autoCorrect={false}
+                          autoComplete="new-password"
+                          textContentType="newPassword"
+                          importantForAutofill="no"
+                        />
+                      </View>
+                    </View>
+
+                    <View style={[styles.editField, styles.passwordField]}>
+                      <Text style={styles.editFieldLabel}>אישור סיסמה</Text>
+                      <View style={styles.editInputWrap}>
+                        <View style={[styles.editInputIconWrap, styles.editInputIconNeutral]}>
+                          <Ionicons name="shield-checkmark-outline" size={18} color={colors.gray[700]} />
+                        </View>
+                        <TextInput
+                          value={passwordForm.confirmPassword}
+                          onChangeText={(t) => setPasswordForm((p) => ({ ...p, confirmPassword: t }))}
+                          placeholder="הזן שוב את הסיסמה"
+                          placeholderTextColor={colors.gray[500]}
+                          style={styles.editInput}
+                          secureTextEntry
+                          textAlign="right"
+                          autoCorrect={false}
+                          autoComplete="new-password"
+                          textContentType="newPassword"
+                          importantForAutofill="no"
+                        />
+                      </View>
+                    </View>
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.passwordFooter}>
+                <View style={[styles.editActions, styles.passwordActions]}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="ביטול שינוי סיסמה"
+                    onPress={() => setPasswordOpen(false)}
+                    style={({ hovered, pressed }: any) => [
+                      styles.editBtn,
+                      styles.editBtnGhost,
+                      Platform.OS === 'web' && hovered ? styles.editBtnHover : null,
+                      pressed ? { opacity: 0.92 } : null,
+                    ]}
+                  >
+                    <Text style={styles.editBtnGhostText}>ביטול</Text>
+                  </Pressable>
+
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="שמירת סיסמה חדשה"
+                    onPress={() => void savePasswordChange()}
+                    disabled={passwordSaving}
+                    style={({ hovered, pressed }: any) => [
+                      styles.editBtn,
+                      styles.editBtnPrimary,
+                      Platform.OS === 'web' && hovered ? styles.editBtnPrimaryHover : null,
+                      pressed ? { opacity: 0.92 } : null,
+                      passwordSaving ? { opacity: 0.8 } : null,
+                    ]}
+                  >
+                    {passwordSaving ? (
+                      <ActivityIndicator color={colors.white} />
+                    ) : (
+                      <Text style={styles.editBtnPrimaryText}>שמור סיסמה</Text>
+                    )}
+                  </Pressable>
+                </View>
+              </View>
+            </Pressable>
+          </KeyboardAvoidingView>
+        </Pressable>
+      </Modal>
+    </>
   );
 }
 
@@ -946,13 +1191,16 @@ const styles = StyleSheet.create({
     backgroundColor: '#F7FAFF',
     ...(Platform.OS === 'web'
       ? ({
+          minHeight: '100vh',
+          overflowY: 'auto',
           backgroundImage:
             'radial-gradient(circle at top right, rgba(25,93,230,0.14), rgba(25,93,230,0) 40%), radial-gradient(circle at top left, rgba(232,241,255,0.95), rgba(232,241,255,0) 34%), radial-gradient(circle at bottom left, rgba(242,224,186,0.34), rgba(242,224,186,0) 32%), radial-gradient(circle at bottom center, rgba(240,203,70,0.12), rgba(240,203,70,0) 26%)',
         } as any)
       : null),
   },
+  pageScrollContent: { paddingBottom: 32 },
 
-  filterBarOuter: { paddingHorizontal: 24, paddingBottom: 0, paddingTop: 24, gap: 12 },
+  filterBarOuter: { paddingHorizontal: 24, paddingBottom: 16, paddingTop: 24, gap: 12 },
   searchCard: {
     backgroundColor: colors.white,
     borderRadius: 18,
@@ -967,8 +1215,10 @@ const styles = StyleSheet.create({
   },
   searchCardHeader: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
   searchCardTitle: { fontSize: 14, fontWeight: '900', color: colors.text, textAlign: 'right' },
+  searchControlsRow: { flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'nowrap' },
 
   searchWrapInline: {
+    flex: 1,
     height: 42,
     minWidth: 260,
     borderRadius: 14,
@@ -980,9 +1230,15 @@ const styles = StyleSheet.create({
   searchIconInline: { position: 'absolute', right: 12 },
   searchInputInline: { paddingRight: 40, paddingLeft: 12, fontSize: 15, fontWeight: '600', color: colors.text },
 
-  tagsRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
+  tagsRow: {
+    width: '100%',
+    marginTop: 2,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(15,23,42,0.06)',
+  },
 
-  roleChipsRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  roleChipsRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingRight: 2 },
   roleChip: {
     height: 42,
     paddingHorizontal: 14,
@@ -1003,7 +1259,6 @@ const styles = StyleSheet.create({
   roleChipTextActive: { color: colors.primary },
 
   contentRow: {
-    flex: 1,
     paddingHorizontal: 24,
     paddingBottom: 32,
     flexDirection: 'row-reverse',
@@ -1013,6 +1268,7 @@ const styles = StyleSheet.create({
 
   tableCard: {
     flex: 1,
+    alignSelf: 'stretch',
     backgroundColor: colors.white,
     borderRadius: 24,
     borderWidth: 1,
@@ -1034,8 +1290,11 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   th: { fontSize: 13, fontWeight: '800', color: colors.gray[500], textAlign: 'right' },
-  rowsScroll: { flex: 1 },
-  rowsScrollContent: { paddingBottom: 90 },
+  rowsScroll: {
+    width: '100%',
+    ...(Platform.OS === 'web' ? ({ overflowY: 'auto' } as any) : null),
+  },
+  rowsScrollContent: { paddingBottom: 24 },
   tr: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1108,13 +1367,12 @@ const styles = StyleSheet.create({
   },
   tableFooterText: { fontSize: 12, fontWeight: '600', color: colors.gray[600], textAlign: 'right' },
 
-  fabCreate: {
-    position: Platform.OS === 'web' ? ('fixed' as any) : 'absolute',
-    left: 24,
-    bottom: 24,
+  createButtonInline: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
     gap: 10,
+    minWidth: 148,
+    height: 42,
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderRadius: 999,
@@ -1125,61 +1383,62 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.22,
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 10 },
-    zIndex: 50,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
-  fabCreateHover: { opacity: 0.96 },
-  fabCreateText: { color: colors.white, fontSize: 14, fontWeight: '900', textAlign: 'right' },
+  createButtonInlineHover: { opacity: 0.96 },
+  createButtonInlineText: { color: colors.white, fontSize: 14, fontWeight: '900', textAlign: 'right' },
 
   userModalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(3, 11, 28, 0.58)',
-    paddingHorizontal: 24,
-    paddingVertical: 24,
+    backgroundColor: 'rgba(2, 6, 23, 0.42)',
+    paddingHorizontal: 20,
+    paddingVertical: 20,
     justifyContent: 'center',
+  },
+  userModalKeyboardShell: {
+    width: '100%',
+    maxWidth: 960,
+    alignSelf: 'center',
   },
   userModalCard: {
     width: '100%',
     maxWidth: 920,
-    maxHeight: '88%',
+    maxHeight: '92%',
     alignSelf: 'center',
-    backgroundColor: 'rgba(255,255,255,0.98)',
+    backgroundColor: '#F7FAFF',
     borderRadius: 30,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.72)',
+    borderColor: 'rgba(255,255,255,0.84)',
     overflow: 'hidden',
     shadowColor: '#06173e',
-    shadowOpacity: 0.16,
-    shadowRadius: 28,
-    shadowOffset: { width: 0, height: 18 },
+    shadowOpacity: 0.14,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 16 },
+    ...(Platform.OS === 'web'
+      ? ({
+          backgroundImage:
+            'radial-gradient(circle at top right, rgba(25,93,230,0.14), rgba(25,93,230,0) 40%), radial-gradient(circle at top left, rgba(232,241,255,0.95), rgba(232,241,255,0) 34%), radial-gradient(circle at bottom left, rgba(242,224,186,0.34), rgba(242,224,186,0) 32%), radial-gradient(circle at bottom center, rgba(240,203,70,0.12), rgba(240,203,70,0) 26%)',
+        } as any)
+      : null),
   },
-  userModalGlowPrimary: {
-    position: 'absolute',
-    top: -80,
-    right: -60,
-    width: 260,
-    height: 260,
-    borderRadius: 999,
-    backgroundColor: 'rgba(240,203,70,0.18)',
-  },
-  userModalGlowSecondary: {
-    position: 'absolute',
-    bottom: -90,
-    left: -60,
-    width: 240,
-    height: 240,
-    borderRadius: 999,
-    backgroundColor: 'rgba(6,23,62,0.08)',
+  userModalCardCompact: {
+    maxWidth: 860,
   },
   userModalHeader: {
     position: 'relative',
-    paddingHorizontal: 28,
+    paddingHorizontal: 24,
     paddingTop: 22,
-    paddingBottom: 12,
+    paddingBottom: 10,
+  },
+  userModalHeaderCompact: {
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 10,
   },
   userModalCloseBtn: {
     position: 'absolute',
     left: 28,
-    top: 58,
+    top: 28,
     zIndex: 2,
     width: 40,
     height: 40,
@@ -1191,95 +1450,143 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(15,23,42,0.08)',
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
+  userModalCloseBtnCompact: {
+    left: 20,
+    top: 20,
+  },
   userModalCloseBtnHover: { backgroundColor: 'rgba(15,23,42,0.08)' },
   userModalHero: {
-    marginTop: 8,
     flexDirection: 'row',
     alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 20,
+    justifyContent: 'space-between',
+    gap: 18,
+  },
+  userModalHeroStacked: {
+    alignItems: 'flex-end',
   },
   userModalAvatarShell: {
     position: 'relative',
-    width: 120,
-    height: 120,
+    width: 92,
+    height: 92,
   },
   userModalAvatarRing: {
-    width: 120,
-    height: 120,
-    borderRadius: 38,
-    padding: 4,
+    width: 92,
+    height: 92,
+    borderRadius: 30,
+    padding: 3,
     backgroundColor: 'rgba(255,255,255,0.88)',
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.08)',
     shadowColor: '#0b1c41',
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 8 },
   },
-  userModalAvatarImg: { width: '100%', height: '100%', borderRadius: 34 },
+  userModalAvatarImg: { width: '100%', height: '100%', borderRadius: 27 },
   userModalAvatarFallback: {
     flex: 1,
-    borderRadius: 34,
+    borderRadius: 27,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.primary,
   },
-  userModalAvatarInitials: { fontSize: 34, fontWeight: '900', color: colors.white },
+  userModalAvatarInitials: { fontSize: 26, fontWeight: '900', color: colors.white },
   userModalAvatarBadge: {
     position: 'absolute',
     left: -2,
     bottom: -2,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.secondary,
-    borderWidth: 3,
+    borderWidth: 2,
     borderColor: colors.white,
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
   userModalAvatarBadgeHover: { transform: [{ scale: 1.04 }] },
-  userModalHeroText: { flex: 1, alignItems: 'flex-start', justifyContent: 'flex-start', gap: 8 },
+  userModalHeroText: { flex: 1, minWidth: 0, alignItems: 'flex-start', justifyContent: 'flex-start', gap: 8 },
+  userModalHeroTextStacked: { width: '100%' },
   userModalBadge: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: 999,
     backgroundColor: 'rgba(6,23,62,0.06)',
     borderWidth: 1,
     borderColor: 'rgba(6,23,62,0.10)',
   },
   userModalBadgeText: { fontSize: 12, fontWeight: '900', color: colors.primary, textAlign: 'right' },
-  userModalTitle: { fontSize: 30, fontWeight: '900', color: colors.text, textAlign: 'right' },
-  userModalSubtitle: { fontSize: 14, fontWeight: '700', color: colors.gray[600], textAlign: 'right' },
+  userModalTitle: { fontSize: 28, fontWeight: '900', color: colors.text, textAlign: 'right' },
+  userModalTitleCompact: { fontSize: 24 },
+  userModalSubtitle: { fontSize: 13, fontWeight: '700', color: colors.gray[600], textAlign: 'right', maxWidth: 460, lineHeight: 20 },
+  userModalSubtitleStacked: { maxWidth: '100%' },
   userModalScroll: { maxHeight: '100%' },
-  userModalScrollContent: { paddingHorizontal: 28, paddingBottom: 28, gap: 18 },
-  userModalStatsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  userModalScrollContent: { paddingHorizontal: 24, paddingBottom: 22, gap: 12 },
+  userModalScrollContentCompact: { paddingHorizontal: 18, paddingBottom: 18 },
+  userModalStatsRow: { width: '100%', flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 10 },
   userModalStatCard: {
-    flex: 1,
-    minHeight: 92,
-    borderRadius: 22,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    backgroundColor: 'rgba(248,250,252,0.92)',
+    flexGrow: 1,
+    flexBasis: 0,
+    minWidth: 150,
+    minHeight: 72,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: 'rgba(255,255,255,0.78)',
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.07)',
-    alignItems: 'flex-start',
+    alignItems: 'flex-end',
     justifyContent: 'center',
+    shadowColor: '#0b1c41',
+    shadowOpacity: 0.03,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
   },
-  userModalStatValue: { fontSize: 18, fontWeight: '900', color: colors.text, textAlign: 'right' },
+  userModalStatValue: { fontSize: 16, fontWeight: '900', color: colors.text, textAlign: 'right' },
   userModalStatLabel: { fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'right' },
-  userModalSection: { gap: 12 },
+  userModalDashboardGrid: {
+    flexDirection: 'row-reverse',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  userModalDashboardGridStacked: {
+    flexDirection: 'column',
+  },
+  userModalMainColumn: {
+    flex: 1.12,
+    minWidth: 0,
+  },
+  userModalSideColumn: {
+    flex: 0.98,
+    minWidth: 320,
+    gap: 12,
+  },
+  userModalSideColumnStacked: {
+    width: '100%',
+    minWidth: 0,
+  },
+  userModalPanel: {
+    borderRadius: 24,
+    padding: 14,
+    backgroundColor: 'rgba(255,255,255,0.72)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.07)',
+    gap: 10,
+  },
+  userModalEventsPanel: {
+    backgroundColor: 'rgba(255,255,255,0.78)',
+  },
   userModalSectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 12,
   },
-  userModalSectionTitle: { fontSize: 18, fontWeight: '900', color: colors.text, textAlign: 'right' },
+  userModalSectionTitle: { fontSize: 16, fontWeight: '900', color: colors.text, textAlign: 'right' },
   userModalSectionBadge: {
     minWidth: 32,
     height: 32,
@@ -1292,25 +1599,31 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(204,160,0,0.18)',
   },
   userModalSectionBadgeText: { fontSize: 13, fontWeight: '900', color: colors.secondary, textAlign: 'center' },
-  userModalInfoGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 12 },
+  userModalInfoGrid: { width: '100%', flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'flex-start' },
   userModalInfoCard: {
-    width: '48.8%',
-    minWidth: 260,
-    borderRadius: 22,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    backgroundColor: colors.white,
+    flexGrow: 1,
+    flexBasis: 220,
+    minWidth: 180,
+    maxWidth: 280,
+    minHeight: 42,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: 'rgba(255,255,255,0.72)',
     borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.08)',
+    borderColor: 'rgba(15,23,42,0.06)',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
+    justifyContent: 'flex-start',
+    gap: 8,
+  },
+  userModalInfoCardEmail: {
+    alignItems: 'flex-start',
   },
   userModalInfoIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 16,
+    width: 28,
+    height: 28,
+    borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1318,14 +1631,15 @@ const styles = StyleSheet.create({
   userModalInfoIconEmail: { backgroundColor: 'rgba(249,115,22,0.12)' },
   userModalInfoIconPhone: { backgroundColor: 'rgba(22,163,74,0.12)' },
   userModalInfoIconDate: { backgroundColor: 'rgba(71,85,105,0.12)' },
-  userModalInfoText: { flex: 1, alignItems: 'flex-start' },
-  userModalInfoLabel: { fontSize: 12, fontWeight: '700', color: colors.gray[600], textAlign: 'right' },
-  userModalInfoValue: { marginTop: 4, fontSize: 15, fontWeight: '900', color: colors.text, textAlign: 'right' },
+  userModalInfoText: { flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'center', gap: 2, flexShrink: 1, minWidth: 0, flexGrow: 1 },
+  userModalInfoLabel: { fontSize: 10, fontWeight: '800', color: colors.gray[500], textAlign: 'right' },
+  userModalInfoValue: { fontSize: 11.5, fontWeight: '900', color: colors.text, textAlign: 'right', flexShrink: 1 },
   userModalInfoValueLtr: { writingDirection: 'ltr' as any, textAlign: 'right' as any },
+  userModalInfoValueWrap: { flexWrap: 'wrap', lineHeight: 16 },
   userModalEventsState: {
-    minHeight: 108,
-    borderRadius: 22,
-    backgroundColor: 'rgba(248,250,252,0.92)',
+    minHeight: 92,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.82)',
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.07)',
     alignItems: 'center',
@@ -1334,31 +1648,32 @@ const styles = StyleSheet.create({
   },
   userModalEventsStateText: { fontSize: 14, fontWeight: '800', color: colors.gray[600], textAlign: 'center' },
   userModalEventsEmpty: {
-    minHeight: 118,
-    borderRadius: 22,
-    backgroundColor: 'rgba(248,250,252,0.92)',
+    minHeight: 100,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.82)',
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.07)',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 18,
+    paddingHorizontal: 16,
     gap: 8,
   },
   userModalEventsEmptyTitle: { fontSize: 15, fontWeight: '900', color: colors.text, textAlign: 'center' },
   userModalEventsEmptyText: { fontSize: 13, fontWeight: '700', color: colors.gray[600], textAlign: 'center' },
-  userModalEventsList: { gap: 10 },
+  userModalEventsList: { gap: 8 },
   userModalEventCard: {
-    borderRadius: 22,
-    padding: 16,
-    backgroundColor: colors.white,
+    borderRadius: 18,
+    padding: 12,
+    backgroundColor: 'rgba(255,255,255,0.94)',
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.08)',
-    gap: 12,
+    gap: 8,
   },
   userModalEventHeader: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'space-between',
+    flexWrap: 'wrap',
     gap: 12,
   },
   userModalEventDateBadge: {
@@ -1373,8 +1688,8 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(204,160,0,0.16)',
   },
   userModalEventDateBadgeText: { fontSize: 12, fontWeight: '900', color: colors.secondary, textAlign: 'right' },
-  userModalEventTitle: { flex: 1, fontSize: 16, fontWeight: '900', color: colors.text, textAlign: 'right' },
-  userModalEventMetaRow: { flexDirection: 'row', flexWrap: 'nowrap', gap: 8 },
+  userModalEventTitle: { flex: 1, fontSize: 15, fontWeight: '900', color: colors.text, textAlign: 'right' },
+  userModalEventMetaRow: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-end' },
   userModalEventMetaPill: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
@@ -1385,32 +1700,59 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(6,23,62,0.05)',
   },
   userModalEventMetaText: { fontSize: 12, fontWeight: '800', color: colors.primary, textAlign: 'right' },
-  userModalActions: { flexDirection: 'row-reverse', gap: 10 },
+  userModalActionsBlock: {
+    marginTop: 4,
+    gap: 10,
+  },
+  userModalActions: { gap: 8 },
   userModalActionBtn: {
-    flex: 1,
+    width: '100%',
     minHeight: 48,
     borderRadius: 16,
     flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
+    paddingHorizontal: 14,
+    shadowColor: '#0b1c41',
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
   userModalActionBtnPrimary: {
-    backgroundColor: colors.primary,
+    backgroundColor: 'rgba(6,23,62,0.04)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.16)',
+    borderColor: 'rgba(6,23,62,0.10)',
   },
-  userModalActionBtnPrimaryHover: { opacity: 0.96 },
-  userModalActionBtnPrimaryText: { fontSize: 13, fontWeight: '900', color: colors.white, textAlign: 'right' },
+  userModalActionBtnPrimaryHover: { backgroundColor: 'rgba(6,23,62,0.06)', borderColor: 'rgba(6,23,62,0.14)' },
+  userModalActionBtnPrimaryText: { fontSize: 12.5, fontWeight: '900', color: colors.primary, textAlign: 'right' },
+  userModalActionBtnSecondary: {
+    backgroundColor: 'rgba(240,203,70,0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(204,160,0,0.18)',
+  },
+  userModalActionBtnSecondaryHover: { backgroundColor: 'rgba(240,203,70,0.18)', borderColor: 'rgba(204,160,0,0.24)' },
+  userModalActionBtnSecondaryText: { fontSize: 12.5, fontWeight: '900', color: colors.secondary, textAlign: 'right' },
   userModalActionBtnDanger: {
-    backgroundColor: '#ef4444',
+    backgroundColor: 'rgba(239,68,68,0.08)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.16)',
+    borderColor: 'rgba(239,68,68,0.18)',
   },
-  userModalActionBtnDangerHover: { opacity: 0.96 },
-  userModalActionBtnDangerText: { fontSize: 13, fontWeight: '900', color: colors.white, textAlign: 'right' },
-  userModalDemoNote: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, marginTop: 2 },
+  userModalActionBtnDangerHover: { backgroundColor: 'rgba(239,68,68,0.12)', borderColor: 'rgba(239,68,68,0.24)' },
+  userModalActionBtnDangerText: { fontSize: 12.5, fontWeight: '900', color: '#C24141', textAlign: 'right' },
+  userModalDemoNote: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 2,
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    backgroundColor: 'rgba(255,255,255,0.8)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.06)',
+  },
   userModalDemoNoteText: { flex: 1, fontSize: 12, fontWeight: '700', textAlign: 'right', color: colors.gray[600] },
 
   sidePanel: {
@@ -1484,6 +1826,10 @@ const styles = StyleSheet.create({
     shadowRadius: 28,
     shadowOffset: { width: 0, height: 18 },
   },
+  passwordCard: { maxWidth: 560, maxHeight: 720, minHeight: 520, paddingBottom: 20, justifyContent: 'space-between' },
+  passwordBody: { width: '100%', gap: 14, flexShrink: 1 },
+  passwordSection: { width: '100%', paddingBottom: 6 },
+  passwordFooter: { width: '100%', paddingTop: 8, paddingBottom: 8, backgroundColor: 'rgba(255,255,255,0.98)' },
   editHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14 },
   editHeaderText: { flex: 1, alignItems: 'flex-start', justifyContent: 'center', gap: 8 },
   editBadge: {
@@ -1527,8 +1873,10 @@ const styles = StyleSheet.create({
   editSectionTitle: { fontSize: 15, fontWeight: '900', color: colors.text, textAlign: 'right' },
   editSectionHint: { fontSize: 12, fontWeight: '700', color: colors.gray[500], textAlign: 'right' },
   editGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 14 },
+  passwordGrid: { width: '100%', flexDirection: 'column', flexWrap: 'nowrap' },
   editPasswordGrid: { flexDirection: 'row', flexWrap: 'nowrap' },
   editField: { minWidth: 240, flexGrow: 1, gap: 8 },
+  passwordField: { minWidth: 0, width: '100%' },
   editFieldFull: { width: '100%' },
   editFieldLabel: { fontSize: 12, fontWeight: '900', color: colors.gray[600], textAlign: 'right' },
   editInputWrap: {
@@ -1585,6 +1933,7 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingTop: 6,
   },
+  passwordActions: { width: '100%', paddingTop: 0, paddingBottom: 0 },
   editBtn: { flex: 1, height: 52, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   editBtnGhost: { backgroundColor: 'rgba(15,23,42,0.05)', borderWidth: 1, borderColor: 'rgba(15,23,42,0.10)' },
   editBtnHover: { backgroundColor: 'rgba(15,23,42,0.07)' },

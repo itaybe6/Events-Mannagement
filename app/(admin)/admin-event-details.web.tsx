@@ -85,13 +85,17 @@ function GaugeMeter({
 }
 
 export default function AdminEventDetailsWebScreen() {
-  const { id } = useLocalSearchParams();
+  const { id, eventId } = useLocalSearchParams();
   const router = useRouter();
   const { width } = useWindowDimensions();
-  const eventId = useMemo(() => (typeof id === 'string' ? id : Array.isArray(id) ? id[0] : ''), [id]);
+  const resolvedEventId = useMemo(() => {
+    const fromId = typeof id === 'string' ? id : Array.isArray(id) ? id[0] : '';
+    const fromEventId = typeof eventId === 'string' ? eventId : Array.isArray(eventId) ? eventId[0] : '';
+    return fromId || fromEventId || '';
+  }, [eventId, id]);
 
   const { loading, error, event, setEvent, guests, userName, userAvatarUrl, stats, refresh } =
-    useAdminEventDetailsModel(eventId);
+    useAdminEventDetailsModel(resolvedEventId);
 
   const [avatarPreviewOpen, setAvatarPreviewOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -391,7 +395,10 @@ export default function AdminEventDetailsWebScreen() {
       icon: 'chatbubble-ellipses-outline' as const,
       accent: '#0EA5E9',
       tint: 'rgba(14,165,233,0.14)',
-      onPress: () => router.push(`/(admin)/admin-event-messages?eventId=${event.id}`),
+      onPress: () =>
+        router.push(
+          `/(admin)/admin-event-messages?eventId=${event.id}&returnTo=${encodeURIComponent(`/(admin)/admin-event-details?id=${event.id}`)}`
+        ),
     },
     {
       key: 'tables',
@@ -424,7 +431,10 @@ export default function AdminEventDetailsWebScreen() {
       icon: 'checkbox-outline' as const,
       accent: '#22C55E',
       tint: 'rgba(34,197,94,0.16)',
-      onPress: () => router.push(`/(admin)/admin-guest-checkin?eventId=${event.id}`),
+      onPress: () =>
+        router.push(
+          `/(admin)/admin-guest-checkin?eventId=${event.id}&returnTo=${encodeURIComponent(`/(admin)/admin-event-details?id=${event.id}`)}`
+        ),
     },
     {
       key: 'seating-map',

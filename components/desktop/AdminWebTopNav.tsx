@@ -2,6 +2,8 @@ import React from 'react';
 import { Pressable, Platform, StyleSheet, Text, View } from 'react-native';
 import { usePathname, useRouter } from 'expo-router';
 
+import { colors } from '@/constants/colors';
+
 const NAV_ITEMS = [
   { href: '/(admin)/admin-events', label: 'לוח בקרה' },
   { href: '/(admin)/admin-events-list', label: 'אירועים' },
@@ -72,8 +74,8 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
   itemActive: {
-    backgroundColor: '#195DE6',
-    shadowColor: '#195DE6',
+    backgroundColor: colors.primary,
+    shadowColor: colors.primary,
     shadowOpacity: 0.18,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 6 },

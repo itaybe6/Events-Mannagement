@@ -1,8 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -12,17 +10,15 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
 
 import { useUserStore } from '@/store/userStore';
-import { userService } from '@/lib/services/userService';
-import { eventService } from '@/lib/services/eventService';
 import { supabase } from '@/lib/supabase';
 import { avatarService } from '@/lib/services/avatarService';
-import type { Event } from '@/types';
 import AdminProfileScreen from './admin-profile';
 import AdminWebPageHeader from '@/components/desktop/AdminWebPageHeader';
 
@@ -42,117 +38,25 @@ const ui = {
   danger: '#E11D48',
 };
 
-type MonthBar = { monthIndex: number; label: string; value: number };
-
-function monthLabelHe(monthIndex0: number) {
-  const months = ['ינו', 'פבר', 'מרץ', 'אפר', 'מאי', 'יונ', 'יול', 'אוג', 'ספט', 'אוק', 'נוב', 'דצמ'];
-  return months[monthIndex0] ?? '';
-}
-
-function buildYearBars(valuesByMonth: number[]): MonthBar[] {
-  return Array.from({ length: 12 }).map((_, m) => ({
-    monthIndex: m,
-    label: monthLabelHe(m),
-    value: valuesByMonth[m] ?? 0,
-  }));
-}
-
-function formatCurrencyILS(n: number) {
-  try {
-    return new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(n);
-  } catch {
-    return `₪${Math.round(n).toLocaleString('he-IL')}`;
-  }
-}
-
-function StatCard({
-  title,
-  value,
-  subtitle,
-  icon,
-  tone,
-  badgeText,
-}: {
-  title: string;
-  value: string;
-  subtitle?: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  tone?: 'default' | 'accent' | 'gold' | 'success' | 'dark';
-  badgeText?: string;
-}) {
-  const isDark = tone === 'dark';
-  const iconBg =
-    tone === 'accent'
-      ? 'rgba(59, 130, 246, 0.10)'
-      : tone === 'gold'
-        ? 'rgba(212, 175, 55, 0.14)'
-        : tone === 'success'
-          ? 'rgba(22, 163, 74, 0.12)'
-          : 'rgba(11, 27, 61, 0.06)';
-  const iconFg = tone === 'accent' ? ui.accentDark : tone === 'gold' ? ui.gold : tone === 'success' ? ui.success : ui.primary;
-
-  if (isDark) {
-    return (
-      <View style={styles.statCardDark}>
-        <View style={styles.statDarkBgDecor1} pointerEvents="none" />
-        <View style={styles.statDarkBgDecor2} pointerEvents="none" />
-        <View style={styles.statCardHeader}>
-          <View style={[styles.statIconBox, { backgroundColor: 'rgba(255,255,255,0.10)', borderColor: 'rgba(255,255,255,0.16)' }]}>
-            <Ionicons name={icon} size={20} color={'rgba(255,255,255,0.92)'} />
-          </View>
-          <Ionicons name="arrow-up-outline" size={20} color={ui.gold} />
-        </View>
-        <Text style={styles.statTitleDark}>{title}</Text>
-        <Text style={styles.statValueDark} numberOfLines={1}>
-          {value}
-        </Text>
-        {subtitle ? <Text style={styles.statSubDark}>{subtitle}</Text> : null}
-      </View>
-    );
-  }
-
-  return (
-    <View style={styles.statCard}>
-      <View style={styles.statCardHeader}>
-        <View style={[styles.statIconBox, { backgroundColor: iconBg, borderColor: 'rgba(15,23,42,0.06)' }]}>
-          <Ionicons name={icon} size={20} color={iconFg} />
-        </View>
-        {badgeText ? (
-          <View style={styles.statBadge}>
-            <Ionicons name="trending-up" size={14} color={ui.success} />
-            <Text style={styles.statBadgeText}>{badgeText}</Text>
-          </View>
-        ) : null}
-      </View>
-      <Text style={styles.statTitle}>{title}</Text>
-      <Text style={styles.statValue} numberOfLines={1}>
-        {value}
-      </Text>
-      {subtitle ? <Text style={styles.statSub}>{subtitle}</Text> : null}
-    </View>
-  );
-}
-
 export default function AdminProfileWebScreen() {
+  const router = useRouter();
   const { width } = useWindowDimensions();
 
   if (width < 900) {
     return <AdminProfileScreen />;
   }
 
-  const contentWidth = Math.max(0, width);
-  const isWide = contentWidth >= 1100;
-  const isTightBars = contentWidth < 980;
   const [heroWidth, setHeroWidth] = useState(0);
-  const isHeroStack = heroWidth > 0 ? heroWidth < 520 : contentWidth < 520;
+  const isHeroStack = heroWidth > 0 ? heroWidth < 520 : width < 520;
 
-  const { userData } = useUserStore();
+  const { userData, logout } = useUserStore();
 
-  const [editOpen, setEditOpen] = useState(false);
-  const [loadingStats, setLoadingStats] = useState(false);
   const [formSaving, setFormSaving] = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const [form, setForm] = useState({ name: '', email: '', password: '', confirmPassword: '' });
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [availableYears, setAvailableYears] = useState<number[]>([]);
@@ -176,131 +80,60 @@ export default function AdminProfileWebScreen() {
     return `https://i.pravatar.cc/256?u=${seed}`;
   }, [userData?.avatar_url, userData?.email]);
 
-  const canPrevYear = useMemo(() => {
-    if (availableYears.length === 0) return true;
-    const min = Math.min(...availableYears);
-    return selectedYear > min;
-  }, [availableYears, selectedYear]);
-
-  const canNextYear = useMemo(() => {
-    if (availableYears.length === 0) return true;
-    const max = Math.max(...availableYears);
-    return selectedYear < max;
-  }, [availableYears, selectedYear]);
-
-  const loadStats = async () => {
-    setLoadingStats(true);
-    try {
-      const [users, events] = await Promise.all([userService.getClients(), eventService.getEvents()]);
-      setClientsCount(Array.isArray(users) ? users.length : 0);
-
-      const years = new Set<number>();
-      years.add(new Date().getFullYear());
-      events.forEach((e) => {
-        const d = new Date((e as any).date);
-        if (!Number.isFinite(d.getTime())) return;
-        years.add(d.getFullYear());
-      });
-      const yearsSorted = Array.from(years).sort((a, b) => b - a);
-      setAvailableYears(yearsSorted);
-
-      const yearToUse = yearsSorted.includes(selectedYear) ? selectedYear : yearsSorted[0] ?? selectedYear;
-      if (yearToUse !== selectedYear) setSelectedYear(yearToUse);
-
-      const inYear = events.filter((e) => {
-        const d = new Date((e as any).date);
-        return Number.isFinite(d.getTime()) && d.getFullYear() === yearToUse;
-      }) as Event[];
-      setEventsThisYear(inYear);
-
-      const eventsByMonth = Array(12).fill(0);
-      inYear.forEach((e) => {
-        const d = new Date((e as any).date);
-        if (!Number.isFinite(d.getTime())) return;
-        eventsByMonth[d.getMonth()] += 1;
-      });
-      const bars = buildYearBars(eventsByMonth);
-      setBars12(bars);
-
-      const totalEvents = bars.reduce((sum, b) => sum + b.value, 0);
-      const totalGuests = inYear.reduce((sum, e) => sum + (Number((e as any).guests) || 0), 0);
-      const totalBudget = inYear.reduce((sum, e) => sum + (Number((e as any).budget) || 0), 0);
-
-      setYearTotalEvents(totalEvents);
-      setYearTotalGuests(totalGuests);
-      setYearTotalBudget(totalBudget);
-    } catch (e) {
-      setAvailableYears([]);
-      setClientsCount(null);
-      setEventsThisYear([]);
-      setBars12([]);
-      setYearTotalEvents(0);
-      setYearTotalGuests(0);
-      setYearTotalBudget(0);
-    } finally {
-      setLoadingStats(false);
-    }
-  };
-
-  useEffect(() => {
+  const handleSave = async (section: 'details' | 'security') => {
     if (!userData) return;
-    void loadStats();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userData?.id, selectedYear]);
 
-  const maxBar = Math.max(1, ...bars12.map((b) => b.value));
-  const now = new Date();
-  const isCurrentYear = selectedYear === now.getFullYear();
+    const isDetailsTab = section === 'details';
+    const nextName = form.name.trim();
+    const nextEmail = form.email.trim();
 
-  const handleSave = async () => {
-    if (!form.name.trim() || !form.email.trim()) {
+    if (isDetailsTab && !nextName) {
       // eslint-disable-next-line no-alert
-      alert('שגיאה: יש למלא שם ואימייל');
+      alert('שגיאה: יש למלא שם');
       return;
     }
-    if (form.password && form.password !== form.confirmPassword) {
+
+    if (!isDetailsTab && !form.password.trim()) {
+      // eslint-disable-next-line no-alert
+      alert('שגיאה: יש להזין סיסמה חדשה');
+      return;
+    }
+
+    if (!isDetailsTab && form.password !== form.confirmPassword) {
       // eslint-disable-next-line no-alert
       alert('שגיאה: הסיסמאות אינן תואמות');
       return;
     }
-    if (!userData) return;
 
     setFormSaving(true);
     try {
-      const nextName = form.name.trim();
-      const nextEmail = form.email.trim();
-      const emailChanged = nextEmail !== userData.email;
       const nameChanged = nextName !== userData.name;
 
-      if (nameChanged || emailChanged) {
+      if (isDetailsTab && nameChanged) {
         const { error: profileError } = await supabase
           .from('users')
-          .update({ name: nextName, email: nextEmail })
+          .update({ name: nextName })
           .eq('id', userData.id);
         if (profileError) throw profileError;
       }
 
-      if (emailChanged) {
-        const { error: emailError } = await supabase.auth.updateUser({ email: nextEmail });
-        if (emailError) throw emailError;
-      }
-
-      if (form.password) {
+      if (!isDetailsTab && form.password) {
         const { error: passwordError } = await supabase.auth.updateUser({ password: form.password });
         if (passwordError) throw passwordError;
       }
 
-      useUserStore.setState((state) => ({
-        userData: state.userData ? { ...state.userData, name: nextName, email: nextEmail } : state.userData,
-      }));
+      if (isDetailsTab) {
+        useUserStore.setState((state) => ({
+          userData: state.userData ? { ...state.userData, name: nextName } : state.userData,
+        }));
+      }
 
       // eslint-disable-next-line no-alert
-      alert('הצלחה: הפרופיל עודכן בהצלחה');
-      setEditOpen(false);
+      alert(isDetailsTab ? 'הצלחה: הפרטים האישיים עודכנו בהצלחה' : 'הצלחה: הסיסמה עודכנה בהצלחה');
       setForm((f) => ({ ...f, password: '', confirmPassword: '' }));
     } catch (e) {
       // eslint-disable-next-line no-alert
-      alert('שגיאה: לא ניתן לעדכן את הפרופיל');
+      alert(isDetailsTab ? 'שגיאה: לא ניתן לעדכן את הפרטים האישיים' : 'שגיאה: לא ניתן לעדכן את הסיסמה');
     } finally {
       setFormSaving(false);
     }
@@ -346,6 +179,17 @@ export default function AdminProfileWebScreen() {
     }
   };
 
+  const handleLogout = async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      await logout();
+      router.replace('/login');
+    } finally {
+      setLoggingOut(false);
+    }
+  };
+
   if (!userData) {
     return (
       <View style={[styles.center, { backgroundColor: ui.bgLight }]}>
@@ -375,31 +219,6 @@ export default function AdminProfileWebScreen() {
             <View style={styles.heroDecor2} pointerEvents="none" />
 
             <View style={[styles.heroMainRow, isHeroStack ? styles.heroMainRowStack : null]}>
-              {/* RIGHT: actions (first in row-reverse) */}
-              <View style={[styles.heroActionsCol, isHeroStack ? styles.heroActionsColStack : null]}>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="עריכת פרופיל"
-                  onPress={() => setEditOpen(true)}
-                  style={({ hovered, pressed }: any) => [
-                    styles.primaryBtn,
-                    Platform.OS === 'web' && hovered ? styles.primaryBtnHover : null,
-                    pressed ? styles.primaryBtnPressed : null,
-                    isHeroStack ? { width: '100%' } : null,
-                  ]}
-                >
-                  {({ hovered }: any) => (
-                    <>
-                      <View style={[styles.primaryBtnIconBox, Platform.OS === 'web' && hovered ? styles.primaryBtnIconBoxHover : null]}>
-                        <Ionicons name="create-outline" size={18} color={'#FFFFFF'} />
-                      </View>
-                      <Text style={styles.primaryBtnText}>עריכת פרופיל</Text>
-                    </>
-                  )}
-                </Pressable>
-              </View>
-
-              {/* RIGHT GROUP: avatar + text (so text sits close to avatar) */}
               <View style={[styles.heroIdentityGroup, isHeroStack ? styles.heroIdentityGroupStack : null]}>
                 <View style={[styles.heroAvatarCol, isHeroStack ? styles.heroAvatarColStack : null]}>
                   <View style={styles.heroAvatarBlock}>
@@ -425,286 +244,237 @@ export default function AdminProfileWebScreen() {
             </View>
           </View>
 
-          {/* STATS */}
-          <View style={styles.statsGrid}>
-            <StatCard
-              title="אירועים השנה"
-              value={loadingStats ? '...' : String(eventsThisYear.length)}
-              subtitle={`בשנת ${selectedYear}`}
-              icon="calendar-outline"
-              tone="accent"
-              badgeText={eventsThisYear.length ? `${Math.max(1, Math.round((eventsThisYear.length / 12) * 100) / 10)} / חודש` : undefined}
-            />
-            <StatCard
-              title="מוזמנים השנה"
-              value={loadingStats ? '...' : yearTotalGuests.toLocaleString('he-IL')}
-              subtitle="סכום מוזמנים לכל האירועים"
-              icon="people-outline"
-              tone="default"
-            />
-            <StatCard
-              title="לקוחות פעילים"
-              value={loadingStats ? '...' : clientsCount === null ? '—' : clientsCount.toLocaleString('he-IL')}
-              subtitle="בעלי אירוע במערכת"
-              icon="briefcase-outline"
-              tone="gold"
-            />
-            <StatCard
-              title="ביצועי שנה"
-              value={loadingStats ? '...' : formatCurrencyILS(yearTotalBudget)}
-              subtitle="תקציב כולל לכל האירועים"
-              icon="analytics-outline"
-              tone="dark"
-            />
-          </View>
-
-          {/* ANALYTICS */}
-          <View style={[styles.analyticsRow, isWide ? null : { flexDirection: 'column' }]}>
-            <View style={styles.analyticsMain}>
-              <View style={styles.card}>
-                <View style={styles.cardHeaderRow}>
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={styles.cardTitle}>ביצועים חודשיים</Text>
-                    <Text style={styles.cardSubtitle}>מס׳ אירועים לפי חודש · {selectedYear}</Text>
-                  </View>
-
-                  <View style={styles.yearControls}>
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="שנה קודמת"
-                      onPress={() => setSelectedYear((y) => y - 1)}
-                      disabled={!canPrevYear}
-                      style={({ hovered, pressed }: any) => [
-                        styles.yearBtn,
-                        Platform.OS === 'web' && hovered ? styles.yearBtnHover : null,
-                        pressed ? { opacity: 0.92 } : null,
-                        !canPrevYear ? { opacity: 0.4 } : null,
-                      ]}
-                    >
-                      <Ionicons name="chevron-forward" size={18} color={ui.text} />
-                    </Pressable>
-
-                    <View style={styles.yearPill}>
-                      <Ionicons name="calendar-outline" size={14} color={ui.text} />
-                      <Text style={styles.yearPillText}>{selectedYear}</Text>
-                      <View style={styles.pillDot} />
-                      <Text style={styles.yearPillText}>סה״כ {yearTotalEvents}</Text>
-                    </View>
-
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="שנה הבאה"
-                      onPress={() => setSelectedYear((y) => y + 1)}
-                      disabled={!canNextYear}
-                      style={({ hovered, pressed }: any) => [
-                        styles.yearBtn,
-                        Platform.OS === 'web' && hovered ? styles.yearBtnHover : null,
-                        pressed ? { opacity: 0.92 } : null,
-                        !canNextYear ? { opacity: 0.4 } : null,
-                      ]}
-                    >
-                      <Ionicons name="chevron-back" size={18} color={ui.text} />
-                    </Pressable>
-                  </View>
-                </View>
-
-                {loadingStats && bars12.length === 0 ? (
-                  <View style={styles.loadingBox}>
-                    <ActivityIndicator color={ui.accentDark} />
-                  </View>
-                ) : (
-                  <View style={[styles.barsWrap, isTightBars ? styles.barsWrapTight : null]}>
-                    {bars12.map((b) => {
-                      const isCurrentMonth = isCurrentYear && b.monthIndex === now.getMonth();
-                      const pct = b.value === 0 ? 0 : Math.max(0.06, b.value / maxBar);
-                      return (
-                        <Pressable
-                          key={`${selectedYear}-${b.monthIndex}`}
-                          accessibilityRole="button"
-                          accessibilityLabel={`${b.label}: ${b.value}`}
-                          onPress={() => null}
-                          style={({ hovered, pressed }: any) => [
-                            styles.barCol,
-                            isTightBars ? styles.barColTight : null,
-                            pressed ? { opacity: 0.96 } : null,
-                            Platform.OS === 'web' && hovered ? styles.barColHover : null,
-                          ]}
-                        >
-                          {({ hovered }: any) => (
-                            <>
-                              <View
-                                style={[
-                                  styles.barTrack,
-                                  isTightBars ? styles.barTrackTight : null,
-                                  Platform.OS === 'web' && hovered ? styles.barTrackHover : null,
-                                ]}
-                              >
-                                <View style={styles.barBg} />
-                                <LinearGradient
-                                  colors={
-                                    isCurrentMonth
-                                      ? [ui.accentDark, ui.accent]
-                                      : ['rgba(11,27,61,0.18)', 'rgba(59,130,246,0.10)']
-                                  }
-                                  start={{ x: 0.5, y: 1 }}
-                                  end={{ x: 0.5, y: 0 }}
-                                  style={[
-                                    styles.barFill,
-                                    { height: `${Math.round(pct * 100)}%` } as any,
-                                    isCurrentMonth ? styles.barFillHot : null,
-                                  ]}
-                                />
-                                <View
-                                  style={[
-                                    styles.barTooltip,
-                                    Platform.OS === 'web' ? (hovered ? { opacity: 1 } : null) : ({ display: 'none' } as any),
-                                  ]}
-                                >
-                                  <Text style={styles.barTooltipText}>{b.value}</Text>
-                                </View>
-                              </View>
-                              <Text style={[styles.barLabel, isCurrentMonth ? styles.barLabelHot : null]}>{b.label}</Text>
-                              <Text style={[styles.barValue, isCurrentMonth ? styles.barValueHot : null]}>{b.value}</Text>
-                            </>
-                          )}
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                )}
+          <View style={styles.card}>
+            <View style={styles.cardHeaderRow}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.cardTitle}>עריכת פרופיל</Text>
+                <Text style={styles.cardSubtitle}>שני אזורים קבועים לעריכת פרטים אישיים ואבטחה, זה לצד זה.</Text>
               </View>
             </View>
 
+            <View style={styles.profileCardsRow}>
+              <View style={styles.profileSectionCard}>
+                <View style={styles.profileSectionHeader}>
+                  <View style={styles.profileSectionTitleRow}>
+                    <Ionicons name="person-circle-outline" size={20} color={ui.primary} />
+                    <Text style={styles.profileSectionTitle}>פרטים אישיים</Text>
+                  </View>
+                  <Text style={styles.profileSectionSubtitle}>עדכון שם, אימייל ותמונת פרופיל.</Text>
+                </View>
+
+                <View style={styles.profileSectionBody}>
+                  <View style={styles.avatarEditRow}>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="בחירת תמונת פרופיל"
+                      disabled={avatarUploading}
+                      onPress={() => void pickAndUploadAvatar()}
+                      style={({ hovered, pressed }: any) => [
+                        styles.avatarEditBtn,
+                        Platform.OS === 'web' && hovered ? styles.avatarEditBtnHover : null,
+                        pressed ? { opacity: 0.92 } : null,
+                        avatarUploading ? { opacity: 0.75 } : null,
+                      ]}
+                    >
+                      <Image source={{ uri: avatarUri }} style={styles.avatarEditImg} contentFit="cover" transition={0} />
+                      <View style={styles.avatarEditBadge}>
+                        {avatarUploading ? <ActivityIndicator color="#fff" /> : <Ionicons name="camera" size={16} color="#fff" />}
+                      </View>
+                    </Pressable>
+
+                    <View style={styles.avatarEditMeta}>
+                      <Text style={styles.avatarEditLabel}>תמונת פרופיל</Text>
+                      <Text style={styles.avatarEditHint} numberOfLines={2}>
+                        לחץ על התמונה כדי לבחור תמונה חדשה
+                      </Text>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="בחר תמונה"
+                        disabled={avatarUploading}
+                        onPress={() => void pickAndUploadAvatar()}
+                        style={({ hovered, pressed }: any) => [
+                          styles.avatarEditActionBtn,
+                          Platform.OS === 'web' && hovered ? styles.avatarEditActionBtnHover : null,
+                          pressed ? { opacity: 0.92 } : null,
+                          avatarUploading ? { opacity: 0.75 } : null,
+                        ]}
+                      >
+                        <Text style={styles.avatarEditActionText}>{avatarUploading ? 'מעלה...' : 'בחר תמונה'}</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+
+                  <View style={styles.fieldGroup}>
+                    <Text style={styles.fieldLabel}>שם מלא</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={form.name}
+                      onChangeText={(t) => setForm((f) => ({ ...f, name: t }))}
+                      placeholder="הזן שם מלא"
+                      placeholderTextColor="rgba(15,23,42,0.35)"
+                      textAlign="right"
+                    />
+                  </View>
+                  <View style={styles.fieldGroup}>
+                    <Text style={styles.fieldLabel}>כתובת אימייל</Text>
+                    <TextInput
+                      style={[styles.input, styles.inputReadonly]}
+                      value={form.email}
+                      editable={false}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      // @ts-ignore - react-native-web supports direction
+                      dir="ltr"
+                      textAlign="left"
+                    />
+                  </View>
+                </View>
+
+                <View style={[styles.modalActions, styles.profileSectionActions]}>
+                  <Pressable
+                    onPress={() => void handleSave('details')}
+                    disabled={formSaving}
+                    style={({ hovered, pressed }: any) => [
+                      styles.modalBtn,
+                      styles.modalBtnPrimary,
+                      styles.profileSectionSaveBtn,
+                      Platform.OS === 'web' && hovered ? styles.modalBtnPrimaryHover : null,
+                      pressed ? { opacity: 0.92 } : null,
+                      formSaving ? { opacity: 0.85 } : null,
+                    ]}
+                  >
+                    {formSaving ? <ActivityIndicator color="white" /> : <Text style={[styles.modalBtnText, { color: 'white' }]}>שמור פרטים אישיים</Text>}
+                  </Pressable>
+                </View>
+              </View>
+
+              <View style={styles.profileSectionCard}>
+                <View style={styles.profileSectionHeader}>
+                  <View style={styles.profileSectionTitleRow}>
+                    <Ionicons name="shield-checkmark-outline" size={20} color={ui.primary} />
+                    <Text style={styles.profileSectionTitle}>אבטחה</Text>
+                  </View>
+                  <Text style={styles.profileSectionSubtitle}>עדכון סיסמה בנפרד לשמירה על אזור אבטחה ממוקד.</Text>
+                </View>
+
+                <View style={styles.profileSectionBody}>
+                  <View style={styles.securityInfoBox}>
+                    <Ionicons name="shield-checkmark" size={18} color={ui.primary} />
+                    <Text style={styles.securityInfoText}>
+                      מומלץ לבחור סיסמה חזקה הכוללת אותיות, מספרים וסימנים מיוחדים.
+                    </Text>
+                  </View>
+
+                  <View style={styles.fieldGroup}>
+                    <Text style={styles.fieldLabel}>סיסמה חדשה</Text>
+                    <View style={styles.inputShell}>
+                      <TextInput
+                        style={[styles.input, styles.inputInner]}
+                        value={form.password}
+                        onChangeText={(t) => setForm((f) => ({ ...f, password: t }))}
+                        placeholder="הזן סיסמה חדשה"
+                        placeholderTextColor="rgba(15,23,42,0.35)"
+                        secureTextEntry={!showPassword}
+                        textAlign="right"
+                      />
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={showPassword ? 'הסתר סיסמה' : 'הצג סיסמה'}
+                        onPress={() => setShowPassword((v) => !v)}
+                        style={({ hovered, pressed }: any) => [
+                          styles.inputIconBtn,
+                          Platform.OS === 'web' && hovered ? styles.inputIconBtnHover : null,
+                          pressed ? { opacity: 0.85 } : null,
+                        ]}
+                      >
+                        <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={18} color={ui.muted} />
+                      </Pressable>
+                    </View>
+                  </View>
+                  <View style={styles.fieldGroup}>
+                    <Text style={styles.fieldLabel}>אישור סיסמה</Text>
+                    <View style={styles.inputShell}>
+                      <TextInput
+                        style={[styles.input, styles.inputInner]}
+                        value={form.confirmPassword}
+                        onChangeText={(t) => setForm((f) => ({ ...f, confirmPassword: t }))}
+                        placeholder="הזן שוב את הסיסמה"
+                        placeholderTextColor="rgba(15,23,42,0.35)"
+                        secureTextEntry={!showConfirmPassword}
+                        textAlign="right"
+                      />
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={showConfirmPassword ? 'הסתר אישור סיסמה' : 'הצג אישור סיסמה'}
+                        onPress={() => setShowConfirmPassword((v) => !v)}
+                        style={({ hovered, pressed }: any) => [
+                          styles.inputIconBtn,
+                          Platform.OS === 'web' && hovered ? styles.inputIconBtnHover : null,
+                          pressed ? { opacity: 0.85 } : null,
+                        ]}
+                      >
+                        <Ionicons name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'} size={18} color={ui.muted} />
+                      </Pressable>
+                    </View>
+                  </View>
+                </View>
+
+                <View style={[styles.modalActions, styles.profileSectionActions]}>
+                  <Pressable
+                    onPress={() => void handleSave('security')}
+                    disabled={formSaving}
+                    style={({ hovered, pressed }: any) => [
+                      styles.modalBtn,
+                      styles.modalBtnPrimary,
+                      styles.profileSectionSaveBtn,
+                      Platform.OS === 'web' && hovered ? styles.modalBtnPrimaryHover : null,
+                      pressed ? { opacity: 0.92 } : null,
+                      formSaving ? { opacity: 0.85 } : null,
+                    ]}
+                  >
+                    {formSaving ? <ActivityIndicator color="white" /> : <Text style={[styles.modalBtnText, { color: 'white' }]}>עדכן סיסמה</Text>}
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.logoutCard}>
+            <View style={styles.logoutRow}>
+              <View style={styles.logoutInfo}>
+                <Text style={styles.logoutTitle}>התנתקות מהחשבון</Text>
+                <Text style={styles.logoutSubtitle}>לסיום העבודה במערכת בצורה בטוחה, ניתן להתנתק כאן בכל רגע.</Text>
+              </View>
+
+              <View style={styles.logoutActionWrap}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="התנתק מהחשבון"
+                  onPress={() => void handleLogout()}
+                  disabled={loggingOut}
+                  style={({ hovered, pressed }: any) => [
+                    styles.logoutBtn,
+                    Platform.OS === 'web' && hovered ? styles.logoutBtnHover : null,
+                    pressed ? { opacity: 0.92 } : null,
+                    loggingOut ? { opacity: 0.78 } : null,
+                  ]}
+                >
+                  {loggingOut ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                  ) : (
+                    <>
+                      <Ionicons name="log-out-outline" size={18} color="#FFFFFF" />
+                      <Text style={styles.logoutBtnText}>התנתק</Text>
+                    </>
+                  )}
+                </Pressable>
+              </View>
+            </View>
           </View>
 
           <Text style={styles.footer}>© {new Date().getFullYear()} EventFlow Systems. כל הזכויות שמורות.</Text>
         </View>
       </ScrollView>
-
-      {/* EDIT MODAL */}
-      <Modal transparent visible={editOpen} animationType="fade" onRequestClose={() => setEditOpen(false)}>
-        <Pressable style={styles.modalBackdrop} onPress={() => setEditOpen(false)}>
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ width: '100%' }}>
-            <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
-              <Text style={styles.modalTitle}>עריכת פרופיל</Text>
-
-              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 10 }} bounces={false}>
-                <View style={styles.avatarEditRow}>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="בחירת תמונת פרופיל"
-                    disabled={avatarUploading}
-                    onPress={() => void pickAndUploadAvatar()}
-                    style={({ hovered, pressed }: any) => [
-                      styles.avatarEditBtn,
-                      Platform.OS === 'web' && hovered ? styles.avatarEditBtnHover : null,
-                      pressed ? { opacity: 0.92 } : null,
-                      avatarUploading ? { opacity: 0.75 } : null,
-                    ]}
-                  >
-                    <Image source={{ uri: avatarUri }} style={styles.avatarEditImg} contentFit="cover" transition={0} />
-                    <View style={styles.avatarEditBadge}>
-                      {avatarUploading ? (
-                        <ActivityIndicator color="#fff" />
-                      ) : (
-                        <Ionicons name="camera" size={16} color="#fff" />
-                      )}
-                    </View>
-                  </Pressable>
-
-                  <View style={styles.avatarEditMeta}>
-                    <Text style={styles.avatarEditLabel}>תמונת פרופיל</Text>
-                    <Text style={styles.avatarEditHint} numberOfLines={2}>
-                      לחץ על התמונה כדי לבחור תמונה חדשה
-                    </Text>
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="בחר תמונה"
-                      disabled={avatarUploading}
-                      onPress={() => void pickAndUploadAvatar()}
-                      style={({ hovered, pressed }: any) => [
-                        styles.avatarEditActionBtn,
-                        Platform.OS === 'web' && hovered ? styles.avatarEditActionBtnHover : null,
-                        pressed ? { opacity: 0.92 } : null,
-                        avatarUploading ? { opacity: 0.75 } : null,
-                      ]}
-                    >
-                      <Text style={styles.avatarEditActionText}>{avatarUploading ? 'מעלה...' : 'בחר תמונה'}</Text>
-                    </Pressable>
-                  </View>
-                </View>
-
-                <TextInput
-                  style={styles.input}
-                  value={form.name}
-                  onChangeText={(t) => setForm((f) => ({ ...f, name: t }))}
-                  placeholder="שם מלא"
-                  placeholderTextColor="rgba(15,23,42,0.35)"
-                  textAlign="right"
-                />
-                <TextInput
-                  style={styles.input}
-                  value={form.email}
-                  onChangeText={(t) => setForm((f) => ({ ...f, email: t }))}
-                  placeholder="אימייל"
-                  placeholderTextColor="rgba(15,23,42,0.35)"
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  // @ts-ignore - react-native-web supports direction
-                  dir="ltr"
-                  textAlign="left"
-                />
-                <TextInput
-                  style={styles.input}
-                  value={form.password}
-                  onChangeText={(t) => setForm((f) => ({ ...f, password: t }))}
-                  placeholder="סיסמה חדשה (לא חובה)"
-                  placeholderTextColor="rgba(15,23,42,0.35)"
-                  secureTextEntry
-                  textAlign="right"
-                />
-                <TextInput
-                  style={styles.input}
-                  value={form.confirmPassword}
-                  onChangeText={(t) => setForm((f) => ({ ...f, confirmPassword: t }))}
-                  placeholder="אישור סיסמה"
-                  placeholderTextColor="rgba(15,23,42,0.35)"
-                  secureTextEntry
-                  textAlign="right"
-                />
-              </ScrollView>
-
-              <View style={styles.modalActions}>
-                <Pressable
-                  onPress={() => setEditOpen(false)}
-                  style={({ hovered, pressed }: any) => [
-                    styles.modalBtn,
-                    styles.modalBtnGhost,
-                    Platform.OS === 'web' && hovered ? styles.modalBtnHover : null,
-                    pressed ? { opacity: 0.92 } : null,
-                  ]}
-                >
-                  <Text style={[styles.modalBtnText, { color: ui.muted }]}>ביטול</Text>
-                </Pressable>
-
-                <Pressable
-                  onPress={handleSave}
-                  disabled={formSaving}
-                  style={({ hovered, pressed }: any) => [
-                    styles.modalBtn,
-                    styles.modalBtnPrimary,
-                    Platform.OS === 'web' && hovered ? styles.modalBtnPrimaryHover : null,
-                    pressed ? { opacity: 0.92 } : null,
-                    formSaving ? { opacity: 0.85 } : null,
-                  ]}
-                >
-                  {formSaving ? <ActivityIndicator color="white" /> : <Text style={[styles.modalBtnText, { color: 'white' }]}>שמור</Text>}
-                </Pressable>
-      </View>
-            </Pressable>
-          </KeyboardAvoidingView>
-        </Pressable>
-      </Modal>
     </View>
   );
 }
@@ -855,11 +625,11 @@ const styles = StyleSheet.create({
   },
   heroInfo: { flex: 1, minWidth: 0, alignItems: 'flex-end', gap: 8 },
   heroTitleRow: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
+    flexDirection: 'column',
+    alignItems: 'flex-start',
     justifyContent: 'flex-end',
     alignSelf: 'stretch',
-    flexWrap: 'wrap',
+    flexWrap: 'nowrap',
     gap: 10,
     ...(Platform.OS === 'web' ? ({ textAlign: 'right' } as any) : null),
   },
@@ -1001,6 +771,24 @@ const styles = StyleSheet.create({
   // Push the bottom cards lower on the page (as requested)
   bottomCardLower: { marginTop: 28 },
   cardSubtitle: { marginTop: 4, fontSize: 12, fontWeight: '700', color: ui.muted, textAlign: 'right' },
+  profileCardsRow: { flexDirection: 'row', alignItems: 'stretch', gap: 16, flexWrap: 'nowrap' },
+  profileSectionCard: {
+    flex: 1,
+    minWidth: 320,
+    borderRadius: 22,
+    padding: 18,
+    backgroundColor: 'rgba(248,250,252,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.07)',
+    gap: 16,
+  },
+  profileSectionHeader: { gap: 4 },
+  profileSectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  profileSectionTitle: { fontSize: 17, fontWeight: '900', color: ui.primary, textAlign: 'right' },
+  profileSectionSubtitle: { fontSize: 12, fontWeight: '700', color: ui.muted, textAlign: 'right', lineHeight: 18 },
+  profileSectionBody: { gap: 10 },
+  profileSectionActions: { justifyContent: 'flex-start', marginTop: 'auto' },
+  profileSectionSaveBtn: { flex: 0, minWidth: 190, paddingHorizontal: 22 },
 
   yearControls: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, flexShrink: 0 },
   yearBtn: {
@@ -1178,19 +966,36 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   modalTitle: { fontSize: 16, fontWeight: '900', color: ui.primary, textAlign: 'right' },
-  avatarEditRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, paddingBottom: 2 },
+  avatarEditRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'flex-start',
+    justifyContent: 'flex-start',
+    gap: 12,
+    padding: 14,
+    paddingBottom: 14,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: 'rgba(59,130,246,0.28)',
+    backgroundColor: 'rgba(59,130,246,0.04)',
+  },
   avatarEditBtn: {
-    width: 74,
-    height: 74,
+    width: 82,
+    height: 82,
     borderRadius: 999,
     overflow: 'hidden',
-    backgroundColor: 'rgba(15,23,42,0.05)',
-    borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.10)',
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderWidth: 2,
+    borderColor: 'rgba(59,130,246,0.18)',
     position: 'relative',
+    shadowColor: '#3B82F6',
+    shadowOpacity: 0.10,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
-  avatarEditBtnHover: { borderColor: 'rgba(59,130,246,0.28)' },
+  avatarEditBtnHover: { borderColor: 'rgba(59,130,246,0.40)', transform: [{ scale: 1.03 }] as any },
   avatarEditImg: { width: '100%', height: '100%' },
   avatarEditBadge: {
     position: 'absolute',
@@ -1205,22 +1010,36 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.85)',
   },
-  avatarEditMeta: { flex: 1, minWidth: 0, alignItems: 'flex-end', gap: 6 },
+  avatarEditMeta: { flex: 1, minWidth: 0, alignItems: 'flex-start', justifyContent: 'flex-start', gap: 8 },
   avatarEditLabel: { fontSize: 13, fontWeight: '900', color: ui.text, textAlign: 'right' },
   avatarEditHint: { fontSize: 12, fontWeight: '700', color: ui.muted, textAlign: 'right', lineHeight: 18 },
   avatarEditActionBtn: {
     height: 38,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    backgroundColor: 'rgba(15,23,42,0.05)',
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.88)',
     borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.10)',
+    borderColor: 'rgba(59,130,246,0.18)',
     alignItems: 'center',
     justifyContent: 'center',
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
-  avatarEditActionBtnHover: { backgroundColor: 'rgba(15,23,42,0.07)' },
+  avatarEditActionBtnHover: { backgroundColor: 'rgba(255,255,255,1)', borderColor: 'rgba(59,130,246,0.32)' },
   avatarEditActionText: { fontSize: 12, fontWeight: '900', color: ui.primary, textAlign: 'right' },
+  securityInfoBox: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 14,
+    backgroundColor: 'rgba(59,130,246,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(59,130,246,0.14)',
+  },
+  securityInfoText: { flex: 1, fontSize: 12, fontWeight: '700', color: ui.primary, textAlign: 'right', lineHeight: 18 },
+  fieldGroup: { gap: 6 },
+  fieldLabel: { fontSize: 13, fontWeight: '800', color: ui.text, textAlign: 'right' },
   input: {
     height: 46,
     borderRadius: 14,
@@ -1232,6 +1051,82 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
   },
+  inputReadonly: { color: 'rgba(15,23,42,0.62)', backgroundColor: 'rgba(241,245,249,0.95)' },
+  inputShell: {
+    height: 46,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: ui.border,
+    backgroundColor: 'rgba(244, 247, 251, 0.9)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  inputInner: {
+    flex: 1,
+    height: '100%',
+    paddingHorizontal: 0,
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+  },
+  inputIconBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  inputIconBtnHover: { backgroundColor: 'rgba(15,23,42,0.06)' },
+  logoutCard: {
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.07)',
+    padding: 18,
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.05,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
+  },
+  logoutRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 16,
+    flexWrap: 'nowrap',
+  },
+  logoutInfo: { flex: 1, minWidth: 260, alignItems: 'flex-start', gap: 4 },
+  logoutTitle: { fontSize: 16, fontWeight: '900', color: ui.primary, textAlign: 'right' },
+  logoutSubtitle: { fontSize: 13, fontWeight: '700', color: ui.muted, textAlign: 'right', lineHeight: 20 },
+  logoutActionWrap: {
+    padding: 8,
+    borderRadius: 18,
+    backgroundColor: 'rgba(248,250,252,0.95)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.06)',
+  },
+  logoutBtn: {
+    minWidth: 150,
+    height: 48,
+    paddingHorizontal: 18,
+    borderRadius: 14,
+    backgroundColor: '#DC2626',
+    borderWidth: 1,
+    borderColor: '#B91C1C',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    shadowColor: '#7F1D1D',
+    shadowOpacity: 0.14,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  logoutBtnHover: { backgroundColor: '#B91C1C', borderColor: '#991B1B' },
+  logoutBtnText: { fontSize: 14, fontWeight: '900', color: '#FFFFFF', textAlign: 'right' },
   modalActions: { flexDirection: 'row-reverse', gap: 10 },
   modalBtn: { flex: 1, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   modalBtnGhost: { backgroundColor: 'rgba(15,23,42,0.05)', borderWidth: 1, borderColor: ui.border },

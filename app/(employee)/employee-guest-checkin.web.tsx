@@ -20,6 +20,7 @@ import { supabase } from '@/lib/supabase';
 import { SeatingGridReadonly } from '../seating/web/SeatingGridReadonly';
 import { DEFAULT_GRID_COLS, DEFAULT_GRID_ROWS, tableCellSize, type Orientation, type TableType } from '../seating/web/_types';
 import type { Guest, Table } from '@/types';
+import AdminWebPageHeader from '@/components/desktop/AdminWebPageHeader';
 
 const NO_TABLE_KEY = '__no_table__' as const;
 
@@ -115,12 +116,30 @@ function Switch({
 export default function EmployeeGuestCheckinWebScreen() {
   const router = useRouter();
   const pathname = usePathname();
-  const { eventId } = useLocalSearchParams<{ eventId?: string }>();
+  const { eventId, returnTo } = useLocalSearchParams<{ eventId?: string; returnTo?: string }>();
   const resolvedEventId = useMemo(() => String(eventId || '').trim(), [eventId]);
   const { width, height } = useWindowDimensions();
   const isLg = width >= 1024;
   const isNarrow = width < 520;
   const isAdminRoute = String(pathname || '').toLowerCase().includes('admin-guest-checkin');
+  const fallbackToDetails = useMemo(
+    () =>
+      resolvedEventId
+        ? isAdminRoute
+          ? `/(admin)/admin-event-details?id=${resolvedEventId}`
+          : `/(employee)/employee-event-details?id=${resolvedEventId}`
+        : isAdminRoute
+          ? '/(admin)/admin-events'
+          : '/(employee)/employee-events',
+    [isAdminRoute, resolvedEventId]
+  );
+  const backHref = useMemo(() => {
+    const raw = String(returnTo || '').trim();
+    return raw || fallbackToDetails;
+  }, [fallbackToDetails, returnTo]);
+  const handleBack = useCallback(() => {
+    router.replace(backHref as any);
+  }, [backHref, router]);
   const [collapsedTableGroups, setCollapsedTableGroups] = useState<Record<string, boolean>>({});
   const [tableFilter, setTableFilter] = useState<string | null>(null);
   const [tables, setTables] = useState<Table[]>([]);
@@ -277,12 +296,6 @@ export default function EmployeeGuestCheckinWebScreen() {
     });
     return m;
   }, [tablesSorted]);
-
-  const activeTableLabel = useMemo(() => {
-    if (!tableFilter) return 'הכל';
-    if (tableFilter === NO_TABLE_KEY) return 'ללא שולחן';
-    return tableLabelById.get(tableFilter) || 'שולחן';
-  }, [tableFilter, tableLabelById]);
 
   const tableIdByNumber = useMemo(() => {
     const m = new Map<number, string>();
@@ -500,6 +513,22 @@ export default function EmployeeGuestCheckinWebScreen() {
     };
   }, [guests, tables]);
 
+  const attendanceRate = useMemo(() => {
+    if (!eventOverview.invitedPeople) return 0;
+    return Math.max(0, Math.min(100, Math.round((eventOverview.arrivedPeople / eventOverview.invitedPeople) * 100)));
+  }, [eventOverview.arrivedPeople, eventOverview.invitedPeople]);
+
+  const pendingGuestsCount = useMemo(() => Math.max(0, counts.total - counts.checkedIn), [counts.checkedIn, counts.total]);
+
+  const filterOptions = useMemo(
+    () => [
+      { key: 'all' as const, label: 'כל האורחים', count: counts.total },
+      { key: 'checked_in' as const, label: 'הגיעו', count: counts.checkedIn },
+      { key: 'not_checked_in' as const, label: 'טרם הגיעו', count: pendingGuestsCount },
+    ],
+    [counts.checkedIn, counts.total, pendingGuestsCount]
+  );
+
   const visibleGuests = useMemo(() => {
     if (!tableFilter) return filteredGuests;
     if (tableFilter === NO_TABLE_KEY) {
@@ -630,6 +659,10 @@ export default function EmployeeGuestCheckinWebScreen() {
     // Keep a tiny gap from the top on web.
     return 8;
   }, [isLg]);
+
+  const handleRefreshAll = useCallback(async () => {
+    await Promise.all([refresh(), loadTables(), fetchWebSketch()]);
+  }, [fetchWebSketch, loadTables, refresh]);
 
   const tableNumberForId = useCallback(
     (tableId: string | null) => {
@@ -795,8 +828,6 @@ export default function EmployeeGuestCheckinWebScreen() {
 
                   return (
                     <View key={g.id} style={[styles.guestRowCompact, checkedIn ? styles.guestRowCompactOn : null]}>
-                      <View style={[styles.guestRowAccent, checkedIn ? styles.guestRowAccentOn : null]} />
-
                       <Pressable
                         accessibilityRole="button"
                         accessibilityLabel={`בחירת אורח ${g.name}`}
@@ -810,6 +841,7 @@ export default function EmployeeGuestCheckinWebScreen() {
                           pressed ? { opacity: 0.96 } : null,
                         ]}
                       >
+                        <View style={[styles.guestRowAccent, checkedIn ? styles.guestRowAccentOn : null]} />
                         <View style={[styles.avatar, styles.avatarCompact, checkedIn ? styles.avatarOn : null]}>
                           <Text style={styles.avatarText}>{initialsFromName(g.name)}</Text>
                         </View>
@@ -949,7 +981,7 @@ export default function EmployeeGuestCheckinWebScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="חזרה לרשימת אירועים"
-            onPress={() => router.replace('/(employee)/employee-events')}
+            onPress={handleBack}
             style={({ hovered, pressed }: any) => [
               styles.primaryBtn,
               Platform.OS === 'web' && hovered ? styles.primaryBtnHover : null,
@@ -966,56 +998,89 @@ export default function EmployeeGuestCheckinWebScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
+          <View style={styles.heroShell}>
+            <AdminWebPageHeader
+              eyebrow={isAdminRoute ? 'ניהול אורחים' : 'צ׳ק אין'}
+              title="צ'ק אין אורחים"
+              subtitle={`${counts.total} אורחים • ${counts.checkedIn} הגיעו`}
+              showNav={false}
+              useDefaultActions={false}
+              leading={
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="חזרה לרשימת האירועים"
+                  onPress={handleBack}
+                  style={({ hovered, pressed }: any) => [
+                    styles.webBackBtn,
+                    Platform.OS === 'web' && hovered ? styles.webBackBtnHover : null,
+                    pressed ? styles.webBackBtnPressed : null,
+                  ]}
+                >
+                  <Ionicons name="arrow-forward" size={16} color={colors.text} />
+                  <Text style={styles.webBackBtnText}>חזרה</Text>
+                </Pressable>
+              }
+              actions={
+                <View style={styles.heroHeaderActions}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="רענן נתוני צ׳ק אין"
+                    onPress={() => void handleRefreshAll()}
+                    style={({ hovered, pressed }: any) => [
+                      styles.heroHeaderActionBtn,
+                      Platform.OS === 'web' && hovered ? styles.heroHeaderActionBtnHover : null,
+                      pressed ? { opacity: 0.9 } : null,
+                    ]}
+                  >
+                    <Ionicons name="refresh" size={16} color={colors.primary} />
+                    <Text style={styles.heroHeaderActionText}>רענון</Text>
+                  </Pressable>
+                </View>
+              }
+            />
+          </View>
+
           <View style={styles.topDashboardWrap}>
             <View style={Platform.OS === 'web' && isLg ? ({ position: 'sticky', top: stickyTop } as any) : null}>
-              <View style={[styles.card, styles.dashboardCard, isLg ? styles.dashboardCardTop : null]}>
+              <View style={[styles.card, styles.dashboardCard, styles.heroMainCard, isLg ? styles.dashboardCardTop : null]}>
                 <View style={styles.dashboardHeader}>
                   <View style={styles.dashboardHeaderLeft}>
                     <View style={styles.dashboardHeaderIcon}>
                       <Ionicons name="sparkles" size={18} color="#fff" />
                     </View>
                     <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={styles.dashboardHeaderTitle}>ניהול אירוע</Text>
-                      <Text style={styles.dashboardHeaderSub}>סטטוס נוכחי בזמן אמת</Text>
+                      <Text style={styles.dashboardHeaderTitle}>מרכז שליטה לצ'ק אין</Text>
+                      <Text style={styles.dashboardHeaderSub}>תמונת מצב חיה של הגעות, סינון ושיבוץ לשולחנות</Text>
                     </View>
                   </View>
 
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="חזרה לרשימת אירועים"
-                    onPress={() => router.replace(isAdminRoute ? '/(admin)/admin-events' : '/(employee)/employee-events')}
-                    style={({ hovered, pressed }: any) => [
-                      styles.dashboardBackBtn,
-                      Platform.OS === 'web' && hovered ? styles.dashboardBackBtnHover : null,
-                      pressed ? { opacity: 0.9 } : null,
-                    ]}
-                  >
-                  <Ionicons name="arrow-back" size={18} color="#fff" />
-                    <Text style={styles.dashboardBackText}>חזור</Text>
-                  </Pressable>
+                  <View style={styles.dashboardHeaderBadge}>
+                    <Text style={styles.dashboardHeaderBadgeValue}>{attendanceRate}%</Text>
+                    <Text style={styles.dashboardHeaderBadgeText}>יחס הגעה</Text>
+                  </View>
 
                   <View style={[styles.dashboardHeaderGlow, { pointerEvents: 'none' } as any]} />
                 </View>
 
                 <View style={[styles.dashboardBody, isLg ? styles.dashboardBodyTop : null]}>
+                  <View style={styles.heroIntroRow}>
+                    <View style={styles.heroIntroCopy}>
+                      <Text style={styles.heroIntroEyebrow}>דשבורד הגעה</Text>
+                      <Text style={styles.heroIntroTitle}>כל מה שצריך למסך עבודה אחד</Text>
+                      <Text style={styles.heroIntroText}>
+                        חפש אורחים, סנן לפי סטטוס, עקוב אחר העומס בשולחנות והעבר אורחים במהירות מתוך ממשק אחד נוח וברור.
+                      </Text>
+                    </View>
+                  </View>
+
                   <View style={[styles.metricsGrid, isLg ? styles.metricsGridTop : null]}>
-                    <View style={[styles.metricTile, isLg ? styles.metricTileTop : null, styles.metricTileNeutral]}>
-                      <Text style={[styles.metricTileValue, isLg ? styles.metricTileValueTop : null]}>{eventOverview.invitedPeople}</Text>
-                      <Text style={[styles.metricTileLabel, isLg ? styles.metricTileLabelTop : null]}>סה"כ מוזמנים</Text>
-                    </View>
-
-                    <View style={[styles.metricTile, isLg ? styles.metricTileTop : null, styles.metricTileSuccess]}>
-                      <Text style={[styles.metricTileValue, isLg ? styles.metricTileValueTop : null, styles.metricTileValueSuccess]}>
-                        {eventOverview.arrivedPeople}
+                    <View style={[styles.metricTile, isLg ? styles.metricTileTop : null, styles.metricTileBlue]}>
+                      <Text style={[styles.metricTileValue, isLg ? styles.metricTileValueTop : null, styles.metricTileValueBlue]}>
+                        {eventOverview.invitedPeople}
                       </Text>
-                      <Text style={[styles.metricTileLabel, isLg ? styles.metricTileLabelTop : null, styles.metricTileLabelSuccess]}>הגיעו</Text>
-                    </View>
-
-                    <View style={[styles.metricTile, isLg ? styles.metricTileTop : null, styles.metricTileWarn]}>
-                      <Text style={[styles.metricTileValue, isLg ? styles.metricTileValueTop : null, styles.metricTileValueWarn]}>
-                        {eventOverview.arrivingNotArrivedGuests}
+                      <Text style={[styles.metricTileLabel, isLg ? styles.metricTileLabelTop : null, styles.metricTileLabelBlue]}>
+                        סה"כ מוזמנים
                       </Text>
-                      <Text style={[styles.metricTileLabel, isLg ? styles.metricTileLabelTop : null, styles.metricTileLabelWarn]}>טרם הגיעו</Text>
                     </View>
 
                     <View style={[styles.metricTile, isLg ? styles.metricTileTop : null, styles.metricTileNeutral]}>
@@ -1061,6 +1126,11 @@ export default function EmployeeGuestCheckinWebScreen() {
               <View style={Platform.OS === 'web' && isLg ? ({ position: 'sticky', top: stickyTop } as any) : null}>
                 <View style={styles.card}>
                   <View style={styles.cardHeaderRow}>
+                    <View style={styles.panelHeaderCopy}>
+                      <Text style={styles.panelEyebrow}>אורחים</Text>
+                      <Text style={styles.panelTitle}>רשימת צ'ק אין</Text>
+                      <Text style={styles.panelSubtitle}>נהל את האורחים לפי חיפוש, סטטוס ושולחן בלחיצה אחת.</Text>
+                    </View>
                     {tableFilter ? (
                       <Pressable
                         accessibilityRole="button"
@@ -1075,6 +1145,45 @@ export default function EmployeeGuestCheckinWebScreen() {
                         <Text style={styles.linkBtnText}>נקה שולחן</Text>
                       </Pressable>
                     ) : null}
+                  </View>
+
+                  <View style={styles.panelMetaRow}>
+                    <View style={styles.panelMetaPill}>
+                      <Ionicons name="people-outline" size={14} color={colors.primary} />
+                      <Text style={styles.panelMetaPillText}>{visibleGuests.length} אורחים בתצוגה</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.panelFilterChipsRow}>
+                    {filterOptions.map((option) => {
+                      const active = filter === option.key;
+                      return (
+                        <Pressable
+                          key={option.key}
+                          accessibilityRole="button"
+                          accessibilityLabel={`סנן ${option.label}`}
+                          accessibilityState={{ selected: active }}
+                          onPress={() => setFilter(option.key)}
+                          style={({ hovered, pressed }: any) => [
+                            styles.panelFilterChip,
+                            active ? styles.panelFilterChipActive : null,
+                            Platform.OS === 'web' && hovered && !active ? styles.panelFilterChipHover : null,
+                            pressed ? { opacity: 0.94 } : null,
+                          ]}
+                        >
+                          <Text style={[styles.panelFilterChipText, active ? styles.panelFilterChipTextActive : null]}>
+                            {option.label}
+                          </Text>
+                          <View style={[styles.panelFilterChipCount, active ? styles.panelFilterChipCountActive : null]}>
+                            <Text
+                              style={[styles.panelFilterChipCountText, active ? styles.panelFilterChipCountTextActive : null]}
+                            >
+                              {option.count}
+                            </Text>
+                          </View>
+                        </Pressable>
+                      );
+                    })}
                   </View>
 
                   <View style={[styles.mainSearchWrap, { marginTop: 12 }]}>
@@ -1126,10 +1235,68 @@ export default function EmployeeGuestCheckinWebScreen() {
               <View
                 style={[
                   styles.card,
+                  styles.mapCard,
                   Platform.OS === 'web' && isLg ? ({ position: 'sticky', top: stickyTop } as any) : null,
                   { minHeight: mapCardHeight },
                 ]}
               >
+                <View style={styles.mapCardHeader}>
+                  <View style={styles.panelHeaderCopy}>
+                    <Text style={styles.panelEyebrow}>מפת הושבה</Text>
+                    <Text style={styles.panelTitle}>פריסת שולחנות חיה</Text>
+                    <Text style={styles.panelSubtitle}>
+                      {selectedTableNumber
+                        ? `השולחן ${selectedTableNumber} מודגש כעת במפה`
+                        : 'לחץ על שולחן במפה או על אורח ברשימה כדי למקד את הסקיצה'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.mapCardHeaderSide}>
+                    <View style={styles.mapStatusPill}>
+                      <View
+                        style={[
+                          styles.mapStatusDot,
+                          { backgroundColor: webSketch ? '#10B981' : 'rgba(107,114,128,0.65)' },
+                        ]}
+                      />
+                      <Text style={styles.mapStatusPillText}>{webSketch ? 'מפה פעילה' : 'ממתין לסקיצה'}</Text>
+                    </View>
+
+                    {selectedTableNumber ? (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="נקה שולחן נבחר במפה"
+                        onPress={() => {
+                          setSelectedTableNumber(null);
+                          setTableFilter(null);
+                        }}
+                        style={({ hovered, pressed }: any) => [
+                          styles.linkBtn,
+                          Platform.OS === 'web' && hovered ? styles.linkBtnHover : null,
+                          pressed ? { opacity: 0.92 } : null,
+                        ]}
+                      >
+                        <Text style={styles.linkBtnText}>נקה בחירה</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                </View>
+
+                <View style={styles.mapLegendRow}>
+                  <View style={styles.mapLegendItem}>
+                    <View style={[styles.mapLegendDot, { backgroundColor: colors.primary }]} />
+                    <Text style={styles.mapLegendText}>שולחן רגיל</Text>
+                  </View>
+                  <View style={styles.mapLegendItem}>
+                    <View style={[styles.mapLegendDot, { backgroundColor: colors.secondary }]} />
+                    <Text style={styles.mapLegendText}>שולחן רזרבה</Text>
+                  </View>
+                  <View style={styles.mapLegendItem}>
+                    <View style={[styles.mapLegendDot, { backgroundColor: '#10B981' }]} />
+                    <Text style={styles.mapLegendText}>מלא או מסומן</Text>
+                  </View>
+                </View>
+
                 <View style={{ flex: 1, minHeight: mapCardHeight }}>
                   {mapLoading ? (
                     <View style={styles.loadingRow}>
@@ -1144,6 +1311,7 @@ export default function EmployeeGuestCheckinWebScreen() {
                       zones={webSketch.zones}
                       labels={webSketch.labels}
                       hideTableType
+                      useBaseColorAsWebBackground
                       showTableBorder={false}
                       getTableBaseColor={(t: any) => {
                         const selected = Boolean(selectedTableNumber) && Number(t?.number) === Number(selectedTableNumber);
@@ -1152,8 +1320,8 @@ export default function EmployeeGuestCheckinWebScreen() {
                         const seated = num ? (seatedByNumber.get(Number(num)) ?? 0) : 0;
                         const cap = Number(t?.seats ?? 0) || 0;
                         const isFullOrOver = cap > 0 && seated >= cap;
-                        if (isFullOrOver) return '#10B981';
-                        return t?.type === 'reserve' ? colors.secondary : colors.primary;
+                        if (isFullOrOver) return colors.primary;
+                        return t?.type === 'reserve' ? colors.warning : colors.primary;
                       }}
                       getTableBackgroundAlpha={(t: any) => {
                         const selected = Boolean(selectedTableNumber) && Number(t?.number) === Number(selectedTableNumber);
@@ -1162,8 +1330,18 @@ export default function EmployeeGuestCheckinWebScreen() {
                         const seated = num ? (seatedByNumber.get(Number(num)) ?? 0) : 0;
                         const cap = Number(t?.seats ?? 0) || 0;
                         const isFullOrOver = cap > 0 && seated >= cap;
-                        if (isFullOrOver) return 0.34;
-                        return t?.type === 'reserve' ? 0.18 : 0.42;
+                        if (isFullOrOver) return 0.9;
+                        return t?.type === 'reserve' ? 0.72 : 0.9;
+                      }}
+                      getTableBorderColor={(t: any) => {
+                        const selected = Boolean(selectedTableNumber) && Number(t?.number) === Number(selectedTableNumber);
+                        if (selected) return '#10B981';
+                        const num = t?.number;
+                        const seated = num ? (seatedByNumber.get(Number(num)) ?? 0) : 0;
+                        const cap = Number(t?.seats ?? 0) || 0;
+                        const isFullOrOver = cap > 0 && seated >= cap;
+                        if (isFullOrOver) return '#10B981';
+                        return t?.type === 'reserve' ? colors.warning : '#FFFFFF';
                       }}
                       selectedRingColor="#10B981"
                       isTableSelected={(t: any) => Boolean(selectedTableNumber) && Number(t?.number) === Number(selectedTableNumber)}
@@ -1172,14 +1350,14 @@ export default function EmployeeGuestCheckinWebScreen() {
                         if (!num) return null;
                         const seated = seatedByNumber.get(Number(num)) ?? 0;
                         const cap = Number(t?.seats ?? 0) || 0;
-                        return cap ? `${cap} / ${seated}` : String(seated);
+                        return cap ? `${seated}/${cap}` : String(seated);
                       }}
                       getTableTooltip={(t: any) => {
                         const num = t?.number;
                         if (!num) return null;
                         const seated = seatedByNumber.get(Number(num)) ?? 0;
                         const cap = Number(t?.seats ?? 0) || 0;
-                        return cap ? `יושבים בשולחן: ${cap} / ${seated}` : `יושבים בשולחן: ${seated}`;
+                        return cap ? `יושבים בשולחן: ${seated}/${cap}` : `יושבים בשולחן: ${seated}`;
                       }}
                       onPressTableNumber={(num) => {
                         if (!num) return;
@@ -1189,10 +1367,12 @@ export default function EmployeeGuestCheckinWebScreen() {
                       }}
                     />
                   ) : (
-                    <View style={styles.emptyRow}>
-                      <Ionicons name="map-outline" size={42} color={colors.gray[500]} />
-                      <Text style={styles.emptyTitle}>אין מפה עדיין</Text>
-                      <Text style={styles.emptyText}>כשתהיה סקיצה לאירוע, היא תופיע כאן.</Text>
+                    <View style={styles.mapEmptyState}>
+                      <View style={styles.mapEmptyIconWrap}>
+                        <Ionicons name="map-outline" size={34} color={colors.primary} />
+                      </View>
+                      <Text style={styles.mapEmptyTitle}>עדיין אין מפת הושבה</Text>
+                      <Text style={styles.mapEmptyText}>כשתהיה סקיצה לאירוע, היא תופיע כאן באופן אוטומטי.</Text>
                     </View>
                   )}
                 </View>
@@ -1397,8 +1577,16 @@ export default function EmployeeGuestCheckinWebScreen() {
 const styles = StyleSheet.create({
   page: {
     flex: 1,
-    backgroundColor: '#F7F6F4',
-    ...(Platform.OS === 'web' ? ({ minHeight: '100vh', direction: 'rtl' } as any) : null),
+    backgroundColor: '#E8F1FF',
+    ...(Platform.OS === 'web'
+      ? ({
+          minHeight: '100vh',
+          direction: 'rtl',
+          backgroundColor: '#F7FAFF',
+          backgroundImage:
+            'radial-gradient(circle at top right, rgba(25,93,230,0.14), rgba(25,93,230,0) 40%), radial-gradient(circle at top left, rgba(232,241,255,0.95), rgba(232,241,255,0) 34%), radial-gradient(circle at bottom left, rgba(242,224,186,0.34), rgba(242,224,186,0) 32%), radial-gradient(circle at bottom center, rgba(240,203,70,0.12), rgba(240,203,70,0) 26%)',
+        } as any)
+      : null),
   },
   pageScroll: {
     flex: 1,
@@ -1447,8 +1635,49 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
   },
   topDashboardWrap: { width: '100%', marginTop: 8, marginBottom: 10 },
-  dashboardCardTop: { maxHeight: 200, maxWidth: 1960 },
+  dashboardCardTop: { maxWidth: 1960 },
   cardTitle: { fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'right' },
+  heroShell: { width: '100%', marginTop: 8, gap: 10 },
+  heroHeaderActions: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
+  heroHeaderActionBtn: {
+    minHeight: 40,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    backgroundColor: 'rgba(248,250,252,1)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  heroHeaderActionBtnHover: { backgroundColor: 'rgba(241,245,249,1)' },
+  heroHeaderActionText: { fontSize: 13, fontWeight: '900', color: colors.primary, textAlign: 'right' },
+  webBackBtn: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  webBackBtnHover: {
+    backgroundColor: '#F8FAFD',
+    borderColor: 'rgba(15,69,230,0.12)',
+  },
+  webBackBtnPressed: {
+    opacity: 0.92,
+  },
+  webBackBtnText: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '900',
+    textAlign: 'right',
+  },
 
   dashboardGrid: {
     marginTop: 10,
@@ -1493,6 +1722,19 @@ const styles = StyleSheet.create({
   },
   dashboardBackBtnHover: { backgroundColor: 'rgba(255,255,255,0.14)' },
   dashboardBackText: { fontSize: 12, fontWeight: '900', color: '#fff', textAlign: 'right' },
+  dashboardHeaderBadge: {
+    minWidth: 88,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dashboardHeaderBadgeValue: { fontSize: 20, fontWeight: '900', color: '#fff', textAlign: 'center' },
+  dashboardHeaderBadgeText: { marginTop: 2, fontSize: 15, fontWeight: '500', fontFamily: 'Rubik', color: 'rgba(229,231,235,0.95)', textAlign: 'center' },
   dashboardHeaderGlow: {
     position: 'absolute',
     top: -24,
@@ -1505,48 +1747,125 @@ const styles = StyleSheet.create({
   },
   dashboardBody: { paddingHorizontal: 14, paddingBottom: 12, paddingTop: 10, gap: 10 },
   dashboardBodyTop: { paddingHorizontal: 12, paddingBottom: 10, paddingTop: 8, gap: 8 },
+  heroMainCard: {
+    backgroundColor: 'rgba(255,255,255,0.98)',
+    borderColor: 'rgba(17,24,39,0.06)',
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 12px 36px rgba(11,28,65,0.06)' } as any) : null),
+  },
+  heroIntroRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    justifyContent: 'space-between',
+    gap: 12,
+    flexWrap: 'wrap',
+  },
+  heroIntroCopy: { flex: 1, minWidth: 280, gap: 6 },
+  heroIntroEyebrow: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: colors.primary,
+    textAlign: 'right',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase' as any,
+  },
+  heroIntroTitle: { fontSize: 24, fontWeight: '900', color: '#111827', textAlign: 'right' },
+  heroIntroText: { fontSize: 13, fontWeight: '700', lineHeight: 20, color: colors.gray[600], textAlign: 'right' },
+  heroToolbar: { gap: 10 },
+  heroFiltersRow: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 10 },
+  heroFilterChip: {
+    minHeight: 42,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    backgroundColor: 'rgba(248,250,252,1)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  heroFilterChipHover: { backgroundColor: 'rgba(241,245,249,1)' },
+  heroFilterChipActive: {
+    backgroundColor: 'rgba(25,93,230,0.08)',
+    borderColor: 'rgba(25,93,230,0.22)',
+  },
+  heroFilterChipText: { fontSize: 13, fontWeight: '900', color: colors.gray[700], textAlign: 'right' },
+  heroFilterChipTextActive: { color: colors.primary },
+  heroFilterChipCount: {
+    minWidth: 28,
+    height: 28,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+    backgroundColor: 'rgba(15,23,42,0.06)',
+  },
+  heroFilterChipCountActive: { backgroundColor: colors.primary },
+  heroFilterChipCountText: { fontSize: 12, fontWeight: '900', color: colors.gray[700], textAlign: 'center' },
+  heroFilterChipCountTextActive: { color: '#fff' },
+  heroMetaChipsRow: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 10 },
+  heroMetaChip: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: 'rgba(6,23,62,0.05)',
+  },
+  heroMetaChipText: { fontSize: 12, fontWeight: '800', color: colors.primary, textAlign: 'right' },
   metricsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between' },
-  metricsGridTop: { gap: 6 },
+  metricsGridTop: { gap: 10 },
   metricTile: {
     width: '31.5%',
     minWidth: 86,
-    borderRadius: 14,
-    paddingVertical: 9,
-    paddingHorizontal: 10,
+    minHeight: 72,
+    borderRadius: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    ...(Platform.OS === 'web' ? ({ transitionProperty: 'transform, box-shadow, background-color', transitionDuration: '150ms' } as any) : null),
+    ...(Platform.OS === 'web'
+      ? ({
+          boxShadow: '0 10px 24px rgba(15,23,42,0.05)',
+          transitionProperty: 'transform, box-shadow, background-color, border-color',
+          transitionDuration: '150ms',
+        } as any)
+      : null),
   },
   metricTileTop: {
-    width: '16%',
+    width: '24%',
     minWidth: 0,
-    paddingVertical: 6,
-    paddingHorizontal: 6,
-    borderRadius: 12,
+    minHeight: 82,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderRadius: 18,
   },
   metricTileNeutral: { backgroundColor: 'rgba(248,250,252,1)', borderColor: 'rgba(15,23,42,0.06)' },
+  metricTileBlue: { backgroundColor: 'rgba(239,246,255,1)', borderColor: 'rgba(59,130,246,0.22)' },
   metricTileSuccess: { backgroundColor: 'rgba(236,253,245,1)', borderColor: 'rgba(16,185,129,0.22)' },
   metricTileWarn: { backgroundColor: 'rgba(255,247,237,1)', borderColor: 'rgba(245,158,11,0.24)' },
   metricTileIndigo: { backgroundColor: 'rgba(238,242,255,1)', borderColor: 'rgba(99,102,241,0.22)' },
   metricTileYellow: { backgroundColor: 'rgba(254,252,232,1)', borderColor: 'rgba(234,179,8,0.24)' },
-  metricTileValue: { fontSize: 20, fontWeight: '900', color: '#111827', textAlign: 'center' },
-  metricTileValueTop: { fontSize: 18 },
+  metricTileValue: { fontSize: 22, fontWeight: '900', color: '#111827', textAlign: 'center' },
+  metricTileValueTop: { fontSize: 22 },
+  metricTileValueBlue: { color: '#2563EB' },
   metricTileValueMuted: { color: 'rgba(55,65,81,0.95)' },
   metricTileValueSuccess: { color: '#047857' },
   metricTileValueWarn: { color: '#B45309' },
   metricTileValueIndigo: { color: '#4338CA' },
   metricTileValueYellow: { color: '#CA8A04' },
   metricTileLabel: {
-    marginTop: 4,
-    fontSize: 10,
+    marginTop: 6,
+    fontSize: 11,
     fontWeight: '800',
     color: 'rgba(107,114,128,1)',
     textAlign: 'center',
-    textTransform: 'uppercase' as any,
-    letterSpacing: 0.6,
+    letterSpacing: 0.2,
   },
-  metricTileLabelTop: { marginTop: 3, fontSize: 9, letterSpacing: 0.4 },
+  metricTileLabelTop: { marginTop: 6, fontSize: 11, letterSpacing: 0.2, lineHeight: 16 },
+  metricTileLabelBlue: { color: 'rgba(37,99,235,0.95)' },
   metricTileLabelSuccess: { color: 'rgba(4,120,87,0.95)' },
   metricTileLabelWarn: { color: 'rgba(180,83,9,0.95)' },
   metricTileLabelIndigo: { color: 'rgba(67,56,202,0.95)' },
@@ -1683,6 +2002,64 @@ const styles = StyleSheet.create({
   summaryPillText: { fontSize: 12, fontWeight: '900', color: colors.primary, textAlign: 'right' },
 
   cardHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  panelHeaderCopy: { flex: 1, minWidth: 0, gap: 4 },
+  panelEyebrow: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: colors.primary,
+    textAlign: 'right',
+    letterSpacing: 0.7,
+    textTransform: 'uppercase' as any,
+  },
+  panelTitle: { fontSize: 22, fontWeight: '900', color: '#111827', textAlign: 'right' },
+  panelSubtitle: { fontSize: 12, fontWeight: '700', color: colors.gray[600], lineHeight: 18, textAlign: 'right' },
+  panelMetaRow: { marginTop: 10, flexDirection: 'row', flexWrap: 'nowrap', gap: 10 },
+  panelMetaPill: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: 'rgba(248,250,252,1)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.06)',
+  },
+  panelMetaPillText: { fontSize: 12, fontWeight: '800', color: colors.gray[700], textAlign: 'right' },
+  panelFilterChipsRow: { marginTop: 12, flexDirection: 'row', flexWrap: 'nowrap', gap: 10 },
+  panelFilterChip: {
+    minHeight: 42,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: 'rgba(248,250,252,0.96)',
+    borderWidth: 1,
+    borderColor: 'rgba(203,213,225,0.9)',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer', boxShadow: '0 6px 18px rgba(15,23,42,0.06)' } as any) : null),
+  },
+  panelFilterChipHover: { backgroundColor: 'rgba(241,245,249,1)', borderColor: 'rgba(148,163,184,0.45)' },
+  panelFilterChipActive: {
+    backgroundColor: 'rgba(25,93,230,0.10)',
+    borderColor: 'rgba(25,93,230,0.28)',
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 10px 24px rgba(25,93,230,0.12)' } as any) : null),
+  },
+  panelFilterChipText: { fontSize: 13, fontWeight: '900', color: colors.gray[700], textAlign: 'right' },
+  panelFilterChipTextActive: { color: colors.primary },
+  panelFilterChipCount: {
+    minWidth: 28,
+    height: 28,
+    paddingHorizontal: 8,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(15,23,42,0.06)',
+  },
+  panelFilterChipCountActive: { backgroundColor: colors.primary },
+  panelFilterChipCountText: { fontSize: 12, fontWeight: '900', color: colors.gray[700], textAlign: 'center' },
+  panelFilterChipCountTextActive: { color: '#fff' },
   linkBtn: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, backgroundColor: 'rgba(15,23,42,0.04)' },
   linkBtnHover: { backgroundColor: 'rgba(15,23,42,0.06)' },
   linkBtnText: { fontSize: 12, fontWeight: '900', color: colors.primary, textAlign: 'right' },
@@ -1805,11 +2182,58 @@ const styles = StyleSheet.create({
   emptyRow: { paddingVertical: 30, alignItems: 'center', gap: 8 },
   emptyTitle: { fontSize: 15, fontWeight: '900', color: colors.text, textAlign: 'center' },
   emptyText: { fontSize: 13, fontWeight: '700', color: colors.gray[600], textAlign: 'center' },
+  mapEmptyState: {
+    flex: 1,
+    minHeight: 320,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    paddingHorizontal: 24,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(148,163,184,0.18)',
+    backgroundColor: 'rgba(255,255,255,0.68)',
+    ...(Platform.OS === 'web' ? ({ boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.45)' } as any) : null),
+  },
+  mapEmptyIconWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(6,23,62,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.10)',
+  },
+  mapEmptyTitle: { fontSize: 22, fontWeight: '900', color: colors.text, textAlign: 'center' },
+  mapEmptyText: { maxWidth: 360, fontSize: 14, fontWeight: '700', lineHeight: 22, color: colors.gray[600], textAlign: 'center' },
 
-  mapLegendRow: { marginTop: 10, flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 12, alignItems: 'center' },
+  mapLegendRow: { marginTop: 10, flexDirection: 'row', flexWrap: 'nowrap', gap: 12, alignItems: 'center' },
   mapLegendItem: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
   mapLegendDot: { width: 10, height: 10, borderRadius: 999 },
   mapLegendText: { fontSize: 12, fontWeight: '900', color: colors.gray[700], textAlign: 'right' },
+  mapCard: { gap: 12 },
+  mapCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+    flexWrap: 'wrap',
+  },
+  mapCardHeaderSide: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
+  mapStatusPill: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: 'rgba(248,250,252,1)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.06)',
+  },
+  mapStatusDot: { width: 8, height: 8, borderRadius: 999 },
+  mapStatusPillText: { fontSize: 12, fontWeight: '900', color: colors.gray[700], textAlign: 'right' },
 
   guestRowCompact: {
     position: 'relative',
@@ -1828,7 +2252,13 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? ({ direction: 'ltr' } as any) : null),
   },
   guestRowCompactOn: { backgroundColor: 'rgba(34,197,94,0.06)', borderColor: 'rgba(34,197,94,0.14)' },
-  guestRowAccent: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, backgroundColor: 'rgba(148,163,184,0.7)' },
+  guestRowAccent: {
+    width: 4,
+    height: 28,
+    borderRadius: 999,
+    backgroundColor: 'rgba(148,163,184,0.7)',
+    flexShrink: 0,
+  },
   guestRowAccentOn: { backgroundColor: '#10B981' },
   guestRowMain: {
     minWidth: 0,
@@ -1847,6 +2277,7 @@ const styles = StyleSheet.create({
     height: 32,
     borderRadius: 12,
     marginLeft: 12,
+    marginRight: -6,
     backgroundColor: 'rgba(15,23,42,0.04)',
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.06)',
@@ -2027,7 +2458,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     borderWidth: 1,
     borderColor: 'rgba(6,23,62,0.20)',
-    backgroundColor: 'rgba(249,250,251,0.98)',
+    backgroundColor: '#F9FAFB',
     padding: 18,
     shadowColor: colors.primary,
     shadowOpacity: 0.12,
@@ -2045,7 +2476,7 @@ const styles = StyleSheet.create({
     borderRadius: 0,
     maxWidth: 9999,
   },
-  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  modalHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   modalKicker: {
     fontSize: 12,
     fontWeight: '900',
@@ -2074,16 +2505,16 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.7)',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: 'rgba(6,23,62,0.12)',
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
-  modalCloseBtnHover: { backgroundColor: 'rgba(255,255,255,0.95)' },
+  modalCloseBtnHover: { backgroundColor: '#F8FAFC' },
   modalSearchWrap: {
     marginTop: 14,
     borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.9)',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: 'rgba(6,23,62,0.10)',
     shadowColor: '#000',

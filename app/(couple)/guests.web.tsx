@@ -15,6 +15,7 @@ import {
 import { useFocusEffect, useLocalSearchParams, useRouter, useSegments } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
+import AdminWebPageHeader from '@/components/desktop/AdminWebPageHeader';
 import { colors } from '@/constants/colors';
 import { useUserStore } from '@/store/userStore';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
@@ -70,6 +71,7 @@ export default function CoupleGuestsWebScreen() {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<GuestStatus | null>(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const [expandedByCategoryId, setExpandedByCategoryId] = useState<Record<string, boolean>>({});
   const [selectedGuestIds, setSelectedGuestIds] = useState<Set<string>>(new Set());
@@ -447,6 +449,12 @@ export default function CoupleGuestsWebScreen() {
   const useSquareGuestCards = false;
 
   const contentMaxWidth = contentWidth >= 1900 ? 1600 : contentWidth >= 1600 ? 1480 : 1320;
+  const adminHeaderStats = [
+    { key: 'total', label: 'מוזמנים', value: guestCounts.total },
+    { key: 'coming', label: 'אישרו', value: guestCounts.coming },
+    { key: 'pending', label: 'ממתינים', value: guestCounts.pending },
+    { key: 'groups', label: 'קטגוריות', value: groupItems.length },
+  ];
   const addIsCategoryStep = addStep === 'category';
   const addSelectedCategoryName =
     addSelectedCategoryId === '__uncategorized__'
@@ -467,35 +475,100 @@ export default function CoupleGuestsWebScreen() {
       };
 
   return (
-    <View style={styles.page}>
+    <View style={[styles.page, isAdminContext ? styles.pageAdmin : null]}>
       <ScrollView
-        contentContainerStyle={[styles.content, isAdminContext ? styles.contentAdmin : null, { maxWidth: contentMaxWidth }]}
+        contentContainerStyle={[
+          styles.content,
+          isAdminContext ? styles.contentAdmin : null,
+          !isAdminContext ? { maxWidth: contentMaxWidth } : null,
+        ]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.heroCard}>
-          <View style={styles.heroTopRow}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="חזרה"
-              onPress={() => router.replace(backHref as any)}
-              style={({ hovered, pressed }: any) => [
-                styles.backBtn,
-                Platform.OS === 'web' && hovered ? styles.backBtnHover : null,
-                pressed ? styles.btnPressed : null,
-              ]}
-            >
-              <Ionicons name="arrow-forward" size={18} color={colors.gray[800]} />
-            </Pressable>
+        {isAdminContext ? (
+          <View style={styles.adminHeroShell}>
+            <AdminWebPageHeader
+              eyebrow="ניהול אירוע"
+              title="אישורי הגעה"
+              subtitle="ניהול RSVP, חיפוש מהיר, סינון סטטוסים וסידור המוזמנים לפי קטגוריות מתוך מסך אחד."
+              subtitleContent={
+                <View style={styles.adminHeaderMetaBar}>
+                  <View style={styles.adminHeaderMetaGroup}>
+                    {adminHeaderStats.map((item) => (
+                      <View key={item.key} style={styles.adminHeaderStatChip}>
+                        <Text style={styles.adminHeaderStatValue}>{item.value}</Text>
+                        <Text style={styles.adminHeaderStatLabel}>{item.label}</Text>
+                      </View>
+                    ))}
+                  </View>
 
-            <View style={styles.heroTextWrap}>
-              <Text style={styles.heroEyebrow}>ניהול מוזמנים</Text>
-              <Text style={styles.heroTitle}>אישורי הגעה</Text>
-              <Text style={styles.heroSubtitle}>
-                {eventTitle ? `${eventTitle} · ניהול מוזמנים, חיפוש מהיר וסידור לפי קטגוריות.` : 'ניהול מוזמנים, חיפוש מהיר וסידור לפי קטגוריות.'}
-              </Text>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="הוסף מוזמנים"
+                    onPress={openAdd}
+                    style={({ hovered, pressed }: any) => [
+                      styles.adminHeaderActionBtn,
+                      Platform.OS === 'web' && hovered ? styles.adminHeaderActionBtnHover : null,
+                      pressed ? styles.btnPressed : null,
+                    ]}
+                  >
+                    <Ionicons name="add" size={16} color={colors.white} />
+                    <Text style={styles.adminHeaderActionBtnText}>הוסף מוזמנים</Text>
+                  </Pressable>
+                </View>
+              }
+              actions={
+                <View style={styles.adminHeaderSelectionBadge}>
+                  <Ionicons name="calendar-outline" size={15} color={colors.primary} />
+                  <Text style={styles.adminHeaderSelectionText} numberOfLines={1}>
+                    {eventTitle || 'אירוע פעיל'}
+                  </Text>
+                </View>
+              }
+              showNav={false}
+              useDefaultActions={false}
+              leading={
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="חזרה"
+                  onPress={() => router.replace(backHref as any)}
+                  style={({ hovered, pressed }: any) => [
+                    styles.adminBackBtn,
+                    Platform.OS === 'web' && hovered ? styles.adminBackBtnHover : null,
+                    pressed ? styles.btnPressed : null,
+                  ]}
+                >
+                  <Ionicons name="arrow-forward" size={16} color={colors.text} />
+                  <Text style={styles.adminBackBtnText}>חזרה</Text>
+                </Pressable>
+              }
+            />
+          </View>
+        ) : (
+          <View style={styles.heroCard}>
+            <View style={styles.heroTopRow}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="חזרה"
+                onPress={() => router.replace(backHref as any)}
+                style={({ hovered, pressed }: any) => [
+                  styles.backBtn,
+                  Platform.OS === 'web' && hovered ? styles.backBtnHover : null,
+                  pressed ? styles.btnPressed : null,
+                ]}
+              >
+                <Ionicons name="arrow-forward" size={18} color={colors.gray[800]} />
+              </Pressable>
+
+              <View style={styles.heroTextWrap}>
+                <Text style={styles.heroEyebrow}>ניהול מוזמנים</Text>
+                <Text style={styles.heroTitle}>אישורי הגעה</Text>
+                <Text style={styles.heroSubtitle}>
+                  {eventTitle ? `${eventTitle} · ניהול מוזמנים, חיפוש מהיר וסידור לפי קטגוריות.` : 'ניהול מוזמנים, חיפוש מהיר וסידור לפי קטגוריות.'}
+                </Text>
+              </View>
             </View>
           </View>
-        </View>
+        )}
 
         {/* Metrics */}
         <View style={styles.metricsRow}>
@@ -504,15 +577,16 @@ export default function CoupleGuestsWebScreen() {
             value={guestCounts.total}
             tone="primary"
             width={cardWidth}
+            admin={isAdminContext}
           />
-          <MetricCard title="אישרו הגעה" value={guestCounts.coming} hint={pct(guestCounts.coming, guestCounts.total)} tone="success" width={cardWidth} />
-          <MetricCard title="אולי מגיעים" value={guestCounts.maybe} hint={pct(guestCounts.maybe, guestCounts.total)} tone="primary" width={cardWidth} />
-          <MetricCard title="ממתינים לתשובה" value={guestCounts.pending} hint={pct(guestCounts.pending, guestCounts.total)} tone="warning" width={cardWidth} />
-          <MetricCard title="לא מגיעים" value={guestCounts.notComing} hint={pct(guestCounts.notComing, guestCounts.total)} tone="danger" width={cardWidth} />
+          <MetricCard title="אישרו הגעה" value={guestCounts.coming} hint={pct(guestCounts.coming, guestCounts.total)} tone="success" width={cardWidth} admin={isAdminContext} />
+          <MetricCard title="אולי מגיעים" value={guestCounts.maybe} hint={pct(guestCounts.maybe, guestCounts.total)} tone="primary" width={cardWidth} admin={isAdminContext} />
+          <MetricCard title="ממתינים לתשובה" value={guestCounts.pending} hint={pct(guestCounts.pending, guestCounts.total)} tone="warning" width={cardWidth} admin={isAdminContext} />
+          <MetricCard title="לא מגיעים" value={guestCounts.notComing} hint={pct(guestCounts.notComing, guestCounts.total)} tone="danger" width={cardWidth} admin={isAdminContext} />
         </View>
 
         {/* Filter Bar */}
-        <View style={[styles.filterBar, isNarrow ? styles.filterBarNarrow : styles.filterBarWide]}>
+        <View style={[styles.filterBar, isAdminContext ? styles.filterBarAdmin : null, isNarrow ? styles.filterBarNarrow : styles.filterBarWide]}>
           <View style={[styles.filterPrimaryRow, isNarrow ? styles.filterPrimaryRowNarrow : null]}>
             <View style={[styles.searchWrap, isNarrow ? { width: '100%' } : { width: 420 }]}>
               <View style={styles.searchIconRight}>
@@ -527,34 +601,56 @@ export default function CoupleGuestsWebScreen() {
               />
             </View>
 
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="הוסף מוזמנים"
-              onPress={openAdd}
-              style={({ hovered, pressed }: any) => [
-                styles.addGuestsBtn,
-                isNarrow ? styles.addGuestsBtnNarrow : null,
-                Platform.OS === 'web' && hovered ? styles.addGuestsBtnHover : null,
-                pressed ? styles.btnPressed : null,
-              ]}
-            >
-              <Ionicons name="add" size={18} color={colors.white} />
-              <Text style={styles.addGuestsBtnText}>הוסף מוזמנים</Text>
-            </Pressable>
+            {isAdminContext ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={filtersOpen ? 'הסתר מסננים' : 'הצג מסננים'}
+                onPress={() => setFiltersOpen((prev) => !prev)}
+                style={({ hovered, pressed }: any) => [
+                  styles.filterToggleBtn,
+                  filtersOpen ? styles.filterToggleBtnActive : null,
+                  isNarrow ? styles.filterToggleBtnNarrow : null,
+                  Platform.OS === 'web' && hovered ? styles.filterToggleBtnHover : null,
+                  pressed ? styles.btnPressed : null,
+                ]}
+              >
+                <Ionicons name={filtersOpen ? 'chevron-up-outline' : 'options-outline'} size={18} color={filtersOpen ? colors.white : colors.primary} />
+                <Text style={[styles.filterToggleBtnText, filtersOpen ? styles.filterToggleBtnTextActive : null]}>
+                  {filtersOpen ? 'הסתר סינון' : 'סינון'}
+                </Text>
+              </Pressable>
+            ) : (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="הוסף מוזמנים"
+                onPress={openAdd}
+                style={({ hovered, pressed }: any) => [
+                  styles.addGuestsBtn,
+                  isNarrow ? styles.addGuestsBtnNarrow : null,
+                  Platform.OS === 'web' && hovered ? styles.addGuestsBtnHover : null,
+                  pressed ? styles.btnPressed : null,
+                ]}
+              >
+                <Ionicons name="add" size={18} color={colors.white} />
+                <Text style={styles.addGuestsBtnText}>הוסף מוזמנים</Text>
+              </Pressable>
+            )}
           </View>
 
-          <View style={styles.chipsRow}>
-            {statusChipOptions.map((opt) => (
-              <StatusChip
-                key={String(opt.key)}
-                active={statusFilter === opt.key}
-                label={opt.label}
-                count={opt.count}
-                tone={opt.tone}
-                onPress={() => setStatusFilter(opt.key)}
-              />
-            ))}
-          </View>
+          {!isAdminContext || filtersOpen ? (
+            <View style={styles.chipsRow}>
+              {statusChipOptions.map((opt) => (
+                <StatusChip
+                  key={String(opt.key)}
+                  active={statusFilter === opt.key}
+                  label={opt.label}
+                  count={opt.count}
+                  tone={opt.tone}
+                  onPress={() => setStatusFilter(opt.key)}
+                />
+              ))}
+            </View>
+          ) : null}
 
           {selectedGuestIds.size > 0 ? (
             <View style={styles.bulkRow}>
@@ -616,7 +712,7 @@ export default function CoupleGuestsWebScreen() {
                 const isExpanded = expandedByCategoryId[String(cat.id)] ?? true;
                 const counts = groupCounts(list);
                 return (
-                  <View key={String(cat.id)} style={styles.groupCard}>
+                  <View key={String(cat.id)} style={[styles.groupCard, isAdminContext ? styles.groupCardAdmin : null]}>
                     <Pressable
                       accessibilityRole="button"
                       accessibilityLabel={`פתיחה/סגירה של ${cat.name}`}
@@ -1104,12 +1200,14 @@ function MetricCard({
   hint,
   tone,
   width,
+  admin,
 }: {
   title: string;
   value: number;
   hint?: string;
   tone: 'primary' | 'success' | 'warning' | 'danger';
   width: any;
+  admin?: boolean;
 }) {
   const c = toneColor(tone);
   const iconName =
@@ -1120,8 +1218,53 @@ function MetricCard({
         : tone === 'danger'
           ? 'close-circle-outline'
           : 'people-outline';
+  const adminSubtitle =
+    tone === 'success'
+      ? 'האורחים שכבר אישרו הגעה ומוכנים לאירוע'
+      : tone === 'warning'
+        ? 'מוזמנים שעדיין דורשים מעקב ותזכורת'
+        : tone === 'danger'
+          ? 'אורחים שסימנו שלא יגיעו לאירוע'
+          : 'תמונת מצב כללית של רשימת המוזמנים';
+  const adminBadgeText = hint || (tone === 'primary' ? 'מבט כללי' : 'יחס מהרשימה');
+
+  if (admin) {
+    return (
+      <View style={[styles.metricCard, styles.metricCardAdmin, { width }, { borderRightColor: c.main }]}>
+        <View style={[styles.metricGlow, styles.metricGlowAdmin, { backgroundColor: c.soft }]} />
+        <View style={styles.metricAdminDecorWrap} pointerEvents="none">
+          <View style={[styles.metricAdminDecorOrb, { backgroundColor: c.soft }]} />
+        </View>
+
+        <View style={styles.metricAdminHeader}>
+          <View style={[styles.metricIconWrap, styles.metricIconWrapAdmin, { backgroundColor: c.soft, borderColor: 'rgba(255,255,255,0.82)' }]}>
+            <Ionicons name={iconName} size={18} color={c.main} />
+          </View>
+
+          <View style={[styles.metricAdminBadge, { backgroundColor: c.soft }]}>
+            <View style={[styles.metricAdminBadgeDot, { backgroundColor: c.main }]} />
+            <Text style={[styles.metricAdminBadgeText, { color: c.text }]}>{adminBadgeText}</Text>
+          </View>
+        </View>
+
+        <View style={styles.metricAdminBody}>
+          <Text style={styles.metricAdminTitle}>{title}</Text>
+
+          <View style={styles.metricAdminValueRow}>
+            <Text style={styles.metricAdminValue}>{value}</Text>
+            <View style={[styles.metricAdminMiniPill, { backgroundColor: c.soft }]}>
+              <Text style={[styles.metricAdminMiniPillText, { color: c.text }]}>{tone === 'primary' ? 'RSVP' : 'Live'}</Text>
+            </View>
+          </View>
+
+          <Text style={styles.metricAdminSubtitle}>{adminSubtitle}</Text>
+        </View>
+      </View>
+    );
+  }
+
   return (
-    <View style={[styles.metricCard, { width }, { borderRightColor: c.main }]}>
+    <View style={[styles.metricCard, admin ? styles.metricCardAdmin : null, { width }, { borderRightColor: c.main }]}>
       <View style={[styles.metricGlow, { backgroundColor: c.soft }]} />
       <View style={styles.metricTopRow}>
         <View style={styles.metricTextWrap}>
@@ -1394,6 +1537,9 @@ const styles = StyleSheet.create({
     // @ts-expect-error - react-native-web supports direction
     direction: 'rtl',
   },
+  pageAdmin: {
+    backgroundColor: '#E8F1FF',
+  },
 
   content: {
     padding: 16,
@@ -1405,7 +1551,121 @@ const styles = StyleSheet.create({
     direction: 'rtl',
   },
   contentAdmin: {
+    paddingTop: 24,
     ...(Platform.OS === 'web' ? ({ alignSelf: 'stretch', direction: 'rtl' } as any) : null),
+  },
+  adminHeroShell: {
+    width: '100%',
+  },
+  adminHeaderMetaBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    flexWrap: 'wrap',
+    ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
+  },
+  adminHeaderMetaGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flexWrap: 'wrap',
+    ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
+  },
+  adminHeaderStatChip: {
+    minHeight: 34,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: '#F8FAFD',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.07)',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+  },
+  adminHeaderStatValue: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'right',
+  },
+  adminHeaderStatLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.gray[600],
+    textAlign: 'right',
+  },
+  adminHeaderActionBtn: {
+    minHeight: 40,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    backgroundColor: colors.primary,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+    // @ts-expect-error - react-native-web supports boxShadow
+    boxShadow: '0 10px 22px rgba(6,23,62,0.16)',
+  },
+  adminHeaderActionBtnHover: {
+    opacity: 0.97,
+  },
+  adminHeaderActionBtnText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.white,
+    textAlign: 'right',
+  },
+  adminHeaderSelectionBadge: {
+    maxWidth: 320,
+    minHeight: 40,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(15,69,230,0.10)',
+    backgroundColor: 'rgba(15,69,230,0.06)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  adminHeaderSelectionText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.text,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  adminBackBtn: {
+    minHeight: 42,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    ...(Platform.OS === 'web'
+      ? ({
+          cursor: 'pointer',
+          boxShadow: '0 4px 12px rgba(11,28,65,0.04)',
+        } as any)
+      : null),
+  },
+  adminBackBtnHover: {
+    backgroundColor: '#F8FAFD',
+    borderColor: 'rgba(15,69,230,0.14)',
+  },
+  adminBackBtnText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.text,
+    textAlign: 'right',
   },
 
   heroCard: {
@@ -1465,6 +1725,11 @@ const styles = StyleSheet.create({
     // @ts-expect-error - react-native-web supports boxShadow
     boxShadow: '0 2px 6px rgba(16,24,40,0.04), 0 18px 40px rgba(16,24,40,0.08)',
   },
+  metricCardAdmin: {
+    borderColor: 'rgba(6,23,62,0.06)',
+    // @ts-expect-error - react-native-web supports boxShadow
+    boxShadow: '0 8px 24px rgba(11,28,65,0.04)',
+  },
   metricGlow: {
     position: 'absolute',
     top: -28,
@@ -1473,6 +1738,13 @@ const styles = StyleSheet.create({
     height: 112,
     borderRadius: 999,
     opacity: 0.45,
+  },
+  metricGlowAdmin: {
+    width: 148,
+    height: 148,
+    top: -44,
+    left: -28,
+    opacity: 0.7,
   },
   metricTopRow: { flexDirection: 'row-reverse', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14 },
   metricTextWrap: {
@@ -1490,7 +1762,108 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     borderWidth: 1,
   },
+  metricIconWrapAdmin: {
+    width: 46,
+    height: 46,
+    borderRadius: 15,
+  },
   metricLabel: { fontSize: 12, fontWeight: '800', color: colors.gray[500], textAlign: 'right', writingDirection: 'rtl', lineHeight: 16 },
+  metricAdminDecorWrap: {
+    position: 'absolute',
+    top: 14,
+    left: 14,
+    alignItems: 'flex-end',
+    pointerEvents: 'none',
+  },
+  metricAdminDecorOrb: {
+    width: 12,
+    height: 12,
+    borderRadius: 999,
+    opacity: 0.9,
+  },
+  metricAdminHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    // @ts-expect-error - react-native-web supports direction
+    direction: 'rtl',
+  },
+  metricAdminBadge: {
+    minHeight: 30,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.62)',
+    zIndex: 2,
+  },
+  metricAdminBadgeDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 999,
+  },
+  metricAdminBadgeText: {
+    fontSize: 11,
+    fontWeight: '900',
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  metricAdminBody: {
+    marginTop: 18,
+    gap: 10,
+    alignItems: 'stretch',
+  },
+  metricAdminTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.gray[500],
+    textAlign: 'right',
+    writingDirection: 'rtl',
+    lineHeight: 16,
+  },
+  metricAdminValueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    // @ts-expect-error - react-native-web supports direction
+    direction: 'rtl',
+  },
+  metricAdminValue: {
+    fontSize: 40,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'right',
+    lineHeight: 42,
+    letterSpacing: -0.9,
+  },
+  metricAdminMiniPill: {
+    minHeight: 28,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.55)',
+  },
+  metricAdminMiniPillText: {
+    fontSize: 10.5,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  metricAdminSubtitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.gray[600],
+    textAlign: 'right',
+    writingDirection: 'rtl',
+    lineHeight: 18,
+  },
   metricValueRow: { marginTop: 18, flexDirection: 'row-reverse', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 },
   metricValue: { fontSize: 34, fontWeight: '900', color: colors.text, textAlign: 'right', lineHeight: 36, letterSpacing: -0.6 },
   metricValueTrail: {
@@ -1524,6 +1897,11 @@ const styles = StyleSheet.create({
           zIndex: 50,
         } as any)
       : null),
+  },
+  filterBarAdmin: {
+    borderColor: 'rgba(6,23,62,0.06)',
+    // @ts-expect-error - react-native-web supports boxShadow
+    boxShadow: '0 8px 24px rgba(11,28,65,0.04)',
   },
   filterBarNarrow: {
     padding: 14,
@@ -1602,6 +1980,38 @@ const styles = StyleSheet.create({
   addGuestsBtnNarrow: { width: '100%' },
   addGuestsBtnHover: { opacity: 0.97, transform: [{ translateY: -1 }] },
   addGuestsBtnText: { fontSize: 13, fontWeight: '900', color: colors.white, textAlign: 'right', writingDirection: 'rtl' },
+  filterToggleBtn: {
+    height: 48,
+    paddingHorizontal: 18,
+    borderRadius: 18,
+    backgroundColor: 'rgba(15,69,230,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,69,230,0.14)',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+    flexShrink: 0,
+  },
+  filterToggleBtnActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  filterToggleBtnNarrow: { width: '100%' },
+  filterToggleBtnHover: {
+    opacity: 0.97,
+  },
+  filterToggleBtnText: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: colors.primary,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  filterToggleBtnTextActive: {
+    color: colors.white,
+  },
   chip: {
     paddingHorizontal: 14,
     paddingVertical: 9,
@@ -1721,6 +2131,11 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     // @ts-expect-error - react-native-web supports boxShadow
     boxShadow: '0 1px 2px rgba(16,24,40,0.03), 0 18px 38px rgba(16,24,40,0.06)',
+  },
+  groupCardAdmin: {
+    borderColor: 'rgba(6,23,62,0.06)',
+    // @ts-expect-error - react-native-web supports boxShadow
+    boxShadow: '0 8px 24px rgba(11,28,65,0.04)',
   },
   groupHeader: {
     paddingHorizontal: 18,
