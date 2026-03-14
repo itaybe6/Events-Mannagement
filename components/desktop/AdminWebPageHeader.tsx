@@ -14,6 +14,7 @@ type Props = {
   eyebrow?: string;
   subtitle?: string;
   subtitleContent?: React.ReactNode;
+  hideSubtitleDivider?: boolean;
   titleMeta?: React.ReactNode;
   leading?: React.ReactNode;
   actions?: React.ReactNode;
@@ -26,6 +27,7 @@ export default function AdminWebPageHeader({
   eyebrow,
   subtitle,
   subtitleContent,
+  hideSubtitleDivider = false,
   titleMeta,
   leading,
   actions,
@@ -62,7 +64,7 @@ export default function AdminWebPageHeader({
 
       {subtitle || subtitleContent ? (
         <View style={styles.subtitleSection}>
-          <View style={styles.subtitleDivider} />
+          {!hideSubtitleDivider ? <View style={styles.subtitleDivider} /> : null}
           {subtitleContent ? (
             subtitleContent
           ) : useSubtitleChips ? (
@@ -106,17 +108,17 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: 'rgba(6,23,62,0.06)',
+    borderColor: 'rgba(6,23,62,0.045)',
     gap: 18,
     ...(Platform.OS === 'web'
       ? ({
-          boxShadow: '0 8px 24px rgba(11,28,65,0.04)',
+          boxShadow: '0 4px 14px rgba(11,28,65,0.025)',
         } as any)
       : {
           shadowColor: '#0B1C41',
-          shadowOpacity: 0.06,
-          shadowRadius: 18,
-          shadowOffset: { width: 0, height: 8 },
+          shadowOpacity: 0.04,
+          shadowRadius: 12,
+          shadowOffset: { width: 0, height: 4 },
         }),
   },
   topRow: {

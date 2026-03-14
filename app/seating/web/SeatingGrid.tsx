@@ -42,12 +42,58 @@ type EditState =
 
 type ActiveEditState = NonNullable<EditState>;
 
-export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
+export function SeatingGrid({ api, fitToGrid = false }: { api: UseSeatingStateApi; fitToGrid?: boolean }) {
   const isWeb = Platform.OS === 'web';
-  const gridW = api.gridCols * CELL_SIZE;
-  const gridH = api.gridRows * CELL_SIZE;
+  const contentRect = useMemo(() => {
+    if (fitToGrid) {
+      return { originX: 0, originY: 0, cols: Math.max(1, api.gridCols), rows: Math.max(1, api.gridRows) };
+    }
+
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = 0;
+    let maxY = 0;
+
+    const include = (x0: number, y0: number, x1: number, y1: number) => {
+      minX = Math.min(minX, x0);
+      minY = Math.min(minY, y0);
+      maxX = Math.max(maxX, x1);
+      maxY = Math.max(maxY, y1);
+    };
+
+    for (const t of api.tables) {
+      const sz = tableCellSize(t.type, t.seats, t.orientation);
+      include(t.gridX, t.gridY, t.gridX + sz.w, t.gridY + sz.h);
+    }
+    for (const z of api.zones) {
+      include(z.gridX, z.gridY, z.gridX + z.widthCells, z.gridY + z.heightCells);
+    }
+    for (const l of api.labels) {
+      include(l.gridX, l.gridY, l.gridX + 1, l.gridY + 1);
+    }
+
+    const hasAny = Number.isFinite(minX) && Number.isFinite(minY);
+    if (!hasAny) {
+      return { originX: 0, originY: 0, cols: Math.max(1, api.gridCols), rows: Math.max(1, api.gridRows) };
+    }
+
+    const pad = 1;
+    const originX = clamp(Math.floor(minX) - pad, 0, Math.max(0, api.gridCols - 1));
+    const originY = clamp(Math.floor(minY) - pad, 0, Math.max(0, api.gridRows - 1));
+    const endX = clamp(Math.ceil(maxX) + pad, 1, Math.max(1, api.gridCols));
+    const endY = clamp(Math.ceil(maxY) + pad, 1, Math.max(1, api.gridRows));
+    return {
+      originX,
+      originY,
+      cols: Math.max(1, endX - originX),
+      rows: Math.max(1, endY - originY),
+    };
+  }, [api.gridCols, api.gridRows, api.labels, api.tables, api.zones, fitToGrid]);
+  const gridW = contentRect.cols * CELL_SIZE;
+  const gridH = contentRect.rows * CELL_SIZE;
 
   const gridRef = useRef<any>(null);
+  const [viewport, setViewport] = useState<{ w: number; h: number } | null>(null);
 
   const [drag, setDrag] = useState<DragState>(null);
   const [resize, setResize] = useState<ResizeState>(null);
@@ -56,6 +102,17 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
   const [edit, setEdit] = useState<EditState>(null);
 
   const selected = api.selectedIds;
+  const fitScale = useMemo(() => {
+    const vw = viewport?.w ?? 0;
+    const vh = viewport?.h ?? 0;
+    if (!vw || !vh) return 1;
+    const sx = vw / Math.max(1, gridW);
+    const sy = vh / Math.max(1, gridH);
+    return clamp(Math.min(sx, sy), 0.3, 2.8);
+  }, [gridH, gridW, viewport?.h, viewport?.w]);
+  const stageW = gridW * fitScale;
+  const stageH = gridH * fitScale;
+  const scaledCellSize = CELL_SIZE * fitScale;
 
   const getGridRect = useCallback(() => {
     const el = gridRef.current as any;
@@ -63,16 +120,6 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
     return el.getBoundingClientRect() as DOMRect;
   }, []);
 
-  const clientToLocalPx = useCallback(
-    (clientX: number, clientY: number) => {
-      const rect = getGridRect();
-      if (!rect) return { x: 0, y: 0 };
-      return { x: clientX - rect.left, y: clientY - rect.top };
-    },
-    [getGridRect]
-  );
-
-  const pxToCell = useCallback((px: number) => Math.round(px / CELL_SIZE), []);
   const clampCell = useCallback((x: number, y: number, w: number, h: number) => {
     return {
       x: clamp(x, 0, Math.max(0, api.gridCols - w)),
@@ -197,8 +244,8 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
       if (resize) {
         const dxPx = ev.clientX - resize.startClient.x;
         const dyPx = ev.clientY - resize.startClient.y;
-        const dx = Math.round(dxPx / CELL_SIZE);
-        const dy = Math.round(dyPx / CELL_SIZE);
+        const dx = Math.round(dxPx / Math.max(1, scaledCellSize));
+        const dy = Math.round(dyPx / Math.max(1, scaledCellSize));
         const z = api.zones.find(zz => zz.id === resize.id);
         if (!z) return;
         const nextW =
@@ -221,8 +268,8 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
       if (!drag) return;
       const dxPx = ev.clientX - drag.startClient.x;
       const dyPx = ev.clientY - drag.startClient.y;
-      const dx = Math.round(dxPx / CELL_SIZE);
-      const dy = Math.round(dyPx / CELL_SIZE);
+      const dx = Math.round(dxPx / Math.max(1, scaledCellSize));
+      const dy = Math.round(dyPx / Math.max(1, scaledCellSize));
 
       const draftById = new Map<string, { x: number; y: number }>();
 
@@ -263,7 +310,7 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
         setGuides({ v: [], h: [] });
       }
     },
-    [api, clampCell, computeTableGuides, drag, getGridRect, marquee, resize]
+    [api, clampCell, computeTableGuides, drag, getGridRect, marquee, resize, scaledCellSize]
   );
 
   const onWindowUp = useCallback(
@@ -343,10 +390,10 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
     const topPx = Math.min(marquee.start.y, marquee.cur.y);
     const bottomPx = Math.max(marquee.start.y, marquee.cur.y);
 
-    const l = Math.floor(leftPx / CELL_SIZE);
-    const r = Math.ceil(rightPx / CELL_SIZE);
-    const t = Math.floor(topPx / CELL_SIZE);
-    const b = Math.ceil(bottomPx / CELL_SIZE);
+    const l = contentRect.originX + Math.floor(leftPx / Math.max(1, scaledCellSize));
+    const r = contentRect.originX + Math.ceil(rightPx / Math.max(1, scaledCellSize));
+    const t = contentRect.originY + Math.floor(topPx / Math.max(1, scaledCellSize));
+    const b = contentRect.originY + Math.ceil(bottomPx / Math.max(1, scaledCellSize));
 
     const hit: string[] = [];
 
@@ -375,7 +422,7 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
     }
 
     api.selectMultiple(hit);
-  }, [api, marquee]);
+  }, [api, contentRect.originX, contentRect.originY, marquee, scaledCellSize]);
 
   const onKeyDown = useCallback(
     (e: any) => {
@@ -454,8 +501,8 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
             pointerEvents="none"
             style={{
               position: 'absolute',
-              left: p.x * CELL_SIZE,
-              top: p.y * CELL_SIZE,
+              left: (p.x - contentRect.originX) * CELL_SIZE,
+              top: (p.y - contentRect.originY) * CELL_SIZE,
               width: sz.w * CELL_SIZE,
               height: sz.h * CELL_SIZE,
               borderRadius: 12,
@@ -480,8 +527,8 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
           pointerEvents="none"
           style={{
             position: 'absolute',
-            left: p.x * CELL_SIZE,
-            top: p.y * CELL_SIZE,
+            left: (p.x - contentRect.originX) * CELL_SIZE,
+            top: (p.y - contentRect.originY) * CELL_SIZE,
             width: z.widthCells * CELL_SIZE,
             height: z.heightCells * CELL_SIZE,
             borderRadius: 12,
@@ -504,8 +551,8 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
       <Text
         style={{
           position: 'absolute',
-          left: p.x * CELL_SIZE,
-          top: p.y * CELL_SIZE,
+          left: (p.x - contentRect.originX) * CELL_SIZE,
+          top: (p.y - contentRect.originY) * CELL_SIZE,
           opacity: 0.6,
           fontWeight: '800',
           color: 'rgba(17,24,39,0.60)',
@@ -514,7 +561,7 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
         {l.text}
       </Text>
     );
-  }, [api.labels, api.tables, api.zones, drag]);
+  }, [api.labels, api.tables, api.zones, contentRect.originX, contentRect.originY, drag]);
 
   const marqueeRect = useMemo(() => {
     if (!marquee) return null;
@@ -535,170 +582,191 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
         // focusable for Delete key
         {...(isWeb ? ({ tabIndex: 0, onKeyDown } as any) : {})}
         style={styles.workArea}
+        onLayout={(e) => {
+          const w = e?.nativeEvent?.layout?.width;
+          const h = e?.nativeEvent?.layout?.height;
+          if (typeof w === 'number' && typeof h === 'number' && w > 0 && h > 0) {
+            setViewport({ w, h });
+          }
+        }}
       >
         <View
           ref={gridRef}
-          style={[styles.gridWrap, { width: gridW, height: gridH }]}
+          style={[styles.gridWrap, { width: stageW, height: stageH }]}
           {...(isWeb ? ({ onPointerDown: onBackgroundPointerDown } as any) : {})}
         >
-          {/* Grid lines */}
-          <Svg width={gridW} height={gridH} style={StyleSheet.absoluteFill as any}>
-            <Defs>
-              <Pattern id="minor" x="0" y="0" width={CELL_SIZE} height={CELL_SIZE} patternUnits="userSpaceOnUse">
-                <Rect x="0" y="0" width={CELL_SIZE} height={CELL_SIZE} fill="transparent" />
-                <Line x1={CELL_SIZE} y1="0" x2="0" y2="0" stroke="rgba(148,163,184,0.22)" strokeWidth="1" />
-                <Line x1="0" y1={CELL_SIZE} x2="0" y2="0" stroke="rgba(148,163,184,0.22)" strokeWidth="1" />
-              </Pattern>
-            </Defs>
-            <Rect x="0" y="0" width="100%" height="100%" fill="url(#minor)" />
+          <View style={[styles.gridInner, { width: gridW, height: gridH, transform: [{ scale: fitScale }] }]}>
+            {/* Grid lines */}
+            <Svg width={gridW} height={gridH} style={StyleSheet.absoluteFill as any}>
+              <Defs>
+                <Pattern id="minor" x="0" y="0" width={CELL_SIZE} height={CELL_SIZE} patternUnits="userSpaceOnUse">
+                  <Rect x="0" y="0" width={CELL_SIZE} height={CELL_SIZE} fill="transparent" />
+                  <Line x1={CELL_SIZE} y1="0" x2="0" y2="0" stroke="rgba(148,163,184,0.22)" strokeWidth="1" />
+                  <Line x1="0" y1={CELL_SIZE} x2="0" y2="0" stroke="rgba(148,163,184,0.22)" strokeWidth="1" />
+                </Pattern>
+              </Defs>
+              <Rect x="0" y="0" width="100%" height="100%" fill="url(#minor)" />
 
-            {/* Guides */}
-            {guides.v.map((x, idx) => (
-              <Line
-                key={`gv-${idx}`}
-                x1={x * CELL_SIZE}
-                y1={0}
-                x2={x * CELL_SIZE}
-                y2={gridH}
-                stroke="rgba(43,140,238,0.85)"
-                strokeWidth={1}
-                strokeDasharray="6 6"
+              {/* Guides */}
+              {guides.v.map((x, idx) => (
+                <Line
+                  key={`gv-${idx}`}
+                  x1={(x - contentRect.originX) * CELL_SIZE}
+                  y1={0}
+                  x2={(x - contentRect.originX) * CELL_SIZE}
+                  y2={gridH}
+                  stroke="rgba(43,140,238,0.85)"
+                  strokeWidth={1}
+                  strokeDasharray="6 6"
+                />
+              ))}
+              {guides.h.map((y, idx) => (
+                <Line
+                  key={`gh-${idx}`}
+                  x1={0}
+                  y1={(y - contentRect.originY) * CELL_SIZE}
+                  x2={gridW}
+                  y2={(y - contentRect.originY) * CELL_SIZE}
+                  stroke="rgba(43,140,238,0.85)"
+                  strokeWidth={1}
+                  strokeDasharray="6 6"
+                />
+              ))}
+            </Svg>
+
+            {/* Zones */}
+            {api.zones.map(z => {
+              const isSelected = selected.has(z.id);
+              const left = (z.gridX - contentRect.originX) * CELL_SIZE;
+              const top = (z.gridY - contentRect.originY) * CELL_SIZE;
+              const w = z.widthCells * CELL_SIZE;
+              const h = z.heightCells * CELL_SIZE;
+              return (
+                <View
+                  key={z.id}
+                  dataSet={{ seatingItem: '1', seatingId: z.id, seatingKind: 'zone' } as any}
+                  style={[
+                    styles.zone,
+                    {
+                      left,
+                      top,
+                      width: w,
+                      height: h,
+                      borderColor: isSelected ? 'rgba(43,140,238,0.95)' : 'rgba(148,163,184,0.65)',
+                    },
+                    isSelected ? styles.selectedRing : null,
+                  ]}
+                  {...(isWeb
+                    ? ({
+                        onPointerDown: (e: any) => beginDrag('zone', z.id, e),
+                        onDoubleClick: () => startEdit('zone', z.id),
+                      } as any)
+                    : null)}
+                >
+                  <Text style={styles.zoneText}>{z.name}</Text>
+
+                  {/* Resize handles (web) */}
+                  {isWeb ? (
+                    <>
+                      <Pressable
+                        dataSet={{ seatingItem: '1' } as any}
+                        style={[styles.handle, { right: -6, top: '50%', marginTop: -6 }]}
+                        onPress={() => null}
+                        {...({ onPointerDown: (e: any) => startResize(z.id, 'right', e) } as any)}
+                      />
+                      <Pressable
+                        dataSet={{ seatingItem: '1' } as any}
+                        style={[styles.handle, { bottom: -6, left: '50%', marginLeft: -6 }]}
+                        onPress={() => null}
+                        {...({ onPointerDown: (e: any) => startResize(z.id, 'bottom', e) } as any)}
+                      />
+                      <Pressable
+                        dataSet={{ seatingItem: '1' } as any}
+                        style={[styles.handle, { right: -6, bottom: -6 }]}
+                        onPress={() => null}
+                        {...({ onPointerDown: (e: any) => startResize(z.id, 'corner', e) } as any)}
+                      />
+                    </>
+                  ) : null}
+                </View>
+              );
+            })}
+
+            {/* Tables */}
+            {api.tables.map(t => {
+              const sz = tableCellSize(t.type, t.seats, t.orientation);
+              const isSelected = selected.has(t.id);
+              const tableFill = t.type === 'reserve' ? 'rgba(240,203,70,0.72)' : 'rgba(6,23,62,0.90)';
+              const tableBorder = t.type === 'reserve' ? '#F0CB46' : '#FFFFFF';
+              return (
+                <View
+                  key={t.id}
+                  dataSet={{ seatingItem: '1', seatingId: t.id, seatingKind: 'table' } as any}
+                  style={[
+                    styles.table,
+                    {
+                      left: (t.gridX - contentRect.originX) * CELL_SIZE,
+                      top: (t.gridY - contentRect.originY) * CELL_SIZE,
+                      width: sz.w * CELL_SIZE,
+                      height: sz.h * CELL_SIZE,
+                      backgroundColor: tableFill,
+                      borderColor: tableBorder,
+                    },
+                    isSelected ? styles.selectedRing : null,
+                  ]}
+                  {...(isWeb
+                    ? ({
+                        onPointerDown: (e: any) => beginDrag('table', t.id, e),
+                        onDoubleClick: () => startEdit('table', t.id),
+                      } as any)
+                    : null)}
+                >
+                  <Text style={[styles.tableNum, styles.tableTextOnDark]}>{t.number ?? ''}</Text>
+                  <Text style={[styles.tableType, styles.tableTextOnDark]}>{TABLE_LABELS[t.type]}</Text>
+                </View>
+              );
+            })}
+
+            {/* Labels */}
+            {api.labels.map(l => {
+              const isSelected = selected.has(l.id);
+              return (
+                <View
+                  key={l.id}
+                  dataSet={{ seatingItem: '1', seatingId: l.id, seatingKind: 'label' } as any}
+                  style={[
+                    styles.labelWrap,
+                    { left: (l.gridX - contentRect.originX) * CELL_SIZE, top: (l.gridY - contentRect.originY) * CELL_SIZE },
+                    isSelected ? styles.selectedRing : null,
+                  ]}
+                  {...(isWeb
+                    ? ({
+                        onPointerDown: (e: any) => beginDrag('label', l.id, e),
+                        onDoubleClick: () => startEdit('label', l.id),
+                      } as any)
+                    : null)}
+                >
+                  <Text style={styles.labelText}>{l.text}</Text>
+                </View>
+              );
+            })}
+
+            {/* Ghost preview */}
+            {renderGhosts}
+
+            {/* Inline editor */}
+            {edit ? (
+              <InlineEditor
+                edit={edit as ActiveEditState}
+                api={api}
+                originX={contentRect.originX}
+                originY={contentRect.originY}
+                onChange={(next) => setEdit(next)}
+                onCommit={commitEdit}
+                onCancel={cancelEdit}
               />
-            ))}
-            {guides.h.map((y, idx) => (
-              <Line
-                key={`gh-${idx}`}
-                x1={0}
-                y1={y * CELL_SIZE}
-                x2={gridW}
-                y2={y * CELL_SIZE}
-                stroke="rgba(43,140,238,0.85)"
-                strokeWidth={1}
-                strokeDasharray="6 6"
-              />
-            ))}
-          </Svg>
-
-          {/* Zones */}
-          {api.zones.map(z => {
-            const isSelected = selected.has(z.id);
-            const left = z.gridX * CELL_SIZE;
-            const top = z.gridY * CELL_SIZE;
-            const w = z.widthCells * CELL_SIZE;
-            const h = z.heightCells * CELL_SIZE;
-            return (
-              <View
-                key={z.id}
-                dataSet={{ seatingItem: '1', seatingId: z.id, seatingKind: 'zone' } as any}
-                style={[
-                  styles.zone,
-                  {
-                    left,
-                    top,
-                    width: w,
-                    height: h,
-                    borderColor: isSelected ? 'rgba(43,140,238,0.95)' : 'rgba(148,163,184,0.65)',
-                  },
-                  isSelected ? styles.selectedRing : null,
-                ]}
-                {...(isWeb
-                  ? ({
-                      onPointerDown: (e: any) => beginDrag('zone', z.id, e),
-                      onDoubleClick: () => startEdit('zone', z.id),
-                    } as any)
-                  : null)}
-              >
-                <Text style={styles.zoneText}>{z.name}</Text>
-
-                {/* Resize handles (web) */}
-                {isWeb ? (
-                  <>
-                    <Pressable
-                      dataSet={{ seatingItem: '1' } as any}
-                      style={[styles.handle, { right: -6, top: '50%', marginTop: -6 }]}
-                      onPress={() => null}
-                      {...({ onPointerDown: (e: any) => startResize(z.id, 'right', e) } as any)}
-                    />
-                    <Pressable
-                      dataSet={{ seatingItem: '1' } as any}
-                      style={[styles.handle, { bottom: -6, left: '50%', marginLeft: -6 }]}
-                      onPress={() => null}
-                      {...({ onPointerDown: (e: any) => startResize(z.id, 'bottom', e) } as any)}
-                    />
-                    <Pressable
-                      dataSet={{ seatingItem: '1' } as any}
-                      style={[styles.handle, { right: -6, bottom: -6 }]}
-                      onPress={() => null}
-                      {...({ onPointerDown: (e: any) => startResize(z.id, 'corner', e) } as any)}
-                    />
-                  </>
-                ) : null}
-              </View>
-            );
-          })}
-
-          {/* Tables */}
-          {api.tables.map(t => {
-            const sz = tableCellSize(t.type, t.seats, t.orientation);
-            const isSelected = selected.has(t.id);
-            const color = t.type === 'reserve' ? '#F0CB46' : '#06173E';
-            const tableFill = t.type === 'reserve' ? 'rgba(240,203,70,0.72)' : 'rgba(6,23,62,0.90)';
-            const tableBorder = t.type === 'reserve' ? '#F0CB46' : '#FFFFFF';
-            return (
-              <View
-                key={t.id}
-                dataSet={{ seatingItem: '1', seatingId: t.id, seatingKind: 'table' } as any}
-                style={[
-                  styles.table,
-                  {
-                    left: t.gridX * CELL_SIZE,
-                    top: t.gridY * CELL_SIZE,
-                    width: sz.w * CELL_SIZE,
-                    height: sz.h * CELL_SIZE,
-                    backgroundColor: tableFill,
-                    borderColor: tableBorder,
-                  },
-                  isSelected ? styles.selectedRing : null,
-                ]}
-                {...(isWeb
-                  ? ({
-                      onPointerDown: (e: any) => beginDrag('table', t.id, e),
-                      onDoubleClick: () => startEdit('table', t.id),
-                    } as any)
-                  : null)}
-              >
-                <Text style={[styles.tableNum, styles.tableTextOnDark]}>{t.number ?? ''}</Text>
-                <Text style={[styles.tableType, styles.tableTextOnDark]}>{TABLE_LABELS[t.type]}</Text>
-              </View>
-            );
-          })}
-
-          {/* Labels */}
-          {api.labels.map(l => {
-            const isSelected = selected.has(l.id);
-            return (
-              <View
-                key={l.id}
-                dataSet={{ seatingItem: '1', seatingId: l.id, seatingKind: 'label' } as any}
-                style={[
-                  styles.labelWrap,
-                  { left: l.gridX * CELL_SIZE, top: l.gridY * CELL_SIZE },
-                  isSelected ? styles.selectedRing : null,
-                ]}
-                {...(isWeb
-                  ? ({
-                      onPointerDown: (e: any) => beginDrag('label', l.id, e),
-                      onDoubleClick: () => startEdit('label', l.id),
-                    } as any)
-                  : null)}
-              >
-                <Text style={styles.labelText}>{l.text}</Text>
-              </View>
-            );
-          })}
-
-          {/* Ghost preview */}
-          {renderGhosts}
+            ) : null}
+          </View>
 
           {/* Marquee */}
           {marqueeRect ? (
@@ -710,17 +778,6 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
               ]}
             />
           ) : null}
-
-          {/* Inline editor */}
-          {edit ? (
-            <InlineEditor
-              edit={edit as ActiveEditState}
-              api={api}
-              onChange={(next) => setEdit(next)}
-              onCommit={commitEdit}
-              onCancel={cancelEdit}
-            />
-          ) : null}
         </View>
       </View>
     </View>
@@ -730,12 +787,16 @@ export function SeatingGrid({ api }: { api: UseSeatingStateApi }) {
 function InlineEditor({
   edit,
   api,
+  originX,
+  originY,
   onChange,
   onCommit,
   onCancel,
 }: {
   edit: ActiveEditState;
   api: UseSeatingStateApi;
+  originX: number;
+  originY: number;
   onChange: (e: ActiveEditState) => void;
   onCommit: () => void;
   onCancel: () => void;
@@ -767,7 +828,7 @@ function InlineEditor({
       onChangeText={(t) => onChange({ ...edit, value: t })}
       style={[
         styles.editor,
-        { left: pos.x * CELL_SIZE, top: pos.y * CELL_SIZE },
+        { left: (pos.x - originX) * CELL_SIZE, top: (pos.y - originY) * CELL_SIZE },
       ]}
       keyboardType={edit.mode === 'number' ? 'numeric' : 'default'}
       {...(isWeb
@@ -796,7 +857,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 0,
     ...(Platform.OS === 'web'
-      ? ({ overflow: 'auto', userSelect: 'none', WebkitUserSelect: 'none' } as any)
+      ? ({ overflow: 'hidden', userSelect: 'none', WebkitUserSelect: 'none' } as any)
       : null),
   },
   gridWrap: {
@@ -805,9 +866,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(203,213,225,0.85)',
     overflow: 'hidden',
+    alignSelf: 'center',
     ...(Platform.OS === 'web'
       ? ({ userSelect: 'none', WebkitUserSelect: 'none', boxShadow: '0 14px 34px rgba(148,163,184,0.18)' } as any)
       : null),
+  },
+  gridInner: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    transformOrigin: '0 0' as any,
   },
 
   table: {

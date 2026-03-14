@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useWindowDimensions } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, useSegments } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
 import AdminWebPageHeader from '@/components/desktop/AdminWebPageHeader';
@@ -289,11 +289,14 @@ const isMissingColumn = (err: any, column: string) =>
 
 export default function AutomaticNotificationsWebScreen() {
   const router = useRouter();
-  const { width: viewportWidth } = useWindowDimensions();
+  const segments = useSegments();
+  const { width: viewportWidth, height: viewportHeight } = useWindowDimensions();
   const { userData, userType } = useUserStore();
   const canEdit = userType === 'admin' || userType === 'employee';
   const isReadOnly = !canEdit;
-  const showAdminChrome = canEdit;
+  const showAdminChrome = Platform.OS === 'web';
+  const isAdminRouteContext = useMemo(() => segments.includes('(admin)'), [segments]);
+  const useEmbeddedWebShell = showAdminChrome && !isAdminRouteContext;
   const params = useLocalSearchParams<{ eventId?: string | string[]; returnTo?: string | string[] }>();
   const activeUserId = useEventSelectionStore((s) => s.activeUserId);
   const activeEventId = useEventSelectionStore((s) => s.activeEventId);
@@ -2402,7 +2405,7 @@ export default function AutomaticNotificationsWebScreen() {
   if (loading) {
     return (
       <View style={styles.page}>
-        <View style={[styles.bg, { backgroundColor: showAdminChrome ? '#E8F1FF' : ui.bgLight }]} />
+        <View style={[styles.bg, { backgroundColor: showAdminChrome ? (isAdminRouteContext ? '#E8F1FF' : 'transparent') : ui.bgLight }]} />
         <View style={styles.center}>
           <ActivityIndicator size="large" color={ui.primary} />
           <Text style={styles.centerText}>טוען...</Text>
@@ -2414,7 +2417,7 @@ export default function AutomaticNotificationsWebScreen() {
   if (!resolvedEventId || !event) {
     return (
       <View style={styles.page}>
-        <View style={[styles.bg, { backgroundColor: showAdminChrome ? '#E8F1FF' : ui.bgLight }]} />
+        <View style={[styles.bg, { backgroundColor: showAdminChrome ? (isAdminRouteContext ? '#E8F1FF' : 'transparent') : ui.bgLight }]} />
         <View style={styles.center}>
           <Text style={styles.centerText}>לא נמצא אירוע.</Text>
           <Pressable onPress={handleBackPress} style={styles.backInline}>
@@ -2429,7 +2432,7 @@ export default function AutomaticNotificationsWebScreen() {
   if (!settingsSupported) {
     return (
       <View style={styles.page}>
-        <View style={[styles.bg, { backgroundColor: showAdminChrome ? '#E8F1FF' : ui.bgLight }]} />
+        <View style={[styles.bg, { backgroundColor: showAdminChrome ? (isAdminRouteContext ? '#E8F1FF' : 'transparent') : ui.bgLight }]} />
         <View style={styles.center}>
           <Text style={styles.centerText}>הגדרות הודעות לא זמינות (אין טבלה notification_settings).</Text>
           <Pressable onPress={handleBackPress} style={styles.backInline}>
@@ -2441,16 +2444,22 @@ export default function AutomaticNotificationsWebScreen() {
     );
   }
 
+  const MainColumnComponent: any = useEmbeddedWebShell ? View : ScrollView;
+  const mainColumnStyle = [styles.mainCol, showAdminChrome ? styles.mainColAdmin : null];
+  const mainColumnContentStyle = [styles.mainColContent, showAdminChrome ? styles.mainColContentAdmin : null];
+  const isViewerCompactLayout = viewportWidth < 1240;
+  const isViewerDesktopReducedLayout = !isViewerCompactLayout && (viewportWidth < 1500 || viewportHeight < 1100);
+
   return (
-    <View style={[styles.page, showAdminChrome ? styles.pageAdmin : null]}>
-      <View style={[styles.bg, { backgroundColor: showAdminChrome ? '#E8F1FF' : ui.bgLight }]} />
+    <View style={[styles.page, isAdminRouteContext ? styles.pageAdmin : null]}>
+      <View style={[styles.bg, { backgroundColor: showAdminChrome ? (isAdminRouteContext ? '#E8F1FF' : 'transparent') : ui.bgLight }]} />
 
       <View style={[styles.body, showAdminChrome ? styles.bodyAdmin : null]}>
         {/* תוכן מרכזי */}
-        <ScrollView
-          style={[styles.mainCol, showAdminChrome ? styles.mainColAdmin : null]}
-          contentContainerStyle={[styles.mainColContent, showAdminChrome ? styles.mainColContentAdmin : null]}
-          showsVerticalScrollIndicator={false}
+        <MainColumnComponent
+          style={useEmbeddedWebShell ? [mainColumnStyle, mainColumnContentStyle] : mainColumnStyle}
+          contentContainerStyle={!useEmbeddedWebShell ? mainColumnContentStyle : undefined}
+          showsVerticalScrollIndicator={!useEmbeddedWebShell ? false : undefined}
         >
           {showAdminChrome ? (
             <View style={styles.heroShell}>
@@ -3100,7 +3109,7 @@ export default function AutomaticNotificationsWebScreen() {
             )}
             </View>
           ) : null}
-        </ScrollView>
+        </MainColumnComponent>
       </View>
 
       {/* Add Step Wizard (2-step form) */}
@@ -4872,7 +4881,13 @@ export default function AutomaticNotificationsWebScreen() {
       {viewerOpen && viewerRow ? (
         <View style={styles.dialogOverlay}>
           <Pressable style={styles.pickerBackdrop} onPress={closeViewer} />
-          <View style={styles.dialogCard}>
+          <View
+            style={[
+              styles.dialogCard,
+              styles.viewerDialogCard,
+              isViewerDesktopReducedLayout ? ({ height: 'auto', maxHeight: '82%' } as any) : null,
+            ]}
+          >
             <View style={styles.dialogHeader}>
               <Text style={styles.dialogTitle}>{`צפייה: ${getDisplayTitle(viewerRow)}`}</Text>
               <Pressable onPress={closeViewer} style={styles.dialogClose}>
@@ -4880,34 +4895,66 @@ export default function AutomaticNotificationsWebScreen() {
               </Pressable>
             </View>
 
-            <View style={{ padding: 14, gap: 12 }}>
-              <View style={styles.viewerMetaRow}>
-                <View style={styles.viewerMetaPill}>
-                  <Ionicons name={String((viewerRow as any)?.channel || 'SMS') === 'WHATSAPP' ? 'logo-whatsapp' : 'chatbox-outline'} size={14} color="#0F172A" />
-                  <Text style={styles.viewerMetaText}>{String((viewerRow as any)?.channel || 'SMS')}</Text>
+            <View style={styles.viewerDialogBody}>
+              <View style={styles.viewerHeroCard}>
+                <View style={styles.viewerHeroTextBlock}>
+                  <Text style={styles.viewerHeroTitle}>סקירת הודעה לפני שליחה</Text>
+                  <Text style={styles.viewerHeroSubtitle}>תצוגה נוחה לדסקטופ עם תוכן ההודעה, מצב השליחה ורשימת הנמענים.</Text>
                 </View>
-                {viewerRow.notification_date ? (
+
+                <View style={styles.viewerMetaRow}>
                   <View style={styles.viewerMetaPill}>
-                    <Ionicons name="time-outline" size={14} color="#0F172A" />
-                    <Text style={styles.viewerMetaText}>{formatHeDateTimeShort((viewerRow as any).notification_date)}</Text>
+                    <Ionicons name={String((viewerRow as any)?.channel || 'SMS') === 'WHATSAPP' ? 'logo-whatsapp' : 'chatbox-outline'} size={14} color="#0F172A" />
+                    <Text style={styles.viewerMetaText}>{String((viewerRow as any)?.channel || 'SMS')}</Text>
                   </View>
-                ) : null}
-                <View style={[styles.viewerMetaPill, { backgroundColor: viewerRow.enabled ? 'rgba(34,197,94,0.12)' : 'rgba(100,116,139,0.10)' }]}>
-                  <Ionicons name={viewerRow.enabled ? 'checkmark-circle-outline' : 'remove-circle-outline'} size={14} color={viewerRow.enabled ? '#16A34A' : '#64748B'} />
-                  <Text style={[styles.viewerMetaText, { color: viewerRow.enabled ? '#166534' : '#64748B' }]}>{viewerRow.enabled ? 'פעילה' : 'כבויה'}</Text>
+                  {viewerRow.notification_date ? (
+                    <View style={styles.viewerMetaPill}>
+                      <Ionicons name="time-outline" size={14} color="#0F172A" />
+                      <Text style={styles.viewerMetaText}>{formatHeDateTimeShort((viewerRow as any).notification_date)}</Text>
+                    </View>
+                  ) : null}
+                  <View style={[styles.viewerMetaPill, { backgroundColor: viewerRow.enabled ? 'rgba(34,197,94,0.12)' : 'rgba(100,116,139,0.10)' }]}>
+                    <Ionicons name={viewerRow.enabled ? 'checkmark-circle-outline' : 'remove-circle-outline'} size={14} color={viewerRow.enabled ? '#16A34A' : '#64748B'} />
+                    <Text style={[styles.viewerMetaText, { color: viewerRow.enabled ? '#166534' : '#64748B' }]}>{viewerRow.enabled ? 'פעילה' : 'כבויה'}</Text>
+                  </View>
                 </View>
               </View>
 
-              <View style={styles.step4TwoCol}>
-                <View style={[styles.step4PreviewCol, { backgroundColor: ui.surface, borderColor: ui.border }]}>
-                  <Text style={[styles.step4PreviewTitle, { color: ui.text }]}>תצוגה מקדימה</Text>
-                  <Text style={[styles.step4PreviewSubtitle, { color: ui.sub }]}>כך ההודעה תראה במכשיר הנייד</Text>
-                  <View style={styles.step4PhoneMockupWrap}>
+              <View style={[styles.viewerMainGrid, isViewerCompactLayout ? styles.viewerMainGridCompact : null]}>
+                <View
+                  style={[
+                    styles.viewerPreviewPanel,
+                    isViewerCompactLayout ? styles.viewerPreviewPanelCompact : null,
+                    isViewerDesktopReducedLayout ? styles.viewerPreviewPanelLaptop : null,
+                    { backgroundColor: ui.surface, borderColor: ui.border },
+                  ]}
+                >
+                  <View style={styles.viewerPanelHeader}>
+                    <View>
+                      <Text style={[styles.step4PreviewTitle, { color: ui.text }]}>תצוגה מקדימה</Text>
+                      <Text style={[styles.step4PreviewSubtitle, { color: ui.sub }]}>כך ההודעה תיראה אצל המוזמן במכשיר הנייד</Text>
+                    </View>
+                    <View style={styles.viewerPreviewBadge}>
+                      <Ionicons name="phone-portrait-outline" size={14} color="#4F46E5" />
+                      <Text style={styles.viewerPreviewBadgeText}>תצוגת נייד</Text>
+                    </View>
+                  </View>
+
+                  <View
+                    style={[
+                      styles.step4PhoneMockupWrap,
+                      isViewerCompactLayout
+                        ? styles.viewerPhoneMockupWrapCompact
+                        : isViewerDesktopReducedLayout
+                          ? styles.viewerPhoneMockupWrapLaptop
+                          : styles.viewerPhoneMockupWrapDesktop,
+                    ]}
+                  >
                     <IPhoneMockup
                       model="14-pro"
                       color="space-black"
-                      fitWidth={300}
-                      fitHeight={631}
+                      fitWidth={isViewerCompactLayout ? 260 : isViewerDesktopReducedLayout ? 240 : 270}
+                      fitHeight={isViewerCompactLayout ? 547 : isViewerDesktopReducedLayout ? 505 : 568}
                       screenBg="#f8fafc"
                       showHomeIndicator={true}
                     >
@@ -4932,58 +4979,57 @@ export default function AutomaticNotificationsWebScreen() {
                   </View>
                 </View>
 
-                <View style={styles.step4ContentCol}>
-                  <Text style={[styles.editorSectionTitle, { color: ui.text }]}>תוכן ההודעה</Text>
-                  <View style={styles.viewerMessageBox}>
-                    <Text style={styles.viewerMessageText} selectable>
-                      {normalizeTemplateToSingleBraces(String((viewerRow as any)?.message_content || '')).trim() || '—'}
-                    </Text>
-                  </View>
+                <View style={styles.viewerInfoColumn}>
+                  <View style={[styles.viewerInfoCard, styles.viewerRecipientsCard]}>
+                    <View style={styles.viewerPanelHeader}>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={[styles.editorSectionTitle, { color: ui.text }]}>למי זה נשלח</Text>
+                        {viewerRecipientsTitle ? <Text style={styles.recipientsPreviewHint}>{viewerRecipientsTitle}</Text> : null}
+                        {viewerRecipientsHint ? <Text style={styles.recipientsPreviewHint}>{viewerRecipientsHint}</Text> : null}
+                      </View>
+                    </View>
 
-                  <Text style={[styles.editorSectionTitle, { color: ui.text, marginTop: 16 }]}>למי זה נשלח</Text>
-                  {viewerRecipientsTitle ? <Text style={styles.recipientsPreviewHint}>{viewerRecipientsTitle}</Text> : null}
-                  {viewerRecipientsHint ? <Text style={styles.recipientsPreviewHint}>{viewerRecipientsHint}</Text> : null}
+                    <View style={styles.recipientsPreviewSearchRow}>
+                      <Ionicons name="search-outline" size={16} color="#64748B" />
+                      <TextInput
+                        value={viewerRecipientsSearch}
+                        onChangeText={setViewerRecipientsSearch}
+                        placeholder="חיפוש לפי שם או טלפון..."
+                        placeholderTextColor="rgba(100,116,139,0.6)"
+                        style={styles.recipientsPreviewSearchInput}
+                      />
+                    </View>
 
-                  <View style={styles.recipientsPreviewSearchRow}>
-                    <Ionicons name="search-outline" size={16} color="#64748B" />
-                    <TextInput
-                      value={viewerRecipientsSearch}
-                      onChangeText={setViewerRecipientsSearch}
-                      placeholder="חיפוש לפי שם או טלפון..."
-                      placeholderTextColor="rgba(100,116,139,0.6)"
-                      style={styles.recipientsPreviewSearchInput}
-                    />
-                  </View>
-
-                  {viewerRecipientsLoading ? (
-                    <Text style={styles.recipientsPreviewEmpty}>טוען רשימת נמענים...</Text>
-                  ) : viewerRecipientsRows.length === 0 ? (
-                    <Text style={styles.recipientsPreviewEmpty}>לא נבחרו מוזמנים.</Text>
-                  ) : (
-                    <ScrollView style={{ maxHeight: 320 }} contentContainerStyle={{ gap: 8, paddingBottom: 6 }}>
-                      {viewerRecipientsRows
-                        .filter((g) => {
-                          const q = String(viewerRecipientsSearch || '').trim().toLowerCase();
-                          if (!q) return true;
-                          const name = String(g.name || '').toLowerCase();
-                          const phone = String(g.phone || '').toLowerCase();
-                          return name.includes(q) || phone.includes(q);
-                        })
-                        .map((g) => (
-                          <View key={g.id} style={styles.recipientsPreviewRow}>
-                            <Ionicons name="person-circle-outline" size={22} color="rgba(79,70,229,0.65)" />
-                            <View style={{ flex: 1, minWidth: 0 }}>
-                              <Text style={styles.recipientsPreviewName} numberOfLines={1}>
-                                {g.name || '—'}
-                              </Text>
-                              <Text style={styles.recipientsPreviewMeta} numberOfLines={1}>
-                                {(g.status ? `${g.status} · ` : '') + (g.phone ? g.phone : 'אין טלפון')}
-                              </Text>
+                    {viewerRecipientsLoading ? (
+                      <Text style={styles.recipientsPreviewEmpty}>טוען רשימת נמענים...</Text>
+                    ) : viewerRecipientsRows.length === 0 ? (
+                      <Text style={styles.recipientsPreviewEmpty}>לא נבחרו מוזמנים.</Text>
+                    ) : (
+                      <ScrollView style={styles.viewerRecipientsList} contentContainerStyle={styles.viewerRecipientsListContent}>
+                        {viewerRecipientsRows
+                          .filter((g) => {
+                            const q = String(viewerRecipientsSearch || '').trim().toLowerCase();
+                            if (!q) return true;
+                            const name = String(g.name || '').toLowerCase();
+                            const phone = String(g.phone || '').toLowerCase();
+                            return name.includes(q) || phone.includes(q);
+                          })
+                          .map((g) => (
+                            <View key={g.id} style={styles.recipientsPreviewRow}>
+                              <Ionicons name="person-circle-outline" size={22} color="rgba(79,70,229,0.65)" />
+                              <View style={{ flex: 1, minWidth: 0 }}>
+                                <Text style={styles.recipientsPreviewName} numberOfLines={1}>
+                                  {g.name || '—'}
+                                </Text>
+                                <Text style={styles.recipientsPreviewMeta} numberOfLines={1}>
+                                  {(g.status ? `${g.status} · ` : '') + (g.phone ? g.phone : 'אין טלפון')}
+                                </Text>
+                              </View>
                             </View>
-                          </View>
-                        ))}
-                    </ScrollView>
-                  )}
+                          ))}
+                      </ScrollView>
+                    )}
+                  </View>
                 </View>
               </View>
             </View>
@@ -5973,6 +6019,102 @@ const styles = StyleSheet.create({
   recipientsPreviewName: { fontSize: 13, fontWeight: '900', color: '#111827', textAlign: 'right' },
   recipientsPreviewMeta: { marginTop: 3, fontSize: 12, fontWeight: '800', color: '#64748B', textAlign: 'right' },
 
+  viewerDialogCard: {
+    maxWidth: 1120,
+    height: '72%',
+    borderRadius: 24,
+  },
+  viewerDialogBody: {
+    flex: 1,
+    minHeight: 0,
+    padding: 18,
+    gap: 14,
+    backgroundColor: '#F8FAFC',
+  },
+  viewerHeroCard: {
+    borderRadius: 20,
+    padding: 18,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(2,6,23,0.08)',
+    flexDirection: 'row-reverse',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 16,
+    flexWrap: 'wrap',
+  },
+  viewerHeroTextBlock: {
+    flex: 1,
+    minWidth: 240,
+    gap: 6,
+  },
+  viewerHeroTitle: { fontSize: 20, fontWeight: '900', color: '#0F172A', textAlign: 'right' },
+  viewerHeroSubtitle: { fontSize: 13, fontWeight: '700', color: '#64748B', textAlign: 'right', lineHeight: 20 },
+  viewerMainGrid: {
+    flex: 1,
+    minHeight: 0,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 18,
+  },
+  viewerMainGridCompact: {
+    flexDirection: 'column',
+  },
+  viewerPanelHeader: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  viewerPreviewBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(79,70,229,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(79,70,229,0.14)',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+  },
+  viewerPreviewBadgeText: { fontSize: 12, fontWeight: '900', color: '#4338CA', textAlign: 'right' },
+  viewerPreviewPanel: {
+    width: '34%',
+    minWidth: 310,
+    maxWidth: 410,
+    minHeight: 0,
+    borderRadius: 22,
+    borderWidth: 1,
+    padding: 14,
+    gap: 12,
+    alignItems: 'center',
+  },
+  viewerPreviewPanelCompact: {
+    width: '100%',
+    minWidth: 0,
+    maxWidth: '100%',
+  },
+  viewerPreviewPanelLaptop: {
+    minWidth: 286,
+    maxWidth: 360,
+    paddingVertical: 12,
+  },
+  viewerPhoneMockupWrapDesktop: {
+    width: 270,
+    height: 568,
+    minHeight: 568,
+  },
+  viewerPhoneMockupWrapLaptop: {
+    width: 240,
+    height: 505,
+    minHeight: 505,
+  },
+  viewerPhoneMockupWrapCompact: {
+    width: 260,
+    height: 547,
+    minHeight: 547,
+  },
   viewerMetaRow: { width: '100%', flexDirection: 'row-reverse', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-start', gap: 8 },
   viewerMetaPill: {
     height: 28,
@@ -5985,16 +6127,43 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   viewerMetaText: { fontSize: 12, fontWeight: '900', color: '#0F172A', textAlign: 'right' },
-  viewerSectionTitle: { marginTop: 2, fontSize: 13, fontWeight: '900', color: '#111827', textAlign: 'right' },
-  viewerMessageBox: {
+  viewerTwoColCompact: {
+    flexDirection: 'column',
+    gap: 18,
+  },
+  viewerPreviewCol: {
+    minWidth: 340,
+    maxWidth: 520,
+  },
+  viewerPreviewColCompact: {
     width: '100%',
-    borderRadius: 12,
-    padding: 12,
-    backgroundColor: 'rgba(2,6,23,0.03)',
+    maxWidth: '100%',
+    minHeight: 0,
+  },
+  viewerInfoColumn: { flex: 1, minWidth: 320, minHeight: 0, gap: 16 },
+  viewerInfoCard: {
+    borderRadius: 20,
+    padding: 18,
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: 'rgba(2,6,23,0.08)',
+    gap: 12,
   },
-  viewerMessageText: { fontSize: 13, fontWeight: '800', color: '#111827', textAlign: 'right', lineHeight: 20, writingDirection: 'rtl' },
+  viewerRecipientsCard: {
+    flex: 1,
+    minHeight: 0,
+    maxHeight: 460,
+  },
+  viewerSectionTitle: { marginTop: 2, fontSize: 13, fontWeight: '900', color: '#111827', textAlign: 'right' },
+  viewerRecipientsList: {
+    flex: 1,
+    minHeight: 220,
+    maxHeight: 320,
+  },
+  viewerRecipientsListContent: {
+    gap: 8,
+    paddingBottom: 6,
+  },
 
   sendStatusRow: {
     paddingHorizontal: 10,

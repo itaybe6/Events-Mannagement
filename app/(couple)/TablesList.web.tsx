@@ -47,11 +47,12 @@ export default function TablesListWebScreen() {
   const { setTabBarVisible } = useLayoutStore();
 
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
-  const isAdminContext = useMemo(() => segments.includes('(admin)'), [segments]);
-  // On admin web, the screen lives beside the persistent sidebar.
-  // Use available content width so the desktop layout keeps its RTL alignment.
-  const sidebarWidth = Platform.OS === 'web' && isAdminContext ? 270 : 0;
-  const contentWidth = Math.max(0, windowWidth - sidebarWidth);
+  const isAdminRouteContext = useMemo(() => segments.includes('(admin)'), [segments]);
+  const useManagerChrome = Platform.OS === 'web';
+  const isAdminContext = useManagerChrome;
+  const useEmbeddedWebShell = Platform.OS === 'web' && !isAdminRouteContext;
+  const PageContentComponent: any = useEmbeddedWebShell ? View : ScrollView;
+  const contentWidth = Math.max(0, windowWidth);
   const isNarrow = contentWidth < 980;
 
   const resolvedEventId =
@@ -62,10 +63,10 @@ export default function TablesListWebScreen() {
         ''
     ).trim() || null;
   const backHref = resolvedEventId
-    ? isAdminContext
+    ? isAdminRouteContext
       ? `/(admin)/admin-event-details?id=${resolvedEventId}`
       : `/(couple)?eventId=${resolvedEventId}`
-    : isAdminContext
+    : isAdminRouteContext
       ? '/(admin)/admin-events'
       : '/(couple)';
 
@@ -485,7 +486,7 @@ export default function TablesListWebScreen() {
 
   const goToSeatingMap = () => {
     router.push({
-      pathname: isAdminContext ? ('/(admin)/seating-map' as any) : '/(couple)/BrideGroomSeating',
+      pathname: isAdminRouteContext ? ('/(admin)/seating-map' as any) : '/(couple)/BrideGroomSeating',
       params: resolvedEventId ? { eventId: resolvedEventId } : {},
     });
   };
@@ -526,6 +527,14 @@ export default function TablesListWebScreen() {
   const contentMaxWidth =
     contentWidth >= 1900 ? 1720 : contentWidth >= 1600 ? 1520 : contentWidth >= 1400 ? 1320 : undefined;
   const contentPaddingH = contentWidth >= 1100 ? 20 : 16;
+  const pageContentStyle = [
+    styles.container,
+    isAdminContext ? styles.containerAdmin : null,
+    {
+      paddingHorizontal: contentPaddingH,
+      ...(!isAdminContext && contentMaxWidth ? { maxWidth: contentMaxWidth } : null),
+    },
+  ];
 
   const selectedGuestsAtTable = selectedTable ? guestsByTableId.get(String(selectedTable.id)) || [] : [];
   const selectedTableSeated = selectedTable ? peopleCountAtTable(String(selectedTable.id)) : 0;
@@ -721,25 +730,11 @@ export default function TablesListWebScreen() {
   };
 
   return (
-    <View style={[styles.page, isAdminContext ? styles.pageAdmin : null]}>
-      {!isAdminContext ? (
-        <View pointerEvents="none" style={styles.bgShapes}>
-          <View style={styles.shapeTopRight} />
-          <View style={styles.shapeBottomLeft} />
-        </View>
-      ) : null}
-
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={[
-          styles.container,
-          isAdminContext ? styles.containerAdmin : null,
-          {
-            paddingHorizontal: contentPaddingH,
-            ...(!isAdminContext && contentMaxWidth ? { maxWidth: contentMaxWidth } : null),
-          },
-        ]}
-        showsVerticalScrollIndicator={false}
+    <View style={[styles.page, isAdminRouteContext ? styles.pageAdmin : null]}>
+      <PageContentComponent
+        style={useEmbeddedWebShell ? pageContentStyle : styles.scroll}
+        contentContainerStyle={!useEmbeddedWebShell ? pageContentStyle : undefined}
+        showsVerticalScrollIndicator={!useEmbeddedWebShell ? false : undefined}
       >
         {isAdminContext ? (
           <View style={styles.adminHeroShell}>
@@ -1258,7 +1253,7 @@ export default function TablesListWebScreen() {
             </>
           )}
         </View>
-      </ScrollView>
+      </PageContentComponent>
 
       {/* Add guests modal */}
       <Modal visible={addOpen} transparent animationType="fade" onRequestClose={closeAddModal}>
@@ -2061,7 +2056,7 @@ function EmptyTableGuestsState({
 const styles = StyleSheet.create({
   page: {
     flex: 1,
-    backgroundColor: colors.gray[50],
+    backgroundColor: 'transparent',
     direction: 'rtl',
   },
   pageAdmin: {

@@ -221,6 +221,8 @@ export default function BrideGroomSeatingWebScreen() {
     () => userType === 'admin' || String(pathname || '').toLowerCase().includes('admin'),
     [pathname, userType]
   );
+  const showManagerChrome = Platform.OS === 'web';
+  const useEmbeddedWebShell = Platform.OS === 'web' && !isAdminContext;
   const leftColWidth = useMemo(() => {
     // Side column (Guests + Tables).
     // Web: make it wider so the guest list feels comfortable on desktop.
@@ -1058,6 +1060,7 @@ export default function BrideGroomSeatingWebScreen() {
       (selectedTableForModal ? Number((selectedTableForModal as any).number) : null),
     [seatConfirmOpen, seatConfirmTable, selectedTableForModal]
   );
+  const useAdminMapPresentation = showManagerChrome;
 
   if (loading) {
     return (
@@ -1079,6 +1082,11 @@ export default function BrideGroomSeatingWebScreen() {
   // Web: let the seating map use the full available width (no centered maxWidth),
   // so the map doesn't look "boxed" with large side gutters on wide screens.
   const contentPaddingH = windowWidth >= 1100 ? 20 : 12;
+  const PageContentComponent: any = useEmbeddedWebShell ? View : ScrollView;
+  const pageContentStyle = [
+    styles.container,
+    { paddingHorizontal: contentPaddingH },
+  ];
 
   const goToEventPage = () => {
     if (isAdminContext && resolvedEventId) {
@@ -1098,16 +1106,13 @@ export default function BrideGroomSeatingWebScreen() {
   const selectedTableName = String(selectedTableForModal?.name || '').trim();
 
   return (
-    <View style={styles.page}>
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={[
-          styles.container,
-          { paddingHorizontal: contentPaddingH },
-        ]}
-        showsVerticalScrollIndicator={false}
+    <View style={[styles.page, isAdminContext ? styles.pageAdmin : null]}>
+      <PageContentComponent
+        style={useEmbeddedWebShell ? pageContentStyle : styles.scroll}
+        contentContainerStyle={!useEmbeddedWebShell ? pageContentStyle : undefined}
+        showsVerticalScrollIndicator={!useEmbeddedWebShell ? false : undefined}
       >
-        {isAdminContext ? (
+        {showManagerChrome ? (
           <View style={styles.adminHeroShell}>
             <AdminWebPageHeader
               eyebrow="ניהול אירועים"
@@ -1617,35 +1622,33 @@ export default function BrideGroomSeatingWebScreen() {
           </View>
 
           <View style={styles.rightCol}>
-            <View style={[styles.mapCard, isAdminContext ? styles.adminMapCard : null, { minHeight: mapCardHeight }]}>
+            <View style={[styles.mapCard, useAdminMapPresentation ? styles.adminMapCard : null, { minHeight: mapCardHeight }]}>
               <View style={styles.mapHeader}>
                 <View style={styles.mapLegendRow}>
-                  <View style={[styles.mapLegendPill, isAdminContext ? styles.adminMapLegendPill : null]}>
+                  <View style={[styles.mapLegendPill, useAdminMapPresentation ? styles.adminMapLegendPill : null]}>
                     <View style={[styles.mapLegendDot, { backgroundColor: colors.primary }]} />
-                    <Text style={styles.mapLegendText}>{isAdminContext ? 'שולחן רגיל' : 'זמין'}</Text>
+                    <Text style={styles.mapLegendText}>שולחן רגיל</Text>
                   </View>
-                  <View style={[styles.mapLegendPill, isAdminContext ? styles.adminMapLegendPill : null]}>
+                  <View style={[styles.mapLegendPill, useAdminMapPresentation ? styles.adminMapLegendPill : null]}>
                     <View style={[styles.mapLegendDot, { backgroundColor: '#047857' }]} />
-                    <Text style={styles.mapLegendText}>{isAdminContext ? 'מלא או מסומן' : 'מלא'}</Text>
+                    <Text style={styles.mapLegendText}>מלא או מסומן</Text>
                   </View>
-                  <View style={[styles.mapLegendPill, isAdminContext ? styles.adminMapLegendPill : null]}>
+                  <View style={[styles.mapLegendPill, useAdminMapPresentation ? styles.adminMapLegendPill : null]}>
                     <View style={[styles.mapLegendDot, { backgroundColor: colors.secondary }]} />
                     <Text style={styles.mapLegendText}>רזרבה</Text>
                   </View>
                 </View>
 
                 <View style={styles.mapHeaderText}>
-                  <Text style={styles.mapHeaderTitle}>{isAdminContext ? 'פריסת שולחנות חיה' : 'מפת האולם'}</Text>
+                  <Text style={styles.mapHeaderTitle}>פריסת שולחנות חיה</Text>
                   <Text style={styles.mapHeaderSubtitle}>
-                    {isAdminContext
-                      ? selectedMapTableNumber
-                        ? `השולחן ${selectedMapTableNumber} מודגש כעת במפה`
-                        : 'לחץ על שולחן במפה כדי למקד את הסקיצה'
-                      : 'לחץ על שולחן כדי לפתוח פרטים או לבצע שיבוץ מהיר'}
+                    {selectedMapTableNumber
+                      ? `השולחן ${selectedMapTableNumber} מודגש כעת במפה`
+                      : 'לחץ על שולחן במפה כדי למקד את הסקיצה'}
                   </Text>
                 </View>
 
-                {isAdminContext && selectedMapTableNumber ? (
+                {useAdminMapPresentation && selectedMapTableNumber ? (
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel="נקה שולחן נבחר במפה"
@@ -1668,18 +1671,18 @@ export default function BrideGroomSeatingWebScreen() {
               <View style={styles.mapBody}>
                 {webSketch ? (
                   <SeatingGridReadonly
-                    gridCols={(isAdminContext ? webSketch : webSketchWithNames)?.gridCols ?? webSketch.gridCols}
-                    gridRows={(isAdminContext ? webSketch : webSketchWithNames)?.gridRows ?? webSketch.gridRows}
-                    tables={(isAdminContext ? webSketch : webSketchWithNames)?.tables ?? webSketch.tables}
-                    zones={(isAdminContext ? webSketch : webSketchWithNames)?.zones ?? webSketch.zones}
-                    labels={(isAdminContext ? webSketch : webSketchWithNames)?.labels ?? webSketch.labels}
+                    gridCols={(useAdminMapPresentation ? webSketch : webSketchWithNames)?.gridCols ?? webSketch.gridCols}
+                    gridRows={(useAdminMapPresentation ? webSketch : webSketchWithNames)?.gridRows ?? webSketch.gridRows}
+                    tables={(useAdminMapPresentation ? webSketch : webSketchWithNames)?.tables ?? webSketch.tables}
+                    zones={(useAdminMapPresentation ? webSketch : webSketchWithNames)?.zones ?? webSketch.zones}
+                    labels={(useAdminMapPresentation ? webSketch : webSketchWithNames)?.labels ?? webSketch.labels}
                     hideTableType
-                    autoFitZoomMultiplier={isAdminContext ? undefined : isNarrow ? 1.06 : 1.08}
+                    autoFitZoomMultiplier={useAdminMapPresentation ? undefined : isNarrow ? 1.06 : 1.08}
                     useBaseColorAsWebBackground
                     showTableBorder={false}
                     getTableBaseColor={(t: any) => {
                       const selected = Number.isFinite(selectedMapTableNumber as any) && Number(t?.number) === Number(selectedMapTableNumber);
-                      if (selected) return isAdminContext ? '#10B981' : '#047857';
+                      if (selected) return useAdminMapPresentation ? '#10B981' : '#047857';
                       const num = Number(t?.number);
                       const cap = Number(t?.seats ?? 0) || 0;
                       const seated = Number.isFinite(num) ? (seatedByNumber.get(num) ?? 0) : 0;
@@ -1691,28 +1694,28 @@ export default function BrideGroomSeatingWebScreen() {
                     }}
                     getTableBackgroundAlpha={(t: any) => {
                       const selected = Number.isFinite(selectedMapTableNumber as any) && Number(t?.number) === Number(selectedMapTableNumber);
-                      if (selected) return isAdminContext ? 0.28 : 0.52;
+                      if (selected) return useAdminMapPresentation ? 0.28 : 0.52;
                       const num = Number(t?.number);
                       const cap = Number(t?.seats ?? 0) || 0;
                       const seated = Number.isFinite(num) ? (seatedByNumber.get(num) ?? 0) : 0;
                       const full = cap > 0 && seated >= cap;
                       const over = cap > 0 && seated > cap;
-                      if (over) return isAdminContext ? 0.9 : 0.62;
-                      if (full) return isAdminContext ? 0.9 : 0.62;
-                      return t?.type === 'reserve' ? (isAdminContext ? 0.72 : 0.34) : (isAdminContext ? 0.9 : 0.62);
+                      if (over) return useAdminMapPresentation ? 0.9 : 0.62;
+                      if (full) return useAdminMapPresentation ? 0.9 : 0.62;
+                      return t?.type === 'reserve' ? (useAdminMapPresentation ? 0.72 : 0.34) : (useAdminMapPresentation ? 0.9 : 0.62);
                     }}
                     getTableBorderColor={(t: any) => {
                       const selected = Number.isFinite(selectedMapTableNumber as any) && Number(t?.number) === Number(selectedMapTableNumber);
-                      if (selected) return isAdminContext ? '#10B981' : '#047857';
+                      if (selected) return useAdminMapPresentation ? '#10B981' : '#047857';
                       const num = Number(t?.number);
                       const cap = Number(t?.seats ?? 0) || 0;
                       const seated = Number.isFinite(num) ? (seatedByNumber.get(num) ?? 0) : 0;
                       const full = cap > 0 && seated >= cap;
                       const over = cap > 0 && seated > cap;
-                      if (over || full) return isAdminContext ? '#10B981' : '#047857';
+                      if (over || full) return useAdminMapPresentation ? '#10B981' : '#047857';
                       return t?.type === 'reserve' ? colors.warning : '#FFFFFF';
                     }}
-                    selectedRingColor={isAdminContext ? '#10B981' : '#047857'}
+                    selectedRingColor={useAdminMapPresentation ? '#10B981' : '#047857'}
                     isTableSelected={(t: any) => {
                       return Boolean(selectedMapTableNumber) && Number(t?.number) === Number(selectedMapTableNumber);
                     }}
@@ -1754,7 +1757,7 @@ export default function BrideGroomSeatingWebScreen() {
         </View>
 
         <View style={{ height: 24 }} />
-      </ScrollView>
+      </PageContentComponent>
 
       {/* Guests modal */}
       <Modal visible={guestModalOpen} transparent animationType="fade" onRequestClose={closeGuestModal}>
@@ -2579,14 +2582,11 @@ export default function BrideGroomSeatingWebScreen() {
 const styles = StyleSheet.create({
   page: {
     flex: 1,
-    backgroundColor: '#F7FAFF',
-    ...(Platform.OS === 'web'
-      ? ({
-          backgroundImage:
-            'radial-gradient(circle at top right, rgba(25,93,230,0.14), rgba(25,93,230,0) 40%), radial-gradient(circle at top left, rgba(232,241,255,0.95), rgba(232,241,255,0) 34%), radial-gradient(circle at bottom left, rgba(242,224,186,0.34), rgba(242,224,186,0) 32%), radial-gradient(circle at bottom center, rgba(240,203,70,0.12), rgba(240,203,70,0) 26%)',
-        } as any)
-      : null),
+    backgroundColor: 'transparent',
     direction: 'rtl',
+  },
+  pageAdmin: {
+    backgroundColor: '#E8F1FF',
   },
   backToEventBtnPressed: {
     opacity: 0.9,

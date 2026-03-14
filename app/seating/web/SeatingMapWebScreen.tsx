@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -57,6 +57,7 @@ export default function SeatingMapWebScreen() {
   const [saving, setSaving] = useState(false);
   const [existingRow, setExistingRow] = useState<SeatingMapsRow | null>(null);
   const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
+  const [fitToGridPreview, setFitToGridPreview] = useState(false);
 
   type Snap = {
     gridCols: number;
@@ -99,7 +100,7 @@ export default function SeatingMapWebScreen() {
     });
   }, []);
 
-  const savedSnapshotRef = useRef<string>('');
+  const [savedSnapshot, setSavedSnapshot] = useState('');
   const currentSnapshot = useMemo(
     () =>
       toSnapshot({
@@ -114,9 +115,9 @@ export default function SeatingMapWebScreen() {
   );
 
   const isDirty = useMemo(() => {
-    if (!savedSnapshotRef.current) return false;
-    return savedSnapshotRef.current !== currentSnapshot;
-  }, [currentSnapshot]);
+    if (!savedSnapshot) return false;
+    return savedSnapshot !== currentSnapshot;
+  }, [currentSnapshot, savedSnapshot]);
 
   // Hydrate from Supabase
   useEffect(() => {
@@ -154,7 +155,7 @@ export default function SeatingMapWebScreen() {
             labels: Array.isArray(webV2.labels) ? webV2.labels : [],
             tableCounter: typeof webV2.tableCounter === 'number' ? webV2.tableCounter : 1,
           });
-          savedSnapshotRef.current = snap;
+          setSavedSnapshot(snap);
           api.hydrate({
             gridCols: cols,
             gridRows: rows,
@@ -191,14 +192,14 @@ export default function SeatingMapWebScreen() {
           const maxY = tables.reduce((m, t) => Math.max(m, t.gridY + tableCellSize(t.type, t.seats, t.orientation).h), 0);
           const cols = Math.max(DEFAULT_GRID_COLS, maxX + 6);
           const rows = Math.max(DEFAULT_GRID_ROWS, maxY + 6);
-          savedSnapshotRef.current = toSnapshot({
+          setSavedSnapshot(toSnapshot({
             gridCols: cols,
             gridRows: rows,
             tables,
             zones: [],
             labels: [],
             tableCounter: maxNum + 1,
-          });
+          }));
 
           api.hydrate({
             gridCols: cols,
@@ -365,7 +366,7 @@ export default function SeatingMapWebScreen() {
       }
 
       Alert.alert('נשמר', 'מפת ההושבה נשמרה בהצלחה');
-      savedSnapshotRef.current = currentSnapshot;
+      setSavedSnapshot(currentSnapshot);
       return true;
     } catch (e) {
       console.error('SeatingMapWeb save error:', e);
@@ -419,8 +420,37 @@ export default function SeatingMapWebScreen() {
   const isLaptopCompact = width <= 1440;
   const selectionCount = api.selectedIds.size;
   const mapStatusLabel = api.tables.length ? 'מפה פעילה' : 'טיוטה ריקה';
-  const headerSubtitle = useMemo(
-    () => `${api.tables.length} שולחנות • ${api.zones.length} אזורים • ${api.labels.length} תוויות`,
+  const headerMetaContent = useMemo(
+    () => (
+      <View style={styles.headerMetaRow}>
+        <View style={styles.headerCountRow}>
+          <View style={styles.headerCountChip}>
+            <Text style={styles.headerCountText}>{`${api.tables.length} שולחנות`}</Text>
+          </View>
+          <View style={styles.headerCountChip}>
+            <Text style={styles.headerCountText}>{`${api.zones.length} אזורים`}</Text>
+          </View>
+          <View style={styles.headerCountChip}>
+            <Text style={styles.headerCountText}>{`${api.labels.length} תוויות`}</Text>
+          </View>
+        </View>
+
+        <View style={styles.headerLegendRow}>
+          <View style={styles.headerLegendItem}>
+            <View style={[styles.headerLegendDot, { backgroundColor: colors.primary }]} />
+            <Text style={styles.headerLegendText}>שולחן רגיל / אביר</Text>
+          </View>
+          <View style={styles.headerLegendItem}>
+            <View style={[styles.headerLegendDot, { backgroundColor: colors.warning }]} />
+            <Text style={styles.headerLegendText}>שולחן רזרבה</Text>
+          </View>
+          <View style={styles.headerLegendItem}>
+            <View style={[styles.headerLegendDot, { backgroundColor: '#10B981' }]} />
+            <Text style={styles.headerLegendText}>פריט נבחר</Text>
+          </View>
+        </View>
+      </View>
+    ),
     [api.labels.length, api.tables.length, api.zones.length]
   );
 
@@ -459,8 +489,9 @@ export default function SeatingMapWebScreen() {
         <View style={styles.heroShell}>
           <AdminWebPageHeader
             eyebrow="ניהול אירועים"
-            title="מפת הושבה"
-            subtitle={headerSubtitle}
+            title="עריכת סקיצה"
+            subtitleContent={headerMetaContent}
+            showNav={false}
             leading={
               <Pressable
                 accessibilityRole="button"
@@ -505,7 +536,10 @@ export default function SeatingMapWebScreen() {
           saving={saving}
           gridCols={api.gridCols}
           gridRows={api.gridRows}
-          onSetGrid={(cols, rows) => api.setGrid(cols, rows)}
+          onSetGrid={(cols, rows) => {
+            setFitToGridPreview(true);
+            api.setGrid(cols, rows);
+          }}
           compact={isLaptopCompact}
           hideHeader
         />
@@ -513,13 +547,8 @@ export default function SeatingMapWebScreen() {
         <View style={[styles.canvasCard, isLaptopCompact ? styles.canvasCardCompact : null]}>
           <View style={styles.canvasCardHeader}>
             <View style={styles.panelHeaderCopy}>
-              <Text style={styles.panelEyebrow}>מפת הושבה</Text>
-              <Text style={styles.panelTitle}>עורך הסקיצה</Text>
-              <Text style={styles.panelSubtitle}>
-                {selectionCount
-                  ? `${selectionCount} פריטים נבחרו כעת לעריכה`
-                  : 'בחר, גרור וערוך את פריסת האולם תוך שמירה על אותו קו עיצובי של מסך הצ׳ק אין.'}
-              </Text>
+              <Text style={styles.panelEyebrow}>סקיצה</Text>
+              <Text style={styles.panelTitle}>עריכת סקיצה</Text>
             </View>
 
             <View style={styles.mapCardHeaderSide}>
@@ -530,23 +559,8 @@ export default function SeatingMapWebScreen() {
             </View>
           </View>
 
-          <View style={styles.mapLegendRow}>
-            <View style={styles.mapLegendItem}>
-              <View style={[styles.mapLegendDot, { backgroundColor: colors.primary }]} />
-              <Text style={styles.mapLegendText}>שולחן רגיל / אביר</Text>
-            </View>
-            <View style={styles.mapLegendItem}>
-              <View style={[styles.mapLegendDot, { backgroundColor: colors.warning }]} />
-              <Text style={styles.mapLegendText}>שולחן רזרבה</Text>
-            </View>
-            <View style={styles.mapLegendItem}>
-              <View style={[styles.mapLegendDot, { backgroundColor: '#10B981' }]} />
-              <Text style={styles.mapLegendText}>פריט נבחר</Text>
-            </View>
-          </View>
-
           <View style={styles.canvas}>
-            <SeatingGrid api={api} />
+            <SeatingGrid api={api} fitToGrid={fitToGridPreview} />
           </View>
         </View>
       </View>
@@ -568,12 +582,12 @@ const styles = StyleSheet.create({
   },
   page: {
     flex: 1,
-    paddingHorizontal: 24,
-    paddingTop: 24,
-    paddingBottom: 20,
-    gap: 18,
+    paddingHorizontal: 14,
+    paddingTop: 14,
+    paddingBottom: 12,
+    gap: 12,
   },
-  heroShell: { gap: 18 },
+  heroShell: { gap: 12 },
   webBackBtn: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
@@ -618,15 +632,62 @@ const styles = StyleSheet.create({
   },
   headerBadgeDot: { width: 8, height: 8, borderRadius: 999 },
   headerBadgeText: { fontSize: 12, fontWeight: '900', color: colors.gray[700], textAlign: 'right' },
+  headerMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    flexWrap: 'wrap',
+  },
+  headerLegendRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 12,
+    flexWrap: 'wrap',
+    minWidth: 0,
+  },
+  headerLegendItem: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+  },
+  headerLegendDot: { width: 8, height: 8, borderRadius: 999 },
+  headerLegendText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.gray[600],
+    textAlign: 'right',
+  },
+  headerCountRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 10,
+    flexWrap: 'wrap',
+  },
+  headerCountChip: {
+    minHeight: 32,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: '#F8FAFD',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.07)',
+  },
+  headerCountText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.gray[600],
+    textAlign: 'right',
+  },
   // In RTL, `row` already lays out right-to-left. Using `row-reverse` would put the sidebar on the left.
   row: {
     flex: 1,
     flexDirection: 'row',
-    gap: 14,
+    gap: 10,
     minHeight: 0,
   },
   rowCompact: {
-    gap: 10,
+    gap: 8,
   },
   canvasCard: {
     flex: 1,
@@ -635,62 +696,58 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(17,24,39,0.06)',
     backgroundColor: 'rgba(255,255,255,0.96)',
-    padding: 16,
+    padding: 8,
     shadowColor: '#0b1c41',
     shadowOpacity: 0.05,
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 8 },
-    gap: 12,
+    gap: 6,
   },
   canvasCardCompact: {
     borderRadius: 22,
-    padding: 12,
+    padding: 6,
   },
   canvasCardHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
-    gap: 12,
+    gap: 8,
     flexWrap: 'wrap',
   },
   panelHeaderCopy: { flex: 1, minWidth: 0, gap: 4 },
   panelEyebrow: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '900',
     color: colors.gray[500],
     textAlign: 'right',
   },
   panelTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '900',
     color: colors.text,
     textAlign: 'right',
   },
   panelSubtitle: {
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '700',
-    lineHeight: 20,
+    lineHeight: 16,
     color: colors.gray[600],
     textAlign: 'right',
   },
-  mapCardHeaderSide: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
+  mapCardHeaderSide: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   mapStatusPill: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: 999,
     backgroundColor: 'rgba(248,250,252,1)',
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.06)',
   },
-  mapStatusDot: { width: 8, height: 8, borderRadius: 999 },
-  mapStatusPillText: { fontSize: 12, fontWeight: '900', color: colors.gray[700], textAlign: 'right' },
-  mapLegendRow: { flexDirection: 'row', flexWrap: 'nowrap', gap: 12, alignItems: 'center' },
-  mapLegendItem: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
-  mapLegendDot: { width: 10, height: 10, borderRadius: 999 },
-  mapLegendText: { fontSize: 12, fontWeight: '900', color: colors.gray[700], textAlign: 'right' },
+  mapStatusDot: { width: 7, height: 7, borderRadius: 999 },
+  mapStatusPillText: { fontSize: 11, fontWeight: '900', color: colors.gray[700], textAlign: 'right' },
   canvas: {
     flex: 1,
     minWidth: 0,

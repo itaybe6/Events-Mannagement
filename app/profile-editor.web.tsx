@@ -4,7 +4,8 @@ import DesktopShell from '@/components/desktop/DesktopShell';
 import DesktopTopBar from '@/components/desktop/DesktopTopBar';
 import { useUserStore } from '@/store/userStore';
 import { getDesktopNavForUserType } from '../components/desktop/desktopNav';
-import ProfileEditor from './profile-editor';
+
+const ProfileEditor = require('./profile-editor.tsx').default;
 
 export default function ProfileEditorWebPage() {
   const { userType } = useUserStore();

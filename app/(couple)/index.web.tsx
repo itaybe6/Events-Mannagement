@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import Svg, { Circle, Line, Path } from 'react-native-svg';
 
 import { colors } from '@/constants/colors';
 import { eventService } from '@/lib/services/eventService';
@@ -15,8 +16,6 @@ export default function CoupleHomeWebScreen() {
   const { eventId: queryEventId } = useLocalSearchParams<{ eventId?: string }>();
   const { width: windowWidth } = useWindowDimensions();
   const isCompactDesktop = windowWidth < 1280;
-  const actionsSingleRow = windowWidth >= 1180;
-  const actionsTwoColumns = windowWidth >= 820 && windowWidth < 1180;
 
   const { isLoggedIn, userData, initializeAuth } = useUserStore();
   const activeUserId = useEventSelectionStore((s) => s.activeUserId);
@@ -145,6 +144,118 @@ export default function CoupleHomeWebScreen() {
     return 'המצב נראה מצוין. אפשר לעבור על ההודעות והשולחנות ולוודא שהכול סגור.';
   }, [stats.maybe, stats.needSeat, stats.pending]);
 
+  const responseDistribution = useMemo(
+    () =>
+      [
+        { label: 'מאשרים', value: stats.confirmed, tone: 'green' as const },
+        { label: 'אולי מגיעים', value: stats.maybe, tone: 'purple' as const },
+        { label: 'ממתינים', value: stats.pending, tone: 'gold' as const },
+        { label: 'לא מגיעים', value: stats.declined, tone: 'red' as const },
+      ].map((item) => ({
+        ...item,
+        percent: stats.total > 0 ? Math.round((item.value / stats.total) * 100) : 0,
+      })),
+    [stats.confirmed, stats.declined, stats.maybe, stats.pending, stats.total]
+  );
+
+  const dashboardHighlights = useMemo(
+    () => [
+      {
+        label: 'סה״כ מוזמנים',
+        value: stats.total,
+        caption: stats.total > 0 ? 'נמצאים כרגע באירוע' : 'עדיין אין מוזמנים',
+        tone: 'blue' as const,
+      },
+      {
+        label: 'אחוז מענה',
+        value: `${stats.responseRate}%`,
+        caption: stats.total > 0 ? `${stats.confirmed + stats.maybe + stats.declined} כבר ענו` : 'ממתינים ליצירת רשימה',
+        tone: 'green' as const,
+      },
+      {
+        label: 'לשיבוץ',
+        value: stats.needSeat,
+        caption: stats.needSeat > 0 ? 'מאשרים שעדיין לא שויכו' : 'כל המאשרים שובצו',
+        tone: 'gold' as const,
+      },
+    ],
+    [stats.confirmed, stats.declined, stats.maybe, stats.needSeat, stats.responseRate, stats.total]
+  );
+
+  const closedGuests = useMemo(
+    () => Math.max(0, stats.total - stats.pending - stats.needSeat),
+    [stats.needSeat, stats.pending, stats.total]
+  );
+
+  const closedGuestsRate = useMemo(
+    () => (stats.total > 0 ? Math.round((closedGuests / stats.total) * 100) : 0),
+    [closedGuests, stats.total]
+  );
+
+  const readinessScore = useMemo(() => {
+    if (stats.total <= 0) return 0;
+    const weighted = stats.responseRate * 0.55 + stats.seatingRate * 0.3 + closedGuestsRate * 0.15;
+    return clampPercent(weighted);
+  }, [closedGuestsRate, stats.responseRate, stats.seatingRate, stats.total]);
+
+  const readinessSummary = useMemo(() => {
+    if (stats.total <= 0) return 'ברגע שתתווסף רשימת מוזמנים, המד יתחיל להציג מוכנות בזמן אמת.';
+    if (readinessScore >= 85) return 'האירוע נראה בשל. נשאר רק ללטש את הקצוות האחרונים.';
+    if (readinessScore >= 65) return 'התמונה טובה, אבל כדאי לסגור מענה והושבה כדי להגיע לשליטה מלאה.';
+    return 'כדאי להתמקד קודם באישורי הגעה ובהשלמת שיבוץ כדי לייצב את תמונת המצב.';
+  }, [readinessScore, stats.total]);
+
+  const eventGaugeItems = useMemo(
+    () => [
+      {
+        key: 'responses',
+        label: 'אישורי הגעה',
+        value: stats.confirmed + stats.maybe + stats.declined,
+        total: stats.total,
+        badge: `${stats.responseRate}%`,
+        hint: stats.total > 0 ? `${stats.pending} עדיין ממתינים למענה` : 'עדיין אין מוזמנים באירוע',
+        icon: 'mail-open-outline' as const,
+        accent: stylesVars.accentBlue,
+        tint: 'rgba(59,130,246,0.14)',
+      },
+      {
+        key: 'seating',
+        label: 'שיבוץ מאשרים',
+        value: stats.seated,
+        total: stats.confirmed,
+        badge: `${stats.seatingRate}%`,
+        hint: stats.confirmed > 0 ? `${stats.needSeat} מאשרים עדיין ללא שולחן` : 'השיבוץ יתחיל אחרי קבלת אישורים',
+        icon: 'grid-outline' as const,
+        accent: stylesVars.accentPurple,
+        tint: 'rgba(139,92,246,0.14)',
+      },
+      {
+        key: 'closure',
+        label: 'אורחים סגורים',
+        value: closedGuests,
+        total: stats.total,
+        badge: `${closedGuestsRate}%`,
+        hint: stats.total > 0 ? `${stats.pending + stats.needSeat} עדיין דורשים טיפול` : 'המד יתעדכן כשהרשימה תהיה פעילה',
+        icon: 'checkmark-done-outline' as const,
+        accent: stylesVars.accentGreen,
+        tint: 'rgba(16,185,129,0.14)',
+      },
+    ],
+    [
+      closedGuests,
+      closedGuestsRate,
+      stats.confirmed,
+      stats.declined,
+      stats.maybe,
+      stats.needSeat,
+      stats.pending,
+      stats.responseRate,
+      stats.seated,
+      stats.seatingRate,
+      stats.total,
+    ]
+  );
+
   if (!isLoggedIn) {
     return (
       <View style={styles.center}>
@@ -169,51 +280,69 @@ export default function CoupleHomeWebScreen() {
     );
   }
 
-  const contentMaxWidth =
-    windowWidth >= 1800 ? 1560 : windowWidth >= 1500 ? 1400 : windowWidth >= 1280 ? 1240 : undefined;
   const contentPaddingH = windowWidth >= 1024 ? 24 : 18;
-  const actionCardWidthStyle = actionsSingleRow
-    ? styles.actionCardWidthQuarter
-    : actionsTwoColumns
-      ? styles.actionCardWidthHalf
-      : styles.actionCardWidthFull;
 
   return (
     <View style={styles.page}>
-      <View pointerEvents="none" style={styles.bgShapes}>
-        <View style={styles.shapeTopRight} />
-        <View style={styles.shapeBottomLeft} />
-      </View>
-
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={[
+      <View
+        style={[
           styles.container,
           {
             paddingHorizontal: contentPaddingH,
-            ...(contentMaxWidth ? { maxWidth: contentMaxWidth } : null),
           },
         ]}
-        showsVerticalScrollIndicator={false}
       >
         <View style={[styles.heroSection, isCompactDesktop ? styles.heroSectionStack : null]}>
           <Surface style={styles.heroMainCard} hoverStyle={styles.surfaceHoverSoft}>
+            <View pointerEvents="none" style={styles.heroMainGlowTop} />
+            <View pointerEvents="none" style={styles.heroMainGlowBottom} />
+            <View style={styles.heroTopBar}>
             <View style={styles.heroEyebrow}>
               <View style={styles.heroEyebrowIcon}>
                 <Ionicons name="sparkles-outline" size={16} color={stylesVars.accentBlue} />
               </View>
               <Text style={styles.heroEyebrowText}>לוח הבקרה של האירוע</Text>
             </View>
+              <View style={styles.heroStatusPill}>
+                <View style={styles.heroStatusDot} />
+                <Text style={styles.heroStatusText}>{daysLabel}</Text>
+              </View>
+            </View>
 
             <Text style={styles.heroTitle}>{coupleOrTitle || 'האירוע שלכם'}</Text>
             <Text style={styles.heroSubtitle}>
-              כל מה שחשוב במקום אחד: אישורי הגעה, הושבה, שולחנות והודעות. פחות עומס בעיניים, יותר פוקוס על מה שדורש טיפול.
+              דשבורד נקי ומדויק לניהול האירוע: אישורי הגעה, הושבה, תמונת מצב ולחץ תפעולי במקום אחד.
             </Text>
 
-            <View style={styles.heroFactsRow}>
+            <View style={styles.heroPrimaryFactsRow}>
               <QuickFactChip icon="calendar-outline" tone="blue" label="תאריך" value={formatDateOnly(currentEvent.date)} />
               <QuickFactChip icon="location-outline" tone="purple" label="מיקום" value={eventLocation} />
-              <QuickFactChip icon="time-outline" tone="gold" label="ספירה לאחור" value={daysLabel} />
+            </View>
+
+            <View style={styles.heroMetricsRow}>
+              {dashboardHighlights.map((item) => {
+                const tone = toneColors(item.tone);
+                return (
+                  <View
+                    key={item.label}
+                    style={[
+                      styles.heroMetricCard,
+                      {
+                        backgroundColor: withAlpha(tone.main, 0.16),
+                        borderColor: withAlpha(tone.main, 0.26),
+                      },
+                    ]}
+                  >
+                    <View pointerEvents="none" style={[styles.heroMetricGlow, { backgroundColor: withAlpha(tone.main, 0.18) }]} />
+                    <View style={[styles.heroMetricBadge, { backgroundColor: withAlpha(tone.main, 0.12) }]}>
+                      <Ionicons name={heroMetricIcon(item.tone)} size={14} color={tone.main} />
+                    </View>
+                    <Text style={styles.heroMetricValue}>{item.value}</Text>
+                    <Text style={styles.heroMetricLabel}>{item.label}</Text>
+                    <Text style={styles.heroMetricCaption}>{item.caption}</Text>
+                  </View>
+                );
+              })}
             </View>
 
             <View style={styles.heroCountdownCard}>
@@ -232,18 +361,32 @@ export default function CoupleHomeWebScreen() {
               </View>
 
               <View style={styles.heroCountdownGrid}>
-                <CountdownUnit label="ימים" value={countdown?.days ?? 0} />
-                <CountdownUnit label="שעות" value={countdown?.hours ?? 0} pad />
-                <CountdownUnit label="דקות" value={countdown?.minutes ?? 0} pad />
-                <CountdownUnit label="שניות" value={countdown?.seconds ?? 0} pad />
+                {[
+                  { key: 'days', label: 'ימים', value: countdown?.days ?? 0 },
+                  { key: 'hours', label: 'שעות', value: countdown?.hours ?? 0 },
+                  { key: 'minutes', label: 'דקות', value: countdown?.minutes ?? 0 },
+                  { key: 'seconds', label: 'שניות', value: countdown?.seconds ?? 0 },
+                ].map((unit, index, arr) => (
+                  <React.Fragment key={unit.key}>
+                    <CountdownUnit label={unit.label} value={unit.value} />
+                    {index < arr.length - 1 ? <Text style={styles.countdownSeparator}>:</Text> : null}
+                  </React.Fragment>
+                ))}
               </View>
             </View>
           </Surface>
 
           <Surface style={styles.heroSideCard} hoverStyle={styles.surfaceHoverSoft}>
-            <View style={styles.sideCardHeader}>
-              <Text style={styles.sideCardTitle}>תמונת מצב מהירה</Text>
-              <Text style={styles.sideCardCaption}>כל הנתונים המרכזיים של האירוע במקום אחד</Text>
+            <View pointerEvents="none" style={styles.heroSideGlow} />
+            <View style={styles.sideCardHeaderRow}>
+              <View style={styles.sideCardHeader}>
+                <Text style={styles.sideCardTitle}>תמונת מצב מהירה</Text>
+                <Text style={styles.sideCardCaption}>כל המדדים הקריטיים של האירוע במבט אחד</Text>
+              </View>
+              <View style={styles.sideCardRateBadge}>
+                <Text style={styles.sideCardRateValue}>{stats.responseRate}%</Text>
+                <Text style={styles.sideCardRateLabel}>מענה</Text>
+              </View>
             </View>
 
             <ProgressMeter
@@ -282,73 +425,130 @@ export default function CoupleHomeWebScreen() {
           </Surface>
         </View>
 
-        <View style={styles.actionsShell}>
-          <ActionCard
-            icon="grid-outline"
-            title="סידור הושבה"
-            subtitle={stats.needSeat > 0 ? `נשארו ${stats.needSeat} אורחים לשבץ` : 'כל המאשרים שובצו או כמעט שובצו'}
-            caption="כניסה מהירה למפת הישיבה ולחלוקת האורחים בין השולחנות."
-            badge={stats.needSeat > 0 ? 'עדיפות גבוהה' : 'מוכן'}
-            primary
-            style={actionCardWidthStyle}
-            onPress={() =>
-              router.push({
-                pathname: '/(couple)/BrideGroomSeating',
-                params: resolvedEventId ? { eventId: resolvedEventId } : {},
-              })
-            }
-          />
-          <ActionCard
-            icon="people-outline"
-            title="רשימת מוזמנים"
-            subtitle={stats.pending > 0 ? `${stats.pending} תשובות בהמתנה` : stats.maybe > 0 ? `${stats.maybe} אולי מגיעים` : 'כל האישורים מעודכנים'}
-            caption="ניהול אורחים, סטטוסים, מתנות ושיוך לקטגוריות."
-            badge={stats.pending > 0 || stats.maybe > 0 ? 'דורש מעקב' : undefined}
-            style={actionCardWidthStyle}
-            onPress={() =>
-              router.push({
-                pathname: '/(couple)/guests',
-                params: resolvedEventId ? { eventId: resolvedEventId } : {},
-              })
-            }
-          />
+        <View style={styles.analyticsSection}>
+          <View style={[styles.analyticsGrid, isCompactDesktop ? styles.analyticsGridStack : null]}>
+            <Surface style={styles.analyticsMainCard} hoverStyle={styles.surfaceHoverSoft}>
+              <View style={styles.analyticsCardHeader}>
+                <View style={styles.analyticsCardIcon}>
+                  <Ionicons name="pulse-outline" size={18} color={stylesVars.accentGreen} />
+                </View>
+                <View style={styles.analyticsCardHeaderText}>
+                  <Text style={styles.analyticsCardTitle}>מד מוכנות האירוע</Text>
+                  <Text style={styles.analyticsCardSubtitle}>תמונת מצב חיה שמשלבת מענה, הושבה וסגירת משימות במקום בלוק טקסט סטטי.</Text>
+                </View>
+              </View>
 
-          <ActionCard
-            icon="restaurant-outline"
-            title="ניהול שולחנות"
-            subtitle="עריכה, קיבולת וסדר ישיבה"
-            caption="עדכון כמות מקומות, שמות שולחנות ומעקב תפוסה."
-            primary
-            style={actionCardWidthStyle}
-            onPress={() =>
-              router.push({
-                pathname: '/(couple)/TablesList',
-                params: resolvedEventId ? { eventId: resolvedEventId } : {},
-              })
-            }
-          />
+              <View style={styles.readinessHero}>
+                <View style={styles.readinessHeroGaugeWrap}>
+                  <GaugeMeter value={readinessScore} total={100} color={stylesVars.accentBlue} trackColor={'rgba(59,130,246,0.14)'} />
+                </View>
+                <View style={styles.readinessHeroContent}>
+                  <View style={styles.readinessHeroBadge}>
+                    <Text style={styles.readinessHeroBadgeText}>{readinessScore}% מוכנות</Text>
+                  </View>
+                  <Text style={styles.readinessHeroTitle}>כמה האירוע סגור כרגע?</Text>
+                  <Text style={styles.readinessHeroCaption}>{readinessSummary}</Text>
+                </View>
+              </View>
 
-          <ActionCard
-            icon="chatbubble-ellipses-outline"
-            title="הודעות אוטומטיות"
-            subtitle="תזכורות ועדכונים לאורחים"
-            caption="עריכה והפעלה של הודעות וואטסאפ ותזכורות לפני האירוע."
-            softDecor
-            style={actionCardWidthStyle}
-            onPress={() =>
-              router.push({
-                pathname: '/(couple)/automatic-notifications',
-                params: {
-                  ...(resolvedEventId ? { eventId: resolvedEventId } : {}),
-                  returnTo: resolvedEventId ? `/(couple)?eventId=${encodeURIComponent(resolvedEventId)}` : '/(couple)',
-                },
-              })
-            }
-          />
+              <View style={styles.gaugeStatsList}>
+                {eventGaugeItems.map((item) => (
+                  <View key={item.key} style={[styles.gaugeStatCard, { borderColor: item.tint }]}>
+                    <View style={styles.gaugeStatTop}>
+                      <View style={[styles.gaugeStatBadge, { backgroundColor: item.tint }]}>
+                        <Text style={[styles.gaugeStatBadgeText, { color: item.accent }]}>{item.badge}</Text>
+                      </View>
+                      <View style={[styles.gaugeStatIconCircle, { backgroundColor: item.tint }]}>
+                        <Ionicons name={item.icon} size={18} color={item.accent} />
+                      </View>
+                    </View>
+
+                    <View style={styles.gaugeStatBody}>
+                      <View style={styles.gaugeStatMeterWrap}>
+                        <GaugeMeter value={item.value} total={item.total} color={item.accent} trackColor={item.tint} />
+                      </View>
+                      <Text style={styles.gaugeStatLabel}>{item.label}</Text>
+                      <View style={styles.gaugeStatBottom}>
+                        <Text style={styles.gaugeStatValue}>{item.value}</Text>
+                        <Text style={styles.gaugeStatOutOf}>{`מתוך ${item.total}`}</Text>
+                      </View>
+                      <Text style={styles.gaugeStatHint}>{item.hint}</Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            </Surface>
+
+            <View style={styles.analyticsSideColumn}>
+              <Surface style={styles.analyticsInsightCard} hoverStyle={styles.surfaceHoverSoft}>
+                <View style={styles.analyticsCardHeader}>
+                  <View style={styles.analyticsCardIcon}>
+                    <Ionicons name="sparkles-outline" size={18} color={stylesVars.accentPurple} />
+                  </View>
+                  <View style={styles.analyticsCardHeaderText}>
+                    <Text style={styles.analyticsCardTitle}>מוקדי טיפול</Text>
+                    <Text style={styles.analyticsCardSubtitle}>הנקודות שעדיין דורשות מענה או סגירה לפני האירוע.</Text>
+                  </View>
+                </View>
+
+                <View style={styles.analyticsMiniGrid}>
+                  <MiniStat label="ממתינים" value={stats.pending} tone="gold" compact />
+                  <MiniStat label="אולי מגיעים" value={stats.maybe} tone="purple" compact />
+                  <MiniStat label="לשיבוץ" value={stats.needSeat} tone="purple" compact />
+                  <MiniStat label="דורשים טיפול" value={stats.pending + stats.needSeat} tone="red" compact />
+                </View>
+              </Surface>
+
+              <Surface style={styles.analyticsInsightCard} hoverStyle={styles.surfaceHoverSoft}>
+                <View style={styles.analyticsCardHeader}>
+                  <View style={styles.analyticsCardIcon}>
+                    <Ionicons name="bar-chart-outline" size={18} color={stylesVars.accentBlue} />
+                  </View>
+                  <View style={styles.analyticsCardHeaderText}>
+                    <Text style={styles.analyticsCardTitle}>חלוקת סטטוסים של המוזמנים</Text>
+                    <Text style={styles.analyticsCardSubtitle}>גרף שממחיש איך רשימת האורחים מתפלגת כרגע לפי מצב הגעה.</Text>
+                  </View>
+                </View>
+
+                <View style={styles.analyticsBars}>
+                  {responseDistribution.map((item) => {
+                    const tone = toneColors(item.tone);
+                    return (
+                      <View key={item.label} style={styles.analyticsBarRow}>
+                        <View style={styles.analyticsBarRowHeader}>
+                          <View style={styles.analyticsBarLabelWrap}>
+                            <View style={[styles.analyticsBarDot, { backgroundColor: tone.main }]} />
+                            <Text style={styles.analyticsBarLabel}>{item.label}</Text>
+                          </View>
+                          <Text style={styles.analyticsBarValue}>
+                            {item.value} אורחים
+                          </Text>
+                        </View>
+                        <View style={styles.analyticsTrack}>
+                          <View
+                            style={[
+                              styles.analyticsFill,
+                              {
+                                width: `${item.value > 0 ? Math.max(item.percent, 8) : 0}%`,
+                                backgroundColor: tone.main,
+                                minWidth: item.value > 0 ? 44 : 0,
+                              },
+                            ]}
+                          >
+                            {item.value > 0 ? <Text style={styles.analyticsBarPercent}>{item.percent}%</Text> : null}
+                          </View>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              </Surface>
+            </View>
+          </View>
         </View>
 
         <View style={{ height: 24 }} />
-      </ScrollView>
+      </View>
     </View>
   );
 }
@@ -419,6 +619,7 @@ function QuickFactChip({
 
   return (
     <View style={[styles.factChip, { backgroundColor: colorsByTone.soft, borderColor: colorsByTone.border }]}>
+      <View pointerEvents="none" style={[styles.factChipGlow, { backgroundColor: withAlpha(colorsByTone.main, 0.12) }]} />
       <View style={[styles.factChipIconWrap, { backgroundColor: withAlpha(colorsByTone.main, 0.12) }]}>
         <Ionicons name={icon} size={18} color={colorsByTone.main} />
       </View>
@@ -432,20 +633,67 @@ function QuickFactChip({
   );
 }
 
+function heroMetricIcon(tone: 'blue' | 'green' | 'gold') {
+  if (tone === 'green') return 'sparkles-outline';
+  if (tone === 'gold') return 'grid-outline';
+  return 'people-outline';
+}
+
 function CountdownUnit({
   label,
   value,
-  pad = false,
 }: {
   label: string;
   value: number;
-  pad?: boolean;
 }) {
   return (
     <View style={styles.countdownUnit}>
-      <Text style={styles.countdownValue}>{pad ? String(value).padStart(2, '0') : String(value)}</Text>
+      <Text style={styles.countdownValue}>{String(value).padStart(2, '0')}</Text>
       <Text style={styles.countdownLabel}>{label}</Text>
     </View>
+  );
+}
+
+function GaugeMeter({
+  value,
+  total,
+  color,
+  trackColor,
+}: {
+  value: number;
+  total: number;
+  color: string;
+  trackColor: string;
+}) {
+  const safeTotal = Math.max(0, Number(total) || 0);
+  const safeValue = Math.max(0, Math.min(Number(value) || 0, safeTotal || Number(value) || 0));
+  const progress = safeTotal > 0 ? Math.max(0, Math.min(1, safeValue / safeTotal)) : 0;
+  const width = 132;
+  const height = 84;
+  const cx = width / 2;
+  const cy = height - 8;
+  const radius = 46;
+  const arcLength = Math.PI * radius;
+  const pointerRadius = radius - 6;
+  const angle = Math.PI - progress * Math.PI;
+  const pointerX = cx + pointerRadius * Math.cos(angle);
+  const pointerY = cy - pointerRadius * Math.sin(angle);
+  const arcPath = `M ${cx - radius} ${cy} A ${radius} ${radius} 0 0 1 ${cx + radius} ${cy}`;
+
+  return (
+    <Svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
+      <Path d={arcPath} stroke={trackColor} strokeWidth={12} fill="none" strokeLinecap="round" />
+      <Path
+        d={arcPath}
+        stroke={color}
+        strokeWidth={12}
+        fill="none"
+        strokeLinecap="round"
+        strokeDasharray={`${Math.max(progress > 0 ? 3 : 0, progress * arcLength)} ${arcLength}`}
+      />
+      <Line x1={cx} y1={cy} x2={pointerX} y2={pointerY} stroke={'rgba(15,23,42,0.78)'} strokeWidth={3} strokeLinecap="round" />
+      <Circle cx={cx} cy={cy} r={9} fill="#FFFFFF" stroke={'rgba(15,23,42,0.78)'} strokeWidth={3} />
+    </Svg>
   );
 }
 
@@ -506,17 +754,38 @@ function MiniStat({
   label,
   value,
   tone,
+  compact = false,
 }: {
   label: string;
   value: string | number;
   tone: 'blue' | 'green' | 'gold' | 'red' | 'purple';
+  compact?: boolean;
 }) {
   const colorsByTone = toneColors(tone);
 
   return (
-    <View style={[styles.miniStatCard, { backgroundColor: colorsByTone.soft, borderColor: colorsByTone.border }]}>
-      <Text style={styles.miniStatValue}>{value}</Text>
-      <Text style={styles.miniStatLabel}>{label}</Text>
+    <View
+      style={[
+        styles.miniStatCard,
+        compact ? styles.miniStatCardCompact : styles.miniStatCardRegular,
+        {
+          backgroundColor: withAlpha(colorsByTone.main, compact ? 0.07 : 0.09),
+          borderColor: withAlpha(colorsByTone.main, compact ? 0.18 : 0.22),
+        },
+      ]}
+    >
+      <View pointerEvents="none" style={[styles.miniStatGlow, { backgroundColor: withAlpha(colorsByTone.main, 0.12) }]} />
+
+      <View style={[styles.miniStatToneBadge, { backgroundColor: withAlpha(colorsByTone.main, 0.12) }]}>
+        <View style={[styles.miniStatDot, { backgroundColor: colorsByTone.main }]} />
+        <Text style={styles.miniStatLabel} numberOfLines={1}>
+          {label}
+        </Text>
+      </View>
+
+      <Text style={[styles.miniStatValue, compact ? styles.miniStatValueCompact : null, { color: colorsByTone.main }]}>
+        {value}
+      </Text>
     </View>
   );
 }
@@ -627,16 +896,14 @@ const stylesVars = {
 const styles = StyleSheet.create({
   page: {
     flex: 1,
-    backgroundColor: stylesVars.bgLight,
+    backgroundColor: 'transparent',
     direction: 'rtl',
   },
-  scroll: { flex: 1, backgroundColor: 'transparent' },
   container: {
     paddingHorizontal: 18,
     paddingTop: 22,
     paddingBottom: 32,
     width: '100%',
-    maxWidth: 1240,
     alignSelf: 'center',
   },
   center: {
@@ -682,7 +949,7 @@ const styles = StyleSheet.create({
       : { backgroundColor: 'rgba(139,92,246,0.09)' }),
   },
   heroSection: {
-    flexDirection: 'row-reverse',
+    flexDirection: 'row',
     gap: 18,
     alignItems: 'stretch',
     marginBottom: 24,
@@ -695,13 +962,15 @@ const styles = StyleSheet.create({
     padding: 28,
     borderRadius: 30,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.72)',
-    backgroundColor: stylesVars.surface,
+    borderColor: 'rgba(15,23,42,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.98)',
+    overflow: 'hidden',
+    position: 'relative',
     ...(Platform.OS === 'web'
       ? ({
-          backdropFilter: 'blur(14px)',
-          WebkitBackdropFilter: 'blur(14px)',
-          boxShadow: '0 22px 60px rgba(13,28,43,0.08)',
+          backgroundImage:
+            'linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(247,250,255,0.98) 62%, rgba(242,247,255,0.98) 100%)',
+          boxShadow: '0 18px 44px rgba(13,28,43,0.08)',
         } as any)
       : null),
   },
@@ -710,11 +979,13 @@ const styles = StyleSheet.create({
     padding: 24,
     borderRadius: 30,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.72)',
-    backgroundColor: stylesVars.surfaceStrong,
+    borderColor: 'rgba(15,23,42,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    overflow: 'hidden',
+    position: 'relative',
     ...(Platform.OS === 'web'
       ? ({
-          boxShadow: '0 18px 48px rgba(13,28,43,0.08)',
+          boxShadow: '0 18px 52px rgba(13,28,43,0.08)',
         } as any)
       : null),
   },
@@ -727,6 +998,31 @@ const styles = StyleSheet.create({
         } as any)
       : null),
   },
+  heroMainGlowTop: {
+    position: 'absolute',
+    top: -120,
+    right: -80,
+    width: 260,
+    height: 260,
+    borderRadius: 999,
+    backgroundColor: 'rgba(59,130,246,0.10)',
+  },
+  heroMainGlowBottom: {
+    position: 'absolute',
+    bottom: -140,
+    left: -100,
+    width: 280,
+    height: 280,
+    borderRadius: 999,
+    backgroundColor: 'rgba(240,203,70,0.10)',
+  },
+  heroTopBar: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    flexWrap: 'wrap',
+  },
   heroEyebrow: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
@@ -735,9 +1031,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 999,
-    backgroundColor: 'rgba(59,130,246,0.10)',
+    backgroundColor: 'rgba(59,130,246,0.08)',
     borderWidth: 1,
-    borderColor: 'rgba(59,130,246,0.16)',
+    borderColor: 'rgba(59,130,246,0.14)',
   },
   heroEyebrowIcon: {
     width: 24,
@@ -753,13 +1049,36 @@ const styles = StyleSheet.create({
     color: stylesVars.accentBlue,
     textAlign: 'right',
   },
-  heroTitle: {
-    marginTop: 18,
-    fontSize: 38,
+  heroStatusPill: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: 'rgba(16,185,129,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(16,185,129,0.16)',
+  },
+  heroStatusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: '#4ADE80',
+  },
+  heroStatusText: {
+    fontSize: 12,
     fontWeight: '900',
     color: stylesVars.primary,
     textAlign: 'right',
-    lineHeight: 46,
+  },
+  heroTitle: {
+    marginTop: 18,
+    fontSize: 34,
+    fontWeight: '900',
+    color: stylesVars.primary,
+    textAlign: 'right',
+    lineHeight: 42,
   },
   heroSubtitle: {
     marginTop: 10,
@@ -770,27 +1089,99 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     lineHeight: 24,
   },
-  heroFactsRow: {
-    marginTop: 22,
+  heroPrimaryFactsRow: {
+    marginTop: 16,
     flexDirection: 'row-reverse',
     flexWrap: 'wrap',
     gap: 12,
+  },
+  heroMetricsRow: {
+    marginTop: 18,
+    flexDirection: 'row',
+    flexWrap: 'nowrap',
+    gap: 12,
+  },
+  heroMetricCard: {
+    flexGrow: 1,
+    flexBasis: 170,
+    minWidth: 160,
+    minHeight: 112,
+    padding: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+    overflow: 'hidden',
+    position: 'relative',
+    justifyContent: 'flex-start',
+    alignItems: 'flex-start',
+  },
+  heroMetricGlow: {
+    position: 'absolute',
+    top: -30,
+    left: -10,
+    width: 90,
+    height: 90,
+    borderRadius: 999,
+  },
+  heroMetricBadge: {
+    width: 30,
+    height: 30,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroMetricValue: {
+    marginTop: 16,
+    fontSize: 28,
+    fontWeight: '900',
+    color: stylesVars.primary,
+    textAlign: 'right',
+    lineHeight: 30,
+    width: '100%',
+  },
+  heroMetricLabel: {
+    marginTop: 8,
+    fontSize: 13,
+    fontWeight: '900',
+    color: stylesVars.primary,
+    textAlign: 'right',
+    width: '100%',
+  },
+  heroMetricCaption: {
+    marginTop: 4,
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.gray[600],
+    textAlign: 'right',
+    lineHeight: 18,
+    width: '100%',
   },
   factChip: {
     minWidth: 210,
     flexGrow: 1,
     flexBasis: 220,
-    padding: 14,
+    minHeight: 72,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     borderRadius: 20,
     borderWidth: 1,
     flexDirection: 'row-reverse',
     alignItems: 'center',
     gap: 12,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  factChipGlow: {
+    position: 'absolute',
+    top: -24,
+    left: -8,
+    width: 78,
+    height: 78,
+    borderRadius: 999,
   },
   factChipIconWrap: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
+    width: 44,
+    height: 44,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -806,7 +1197,7 @@ const styles = StyleSheet.create({
   },
   factChipValue: {
     marginTop: 4,
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '900',
     color: stylesVars.primary,
     textAlign: 'right',
@@ -816,14 +1207,21 @@ const styles = StyleSheet.create({
     marginTop: 22,
     padding: 18,
     borderRadius: 24,
-    borderWidth: 1,
-    borderColor: 'rgba(59,130,246,0.14)',
-    backgroundColor: 'rgba(255,255,255,0.78)',
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    borderColor: 'rgba(15,69,230,0.20)',
+    backgroundColor: 'rgba(248,250,252,0.92)',
+    overflow: 'hidden',
+    position: 'relative',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   heroCountdownHeader: {
-    flexDirection: 'row-reverse',
+    flexDirection: 'row',
+    flex: 1,
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
     gap: 12,
     flexWrap: 'wrap',
   },
@@ -838,6 +1236,8 @@ const styles = StyleSheet.create({
   heroCountdownHeaderText: {
     flex: 1,
     minWidth: 180,
+    justifyContent: 'flex-start',
+    alignItems: 'flex-start',
   },
   heroCountdownTitle: {
     fontSize: 16,
@@ -853,39 +1253,59 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   heroCountdownGrid: {
-    marginTop: 16,
+    marginTop: 0,
     flexDirection: 'row-reverse',
-    flexWrap: 'wrap',
+    flexWrap: 'nowrap',
+    justifyContent: 'center',
+    alignItems: 'center',
     gap: 12,
   },
   countdownUnit: {
-    flexGrow: 1,
-    flexBasis: 120,
-    minWidth: 110,
-    paddingVertical: 16,
-    paddingHorizontal: 12,
-    borderRadius: 18,
-    backgroundColor: 'rgba(248,250,252,0.95)',
-    borderWidth: 1,
-    borderColor: 'rgba(13,28,43,0.08)',
+    minWidth: 64,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 4,
   },
   countdownValue: {
-    fontSize: 28,
+    fontSize: 40,
     fontWeight: '900',
     color: stylesVars.primary,
     textAlign: 'center',
+    lineHeight: 44,
   },
   countdownLabel: {
-    marginTop: 6,
     fontSize: 12,
     fontWeight: '800',
     color: colors.gray[600],
     textAlign: 'center',
   },
-  sideCardHeader: {
+  countdownSeparator: {
+    fontSize: 34,
+    lineHeight: 44,
+    fontWeight: '700',
+    color: 'rgba(15,69,230,0.40)',
+    textAlign: 'center',
+    marginTop: 2,
+  },
+  heroSideGlow: {
+    position: 'absolute',
+    top: -70,
+    left: -40,
+    width: 180,
+    height: 180,
+    borderRadius: 999,
+    backgroundColor: 'rgba(59,130,246,0.04)',
+  },
+  sideCardHeaderRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
     marginBottom: 18,
+  },
+  sideCardHeader: {
+    flex: 1,
+    minWidth: 0,
   },
   sideCardTitle: {
     fontSize: 22,
@@ -899,6 +1319,29 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.gray[600],
     textAlign: 'right',
+  },
+  sideCardRateBadge: {
+    minWidth: 86,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 18,
+    backgroundColor: 'rgba(59,130,246,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(59,130,246,0.16)',
+    alignItems: 'center',
+  },
+  sideCardRateValue: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: stylesVars.accentBlue,
+    textAlign: 'center',
+  },
+  sideCardRateLabel: {
+    marginTop: 4,
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.gray[600],
+    textAlign: 'center',
   },
   progressBlock: {
     marginBottom: 16,
@@ -972,31 +1415,68 @@ const styles = StyleSheet.create({
   sideStatsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
+    gap: 12,
   },
   miniStatCard: {
     flexGrow: 1,
-    flexBasis: 140,
-    minWidth: 120,
-    paddingVertical: 14,
-    paddingHorizontal: 12,
-    borderRadius: 18,
+    minWidth: 0,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    borderRadius: 22,
     borderWidth: 1,
+    alignItems: 'flex-start',
+    justifyContent: 'flex-start',
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  miniStatCardRegular: {
+    flexBasis: 180,
+    minHeight: 104,
+  },
+  miniStatCardCompact: {
+    flexBasis: 138,
+    minHeight: 90,
+  },
+  miniStatGlow: {
+    position: 'absolute',
+    top: -28,
+    left: -14,
+    width: 86,
+    height: 86,
+    borderRadius: 999,
+  },
+  miniStatToneBadge: {
+    flexDirection: 'row-reverse',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    maxWidth: '100%',
+  },
+  miniStatDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 999,
   },
   miniStatValue: {
-    fontSize: 24,
+    marginTop: 16,
+    fontSize: 34,
     fontWeight: '900',
     color: stylesVars.primary,
-    textAlign: 'center',
+    textAlign: 'right',
+    lineHeight: 38,
+  },
+  miniStatValueCompact: {
+    fontSize: 30,
+    lineHeight: 34,
   },
   miniStatLabel: {
-    marginTop: 4,
     fontSize: 11,
-    fontWeight: '900',
+    fontWeight: '800',
     color: colors.gray[700],
-    textAlign: 'center',
+    textAlign: 'right',
+    flexShrink: 1,
   },
   sectionHeader: {
     marginBottom: 14,
@@ -1013,6 +1493,272 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.gray[600],
     textAlign: 'right',
+  },
+  analyticsSection: {
+    gap: 14,
+  },
+  analyticsGrid: {
+    flexDirection: 'row-reverse',
+    alignItems: 'stretch',
+    gap: 16,
+  },
+  analyticsGridStack: {
+    flexDirection: 'column',
+  },
+  analyticsMainCard: {
+    flex: 1.2,
+    minWidth: 0,
+    padding: 22,
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    ...(Platform.OS === 'web'
+      ? ({
+          boxShadow: '0 18px 48px rgba(13,28,43,0.08)',
+        } as any)
+      : null),
+  },
+  analyticsSideColumn: {
+    flex: 0.9,
+    minWidth: 320,
+    gap: 16,
+  },
+  analyticsInsightCard: {
+    padding: 20,
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    ...(Platform.OS === 'web'
+      ? ({
+          boxShadow: '0 18px 48px rgba(13,28,43,0.08)',
+        } as any)
+      : null),
+  },
+  analyticsCardHeader: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 18,
+  },
+  analyticsCardIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    backgroundColor: 'rgba(59,130,246,0.10)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  analyticsCardHeaderText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  analyticsCardTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: stylesVars.primary,
+    textAlign: 'right',
+  },
+  analyticsCardSubtitle: {
+    marginTop: 4,
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.gray[600],
+    textAlign: 'right',
+    lineHeight: 18,
+  },
+  analyticsBars: {
+    gap: 16,
+  },
+  analyticsBarRow: {
+    gap: 8,
+  },
+  analyticsBarRowHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    flexWrap: 'nowrap',
+  },
+  analyticsBarLabelWrap: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+  },
+  analyticsBarDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 999,
+  },
+  analyticsBarLabel: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: stylesVars.primary,
+    textAlign: 'right',
+  },
+  analyticsBarValue: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.gray[600],
+    textAlign: 'left',
+  },
+  analyticsTrack: {
+    height: 20,
+    borderRadius: 999,
+    backgroundColor: 'rgba(15,23,42,0.08)',
+    overflow: 'hidden',
+    position: 'relative',
+    justifyContent: 'center',
+  },
+  analyticsFill: {
+    height: '100%',
+    borderRadius: 999,
+    minHeight: 20,
+    paddingHorizontal: 8,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+  },
+  analyticsBarPercent: {
+    fontSize: 11,
+    fontWeight: '900',
+    lineHeight: 14,
+    color: colors.white,
+    textAlign: 'right',
+  },
+  analyticsMiniGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  readinessHero: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 14,
+    padding: 16,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(59,130,246,0.12)',
+    backgroundColor: 'rgba(243,247,255,0.92)',
+    marginBottom: 14,
+  },
+  readinessHeroGaugeWrap: {
+    width: 132,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  readinessHeroContent: {
+    flex: 1,
+    minWidth: 0,
+    gap: 8,
+  },
+  readinessHeroBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(59,130,246,0.12)',
+  },
+  readinessHeroBadgeText: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: stylesVars.accentBlue,
+    textAlign: 'center',
+  },
+  readinessHeroTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: stylesVars.primary,
+    textAlign: 'right',
+  },
+  readinessHeroCaption: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.gray[600],
+    textAlign: 'right',
+    lineHeight: 19,
+  },
+  gaugeStatsList: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 12,
+  },
+  gaugeStatCard: {
+    flex: 1,
+    minWidth: 0,
+    padding: 16,
+    borderRadius: 22,
+    borderWidth: 1,
+    backgroundColor: 'rgba(255,255,255,0.98)',
+  },
+  gaugeStatTop: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  gaugeStatIconCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  gaugeStatBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  gaugeStatBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  gaugeStatBody: {
+    alignItems: 'flex-start',
+    justifyContent: 'flex-start',
+    gap: 8,
+  },
+  gaugeStatMeterWrap: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  gaugeStatLabel: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: stylesVars.primary,
+    textAlign: 'right',
+  },
+  gaugeStatBottom: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  gaugeStatValue: {
+    fontSize: 30,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'right',
+  },
+  gaugeStatOutOf: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.gray[500],
+    textAlign: 'left',
+  },
+  gaugeStatHint: {
+    width: '100%',
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.gray[500],
+    textAlign: 'right',
+    lineHeight: 18,
   },
   actionsShell: {
     flexDirection: 'row-reverse',

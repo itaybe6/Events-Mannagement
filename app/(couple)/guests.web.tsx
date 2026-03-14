@@ -43,9 +43,11 @@ export default function CoupleGuestsWebScreen() {
   const setActiveEvent = useEventSelectionStore((s) => s.setActiveEvent);
 
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
-  const isAdminContext = useMemo(() => segments.includes('(admin)'), [segments]);
-  const sidebarWidth = Platform.OS === 'web' && isAdminContext ? 270 : 0;
-  const contentWidth = Math.max(0, windowWidth - sidebarWidth);
+  const isAdminRouteContext = useMemo(() => segments.includes('(admin)'), [segments]);
+  const useManagerChrome = Platform.OS === 'web';
+  const useEmbeddedWebShell = Platform.OS === 'web' && !isAdminRouteContext;
+  const PageContentComponent: any = useEmbeddedWebShell ? View : ScrollView;
+  const contentWidth = Math.max(0, windowWidth);
   const isNarrow = contentWidth < 720;
 
   const resolvedEventId =
@@ -56,10 +58,10 @@ export default function CoupleGuestsWebScreen() {
         ''
     ).trim() || null;
   const backHref = resolvedEventId
-    ? isAdminContext
+    ? isAdminRouteContext
       ? `/(admin)/admin-event-details?id=${resolvedEventId}`
       : `/(couple)?eventId=${resolvedEventId}`
-    : isAdminContext
+    : isAdminRouteContext
       ? '/(admin)/admin-events'
       : '/(couple)';
 
@@ -449,6 +451,11 @@ export default function CoupleGuestsWebScreen() {
   const useSquareGuestCards = false;
 
   const contentMaxWidth = contentWidth >= 1900 ? 1600 : contentWidth >= 1600 ? 1480 : 1320;
+  const pageContentStyle = [
+    styles.content,
+    useManagerChrome ? styles.contentAdmin : null,
+    !useManagerChrome ? { maxWidth: contentMaxWidth } : null,
+  ];
   const adminHeaderStats = [
     { key: 'total', label: 'מוזמנים', value: guestCounts.total },
     { key: 'coming', label: 'אישרו', value: guestCounts.coming },
@@ -475,16 +482,13 @@ export default function CoupleGuestsWebScreen() {
       };
 
   return (
-    <View style={[styles.page, isAdminContext ? styles.pageAdmin : null]}>
-      <ScrollView
-        contentContainerStyle={[
-          styles.content,
-          isAdminContext ? styles.contentAdmin : null,
-          !isAdminContext ? { maxWidth: contentMaxWidth } : null,
-        ]}
-        showsVerticalScrollIndicator={false}
+    <View style={[styles.page, isAdminRouteContext ? styles.pageAdmin : null]}>
+      <PageContentComponent
+        style={useEmbeddedWebShell ? pageContentStyle : undefined}
+        contentContainerStyle={!useEmbeddedWebShell ? pageContentStyle : undefined}
+        showsVerticalScrollIndicator={!useEmbeddedWebShell ? false : undefined}
       >
-        {isAdminContext ? (
+        {useManagerChrome ? (
           <View style={styles.adminHeroShell}>
             <AdminWebPageHeader
               eyebrow="ניהול אירוע"
@@ -577,16 +581,16 @@ export default function CoupleGuestsWebScreen() {
             value={guestCounts.total}
             tone="primary"
             width={cardWidth}
-            admin={isAdminContext}
+            admin={useManagerChrome}
           />
-          <MetricCard title="אישרו הגעה" value={guestCounts.coming} hint={pct(guestCounts.coming, guestCounts.total)} tone="success" width={cardWidth} admin={isAdminContext} />
-          <MetricCard title="אולי מגיעים" value={guestCounts.maybe} hint={pct(guestCounts.maybe, guestCounts.total)} tone="primary" width={cardWidth} admin={isAdminContext} />
-          <MetricCard title="ממתינים לתשובה" value={guestCounts.pending} hint={pct(guestCounts.pending, guestCounts.total)} tone="warning" width={cardWidth} admin={isAdminContext} />
-          <MetricCard title="לא מגיעים" value={guestCounts.notComing} hint={pct(guestCounts.notComing, guestCounts.total)} tone="danger" width={cardWidth} admin={isAdminContext} />
+          <MetricCard title="אישרו הגעה" value={guestCounts.coming} hint={pct(guestCounts.coming, guestCounts.total)} tone="success" width={cardWidth} admin={useManagerChrome} />
+          <MetricCard title="אולי מגיעים" value={guestCounts.maybe} hint={pct(guestCounts.maybe, guestCounts.total)} tone="primary" width={cardWidth} admin={useManagerChrome} />
+          <MetricCard title="ממתינים לתשובה" value={guestCounts.pending} hint={pct(guestCounts.pending, guestCounts.total)} tone="warning" width={cardWidth} admin={useManagerChrome} />
+          <MetricCard title="לא מגיעים" value={guestCounts.notComing} hint={pct(guestCounts.notComing, guestCounts.total)} tone="danger" width={cardWidth} admin={useManagerChrome} />
         </View>
 
         {/* Filter Bar */}
-        <View style={[styles.filterBar, isAdminContext ? styles.filterBarAdmin : null, isNarrow ? styles.filterBarNarrow : styles.filterBarWide]}>
+        <View style={[styles.filterBar, useManagerChrome ? styles.filterBarAdmin : null, isNarrow ? styles.filterBarNarrow : styles.filterBarWide]}>
           <View style={[styles.filterPrimaryRow, isNarrow ? styles.filterPrimaryRowNarrow : null]}>
             <View style={[styles.searchWrap, isNarrow ? { width: '100%' } : { width: 420 }]}>
               <View style={styles.searchIconRight}>
@@ -601,7 +605,7 @@ export default function CoupleGuestsWebScreen() {
               />
             </View>
 
-            {isAdminContext ? (
+            {useManagerChrome ? (
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={filtersOpen ? 'הסתר מסננים' : 'הצג מסננים'}
@@ -637,7 +641,7 @@ export default function CoupleGuestsWebScreen() {
             )}
           </View>
 
-          {!isAdminContext || filtersOpen ? (
+          {!useManagerChrome || filtersOpen ? (
             <View style={styles.chipsRow}>
               {statusChipOptions.map((opt) => (
                 <StatusChip
@@ -712,7 +716,7 @@ export default function CoupleGuestsWebScreen() {
                 const isExpanded = expandedByCategoryId[String(cat.id)] ?? true;
                 const counts = groupCounts(list);
                 return (
-                  <View key={String(cat.id)} style={[styles.groupCard, isAdminContext ? styles.groupCardAdmin : null]}>
+                  <View key={String(cat.id)} style={[styles.groupCard, useManagerChrome ? styles.groupCardAdmin : null]}>
                     <Pressable
                       accessibilityRole="button"
                       accessibilityLabel={`פתיחה/סגירה של ${cat.name}`}
@@ -781,7 +785,7 @@ export default function CoupleGuestsWebScreen() {
             )}
           </View>
         )}
-      </ScrollView>
+      </PageContentComponent>
 
       {/* Add guest modal */}
       <Modal visible={addOpen} transparent animationType="fade" onRequestClose={closeAdd}>
@@ -1533,7 +1537,7 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
 const styles = StyleSheet.create({
   page: {
     flex: 1,
-    backgroundColor: colors.gray[50],
+    backgroundColor: 'transparent',
     // @ts-expect-error - react-native-web supports direction
     direction: 'rtl',
   },

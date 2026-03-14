@@ -382,7 +382,7 @@ const styles = StyleSheet.create({
   sidebar: {
     position: 'relative',
     overflow: 'hidden',
-    width: 356,
+    width: 292,
     flexShrink: 0,
     backgroundColor: 'rgba(255,255,255,0.90)',
     borderRadius: 26,
@@ -402,8 +402,8 @@ const styles = StyleSheet.create({
       : null),
   },
   sidebarCompact: {
-    width: 320,
-    padding: 14,
+    width: 272,
+    padding: 10,
   },
   panelScroll: {
     flex: 1,
@@ -486,9 +486,9 @@ const styles = StyleSheet.create({
   tabsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginTop: 14,
-    padding: 6,
+    gap: 6,
+    marginTop: 10,
+    padding: 4,
     borderRadius: 18,
     borderWidth: 1,
     borderColor: 'rgba(17,24,39,0.06)',
@@ -497,8 +497,8 @@ const styles = StyleSheet.create({
   tabBtn: {
     flex: 1,
     minWidth: 0,
-    paddingHorizontal: 10,
-    paddingVertical: 11,
+    paddingHorizontal: 6,
+    paddingVertical: 10,
     borderRadius: 14,
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
@@ -514,7 +514,13 @@ const styles = StyleSheet.create({
   tabBtnInactive: {
     backgroundColor: 'transparent',
   },
-  tabText: { fontWeight: '900', fontSize: 12, color: 'rgba(17,24,39,0.70)', textAlign: 'center' },
+  tabText: {
+    fontWeight: '900',
+    fontSize: 11,
+    color: 'rgba(17,24,39,0.70)',
+    textAlign: 'center',
+    ...(Platform.OS === 'web' ? ({ whiteSpace: 'nowrap' } as any) : null),
+  },
   tabTextActive: { color: '#2b8cee' },
 
   body: {

@@ -1,6 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Slot, useGlobalSearchParams, usePathname, useRouter } from 'expo-router';
-import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { EventSwitcher } from '@/components/EventSwitcher';
+import { useUserStore } from '@/store/userStore';
+import { useEventSelectionStore } from '@/store/eventSelectionStore';
+import { colors } from '@/constants/colors';
+import { eventService } from '@/lib/services/eventService';
+import AdminWebPageHeader from '@/components/desktop/AdminWebPageHeader';
+import CoupleWebTopNav from '@/components/desktop/CoupleWebTopNav';
+import CoupleProfileShortcutBadge from '@/components/desktop/CoupleProfileShortcutBadge';
 
 function getWebPathname() {
   if (Platform.OS === 'web' && typeof (globalThis as any)?.location?.pathname === 'string') {
@@ -8,23 +16,22 @@ function getWebPathname() {
   }
   return '';
 }
-import DesktopSidebar from '@/components/desktop/DesktopSidebar';
-import { EventSwitcher } from '@/components/EventSwitcher';
-import { useUserStore } from '@/store/userStore';
-import { useEventSelectionStore } from '@/store/eventSelectionStore';
-import { colors } from '@/constants/colors';
-import { Ionicons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
+
+function isCoupleHomePath(path: string) {
+  const normalized = String(path || '').trim().replace(/\/+$/, '') || '/';
+  return normalized === '/' || normalized === '/index';
+}
 
 export default function CoupleWebLayout() {
   const router = useRouter();
   const pathname = usePathname();
   const globalParams = useGlobalSearchParams<{ eventId?: string | string[] }>();
-  const { userType, isLoggedIn, loading, logout, userData } = useUserStore();
+  const { userType, isLoggedIn, loading, userData } = useUserStore();
   const activeUserId = useEventSelectionStore((s) => s.activeUserId);
   const activeEventId = useEventSelectionStore((s) => s.activeEventId);
   const setActiveEvent = useEventSelectionStore((s) => s.setActiveEvent);
   const [hasMultipleEvents, setHasMultipleEvents] = useState(false);
+  const [eventMeta, setEventMeta] = useState<any>(null);
 
   useEffect(() => {
     if (loading) return;
@@ -40,15 +47,6 @@ export default function CoupleWebLayout() {
       router.replace('/(employee)/employee-events');
     }
   }, [isLoggedIn, userType, loading, router]);
-
-  const handleLogout = async () => {
-    try {
-      await logout();
-      router.replace('/login');
-    } catch (e) {
-      console.error(e);
-    }
-  };
 
   const queryEventId = Array.isArray(globalParams.eventId) ? globalParams.eventId[0] : globalParams.eventId;
   const resolvedEventId = useMemo(() => {
@@ -82,6 +80,64 @@ export default function CoupleWebLayout() {
     setHasMultipleEvents(value);
   }, []);
 
+  useEffect(() => {
+    let active = true;
+
+    const loadEventMeta = async () => {
+      if (!resolvedEventId) {
+        if (active) setEventMeta(null);
+        return;
+      }
+
+      try {
+        const event = await eventService.getEvent(resolvedEventId);
+        if (active) setEventMeta(event);
+      } catch (error) {
+        if (active) setEventMeta(null);
+        console.error('Failed to load couple web event shell metadata:', error);
+      }
+    };
+
+    void loadEventMeta();
+    return () => {
+      active = false;
+    };
+  }, [resolvedEventId]);
+
+  const normalizedPathname = useMemo(() => {
+    const candidate = Platform.OS === 'web' ? getWebPathname() || pathname || '' : pathname || '';
+    return String(candidate).replace(/\/\([^/]+\)/g, '') || '/';
+  }, [pathname]);
+
+  const headerTitle = useMemo(() => {
+    const groom = String((eventMeta as any)?.groomName || (eventMeta as any)?.groom_name || '').trim();
+    const bride = String((eventMeta as any)?.brideName || (eventMeta as any)?.bride_name || '').trim();
+    if (groom && bride) return `${groom} ו${bride}`;
+    const title = String((eventMeta as any)?.title || '').trim();
+    if (title) return title;
+    return 'ניהול האירוע';
+  }, [eventMeta]);
+
+  const eventDateLabel = useMemo(() => {
+    const raw = (eventMeta as any)?.date;
+    if (!raw) return '';
+    const parsed = new Date(raw);
+    if (!Number.isFinite(parsed.getTime())) return '';
+    return parsed.toLocaleDateString('he-IL', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+  }, [eventMeta]);
+
+  const eventLocationLabel = useMemo(() => {
+    const location = String((eventMeta as any)?.location || '').trim();
+    const city = String((eventMeta as any)?.city || '').trim();
+    return [location, city].filter(Boolean).join(' · ');
+  }, [eventMeta]);
+  const usePageScrollShell = isCoupleHomePath(normalizedPathname) || Platform.OS === 'web';
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -91,122 +147,256 @@ export default function CoupleWebLayout() {
     );
   }
 
-  const userName = userData?.name || userData?.email || 'משתמש';
-  const avatarUrl = String(userData?.avatar_url || '').trim();
-  const initials = String(userName)
-    .trim()
-    .split(/\s+/g)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((p) => p[0])
-    .join('')
-    .toUpperCase();
-
-  const [effectivePath, setEffectivePath] = useState(() =>
-    Platform.OS === 'web' ? ((getWebPathname() || pathname) ?? '') : (pathname ?? '')
-  );
-  useEffect(() => {
-    const sync = () => {
-      const next = Platform.OS === 'web' ? ((getWebPathname() || pathname) ?? '') : (pathname ?? '');
-      setEffectivePath((prev) => (prev !== next ? next : prev));
-    };
-    sync();
-    const t0 = setTimeout(sync, 0);
-    let interval: ReturnType<typeof setInterval> | null = null;
-    if (Platform.OS === 'web') {
-      interval = setInterval(sync, 250);
-    }
-    return () => {
-      clearTimeout(t0);
-      if (interval) clearInterval(interval);
-    };
-  }, [pathname]);
-
-  const isSeatingPage = (effectivePath ?? '').toLowerCase().includes('bridegroomseating');
-
   return (
-    <View style={styles.container}>
-      {!isSeatingPage ? (
-        <View style={styles.sidebarWrap}>
-          <DesktopSidebar
-          title=""
-          navItems={[
-            { href: '/(couple)', label: 'בית', icon: 'home' },
-            { href: '/(couple)/guests', label: 'אורחים', icon: 'people' },
-            { href: '/(couple)/BrideGroomSeating', label: 'הושבה', icon: 'grid' },
-            { href: '/(couple)/TablesList', label: 'שולחנות', icon: 'list' },
-            { href: '/(couple)/brideGroomProfile', label: 'פרופיל', icon: 'person-circle' },
-          ]}
-          footer={
-            <View style={styles.sidebarFooter}>
-              <View style={[styles.sidebarEventSwitcherWrap, !hasMultipleEvents ? styles.sidebarEventSwitcherWrapHidden : null]}>
-                <EventSwitcher
-                  userId={userData?.id}
-                  selectedEventId={resolvedEventId}
-                  onSelectEventId={handleSelectEventId}
-                  label="אירוע פעיל"
-                  onHasMultipleChange={handleHasMultipleChange}
-                />
-              </View>
+    <View style={styles.page}>
+      <View pointerEvents="none" style={styles.bgOrbs}>
+        <View style={styles.bgOrbTopRight} />
+        <View style={styles.bgOrbTopLeft} />
+      </View>
 
-              <View style={styles.userCard}>
-                <View style={styles.userMeta}>
-                  <Text style={styles.userName} numberOfLines={1}>
-                    {userName}
-                  </Text>
-                </View>
-                <View style={styles.userAvatarRing}>
-                  {avatarUrl ? (
-                    <Image source={{ uri: avatarUrl }} style={styles.userAvatarImg} contentFit="cover" transition={0} />
-                  ) : (
-                    <View style={styles.userAvatarFallback}>
-                      <Text style={styles.userAvatarInitials}>{initials || 'U'}</Text>
+      <View style={styles.shell}>
+        {usePageScrollShell ? (
+          <ScrollView
+            style={styles.pageScroll}
+            contentContainerStyle={styles.pageScrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.headerWrap}>
+              <AdminWebPageHeader
+                eyebrow="אזור בעל האירוע"
+                title={headerTitle}
+                titleMeta={
+                  <View style={styles.headerMetaRow}>
+                    {eventDateLabel ? (
+                      <View style={styles.headerMetaChip}>
+                        <Text style={styles.headerMetaText}>{eventDateLabel}</Text>
+                      </View>
+                    ) : null}
+                    {eventLocationLabel ? (
+                      <View style={styles.headerMetaChip}>
+                        <Text style={styles.headerMetaText}>{eventLocationLabel}</Text>
+                      </View>
+                    ) : null}
+                    <View style={[styles.headerEventSwitcherWrap, !hasMultipleEvents ? styles.headerEventSwitcherWrapHidden : null]}>
+                      <EventSwitcher
+                        userId={userData?.id}
+                        selectedEventId={resolvedEventId}
+                        onSelectEventId={handleSelectEventId}
+                        label="אירוע פעיל"
+                        onHasMultipleChange={handleHasMultipleChange}
+                      />
                     </View>
-                  )}
-                </View>
-              </View>
-
-              <View style={styles.footerDivider} />
-
-              <Pressable
-                onPress={handleLogout}
-                accessibilityRole="button"
-                accessibilityLabel="התנתקות"
-                style={({ hovered, pressed }: any) => [
-                  styles.logoutBtn,
-                  Platform.OS === 'web' && hovered ? styles.logoutBtnHover : null,
-                  pressed ? styles.logoutBtnPressed : null,
-                ]}
-              >
-                <Ionicons name="log-out-outline" size={18} color="#fff" />
-                <Text style={styles.logoutText}>התנתקות</Text>
-              </Pressable>
+                  </View>
+                }
+                hideSubtitleDivider
+                subtitleContent={
+                  <View style={styles.headerContent}>
+                    <View style={styles.headerNavWrap}>
+                      <View style={styles.headerNavSectionHeader}>
+                        <View style={styles.headerNavSectionDivider} />
+                        <Text style={styles.headerNavSectionLabel}>ניווט מהיר</Text>
+                      </View>
+                      <CoupleWebTopNav eventId={resolvedEventId} />
+                    </View>
+                  </View>
+                }
+                showNav={false}
+                useDefaultActions={false}
+                actions={<CoupleProfileShortcutBadge />}
+              />
             </View>
-          }
-        />
-        </View>
-      ) : null}
-      <View style={styles.content}>
-        <Slot />
+
+            <View style={styles.pageScrollSlot}>
+              <Slot />
+            </View>
+          </ScrollView>
+        ) : (
+          <>
+            <View style={styles.headerWrap}>
+              <AdminWebPageHeader
+                eyebrow="אזור בעל האירוע"
+                title={headerTitle}
+                titleMeta={
+                  <View style={styles.headerMetaRow}>
+                    {eventDateLabel ? (
+                      <View style={styles.headerMetaChip}>
+                        <Text style={styles.headerMetaText}>{eventDateLabel}</Text>
+                      </View>
+                    ) : null}
+                    {eventLocationLabel ? (
+                      <View style={styles.headerMetaChip}>
+                        <Text style={styles.headerMetaText}>{eventLocationLabel}</Text>
+                      </View>
+                    ) : null}
+                    <View style={[styles.headerEventSwitcherWrap, !hasMultipleEvents ? styles.headerEventSwitcherWrapHidden : null]}>
+                      <EventSwitcher
+                        userId={userData?.id}
+                        selectedEventId={resolvedEventId}
+                        onSelectEventId={handleSelectEventId}
+                        label="אירוע פעיל"
+                        onHasMultipleChange={handleHasMultipleChange}
+                      />
+                    </View>
+                  </View>
+                }
+                hideSubtitleDivider
+                subtitleContent={
+                  <View style={styles.headerContent}>
+                    <View style={styles.headerNavWrap}>
+                      <View style={styles.headerNavSectionHeader}>
+                        <View style={styles.headerNavSectionDivider} />
+                        <Text style={styles.headerNavSectionLabel}>ניווט מהיר</Text>
+                      </View>
+                      <CoupleWebTopNav eventId={resolvedEventId} />
+                    </View>
+                  </View>
+                }
+                showNav={false}
+                useDefaultActions={false}
+                actions={<CoupleProfileShortcutBadge />}
+              />
+            </View>
+
+            <View
+              style={[
+                styles.content,
+                normalizedPathname === '/BrideGroomSeating' ? styles.contentForSeating : null,
+              ]}
+            >
+              <Slot />
+            </View>
+          </>
+        )}
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  page: {
     flex: 1,
+    backgroundColor: '#F7FAFF',
+    ...(Platform.OS === 'web'
+      ? ({
+          minHeight: '100vh',
+          backgroundImage:
+            'radial-gradient(circle at top right, rgba(25,93,230,0.14), rgba(25,93,230,0) 40%), radial-gradient(circle at top left, rgba(232,241,255,0.95), rgba(232,241,255,0) 34%), radial-gradient(circle at bottom left, rgba(242,224,186,0.34), rgba(242,224,186,0) 32%), radial-gradient(circle at bottom center, rgba(240,203,70,0.12), rgba(240,203,70,0) 26%)',
+          backgroundAttachment: 'fixed',
+          backgroundRepeat: 'no-repeat',
+        } as any)
+      : null),
+  },
+  bgOrbs: {
+    ...StyleSheet.absoluteFillObject,
+    pointerEvents: 'none',
+  },
+  bgOrbTopRight: {
+    position: 'absolute',
+    top: -180,
+    right: -120,
+    width: 520,
+    height: 520,
+    borderRadius: 999,
+    ...(Platform.OS === 'web'
+      ? ({
+          backgroundImage: 'radial-gradient(circle, rgba(25,93,230,0.14) 0%, rgba(25,93,230,0) 70%)',
+        } as any)
+      : { backgroundColor: 'rgba(25,93,230,0.10)' }),
+  },
+  bgOrbTopLeft: {
+    position: 'absolute',
+    top: -220,
+    left: -160,
+    width: 480,
+    height: 480,
+    borderRadius: 999,
+    ...(Platform.OS === 'web'
+      ? ({
+          backgroundImage: 'radial-gradient(circle, rgba(240,203,70,0.18) 0%, rgba(240,203,70,0) 72%)',
+        } as any)
+      : { backgroundColor: 'rgba(240,203,70,0.12)' }),
+  },
+  shell: {
+    flex: 1,
+    minWidth: 0,
+  },
+  pageScroll: {
+    flex: 1,
+  },
+  pageScrollContent: {
+    paddingBottom: 24,
+  },
+  pageScrollSlot: {
+    minWidth: 0,
+    marginTop: -4,
+  },
+  headerWrap: {
+    paddingHorizontal: 24,
+    paddingTop: 24,
+    paddingBottom: 8,
+  },
+  headerContent: {
+    gap: 16,
+  },
+  headerMetaRow: {
     flexDirection: 'row',
-    backgroundColor: '#f8fafc',
-    height: '100%',
-    ...(Platform.OS === 'web' ? ({ minHeight: '100vh' } as any) : null),
+    alignItems: 'center',
+    gap: 10,
+    flexWrap: 'wrap',
+    ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
+  },
+  headerMetaChip: {
+    minHeight: 34,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: '#F8FAFD',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.07)',
+  },
+  headerMetaText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.gray[600],
+    textAlign: 'right',
+  },
+  headerEventSwitcherWrap: {
+    minWidth: 280,
+    flexGrow: 1,
+  },
+  headerEventSwitcherWrapHidden: {
+    display: 'none',
+  },
+  headerNavWrap: {
+    minHeight: 42,
+    justifyContent: 'center',
+    gap: 12,
+  },
+  headerNavSectionHeader: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 10,
+  },
+  headerNavSectionDivider: {
+    flex: 1,
+    height: 1,
+    backgroundColor: 'rgba(15,23,42,0.08)',
+  },
+  headerNavSectionLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.gray[500],
+    letterSpacing: 0.2,
+    textAlign: 'right',
   },
   content: {
     flex: 1,
-    height: '100%',
-    overflow: 'hidden',
+    minWidth: 0,
+    overflow: 'visible',
   },
-  sidebarWrap: {},
+  contentForSeating: {
+    overflow: 'visible',
+  },
   center: {
     flex: 1,
     backgroundColor: colors.gray[100],
@@ -218,81 +408,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
     color: colors.gray[600],
-  },
-  sidebarFooter: {
-    gap: 10,
-    position: 'relative',
-  },
-  sidebarEventSwitcherWrap: {
-    width: '100%',
-    paddingHorizontal: 2,
-    paddingTop: 2,
-    paddingBottom: 4,
-  },
-  sidebarEventSwitcherWrapHidden: {
-    height: 0,
-    paddingTop: 0,
-    paddingBottom: 0,
-    overflow: 'hidden',
-    pointerEvents: 'none',
-  },
-  userCard: {
-    // Force deterministic layout (avatar on the right)
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 6,
-    paddingHorizontal: 4,
-    ...(Platform.OS === 'web' ? ({ direction: 'ltr' } as any) : null),
-  },
-  userAvatarRing: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.10)',
-    backgroundColor: 'rgba(15,23,42,0.05)',
-  },
-  userAvatarImg: { width: '100%', height: '100%' },
-  userAvatarFallback: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  userAvatarInitials: { fontSize: 12, fontWeight: '900', color: colors.primary },
-  userMeta: {
-    flex: 1,
-    minWidth: 0,
-    // left side of the avatar
-    alignItems: 'flex-start',
-    ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
-  },
-  userName: { fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'right' },
-  footerDivider: {
-    height: 1,
-    backgroundColor: 'rgba(15,23,42,0.06)',
-  },
-  logoutBtn: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 10,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.primary,
-    backgroundColor: colors.primary,
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
-  },
-  logoutBtnHover: {
-    backgroundColor: colors.oxfordBlue,
-    borderColor: colors.oxfordBlue,
-  },
-  logoutBtnPressed: {
-    opacity: 0.9,
-    transform: [{ scale: 0.99 }],
-  },
-  logoutText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#fff',
   },
 });
 
