@@ -367,6 +367,7 @@ export default function AutomaticNotificationsWebScreen() {
   const [editorKind, setEditorKind] = useState<'template' | 'flow'>('template');
   type EditorWizardStepId = 'schedule' | 'recipients' | 'catchup' | 'message';
   const [editorWizardStepIdx, setEditorWizardStepIdx] = useState(0);
+  const [messageSelection, setMessageSelection] = useState({ start: 0, end: 0 });
   const [recipientsWizardManual, setRecipientsWizardManual] = useState(false);
   const [flowDraft, setFlowDraft] = useState<{
     title: string;
@@ -433,6 +434,7 @@ export default function AutomaticNotificationsWebScreen() {
   >([]);
 
   const [toastText, setToastText] = useState<string | null>(null);
+  const messageInputRef = useRef<TextInput | null>(null);
   const toastTimerRef = useRef<any>(null);
 
   const showToast = useCallback((text: string) => {
@@ -1193,6 +1195,33 @@ export default function AutomaticNotificationsWebScreen() {
     return String(raw || '').replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (_m, inner) => `{${stripMarks(inner)}}`);
   };
 
+  const focusMessageInput = useCallback((selection?: { start: number; end: number }) => {
+    const run = () => {
+      const input = messageInputRef.current as any;
+      input?.focus?.();
+      if (selection && typeof input?.setNativeProps === 'function') {
+        input.setNativeProps({ selection });
+      }
+    };
+
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(run);
+      return;
+    }
+    setTimeout(run, 0);
+  }, []);
+
+  const handleMessageSelectionChange = useCallback((e: any) => {
+    const start = Math.max(0, Number(e?.nativeEvent?.selection?.start ?? 0));
+    const end = Math.max(start, Number(e?.nativeEvent?.selection?.end ?? start));
+    setMessageSelection({ start, end });
+  }, []);
+
+  const handleMessageChange = useCallback((text: string) => {
+    const normalized = normalizeTemplateToSingleBraces(text).slice(0, MESSAGE_MAX_CHARS);
+    setEditDraft((d) => (d ? { ...d, message: normalized } : d));
+  }, []);
+
   const openEditor = (row: NotificationSettingRow) => {
     setEditorKind('template');
     setSelectedType(row.notification_type);
@@ -1200,11 +1229,13 @@ export default function AutomaticNotificationsWebScreen() {
     const days = Number(row.days_from_wedding || 0);
     const abs = Math.abs(days);
     const normalizedDays = -(abs || 30); // always "before"
+    const draftMessage = normalizeTemplateToSingleBraces(String(row.message_content || '')).slice(0, MESSAGE_MAX_CHARS);
     setEditDraft({
-      message: normalizeTemplateToSingleBraces(String(row.message_content || '')).slice(0, MESSAGE_MAX_CHARS),
+      message: draftMessage,
       days: normalizedDays,
       timeHm: inferTimeHmFromExisting((row as any).notification_date),
     });
+    setMessageSelection({ start: draftMessage.length, end: draftMessage.length });
 
     // Initialize catch-up schedule editor for reminder_1
     if (String(row.notification_type || '').trim() === 'reminder_1') {
@@ -1250,11 +1281,13 @@ export default function AutomaticNotificationsWebScreen() {
     const dt = rawDt ? new Date(String(rawDt)) : null;
     const hasValidDt = dt && Number.isFinite(dt.getTime());
     const days = typeof row.days_from_wedding === 'number' ? Number(row.days_from_wedding) : 0;
+    const draftMessage = normalizeTemplateToSingleBraces(String(row.message_content || '')).slice(0, MESSAGE_MAX_CHARS);
     setEditDraft({
-      message: normalizeTemplateToSingleBraces(String(row.message_content || '')).slice(0, MESSAGE_MAX_CHARS),
+      message: draftMessage,
       days,
       timeHm: hasValidDt ? formatTime(dt as any) : '11:00',
     });
+    setMessageSelection({ start: draftMessage.length, end: draftMessage.length });
     setFlowDraft({
       title: String(row.title ?? 'שלב'),
       recipientMode: (String((row as any)?.recipient_mode || 'manual') as any) || 'manual',
@@ -1268,6 +1301,7 @@ export default function AutomaticNotificationsWebScreen() {
     setEditorOpen(false);
     setEditorType(null);
     setEditorKind('template');
+    setMessageSelection({ start: 0, end: 0 });
     setFlowDraft(null);
     setDependsPickerOpen(false);
     setAddWizardOpen(false);
@@ -1611,7 +1645,16 @@ export default function AutomaticNotificationsWebScreen() {
   const insertVariable = (token: string) => {
     if (!canEdit) return;
     if (!editDraft) return;
-    setEditDraft((d) => (d ? { ...d, message: `${d.message}${d.message ? ' ' : ''}${token}` } : d));
+    const currentMessage = String(editDraft.message || '');
+    const start = Math.min(Math.max(0, messageSelection.start), currentMessage.length);
+    const end = Math.min(Math.max(start, messageSelection.end), currentMessage.length);
+    const nextMessage = `${currentMessage.slice(0, start)}${token}${currentMessage.slice(end)}`.slice(0, MESSAGE_MAX_CHARS);
+    const nextCaret = Math.min(start + token.length, nextMessage.length);
+    const nextSelection = { start: nextCaret, end: nextCaret };
+
+    setEditDraft((d) => (d ? { ...d, message: nextMessage } : d));
+    setMessageSelection(nextSelection);
+    focusMessageInput(nextSelection);
   };
 
   const openRecipientsPicker = (row: NotificationSettingRow) => {
@@ -3644,7 +3687,7 @@ export default function AutomaticNotificationsWebScreen() {
                     <Ionicons name="pricetag-outline" size={16} color="rgba(79,70,229,1)" />
                     <Text style={styles.editorSectionTitle}>משתנים</Text>
                   </View>
-                  <Text style={styles.editorSectionHint}>הוספת משתנים תחליף אותם אוטומטית בזמן שליחה.</Text>
+                  <Text style={styles.editorSectionHint}>הוספת משתנים תחליף אותם אוטומטית בזמן שליחה ותכניס אותם בדיוק במקום הסמן.</Text>
 
                   <View style={styles.chips}>
                       <Pressable onPress={() => insertVariable('{שם_פרטי}')} style={({ pressed }: any) => [styles.chip, pressed ? { opacity: 0.85 } : null]}>
@@ -3720,10 +3763,12 @@ export default function AutomaticNotificationsWebScreen() {
                       הכנס את תוכן ההודעה שלך והשתמש במשתנים כדי להתאים אותה אישית.
                     </Text>
                     <Text style={[styles.step4VarsLabel, { color: ui.text }]}>משתנים זמינים</Text>
+                    <Text style={[styles.step4VarsHint, { color: ui.sub }]}>לחיצה על משתנה תוסיף אותו בדיוק במקום שבו הסמן נמצא.</Text>
                     <View style={styles.step4VarsRow}>
                       {[
                         { label: 'שם_פרטי', token: '{שם_פרטי}' },
                         { label: 'שם_משפחה', token: '{name}' },
+                        { label: 'כותרת_האירוע', token: '{שם_אירוע}' },
                         { label: 'תאריך_אירוע', token: '{תאריך}' },
                         { label: 'מיקום', token: '{מיקום}' },
                       ].map((v) => (
@@ -3756,10 +3801,13 @@ export default function AutomaticNotificationsWebScreen() {
                     <Text style={[styles.editorSectionTitle, { color: ui.text, marginTop: 16 }]}>תוכן ההודעה</Text>
                     <View style={styles.textareaWrap}>
                       <TextInput
+                        ref={messageInputRef}
                         value={editDraft?.message ?? ''}
-                        onChangeText={(t) => setEditDraft((d) => (d ? { ...d, message: normalizeTemplateToSingleBraces(t).slice(0, MESSAGE_MAX_CHARS) } : d))}
+                        onChangeText={handleMessageChange}
+                        onSelectionChange={handleMessageSelectionChange}
                         editable={canEdit}
                         multiline
+                        selection={messageSelection}
                         textAlignVertical="top"
                         style={styles.textarea}
                         placeholder={'היי {שם_פרטי},\nתודה שנרשמת לאירוע שלנו ב-{תאריך_אירוע}.\nנשמח לראותך בשעה {שעה}.\nלפרטים נוספים השב להודעה זו.\nנתראה!'}
@@ -3794,9 +3842,12 @@ export default function AutomaticNotificationsWebScreen() {
                   </View>
                   <View style={styles.textareaWrap}>
                     <TextInput
+                      ref={messageInputRef}
                       value={editDraft?.message ?? ''}
-                      onChangeText={(t) => setEditDraft((d) => (d ? { ...d, message: normalizeTemplateToSingleBraces(t).slice(0, MESSAGE_MAX_CHARS) } : d))}
+                      onChangeText={handleMessageChange}
+                      onSelectionChange={handleMessageSelectionChange}
                       multiline
+                      selection={messageSelection}
                       textAlignVertical="top"
                       style={styles.textarea}
                       placeholder="כתוב הודעה..."
@@ -5801,6 +5852,7 @@ const styles = StyleSheet.create({
   step4ContentCol: { flex: 1.2, minWidth: 0, gap: 10 },
   step4Instruction: { fontSize: 13, fontWeight: '700', textAlign: 'right', lineHeight: 20 },
   step4VarsLabel: { fontSize: 13, fontWeight: '900', textAlign: 'right' },
+  step4VarsHint: { fontSize: 12, fontWeight: '700', textAlign: 'right', lineHeight: 18, marginTop: -2 },
   step4VarsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   step4VarTag: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, borderWidth: 1 },
   step4VarTagText: { fontSize: 12, fontWeight: '800', textAlign: 'right' },
@@ -6474,8 +6526,9 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: 'rgba(148,163,184,0.25)',
     overflow: 'hidden',
-    alignItems: 'flex-end',
-    justifyContent: 'center',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'flex-start',
   },
   wizardProgressFill: { height: 6, borderRadius: 999, backgroundColor: '#2563EB' },
   editorStepperRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
@@ -6511,7 +6564,7 @@ const styles = StyleSheet.create({
   scheduleInputRow: { height: 44, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(2,6,23,0.12)', backgroundColor: '#fff', paddingHorizontal: 12, flexDirection: 'row-reverse', alignItems: 'center', gap: 10, justifyContent: 'flex-end' },
   scheduleInputText: { fontSize: 14, fontWeight: '900', color: '#111827', textAlign: 'right', flex: 1, writingDirection: 'ltr' },
   scheduleHintText: { fontSize: 11, fontWeight: '800', color: 'rgba(100,116,139,1)', textAlign: 'right', lineHeight: 16 },
-  scheduleSummaryCard: { marginTop: 6, borderRadius: 10, padding: 12, borderWidth: 1, borderColor: 'rgba(148,163,184,0.30)', backgroundColor: 'rgba(248,250,252,1)', alignItems: 'flex-end', gap: 6 },
+  scheduleSummaryCard: { marginTop: 6, borderRadius: 10, padding: 12, borderWidth: 1, borderColor: 'rgba(148,163,184,0.30)', backgroundColor: 'rgba(248,250,252,1)', alignItems: 'center', justifyContent: 'flex-start', gap: 6 },
   scheduleSummaryLabel: { fontSize: 12, fontWeight: '900', color: 'rgba(15,23,42,0.72)', textAlign: 'right' },
   scheduleSummaryValue: { fontSize: 18, fontWeight: '900', color: '#111827', textAlign: 'right', writingDirection: 'ltr' },
   scheduleCalendarCard: { flex: 1, minWidth: 360, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(2,6,23,0.08)', backgroundColor: '#fff', paddingTop: 10, overflow: 'hidden' },
