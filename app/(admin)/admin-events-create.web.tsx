@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -29,6 +29,92 @@ const EVENT_TYPES = [
 ] as const;
 
 type CoupleOption = { id: string; name: string; email: string };
+type LocationPrediction = {
+  placeId: string;
+  primaryText: string;
+  secondaryText: string;
+  description: string;
+};
+
+const GOOGLE_MAPS_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
+
+declare global {
+  interface Window {
+    google?: any;
+    __googleMapsPlacesPromise?: Promise<any>;
+  }
+}
+
+function extractCityFromAddressComponents(addressComponents?: any[], fallbackText = '') {
+  const parts = Array.isArray(addressComponents) ? addressComponents : [];
+  const locality =
+    parts.find((part) => Array.isArray(part?.types) && part.types.includes('locality'))?.long_name ||
+    parts.find((part) => Array.isArray(part?.types) && part.types.includes('administrative_area_level_2'))?.long_name ||
+    parts.find((part) => Array.isArray(part?.types) && part.types.includes('administrative_area_level_1'))?.long_name ||
+    '';
+  if (locality) return String(locality).trim();
+  const fallbackParts = String(fallbackText || '')
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return fallbackParts.at(-2) || fallbackParts.at(-1) || '';
+}
+
+function loadGoogleMapsPlacesLibrary() {
+  if (Platform.OS !== 'web') {
+    return Promise.reject(new Error('Google Places autocomplete is available only on web.'));
+  }
+  if (!GOOGLE_MAPS_API_KEY) {
+    return Promise.reject(new Error('Missing EXPO_PUBLIC_GOOGLE_MAPS_API_KEY environment variable.'));
+  }
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return Promise.reject(new Error('Window is not available yet.'));
+  }
+  if (window.google?.maps?.places) {
+    return Promise.resolve(window.google);
+  }
+  if (window.__googleMapsPlacesPromise) {
+    return window.__googleMapsPlacesPromise;
+  }
+
+  window.__googleMapsPlacesPromise = new Promise((resolve, reject) => {
+    const scriptId = 'google-maps-places-script';
+    const existingScript = document.getElementById(scriptId) as HTMLScriptElement | null;
+
+    const finishLoad = () => {
+      if (window.google?.maps?.places) {
+        resolve(window.google);
+        return;
+      }
+      window.__googleMapsPlacesPromise = undefined;
+      reject(new Error('Google Maps script loaded, but Places library is unavailable.'));
+    };
+
+    const failLoad = () => {
+      window.__googleMapsPlacesPromise = undefined;
+      reject(new Error('Failed to load Google Maps Places library.'));
+    };
+
+    if (existingScript) {
+      existingScript.addEventListener('load', finishLoad, { once: true });
+      existingScript.addEventListener('error', failLoad, { once: true });
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.id = scriptId;
+    script.async = true;
+    script.defer = true;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(
+      GOOGLE_MAPS_API_KEY
+    )}&libraries=places&language=he&region=IL`;
+    script.addEventListener('load', finishLoad, { once: true });
+    script.addEventListener('error', failLoad, { once: true });
+    document.head.appendChild(script);
+  });
+
+  return window.__googleMapsPlacesPromise;
+}
 
 export default function AdminEventsCreateWebScreen() {
   const router = useRouter();
@@ -63,6 +149,15 @@ export default function AdminEventsCreateWebScreen() {
   const [focusedField, setFocusedField] = useState<
     null | 'eventName' | 'groomName' | 'brideName' | 'location' | 'city' | 'search'
   >(null);
+  const [placesReady, setPlacesReady] = useState(Platform.OS !== 'web');
+  const [placesLoading, setPlacesLoading] = useState(false);
+  const [placesError, setPlacesError] = useState('');
+  const [locationPredictions, setLocationPredictions] = useState<LocationPrediction[]>([]);
+  const [showLocationSuggestions, setShowLocationSuggestions] = useState(false);
+  const autocompleteServiceRef = useRef<any>(null);
+  const placesServiceRef = useRef<any>(null);
+  const locationBlurTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const predictionRequestRef = useRef(0);
 
   useEffect(() => {
     if (typeof userId === 'string' && userId) {
@@ -94,6 +189,39 @@ export default function AdminEventsCreateWebScreen() {
 
   useEffect(() => {
     void loadAvailableCouples();
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+
+    let isCancelled = false;
+    void loadGoogleMapsPlacesLibrary()
+      .then((googleMaps) => {
+        if (isCancelled) return;
+        autocompleteServiceRef.current = new googleMaps.maps.places.AutocompleteService();
+        placesServiceRef.current = new googleMaps.maps.places.PlacesService(document.createElement('div'));
+        setPlacesReady(true);
+        setPlacesError('');
+      })
+      .catch((error: any) => {
+        if (isCancelled) return;
+        console.error('Google Places load error:', error);
+        setPlacesReady(false);
+        setPlacesError('לא ניתן לטעון את חיפוש המיקומים כרגע.');
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    return () => {
+      if (locationBlurTimeoutRef.current) {
+        clearTimeout(locationBlurTimeoutRef.current);
+      }
+    };
   }, []);
 
   const formatDate = (dateString: string) =>
@@ -189,6 +317,124 @@ export default function AdminEventsCreateWebScreen() {
   };
 
   const selectedTypeMeta = EVENT_TYPES.find((item) => item.value === form.eventType) ?? null;
+  const shouldShowLocationSuggestions =
+    Platform.OS === 'web' && showLocationSuggestions && (placesLoading || locationPredictions.length > 0);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+
+    const query = form.location.trim();
+    if (!query || query.length < 2) {
+      setPlacesLoading(false);
+      setLocationPredictions([]);
+      return;
+    }
+    if (!placesReady || !autocompleteServiceRef.current || !window.google?.maps?.places) {
+      return;
+    }
+
+    setPlacesLoading(true);
+    const requestId = predictionRequestRef.current + 1;
+    predictionRequestRef.current = requestId;
+
+    const timeoutId = setTimeout(() => {
+      autocompleteServiceRef.current.getPlacePredictions(
+        {
+          input: query,
+          componentRestrictions: { country: 'il' },
+        },
+        (predictions: any[] | null, status: any) => {
+          if (predictionRequestRef.current !== requestId) return;
+
+          const placesStatus = window.google?.maps?.places?.PlacesServiceStatus;
+          if (status === placesStatus?.OK && Array.isArray(predictions)) {
+            setLocationPredictions(
+              predictions.map((prediction) => ({
+                placeId: String(prediction.place_id ?? ''),
+                primaryText: String(prediction.structured_formatting?.main_text ?? prediction.description ?? '').trim(),
+                secondaryText: String(prediction.structured_formatting?.secondary_text ?? '').trim(),
+                description: String(prediction.description ?? '').trim(),
+              }))
+            );
+          } else {
+            setLocationPredictions([]);
+          }
+          setPlacesLoading(false);
+        }
+      );
+    }, 320);
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [form.location, placesReady]);
+
+  const handleLocationFocus = () => {
+    if (locationBlurTimeoutRef.current) {
+      clearTimeout(locationBlurTimeoutRef.current);
+      locationBlurTimeoutRef.current = null;
+    }
+    setFocusedField('location');
+    setShowLocationSuggestions(true);
+  };
+
+  const handleLocationBlur = () => {
+    setFocusedField(null);
+    locationBlurTimeoutRef.current = setTimeout(() => {
+      setShowLocationSuggestions(false);
+    }, 180);
+  };
+
+  const handleLocationChange = (value: string) => {
+    setForm((f) => ({ ...f, location: value }));
+    setShowLocationSuggestions(true);
+  };
+
+  const handleLocationPredictionPress = (prediction: LocationPrediction) => {
+    if (locationBlurTimeoutRef.current) {
+      clearTimeout(locationBlurTimeoutRef.current);
+      locationBlurTimeoutRef.current = null;
+    }
+
+    if (!placesServiceRef.current || !window.google?.maps?.places) {
+      setForm((f) => ({ ...f, location: prediction.primaryText || prediction.description }));
+      setShowLocationSuggestions(false);
+      setLocationPredictions([]);
+      return;
+    }
+
+    setPlacesLoading(true);
+    placesServiceRef.current.getDetails(
+      {
+        placeId: prediction.placeId,
+        fields: ['name', 'formatted_address', 'address_components'],
+      },
+      (place: any, status: any) => {
+        const placesStatus = window.google?.maps?.places?.PlacesServiceStatus;
+        const formattedAddress = String(place?.formatted_address ?? prediction.description ?? '').trim();
+        const locationValue = String(place?.name ?? '').trim() || formattedAddress || prediction.primaryText || prediction.description;
+        const nextCity = extractCityFromAddressComponents(place?.address_components, prediction.secondaryText || formattedAddress);
+
+        if (status === placesStatus?.OK || !status) {
+          setForm((f) => ({
+            ...f,
+            location: locationValue,
+            city: nextCity || f.city,
+          }));
+        } else {
+          setForm((f) => ({
+            ...f,
+            location: prediction.primaryText || prediction.description,
+            city: f.city || extractCityFromAddressComponents(undefined, prediction.secondaryText),
+          }));
+        }
+
+        setPlacesLoading(false);
+        setShowLocationSuggestions(false);
+        setLocationPredictions([]);
+      }
+    );
+  };
 
   return (
     <View style={styles.page}>
@@ -447,19 +693,59 @@ export default function AdminEventsCreateWebScreen() {
 
                   <View style={styles.formColFull}>
                     <Text style={styles.fieldLabel}>מיקום האירוע (אופציונלי)</Text>
-                    <View style={styles.inputWrap}>
+                    <View style={[styles.inputWrap, shouldShowLocationSuggestions ? styles.inputWrapRaised : null]}>
                       <Ionicons name="location-outline" size={18} color={stylesTokens.textMuted} style={styles.inputLeadingIcon} />
                       <TextInput
                         value={form.location}
-                        onChangeText={(v) => setForm((f) => ({ ...f, location: v }))}
+                        onChangeText={handleLocationChange}
                         placeholder="חפש אולם או כתובת..."
                         placeholderTextColor={stylesTokens.placeholder}
                         style={[styles.input, focusedField === 'location' ? styles.inputFocused : null]}
                         textAlign="right"
-                        onFocus={() => setFocusedField('location')}
-                        onBlur={() => setFocusedField(null)}
+                        onFocus={handleLocationFocus}
+                        onBlur={handleLocationBlur}
+                        autoComplete="street-address"
                       />
+                      {shouldShowLocationSuggestions ? (
+                        <View style={styles.locationSuggestionsCard}>
+                          {placesLoading ? (
+                            <View style={styles.locationSuggestionsLoading}>
+                              <ActivityIndicator size="small" color={stylesTokens.primary} />
+                              <Text style={styles.locationSuggestionsHint}>מחפש מיקומים ב-Google...</Text>
+                            </View>
+                          ) : (
+                            locationPredictions.map((prediction) => (
+                              <Pressable
+                                key={prediction.placeId}
+                                accessibilityRole="button"
+                                accessibilityLabel={`בחירת מיקום ${prediction.description}`}
+                                onPress={() => handleLocationPredictionPress(prediction)}
+                                style={({ hovered, pressed }: any) => [
+                                  styles.locationSuggestionRow,
+                                  Platform.OS === 'web' && hovered ? styles.locationSuggestionRowHover : null,
+                                  pressed ? { opacity: 0.92 } : null,
+                                ]}
+                              >
+                                <View style={styles.locationSuggestionText}>
+                                  <Text style={styles.locationSuggestionTitle} numberOfLines={1}>
+                                    {prediction.primaryText}
+                                  </Text>
+                                  <Text style={styles.locationSuggestionSubtitle} numberOfLines={2}>
+                                    {prediction.secondaryText || prediction.description}
+                                  </Text>
+                                </View>
+                                <View style={styles.locationSuggestionIcon}>
+                                  <Ionicons name="business-outline" size={16} color={stylesTokens.primary} />
+                                </View>
+                              </Pressable>
+                            ))
+                          )}
+                        </View>
+                      ) : null}
                     </View>
+                    <Text style={styles.miniHint}>
+                      {placesError || 'הקלידו שם אולם, עסק או כתובת מלאה כדי לבחור מיקום מתוך Google.'}
+                    </Text>
                   </View>
 
                   <View style={styles.formColHalf}>
@@ -1291,6 +1577,9 @@ const styles = StyleSheet.create({
   formColHalf: { flexGrow: 1, flexBasis: 260, minWidth: 220 },
 
   inputWrap: { position: 'relative', justifyContent: 'center' },
+  inputWrapRaised: {
+    zIndex: 20,
+  },
   inputLeadingIcon: { position: 'absolute', right: 12, zIndex: 2 },
   input: {
     marginTop: 10,
@@ -1310,6 +1599,74 @@ const styles = StyleSheet.create({
     backgroundColor: stylesTokens.surface,
     borderColor: stylesTokens.primary,
     ...(Platform.OS === 'web' ? ({ boxShadow: '0 0 0 2px rgba(22,45,156,0.12)' } as any) : null),
+  },
+  locationSuggestionsCard: {
+    marginTop: 8,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(22,45,156,0.12)',
+    backgroundColor: 'rgba(255,255,255,0.98)',
+    overflow: 'hidden',
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 14px 34px rgba(17,24,39,0.12)' } as any) : null),
+  },
+  locationSuggestionsLoading: {
+    minHeight: 58,
+    paddingHorizontal: 14,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  locationSuggestionsHint: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: stylesTokens.textMuted,
+    textAlign: 'right',
+  },
+  locationSuggestionRow: {
+    minHeight: 62,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(17,24,39,0.06)',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 10,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  locationSuggestionRowHover: {
+    backgroundColor: 'rgba(22,45,156,0.04)',
+  },
+  locationSuggestionIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    backgroundColor: 'rgba(22,45,156,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  locationSuggestionText: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'flex-end',
+  },
+  locationSuggestionTitle: {
+    width: '100%',
+    fontSize: 13,
+    fontWeight: '900',
+    color: stylesTokens.text,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  locationSuggestionSubtitle: {
+    width: '100%',
+    marginTop: 3,
+    fontSize: 12,
+    fontWeight: '600',
+    color: stylesTokens.textMuted,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+    lineHeight: 17,
   },
 
   selector: {

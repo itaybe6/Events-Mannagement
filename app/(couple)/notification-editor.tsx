@@ -21,6 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
 import { BlurView } from 'expo-blur';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
+import { buildDirectionsDetailsText, normalizeBaseUrl } from '@/lib/navigationLinks';
 import { supabase } from '@/lib/supabase';
 import { useUserStore } from '@/store/userStore';
 import { useLayoutStore } from '@/store/layoutStore';
@@ -569,12 +570,15 @@ export default function NotificationEditorScreen() {
     const fullName = String(allGuests?.[0]?.name || 'ישראל ישראלי');
     const sampleFirstName = fullName ? fullName.split(/\s+/)[0] : 'ישראל';
     const sampleLink = 'https://example.com';
+    const sampleDirections = buildDirectionsDetailsText('https://moon-events.co.il', 'demo123');
     const sampleDate = eventDate ? formatDate(eventDate) : '01/01/2026';
     const sampleTime = editedTimeHm || '19:30';
     const sampleLocation = 'מיקום האירוע';
     return raw
       .replaceAll('{name}', fullName)
       .replaceAll('{link}', sampleLink)
+      .replaceAll('{פרטי הגעה}', sampleDirections)
+      .replaceAll('{פרטי_הגעה}', sampleDirections)
       .replaceAll('{event_date}', sampleDate)
       .replaceAll('{תאריך}', sampleDate)
       .replaceAll('{שם_פרטי}', sampleFirstName)
@@ -815,7 +819,9 @@ export default function NotificationEditorScreen() {
 
       const origin =
         Platform.OS === 'web' && typeof window !== 'undefined' ? String(window.location.origin) : '';
-      const baseUrl = origin && !origin.includes('localhost') && !origin.includes('127.0.0.1') ? origin : undefined;
+      const configuredBaseUrl = normalizeBaseUrl(process.env.EXPO_PUBLIC_SITE_BASE_URL);
+      const baseUrl =
+        origin && !origin.includes('localhost') && !origin.includes('127.0.0.1') ? normalizeBaseUrl(origin) : configuredBaseUrl || undefined;
 
       const { data, error } = await supabase.functions.invoke('send-invitation-sms', {
         headers: { Authorization: `Bearer ${accessToken}` },
@@ -1328,6 +1334,7 @@ export default function NotificationEditorScreen() {
                           { label: 'תאריך_אירוע', placeholder: '{event_date}' },
                           { label: 'שעה', placeholder: '{שעה}' },
                           { label: 'מיקום', placeholder: '{מיקום}' },
+                          { label: 'פרטי_הגעה', placeholder: '{פרטי הגעה}' },
                         ].map((v) => (
                           <TouchableOpacity
                             key={v.placeholder}
@@ -1847,7 +1854,7 @@ export default function NotificationEditorScreen() {
 
                   <Text style={[styles.helperText, { color: ui.sub }]}>
                     משתנים שימושיים: <Text style={styles.mono}>{'{name}'}</Text> · <Text style={styles.mono}>{'{link}'}</Text> ·{' '}
-                    <Text style={styles.mono}>{'{event_date}'}</Text>
+                    <Text style={styles.mono}>{'{פרטי הגעה}'}</Text>
                   </Text>
 
                   {isFirstMessage && autoAllRecipients ? (

@@ -36,6 +36,18 @@ function normalizeBaseUrl(input?: string) {
   return raw ? raw.replace(/\/+$/, "") : "";
 }
 
+function buildDirectionsShortLink(baseUrl: string, token: string) {
+  const base = normalizeBaseUrl(baseUrl);
+  const cleanToken = String(token ?? "").trim();
+  if (!base || !cleanToken) return "";
+  return `${base}/w/${encodeURIComponent(cleanToken)}`;
+}
+
+function buildDirectionsDetailsText(baseUrl: string, token: string) {
+  const shortLink = buildDirectionsShortLink(baseUrl, token);
+  return shortLink ? `לניווט ב-Waze: ${shortLink}` : "";
+}
+
 function fillTemplate(template: string, vars: Record<string, string>) {
   const stripMarks = (s: string) =>
     String(s || "").replace(/[\u200E\u200F\u202A-\u202E]/g, "").trim();
@@ -206,7 +218,9 @@ serve(async (req) => {
 
     // SITE_BASE_URL is only required when the message actually needs `{link}`.
     // Don't hard-fail the whole scheduler if it's missing.
-    const baseUrl = normalizeBaseUrl(Deno.env.get("SITE_BASE_URL"));
+    const baseUrl = normalizeBaseUrl(
+      String(Deno.env.get("SITE_BASE_URL") ?? Deno.env.get("EXPO_PUBLIC_SITE_BASE_URL") ?? "")
+    );
 
     const body = (await req.json().catch(() => ({}))) as any;
     const limitRaw = Number(body?.limit);
@@ -343,7 +357,14 @@ serve(async (req) => {
       // Many scheduled messages may contain a fixed URL (or no URL at all), in which case token is not required.
       const needsInvitationToken = (() => {
         const t = String(messageTemplate ?? "");
-        return t.includes("{link}") || t.includes("{{link}}");
+        return (
+          t.includes("{link}") ||
+          t.includes("{{link}}") ||
+          t.includes("{פרטי הגעה}") ||
+          t.includes("{{פרטי הגעה}}") ||
+          t.includes("{פרטי_הגעה}") ||
+          t.includes("{{פרטי_הגעה}}")
+        );
       })();
       if (needsInvitationToken && !baseUrl) {
         await setRunStatus(adminClient, runId, { status: "failed", error: "missing_site_base_url" });
@@ -353,6 +374,7 @@ serve(async (req) => {
       const prepared = list.map((g: any) => {
         const token = String(g.invitation_code ?? g.invitation_token ?? "").trim();
         const link = token && baseUrl ? `${baseUrl}/i/${token}` : "";
+        const directionsDetails = token ? buildDirectionsDetailsText(baseUrl, token) : "";
         const rawPhone = g.phone;
         const n = normalizePhone(rawPhone);
         const phoneOk = n.ok ? n.value : "";
@@ -370,6 +392,8 @@ serve(async (req) => {
           "שם_אירוע": eventTitle,
           "תאריך": eventDateText,
           "מיקום": eventLocationText,
+          "פרטי הגעה": directionsDetails,
+          "פרטי_הגעה": directionsDetails,
           "שם_חתן": groomName,
           "שם_כלה": brideName,
           "שמות_חתן_כלה": coupleNames,

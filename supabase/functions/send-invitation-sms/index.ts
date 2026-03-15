@@ -86,6 +86,18 @@ function getBaseUrl(req: Request, fromBody?: string) {
   return "";
 }
 
+function buildDirectionsShortLink(baseUrl: string, token: string) {
+  const base = String(baseUrl ?? "").trim().replace(/\/+$/, "");
+  const cleanToken = String(token ?? "").trim();
+  if (!base || !cleanToken) return "";
+  return `${base}/w/${encodeURIComponent(cleanToken)}`;
+}
+
+function buildDirectionsDetailsText(baseUrl: string, token: string) {
+  const shortLink = buildDirectionsShortLink(baseUrl, token);
+  return shortLink ? `לניווט ב-Waze: ${shortLink}` : "";
+}
+
 function fillTemplate(template: string, vars: Record<string, string>) {
   const stripMarks = (s: string) =>
     String(s || "").replace(/[\u200E\u200F\u202A-\u202E]/g, "").trim();
@@ -266,7 +278,20 @@ serve(async (req) => {
     if (guestsError) return json({ error: guestsError.message }, { status: 500 });
 
     const baseUrl = getBaseUrl(req, body.baseUrl);
-    if (!baseUrl) return json({ error: "Missing baseUrl (pass from client or set SITE_BASE_URL secret)" }, { status: 400 });
+    const needsBaseUrl = (() => {
+      const t = String(messageTemplate ?? "");
+      return (
+        t.includes("{link}") ||
+        t.includes("{{link}}") ||
+        t.includes("{פרטי הגעה}") ||
+        t.includes("{{פרטי הגעה}}") ||
+        t.includes("{פרטי_הגעה}") ||
+        t.includes("{{פרטי_הגעה}}")
+      );
+    })();
+    if (needsBaseUrl && !baseUrl) {
+      return json({ error: "Missing baseUrl (pass from client or set SITE_BASE_URL secret)" }, { status: 400 });
+    }
 
     const eventTitle = String((eventRow as any)?.title ?? "").trim();
     const eventDateRaw = (eventRow as any)?.date;
@@ -287,6 +312,7 @@ serve(async (req) => {
     const prepared = (guests ?? []).map((g: any) => {
       const token = String(g.invitation_code ?? g.invitation_token ?? "").trim();
       const link = token ? `${baseUrl}/i/${token}` : "";
+      const directionsDetails = token ? buildDirectionsDetailsText(baseUrl, token) : "";
       const rawPhone = g.phone;
       const n = normalizePhone(rawPhone);
       const phoneOk = n.ok ? n.value : "";
@@ -306,6 +332,8 @@ serve(async (req) => {
         "שם_אירוע": eventTitle,
         "תאריך": eventDateText,
         "מיקום": eventLocationText,
+        "פרטי הגעה": directionsDetails,
+        "פרטי_הגעה": directionsDetails,
         "שם_חתן": groomName,
         "שם_כלה": brideName,
         "שמות_חתן_כלה": coupleNames,
@@ -336,7 +364,7 @@ serve(async (req) => {
         failures.push({ guestId: p.id, phone: p.phoneRaw ?? null, reason: "invalid_phone" });
         return false;
       }
-      if (!p.hasToken) {
+      if (needsBaseUrl && !p.hasToken) {
         failures.push({ guestId: p.id, phone: p.phoneRaw ?? null, reason: "missing_invitation_token" });
         return false;
       }

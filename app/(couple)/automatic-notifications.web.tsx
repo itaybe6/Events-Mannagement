@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import AdminWebPageHeader from '@/components/desktop/AdminWebPageHeader';
 import { colors } from '@/constants/colors';
+import { buildDirectionsDetailsText, buildEventLocationText, normalizeBaseUrl } from '@/lib/navigationLinks';
 import { supabase } from '@/lib/supabase';
 import { eventService } from '@/lib/services/eventService';
 import { useUserStore } from '@/store/userStore';
@@ -674,7 +675,8 @@ export default function AutomaticNotificationsWebScreen() {
     const eventDateText = formatHeDate((event as any)?.date) || '—';
     const loc = String((event as any)?.location ?? '').trim();
     const city = String((event as any)?.city ?? '').trim();
-    const eventLocationText = [loc, city].filter(Boolean).join(', ') || '—';
+    const eventLocationText = buildEventLocationText(loc, city) || '—';
+    const previewDirectionsText = buildDirectionsDetailsText('https://moon-events.co.il', 'demo123');
 
     const vars: Record<string, string> = {
       // שם האורח הוא דוגמה בלבד (אין לנו אורח ספציפי בתצוגה הזאת)
@@ -685,12 +687,16 @@ export default function AutomaticNotificationsWebScreen() {
       '{שם_אירוע}': eventTitle,
       '{תאריך}': eventDateText,
       '{מיקום}': eventLocationText,
+      '{פרטי הגעה}': previewDirectionsText,
+      '{פרטי_הגעה}': previewDirectionsText,
 
       // Backward-compatible (older saved templates may still contain double-braces)
       '{{שם_פרטי}}': 'אורח/ת',
       '{{שם_אירוע}}': eventTitle,
       '{{תאריך}}': eventDateText,
       '{{מיקום}}': eventLocationText,
+      '{{פרטי הגעה}}': previewDirectionsText,
+      '{{פרטי_הגעה}}': previewDirectionsText,
     };
     if (groomName) {
       vars['{שם_חתן}'] = groomName;
@@ -2142,8 +2148,9 @@ export default function AutomaticNotificationsWebScreen() {
       if (!accessToken) throw new Error('לא נמצא חיבור משתמש (נא להתחבר מחדש)');
 
       const origin = typeof window !== 'undefined' ? String(window.location.origin) : '';
+      const configuredBaseUrl = normalizeBaseUrl(process.env.EXPO_PUBLIC_SITE_BASE_URL);
       const baseUrl =
-        origin && !origin.includes('localhost') && !origin.includes('127.0.0.1') ? origin : undefined;
+        origin && !origin.includes('localhost') && !origin.includes('127.0.0.1') ? normalizeBaseUrl(origin) : configuredBaseUrl || undefined;
 
       const { data, error } = await supabase.functions.invoke('send-invitation-sms', {
         headers: { Authorization: `Bearer ${accessToken}` },
@@ -3717,6 +3724,9 @@ export default function AutomaticNotificationsWebScreen() {
                       <Pressable onPress={() => insertVariable('{מיקום}')} style={({ pressed }: any) => [styles.chip, pressed ? { opacity: 0.85 } : null]}>
                         <Text style={[styles.chipText, { color: ui.primary }]}>{'{מיקום}'}</Text>
                       </Pressable>
+                      <Pressable onPress={() => insertVariable('{פרטי הגעה}')} style={({ pressed }: any) => [styles.chip, pressed ? { opacity: 0.85 } : null]}>
+                        <Text style={[styles.chipText, { color: ui.primary }]}>{'{פרטי הגעה}'}</Text>
+                      </Pressable>
                       <Pressable onPress={() => insertVariable('{name}')} style={({ pressed }: any) => [styles.chip, pressed ? { opacity: 0.85 } : null]}>
                         <Text style={[styles.chipText, { color: ui.primary }]}>{'{name}'}</Text>
                       </Pressable>
@@ -3771,6 +3781,7 @@ export default function AutomaticNotificationsWebScreen() {
                         { label: 'כותרת_האירוע', token: '{שם_אירוע}' },
                         { label: 'תאריך_אירוע', token: '{תאריך}' },
                         { label: 'מיקום', token: '{מיקום}' },
+                        { label: 'פרטי_הגעה', token: '{פרטי הגעה}' },
                       ].map((v) => (
                         <Pressable
                           key={v.token}

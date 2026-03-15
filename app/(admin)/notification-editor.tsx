@@ -25,6 +25,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
 
 import { colors } from '@/constants/colors';
+import { buildDirectionsDetailsText, buildEventLocationText, normalizeBaseUrl } from '@/lib/navigationLinks';
 import { supabase } from '@/lib/supabase';
 import { useLayoutStore } from '@/store/layoutStore';
 import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
@@ -763,7 +764,9 @@ export function AdminNotificationEditorScreen({ viewerMode = 'admin' }: { viewer
 
       const origin =
         Platform.OS === 'web' && typeof window !== 'undefined' ? String(window.location.origin) : '';
-      const baseUrl = origin && !origin.includes('localhost') && !origin.includes('127.0.0.1') ? origin : undefined;
+      const configuredBaseUrl = normalizeBaseUrl(process.env.EXPO_PUBLIC_SITE_BASE_URL);
+      const baseUrl =
+        origin && !origin.includes('localhost') && !origin.includes('127.0.0.1') ? normalizeBaseUrl(origin) : configuredBaseUrl || undefined;
 
       const { data, error } = await supabase.functions.invoke('send-invitation-sms', {
         headers: { Authorization: `Bearer ${accessToken}` },
@@ -808,7 +811,9 @@ export function AdminNotificationEditorScreen({ viewerMode = 'admin' }: { viewer
     const rawEventDate = (eventMeta as any)?.date ? new Date((eventMeta as any).date) : null;
     const eventDateText = rawEventDate && Number.isFinite(rawEventDate.getTime()) ? formatDmySlashes(rawEventDate) : '—';
     const loc = String((eventMeta as any)?.location ?? '').trim();
-    const eventLocationText = loc || '—';
+    const city = String((eventMeta as any)?.city ?? '').trim();
+    const eventLocationText = buildEventLocationText(loc, city) || '—';
+    const previewDirectionsText = buildDirectionsDetailsText('https://moon-events.co.il', 'demo123');
 
     const vars: Record<string, string> = {
       '{name}': 'אורח/ת',
@@ -817,10 +822,14 @@ export function AdminNotificationEditorScreen({ viewerMode = 'admin' }: { viewer
       '{שם_אירוע}': eventTitle,
       '{תאריך}': eventDateText,
       '{מיקום}': eventLocationText,
+      '{פרטי הגעה}': previewDirectionsText,
+      '{פרטי_הגעה}': previewDirectionsText,
       '{{שם_פרטי}}': 'אורח/ת',
       '{{שם_אירוע}}': eventTitle,
       '{{תאריך}}': eventDateText,
       '{{מיקום}}': eventLocationText,
+      '{{פרטי הגעה}}': previewDirectionsText,
+      '{{פרטי_הגעה}}': previewDirectionsText,
     };
     if (groomName) {
       vars['{שם_חתן}'] = groomName;
@@ -1314,6 +1323,15 @@ export function AdminNotificationEditorScreen({ viewerMode = 'admin' }: { viewer
                     >
                       <Ionicons name="person-add-outline" size={18} color={ui.sub} />
                     </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.toolBtn, { backgroundColor: ui.surfaceMuted, borderColor: 'rgba(17,24,39,0.06)' }]}
+                      activeOpacity={0.92}
+                      onPress={() => setEditedMessage((prev) => `${prev}${prev ? ' ' : ''}{פרטי הגעה}`)}
+                      accessibilityRole="button"
+                      accessibilityLabel="הוסף פרטי הגעה"
+                    >
+                      <Ionicons name="navigate-outline" size={18} color={ui.sub} />
+                    </TouchableOpacity>
                   </View>
                 </View>
 
@@ -1360,7 +1378,7 @@ export function AdminNotificationEditorScreen({ viewerMode = 'admin' }: { viewer
 
                   <Text style={[styles.helperText, { color: ui.sub }]}>
                     משתנים שימושיים: <Text style={styles.mono}>{'{name}'}</Text> · <Text style={styles.mono}>{'{link}'}</Text> ·{' '}
-                    <Text style={styles.mono}>{'{event_date}'}</Text>
+                    <Text style={styles.mono}>{'{פרטי הגעה}'}</Text>
                   </Text>
 
                   <View style={styles.filtersRow}>

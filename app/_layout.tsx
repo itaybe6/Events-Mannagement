@@ -367,7 +367,7 @@ function RootLayoutNav() {
     // Don't navigate until we've finished initializing
     if (initializing || loading) return;
 
-    const isPublicInvitation = segments[0] === 'invitation' || segments[0] === 'i';
+    const isPublicInvitation = segments[0] === 'invitation' || segments[0] === 'i' || segments[0] === 'w';
     const isOnboarding = segments[0] === 'onboarding';
     const isLogin = segments[0] === 'login';
     const isIndex = segments[0] === 'index';
@@ -445,6 +445,7 @@ function RootLayoutNav() {
       <Stack.Screen name="(employee)" options={{ headerShown: false }} />
       <Stack.Screen name="invitation/[token]" options={{ headerShown: false }} />
       <Stack.Screen name="i/[token]" options={{ headerShown: false }} />
+      <Stack.Screen name="w/[token]" options={{ headerShown: false }} />
       <Stack.Screen name="modal" options={{ presentation: "modal" }} />
       
       <Stack.Screen name="seating/templates" options={{ headerShown: false }} />

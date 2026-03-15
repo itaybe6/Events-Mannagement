@@ -3305,7 +3305,7 @@ export default function AdminEventsWebScreen() {
           </View>
 
           <View style={[dashboardStyles.dashboardSideColumn, isCompactDesktop ? dashboardStyles.dashboardSideColumnCompact : null]}>
-            <View style={dashboardStyles.sectionCard}>
+            <View style={[dashboardStyles.sectionCard, isCompactDesktop ? dashboardStyles.dashboardSideSectionCardCompact : null]}>
               <View style={dashboardStyles.sectionHeader}>
                 <View style={dashboardStyles.sectionHeaderTextWrap}>
                   <Text style={dashboardStyles.sectionEyebrow}>לקוחות אחרונים</Text>
@@ -3362,7 +3362,7 @@ export default function AdminEventsWebScreen() {
               )}
             </View>
 
-            <View style={dashboardStyles.sectionCard}>
+            <View style={[dashboardStyles.sectionCard, isCompactDesktop ? dashboardStyles.dashboardSideSectionCardCompact : null]}>
               <View style={dashboardStyles.sectionHeader}>
                 <View style={dashboardStyles.sectionHeaderTextWrap}>
                   <Text style={dashboardStyles.sectionEyebrow}>סטטיסטיקות</Text>
@@ -4151,7 +4151,13 @@ const dashboardStyles = StyleSheet.create({
     width: '100%',
     flexDirection: 'row',
     flexWrap: 'wrap',
+    alignItems: 'stretch',
+    alignContent: 'stretch',
     gap: 14,
+  },
+  dashboardSideSectionCardCompact: {
+    flex: 1,
+    minWidth: 280,
   },
   sectionCard: {
     backgroundColor: 'rgba(255,255,255,0.98)',
@@ -4478,9 +4484,12 @@ const dashboardStyles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 10,
+    width: '100%',
   },
   quickStatCard: {
-    width: '48%',
+    flexGrow: 1,
+    flexBasis: '48%',
+    minWidth: 120,
     paddingVertical: 14,
     paddingHorizontal: 12,
     borderRadius: 16,
