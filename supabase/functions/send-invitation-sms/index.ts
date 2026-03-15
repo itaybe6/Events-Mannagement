@@ -86,6 +86,17 @@ function getBaseUrl(req: Request, fromBody?: string) {
   return "";
 }
 
+function getOriginFromUrl(raw: unknown) {
+  const value = String(raw ?? "").trim().replace(/\/+$/, "");
+  if (!value) return "";
+  try {
+    return new URL(value).origin;
+  } catch {
+    const match = value.match(/^(https?:\/\/[^/]+)/i);
+    return match?.[1] ?? "";
+  }
+}
+
 function buildDirectionsShortLink(baseUrl: string, token: string) {
   const base = String(baseUrl ?? "").trim().replace(/\/+$/, "");
   const cleanToken = String(token ?? "").trim();
@@ -110,6 +121,7 @@ function fillTemplate(template: string, vars: Record<string, string>) {
     const v = String(vRaw ?? "");
     out = out.split(`{${k}}`).join(v);
     out = out.split(`{{${k}}}`).join(v);
+    out = out.split(`(${k})`).join(v);
   }
 
   // Robust replacement for `{{ ... }}` with possible spaces/RTL marks inside.
@@ -249,7 +261,7 @@ serve(async (req) => {
       adminClient.from("users").select("id, user_type").eq("id", userId).maybeSingle(),
       adminClient
         .from("events")
-        .select("id, user_id, title, date, location, city, groom_name, bride_name")
+        .select("id, user_id, title, date, location, city, groom_name, bride_name, rsvp_link")
         .eq("id", eventId)
         .maybeSingle(),
     ]);
@@ -277,7 +289,8 @@ serve(async (req) => {
     const { data: guests, error: guestsError } = await q;
     if (guestsError) return json({ error: guestsError.message }, { status: 500 });
 
-    const baseUrl = getBaseUrl(req, body.baseUrl);
+    const eventRsvpBase = getOriginFromUrl((eventRow as any)?.rsvp_link);
+    const baseUrl = eventRsvpBase || getBaseUrl(req, body.baseUrl);
     const needsBaseUrl = (() => {
       const t = String(messageTemplate ?? "");
       return (

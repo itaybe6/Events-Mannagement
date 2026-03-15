@@ -36,6 +36,17 @@ function normalizeBaseUrl(input?: string) {
   return raw ? raw.replace(/\/+$/, "") : "";
 }
 
+function getOriginFromUrl(raw: unknown) {
+  const value = normalizeBaseUrl(String(raw ?? ""));
+  if (!value) return "";
+  try {
+    return new URL(value).origin;
+  } catch {
+    const match = value.match(/^(https?:\/\/[^/]+)/i);
+    return match?.[1] ?? "";
+  }
+}
+
 function buildDirectionsShortLink(baseUrl: string, token: string) {
   const base = normalizeBaseUrl(baseUrl);
   const cleanToken = String(token ?? "").trim();
@@ -59,6 +70,7 @@ function fillTemplate(template: string, vars: Record<string, string>) {
     const v = String(vRaw ?? "");
     out = out.split(`{${k}}`).join(v);
     out = out.split(`{{${k}}}`).join(v);
+    out = out.split(`(${k})`).join(v);
   }
 
   out = out.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (full, inner) => {
@@ -218,7 +230,7 @@ serve(async (req) => {
 
     // SITE_BASE_URL is only required when the message actually needs `{link}`.
     // Don't hard-fail the whole scheduler if it's missing.
-    const baseUrl = normalizeBaseUrl(
+    const configuredBaseUrl = normalizeBaseUrl(
       String(Deno.env.get("SITE_BASE_URL") ?? Deno.env.get("EXPO_PUBLIC_SITE_BASE_URL") ?? "")
     );
 
@@ -297,7 +309,7 @@ serve(async (req) => {
       if (!eventRow) {
         const { data: ev, error: evErr } = await adminClient
           .from("events")
-          .select("id, title, date, location, city, groom_name, bride_name")
+          .select("id, title, date, location, city, groom_name, bride_name, rsvp_link")
           .eq("id", eventId)
           .maybeSingle();
         if (evErr || !ev) {
@@ -350,6 +362,8 @@ serve(async (req) => {
       const groomName = String(eventRow?.groom_name ?? "").trim();
       const brideName = String(eventRow?.bride_name ?? "").trim();
       const coupleNames = groomName && brideName ? `${groomName} ו${brideName}` : groomName || brideName || "";
+      const eventRsvpBase = getOriginFromUrl(eventRow?.rsvp_link);
+      const baseUrl = eventRsvpBase || configuredBaseUrl;
 
       const failures: Array<{ guestId: string; phone?: string | null; reason: string }> = [];
 
