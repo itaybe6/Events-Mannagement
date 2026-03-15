@@ -16,7 +16,6 @@ import { AdminTabBar } from "@/components/animations/shopifytabs/admin-tab-bar";
 import { EmployeeTabBar } from "@/components/animations/shopifytabs/employee-tab-bar";
 import { AdminSharedHeader } from "@/components/animations/shopifytabs/admin-shared-header";
 import { isAdminMainTabRoute } from "@/components/animations/shopifytabs/lib/constants/admin-tabs";
-import DesktopSidebar, { type DesktopNavItem } from "@/components/desktop/DesktopSidebar";
 
 export default function AdminTabsLayoutShared() {
   const router = useRouter();
@@ -24,7 +23,7 @@ export default function AdminTabsLayoutShared() {
   const globalParams = useGlobalSearchParams<{ id?: string; eventId?: string }>();
   const { isTabBarVisible, isAdminHeaderVisible, setTabBarVisible, setAdminHeaderVisible } =
     useLayoutStore();
-  const { userType, isLoggedIn, loading, logout } = useUserStore();
+  const { userType, isLoggedIn, loading } = useUserStore();
   const insets = useSafeAreaInsets();
   const headerTotalHeight = getAppHeaderTotalHeight(insets.top, APP_HEADER_HEIGHT_COMPACT);
   const adminHeaderHeight = isAdminHeaderVisible ? insets.top + 64 : 0;
@@ -32,36 +31,6 @@ export default function AdminTabsLayoutShared() {
   const isEmployeeWebShell = userType === "employee" && Platform.OS === "web";
   const currentAdminRoute = String(segments?.[1] ?? "");
   const isGuestCheckinRoute = currentAdminRoute === "admin-guest-checkin";
-  const desktopNavItems = React.useMemo<DesktopNavItem[]>(() => {
-    const items: DesktopNavItem[] = [
-      { href: "/(admin)/admin-events", label: "לוח בקרה", icon: "grid-outline" },
-      { href: "/(admin)/admin-events-list", label: "אירועים", icon: "calendar-outline" },
-    ];
-
-    if (userType !== "employee" && Platform.OS !== "web") {
-      items.unshift({ href: "/(admin)/admin-search", label: "חיפוש", icon: "search-outline" });
-    }
-
-    if (userType !== "employee") {
-      items.push({ href: "/(admin)/users", label: "משתמשים", icon: "people-outline" });
-      items.push({ href: "/(admin)/admin-profile", label: "פרופיל", icon: "person-outline" });
-    }
-
-    return items;
-  }, [userType]);
-
-  const desktopNavItemsWeb = React.useMemo<DesktopNavItem[]>(() => {
-    // On web, employees still work inside /(admin) screens (events/check-in),
-    // but should get a minimal sidebar rather than the default tab bar.
-    if (userType === "employee") {
-      return [
-        { href: "/(admin)/admin-events", label: "אירועים", icon: "calendar-outline" },
-        { href: "/(admin)/employee-profile-tab", label: "פרופיל", icon: "person-circle" },
-      ];
-    }
-    return desktopNavItems;
-  }, [desktopNavItems, userType]);
-
   const hideBackOnThisRoute =
     segments?.[0] === "(admin)" &&
     (currentAdminRoute === "admin-profile" ||
@@ -97,15 +66,6 @@ export default function AdminTabsLayoutShared() {
     goBack();
   };
 
-  const handleLogout = async () => {
-    try {
-      await logout();
-      router.replace("/login");
-    } catch (error) {
-      console.error(error);
-    }
-  };
-
   useEffect(() => {
     setTabBarVisible(true);
     setAdminHeaderVisible(true);
@@ -121,6 +81,14 @@ export default function AdminTabsLayoutShared() {
       router.replace("/(couple)");
     }
   }, [isLoggedIn, userType, loading, router]);
+
+  useEffect(() => {
+    if (Platform.OS !== "web" || userType !== "employee") return;
+
+    if (currentAdminRoute === "admin-events" || currentAdminRoute === "users") {
+      router.replace("/(admin)/admin-events-list");
+    }
+  }, [currentAdminRoute, router, userType]);
 
   const screens: React.ReactElement[] = [];
 
@@ -211,7 +179,7 @@ export default function AdminTabsLayoutShared() {
       key="admin-events"
       name="admin-events"
       options={{
-        title: "לוח בקרה",
+        title: userType === "employee" && Platform.OS === "web" ? "אירועים" : "לוח בקרה",
         ...(userType === "employee" && Platform.OS !== "web"
           ? {
               headerShown: false,
@@ -380,39 +348,7 @@ export default function AdminTabsLayoutShared() {
               if (isGuestCheckinRoute) return null;
               if (isAdminShopifyShell) return null;
               if (!isEmployeeWebShell) return null;
-
-              return (
-                <DesktopSidebar
-                  navItems={desktopNavItemsWeb}
-                  variant={userType === "admin" ? "admin" : "default"}
-                  footer={
-                    <Pressable
-                      onPress={handleLogout}
-                      accessibilityRole="button"
-                      accessibilityLabel="התנתקות"
-                      style={({ hovered, pressed }: any) => [
-                        styles.logoutBtn,
-                        userType === "admin" ? styles.logoutBtnAdmin : null,
-                        Platform.OS === "web" && hovered
-                          ? userType === "admin"
-                            ? styles.logoutBtnAdminHover
-                            : styles.logoutBtnHover
-                          : null,
-                        pressed ? styles.logoutBtnPressed : null,
-                      ]}
-                    >
-                      <Ionicons
-                        name="log-out-outline"
-                        size={18}
-                        color={userType === "admin" ? "#C45454" : colors.white}
-                      />
-                      <Text style={[styles.logoutBtnText, userType === "admin" ? styles.logoutBtnTextAdmin : null]}>
-                        התנתק
-                      </Text>
-                    </Pressable>
-                  }
-                />
-              );
+              return null;
             }
           : isAdminShopifyShell
           ? (props) => {
@@ -433,6 +369,8 @@ export default function AdminTabsLayoutShared() {
         headerShown: isAdminShopifyShell
           ? Platform.OS !== "web" &&
             !(route.name === "admin-events" || route.name === "admin-search")
+          : isEmployeeWebShell
+          ? false
           : true,
         headerStyle: {
           height: isAdminShopifyShell ? adminHeaderHeight : headerTotalHeight,
@@ -442,10 +380,14 @@ export default function AdminTabsLayoutShared() {
               : "#FFFFFF",
         },
         headerShadowVisible: false,
-        header: () =>
-          isAdminShopifyShell ? (
-            <AdminSharedHeader transparentBackground={Platform.OS !== "web" && route.name === "admin-search"} />
-          ) : (
+        header: () => {
+          if (isAdminShopifyShell) {
+            return <AdminSharedHeader transparentBackground={Platform.OS !== "web" && route.name === "admin-search"} />;
+          }
+          if (isEmployeeWebShell) {
+            return null;
+          }
+          return (
             <AppHeader
               variant="compact"
               canGoBack={navigation.canGoBack() && !hideBackOnThisRoute}
@@ -453,7 +395,8 @@ export default function AdminTabsLayoutShared() {
                 handleAdminHeaderBack(navigation.canGoBack(), () => navigation.goBack())
               }
             />
-          ),
+          );
+        },
         tabBarShowLabel: false,
         tabBarBackground:
           isAdminShopifyShell && isAdminMainTabRoute(route.name)

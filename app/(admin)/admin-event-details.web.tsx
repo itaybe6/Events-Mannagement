@@ -23,6 +23,7 @@ import AdminWebPageHeader from '@/components/desktop/AdminWebPageHeader';
 import { useAdminEventDetailsModel } from '@/features/events/useAdminEventDetailsModel';
 import { eventService } from '@/lib/services/eventService';
 import { supabase } from '@/lib/supabase';
+import { useUserStore } from '@/store/userStore';
 
 function getEventTypeLabel(rawTitle: string) {
   const raw = String(rawTitle ?? '').trim();
@@ -88,6 +89,8 @@ export default function AdminEventDetailsWebScreen() {
   const { id, eventId } = useLocalSearchParams();
   const router = useRouter();
   const { width } = useWindowDimensions();
+  const userType = useUserStore((state) => state.userType);
+  const isEmployeeWebUser = Platform.OS === 'web' && userType === 'employee';
   const resolvedEventId = useMemo(() => {
     const fromId = typeof id === 'string' ? id : Array.isArray(id) ? id[0] : '';
     const fromEventId = typeof eventId === 'string' ? eventId : Array.isArray(eventId) ? eventId[0] : '';
@@ -373,6 +376,7 @@ export default function AdminEventDetailsWebScreen() {
       accent: '#F97316',
       tint: 'rgba(249,115,22,0.14)',
       featured: true,
+      disabledForEmployee: true,
       onPress: handleEditSketch,
     },
     {
@@ -384,6 +388,7 @@ export default function AdminEventDetailsWebScreen() {
       icon: 'link-outline' as const,
       accent: '#8B5CF6',
       tint: 'rgba(139,92,246,0.14)',
+      disabledForEmployee: true,
       onPress: () => router.push(`/(admin)/admin-invitation-links?eventId=${event.id}`),
     },
     {
@@ -395,6 +400,7 @@ export default function AdminEventDetailsWebScreen() {
       icon: 'chatbubble-ellipses-outline' as const,
       accent: '#0EA5E9',
       tint: 'rgba(14,165,233,0.14)',
+      disabledForEmployee: true,
       onPress: () =>
         router.push(
           `/(admin)/admin-event-messages?eventId=${event.id}&returnTo=${encodeURIComponent(`/(admin)/admin-event-details?id=${event.id}`)}`
@@ -671,17 +677,23 @@ export default function AdminEventDetailsWebScreen() {
                     <View style={styles.workflowActionsGrid}>
                       {workflowActionRows.filter((row) => row.length).map((row) => (
                         <View key={row.map((step) => step.key).join('-')} style={styles.workflowActionsRow}>
-                          {row.map((step, index) => (
+                          {row.map((step, index) => {
+                            const isDisabled = isEmployeeWebUser && Boolean(step.disabledForEmployee);
+
+                            return (
                             <Pressable
                               key={`quick-${step.key}`}
                               accessibilityRole="button"
                               accessibilityLabel={`מעבר אל ${step.title}`}
-                              onPress={step.onPress}
+                              accessibilityState={isDisabled ? { disabled: true } : undefined}
+                              disabled={isDisabled}
+                              onPress={isDisabled ? undefined : step.onPress}
                               style={({ hovered, pressed }: any) => [
                                 styles.workflowActionItem,
                                 { width: getWorkflowActionWidth(row.length) },
-                                Platform.OS === 'web' && hovered ? styles.workflowActionItemHover : null,
-                                pressed ? { opacity: 0.94 } : null,
+                                isDisabled ? styles.workflowActionItemDisabled : null,
+                                Platform.OS === 'web' && hovered && !isDisabled ? styles.workflowActionItemHover : null,
+                                pressed && !isDisabled ? { opacity: 0.94 } : null,
                               ]}
                             >
                               <View style={styles.workflowActionContent}>
@@ -723,7 +735,8 @@ export default function AdminEventDetailsWebScreen() {
                                 </View>
                               </View>
                             </Pressable>
-                          ))}
+                            );
+                          })}
                         </View>
                       ))}
                     </View>
@@ -2352,6 +2365,11 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(15,69,230,0.12)',
     shadowOpacity: 0.08,
     shadowRadius: 16,
+  },
+  workflowActionItemDisabled: {
+    opacity: 0.58,
+    shadowOpacity: 0,
+    ...(Platform.OS === 'web' ? ({ cursor: 'default' } as any) : null),
   },
   workflowActionContent: {
     flex: 1,

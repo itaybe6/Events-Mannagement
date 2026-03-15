@@ -4,12 +4,18 @@ import { Pressable, Platform, StyleSheet, Text, View } from 'react-native';
 import { usePathname, useRouter } from 'expo-router';
 
 import { colors } from '@/constants/colors';
+import { useUserStore } from '@/store/userStore';
 
 const NAV_ITEMS = [
   { href: '/(admin)/admin-events', label: 'לוח בקרה', icon: 'speedometer-outline' },
   { href: '/(admin)/admin-events-list', label: 'אירועים', icon: 'calendar-outline' },
   { href: '/(admin)/users', label: 'משתמשים', icon: 'people-outline' },
   { href: '/(admin)/admin-profile', label: 'פרופיל', icon: 'person-outline' },
+] as const;
+
+const EMPLOYEE_WEB_NAV_ITEMS = [
+  { href: '/(admin)/admin-events-list', label: 'אירועים', icon: 'calendar-outline' },
+  { href: '/(admin)/employee-profile-tab', label: 'פרופיל', icon: 'person-outline' },
 ] as const;
 
 function normalizeHref(path: string) {
@@ -23,11 +29,13 @@ type Props = {
 export default function AdminWebTopNav({ inset = false }: Props) {
   const pathname = usePathname();
   const router = useRouter();
+  const userType = useUserStore((state) => state.userType);
   const normalizedPathname = normalizeHref(pathname || '/');
+  const navItems = userType === 'employee' ? EMPLOYEE_WEB_NAV_ITEMS : NAV_ITEMS;
 
   return (
     <View style={[styles.row, inset ? styles.rowInset : null]}>
-      {NAV_ITEMS.map((item) => {
+      {navItems.map((item) => {
         const normalizedHref = normalizeHref(item.href);
         const active =
           normalizedPathname === normalizedHref || normalizedPathname.startsWith(normalizedHref + '/');

@@ -28,6 +28,7 @@ import { useEventsListModel } from '@/features/events/useEventsListModel';
 import AdminEventsScreen from './admin-events';
 import AdminWebPageHeader from '@/components/desktop/AdminWebPageHeader';
 import { userService, type UserWithMetadata } from '@/lib/services/userService';
+import { useUserStore } from '@/store/userStore';
 
 const HERO_IMAGES = {
   baby: require('../../assets/images/baby.jpg'),
@@ -223,6 +224,8 @@ export function AdminEventsListWebScreen() {
   }
 
   const router = useRouter();
+  const userType = useUserStore((state) => state.userType);
+  const isEmployeeWebUser = Platform.OS === 'web' && userType === 'employee';
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [datePickerMode, setDatePickerMode] = useState<'exact' | 'start' | 'end'>('exact');
@@ -455,11 +458,13 @@ export function AdminEventsListWebScreen() {
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="הוסף אירוע חדש"
-                onPress={() => router.push('/(admin)/admin-events-create')}
+                disabled={isEmployeeWebUser}
+                onPress={isEmployeeWebUser ? undefined : () => router.push('/(admin)/admin-events-create')}
                 style={({ hovered, pressed }: any) => [
                   styles.createEventBtn,
-                  Platform.OS === 'web' && hovered ? styles.createEventBtnHover : null,
-                  pressed ? styles.createEventBtnPressed : null,
+                  isEmployeeWebUser ? styles.createEventBtnDisabled : null,
+                  Platform.OS === 'web' && hovered && !isEmployeeWebUser ? styles.createEventBtnHover : null,
+                  pressed && !isEmployeeWebUser ? styles.createEventBtnPressed : null,
                 ]}
               >
                 <Ionicons name="add" size={18} color={colors.white} />
@@ -769,11 +774,13 @@ export function AdminEventsListWebScreen() {
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="הוסף אירוע חדש"
-                onPress={() => router.push('/(admin)/admin-events-create')}
+                disabled={isEmployeeWebUser}
+                onPress={isEmployeeWebUser ? undefined : () => router.push('/(admin)/admin-events-create')}
                 style={({ hovered, pressed }: any) => [
                   styles.emptyCreateBtn,
-                  Platform.OS === 'web' && hovered ? styles.createEventBtnHover : null,
-                  pressed ? styles.createEventBtnPressed : null,
+                  isEmployeeWebUser ? styles.createEventBtnDisabled : null,
+                  Platform.OS === 'web' && hovered && !isEmployeeWebUser ? styles.createEventBtnHover : null,
+                  pressed && !isEmployeeWebUser ? styles.createEventBtnPressed : null,
                 ]}
               >
                 <Text style={styles.emptyCreateBtnText}>הוסף אירוע</Text>
@@ -1056,7 +1063,13 @@ export function AdminEventsListWebScreen() {
 const styles = StyleSheet.create({
   page: {
     flex: 1,
-    backgroundColor: '#f6f7f9',
+    backgroundColor: '#F7FAFF',
+    ...(Platform.OS === 'web'
+      ? ({
+          backgroundImage:
+            'radial-gradient(circle at top right, rgba(25,93,230,0.14), rgba(25,93,230,0) 40%), radial-gradient(circle at top left, rgba(232,241,255,0.95), rgba(232,241,255,0) 34%), radial-gradient(circle at bottom left, rgba(242,224,186,0.34), rgba(242,224,186,0) 32%), radial-gradient(circle at bottom center, rgba(240,203,70,0.12), rgba(240,203,70,0) 26%)',
+        } as any)
+      : null),
   },
   pageScrollContent: {
     paddingBottom: 32,
@@ -1206,6 +1219,11 @@ const styles = StyleSheet.create({
   },
   createEventBtnHover: {
     backgroundColor: '#1D4ED8',
+  },
+  createEventBtnDisabled: {
+    backgroundColor: '#A9B6D3',
+    shadowOpacity: 0,
+    opacity: 0.7,
   },
   createEventBtnPressed: {
     opacity: 0.92,

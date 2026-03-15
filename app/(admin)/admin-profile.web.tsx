@@ -38,11 +38,17 @@ const ui = {
   danger: '#E11D48',
 };
 
-export default function AdminProfileWebScreen() {
+type WebProfileMode = 'admin' | 'employee';
+
+type DesktopAccountProfileWebProps = {
+  mode?: WebProfileMode;
+};
+
+export function DesktopAccountProfileWeb({ mode = 'admin' }: DesktopAccountProfileWebProps) {
   const router = useRouter();
   const { width } = useWindowDimensions();
 
-  if (width < 900) {
+  if (width < 900 && mode === 'admin') {
     return <AdminProfileScreen />;
   }
 
@@ -76,9 +82,9 @@ export default function AdminProfileWebScreen() {
   const avatarUri = useMemo(() => {
     const direct = String(userData?.avatar_url ?? '').trim();
     if (direct) return direct;
-    const seed = encodeURIComponent(userData?.email ?? 'admin');
+    const seed = encodeURIComponent(userData?.email ?? mode);
     return `https://i.pravatar.cc/256?u=${seed}`;
-  }, [userData?.avatar_url, userData?.email]);
+  }, [mode, userData?.avatar_url, userData?.email]);
 
   const handleSave = async (section: 'details' | 'security') => {
     if (!userData) return;
@@ -198,13 +204,14 @@ export default function AdminProfileWebScreen() {
     );
   }
 
-  const userName = String(userData.name || 'אדמין');
+  const isEmployeeMode = mode === 'employee';
+  const userName = String(userData.name || (isEmployeeMode ? 'עובד' : 'אדמין'));
 
   return (
     <View style={styles.page}>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.container}>
-          <AdminWebPageHeader eyebrow="חשבון מנהל" title="פרופיל מנהל" />
+          <AdminWebPageHeader eyebrow={isEmployeeMode ? 'חשבון עובד' : 'חשבון מנהל'} title={isEmployeeMode ? 'פרופיל עובד' : 'פרופיל מנהל'} />
 
           {/* HERO */}
           <View
@@ -236,7 +243,7 @@ export default function AdminProfileWebScreen() {
                     </Text>
                     <View style={styles.rolePill}>
                       <Ionicons name="checkmark-circle" size={16} color={ui.gold} />
-                      <Text style={styles.rolePillText}>מנהל מערכת</Text>
+                      <Text style={styles.rolePillText}>{isEmployeeMode ? 'עובד מערכת' : 'מנהל מערכת'}</Text>
                     </View>
                   </View>
                 </View>
@@ -477,6 +484,10 @@ export default function AdminProfileWebScreen() {
       </ScrollView>
     </View>
   );
+}
+
+export default function AdminProfileWebScreen() {
+  return <DesktopAccountProfileWeb mode="admin" />;
 }
 
 const styles = StyleSheet.create({
