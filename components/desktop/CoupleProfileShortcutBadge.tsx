@@ -4,6 +4,7 @@ import { Image } from 'expo-image';
 import { usePathname, useRouter } from 'expo-router';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { EventSwitcher } from '@/components/EventSwitcher';
 import { colors } from '@/constants/colors';
 import { useUserStore } from '@/store/userStore';
 
@@ -18,7 +19,13 @@ function initialsLabel(name: string) {
   return (a + b).toUpperCase() || 'U';
 }
 
-export default function CoupleProfileShortcutBadge() {
+type Props = {
+  userId?: string;
+  selectedEventId?: string | null;
+  onSelectEventId: (eventId: string) => void;
+};
+
+export default function CoupleProfileShortcutBadge({ userId, selectedEventId, onSelectEventId }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const userData = useUserStore((state) => state.userData);
@@ -26,6 +33,8 @@ export default function CoupleProfileShortcutBadge() {
   const wrapperRef = useRef<any>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [hasMultipleEvents, setHasMultipleEvents] = useState(false);
+  const [eventDialogOpen, setEventDialogOpen] = useState(false);
 
   const userName = String(userData?.name || '').trim() || 'בעל אירוע';
   const userInitials = initialsLabel(userName);
@@ -134,6 +143,31 @@ export default function CoupleProfileShortcutBadge() {
               </View>
             </Pressable>
 
+            {hasMultipleEvents ? (
+              <>
+                <View style={styles.menuDivider} />
+
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="בחירת אירוע"
+                  onPress={() => {
+                    setMenuOpen(false);
+                    setEventDialogOpen(true);
+                  }}
+                  style={({ hovered, pressed }: any) => [
+                    styles.menuItem,
+                    Platform.OS === 'web' && hovered ? styles.menuItemHover : null,
+                    pressed ? styles.actionPressed : null,
+                  ]}
+                >
+                  <View style={styles.menuItemContent}>
+                    <Ionicons name="calendar-outline" size={18} color={colors.text} />
+                    <Text style={styles.menuText}>בחר אירוע</Text>
+                  </View>
+                </Pressable>
+              </>
+            ) : null}
+
             <View style={styles.menuDivider} />
 
             <Pressable
@@ -162,6 +196,16 @@ export default function CoupleProfileShortcutBadge() {
           </View>
         </View>
       ) : null}
+
+      <EventSwitcher
+        userId={userId}
+        selectedEventId={selectedEventId}
+        onSelectEventId={onSelectEventId}
+        onHasMultipleChange={setHasMultipleEvents}
+        triggerMode="none"
+        open={eventDialogOpen}
+        onOpenChange={setEventDialogOpen}
+      />
     </View>
   );
 }
@@ -169,7 +213,7 @@ export default function CoupleProfileShortcutBadge() {
 const styles = StyleSheet.create({
   wrapper: {
     position: 'relative',
-    zIndex: 40,
+    zIndex: 1000,
   },
   profileBadge: {
     flexDirection: 'row',
@@ -240,7 +284,7 @@ const styles = StyleSheet.create({
     left: '50%',
     paddingHorizontal: 12,
     transform: [{ translateX: -110 }],
-    zIndex: 60,
+    zIndex: 1100,
   },
   menu: {
     minWidth: 220,
@@ -250,6 +294,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.1)',
     alignItems: 'stretch',
+    zIndex: 1200,
     ...(Platform.OS === 'web'
       ? ({
           boxShadow: '0 18px 40px rgba(15,23,42,0.14)',

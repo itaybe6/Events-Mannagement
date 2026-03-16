@@ -56,6 +56,17 @@ type SmsRunSummary = {
 const normalizeMessage = (s: string) => String(s || '').replace(/\r\n/g, '\n').trim();
 
 type EventKind = 'wedding' | 'brit' | 'barMitzvah' | 'generic';
+const EVENT_TYPE_PREFIXES = ['חתונה', 'בר מצווה', 'בת מצווה', 'ברית', 'בריתה', 'אירוע חברה'] as const;
+
+function getEventDisplayTitle(rawTitle: string) {
+  const raw = String(rawTitle ?? '').trim();
+  if (!raw) return 'האירוע';
+  for (const eventType of EVENT_TYPE_PREFIXES) {
+    const withoutPrefix = raw.replace(new RegExp(`^${eventType}\\s*[–—-]\\s*`), '').trim();
+    if (withoutPrefix !== raw) return withoutPrefix || raw;
+  }
+  return raw;
+}
 
 function detectEventKind(event: any): EventKind {
   const title = String(event?.title ?? '').toLowerCase();
@@ -807,7 +818,7 @@ export function AdminNotificationEditorScreen({ viewerMode = 'admin' }: { viewer
   }, [brideName, groomName]);
   const previewVars = useMemo(() => {
     const rawTitle = String((eventMeta as any)?.title ?? '').trim();
-    const eventTitle = rawTitle || 'האירוע';
+    const eventTitle = getEventDisplayTitle(rawTitle);
     const rawEventDate = (eventMeta as any)?.date ? new Date((eventMeta as any).date) : null;
     const eventDateText = rawEventDate && Number.isFinite(rawEventDate.getTime()) ? formatDmySlashes(rawEventDate) : '—';
     const loc = String((eventMeta as any)?.location ?? '').trim();

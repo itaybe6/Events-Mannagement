@@ -126,6 +126,15 @@ function getEventSubtitle(e: Event) {
   return [e.city, e.location].filter(Boolean).join(' · ');
 }
 
+function getEventDisplayTitle(rawTitle: string) {
+  const title = String(rawTitle || '').trim();
+  if (!title) return '';
+  const eventType = inferEventType(title);
+  if (!eventType) return title;
+  const withoutTypePrefix = title.replace(new RegExp(`^${eventType}\\s*[–—-]\\s*`), '').trim();
+  return withoutTypePrefix || title;
+}
+
 function initialsLabel(name: string) {
   const parts = String(name || '')
     .trim()
@@ -796,6 +805,7 @@ export function AdminEventsListWebScreen() {
                 const guestStats = guestStatsByEventId[String(e.id)] || null;
                 const coverSource: any = invitationImageUrl ? { uri: invitationImageUrl } : getHeroImageSource(e.title);
                 const eventType = inferEventType(e.title) || 'חתונה';
+                const eventDisplayTitle = getEventDisplayTitle(e.title);
                 const typeMeta = EVENT_TYPE_META[eventType as keyof typeof EVENT_TYPE_META] ?? EVENT_TYPE_META['חתונה'];
                 const statusToneStyle =
                   status.tone === 'active'
@@ -816,7 +826,7 @@ export function AdminEventsListWebScreen() {
                   <Pressable
                     key={e.id}
                     accessibilityRole="button"
-                    accessibilityLabel={`פתיחת אירוע ${e.title}`}
+                    accessibilityLabel={`פתיחת אירוע ${eventDisplayTitle || e.title}`}
                     onPress={() => router.push({ pathname: '/(admin)/admin-event-details', params: { id: e.id } })}
                     style={({ hovered, pressed }: any) => [
                       styles.eventOverviewCard,
@@ -842,18 +852,18 @@ export function AdminEventsListWebScreen() {
                         </View>
                       </View>
 
-                      <View style={styles.eventOverviewTypePill}>
-                        <View style={[styles.eventOverviewTypeInner, { backgroundColor: typeMeta.background, borderColor: typeMeta.border }]}>
-                          <Text style={[styles.eventOverviewTypeText, { color: typeMeta.text }]}>{eventType}</Text>
-                        </View>
-                      </View>
                     </View>
 
                     <View style={styles.eventOverviewBody}>
                       <View style={styles.eventOverviewHeader}>
                         <Text style={styles.eventOverviewTitle} numberOfLines={1}>
-                          {e.title}
+                          {eventDisplayTitle || e.title}
                         </Text>
+                        <View style={styles.eventOverviewTypeInlineRow}>
+                          <View style={[styles.eventOverviewTypeInner, { backgroundColor: typeMeta.background, borderColor: typeMeta.border }]}>
+                            <Text style={[styles.eventOverviewTypeText, { color: typeMeta.text }]}>{eventType}</Text>
+                          </View>
+                        </View>
                         <Text style={styles.eventOverviewSubtitle} numberOfLines={1}>
                           {subtitle}
                         </Text>
@@ -1717,11 +1727,6 @@ const styles = StyleSheet.create({
     color: colors.white,
     textAlign: 'center',
   },
-  eventOverviewTypePill: {
-    position: 'absolute',
-    right: 14,
-    bottom: 14,
-  },
   eventOverviewTypeInner: {
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -1744,6 +1749,12 @@ const styles = StyleSheet.create({
   eventOverviewHeader: {
     gap: 4,
     alignItems: 'stretch',
+  },
+  eventOverviewTypeInlineRow: {
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+    alignItems: 'flex-end',
   },
   eventOverviewTitle: {
     fontSize: 17,

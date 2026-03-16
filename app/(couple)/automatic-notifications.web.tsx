@@ -59,6 +59,17 @@ type SmsRunSummary = {
 const normalizeMessage = (s: string) => String(s || '').replace(/\r\n/g, '\n').trim();
 
 type EventKind = 'wedding' | 'brit' | 'barMitzvah' | 'generic';
+const EVENT_TYPE_PREFIXES = ['חתונה', 'בר מצווה', 'בת מצווה', 'ברית', 'בריתה', 'אירוע חברה'] as const;
+
+function getEventDisplayTitle(rawTitle: string) {
+  const raw = String(rawTitle ?? '').trim();
+  if (!raw) return 'האירוע שלך';
+  for (const eventType of EVENT_TYPE_PREFIXES) {
+    const withoutPrefix = raw.replace(new RegExp(`^${eventType}\\s*[–—-]\\s*`), '').trim();
+    if (withoutPrefix !== raw) return withoutPrefix || raw;
+  }
+  return raw;
+}
 
 function detectEventKind(event: Event | null): EventKind {
   const title = String((event as any)?.title ?? '').toLowerCase();
@@ -5444,7 +5455,7 @@ export default function AutomaticNotificationsWebScreen() {
 function subtitleFromEvent(event: Event | null) {
   if (!event) return 'האירוע שלך';
   const title = String((event as any)?.title || '').trim();
-  return title || 'האירוע שלך';
+  return getEventDisplayTitle(title);
 }
 
 const styles = StyleSheet.create({

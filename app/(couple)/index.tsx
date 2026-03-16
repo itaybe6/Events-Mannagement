@@ -559,6 +559,7 @@ export default function HomeScreen() {
               selectedEventId={resolvedEventId}
               onSelectEventId={handleSelectEventId}
               label="אירוע פעיל"
+              pillVariant="soft"
               onHasMultipleChange={setHasMultipleEvents}
             />
           </View>

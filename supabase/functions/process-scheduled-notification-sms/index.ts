@@ -90,6 +90,18 @@ function fillTemplate(template: string, vars: Record<string, string>) {
   return out;
 }
 
+const EVENT_TYPE_PREFIXES = ["חתונה", "בר מצווה", "בת מצווה", "ברית", "בריתה", "אירוע חברה"] as const;
+
+function getEventDisplayTitle(rawTitle: unknown) {
+  const raw = String(rawTitle ?? "").trim();
+  if (!raw) return "";
+  for (const eventType of EVENT_TYPE_PREFIXES) {
+    const withoutPrefix = raw.replace(new RegExp(`^${eventType}\\s*[–—-]\\s*`), "").trim();
+    if (withoutPrefix !== raw) return withoutPrefix || raw;
+  }
+  return raw;
+}
+
 function normalizePhone(
   raw: unknown,
 ): { ok: true; value: string } | { ok: false; value: string } {
@@ -348,7 +360,7 @@ serve(async (req) => {
         continue;
       }
 
-      const eventTitle = String(eventRow?.title ?? "").trim();
+      const eventTitle = getEventDisplayTitle(eventRow?.title);
       const eventDateRaw = eventRow?.date;
       const eventDate = eventDateRaw ? new Date(eventDateRaw) : new Date("invalid");
       const eventDateText = Number.isFinite(eventDate.getTime())

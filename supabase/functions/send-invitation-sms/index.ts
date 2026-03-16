@@ -139,6 +139,18 @@ function fillTemplate(template: string, vars: Record<string, string>) {
   return out;
 }
 
+const EVENT_TYPE_PREFIXES = ["חתונה", "בר מצווה", "בת מצווה", "ברית", "בריתה", "אירוע חברה"] as const;
+
+function getEventDisplayTitle(rawTitle: unknown) {
+  const raw = String(rawTitle ?? "").trim();
+  if (!raw) return "";
+  for (const eventType of EVENT_TYPE_PREFIXES) {
+    const withoutPrefix = raw.replace(new RegExp(`^${eventType}\\s*[–—-]\\s*`), "").trim();
+    if (withoutPrefix !== raw) return withoutPrefix || raw;
+  }
+  return raw;
+}
+
 function normalizePhone(raw: unknown): { ok: true; value: string } | { ok: false; value: string } {
   const s = String(raw ?? "").trim();
   const cleaned = s.replace(/[^\d+]/g, "");
@@ -306,7 +318,7 @@ serve(async (req) => {
       return json({ error: "Missing baseUrl (pass from client or set SITE_BASE_URL secret)" }, { status: 400 });
     }
 
-    const eventTitle = String((eventRow as any)?.title ?? "").trim();
+    const eventTitle = getEventDisplayTitle((eventRow as any)?.title);
     const eventDateRaw = (eventRow as any)?.date;
     const eventDate = eventDateRaw ? new Date(eventDateRaw) : new Date("invalid");
     const eventDateText = Number.isFinite(eventDate.getTime())

@@ -1,7 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Slot, useGlobalSearchParams, usePathname, useRouter } from 'expo-router';
 import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { EventSwitcher } from '@/components/EventSwitcher';
 import { useUserStore } from '@/store/userStore';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import { colors } from '@/constants/colors';
@@ -9,6 +8,7 @@ import { eventService } from '@/lib/services/eventService';
 import AdminWebPageHeader from '@/components/desktop/AdminWebPageHeader';
 import CoupleWebTopNav from '@/components/desktop/CoupleWebTopNav';
 import CoupleProfileShortcutBadge from '@/components/desktop/CoupleProfileShortcutBadge';
+import { inferEventType } from '@/features/events/eventsConstants';
 
 function getWebPathname() {
   if (Platform.OS === 'web' && typeof (globalThis as any)?.location?.pathname === 'string') {
@@ -30,7 +30,6 @@ export default function CoupleWebLayout() {
   const activeUserId = useEventSelectionStore((s) => s.activeUserId);
   const activeEventId = useEventSelectionStore((s) => s.activeEventId);
   const setActiveEvent = useEventSelectionStore((s) => s.setActiveEvent);
-  const [hasMultipleEvents, setHasMultipleEvents] = useState(false);
   const [eventMeta, setEventMeta] = useState<any>(null);
 
   useEffect(() => {
@@ -76,10 +75,6 @@ export default function CoupleWebLayout() {
     });
   };
 
-  const handleHasMultipleChange = useCallback((value: boolean) => {
-    setHasMultipleEvents(value);
-  }, []);
-
   useEffect(() => {
     let active = true;
 
@@ -110,12 +105,24 @@ export default function CoupleWebLayout() {
   }, [pathname]);
 
   const headerTitle = useMemo(() => {
+    const title = String((eventMeta as any)?.title || '').trim();
+    const inferredType = inferEventType(title);
+    if (title) {
+      if (inferredType) {
+        const withoutTypePrefix = title.replace(new RegExp(`^${inferredType}\\s*[–—-]\\s*`), '').trim();
+        if (withoutTypePrefix) return withoutTypePrefix;
+      }
+      return title;
+    }
     const groom = String((eventMeta as any)?.groomName || (eventMeta as any)?.groom_name || '').trim();
     const bride = String((eventMeta as any)?.brideName || (eventMeta as any)?.bride_name || '').trim();
     if (groom && bride) return `${groom} ו${bride}`;
-    const title = String((eventMeta as any)?.title || '').trim();
-    if (title) return title;
     return 'ניהול האירוע';
+  }, [eventMeta]);
+
+  const eventTypeLabel = useMemo(() => {
+    const title = String((eventMeta as any)?.title || '').trim();
+    return inferEventType(title) || '';
   }, [eventMeta]);
 
   const eventDateLabel = useMemo(() => {
@@ -167,6 +174,11 @@ export default function CoupleWebLayout() {
                 title={headerTitle}
                 titleMeta={
                   <View style={styles.headerMetaRow}>
+                    {eventTypeLabel ? (
+                      <View style={styles.headerMetaChip}>
+                        <Text style={styles.headerMetaText}>{eventTypeLabel}</Text>
+                      </View>
+                    ) : null}
                     {eventDateLabel ? (
                       <View style={styles.headerMetaChip}>
                         <Text style={styles.headerMetaText}>{eventDateLabel}</Text>
@@ -177,15 +189,6 @@ export default function CoupleWebLayout() {
                         <Text style={styles.headerMetaText}>{eventLocationLabel}</Text>
                       </View>
                     ) : null}
-                    <View style={[styles.headerEventSwitcherWrap, !hasMultipleEvents ? styles.headerEventSwitcherWrapHidden : null]}>
-                      <EventSwitcher
-                        userId={userData?.id}
-                        selectedEventId={resolvedEventId}
-                        onSelectEventId={handleSelectEventId}
-                        label="אירוע פעיל"
-                        onHasMultipleChange={handleHasMultipleChange}
-                      />
-                    </View>
                   </View>
                 }
                 hideSubtitleDivider
@@ -202,7 +205,13 @@ export default function CoupleWebLayout() {
                 }
                 showNav={false}
                 useDefaultActions={false}
-                actions={<CoupleProfileShortcutBadge />}
+                actions={
+                  <CoupleProfileShortcutBadge
+                    userId={userData?.id}
+                    selectedEventId={resolvedEventId}
+                    onSelectEventId={handleSelectEventId}
+                  />
+                }
               />
             </View>
 
@@ -218,6 +227,11 @@ export default function CoupleWebLayout() {
                 title={headerTitle}
                 titleMeta={
                   <View style={styles.headerMetaRow}>
+                    {eventTypeLabel ? (
+                      <View style={styles.headerMetaChip}>
+                        <Text style={styles.headerMetaText}>{eventTypeLabel}</Text>
+                      </View>
+                    ) : null}
                     {eventDateLabel ? (
                       <View style={styles.headerMetaChip}>
                         <Text style={styles.headerMetaText}>{eventDateLabel}</Text>
@@ -228,15 +242,6 @@ export default function CoupleWebLayout() {
                         <Text style={styles.headerMetaText}>{eventLocationLabel}</Text>
                       </View>
                     ) : null}
-                    <View style={[styles.headerEventSwitcherWrap, !hasMultipleEvents ? styles.headerEventSwitcherWrapHidden : null]}>
-                      <EventSwitcher
-                        userId={userData?.id}
-                        selectedEventId={resolvedEventId}
-                        onSelectEventId={handleSelectEventId}
-                        label="אירוע פעיל"
-                        onHasMultipleChange={handleHasMultipleChange}
-                      />
-                    </View>
                   </View>
                 }
                 hideSubtitleDivider
@@ -253,7 +258,13 @@ export default function CoupleWebLayout() {
                 }
                 showNav={false}
                 useDefaultActions={false}
-                actions={<CoupleProfileShortcutBadge />}
+                actions={
+                  <CoupleProfileShortcutBadge
+                    userId={userData?.id}
+                    selectedEventId={resolvedEventId}
+                    onSelectEventId={handleSelectEventId}
+                  />
+                }
               />
             </View>
 
@@ -329,11 +340,15 @@ const styles = StyleSheet.create({
   pageScrollSlot: {
     minWidth: 0,
     marginTop: -4,
+    position: 'relative',
+    zIndex: 1,
   },
   headerWrap: {
     paddingHorizontal: 24,
     paddingTop: 24,
     paddingBottom: 8,
+    position: 'relative',
+    zIndex: 50,
   },
   headerContent: {
     gap: 16,
@@ -359,13 +374,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.gray[600],
     textAlign: 'right',
-  },
-  headerEventSwitcherWrap: {
-    minWidth: 280,
-    flexGrow: 1,
-  },
-  headerEventSwitcherWrapHidden: {
-    display: 'none',
   },
   headerNavWrap: {
     minHeight: 42,
@@ -393,6 +401,8 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     overflow: 'visible',
+    position: 'relative',
+    zIndex: 1,
   },
   contentForSeating: {
     overflow: 'visible',

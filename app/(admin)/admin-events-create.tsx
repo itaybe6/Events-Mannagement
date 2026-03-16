@@ -5,6 +5,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { colors } from '@/constants/colors';
 import { userService } from '@/lib/services/userService';
 import { eventService } from '@/lib/services/eventService';
+import { googlePlacesService, type GooglePlacePrediction } from '@/lib/services/googlePlacesService';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import BackSwipe from '@/components/BackSwipe';
@@ -33,12 +34,18 @@ export default function AdminEventsCreateScreen() {
   const { userId } = useLocalSearchParams<{ userId?: string }>();
   const [coupleOptions, setCoupleOptions] = useState<{id: string, name: string, email: string, avatar_url?: string}[]>([]);
   const [addForm, setAddForm] = useState({ user_id: '', title: '', date: '', location: '', city: '' });
+  const [locationSuggestions, setLocationSuggestions] = useState<GooglePlacePrediction[]>([]);
+  const [locationSuggestionsVisible, setLocationSuggestionsVisible] = useState(false);
+  const [locationSearchLoading, setLocationSearchLoading] = useState(false);
+  const [locationSearchError, setLocationSearchError] = useState('');
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showUserModal, setShowUserModal] = useState(false);
   const [userSearch, setUserSearch] = useState('');
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
+  const locationSearchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const locationRequestIdRef = useRef(0);
   const filteredCouples = coupleOptions.filter(opt => {
     const query = userSearch.trim().toLowerCase();
     if (!query) {
@@ -57,6 +64,14 @@ export default function AdminEventsCreateScreen() {
     return () => {
       showSub.remove();
       hideSub.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (locationSearchTimeoutRef.current) {
+        clearTimeout(locationSearchTimeoutRef.current);
+      }
     };
   }, []);
 
@@ -128,6 +143,75 @@ export default function AdminEventsCreateScreen() {
     router.replace('/(admin)/admin-events');
   };
 
+  const handleLocationChange = (value: string) => {
+    setAddForm(f => ({ ...f, location: value }));
+    setLocationSearchError('');
+
+    const query = String(value || '').trim();
+    if (locationSearchTimeoutRef.current) {
+      clearTimeout(locationSearchTimeoutRef.current);
+    }
+
+    if (query.length < 2) {
+      setLocationSearchLoading(false);
+      setLocationSuggestions([]);
+      setLocationSuggestionsVisible(false);
+      return;
+    }
+
+    setLocationSuggestionsVisible(true);
+    setLocationSearchLoading(true);
+    const nextRequestId = locationRequestIdRef.current + 1;
+    locationRequestIdRef.current = nextRequestId;
+
+    locationSearchTimeoutRef.current = setTimeout(async () => {
+      try {
+        const suggestions = await googlePlacesService.autocomplete(query);
+        if (locationRequestIdRef.current !== nextRequestId) return;
+        setLocationSuggestions(suggestions);
+      } catch (error: any) {
+        if (locationRequestIdRef.current !== nextRequestId) return;
+        console.error('Location autocomplete error:', error);
+        setLocationSuggestions([]);
+        setLocationSearchError('לא ניתן לטעון הצעות מיקום כרגע');
+      } finally {
+        if (locationRequestIdRef.current === nextRequestId) {
+          setLocationSearchLoading(false);
+        }
+      }
+    }, 350);
+  };
+
+  const handleLocationSuggestionPress = async (suggestion: GooglePlacePrediction) => {
+    if (locationSearchTimeoutRef.current) {
+      clearTimeout(locationSearchTimeoutRef.current);
+    }
+    locationRequestIdRef.current += 1;
+    setLocationSuggestionsVisible(false);
+    setLocationSuggestions([]);
+    setLocationSearchError('');
+    setAddForm(f => ({
+      ...f,
+      location: suggestion.title || suggestion.description,
+    }));
+    Keyboard.dismiss();
+    setLocationSearchLoading(true);
+    try {
+      const place = await googlePlacesService.getPlaceDetails(suggestion.placeId);
+      const nextLocation = place.name || place.formattedAddress || suggestion.title || suggestion.description;
+      setAddForm(f => ({
+        ...f,
+        location: nextLocation,
+        city: place.city || f.city,
+      }));
+    } catch (error: any) {
+      console.error('Location details error:', error);
+      setLocationSearchError('לא ניתן לבחור את המיקום כרגע');
+    } finally {
+      setLocationSearchLoading(false);
+    }
+  };
+
   return (
     <BackSwipe>
       <View style={styles.screen}>
@@ -158,7 +242,7 @@ export default function AdminEventsCreateScreen() {
             styles.contentContainer,
             { paddingBottom: keyboardVisible ? 140 : Math.max(insets.bottom, 24) + 84 },
           ]}
-          keyboardShouldPersistTaps="handled"
+          keyboardShouldPersistTaps="always"
           keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
           bounces={false}
@@ -305,12 +389,50 @@ export default function AdminEventsCreateScreen() {
                     <TextInput
                       style={styles.infoInput}
                       value={addForm.location}
-                      onChangeText={v => setAddForm(f => ({ ...f, location: v }))}
-                      onFocus={scrollToInputs}
+                      onChangeText={handleLocationChange}
+                      onFocus={() => {
+                        if (locationSuggestions.length > 0) setLocationSuggestionsVisible(true);
+                      }}
                       textAlign="right"
-                      placeholder="הזן מיקום"
+                      placeholder="חפש אולם או כתובת"
                       placeholderTextColor={colors.gray[400]}
                     />
+                    {locationSearchLoading ? (
+                      <View style={styles.locationSearchState}>
+                        <ActivityIndicator size="small" color={colors.primary} />
+                        <Text style={styles.locationSearchStateText}>מחפש ב-Google...</Text>
+                      </View>
+                    ) : null}
+                    {locationSearchError ? (
+                      <Text style={styles.locationSearchErrorText}>{locationSearchError}</Text>
+                    ) : null}
+                    {locationSuggestionsVisible && locationSuggestions.length > 0 ? (
+                      <View style={styles.locationSuggestionsWrap}>
+                        {locationSuggestions.map((suggestion, index) => (
+                          <TouchableOpacity
+                            key={`${suggestion.placeId}-${index}`}
+                            style={[
+                              styles.locationSuggestionRow,
+                              index === locationSuggestions.length - 1 ? styles.locationSuggestionRowLast : null,
+                            ]}
+                            onPress={() => void handleLocationSuggestionPress(suggestion)}
+                            activeOpacity={0.86}
+                          >
+                            <View style={styles.locationSuggestionIconWrap}>
+                              <Ionicons name="navigate-outline" size={16} color={colors.primary} />
+                            </View>
+                            <View style={styles.locationSuggestionTextWrap}>
+                              <Text style={styles.locationSuggestionTitle} numberOfLines={1}>
+                                {suggestion.title}
+                              </Text>
+                              <Text style={styles.locationSuggestionSubtitle} numberOfLines={2}>
+                                {suggestion.subtitle || suggestion.description}
+                              </Text>
+                            </View>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    ) : null}
                   </View>
                 </View>
               </View>
@@ -761,6 +883,77 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.text,
     textAlign: 'right',
+  },
+  locationSearchState: {
+    marginTop: 10,
+    width: '100%',
+    alignSelf: 'stretch',
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    gap: 8,
+  },
+  locationSearchStateText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.gray[500],
+    textAlign: 'right',
+  },
+  locationSearchErrorText: {
+    marginTop: 8,
+    width: '100%',
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.error,
+    textAlign: 'right',
+  },
+  locationSuggestionsWrap: {
+    marginTop: 12,
+    width: '100%',
+    alignSelf: 'stretch',
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+    borderRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(248,250,252,0.96)',
+  },
+  locationSuggestionRow: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.gray[200],
+  },
+  locationSuggestionRowLast: {
+    borderBottomWidth: 0,
+  },
+  locationSuggestionIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(6, 23, 62, 0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginStart: 10,
+  },
+  locationSuggestionTextWrap: {
+    flex: 1,
+    alignItems: ALIGN_RIGHT,
+  },
+  locationSuggestionTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.text,
+    textAlign: 'right',
+  },
+  locationSuggestionSubtitle: {
+    marginTop: 3,
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.gray[500],
+    textAlign: 'right',
+    lineHeight: 18,
   },
   datePickerCard: {
     borderRadius: 22,

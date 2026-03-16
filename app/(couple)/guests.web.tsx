@@ -92,6 +92,8 @@ export default function CoupleGuestsWebScreen() {
   const [addGuestName, setAddGuestName] = useState('');
   const [addGuestPhone, setAddGuestPhone] = useState('');
   const [addSaving, setAddSaving] = useState(false);
+  const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
+  const [bulkDeleteSubmitting, setBulkDeleteSubmitting] = useState(false);
 
   useEffect(() => {
     if (!isLoggedIn) {
@@ -246,28 +248,21 @@ export default function CoupleGuestsWebScreen() {
 
   const handleDeleteGuest = async (guestId: string) => {
     const g = guests.find((x) => x.id === guestId);
-    Alert.alert('מחיקת אורח', `האם למחוק את ${g?.name || 'האורח'}?`, [
-      { text: 'ביטול', style: 'cancel' },
-      {
-        text: 'מחק',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await guestService.deleteGuest(guestId);
-            setGuests((prev) => prev.filter((x) => x.id !== guestId));
-            setSelectedGuestIds((prev) => {
-              const next = new Set(prev);
-              next.delete(guestId);
-              return next;
-            });
-            if (editingGuest?.id === guestId) closeEdit();
-          } catch (e) {
-            console.error('Delete guest error:', e);
-            Alert.alert('שגיאה', 'לא ניתן למחוק את האורח.');
-          }
-        },
-      },
-    ]);
+    confirmDestructiveAction('מחיקת אורח', `האם למחוק את ${g?.name || 'האורח'}?`, async () => {
+      try {
+        await guestService.deleteGuest(guestId);
+        setGuests((prev) => prev.filter((x) => x.id !== guestId));
+        setSelectedGuestIds((prev) => {
+          const next = new Set(prev);
+          next.delete(guestId);
+          return next;
+        });
+        if (editingGuest?.id === guestId) closeEdit();
+      } catch (e) {
+        console.error('Delete guest error:', e);
+        Alert.alert('שגיאה', 'לא ניתן למחוק את האורח.');
+      }
+    });
   };
 
   const toggleSelectGuest = (guestId: string) => {
@@ -281,26 +276,52 @@ export default function CoupleGuestsWebScreen() {
 
   const clearSelection = () => setSelectedGuestIds(new Set());
 
-  const bulkDeleteSelected = () => {
-    const ids = Array.from(selectedGuestIds);
-    if (ids.length === 0) return;
-    Alert.alert('מחיקת אורחים', `למחוק ${ids.length} אורחים שנבחרו?`, [
+  const closeBulkDeleteConfirm = () => {
+    if (bulkDeleteSubmitting) return;
+    setBulkDeleteConfirmOpen(false);
+  };
+
+  const confirmDestructiveAction = (title: string, message: string, onConfirm: () => Promise<void>) => {
+    if (Platform.OS === 'web') {
+      const ok = typeof window !== 'undefined' ? window.confirm(`${title}\n\n${message}`) : true;
+      if (ok) void onConfirm();
+      return;
+    }
+
+    Alert.alert(title, message, [
       { text: 'ביטול', style: 'cancel' },
       {
         text: 'מחק',
         style: 'destructive',
-        onPress: async () => {
-          try {
-            await Promise.all(ids.map((id) => guestService.deleteGuest(id)));
-            setGuests((prev) => prev.filter((g) => !selectedGuestIds.has(g.id)));
-            clearSelection();
-          } catch (e) {
-            console.error('Bulk delete error:', e);
-            Alert.alert('שגיאה', 'לא ניתן למחוק את האורחים שנבחרו.');
-          }
+        onPress: () => {
+          void onConfirm();
         },
       },
     ]);
+  };
+
+  const bulkDeleteSelected = () => {
+    const ids = Array.from(selectedGuestIds);
+    if (ids.length === 0) return;
+    setBulkDeleteConfirmOpen(true);
+  };
+
+  const executeBulkDeleteSelected = async () => {
+    const ids = Array.from(selectedGuestIds);
+    if (ids.length === 0 || bulkDeleteSubmitting) return;
+
+    setBulkDeleteSubmitting(true);
+    try {
+      await Promise.all(ids.map((id) => guestService.deleteGuest(id)));
+      setGuests((prev) => prev.filter((g) => !ids.includes(g.id)));
+      clearSelection();
+      setBulkDeleteConfirmOpen(false);
+    } catch (e) {
+      console.error('Bulk delete error:', e);
+      Alert.alert('שגיאה', 'לא ניתן למחוק את האורחים שנבחרו.');
+    } finally {
+      setBulkDeleteSubmitting(false);
+    }
   };
 
   const importContacts = async () => {
@@ -786,6 +807,79 @@ export default function CoupleGuestsWebScreen() {
           </View>
         )}
       </PageContentComponent>
+
+      <Modal visible={bulkDeleteConfirmOpen} transparent animationType="fade" onRequestClose={closeBulkDeleteConfirm}>
+        <Pressable style={styles.modalOverlay} onPress={closeBulkDeleteConfirm}>
+          <Pressable style={[styles.modalCard, styles.confirmDeleteCard]} onPress={() => {}}>
+            <View style={styles.modalHeader}>
+              <View style={styles.modalTitleWrap}>
+                <View style={[styles.modalIconBadge, styles.confirmDeleteIconBadge]}>
+                  <Ionicons name="trash-outline" size={22} color="#BE123C" />
+                </View>
+                <View style={styles.modalTitleTextWrap}>
+                  <Text style={styles.modalBadgeText}>פעולה בלתי הפיכה</Text>
+                  <Text style={styles.modalTitle}>מחיקת אורחים נבחרים</Text>
+                  <Text style={styles.modalSubtitle}>האורחים יימחקו מרשימת אישורי ההגעה ולא יהיה ניתן לשחזר אותם מתוך המערכת.</Text>
+                </View>
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="סגירה"
+                onPress={closeBulkDeleteConfirm}
+                style={({ hovered, pressed }: any) => [
+                  styles.modalCloseBtn,
+                  Platform.OS === 'web' && hovered ? styles.modalCloseBtnHover : null,
+                  pressed ? styles.btnPressed : null,
+                ]}
+                disabled={bulkDeleteSubmitting}
+              >
+                <Ionicons name="close" size={18} color={colors.gray[700]} />
+              </Pressable>
+            </View>
+
+            <View style={styles.confirmDeleteBody}>
+              <View style={styles.confirmDeleteSummary}>
+                <Text style={styles.confirmDeleteCount}>{selectedGuestIds.size}</Text>
+                <Text style={styles.confirmDeleteCountLabel}>אורחים מסומנים למחיקה</Text>
+              </View>
+              <Text style={styles.confirmDeleteText}>האם אתה בטוח שברצונך למחוק את האורחים האלו?</Text>
+            </View>
+
+            <View style={styles.modalActions}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="ביטול"
+                onPress={closeBulkDeleteConfirm}
+                style={({ hovered, pressed }: any) => [
+                  styles.modalSecondaryBtn,
+                  Platform.OS === 'web' && hovered ? styles.modalSecondaryBtnHover : null,
+                  pressed ? styles.btnPressed : null,
+                  bulkDeleteSubmitting ? styles.modalPrimaryBtnDisabled : null,
+                ]}
+                disabled={bulkDeleteSubmitting}
+              >
+                <Ionicons name="close-outline" size={18} color={colors.gray[800]} />
+                <Text style={styles.modalSecondaryBtnText}>ביטול</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="אישור מחיקה"
+                onPress={() => void executeBulkDeleteSelected()}
+                style={({ hovered, pressed }: any) => [
+                  styles.modalDangerBtn,
+                  Platform.OS === 'web' && hovered ? styles.modalDangerBtnHover : null,
+                  pressed ? styles.btnPressed : null,
+                  bulkDeleteSubmitting ? styles.modalPrimaryBtnDisabled : null,
+                ]}
+                disabled={bulkDeleteSubmitting}
+              >
+                <Ionicons name="trash-outline" size={18} color={colors.white} />
+                <Text style={styles.modalDangerBtnText}>{bulkDeleteSubmitting ? 'מוחק...' : 'מחק אורחים'}</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* Add guest modal */}
       <Modal visible={addOpen} transparent animationType="fade" onRequestClose={closeAdd}>
@@ -2414,6 +2508,9 @@ const styles = StyleSheet.create({
     // @ts-expect-error - react-native-web supports boxShadow
     boxShadow: '0 30px 80px rgba(0,0,0,0.20)',
   },
+  confirmDeleteCard: {
+    maxWidth: 500,
+  },
   modalHeader: {
     paddingHorizontal: 18,
     paddingTop: 18,
@@ -2627,6 +2724,48 @@ const styles = StyleSheet.create({
   modalPrimaryBtnHover: { opacity: 0.95 },
   modalPrimaryBtnText: { color: colors.white, fontSize: 13, fontWeight: '900', textAlign: 'right' },
   modalPrimaryBtnDisabled: { opacity: 0.75 },
+  confirmDeleteIconBadge: {
+    backgroundColor: 'rgba(244,63,94,0.12)',
+    borderColor: 'rgba(244,63,94,0.16)',
+  },
+  confirmDeleteBody: {
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 6,
+    gap: 16,
+  },
+  confirmDeleteSummary: {
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(244,63,94,0.12)',
+    backgroundColor: 'rgba(244,63,94,0.05)',
+    paddingVertical: 16,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  confirmDeleteCount: {
+    fontSize: 30,
+    fontWeight: '900',
+    color: '#BE123C',
+    textAlign: 'center',
+  },
+  confirmDeleteCountLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#9F1239',
+    textAlign: 'center',
+    writingDirection: 'rtl',
+  },
+  confirmDeleteText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.text,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+    lineHeight: 22,
+  },
 
   modalSecondaryBtn: {
     flex: 1,
