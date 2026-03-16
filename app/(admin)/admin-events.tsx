@@ -22,40 +22,21 @@ const EVENT_IMAGE_BY_TYPE: Record<EventType, number> = {
   ברית: require('../../assets/images/baby.jpg'),
   'אירוע חברה': require('../../assets/images/wedding.jpg'),
 };
-const EVENT_TYPE_PILL_META: Record<EventType, { background: string; border: string; text: string }> = {
-  חתונה: {
-    background: 'rgba(239, 221, 184, 0.96)',
-    border: 'rgba(204, 160, 0, 0.30)',
-    text: '#5E4600',
-  },
-  'בר מצווה': {
-    background: 'rgba(229, 238, 255, 0.96)',
-    border: 'rgba(0, 53, 102, 0.16)',
-    text: colors.primary,
-  },
-  'בת מצווה': {
-    background: 'rgba(239, 233, 255, 0.96)',
-    border: 'rgba(98, 90, 150, 0.18)',
-    text: '#53457E',
-  },
-  ברית: {
-    background: 'rgba(231, 243, 236, 0.96)',
-    border: 'rgba(67, 122, 92, 0.18)',
-    text: '#2F6046',
-  },
-  'אירוע חברה': {
-    background: 'rgba(228, 238, 247, 0.96)',
-    border: 'rgba(6, 23, 62, 0.14)',
-    text: colors.yaleBlue,
-  },
-};
-
 const HEADER_EVENT_TYPES = ['all', 'חתונה', 'בר מצווה', 'בת מצווה', 'אירוע חברה'] as const;
 type HeaderEventType = (typeof HEADER_EVENT_TYPES)[number];
 const HEADER_CHIPS_TOP_GAP = 16;
 const HEADER_CHIPS_ROW_HEIGHT = 42;
 const HEADER_CHIPS_INNER_BOTTOM_GAP = 8;
 const HEADER_CHIPS_BOTTOM_GAP = 12;
+
+function getEventDisplayTitle(rawTitle: string) {
+  const title = String(rawTitle || '').trim();
+  if (!title) return '';
+  const eventType = inferEventType(title);
+  if (!eventType) return title;
+  const withoutTypePrefix = title.replace(new RegExp(`^${eventType}\\s*[–—-]\\s*`), '').trim();
+  return withoutTypePrefix || title;
+}
 
 export default function AdminEventsScreen() {
   const router = useRouter();
@@ -571,13 +552,11 @@ export default function AdminEventsScreen() {
                 month: 'long',
               }));
               const eventType = inferEventType(event.title) || 'חתונה';
-              const eventTypeLabel = rtlText(eventType);
-              const eventTypePillMeta = EVENT_TYPE_PILL_META[eventType];
               const invitationImageUrl = String(event.invitationImageUrl ?? '').trim();
               const coverSource: any = invitationImageUrl ? { uri: invitationImageUrl } : EVENT_IMAGE_BY_TYPE[eventType];
               const locationLabel = rtlText([event.location, event.city].filter(Boolean).join(', '));
               const ownerNameLabel = rtlText(String(event.userName ?? '').trim());
-              const eventTitleLabel = rtlText(String(event.title ?? '').trim());
+              const eventTitleLabel = rtlText(getEventDisplayTitle(String(event.title ?? '')));
 
               return (
                 <View key={event.id} style={styles.eventBlock}>
@@ -596,18 +575,6 @@ export default function AdminEventsScreen() {
                       <View style={styles.dateBadgeCard}>
                         <Text style={styles.dateBadgeDay}>{dayNum}</Text>
                         <Text style={styles.dateBadgeMonth}>{monthName}</Text>
-                      </View>
-
-                      <View
-                        style={[
-                          styles.typePill,
-                          {
-                            backgroundColor: eventTypePillMeta.background,
-                            borderColor: eventTypePillMeta.border,
-                          },
-                        ]}
-                      >
-                        <Text style={[styles.typePillText, { color: eventTypePillMeta.text }]}>{eventTypeLabel}</Text>
                       </View>
 
                       <LinearGradient
@@ -1123,28 +1090,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: colors.gray[600],
     textAlign: 'center',
-  },
-  typePill: {
-    position: 'absolute',
-    start: 14,
-    top: 14,
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 15,
-    borderRadius: 999,
-    borderWidth: 1,
-    shadowColor: colors.black,
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
-  },
-  typePillText: {
-    fontSize: 12,
-    fontWeight: '900',
-    letterSpacing: 0.2,
   },
   countdownPill: {
     position: 'absolute',

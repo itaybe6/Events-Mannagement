@@ -21,7 +21,8 @@ import { userService, type UserWithMetadata } from "@/lib/services/userService";
 import { useUserStore } from "@/store/userStore";
 import type { Event } from "@/types";
 import { AdminTabRoute } from "@/components/animations/shopifytabs/lib/constants/admin-tabs";
-import { ROW_DIR, ALIGN_RIGHT } from "@/lib/rtl";
+import { ROW_DIR, ALIGN_RIGHT, rtlText } from "@/lib/rtl";
+import { inferEventType } from "@/features/events/eventsConstants";
 
 type SearchScope = "all" | "events" | "users";
 
@@ -40,6 +41,28 @@ const formatDate = (value: Date) => {
     });
   } catch {
     return "";
+  }
+};
+
+const getEventDisplayTitle = (rawTitle: string) => {
+  const title = String(rawTitle || "").trim();
+  if (!title) return "";
+  const eventType = inferEventType(title);
+  if (!eventType) return title;
+  const withoutTypePrefix = title.replace(new RegExp(`^${eventType}\\s*[–—-]\\s*`), "").trim();
+  return withoutTypePrefix || title;
+};
+
+const getUserTypeLabel = (userType?: string) => {
+  switch (String(userType || "").trim()) {
+    case "event_owner":
+      return "בעל אירוע";
+    case "admin":
+      return "מנהל";
+    case "employee":
+      return "עובד";
+    default:
+      return userType || "";
   }
 };
 
@@ -315,40 +338,48 @@ export default function AdminSearchScreen() {
                     <Text style={styles.emptyText}>לא נמצאו אירועים עבור החיפוש הזה.</Text>
                   </View>
                 ) : (
-                  filteredEvents.map((event) => (
-                    <Pressable
-                      key={event.id}
-                      style={[styles.resultCard, styles.resultCardEvent]}
-                      onPress={() =>
-                        router.push({
-                          pathname: "/(admin)/admin-event-details",
-                          params: { id: event.id },
-                        })
-                      }
-                    >
-                      <View style={[styles.resultIconWrap, styles.eventResultIconWrap]}>
-                        <CalendarDays size={18} color={colors.primary} />
-                      </View>
-                      <View style={styles.resultTextWrap}>
-                        <View style={styles.resultTextTag}>
-                          <Text style={styles.resultTitle}>{event.title}</Text>
+                  filteredEvents.map((event) => {
+                    const eventTypeLabel = rtlText(inferEventType(event.title) || "אירוע");
+                    const eventTitleLabel = rtlText(getEventDisplayTitle(event.title));
+
+                    return (
+                      <Pressable
+                        key={event.id}
+                        style={[styles.resultCard, styles.resultCardEvent]}
+                        onPress={() =>
+                          router.push({
+                            pathname: "/(admin)/admin-event-details",
+                            params: { id: event.id },
+                          })
+                        }
+                      >
+                        <View style={[styles.resultIconWrap, styles.eventResultIconWrap]}>
+                          <CalendarDays size={18} color={colors.primary} />
                         </View>
-                        <View style={styles.resultTextTag}>
-                          <Text style={styles.resultSubtitle}>
-                            {event.userName ? `${event.userName} • ` : ""}
-                            {event.location}
-                            {event.city ? `, ${event.city}` : ""}
-                          </Text>
+                        <View style={styles.resultTextWrap}>
+                          <View style={styles.resultTextTag}>
+                            <Text style={styles.resultTitle}>{eventTitleLabel}</Text>
+                          </View>
+                          <View style={styles.eventTypeTag}>
+                            <Text style={styles.eventTypeTagText}>{eventTypeLabel}</Text>
+                          </View>
+                          <View style={styles.resultTextTag}>
+                            <Text style={styles.resultSubtitle}>
+                              {event.userName ? `${event.userName} • ` : ""}
+                              {event.location}
+                              {event.city ? `, ${event.city}` : ""}
+                            </Text>
+                          </View>
+                          <View style={styles.resultMetaPill}>
+                            <Text style={styles.resultMeta}>{formatDate(new Date(event.date))}</Text>
+                          </View>
                         </View>
-                        <View style={styles.resultMetaPill}>
-                          <Text style={styles.resultMeta}>{formatDate(new Date(event.date))}</Text>
+                        <View style={styles.resultChevronWrap}>
+                          <ChevronLeft size={16} color={colors.gray[500]} />
                         </View>
-                      </View>
-                      <View style={styles.resultChevronWrap}>
-                        <ChevronLeft size={16} color={colors.gray[500]} />
-                      </View>
-                    </Pressable>
-                  ))
+                      </Pressable>
+                    );
+                  })
                 )}
               </View>
             ) : null}
@@ -367,35 +398,39 @@ export default function AdminSearchScreen() {
                     <Text style={styles.emptyText}>לא נמצאו משתמשים עבור החיפוש הזה.</Text>
                   </View>
                 ) : (
-                  filteredUsers.map((user) => (
-                    <Pressable
-                      key={user.id}
-                      style={[styles.resultCard, styles.resultCardUser]}
-                      onPress={() => router.navigate(`/(admin)/${AdminTabRoute.Users}`)}
-                    >
-                      <View style={[styles.resultIconWrap, styles.userResultIconWrap]}>
-                        {user.userType === "admin" ? (
-                          <UserRound size={18} color={colors.primary} />
-                        ) : (
-                          <UsersIcon size={18} color={colors.primary} />
-                        )}
-                      </View>
-                      <View style={styles.resultTextWrap}>
-                        <View style={styles.resultTextTag}>
-                          <Text style={styles.resultTitle}>{user.name}</Text>
+                  filteredUsers.map((user) => {
+                    const userTypeLabel = getUserTypeLabel(user.userType);
+
+                    return (
+                      <Pressable
+                        key={user.id}
+                        style={[styles.resultCard, styles.resultCardUser]}
+                        onPress={() => router.navigate(`/(admin)/${AdminTabRoute.Users}`)}
+                      >
+                        <View style={[styles.resultIconWrap, styles.userResultIconWrap]}>
+                          {user.userType === "admin" ? (
+                            <UserRound size={18} color={colors.primary} />
+                          ) : (
+                            <UsersIcon size={18} color={colors.primary} />
+                          )}
                         </View>
-                        <View style={styles.resultTextTag}>
-                          <Text style={styles.resultSubtitle}>{user.email}</Text>
+                        <View style={styles.resultTextWrap}>
+                          <View style={styles.resultTextTag}>
+                            <Text style={styles.resultTitle}>{user.name}</Text>
+                          </View>
+                          <View style={styles.resultTextTag}>
+                            <Text style={styles.resultSubtitle}>{user.email}</Text>
+                          </View>
+                          <View style={styles.resultMetaPill}>
+                            <Text style={styles.resultMeta}>{userTypeLabel}</Text>
+                          </View>
                         </View>
-                        <View style={styles.resultMetaPill}>
-                          <Text style={styles.resultMeta}>{user.userType}</Text>
+                        <View style={styles.resultChevronWrap}>
+                          <ChevronLeft size={16} color={colors.gray[500]} />
                         </View>
-                      </View>
-                      <View style={styles.resultChevronWrap}>
-                        <ChevronLeft size={16} color={colors.gray[500]} />
-                      </View>
-                    </Pressable>
-                  ))
+                      </Pressable>
+                    );
+                  })
                 )}
               </View>
             ) : null}
@@ -617,6 +652,23 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "900",
     color: colors.text,
+  },
+  eventTypeTag: {
+    alignSelf: ALIGN_RIGHT,
+    marginTop: 4,
+    marginBottom: 2,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    backgroundColor: "rgba(6,23,62,0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(6,23,62,0.05)",
+  },
+  eventTypeTagText: {
+    textAlign: "right",
+    fontSize: 12,
+    fontWeight: "800",
+    color: colors.primary,
   },
   resultSubtitle: {
     textAlign: "right",
