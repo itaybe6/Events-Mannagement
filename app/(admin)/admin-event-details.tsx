@@ -498,7 +498,7 @@ export default function AdminEventDetailsScreen() {
                   accessibilityRole="button"
                   accessibilityLabel="חזרה לעמוד הקודם"
                 >
-                  <Ionicons name="chevron-forward" size={20} color={colors.richBlack} />
+                  <Ionicons name="chevron-back" size={20} color={colors.richBlack} />
                 </TouchableOpacity>
 
                 <View style={styles.heroTopRow}>

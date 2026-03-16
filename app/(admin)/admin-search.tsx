@@ -21,6 +21,7 @@ import { userService, type UserWithMetadata } from "@/lib/services/userService";
 import { useUserStore } from "@/store/userStore";
 import type { Event } from "@/types";
 import { AdminTabRoute } from "@/components/animations/shopifytabs/lib/constants/admin-tabs";
+import { ROW_DIR, ALIGN_RIGHT } from "@/lib/rtl";
 
 type SearchScope = "all" | "events" | "users";
 
@@ -329,12 +330,16 @@ export default function AdminSearchScreen() {
                         <CalendarDays size={18} color={colors.primary} />
                       </View>
                       <View style={styles.resultTextWrap}>
-                        <Text style={styles.resultTitle}>{event.title}</Text>
-                        <Text style={styles.resultSubtitle}>
-                          {event.userName ? `${event.userName} • ` : ""}
-                          {event.location}
-                          {event.city ? `, ${event.city}` : ""}
-                        </Text>
+                        <View style={styles.resultTextTag}>
+                          <Text style={styles.resultTitle}>{event.title}</Text>
+                        </View>
+                        <View style={styles.resultTextTag}>
+                          <Text style={styles.resultSubtitle}>
+                            {event.userName ? `${event.userName} • ` : ""}
+                            {event.location}
+                            {event.city ? `, ${event.city}` : ""}
+                          </Text>
+                        </View>
                         <View style={styles.resultMetaPill}>
                           <Text style={styles.resultMeta}>{formatDate(new Date(event.date))}</Text>
                         </View>
@@ -376,8 +381,12 @@ export default function AdminSearchScreen() {
                         )}
                       </View>
                       <View style={styles.resultTextWrap}>
-                        <Text style={styles.resultTitle}>{user.name}</Text>
-                        <Text style={styles.resultSubtitle}>{user.email}</Text>
+                        <View style={styles.resultTextTag}>
+                          <Text style={styles.resultTitle}>{user.name}</Text>
+                        </View>
+                        <View style={styles.resultTextTag}>
+                          <Text style={styles.resultSubtitle}>{user.email}</Text>
+                        </View>
                         <View style={styles.resultMetaPill}>
                           <Text style={styles.resultMeta}>{user.userType}</Text>
                         </View>
@@ -432,7 +441,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
   },
   searchCard: {
-    flexDirection: "row-reverse",
+    flexDirection: ROW_DIR,
     alignItems: "center",
     gap: 12,
     minHeight: 60,
@@ -471,7 +480,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   scopeRow: {
-    flexDirection: "row-reverse",
+    flexDirection: ROW_DIR,
     alignSelf: "center",
     justifyContent: "center",
     gap: 10,
@@ -522,7 +531,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   sectionHeader: {
-    flexDirection: "row-reverse",
+    flexDirection: ROW_DIR,
     alignItems: "center",
     justifyContent: "space-between",
   },
@@ -558,7 +567,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   resultCard: {
-    flexDirection: "row-reverse",
+    flexDirection: ROW_DIR,
     alignItems: "center",
     gap: 12,
     padding: 15,
@@ -595,18 +604,21 @@ const styles = StyleSheet.create({
   },
   resultTextWrap: {
     flex: 1,
-    alignItems: "flex-end",
+    alignItems: ALIGN_RIGHT,
+  },
+  resultTextTag: {
+    alignSelf: ALIGN_RIGHT,
+    borderRadius: 999,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
   },
   resultTitle: {
-    width: "100%",
     textAlign: "right",
     fontSize: 16,
     fontWeight: "900",
     color: colors.text,
   },
   resultSubtitle: {
-    width: "100%",
-    marginTop: 4,
     textAlign: "right",
     fontSize: 13,
     fontWeight: "700",
@@ -620,7 +632,7 @@ const styles = StyleSheet.create({
   },
   resultMetaPill: {
     marginTop: 8,
-    alignSelf: "flex-end",
+    alignSelf: ALIGN_RIGHT,
     paddingVertical: 6,
     paddingHorizontal: 10,
     borderRadius: 999,

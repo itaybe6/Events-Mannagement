@@ -29,6 +29,7 @@ import AdminEventsScreen from './admin-events';
 import AdminWebPageHeader from '@/components/desktop/AdminWebPageHeader';
 import { userService, type UserWithMetadata } from '@/lib/services/userService';
 import { useUserStore } from '@/store/userStore';
+import { rtlText } from '@/lib/rtl';
 
 const HERO_IMAGES = {
   baby: require('../../assets/images/baby.jpg'),
@@ -800,12 +801,15 @@ export function AdminEventsListWebScreen() {
               {filteredEvents.map((e) => {
                 const ownerName = String((e as any).userName || e.userName || '').trim();
                 const invitationImageUrl = String((e as any).invitationImageUrl ?? e.invitationImageUrl ?? '').trim();
-                const subtitle = getEventSubtitle(e);
+                const subtitle = rtlText(getEventSubtitle(e));
                 const status = getStatusMeta(e.date);
                 const guestStats = guestStatsByEventId[String(e.id)] || null;
                 const coverSource: any = invitationImageUrl ? { uri: invitationImageUrl } : getHeroImageSource(e.title);
                 const eventType = inferEventType(e.title) || 'חתונה';
-                const eventDisplayTitle = getEventDisplayTitle(e.title);
+                const eventTypeLabel = rtlText(eventType);
+                const eventTitleLabel = rtlText(String(e.title ?? '').trim());
+                const ownerNameLabel = rtlText(ownerName || 'ללא לקוח');
+                const ownerDateLabel = rtlText(formatDateLabel(e.date));
                 const typeMeta = EVENT_TYPE_META[eventType as keyof typeof EVENT_TYPE_META] ?? EVENT_TYPE_META['חתונה'];
                 const statusToneStyle =
                   status.tone === 'active'
@@ -852,12 +856,24 @@ export function AdminEventsListWebScreen() {
                         </View>
                       </View>
 
+<<<<<<< HEAD
+=======
+                      <View style={styles.eventOverviewTypePill}>
+                        <View style={[styles.eventOverviewTypeInner, { backgroundColor: typeMeta.background, borderColor: typeMeta.border }]}>
+                          <Text style={[styles.eventOverviewTypeText, { color: typeMeta.text }]}>{eventTypeLabel}</Text>
+                        </View>
+                      </View>
+>>>>>>> 3f97ab5fb104636725c9047c0a015284c5e77281
                     </View>
 
                     <View style={styles.eventOverviewBody}>
                       <View style={styles.eventOverviewHeader}>
                         <Text style={styles.eventOverviewTitle} numberOfLines={1}>
+<<<<<<< HEAD
                           {eventDisplayTitle || e.title}
+=======
+                          {eventTitleLabel}
+>>>>>>> 3f97ab5fb104636725c9047c0a015284c5e77281
                         </Text>
                         <View style={styles.eventOverviewTypeInlineRow}>
                           <View style={[styles.eventOverviewTypeInner, { backgroundColor: typeMeta.background, borderColor: typeMeta.border }]}>
@@ -904,10 +920,10 @@ export function AdminEventsListWebScreen() {
                           </View>
                           <View style={styles.eventOverviewOwnerText}>
                             <Text style={styles.eventOverviewOwnerName} numberOfLines={1}>
-                              {ownerName || 'ללא לקוח'}
+                              {ownerNameLabel}
                             </Text>
                             <Text style={styles.eventOverviewOwnerDate} numberOfLines={1}>
-                              {formatDateLabel(e.date)}
+                              {ownerDateLabel}
                             </Text>
                           </View>
                         </View>
@@ -1732,6 +1748,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 999,
     borderWidth: 1,
+    alignItems: 'flex-end',
     shadowColor: '#0B1C41',
     shadowOpacity: 0.08,
     shadowRadius: 8,
@@ -1740,15 +1757,19 @@ const styles = StyleSheet.create({
   eventOverviewTypeText: {
     fontSize: 11,
     fontWeight: '900',
-    textAlign: 'center',
+    textAlign: 'right',
+    writingDirection: 'rtl',
+    ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
   },
   eventOverviewBody: {
     padding: 18,
     gap: 14,
+    alignItems: 'stretch',
   },
   eventOverviewHeader: {
     gap: 4,
     alignItems: 'stretch',
+    width: '100%',
   },
   eventOverviewTypeInlineRow: {
     width: '100%',
@@ -1761,12 +1782,18 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: colors.text,
     textAlign: 'right',
+    writingDirection: 'rtl',
+    width: '100%',
+    ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
   },
   eventOverviewSubtitle: {
     fontSize: 13,
     fontWeight: '600',
     color: colors.gray[600],
     textAlign: 'right',
+    writingDirection: 'rtl',
+    width: '100%',
+    ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
   },
   eventOverviewMetaRow: {
     flexDirection: 'row',
@@ -1836,18 +1863,25 @@ const styles = StyleSheet.create({
     minWidth: 0,
     gap: 2,
     alignItems: 'stretch',
+    width: '100%',
   },
   eventOverviewOwnerName: {
     fontSize: 13,
     fontWeight: '800',
     color: colors.text,
     textAlign: 'right',
+    writingDirection: 'rtl',
+    width: '100%',
+    ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
   },
   eventOverviewOwnerDate: {
     fontSize: 12,
     fontWeight: '600',
     color: colors.gray[500],
     textAlign: 'right',
+    writingDirection: 'rtl',
+    width: '100%',
+    ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
   },
   eventOverviewActions: {
     flexDirection: 'row',

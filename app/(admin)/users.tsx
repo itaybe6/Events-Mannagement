@@ -310,7 +310,7 @@ export default function UsersScreen() {
                   </View>
 
                   <View style={styles.userInfo}>
-                    <View style={styles.userTitleRow}>
+                    <View style={styles.userNameTag}>
                       <Text style={styles.userName} numberOfLines={1}>
                         {u.name}
                       </Text>
@@ -717,19 +717,20 @@ const styles = StyleSheet.create({
   userInfo: {
     flex: 1,
     minWidth: 0,
-    alignItems: 'flex-end',
     alignSelf: 'stretch',
     justifyContent: 'center',
     paddingStart: 12,
   },
-  userTitleRow: {
-    alignItems: 'flex-end',
+  userNameTag: {
+    alignSelf: ALIGN_RIGHT,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
     justifyContent: 'center',
-    alignSelf: 'stretch',
+    alignItems: 'center',
     marginBottom: 6,
   },
   userName: {
-    width: '100%',
     fontSize: 18,
     fontWeight: '900',
     color: colors.text,

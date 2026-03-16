@@ -613,7 +613,7 @@ export default function AdminEventDetailsWebScreen() {
                       pressed ? styles.backHeaderBtnPressed : null,
                     ]}
                   >
-                    <Ionicons name="arrow-forward" size={16} color={colors.text} />
+                    <Ionicons name="arrow-back" size={16} color={colors.text} />
                     <Text style={styles.backHeaderBtnText}>חזרה</Text>
                   </Pressable>
                 }
