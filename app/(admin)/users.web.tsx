@@ -24,6 +24,7 @@ import { useUserStore } from '@/store/userStore';
 import { useUsersModel, type UserFilter } from '@/features/users/useUsersModel';
 import { userService, type UserWithMetadata } from '@/lib/services/userService';
 import { eventService } from '@/lib/services/eventService';
+import { ALIGN_RIGHT } from '@/lib/rtl';
 import type { Event } from '@/types';
 import UsersScreen from './users';
 
@@ -490,7 +491,7 @@ export default function UsersWebScreen() {
                       </View>
                     </View>
 
-                    <View style={[styles.cell, { width: 220 }]}>
+                    <View style={[styles.cell, styles.nameCell]}>
                       <Text style={styles.userName} numberOfLines={1}>
                         {u.name}
                       </Text>
@@ -1329,7 +1330,8 @@ const styles = StyleSheet.create({
   avatarImg: { width: '100%', height: '100%' },
   avatarFallback: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   avatarInitials: { fontSize: 12, fontWeight: '900', color: colors.text },
-  userName: { fontSize: 15, fontWeight: '900', color: colors.text, textAlign: 'right' },
+  nameCell: { width: 220, alignItems: ALIGN_RIGHT },
+  userName: { width: '100%', alignSelf: 'stretch', fontSize: 15, fontWeight: '900', color: colors.text, textAlign: 'right' },
 
   statusPill: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: 1 },
   statusPillText: { fontSize: 12, fontWeight: '900', textAlign: 'center' },

@@ -12,7 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { inferEventType, MONTHS, type EventType } from '@/features/events/eventsConstants';
 import { useEventsListModel } from '@/features/events/useEventsListModel';
 import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
-import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
+import { ALIGN_RIGHT, ROW_DIR, rtlText } from '@/lib/rtl';
 import { useUserStore } from '@/store/userStore';
 
 const EVENT_IMAGE_BY_TYPE: Record<EventType, number> = {
@@ -565,16 +565,19 @@ export default function AdminEventsScreen() {
               const dateObj = new Date(event.date);
               const dayNum = dateObj.toLocaleDateString('he-IL', { day: '2-digit' });
               const monthName = MONTHS[dateObj.getMonth()];
-              const fullDateLabel = dateObj.toLocaleDateString('he-IL', {
+              const fullDateLabel = rtlText(dateObj.toLocaleDateString('he-IL', {
                 weekday: 'long',
                 day: '2-digit',
                 month: 'long',
-              });
+              }));
               const eventType = inferEventType(event.title) || 'חתונה';
+              const eventTypeLabel = rtlText(eventType);
               const eventTypePillMeta = EVENT_TYPE_PILL_META[eventType];
               const invitationImageUrl = String(event.invitationImageUrl ?? '').trim();
               const coverSource: any = invitationImageUrl ? { uri: invitationImageUrl } : EVENT_IMAGE_BY_TYPE[eventType];
-              const locationLabel = [event.location, event.city].filter(Boolean).join(', ');
+              const locationLabel = rtlText([event.location, event.city].filter(Boolean).join(', '));
+              const ownerNameLabel = rtlText(String(event.userName ?? '').trim());
+              const eventTitleLabel = rtlText(String(event.title ?? '').trim());
 
               return (
                 <View key={event.id} style={styles.eventBlock}>
@@ -604,7 +607,7 @@ export default function AdminEventsScreen() {
                           },
                         ]}
                       >
-                        <Text style={[styles.typePillText, { color: eventTypePillMeta.text }]}>{eventType}</Text>
+                        <Text style={[styles.typePillText, { color: eventTypePillMeta.text }]}>{eventTypeLabel}</Text>
                       </View>
 
                       <LinearGradient
@@ -615,6 +618,15 @@ export default function AdminEventsScreen() {
                       >
                         <Text style={styles.countdownPillText}>{getDaysLeft(event.date)}</Text>
                       </LinearGradient>
+
+                      {event.userName ? (
+                        <View style={styles.ownerPillOnImage}>
+                          <Ionicons name="person-outline" size={12} color={colors.white} />
+                          <Text style={styles.ownerPillOnImageText} numberOfLines={1}>
+                            {ownerNameLabel}
+                          </Text>
+                        </View>
+                      ) : null}
                     </View>
 
                     <LinearGradient
@@ -622,31 +634,13 @@ export default function AdminEventsScreen() {
                       style={styles.eventCardBody}
                     >
                       <View style={styles.eventCardHeader}>
-                        {event.userName ? (
-                          <View style={styles.ownerPillInline}>
-                            <View style={styles.ownerAvatarWrap}>
-                              {event.userAvatarUrl ? (
-                                <Image source={{ uri: event.userAvatarUrl }} style={styles.ownerAvatarImg} />
-                              ) : (
-                                <Ionicons name="person" size={14} color={colors.white} />
-                              )}
-                            </View>
-                            <Text style={styles.ownerBadgeText} numberOfLines={1}>
-                              {event.userName}
-                            </Text>
-                          </View>
-                        ) : (
-                          <View style={styles.ownerPillPlaceholder}>
-                            <Ionicons name="calendar-clear-outline" size={14} color={colors.primary} />
-                            <Text style={styles.ownerPillPlaceholderText}>ללא בעל אירוע משויך</Text>
-                          </View>
-                        )}
+                        <View style={styles.eventTypePillBody}>
+                          <Text style={styles.eventTypePillBodyText} numberOfLines={1}>
+                            {eventTitleLabel}
+                          </Text>
+                        </View>
 
                         <View style={styles.eventTitleWrap}>
-                          <Text style={styles.eventTitleNew} numberOfLines={2}>
-                            {event.title}
-                          </Text>
-                          <Text style={styles.eventDateLine}>{fullDateLabel}</Text>
                           {locationLabel ? (
                             <View style={styles.locationMetaCard}>
                               <View style={styles.locationMetaIconWrap}>
@@ -1185,25 +1179,63 @@ const styles = StyleSheet.create({
   },
   eventTitleWrap: {
     gap: 5,
-    alignItems: 'flex-end',
+    alignSelf: 'stretch',
   },
   eventTitleNew: {
     fontSize: 20,
     fontWeight: '900',
     color: colors.text,
     textAlign: 'right',
+    writingDirection: 'rtl',
     lineHeight: 26,
-    width: '100%',
+    alignSelf: 'stretch',
   },
   eventDateLine: {
     fontSize: 13,
     fontWeight: '700',
     color: colors.gray[600],
     textAlign: 'right',
-    width: '100%',
+    writingDirection: 'rtl',
+    alignSelf: 'stretch',
+  },
+  ownerPillOnImage: {
+    position: 'absolute',
+    end: 14,
+    bottom: 14,
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 7,
+    paddingHorizontal: 11,
+    borderRadius: 999,
+    backgroundColor: 'rgba(6,23,62,0.72)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.20)',
+    shadowColor: colors.black,
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  ownerPillOnImageText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: colors.white,
+    maxWidth: 160,
+  },
+  eventTypePillBody: {
+    alignSelf: ALIGN_RIGHT,
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    paddingVertical: 4,
+    paddingHorizontal: 2,
+  },
+  eventTypePillBodyText: {
+    fontSize: 20,
+    fontWeight: '900',
   },
   ownerPillInline: {
-    alignSelf: 'flex-end',
+    alignSelf: ALIGN_RIGHT,
     flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 8,
@@ -1213,7 +1245,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(6,23,62,0.06)',
   },
   ownerPillPlaceholder: {
-    alignSelf: 'flex-end',
+    alignSelf: ALIGN_RIGHT,
     flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 6,
@@ -1227,6 +1259,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: colors.primary,
     textAlign: 'right',
+    writingDirection: 'rtl',
   },
   ownerAvatarWrap: {
     width: 24,
@@ -1246,6 +1279,8 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: colors.text,
     maxWidth: 180,
+    textAlign: 'right',
+    writingDirection: 'rtl',
   },
   metaGrid: {
     flexDirection: ROW_DIR,
@@ -1296,6 +1331,7 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: colors.text,
     textAlign: 'right',
+    writingDirection: 'rtl',
     maxWidth: 210,
   },
   metaCardText: {

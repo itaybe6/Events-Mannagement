@@ -1054,6 +1054,24 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                                 </Text>
 
                                 <View style={styles.guestMetaRow}>
+                                  <View
+                                    style={[
+                                      styles.statusPill,
+                                      g.status === "מגיע"
+                                        ? styles.statusComing
+                                        : g.status === "לא מגיע"
+                                        ? styles.statusNot
+                                        : styles.statusPending,
+                                    ]}
+                                  >
+                                    <Text style={styles.statusText}>{g.status}</Text>
+                                  </View>
+
+                                  <View style={styles.peoplePill}>
+                                    <Ionicons name="person" size={13} color={"rgba(17,24,39,0.65)"} />
+                                    <Text style={styles.peopleText}>{people}</Text>
+                                  </View>
+
                                   <TouchableOpacity
                                     onPress={() => void callGuest(g.phone, g.name)}
                                     disabled={!phoneToTel(g.phone)}
@@ -1068,24 +1086,6 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                                       color={phoneToTel(g.phone) ? colors.primary : "rgba(17,24,39,0.35)"}
                                     />
                                   </TouchableOpacity>
-
-                                  <View style={styles.peoplePill}>
-                                    <Ionicons name="person" size={13} color={"rgba(17,24,39,0.65)"} />
-                                    <Text style={styles.peopleText}>{people}</Text>
-                                  </View>
-
-                                  <View
-                                    style={[
-                                      styles.statusPill,
-                                      g.status === "מגיע"
-                                        ? styles.statusComing
-                                        : g.status === "לא מגיע"
-                                        ? styles.statusNot
-                                        : styles.statusPending,
-                                    ]}
-                                  >
-                                    <Text style={styles.statusText}>{g.status}</Text>
-                                  </View>
                                 </View>
                               </View>
 
@@ -1449,7 +1449,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "900",
     color: "rgba(17,24,39,0.55)",
-    textAlign: "left",
+    textAlign: "right",
   },
   tabletToggleLabelOn: { color: "#047857" },
   tabletInfoCol: {
