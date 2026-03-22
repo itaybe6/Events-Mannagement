@@ -840,27 +840,28 @@ export default function TablesList() {
                   onPress={() => handleToggleGuestSelection(item.id)}
                   activeOpacity={0.7}
                 >
-                  <View style={[
-                    styles.checkbox,
-                    selectedGuestsToAdd.has(item.id) && styles.checkboxChecked
-                  ]}>
-                    {selectedGuestsToAdd.has(item.id) && (
-                      <Ionicons name="checkmark" size={16} color="#FFFFFF" />
-                    )}
+                  {/* Top row: status icon (left) + checkbox (right) */}
+                  <View style={styles.guestCardTop}>
+                    <View style={[styles.statusIconWrap, { backgroundColor: statusConfig.color + '18' }]}>
+                      <Ionicons name={statusConfig.icon} size={13} color={statusConfig.color} />
+                    </View>
+                    <View style={[styles.checkbox, selectedGuestsToAdd.has(item.id) && styles.checkboxChecked]}>
+                      {selectedGuestsToAdd.has(item.id) && (
+                        <Ionicons name="checkmark" size={14} color="#FFFFFF" />
+                      )}
+                    </View>
                   </View>
-                  <View style={styles.guestInfo}>
-                    <Text style={styles.selectableGuestName} numberOfLines={2}>{item.name}</Text>
+                  {/* Name */}
+                  <Text style={styles.selectableGuestName} numberOfLines={2}>{item.name}</Text>
+                  {/* Footer: category + people count */}
+                  <View style={styles.guestCardFooter}>
                     {item.guest_categories?.name && (
                       <Text style={styles.selectableGuestCategory} numberOfLines={1}>
                         {item.guest_categories.name}
                       </Text>
                     )}
-                    <View style={[styles.statusBadge, { backgroundColor: statusConfig.color + '20' }]}>
-                      <Ionicons name={statusConfig.icon} size={12} color={statusConfig.color} />
-                      <Text style={[styles.statusBadgeText, { color: statusConfig.color }]}>{statusConfig.label}</Text>
-                    </View>
                     <View style={styles.peopleCountBadge}>
-                      <Ionicons name="people" size={12} color="#6B7280" />
+                      <Ionicons name="people" size={11} color="#6B7280" />
                       <Text style={styles.peopleCountText}>{Number(item.numberOfPeople ?? 1) || 1}</Text>
                     </View>
                   </View>
@@ -1444,7 +1445,7 @@ const styles = StyleSheet.create({
     width: '100%',
     fontSize: 22,
     fontWeight: '800',
-    textAlign: 'right',
+    textAlign: IS_RTL ? 'left' : 'right',
     color: '#111827',
   },
   modalSubtitle: {
@@ -1452,7 +1453,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '500',
     color: '#6B7280',
-    textAlign: 'right',
+    textAlign: IS_RTL ? 'left' : 'right',
     lineHeight: 20,
   },
   filterContainer: {
@@ -1494,8 +1495,7 @@ const styles = StyleSheet.create({
   },
   categoryScrollContentRtl: {
     flexGrow: 1,
-    justifyContent: 'flex-end',
-    alignItems: 'flex-end',
+    justifyContent: 'flex-start',
   },
   categoryContainer: {
     flexDirection: ROW_DIR,
@@ -1505,9 +1505,8 @@ const styles = StyleSheet.create({
   },
   categoryContainerRtl: {
     minWidth: '100%',
-    flexDirection: ROW_REVERSE_DIR,
     justifyContent: 'flex-start',
-    alignSelf: 'flex-end',
+    alignSelf: ALIGN_RIGHT,
   },
   categoryButton: {
     paddingHorizontal: 14,
@@ -1544,7 +1543,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#475569',
-    textAlign: 'right',
+    textAlign: IS_RTL ? 'left' : 'right',
   },
   selectedCountPill: {
     flexDirection: ROW_DIR,
@@ -1570,58 +1569,55 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   selectableGuestItem: {
-    flexDirection: ROW_DIR,
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    paddingVertical: 12,
-    paddingHorizontal: 14,
+    flexDirection: 'column',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     backgroundColor: '#F8FAFC',
     borderRadius: 16,
     borderWidth: 1,
     borderColor: '#E5E7EB',
     width: '48%',
-    minHeight: 112,
+    gap: 6,
+  },
+  guestCardTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  statusIconWrap: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  guestCardFooter: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 4,
+    marginTop: 2,
   },
   selectableGuestsList: { flex: 1 },
   selectableGuestsListContent: {
     paddingBottom: Platform.OS === 'web' ? 96 : 24,
     alignItems: 'stretch',
   },
-  guestInfo: {
-    flex: 1,
-    alignItems: ALIGN_RIGHT,
-    justifyContent: 'flex-start',
-    paddingHorizontal: 10,
-  },
   selectableGuestName: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
     color: '#111827',
-    textAlign: 'right',
-    lineHeight: 19,
+    textAlign: IS_RTL ? 'left' : 'right',
+    lineHeight: 18,
     width: '100%',
   },
   selectableGuestCategory: {
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '500',
     color: '#6B7280',
-    marginTop: 4,
-    textAlign: 'right',
-    width: '100%',
-  },
-  statusBadge: {
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    alignSelf: ALIGN_RIGHT,
-    gap: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-    marginTop: 4,
-  },
-  statusBadgeText: {
-    fontSize: 11,
-    fontWeight: '600',
+    textAlign: IS_RTL ? 'left' : 'right',
+    flex: 1,
+    minWidth: 0,
   },
   checkbox: {
     width: 22,
@@ -1669,10 +1665,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#E5E7EB',
     borderRadius: 6,
-    paddingHorizontal: 6,
+    paddingHorizontal: 5,
     paddingVertical: 2,
-    marginTop: 4,
-    gap: 4,
+    gap: 3,
   },
   peopleCountText: {
     fontSize: 12,
