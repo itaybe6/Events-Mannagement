@@ -369,4 +369,18 @@ export const guestService = {
       .eq('id', categoryId);
     if (error) throw error;
   },
+
+  async deleteGuestCategoryWithGuests(categoryId: string) {
+    const { error: guestsError } = await supabase
+      .from('guests')
+      .delete()
+      .eq('category_id', categoryId);
+    if (guestsError) throw guestsError;
+
+    const { error: categoryError } = await supabase
+      .from('guest_categories')
+      .delete()
+      .eq('id', categoryId);
+    if (categoryError) throw categoryError;
+  },
 }; 

@@ -333,6 +333,24 @@ export default function SelectCategoryScreen() {
           ]}
         />
         <View style={styles.headerSide}>
+          {/* כפתור חזרה - View עוטף עם העיצוב (NativeWind דורס style על Pressable) */}
+          <Pressable
+            onPress={goBack}
+            accessibilityRole="button"
+            accessibilityLabel="חזרה"
+            style={({ pressed }) => ({ opacity: pressed ? 0.70 : 1 })}
+          >
+            <View style={styles.headerBackBtn}>
+              <Ionicons name="chevron-back" size={16} color={NAVY} />
+            </View>
+          </Pressable>
+        </View>
+
+        <View pointerEvents="none" style={styles.headerCenter}>
+          <Text style={[styles.headerTitle, isDark && styles.headerTitleDark]}>בחירת קטגוריה</Text>
+        </View>
+
+        <View style={[styles.headerSide, styles.headerSideEnd]}>
           <Pressable
             onPress={handleNext}
             disabled={isNextDisabled}
@@ -348,27 +366,9 @@ export default function SelectCategoryScreen() {
                 style={styles.headerNextBtnBg}
               />
               <View style={styles.headerNextBtn}>
-                <Ionicons name="chevron-back" size={17} color="#fff" />
+                <Ionicons name="chevron-forward" size={17} color="#fff" />
                 <Text style={styles.headerNextBtnText}>{saving ? 'שומר...' : 'הבא'}</Text>
               </View>
-            </View>
-          </Pressable>
-        </View>
-
-        <View pointerEvents="none" style={styles.headerCenter}>
-          <Text style={[styles.headerTitle, isDark && styles.headerTitleDark]}>בחירת קטגוריה</Text>
-        </View>
-
-        <View style={[styles.headerSide, styles.headerSideEnd]}>
-          {/* כפתור חזרה - View עוטף עם העיצוב (NativeWind דורס style על Pressable) */}
-          <Pressable
-            onPress={goBack}
-            accessibilityRole="button"
-            accessibilityLabel="חזרה"
-            style={({ pressed }) => ({ opacity: pressed ? 0.70 : 1 })}
-          >
-            <View style={styles.headerBackBtn}>
-              <Ionicons name="chevron-forward" size={16} color={NAVY} />
             </View>
           </Pressable>
         </View>
@@ -686,7 +686,7 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
   },
   headerNextBtn: {
-    flexDirection: 'row',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 5,

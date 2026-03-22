@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Animated, ScrollView, View, Text, StyleSheet, Platform, Pressable, Image, I18nManager, useWindowDimensions } from 'react-native';
+import { Animated, ScrollView, View, Text, StyleSheet, Platform, Pressable, Image, useWindowDimensions } from 'react-native';
 import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useUserStore } from '@/store/userStore';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
@@ -243,21 +243,37 @@ export default function HomeScreen() {
     iconName,
     tintColor,
     iconBg,
+    onPress,
   }: {
     title: string;
     value: string | number;
     iconName: keyof typeof Ionicons.glyphMap;
     tintColor: string;
     iconBg: string;
-  }) => (
-    <View style={styles.statusSquareCard}>
-      <View style={[styles.statusSquareIconWrap, { backgroundColor: iconBg }]}>
-        <Ionicons name={iconName} size={18} color={tintColor} />
-      </View>
-      <Text style={styles.statusSquareTitle}>{title}</Text>
-      <Text style={styles.statusSquareValue}>{value}</Text>
-    </View>
-  );
+    onPress?: () => void;
+  }) => {
+    const content = (
+      <>
+        <View style={[styles.statusSquareIconWrap, { backgroundColor: iconBg }]}>
+          <Ionicons name={iconName} size={18} color={tintColor} />
+        </View>
+        <Text style={styles.statusSquareTitle}>{title}</Text>
+        <Text style={styles.statusSquareValue}>{value}</Text>
+      </>
+    );
+
+    if (!onPress) return <View style={styles.statusSquareCard}>{content}</View>;
+
+    return (
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="button"
+        style={styles.statusSquareCard}
+      >
+        {content}
+      </Pressable>
+    );
+  };
 
   const CountdownUnit = ({ label, value }: { label: string; value: number }) => (
     <View style={styles.countdownUnit}>
@@ -354,6 +370,16 @@ export default function HomeScreen() {
 
   const notSeatedPeople = Math.max(0, confirmedPeople - seatedGuests);
 
+  const navigateToGuests = (status?: string) => {
+    router.push({
+      pathname: '/(couple)/guests',
+      params: {
+        ...(resolvedEventId ? { eventId: resolvedEventId } : {}),
+        ...(status ? { status } : {}),
+      },
+    });
+  };
+
   const statusStatsContent = (
     <>
       <View style={styles.statusSquareWrapper}>
@@ -363,6 +389,7 @@ export default function HomeScreen() {
           iconName="help-circle"
           tintColor={stylesVars.primaryBlue}
           iconBg="rgba(19, 91, 236, 0.10)"
+          onPress={() => navigateToGuests('אולי מגיע')}
         />
       </View>
       <View style={styles.statusSquareWrapper}>
@@ -372,6 +399,7 @@ export default function HomeScreen() {
           iconName="time"
           tintColor={stylesVars.amber}
           iconBg="rgba(245, 158, 11, 0.12)"
+          onPress={() => navigateToGuests('ממתין')}
         />
       </View>
       <View style={styles.statusSquareWrapper}>
@@ -381,6 +409,7 @@ export default function HomeScreen() {
           iconName="close-circle"
           tintColor={stylesVars.red}
           iconBg="rgba(239, 68, 68, 0.10)"
+          onPress={() => navigateToGuests('לא מגיע')}
         />
       </View>
       <View style={styles.statusSquareWrapper}>
@@ -390,6 +419,7 @@ export default function HomeScreen() {
           iconName="checkmark-circle"
           tintColor="#16A34A"
           iconBg="rgba(22, 163, 74, 0.10)"
+          onPress={() => navigateToGuests('מגיע')}
         />
       </View>
     </>
@@ -472,10 +502,6 @@ export default function HomeScreen() {
         scrollEventThrottle={16}
       >
         {!isWeb ? <View style={{ height: insets.top + 74 }} /> : null}
-
-        <View style={styles.rtlDebugBanner}>
-          <Text style={styles.rtlDebugText}>RTL: {String(I18nManager.isRTL)}</Text>
-        </View>
 
         <View style={styles.hero}>
           {currentEvent?.invitationImageUrl ? (
@@ -738,22 +764,6 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 1180,
     alignSelf: 'center',
-  },
-  rtlDebugBanner: {
-    alignSelf: 'center',
-    marginBottom: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: 'rgba(11, 28, 65, 0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(11, 28, 65, 0.12)',
-  },
-  rtlDebugText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: colors.text,
-    textAlign: 'center',
   },
 
   hero: {

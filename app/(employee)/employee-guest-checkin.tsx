@@ -1205,10 +1205,11 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   topCenter: { flex: 1, alignItems: "center", justifyContent: "center" },
-  topTitle: { fontSize: 16, fontWeight: "900", color: colors.text },
-  topSubtitle: { marginTop: 2, fontSize: 12, fontWeight: "800", color: colors.gray[600], textAlign: "center" },
+  topTitle: { fontSize: 16, fontWeight: "900", color: colors.text, writingDirection: "rtl" },
+  topSubtitle: { marginTop: 2, fontSize: 12, fontWeight: "800", color: colors.gray[600], textAlign: "center", writingDirection: "rtl" },
 
-  content: { padding: 16, paddingTop: 6 },
+  // Force RTL layout on web / non-RTL system locales (keeps Hebrew UI consistent)
+  content: { padding: 16, paddingTop: 6, direction: "rtl" },
   contentAdminMobile: { paddingTop: 8 },
   bottomContentSpacer: { height: 56 },
   adminMobileIntroCard: {
@@ -1359,7 +1360,7 @@ const styles = StyleSheet.create({
     justifyContent: "flex-start",
     gap: 10,
   },
-  categoryTitle: { fontSize: 16, fontWeight: "900", color: colors.text, textAlign: "right", flexShrink: 1 },
+  categoryTitle: { fontSize: 16, fontWeight: "900", color: colors.text, textAlign: "right", flexShrink: 1, writingDirection: "rtl" },
   categoryHeaderLeft: { flexDirection: "row", alignItems: "center", gap: 8 },
   categoryCountPill: {
     minWidth: 54,
@@ -1450,6 +1451,7 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     color: "rgba(17,24,39,0.55)",
     textAlign: "right",
+    writingDirection: "rtl",
   },
   tabletToggleLabelOn: { color: "#047857" },
   tabletInfoCol: {
@@ -1472,12 +1474,14 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     color: colors.text,
     textAlign: "right",
+    writingDirection: "rtl",
   },
   tabletArrivedLabel: {
     fontSize: 12,
     fontWeight: "800",
     color: "rgba(17,24,39,0.38)",
     textAlign: "right",
+    writingDirection: "rtl",
   },
   tabletArrivedLabelOn: { color: "#10B981" },
 
@@ -1490,6 +1494,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(0,0,0,0.06)",
     flexDirection: "row-reverse",
+    direction: "rtl",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 14,
@@ -1504,9 +1509,9 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(52, 199, 89, 0.06)",
   },
   guestMain: { flex: 1, minWidth: 0, alignItems: "flex-end", justifyContent: "center", gap: 12 },
-  guestName: { fontSize: 17, fontWeight: "900", color: colors.text, textAlign: "right" },
+  guestName: { fontSize: 17, fontWeight: "900", color: colors.text, textAlign: "right", writingDirection: "rtl" },
   guestPhone: { fontSize: 13, fontWeight: "700", color: colors.gray[600], textAlign: "right" },
-  guestMetaRow: { width: "100%", flexDirection: "row-reverse", alignItems: "center", justifyContent: "flex-start", gap: 10, flexWrap: "wrap" },
+  guestMetaRow: { width: "100%", flexDirection: "row-reverse", alignItems: "center", justifyContent: "flex-start", gap: 10, flexWrap: "wrap", direction: "rtl" },
   peoplePill: {
     flexDirection: "row-reverse",
     alignItems: "center",
@@ -1520,7 +1525,7 @@ const styles = StyleSheet.create({
     borderColor: "rgba(0,0,0,0.06)",
     justifyContent: "center",
   },
-  peopleText: { fontSize: 12, fontWeight: "900", color: "rgba(17,24,39,0.70)" },
+  peopleText: { fontSize: 12, fontWeight: "900", color: "rgba(17,24,39,0.70)", writingDirection: "rtl" },
 
   phoneBtn: {
     width: 38,
@@ -1546,7 +1551,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  statusText: { fontSize: 12, fontWeight: "900", color: colors.text },
+  statusText: { fontSize: 12, fontWeight: "900", color: colors.text, writingDirection: "rtl" },
   statusComing: { backgroundColor: "rgba(52, 199, 89, 0.10)", borderColor: "rgba(52, 199, 89, 0.22)" },
   statusPending: { backgroundColor: "rgba(255, 193, 7, 0.14)", borderColor: "rgba(255, 193, 7, 0.26)" },
   statusNot: { backgroundColor: "rgba(255, 59, 48, 0.08)", borderColor: "rgba(255, 59, 48, 0.22)" },
@@ -1592,6 +1597,7 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     textAlign: "center",
     color: "rgba(17,24,39,0.58)",
+    writingDirection: "rtl",
   },
   guestCheckLabelOn: {
     color: "#047857",

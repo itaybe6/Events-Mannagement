@@ -30,7 +30,7 @@ export default function GuestsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const scrollY = React.useRef(new Animated.Value(0)).current;
-  const { eventId: queryEventId } = useLocalSearchParams<{ eventId?: string }>();
+  const { eventId: queryEventId, status: queryStatus } = useLocalSearchParams<{ eventId?: string; status?: string }>();
   const activeUserId = useEventSelectionStore((s) => s.activeUserId);
   const activeEventId = useEventSelectionStore((s) => s.activeEventId);
   const setActiveEvent = useEventSelectionStore((s) => s.setActiveEvent);
@@ -183,6 +183,10 @@ export default function GuestsScreen() {
   const [selectedCategory, setSelectedCategory] = useState<any>(null);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newCategorySide, setNewCategorySide] = useState<'groom' | 'bride'>('groom');
+  const [deletingCategoryId, setDeletingCategoryId] = useState<string | null>(null);
+  const [deleteCategoryModalVisible, setDeleteCategoryModalVisible] = useState(false);
+  const [categoryPendingDelete, setCategoryPendingDelete] = useState<any>(null);
+  const [categoryPendingDeleteCounts, setCategoryPendingDeleteCounts] = useState<{ guestsCount: number; peopleCount: number } | null>(null);
   // הוסף guests ל-state
   const [guests, setGuests] = useState<any[]>([]);
   const [editModalVisible, setEditModalVisible] = useState(false);
@@ -192,6 +196,15 @@ export default function GuestsScreen() {
   const [editGuestStatus, setEditGuestStatus] = useState<'ממתין' | 'אולי מגיע' | 'מגיע' | 'לא מגיע'>('ממתין');
   const [editGuestPeopleCount, setEditGuestPeopleCount] = useState('1');
   // Category editing moved to a dedicated screen: `/(couple)/edit-category`.
+
+  useEffect(() => {
+    if (!queryStatus) return;
+    const status = String(queryStatus).trim();
+    if (!status) return;
+    if (status === statusFilter) return;
+    const allowed = new Set(['מגיע', 'אולי מגיע', 'ממתין', 'לא מגיע']);
+    if (allowed.has(status)) setStatusFilter(status);
+  }, [queryStatus, statusFilter]);
 
   const stickyTitleOpacity = scrollY.interpolate({
     inputRange: [16, 72],
@@ -412,6 +425,42 @@ export default function GuestsScreen() {
       pathname: '/(couple)/edit-category',
       params: { categoryId: String(category.id), eventId: resolvedEventId || undefined },
     });
+  };
+
+  const handleRequestDeleteCategory = (category: any) => {
+    if (!category?.id) return;
+    if (deletingCategoryId) return;
+
+    const categoryId = String(category.id);
+    const guestsInCategory = guests.filter(g => String(g.category_id) === categoryId);
+    const guestsCount = guestsInCategory.length;
+    const peopleCount = guestsInCategory.reduce((total, g) => total + (g.numberOfPeople || 1), 0);
+
+    setCategoryPendingDelete(category);
+    setCategoryPendingDeleteCounts({ guestsCount, peopleCount });
+    setDeleteCategoryModalVisible(true);
+  };
+
+  const handleConfirmDeleteCategory = async () => {
+    if (!categoryPendingDelete?.id) return;
+    const categoryId = String(categoryPendingDelete.id);
+
+    try {
+      setDeletingCategoryId(categoryId);
+      await guestService.deleteGuestCategoryWithGuests(categoryId);
+
+      setGuests(prev => prev.filter(g => String(g.category_id) !== categoryId));
+      setCategories(prev => prev.filter(c => String(c.id) !== categoryId));
+      if (selectedCategory?.id && String(selectedCategory.id) === categoryId) setSelectedCategory(null);
+
+      setDeleteCategoryModalVisible(false);
+      setCategoryPendingDelete(null);
+      setCategoryPendingDeleteCounts(null);
+    } catch (e) {
+      Alert.alert('שגיאה', 'לא ניתן למחוק את הקטגוריה');
+    } finally {
+      setDeletingCategoryId(null);
+    }
   };
 
   return (
@@ -733,7 +782,6 @@ export default function GuestsScreen() {
         <View style={styles.pageHeader}>
           {Platform.OS !== 'web' ? (
             <View style={[styles.mobileTitleWrap, { paddingTop: insets.top + 12 }]}>
-              <Text style={styles.mobilePageTitle}>רשימת מוזמנים</Text>
             </View>
           ) : null}
           <EventSwitcher
@@ -797,16 +845,34 @@ export default function GuestsScreen() {
                       </Text>
                     </View>
                   </View>
-                  <TouchableOpacity
-                    onPress={() => handleEditCategory(cat)}
-                    style={styles.categoryMenuButton}
-                    accessibilityRole="button"
-                    accessibilityLabel={`עריכת קטגוריה ${String(cat?.name ?? '').trim() || ''}`.trim()}
-                  >
-                    <Text>
-                      <Ionicons name="create-outline" size={20} color={colors.gray[600]} />
-                    </Text>
-                  </TouchableOpacity>
+                  <View style={styles.categoryHeaderActions}>
+                    <TouchableOpacity
+                      onPress={() => handleEditCategory(cat)}
+                      style={styles.categoryMenuButton}
+                      accessibilityRole="button"
+                      accessibilityLabel={`עריכת קטגוריה ${String(cat?.name ?? '').trim() || ''}`.trim()}
+                    >
+                      <Text>
+                        <Ionicons name="create-outline" size={20} color={colors.gray[600]} />
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      onPress={() => handleRequestDeleteCategory(cat)}
+                      style={styles.categoryMenuButton}
+                      disabled={deletingCategoryId === String(cat.id)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`מחיקת קטגוריה ${String(cat?.name ?? '').trim() || ''}`.trim()}
+                    >
+                      <Text>
+                        <Ionicons
+                          name="trash-outline"
+                          size={20}
+                          color={deletingCategoryId === String(cat.id) ? colors.gray[400] : colors.error}
+                        />
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
                 <View style={styles.guestsList}>
                   {guestsInCat.length > 0 ? (
@@ -858,6 +924,120 @@ export default function GuestsScreen() {
           </View>
         )}
       </Animated.ScrollView>
+
+      {/* מודל מחיקת קטגוריה */}
+      <Modal
+        visible={deleteCategoryModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => {
+          if (deletingCategoryId) return;
+          setDeleteCategoryModalVisible(false);
+          setCategoryPendingDelete(null);
+          setCategoryPendingDeleteCounts(null);
+        }}
+      >
+        <KeyboardAvoidingView
+          style={styles.editModalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <Pressable
+            style={styles.editModalBackdrop}
+            onPress={() => {
+              if (deletingCategoryId) return;
+              setDeleteCategoryModalVisible(false);
+              setCategoryPendingDelete(null);
+              setCategoryPendingDeleteCounts(null);
+            }}
+          />
+          <Pressable onPress={() => { /* swallow */ }} style={styles.editModalSheet}>
+            <BlurView intensity={20} tint="light" style={styles.editModalBlur} />
+            <View style={styles.editModalContent}>
+              <View style={styles.editModalHandleWrap}>
+                <View style={styles.editModalHandle} />
+              </View>
+
+              <View style={styles.editModalHeader}>
+                <View style={styles.editModalHeaderCenter}>
+                  <View style={styles.editModalTitleRow}>
+                    <View style={[styles.editModalIconWrap, { backgroundColor: 'rgba(244,67,54,0.10)' }]}>
+                      <Text>
+                        <Ionicons name="trash" size={22} color={colors.error} />
+                      </Text>
+                    </View>
+                    <Text style={styles.editModalTitle}>מחיקת קטגוריה</Text>
+                  </View>
+                  <Text style={styles.editModalSubtitle} numberOfLines={1}>
+                    {String(categoryPendingDelete?.name ?? '').trim() || 'ללא שם'}
+                  </Text>
+                </View>
+
+                <TouchableOpacity
+                  onPress={() => {
+                    if (deletingCategoryId) return;
+                    setDeleteCategoryModalVisible(false);
+                    setCategoryPendingDelete(null);
+                    setCategoryPendingDeleteCounts(null);
+                  }}
+                  style={styles.editModalCloseBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel="סגור"
+                >
+                  <Text>
+                    <Ionicons name="close" size={22} color={stylesApple.textMuted} />
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.deleteCategoryBody}>
+                <Text style={styles.deleteCategoryBodyText}>
+                  פעולה זו תמחק את הקטגוריה וכל האורחים שבתוכה.
+                </Text>
+                <Text style={styles.deleteCategoryBodyText}>
+                  {categoryPendingDeleteCounts
+                    ? `יימחקו ${categoryPendingDeleteCounts.guestsCount} אורחים (${categoryPendingDeleteCounts.peopleCount} אנשים).`
+                    : ''}
+                </Text>
+              </View>
+
+              <View style={styles.editModalActions}>
+                <TouchableOpacity
+                  style={[styles.editActionButton, styles.editDeleteButton]}
+                  onPress={() => {
+                    if (deletingCategoryId) return;
+                    setDeleteCategoryModalVisible(false);
+                    setCategoryPendingDelete(null);
+                    setCategoryPendingDeleteCounts(null);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="ביטול"
+                >
+                  <Text style={[styles.editActionButtonText, styles.editDeleteButtonText]}>ביטול</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.editActionButton, styles.editSaveButton]}
+                  onPress={handleConfirmDeleteCategory}
+                  disabled={Boolean(deletingCategoryId)}
+                  accessibilityRole="button"
+                  accessibilityLabel="מחק קטגוריה"
+                >
+                  <LinearGradient
+                    colors={[colors.error, '#7A0F16']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.editSaveButtonBg}
+                  />
+                  <Text>
+                    <Ionicons name="trash-outline" size={20} color={colors.white} />
+                  </Text>
+                  <Text style={styles.editActionButtonText}>מחק</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Pressable>
+        </KeyboardAvoidingView>
+      </Modal>
 
     {/* Contacts Modal */}
     <Modal
@@ -2264,8 +2444,22 @@ const styles = StyleSheet.create({
     color: colors.white,
   },
   categoryHeaderActions: {
-    flexDirection: 'row',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
+    gap: 4,
+  },
+  deleteCategoryBody: {
+    paddingHorizontal: 22,
+    paddingTop: 10,
+    paddingBottom: 18,
+  },
+  deleteCategoryBodyText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: stylesApple.textMuted,
+    textAlign: 'right',
+    lineHeight: 20,
+    marginBottom: 10,
   },
   categoryPeopleCount: {
     flexDirection: 'row',
