@@ -37,6 +37,21 @@ function formatDateDisplay(value?: Date | string | null) {
   return `${day}/${month}/${year}`;
 }
 
+const EVENT_TYPE_PREFIXES = ['חתונה', 'בר מצווה', 'בת מצווה', 'ברית', 'בריתה', 'אירוע חברה'] as const;
+
+function getEventTitleBadgeText(title: string) {
+  const raw = String(title || '').trim();
+  if (!raw) return '';
+
+  for (const prefix of EVENT_TYPE_PREFIXES) {
+    if (raw.startsWith(prefix)) {
+      return raw.slice(prefix.length).replace(/^[\s\-:|–—]+/, '').trim() || raw;
+    }
+  }
+
+  return raw;
+}
+
 function InfoRow({
   icon,
   label,
@@ -229,6 +244,7 @@ export default function BrideGroomSettings() {
   const weddingNames = groomName && brideName ? `${groomName} ו${brideName}` : '';
   const invitationImageUrl = String(eventMeta?.invitationImageUrl ?? '').trim();
   const eventTitle = String(eventMeta?.title ?? '').trim() || 'טרם הוגדר שם אירוע';
+  const eventTitleBadgeText = useMemo(() => getEventTitleBadgeText(eventTitle), [eventTitle]);
   const formattedEventDate = useMemo(() => {
     if (!eventMeta?.date || !Number.isFinite(eventMeta.date.getTime())) return 'טרם נקבע תאריך';
     try {
@@ -610,16 +626,17 @@ export default function BrideGroomSettings() {
               style={styles.heroCoverOverlay}
             />
 
-            {/* Info overlaid on the cover image */}
-            <View style={styles.heroCoverTopRow}>
-              <View style={styles.heroDatePill}>
-                <Ionicons name="calendar-outline" size={13} color="rgba(255,255,255,0.95)" />
-                <Text style={styles.heroDatePillText}>{formattedEventDate}</Text>
+            {eventTitleBadgeText ? (
+              <View style={styles.heroCoverTopRow}>
+                <View style={styles.heroTitlePill}>
+                  <Text style={styles.heroTitlePillText} numberOfLines={1}>
+                    {eventTitleBadgeText}
+                  </Text>
+                </View>
               </View>
-            </View>
+            ) : null}
 
             <View style={styles.heroCoverBottom}>
-              <Text style={styles.heroName}>{eventTitle}</Text>
               {groomName && brideName ? (
                 <View style={styles.coupleRow}>
                   <Text style={styles.coupleName}>{brideName}</Text>
@@ -648,6 +665,10 @@ export default function BrideGroomSettings() {
 
             <View style={styles.heroTextCol}>
               <Text style={styles.heroUserName}>{String(userData?.name || '')}</Text>
+              <View style={styles.heroDatePill}>
+                <Ionicons name="calendar-outline" size={13} color={ui.primary} />
+                <Text style={styles.heroDatePillText}>{formattedEventDate}</Text>
+              </View>
               <Text style={styles.heroEmail}>{String(userData?.email || '')}</Text>
               {userData?.phone ? <Text style={styles.heroPhone}>{String(userData.phone)}</Text> : null}
             </View>
@@ -1341,14 +1362,6 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
   },
 
-  // Text overlaid at the top of cover
-  heroCoverTopRow: {
-    position: 'absolute',
-    top: 14,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-  },
   heroDatePill: {
     flexDirection: ROW_DIR,
     alignItems: 'center',
@@ -1356,15 +1369,38 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: 'rgba(6,23,62,0.05)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.32)',
+    borderColor: 'rgba(6,23,62,0.10)',
   },
   heroDatePillText: {
     fontSize: 12,
     fontWeight: '800',
-    color: 'rgba(255,255,255,0.95)',
+    color: ui.primary,
     textAlign: 'center',
+  },
+  heroCoverTopRow: {
+    position: 'absolute',
+    top: 14,
+    right: 14,
+    left: 14,
+    alignItems: 'flex-end',
+  },
+  heroTitlePill: {
+    maxWidth: '82%',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: 'rgba(6,23,62,0.62)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.24)',
+  },
+  heroTitlePillText: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    textAlign: 'right',
+    writingDirection: 'rtl',
   },
 
   // Event title + couple names at bottom of cover
@@ -1375,15 +1411,6 @@ const styles = StyleSheet.create({
     right: 16,
     alignItems: 'center',
     gap: 8,
-  },
-  heroName: {
-    fontSize: 26,
-    fontWeight: '900',
-    color: colors.white,
-    textAlign: 'center',
-    textShadowColor: 'rgba(0,0,0,0.35)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 6,
   },
   coupleRow: {
     flexDirection: ROW_DIR,

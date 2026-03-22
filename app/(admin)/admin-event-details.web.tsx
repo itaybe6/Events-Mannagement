@@ -32,6 +32,14 @@ function getEventTypeLabel(rawTitle: string) {
   return parts[0] || raw;
 }
 
+function getEventDisplayTitle(rawTitle: string) {
+  const raw = String(rawTitle ?? '').trim();
+  if (!raw) return 'פרטי אירוע';
+  const parts = raw.split(/(?:\s*[–—-]\s*)/g).map((p) => p.trim()).filter(Boolean);
+  if (parts.length <= 1) return raw;
+  return parts.slice(1).join(' - ') || raw;
+}
+
 function getEventStatusMeta(date: Date | string | null | undefined) {
   const today = new Date();
   const d = date ? new Date(date) : new Date('invalid');
@@ -121,6 +129,7 @@ export default function AdminEventDetailsWebScreen() {
   });
 
   const eventType = getEventTypeLabel(String(event?.title ?? ''));
+  const eventDisplayTitle = getEventDisplayTitle(String(event?.title ?? ''));
   const isWedding = eventType === 'חתונה' || String(event?.title ?? '').includes('חתונה');
   const ownerDisplayName = String(userName ?? '').trim();
   const contentWidth = width;
@@ -531,7 +540,7 @@ export default function AdminEventDetailsWebScreen() {
             <View style={styles.heroShell}>
               <AdminWebPageHeader
                 eyebrow={eventType}
-                title={String(event.title ?? 'פרטי אירוע')}
+                title={eventDisplayTitle}
                 actions={
                   ownerDisplayName || userAvatarUrl ? (
                     <View style={styles.headerOwnerBadge}>

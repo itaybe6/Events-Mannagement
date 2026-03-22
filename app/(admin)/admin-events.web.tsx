@@ -127,6 +127,15 @@ function getEventSubtitle(e: Event) {
   return [e.city, e.location].filter(Boolean).join(' · ');
 }
 
+function getEventDisplayTitle(rawTitle: string) {
+  const title = String(rawTitle || '').trim();
+  if (!title) return '';
+  const eventType = inferEventType(title);
+  if (!eventType) return title;
+  const withoutTypePrefix = title.replace(new RegExp(`^${eventType}\\s*[–—-]\\s*`), '').trim();
+  return withoutTypePrefix || title;
+}
+
 function initialsLabel(name: string) {
   const parts = String(name || '')
     .trim()
@@ -600,7 +609,6 @@ export function AdminEventsListWebScreen() {
                   <Text style={styles.filterFieldLabel}>תאריך מדויק</Text>
                   {Platform.OS === 'web' ? (
                     <View style={[styles.dateBtnWide, hasExactDateFilter ? styles.dateBtnWideActive : null]}>
-                      {/* @ts-expect-error web-only element */}
                       <input
                         aria-label="בחירת תאריך מדויק"
                         value={formatDateInputValue(filterDate)}
@@ -639,7 +647,6 @@ export function AdminEventsListWebScreen() {
                     {Platform.OS === 'web' ? (
                       <View style={[styles.rangeBtn, filterStartDate ? styles.rangeBtnActive : null]}>
                         <Ionicons name="arrow-forward-outline" size={14} color={colors.text} style={styles.webDateInlineIcon} />
-                        {/* @ts-expect-error web-only element */}
                         <input
                           aria-label="בחירת תאריך התחלה"
                           value={formatDateInputValue(filterStartDate)}
@@ -682,7 +689,6 @@ export function AdminEventsListWebScreen() {
                     {Platform.OS === 'web' ? (
                       <View style={[styles.rangeBtn, filterEndDate ? styles.rangeBtnActive : null]}>
                         <Ionicons name="arrow-back-outline" size={14} color={colors.text} style={styles.webDateInlineIcon} />
-                        {/* @ts-expect-error web-only element */}
                         <input
                           aria-label="בחירת תאריך סיום"
                           value={formatDateInputValue(filterEndDate)}
@@ -821,7 +827,7 @@ export function AdminEventsListWebScreen() {
                   <Pressable
                     key={e.id}
                     accessibilityRole="button"
-                    accessibilityLabel={`פתיחת אירוע ${e.title}`}
+                    accessibilityLabel={`פתיחת אירוע ${eventTitleLabel}`}
                     onPress={() => router.push({ pathname: '/(admin)/admin-event-details', params: { id: e.id } })}
                     style={({ hovered, pressed }: any) => [
                       styles.eventOverviewCard,
@@ -847,11 +853,6 @@ export function AdminEventsListWebScreen() {
                         </View>
                       </View>
 
-                      <View style={styles.eventOverviewTypePill}>
-                        <View style={[styles.eventOverviewTypeInner, { backgroundColor: typeMeta.background, borderColor: typeMeta.border }]}>
-                          <Text style={[styles.eventOverviewTypeText, { color: typeMeta.text }]}>{eventTypeLabel}</Text>
-                        </View>
-                      </View>
                     </View>
 
                     <View style={styles.eventOverviewBody}>
@@ -859,6 +860,11 @@ export function AdminEventsListWebScreen() {
                         <Text style={styles.eventOverviewTitle} numberOfLines={1}>
                           {eventTitleLabel}
                         </Text>
+                        <View style={styles.eventOverviewTypeInlineRow}>
+                          <View style={[styles.eventOverviewTypeInner, { backgroundColor: typeMeta.background, borderColor: typeMeta.border }]}>
+                            <Text style={[styles.eventOverviewTypeText, { color: typeMeta.text }]}>{eventType}</Text>
+                          </View>
+                        </View>
                         <Text style={styles.eventOverviewSubtitle} numberOfLines={1}>
                           {subtitle}
                         </Text>
@@ -1722,11 +1728,6 @@ const styles = StyleSheet.create({
     color: colors.white,
     textAlign: 'center',
   },
-  eventOverviewTypePill: {
-    position: 'absolute',
-    right: 14,
-    bottom: 14,
-  },
   eventOverviewTypeInner: {
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -1754,6 +1755,12 @@ const styles = StyleSheet.create({
     gap: 4,
     alignItems: 'stretch',
     width: '100%',
+  },
+  eventOverviewTypeInlineRow: {
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+    alignItems: 'flex-end',
   },
   eventOverviewTitle: {
     fontSize: 17,
@@ -3139,7 +3146,6 @@ export default function AdminEventsWebScreen() {
                 <View style={dashboardStyles.advancedField}>
                   <Text style={dashboardStyles.advancedFieldLabel}>תאריך מדויק</Text>
                   <View style={[dashboardStyles.dateInputShell, hasExactDateFilter ? dashboardStyles.dateInputShellActive : null]}>
-                    {/* @ts-expect-error web-only element */}
                     <input
                       aria-label="בחירת תאריך מדויק"
                       value={formatDateInputValue(filterDate)}
@@ -3160,7 +3166,6 @@ export default function AdminEventsWebScreen() {
                   <Text style={dashboardStyles.advancedFieldLabel}>מתאריך</Text>
                   <View style={[dashboardStyles.dateInputShell, filterStartDate ? dashboardStyles.dateInputShellActive : null]}>
                     <Ionicons name="arrow-forward-outline" size={14} color={colors.gray[700]} style={dashboardStyles.webDateIcon} />
-                    {/* @ts-expect-error web-only element */}
                     <input
                       aria-label="בחירת תאריך התחלה"
                       value={formatDateInputValue(filterStartDate)}
@@ -3189,7 +3194,6 @@ export default function AdminEventsWebScreen() {
                   <Text style={dashboardStyles.advancedFieldLabel}>עד תאריך</Text>
                   <View style={[dashboardStyles.dateInputShell, filterEndDate ? dashboardStyles.dateInputShellActive : null]}>
                     <Ionicons name="arrow-back-outline" size={14} color={colors.gray[700]} style={dashboardStyles.webDateIcon} />
-                    {/* @ts-expect-error web-only element */}
                     <input
                       aria-label="בחירת תאריך סיום"
                       value={formatDateInputValue(filterEndDate)}
