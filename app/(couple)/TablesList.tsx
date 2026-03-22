@@ -540,9 +540,8 @@ export default function TablesList() {
               accessibilityLabel="חזרה לעמוד האירוע"
               activeOpacity={0.86}
             >
-              <Ionicons name="chevron-forward" size={22} color={colors.primary} />
+              <Ionicons name="chevron-back" size={22} color={colors.primary} />
             </TouchableOpacity>
-            <Text style={styles.screenTitle}>רשימת שולחנות</Text>
           </View>
         </View>
 
@@ -996,7 +995,7 @@ const styles = StyleSheet.create({
   topRow: {
     flexDirection: ROW_DIR,
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
     gap: 12,
   },
   backButton: {
@@ -1013,13 +1012,6 @@ const styles = StyleSheet.create({
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 8 },
     elevation: 6,
-  },
-  screenTitle: {
-    flex: 1,
-    fontSize: 24,
-    fontWeight: '900',
-    color: colors.richBlack,
-    textAlign: 'right',
   },
   errorText: {
     fontSize: 17,

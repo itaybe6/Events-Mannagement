@@ -732,15 +732,9 @@ export default function AutomaticNotificationsScreen(props?: { editorPathname?: 
         style={styles.bgWarmGlow}
       />
 
-      <View style={[styles.topSpacer, { paddingTop: topContentInset }]}>
-        <View style={styles.topRow}>
-          <Text style={styles.screenTitle}>הודעות אוטומטיות</Text>
-        </View>
-      </View>
-
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={[styles.content, { paddingBottom: 28 + Math.max(90, insets.bottom + 90) }]}
+        contentContainerStyle={[styles.content, { paddingTop: topContentInset, paddingBottom: 28 + Math.max(90, insets.bottom + 90) }]}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.notificationsSection}>

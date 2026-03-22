@@ -28,7 +28,7 @@ import { colors } from '@/constants/colors';
 import { buildDirectionsDetailsText, buildEventLocationText, normalizeBaseUrl } from '@/lib/navigationLinks';
 import { supabase } from '@/lib/supabase';
 import { useLayoutStore } from '@/store/layoutStore';
-import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
+import { ALIGN_RIGHT, IS_RTL, ROW_DIR, ROW_REVERSE_DIR } from '@/lib/rtl';
 import { I18nManager } from 'react-native';
 
 type NotificationSettingRow = {
@@ -983,9 +983,8 @@ export function AdminNotificationEditorScreen({ viewerMode = 'admin' }: { viewer
               accessibilityLabel="חזרה להודעות אוטומטיות"
               activeOpacity={0.86}
             >
-              <Ionicons name="chevron-forward" size={22} color={colors.primary} />
+              <Ionicons name="chevron-back" size={22} color={colors.primary} />
             </TouchableOpacity>
-            <Text style={styles.nativeScreenTitle}>הודעה</Text>
           </View>
         </View>
 
@@ -1581,9 +1580,9 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   nativeTopRow: {
-    flexDirection: ROW_DIR,
+    flexDirection: ROW_REVERSE_DIR,
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
     gap: 12,
   },
   nativeBackButton: {
@@ -1607,6 +1606,7 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: colors.richBlack,
     textAlign: 'right',
+    alignSelf: ALIGN_RIGHT,
   },
   nativeScroll: { flex: 1, backgroundColor: 'transparent' },
   nativeContent: {
@@ -1626,6 +1626,7 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 8 },
     elevation: 3,
+    alignItems: ALIGN_RIGHT,
   },
   nativeHeaderTitle: {
     fontSize: 18,
@@ -1648,6 +1649,7 @@ const styles = StyleSheet.create({
     color: colors.richBlack,
     textAlign: 'right',
     paddingHorizontal: 4,
+    alignSelf: ALIGN_RIGHT,
   },
   nativeScheduleRow: { flexDirection: ROW_DIR, alignItems: 'stretch', gap: 12 },
   nativeInfoCard: {
@@ -1660,6 +1662,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.75)',
     justifyContent: 'space-between',
+    alignItems: ALIGN_RIGHT,
     shadowColor: colors.richBlack,
     shadowOpacity: 0.05,
     shadowRadius: 12,
@@ -1676,6 +1679,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.75)',
     justifyContent: 'space-between',
+    alignItems: ALIGN_RIGHT,
     shadowColor: colors.richBlack,
     shadowOpacity: 0.05,
     shadowRadius: 12,
@@ -1686,6 +1690,7 @@ const styles = StyleSheet.create({
     flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
+    alignSelf: 'stretch',
     gap: 8,
   },
   nativeInfoLabel: {
@@ -1762,12 +1767,14 @@ const styles = StyleSheet.create({
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 7 },
     elevation: 2,
+    alignItems: ALIGN_RIGHT,
   },
   nativeMessageCardTop: {
     flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 10,
     marginBottom: 12,
+    alignSelf: 'stretch',
   },
   nativeMessageIconWrap: {
     width: 34,
@@ -1787,8 +1794,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: colors.richBlack,
-    textAlign: 'right',
+    textAlign: IS_RTL ? 'left' : 'right',
     lineHeight: 24,
+    alignSelf: 'stretch',
   },
   nativeStatusCard: {
     borderRadius: 20,
@@ -1798,12 +1806,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.75)',
     gap: 10,
+    alignItems: ALIGN_RIGHT,
   },
   nativeStatusTopRow: {
     flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
+    alignSelf: 'stretch',
   },
   nativeStatusLabelWrap: {
     flexDirection: ROW_DIR,
@@ -1832,15 +1842,17 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: colors.gray[700],
-    textAlign: 'right',
+    textAlign: IS_RTL ? 'left' : 'right',
     lineHeight: 20,
+    alignSelf: 'stretch',
   },
   nativeStatusError: {
     fontSize: 12,
     fontWeight: '700',
     color: colors.error,
-    textAlign: 'right',
+    textAlign: IS_RTL ? 'left' : 'right',
     lineHeight: 18,
+    alignSelf: 'stretch',
   },
   nativeRecipientsOpenBtn: {
     flexDirection: ROW_DIR,

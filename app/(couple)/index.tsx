@@ -137,13 +137,6 @@ export default function HomeScreen() {
     };
   }, [currentEvent?.date, now]);
 
-  const eventTypeLabel = useMemo(() => {
-    const raw = String(currentEvent?.title ?? '').trim();
-    if (!raw) return 'אירוע';
-    const parts = raw.split(/(?:\s*[–—-]\s*)/g).map((p) => p.trim()).filter(Boolean);
-    return parts[0] || raw;
-  }, [currentEvent?.title]);
-
   if (!isLoggedIn) {
     return (
       <View style={styles.center}>
@@ -507,38 +500,6 @@ export default function HomeScreen() {
           {currentEvent?.invitationImageUrl ? (
             <View style={styles.heroBanner}>
               <Image source={{ uri: currentEvent.invitationImageUrl }} style={styles.heroBannerImage} resizeMode="cover" />
-              <LinearGradient
-                colors={['rgba(255,255,255,0.96)', 'rgba(255,255,255,0.86)', 'rgba(255,255,255,0)']}
-                start={{ x: 0.5, y: 1 }}
-                end={{ x: 0.5, y: 0 }}
-                style={styles.heroBannerTitleOverlay}
-              >
-                <View style={styles.heroBannerMetaRow}>
-                  <View style={styles.heroBannerTypePill}>
-                    <Text style={styles.heroBannerTypeText} numberOfLines={1}>
-                      {String(currentEvent.title || '').trim() || eventTypeLabel}
-                    </Text>
-                  </View>
-
-                  <View style={styles.heroBannerDetailsRow}>
-                    {String(currentEvent.location || '').trim() ? (
-                      <View style={styles.heroBannerVenuePill}>
-                        <Text style={styles.heroBannerVenueText} numberOfLines={1}>
-                          {String(currentEvent.location || '').trim()}
-                        </Text>
-                      </View>
-                    ) : null}
-
-                    {String(currentEvent.city || '').trim() ? (
-                      <View style={styles.heroBannerCityPill}>
-                        <Text style={styles.heroBannerCityText} numberOfLines={1}>
-                          {String(currentEvent.city || '').trim()}
-                        </Text>
-                      </View>
-                    ) : null}
-                  </View>
-                </View>
-              </LinearGradient>
               <View style={styles.heroBannerFrame} />
             </View>
           ) : (
@@ -776,7 +737,7 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 260,
     marginHorizontal: -24,
-    marginTop: Platform.OS === 'web' ? -108 : -44,
+    marginTop: Platform.OS === 'web' ? -72 : -12,
     borderRadius: 28,
     overflow: 'hidden',
     backgroundColor: 'rgba(255,255,255,0.92)',
@@ -790,85 +751,6 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     width: '100%',
     height: '100%',
-  },
-  heroBannerTitleOverlay: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: '52%',
-    paddingHorizontal: 22,
-    paddingBottom: 18,
-    justifyContent: 'flex-end',
-    alignItems: 'flex-end',
-  },
-  heroBannerMetaRow: {
-    flexDirection: 'column',
-    alignItems: 'flex-end',
-    gap: 8,
-    maxWidth: '92%',
-  },
-  heroBannerDetailsRow: {
-    flexDirection: 'row-reverse',
-    flexWrap: 'wrap',
-    justifyContent: 'flex-start',
-    alignItems: 'center',
-    gap: 8,
-  },
-  heroBannerTypePill: {
-    maxWidth: '100%',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: colors.oxfordBlue,
-    alignSelf: 'flex-end',
-    shadowColor: colors.black,
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 3,
-  },
-  heroBannerTypeText: {
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: '800',
-    color: colors.white,
-    textAlign: 'right',
-    writingDirection: 'rtl',
-  },
-  heroBannerVenuePill: {
-    maxWidth: '88%',
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 999,
-    backgroundColor: colors.gold,
-    alignSelf: 'flex-end',
-  },
-  heroBannerVenueText: {
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: '800',
-    color: colors.white,
-    textAlign: 'right',
-    writingDirection: 'rtl',
-  },
-  heroBannerCityPill: {
-    maxWidth: '88%',
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.96)',
-    borderWidth: 1,
-    borderColor: 'rgba(0,29,61,0.10)',
-    alignSelf: 'flex-end',
-  },
-  heroBannerCityText: {
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: '800',
-    color: colors.oxfordBlue,
-    textAlign: 'right',
-    writingDirection: 'rtl',
   },
   heroBannerFrame: {
     ...StyleSheet.absoluteFillObject,
@@ -1192,6 +1074,7 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: colors.text,
     textAlign: 'right',
+    alignSelf: ALIGN_RIGHT,
   },
   sectionTitleSpacious: {
     marginTop: 10,

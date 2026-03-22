@@ -296,8 +296,94 @@ function inferTimeHmFromExisting(value: unknown) {
   return hasRealTime ? formatTime(d) : '11:00';
 }
 
-const isMissingColumn = (err: any, column: string) =>
-  String(err?.code) === '42703' && String(err?.message || '').toLowerCase().includes(column.toLowerCase());
+const isMissingColumn = (err: any, column: string) => {
+  const code = String(err?.code || '').toUpperCase();
+  const haystack = `${String(err?.message || '')} ${String(err?.details || '')} ${String(err?.hint || '')}`.toLowerCase();
+  const needle = String(column || '').toLowerCase();
+  if (!needle) return false;
+  return (code === '42703' || code === 'PGRST204') && haystack.includes(needle);
+};
+
+const extractMissingColumnName = (err: any): string | null => {
+  const code = String(err?.code || '').toUpperCase();
+  if (code !== '42703' && code !== 'PGRST204') return null;
+  const text = `${String(err?.message || '')} ${String(err?.details || '')} ${String(err?.hint || '')}`;
+  const patterns = [
+    /could not find the ['"]?([a-zA-Z0-9_]+)['"]? column/i,
+    /column ['"]?([a-zA-Z0-9_]+)['"]? does not exist/i,
+    /schema cache.*['"]([a-zA-Z0-9_]+)['"]/i,
+  ];
+  for (const pattern of patterns) {
+    const match = pattern.exec(text);
+    if (match?.[1]) return String(match[1]);
+  }
+  return null;
+};
+
+const dropUnsupportedColumnFromPayload = (payload: Record<string, any>, column: string) => {
+  let changed = false;
+  const drop = (key: string) => {
+    if (Object.prototype.hasOwnProperty.call(payload, key)) {
+      delete payload[key];
+      changed = true;
+    }
+  };
+
+  if (column === 'recipient_mode') {
+    drop('recipient_mode');
+    drop('recipient_rule');
+    drop('depends_on_setting_id');
+    return changed;
+  }
+
+  if (column === 'late_catchup_enabled') {
+    drop('late_catchup_enabled');
+    drop('late_catchup_send_time');
+    drop('late_catchup_weekdays');
+    drop('late_catchup_schedule_mode');
+    drop('late_catchup_dates');
+    return changed;
+  }
+
+  if (column === 'late_catchup_schedule_mode' || column === 'late_catchup_dates') {
+    drop('late_catchup_schedule_mode');
+    drop('late_catchup_dates');
+    return changed;
+  }
+
+  drop(column);
+  return changed;
+};
+
+async function runWithMissingColumnRetries<TData>(
+  initialPayload: Record<string, any>,
+  execute: (payload: Record<string, any>) => Promise<{ data?: TData | null; error?: any }>
+) {
+  const payload = { ...initialPayload };
+  const removedColumns = new Set<string>();
+  let lastData: TData | null | undefined = null;
+
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const result = await execute(payload);
+    lastData = result.data;
+    const error = result.error as any;
+    if (!error) return { data: lastData ?? null, error: null, payload };
+
+    const missingColumn = extractMissingColumnName(error);
+    if (!missingColumn || removedColumns.has(missingColumn)) {
+      return { data: lastData ?? null, error, payload };
+    }
+
+    const changed = dropUnsupportedColumnFromPayload(payload, missingColumn);
+    if (!changed) {
+      return { data: lastData ?? null, error, payload };
+    }
+
+    removedColumns.add(missingColumn);
+  }
+
+  return { data: lastData ?? null, error: new Error('Too many missing-column retries'), payload };
+}
 
 export default function AutomaticNotificationsWebScreen() {
   const router = useRouter();
@@ -1855,44 +1941,18 @@ export default function AutomaticNotificationsWebScreen() {
       }
 
       if (editorRow.id) {
-        let { error } = await supabase.from('notification_settings').update(payload).eq('id', editorRow.id);
-        if (error && isMissingColumn(error, 'notification_date')) {
-          delete payload.notification_date;
-          const retry = await supabase.from('notification_settings').update(payload).eq('id', editorRow.id);
-          error = retry.error as any;
-        }
-        if (error && isMissingColumn(error, 'recipient_guest_ids')) {
-          delete payload.recipient_guest_ids;
-          const retry = await supabase.from('notification_settings').update(payload).eq('id', editorRow.id);
-          error = retry.error as any;
-        }
-        if (error && isMissingColumn(error, 'recipient_mode')) {
-          delete payload.recipient_mode;
-          delete payload.recipient_rule;
-          delete payload.depends_on_setting_id;
-          const retry = await supabase.from('notification_settings').update(payload).eq('id', editorRow.id);
-          error = retry.error as any;
-        }
-        if (error && isMissingColumn(error, 'late_catchup_enabled')) {
-          delete payload.late_catchup_enabled;
-          delete payload.late_catchup_send_time;
-          delete payload.late_catchup_weekdays;
-          delete payload.late_catchup_schedule_mode;
-          delete payload.late_catchup_dates;
-          const retry = await supabase.from('notification_settings').update(payload).eq('id', editorRow.id);
-          error = retry.error as any;
-        }
+        const { error, payload: savedPayload } = await runWithMissingColumnRetries(payload, async (nextPayload) => {
+          return await supabase.from('notification_settings').update(nextPayload).eq('id', editorRow.id!);
+        });
         if (error) throw error;
         if (isFlow) {
           setFlowSteps((p) =>
             p.map((r) =>
-              r.notification_type === editorRow.notification_type ? ({ ...(r as any), ...(payload as any) } as any) : r
+              r.notification_type === editorRow.notification_type ? ({ ...(r as any), ...(savedPayload as any) } as any) : r
             )
           );
         } else {
-          setNotificationSettings((p) =>
-            p.map((r) => (r.notification_type === editorRow.notification_type ? { ...r, ...payload } : r))
-          );
+          setNotificationSettings((p) => p.map((r) => (r.notification_type === editorRow.notification_type ? { ...r, ...savedPayload } : r)));
         }
         if (opts?.toastOnSuccess) showToast('השינויים נשמרו');
         if (opts?.closeOnSuccess) closeEditor();
@@ -1916,36 +1976,19 @@ export default function AutomaticNotificationsWebScreen() {
       };
       if (opts?.recipientGuestIds) insertPayload.recipient_guest_ids = opts.recipientGuestIds;
       insertPayload.notification_date = payload.notification_date;
+      if (Object.prototype.hasOwnProperty.call(payload, 'recipient_mode')) insertPayload.recipient_mode = payload.recipient_mode;
+      if (Object.prototype.hasOwnProperty.call(payload, 'late_catchup_enabled')) insertPayload.late_catchup_enabled = payload.late_catchup_enabled;
+      if (Object.prototype.hasOwnProperty.call(payload, 'late_catchup_send_time'))
+        insertPayload.late_catchup_send_time = payload.late_catchup_send_time;
+      if (Object.prototype.hasOwnProperty.call(payload, 'late_catchup_weekdays'))
+        insertPayload.late_catchup_weekdays = payload.late_catchup_weekdays;
+      if (Object.prototype.hasOwnProperty.call(payload, 'late_catchup_schedule_mode'))
+        insertPayload.late_catchup_schedule_mode = payload.late_catchup_schedule_mode;
+      if (Object.prototype.hasOwnProperty.call(payload, 'late_catchup_dates')) insertPayload.late_catchup_dates = payload.late_catchup_dates;
 
-      let { data, error } = await supabase.from('notification_settings').insert(insertPayload).select().single();
-      if (error && isMissingColumn(error, 'channel')) {
-        delete insertPayload.channel;
-        const retry = await supabase.from('notification_settings').insert(insertPayload).select().single();
-        data = retry.data as any;
-        error = retry.error as any;
-      }
-      if (error && isMissingColumn(error, 'notification_date')) {
-        delete insertPayload.notification_date;
-        const retry = await supabase.from('notification_settings').insert(insertPayload).select().single();
-        data = retry.data as any;
-        error = retry.error as any;
-      }
-      if (error && isMissingColumn(error, 'recipient_guest_ids')) {
-        delete insertPayload.recipient_guest_ids;
-        const retry = await supabase.from('notification_settings').insert(insertPayload).select().single();
-        data = retry.data as any;
-        error = retry.error as any;
-      }
-      if (error && isMissingColumn(error, 'late_catchup_enabled')) {
-        delete insertPayload.late_catchup_enabled;
-        delete insertPayload.late_catchup_send_time;
-        delete insertPayload.late_catchup_weekdays;
-        delete insertPayload.late_catchup_schedule_mode;
-        delete insertPayload.late_catchup_dates;
-        const retry = await supabase.from('notification_settings').insert(insertPayload).select().single();
-        data = retry.data as any;
-        error = retry.error as any;
-      }
+      const { data, error } = await runWithMissingColumnRetries(insertPayload, async (nextPayload) => {
+        return await supabase.from('notification_settings').insert(nextPayload).select().single();
+      });
       if (error) throw error;
       setNotificationSettings((p) =>
         p.map((r) => (r.notification_type === editorRow.notification_type ? { ...(r as any), ...(data as any) } : r))

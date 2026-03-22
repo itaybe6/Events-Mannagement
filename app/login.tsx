@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -9,8 +9,6 @@ import {
   StatusBar,
   TextInput,
   Alert,
-  Keyboard,
-  Platform,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { colors } from '@/constants/colors';
@@ -219,23 +217,9 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const router = useRouter();
   const { login } = useUserStore();
   const insets = useSafeAreaInsets();
-
-  useEffect(() => {
-    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-
-    const showSub = Keyboard.addListener(showEvent, () => setKeyboardVisible(true));
-    const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardVisible(false));
-
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, []);
 
   const handleLogin = async () => {
     try {
@@ -368,7 +352,6 @@ export default function LoginScreen() {
         alwaysBounceVertical={false}
         overScrollMode="never"
         enableResetScrollToCoords={false}
-        scrollEnabled={keyboardVisible}
       >
         {/* Top hero (55%) */}
         <View style={styles.hero}>

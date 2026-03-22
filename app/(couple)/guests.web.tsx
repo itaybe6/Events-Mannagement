@@ -21,6 +21,7 @@ import { useUserStore } from '@/store/userStore';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import { eventService } from '@/lib/services/eventService';
 import { guestService } from '@/lib/services/guestService';
+import { supabase } from '@/lib/supabase';
 
 type GuestStatus = 'ממתין' | 'אולי מגיע' | 'מגיע' | 'לא מגיע';
 type GuestRow = {
@@ -70,6 +71,7 @@ export default function CoupleGuestsWebScreen() {
 
   const [categories, setCategories] = useState<GuestCategoryRow[]>([]);
   const [guests, setGuests] = useState<GuestRow[]>([]);
+  const [sentGuestIds, setSentGuestIds] = useState<Set<string>>(new Set());
 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<GuestStatus | null>(null);
@@ -105,6 +107,7 @@ export default function CoupleGuestsWebScreen() {
     if (!resolvedEventId) {
       setCategories([]);
       setGuests([]);
+      setSentGuestIds(new Set());
       return;
     }
 
@@ -124,6 +127,24 @@ export default function CoupleGuestsWebScreen() {
         for (const c of cats as any) if (next[c.id] === undefined) next[c.id] = true;
         return next;
       });
+      try {
+        const { data: sentRows, error: sentError } = await supabase
+          .from('scheduled_notification_sms_run_recipients')
+          .select('guest_id')
+          .eq('event_id', resolvedEventId)
+          .eq('status', 'sent');
+
+        if (sentError) throw sentError;
+        const next = new Set<string>();
+        for (const row of (sentRows as any[]) || []) {
+          const guestId = String((row as any)?.guest_id || '').trim();
+          if (guestId) next.add(guestId);
+        }
+        setSentGuestIds(next);
+      } catch (sentError) {
+        console.warn('Guests web sent status load error:', sentError);
+        setSentGuestIds(new Set());
+      }
     } catch (e) {
       console.error('Guests web load error:', e);
       Alert.alert('שגיאה', 'לא ניתן לטעון את רשימת המוזמנים כרגע.');
@@ -787,6 +808,7 @@ export default function CoupleGuestsWebScreen() {
                             <GuestListRow
                               key={g.id}
                               guest={g}
+                              hasSentMessage={sentGuestIds.has(g.id)}
                               width={guestItemWidth}
                               square={useSquareGuestCards}
                               checked={selectedGuestIds.has(g.id)}
@@ -1436,6 +1458,7 @@ function MiniStatDot({ label, tone }: { label: string; tone: 'primary' | 'succes
 
 function GuestListRow({
   guest,
+  hasSentMessage,
   width,
   square,
   checked,
@@ -1444,6 +1467,7 @@ function GuestListRow({
   onDelete,
 }: {
   guest: GuestRow;
+  hasSentMessage: boolean;
   width?: any;
   square?: boolean;
   checked: boolean;
@@ -1511,6 +1535,12 @@ function GuestListRow({
               <Ionicons name="people-outline" size={13} color={colors.gray[500]} />
               <Text style={styles.guestInfoText}>כמות {guest.numberOfPeople || 1}</Text>
             </View>
+            {hasSentMessage ? (
+              <View style={[styles.guestInfoPill, styles.messageSentPill]}>
+                <Ionicons name="checkmark-done-outline" size={13} color="#047857" />
+                <Text style={[styles.guestInfoText, styles.messageSentText]}>הודעה נשלחה</Text>
+              </View>
+            ) : null}
           </View>
 
           {/* Footer: Phone + Actions */}
@@ -2408,6 +2438,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   guestInfoText: { fontSize: 13, fontWeight: '700', color: colors.gray[700], textAlign: 'right', writingDirection: 'rtl' },
+  messageSentPill: {
+    backgroundColor: 'rgba(236,253,245,0.95)',
+    borderColor: 'rgba(16,185,129,0.24)',
+  },
+  messageSentText: {
+    color: '#047857',
+  },
   guestCardFooterBar: {
     paddingTop: 14,
     borderTopWidth: 1,

@@ -860,6 +860,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginBottom: 8,
     textAlign: 'right',
+    alignSelf: ALIGN_RIGHT,
   },
   inputWrap: {
     borderRadius: 18,

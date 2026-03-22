@@ -14,7 +14,7 @@ import { supabase } from '@/lib/supabase';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
-import { ALIGN_RIGHT, ROW_DIR, ROW_REVERSE_DIR } from '@/lib/rtl';
+import { ALIGN_RIGHT, ROW_DIR, ROW_REVERSE_DIR, rtlText } from '@/lib/rtl';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // On web, icons are ultimately rendered as text glyphs. Wrapping them in <Text>
@@ -59,6 +59,27 @@ export default function GuestsScreen() {
     router.replace({ pathname: './', params: { eventId: nextEventId } });
   };
 
+  async function loadSentGuestIds(eventId: string) {
+    try {
+      const { data, error } = await supabase
+        .from('scheduled_notification_sms_run_recipients')
+        .select('guest_id')
+        .eq('event_id', eventId)
+        .eq('status', 'sent');
+      if (error) throw error;
+
+      const next = new Set<string>();
+      for (const row of (data as any[]) || []) {
+        const guestId = String((row as any)?.guest_id || '').trim();
+        if (guestId) next.add(guestId);
+      }
+      setSentGuestIds(next);
+    } catch (e) {
+      console.warn('Load sent guest ids error:', e);
+      setSentGuestIds(new Set());
+    }
+  }
+
   useEffect(() => {
     if (!isLoggedIn) {
       router.replace('/login');
@@ -69,6 +90,7 @@ export default function GuestsScreen() {
       setGuests([]);
       setCategories([]);
       setEventTitle('');
+      setSentGuestIds(new Set());
       return;
     }
 
@@ -83,6 +105,7 @@ export default function GuestsScreen() {
         ]);
         setGuests(guestsData);
         setEventTitle(event?.title ?? '');
+        await loadSentGuestIds(resolvedEventId);
         await loadCategories(resolvedEventId);
       }
     };
@@ -100,6 +123,7 @@ export default function GuestsScreen() {
           ]);
           setGuests(guestsData);
           setEventTitle(event?.title ?? '');
+          await loadSentGuestIds(resolvedEventId);
           await loadCategories(resolvedEventId);
         };
         reloadGuests();
@@ -189,6 +213,7 @@ export default function GuestsScreen() {
   const [categoryPendingDeleteCounts, setCategoryPendingDeleteCounts] = useState<{ guestsCount: number; peopleCount: number } | null>(null);
   // הוסף guests ל-state
   const [guests, setGuests] = useState<any[]>([]);
+  const [sentGuestIds, setSentGuestIds] = useState<Set<string>>(new Set());
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [selectedGuest, setSelectedGuest] = useState<any>(null);
   const [editGuestName, setEditGuestName] = useState('');
@@ -898,6 +923,14 @@ export default function GuestsScreen() {
                             <Text style={styles.guestPhone} numberOfLines={1}>
                               {guest.phone}
                             </Text>
+                            {sentGuestIds.has(String(guest.id)) ? (
+                              <View style={styles.sentMessageBadge}>
+                                <Text>
+                                  <Ionicons name="checkmark-done-outline" size={12} color="#047857" />
+                                </Text>
+                                <Text style={styles.sentMessageBadgeText}>הודעה נשלחה</Text>
+                              </View>
+                            ) : null}
                           </View>
                         </View>
                         <View style={styles.guestMeta}>
@@ -968,7 +1001,7 @@ export default function GuestsScreen() {
                     <Text style={styles.editModalTitle}>מחיקת קטגוריה</Text>
                   </View>
                   <Text style={styles.editModalSubtitle} numberOfLines={1}>
-                    {String(categoryPendingDelete?.name ?? '').trim() || 'ללא שם'}
+                    {rtlText(String(categoryPendingDelete?.name ?? '').trim() || 'ללא שם')}
                   </Text>
                 </View>
 
@@ -990,14 +1023,18 @@ export default function GuestsScreen() {
               </View>
 
               <View style={styles.deleteCategoryBody}>
-                <Text style={styles.deleteCategoryBodyText}>
-                  פעולה זו תמחק את הקטגוריה וכל האורחים שבתוכה.
-                </Text>
-                <Text style={styles.deleteCategoryBodyText}>
-                  {categoryPendingDeleteCounts
-                    ? `יימחקו ${categoryPendingDeleteCounts.guestsCount} אורחים (${categoryPendingDeleteCounts.peopleCount} אנשים).`
-                    : ''}
-                </Text>
+                <View style={styles.deleteCategoryBodyRow}>
+                  <Text style={styles.deleteCategoryBodyText}>
+                    פעולה זו תמחק את הקטגוריה וכל האורחים שבתוכה.
+                  </Text>
+                </View>
+                {!!categoryPendingDeleteCounts && (
+                  <View style={styles.deleteCategoryBodyRow}>
+                    <Text style={styles.deleteCategoryBodyText}>
+                      {`יימחקו ${categoryPendingDeleteCounts.guestsCount} אורחים (${categoryPendingDeleteCounts.peopleCount} אנשים).`}
+                    </Text>
+                  </View>
+                )}
               </View>
 
               <View style={styles.editModalActions}>
@@ -1851,6 +1888,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: ALIGN_RIGHT,
     marginStart: 12,
+    width: '100%',
   },
   editModalTitleRow: {
     flexDirection: ROW_DIR,
@@ -1870,12 +1908,16 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: stylesApple.text,
     letterSpacing: -0.4,
+    textAlign: 'right',
+    writingDirection: 'rtl',
   },
   editModalSubtitle: {
     fontSize: 13,
     color: stylesApple.textMuted,
     marginTop: 6,
     fontWeight: '700',
+    textAlign: 'right',
+    writingDirection: 'rtl',
   },
   editModalCloseBtn: {
     width: 42,
@@ -2336,6 +2378,26 @@ const styles = StyleSheet.create({
     writingDirection: 'rtl',
     marginTop: 2,
   },
+  sentMessageBadge: {
+    alignSelf: 'flex-end',
+    marginTop: 6,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(236,253,245,0.95)',
+    borderWidth: 1,
+    borderColor: 'rgba(16,185,129,0.24)',
+  },
+  sentMessageBadgeText: {
+    fontSize: 11,
+    color: '#047857',
+    fontWeight: '700',
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
   guestMeta: {
     direction: 'ltr',
     flexDirection: 'row-reverse',
@@ -2375,6 +2437,7 @@ const styles = StyleSheet.create({
     marginBottom: 9,
     textAlign: 'right',
     letterSpacing: -0.1,
+    alignSelf: ALIGN_RIGHT,
   },
   editInputField: {
     borderWidth: 1,
@@ -2453,13 +2516,17 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     paddingBottom: 18,
   },
+  deleteCategoryBodyRow: {
+    flexDirection: ROW_REVERSE_DIR,
+    marginBottom: 10,
+  },
   deleteCategoryBodyText: {
+    flex: 1,
     fontSize: 14,
     fontWeight: '700',
     color: stylesApple.textMuted,
-    textAlign: 'right',
+    textAlign: 'left',
     lineHeight: 20,
-    marginBottom: 10,
   },
   categoryPeopleCount: {
     flexDirection: 'row',
