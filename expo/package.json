@@ -47,7 +47,6 @@
     "lottie-react-native": "~7.3.1",
     "lucide-react-native": "^0.576.0",
     "moti": "^0.30.0",
-    "nativewind": "^4.1.23",
     "randomcolor": "^0.6.2",
     "react": "19.1.0",
     "react-dom": "19.1.0",
@@ -66,7 +65,8 @@
     "react-sortablejs": "^6.1.4",
     "victory": "^37.3.6",
     "victory-native": "^41.17.4",
-    "zustand": "^5.0.2"
+    "zustand": "^5.0.2",
+    "@rork-ai/toolkit-sdk": "latest"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
@@ -75,8 +75,8 @@
     "babel-plugin-module-resolver": "^5.0.2",
     "postcss": "8.4.49",
     "tailwindcss": "3.4.19",
-      "typescript": "~5.9.2",
-      "yaml": "2.8.3"
+    "typescript": "~5.9.2",
+    "yaml": "2.8.3"
   },
   "private": true
 }
