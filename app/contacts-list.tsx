@@ -20,7 +20,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppKeyboardAwareFlatList } from '@/components/AppKeyboardAware';
 import BackSwipe from '@/components/BackSwipe';
-import { ALIGN_RIGHT, ROW_DIR, rtlText } from '@/lib/rtl';
+import { IS_RTL, ROW_DIR, rtlText } from '@/lib/rtl';
 
 export default function ContactsListScreen() {
   const [contacts, setContacts] = useState<any[]>([]);
@@ -807,7 +807,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     alignSelf: 'stretch',
     width: '100%',
-    alignItems: ALIGN_RIGHT,
+    alignItems: 'stretch',
     shadowColor: '#0f172a',
     shadowOpacity: 0.05,
     shadowRadius: 12,
@@ -826,7 +826,7 @@ const styles = StyleSheet.create({
   headerHeroTextCol: {
     alignSelf: 'stretch',
     width: '100%',
-    alignItems: ALIGN_RIGHT,
+    alignItems: 'stretch',
   },
   headerHeroCategoryPill: {
     flexDirection: ROW_DIR,
@@ -844,7 +844,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '900',
     color: '#1d4ed8',
-    textAlign: 'right',
+    // forceRTL: logical "left" is the visual right edge (same pattern as TablesList / BrideGroomSeating).
+    textAlign: IS_RTL ? 'left' : 'right',
+    writingDirection: IS_RTL ? 'rtl' : 'ltr',
     flexShrink: 1,
   },
   headerHeroCountPill: {
@@ -863,8 +865,10 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '900',
     color: '#0f172a',
-    textAlign: 'right',
-    writingDirection: 'rtl',
+    textAlign: IS_RTL ? 'left' : 'right',
+    writingDirection: IS_RTL ? 'rtl' : 'ltr',
+    alignSelf: 'stretch',
+    width: '100%',
     maxWidth: '100%',
   },
   headerHeroSubtitle: {
@@ -873,8 +877,10 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     fontWeight: '700',
     color: 'rgba(51,65,85,0.74)',
-    textAlign: 'right',
-    writingDirection: 'rtl',
+    textAlign: IS_RTL ? 'left' : 'right',
+    writingDirection: IS_RTL ? 'rtl' : 'ltr',
+    alignSelf: 'stretch',
+    width: '100%',
     maxWidth: '100%',
   },
   topButtonsGrid: {
@@ -931,7 +937,8 @@ const styles = StyleSheet.create({
   topButtonText: {
     fontSize: 15,
     fontWeight: '700',
-    textAlign: 'right',
+    textAlign: IS_RTL ? 'left' : 'right',
+    writingDirection: IS_RTL ? 'rtl' : 'ltr',
     flexShrink: 1,
   },
   topButtonPrimary: {
@@ -978,7 +985,8 @@ const styles = StyleSheet.create({
     paddingLeft: 14,
     fontSize: 15,
     fontWeight: '700',
-    textAlign: 'right',
+    textAlign: IS_RTL ? 'left' : 'right',
+    writingDirection: IS_RTL ? 'rtl' : 'ltr',
   },
   selectionSummaryRow: {
     flexDirection: ROW_DIR,
@@ -1091,7 +1099,8 @@ const styles = StyleSheet.create({
   contactName: {
     fontSize: 15,
     fontWeight: '800',
-    textAlign: 'right',
+    textAlign: IS_RTL ? 'left' : 'right',
+    writingDirection: IS_RTL ? 'rtl' : 'ltr',
   },
   contactPhone: {
     fontSize: 12,
@@ -1196,7 +1205,8 @@ const styles = StyleSheet.create({
   bottomButtonText: {
     fontSize: 16,
     fontWeight: '800',
-    textAlign: 'right',
+    textAlign: IS_RTL ? 'left' : 'right',
+    writingDirection: IS_RTL ? 'rtl' : 'ltr',
   },
 
   /* ─── Success Modal ─────────────────────────────── */

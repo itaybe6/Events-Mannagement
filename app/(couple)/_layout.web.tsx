@@ -22,6 +22,13 @@ function isCoupleHomePath(path: string) {
   return normalized === '/' || normalized === '/index';
 }
 
+/** Screens that use their own ScrollView/FlatList should not sit inside the shell page ScrollView (breaks fixed chrome / nested scroll). */
+function isWebSelfScrollingCoupleRoute(pathname: string) {
+  const p = String(pathname || '').trim().replace(/\/+$/, '') || '/';
+  const segments = p.split('/').filter(Boolean);
+  return segments[segments.length - 1] === 'TablesList';
+}
+
 export default function CoupleWebLayout() {
   const router = useRouter();
   const pathname = usePathname();
@@ -143,7 +150,8 @@ export default function CoupleWebLayout() {
     const city = String((eventMeta as any)?.city || '').trim();
     return [location, city].filter(Boolean).join(' · ');
   }, [eventMeta]);
-  const usePageScrollShell = isCoupleHomePath(normalizedPathname) || Platform.OS === 'web';
+  const usePageScrollShell =
+    isCoupleHomePath(normalizedPathname) || !isWebSelfScrollingCoupleRoute(normalizedPathname);
 
   if (loading) {
     return (
@@ -400,6 +408,7 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     minWidth: 0,
+    minHeight: 0,
     overflow: 'visible',
     position: 'relative',
     zIndex: 1,

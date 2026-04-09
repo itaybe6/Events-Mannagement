@@ -1638,7 +1638,7 @@ export default function BrideGroomSeating() {
           activeOpacity={0.86}
           style={styles.backFab}
         >
-          <Ionicons name="chevron-forward" size={22} color={colors.primary} />
+          <Ionicons name="chevron-back" size={22} color={colors.primary} />
         </TouchableOpacity>
       </View>
 
@@ -2249,7 +2249,9 @@ export default function BrideGroomSeating() {
                   <View style={styles.successIconWrap}>
                     <Ionicons name="checkmark" size={18} color="rgba(6,95,70,1)" />
                   </View>
-                  <Text style={styles.successTitle}>{successTitle}</Text>
+                  <View style={styles.successTitleWrap}>
+                    <Text style={styles.successTitle}>{successTitle}</Text>
+                  </View>
                 </View>
                 <Text style={styles.successMessage}>{successMessage}</Text>
                 <TouchableOpacity activeOpacity={0.86} style={styles.successBtn} onPress={() => setSuccessVisible(false)}>
@@ -3394,12 +3396,14 @@ const styles = StyleSheet.create({
     shadowRadius: 28,
     shadowOffset: { width: 0, height: 16 },
     elevation: 12,
+    direction: 'rtl',
   },
   moveCardHeader: {
-    flexDirection: ROW_DIR,
+    flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     marginBottom: 0,
+    width: '100%',
   },
   moveCardIconWrap: {
     width: 38,
@@ -3415,7 +3419,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '900',
     color: colors.text,
-    textAlign: 'right',
+    textAlign: 'left',
     writingDirection: 'rtl',
   },
   moveCardSub: {
@@ -3423,7 +3427,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: colors.gray[600],
-    textAlign: 'right',
+    textAlign: 'left',
     writingDirection: 'rtl',
   },
   moveDivider: {
@@ -3435,11 +3439,13 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '800',
     color: colors.gray[500],
-    textAlign: 'right',
+    textAlign: 'left',
     writingDirection: 'rtl',
     letterSpacing: 0.4,
     marginBottom: 8,
     textTransform: 'uppercase',
+    alignSelf: 'stretch',
+    width: '100%',
   },
   moveListWrap: {
     maxHeight: 320,
@@ -3454,7 +3460,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   moveTableOption: {
-    flexDirection: ROW_DIR,
+    flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     paddingVertical: 11,
@@ -3491,7 +3497,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '900',
     color: colors.text,
-    textAlign: 'right',
+    textAlign: 'left',
     writingDirection: 'rtl',
   },
   moveTableTitleActive: {
@@ -3499,7 +3505,7 @@ const styles = StyleSheet.create({
   },
   moveOccRow: {
     marginTop: 4,
-    flexDirection: ROW_DIR,
+    flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
   },
@@ -3507,13 +3513,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: colors.gray[500],
-    textAlign: 'right',
+    textAlign: 'left',
   },
   moveTableAfter: {
     fontSize: 12,
     fontWeight: '900',
     color: colors.primary,
-    textAlign: 'right',
+    textAlign: 'left',
   },
   moveBarTrack: {
     marginTop: 6,
@@ -3528,8 +3534,9 @@ const styles = StyleSheet.create({
   },
   moveActionsRow: {
     marginTop: 16,
-    flexDirection: ROW_DIR,
+    flexDirection: 'row',
     gap: 10,
+    width: '100%',
   },
   moveBtnCancel: {
     flex: 1,
@@ -3551,7 +3558,7 @@ const styles = StyleSheet.create({
     flex: 2,
     height: 46,
     borderRadius: 14,
-    flexDirection: ROW_DIR,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.primary,
@@ -3727,27 +3734,33 @@ const styles = StyleSheet.create({
     shadowRadius: 24,
     shadowOffset: { width: 0, height: 14 },
     elevation: 8,
+    direction: 'rtl',
   },
   confirmTitle: {
     fontSize: 18,
     fontWeight: '900',
     color: colors.text,
-    textAlign: 'right',
+    textAlign: 'left',
     writingDirection: 'rtl',
+    alignSelf: 'stretch',
+    width: '100%',
   },
   confirmMessage: {
     marginTop: 8,
     fontSize: 14,
     fontWeight: '700',
     color: colors.gray[700],
-    textAlign: 'right',
+    textAlign: 'left',
     writingDirection: 'rtl',
     lineHeight: 20,
+    alignSelf: 'stretch',
+    width: '100%',
   },
   confirmButtonsRow: {
     marginTop: 14,
-    flexDirection: ROW_DIR,
+    flexDirection: 'row',
     gap: 10,
+    width: '100%',
   },
   confirmBtn: {
     flex: 1,
@@ -3804,12 +3817,19 @@ const styles = StyleSheet.create({
     shadowRadius: 24,
     shadowOffset: { width: 0, height: 14 },
     elevation: 8,
+    direction: 'rtl',
   },
   successHeaderRow: {
-    flexDirection: ROW_DIR,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-start',
     gap: 10,
+    width: '100%',
+  },
+  successTitleWrap: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'flex-start',
   },
   successIconWrap: {
     width: 34,
@@ -3825,18 +3845,21 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '900',
     color: 'rgba(6,95,70,1)',
-    textAlign: 'right',
+    textAlign: 'left',
     writingDirection: 'rtl',
-    flex: 1,
+    alignSelf: 'stretch',
+    width: '100%',
   },
   successMessage: {
     marginTop: 10,
     fontSize: 14,
     fontWeight: '800',
     color: colors.gray[700],
-    textAlign: 'right',
+    textAlign: 'left',
     writingDirection: 'rtl',
     lineHeight: 20,
+    alignSelf: 'stretch',
+    width: '100%',
   },
   successBtn: {
     marginTop: 14,
