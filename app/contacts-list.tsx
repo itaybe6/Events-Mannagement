@@ -20,6 +20,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppKeyboardAwareFlatList } from '@/components/AppKeyboardAware';
 import BackSwipe from '@/components/BackSwipe';
+import { ALIGN_RIGHT, ROW_DIR, rtlText } from '@/lib/rtl';
 
 export default function ContactsListScreen() {
   const [contacts, setContacts] = useState<any[]>([]);
@@ -306,6 +307,7 @@ export default function ContactsListScreen() {
       <View style={[styles.container, { backgroundColor: ui.bg }]}>
         <Stack.Screen options={{ headerShown: false }} />
         <LinearGradient
+          pointerEvents="none"
           colors={['#F0F9FF', '#EEF2FF', '#FFF1F2']}
           locations={[0, 0.55, 1]}
           start={{ x: 0, y: 0 }}
@@ -313,12 +315,14 @@ export default function ContactsListScreen() {
           style={StyleSheet.absoluteFillObject}
         />
         <LinearGradient
+          pointerEvents="none"
           colors={['rgba(255,255,255,0.78)', 'rgba(255,255,255,0)']}
           start={{ x: 0.05, y: 0 }}
           end={{ x: 0.72, y: 0.48 }}
           style={styles.bgHighlight}
         />
         <LinearGradient
+          pointerEvents="none"
           colors={['rgba(29,78,216,0.10)', 'rgba(244,114,182,0.08)', 'rgba(255,255,255,0)']}
           start={{ x: 1, y: 0.08 }}
           end={{ x: 0.2, y: 0.82 }}
@@ -349,7 +353,7 @@ export default function ContactsListScreen() {
           accessibilityRole="button"
           accessibilityLabel="חזרה"
         >
-          <Ionicons name="chevron-forward" size={22} color={ui.primary} />
+          <Ionicons name="chevron-back" size={22} color={ui.primary} />
         </TouchableOpacity>
 
         <View style={styles.navRow}>
@@ -388,12 +392,18 @@ export default function ContactsListScreen() {
                   <Text style={styles.headerHeroCountText}>{filteredContacts.length} אנשי קשר</Text>
                 </View>
               </View>
-              <Text style={styles.headerHeroTitle}>
-                {selectedCategory ? `מוסיפים אורחים לקטגוריה ${selectedCategory.name}` : 'בחר קטגוריה כדי להתחיל'}
-              </Text>
-              <Text style={styles.headerHeroSubtitle}>
-                סמן כמה אנשי קשר שתרצה, ונוסיף אותם ישירות לרשימת המוזמנים באפליקציה.
-              </Text>
+              <View style={styles.headerHeroTextCol}>
+                <Text style={styles.headerHeroTitle}>
+                  {rtlText(
+                    selectedCategory
+                      ? `מוסיפים אורחים לקטגוריה ${selectedCategory.name}`
+                      : 'בחר קטגוריה כדי להתחיל'
+                  )}
+                </Text>
+                <Text style={styles.headerHeroSubtitle}>
+                  {rtlText('סמן כמה אנשי קשר שתרצה, ונוסיף אותם ישירות לרשימת המוזמנים באפליקציה.')}
+                </Text>
+              </View>
             </View>
 
             <View style={{ gap: 16, paddingBottom: 18 }}>
@@ -795,6 +805,9 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.58)',
     paddingHorizontal: 16,
     paddingVertical: 14,
+    alignSelf: 'stretch',
+    width: '100%',
+    alignItems: ALIGN_RIGHT,
     shadowColor: '#0f172a',
     shadowOpacity: 0.05,
     shadowRadius: 12,
@@ -802,14 +815,21 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   headerHeroTopRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 10,
     marginBottom: 10,
+    alignSelf: 'stretch',
+    width: '100%',
+  },
+  headerHeroTextCol: {
+    alignSelf: 'stretch',
+    width: '100%',
+    alignItems: ALIGN_RIGHT,
   },
   headerHeroCategoryPill: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 6,
     maxWidth: '68%',
@@ -844,6 +864,8 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: '#0f172a',
     textAlign: 'right',
+    writingDirection: 'rtl',
+    maxWidth: '100%',
   },
   headerHeroSubtitle: {
     marginTop: 6,
@@ -852,9 +874,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: 'rgba(51,65,85,0.74)',
     textAlign: 'right',
+    writingDirection: 'rtl',
+    maxWidth: '100%',
   },
   topButtonsGrid: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'stretch',
   },
   topButtonCol: {
@@ -892,14 +916,14 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderWidth: 1.5,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
     backgroundColor: '#FFFFFF',
   },
   buttonContent: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 1,
@@ -957,7 +981,7 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   selectionSummaryRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     gap: 10,
   },
   selectionSummaryCard: {
@@ -1000,7 +1024,7 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
     paddingHorizontal: 16,
     borderWidth: 1,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
     shadowColor: '#000',
@@ -1032,7 +1056,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     backgroundColor: '#FFFFFF',
     overflow: 'hidden',
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
     shadowColor: '#000',
@@ -1047,7 +1071,7 @@ const styles = StyleSheet.create({
     }),
   },
   contactLeft: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 12,
     flex: 1,
@@ -1139,7 +1163,7 @@ const styles = StyleSheet.create({
     height: 60,
     borderRadius: 18,
     borderWidth: 1,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
@@ -1155,7 +1179,7 @@ const styles = StyleSheet.create({
     opacity: 0.96,
   },
   bottomButtonContent: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 14,
@@ -1234,7 +1258,7 @@ const styles = StyleSheet.create({
     color: '#059669',
   },
   modalCategoryPill: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 6,
     backgroundColor: '#EEF2FF',
