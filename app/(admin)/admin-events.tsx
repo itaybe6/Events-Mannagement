@@ -12,7 +12,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { inferEventType, MONTHS, type EventType } from '@/features/events/eventsConstants';
 import { useEventsListModel } from '@/features/events/useEventsListModel';
 import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
-import { ALIGN_RIGHT, ROW_DIR, rtlText } from '@/lib/rtl';
+import { ALIGN_RIGHT, IS_RTL, ROW_DIR, rtlText } from '@/lib/rtl';
+
+// With I18nManager.forceRTL, `textAlign: 'right'` often pins Hebrew to the physical LEFT (mirroring).
+// Same pattern as BrideGroomSeating `guestName` / admin-event-details modals.
+const filterSheetTextDir = {
+  textAlign: (IS_RTL ? 'left' : 'right') as 'left' | 'right',
+  writingDirection: 'rtl' as const,
+};
 import { useUserStore } from '@/store/userStore';
 
 const EVENT_IMAGE_BY_TYPE: Record<EventType, number> = {
@@ -353,6 +360,13 @@ export default function AdminEventsScreen() {
               />
 
               <View style={styles.filterDialogHeader}>
+                <View style={styles.filterDialogTitleWrap}>
+                  <Text style={[styles.filterDialogTitle, filterSheetTextDir]}>בחר סוג סינון</Text>
+                  <Text style={[styles.filterDialogSubtitle, filterSheetTextDir]}>
+                    {rtlText(currentFilterLabel)}
+                  </Text>
+                </View>
+
                 <TouchableOpacity
                   style={styles.filterDialogCloseBtn}
                   onPress={() => setShowFilterDialog(false)}
@@ -360,11 +374,6 @@ export default function AdminEventsScreen() {
                 >
                   <Ionicons name="close" size={18} color={colors.text} />
                 </TouchableOpacity>
-
-                <View style={styles.filterDialogTitleWrap}>
-                  <Text style={styles.filterDialogTitle}>בחר סוג סינון</Text>
-                  <Text style={styles.filterDialogSubtitle}>{currentFilterLabel}</Text>
-                </View>
               </View>
 
               <View style={styles.filterOptionsList}>
@@ -376,12 +385,14 @@ export default function AdminEventsScreen() {
                   }}
                   activeOpacity={0.9}
                 >
+                  <View style={styles.filterOptionTextWrap}>
+                    <Text style={[styles.filterOptionTitle, filterSheetTextDir]}>בחירת תאריך מדויק</Text>
+                    <Text style={[styles.filterOptionText, filterSheetTextDir]}>
+                      לבחור יום מסוים להצגת האירועים
+                    </Text>
+                  </View>
                   <View style={styles.filterOptionIconWrap}>
                     <Ionicons name="calendar-outline" size={18} color={colors.primary} />
-                  </View>
-                  <View style={styles.filterOptionTextWrap}>
-                    <Text style={styles.filterOptionTitle}>בחירת תאריך מדויק</Text>
-                    <Text style={styles.filterOptionText}>לבחור יום מסוים להצגת האירועים</Text>
                   </View>
                 </TouchableOpacity>
 
@@ -393,12 +404,14 @@ export default function AdminEventsScreen() {
                   }}
                   activeOpacity={0.9}
                 >
+                  <View style={styles.filterOptionTextWrap}>
+                    <Text style={[styles.filterOptionTitle, filterSheetTextDir]}>בחירת חודש</Text>
+                    <Text style={[styles.filterOptionText, filterSheetTextDir]}>
+                      לסנן את הרשימה לפי חודש של האירוע
+                    </Text>
+                  </View>
                   <View style={styles.filterOptionIconWrap}>
                     <Ionicons name="calendar-number-outline" size={18} color={colors.primary} />
-                  </View>
-                  <View style={styles.filterOptionTextWrap}>
-                    <Text style={styles.filterOptionTitle}>בחירת חודש</Text>
-                    <Text style={styles.filterOptionText}>לסנן את הרשימה לפי חודש של האירוע</Text>
                   </View>
                 </TouchableOpacity>
               </View>
@@ -413,8 +426,8 @@ export default function AdminEventsScreen() {
                   }}
                   activeOpacity={0.88}
                 >
+                  <Text style={[styles.clearFilterBtnText, filterSheetTextDir]}>נקה סינון</Text>
                   <Ionicons name="refresh-outline" size={16} color={colors.primary} />
-                  <Text style={styles.clearFilterBtnText}>נקה סינון</Text>
                 </TouchableOpacity>
               ) : null}
             </View>
@@ -806,6 +819,7 @@ const styles = StyleSheet.create({
   filterDialogCard: {
     width: '100%',
     maxWidth: 420,
+    alignSelf: 'center',
     padding: 18,
     borderRadius: 28,
     overflow: 'hidden',
@@ -840,20 +854,18 @@ const styles = StyleSheet.create({
   },
   filterDialogTitleWrap: {
     flex: 1,
-    alignItems: 'flex-end',
+    alignItems: ALIGN_RIGHT,
     gap: 4,
   },
   filterDialogTitle: {
     fontSize: 18,
     fontWeight: '900',
     color: colors.text,
-    textAlign: 'right',
   },
   filterDialogSubtitle: {
     fontSize: 12,
     fontWeight: '700',
     color: colors.gray[600],
-    textAlign: 'right',
   },
   filterOptionsList: {
     gap: 10,
@@ -878,7 +890,7 @@ const styles = StyleSheet.create({
   },
   filterOptionTextWrap: {
     flex: 1,
-    alignItems: 'flex-end',
+    alignItems: ALIGN_RIGHT,
     gap: 4,
   },
   filterOptionTitle: {
@@ -886,14 +898,12 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '900',
     color: colors.text,
-    textAlign: 'right',
   },
   filterOptionText: {
     width: '100%',
     fontSize: 12,
     fontWeight: '700',
     color: colors.gray[600],
-    textAlign: 'right',
     lineHeight: 18,
   },
   clearFilterBtn: {
@@ -910,7 +920,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '900',
     color: colors.primary,
-    textAlign: 'right',
   },
   modalOverlay: {
     flex: 1,
