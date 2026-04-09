@@ -282,13 +282,6 @@ export default function LoginWebScreen() {
               </View>
               <Text style={styles.rememberText}>זכור אותי</Text>
             </Pressable>
-
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => Alert.alert('איפוס סיסמה', 'לאיפוס סיסמה יש לפנות למנהל המערכת.')}
-            >
-              <Text style={[styles.forgotLink, { color: theme.primary }]}>שכחת סיסמה?</Text>
-            </Pressable>
           </View>
 
           <Pressable
@@ -726,11 +719,6 @@ const styles = StyleSheet.create({
     color: colors.gray[700],
     textAlign: 'right',
     userSelect: 'none' as any,
-  },
-  forgotLink: {
-    fontSize: 12,
-    fontWeight: '800',
-    textAlign: 'right',
   },
   button: {
     marginTop: 12,

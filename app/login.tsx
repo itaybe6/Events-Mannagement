@@ -466,15 +466,6 @@ export default function LoginScreen() {
                 </View>
               ) : null}
 
-              <View style={styles.forgotWrap}>
-                <TouchableOpacity
-                  onPress={() => Alert.alert('איפוס סיסמה', 'בקרוב נוסיף אפשרות לאיפוס סיסמה.')}
-                  accessibilityRole="button"
-                >
-                  <Text style={styles.forgotText}>שכחת סיסמה?</Text>
-                </TouchableOpacity>
-              </View>
-
               <TouchableOpacity
                 style={[styles.primaryButton, isLoginDisabled && styles.primaryButtonDisabled]}
                 onPress={handleLogin}
@@ -672,17 +663,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     textAlign: 'right',
     lineHeight: 18,
-  },
-
-  forgotWrap: {
-    alignItems: 'flex-end',
-    marginTop: 2,
-    marginBottom: 14,
-  },
-  forgotText: {
-    fontSize: 13,
-    color: colors.gray[600],
-    fontWeight: '600',
   },
 
   primaryButton: {
