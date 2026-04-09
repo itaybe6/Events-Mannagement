@@ -233,7 +233,14 @@ export default function LoginScreen() {
 
       if (error || !data.user) {
         const msg = error?.message ?? '';
-        if (typeof msg === 'string' && msg.includes('Email not confirmed')) {
+        if (
+          typeof msg === 'string' &&
+          (msg.includes('Network request failed') || msg.includes('Failed to fetch'))
+        ) {
+          setErrorMessage(
+            'אין גישה לשרת Supabase (רשת או כתובת פרויקט). בדוק ב-Supabase → Settings → API שה־Project URL ב־.env תואם (EXPO_PUBLIC_SUPABASE_URL), ואז הרץ מחדש עם ניקוי מטמון: npx expo start --clear.'
+          );
+        } else if (typeof msg === 'string' && msg.includes('Email not confirmed')) {
           setErrorMessage('יש לאמת את כתובת המייל לפני ההתחברות.');
         } else if (typeof msg === 'string' && msg.includes('Too many requests')) {
           setErrorMessage('יותר מדי ניסיונות התחברות. נסה שוב מאוחר יותר.');
@@ -328,7 +335,17 @@ export default function LoginScreen() {
       }
     } catch (error) {
       console.error('Login error:', error);
-      setErrorMessage('אירעה שגיאה במהלך ההתחברות. נסה שוב.');
+      const msg = error instanceof Error ? error.message : String(error);
+      if (
+        msg.includes('Network request failed') ||
+        msg.includes('Failed to fetch')
+      ) {
+        setErrorMessage(
+          'אין גישה לשרת Supabase (רשת או כתובת פרויקט). עדכן את EXPO_PUBLIC_SUPABASE_URL מלוח הבקרה של Supabase והרץ npx expo start --clear.'
+        );
+      } else {
+        setErrorMessage('אירעה שגיאה במהלך ההתחברות. נסה שוב.');
+      }
     } finally {
       setLoading(false);
     }
