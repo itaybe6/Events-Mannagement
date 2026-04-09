@@ -518,6 +518,7 @@ export default function ContactsListScreen() {
                       color: ui.textStrong,
                     },
                   ]}
+                  textAlign="right"
                   placeholder="חפש איש קשר..."
                   value={search}
                   onChangeText={setSearch}
@@ -985,8 +986,8 @@ const styles = StyleSheet.create({
     paddingLeft: 14,
     fontSize: 15,
     fontWeight: '700',
-    textAlign: IS_RTL ? 'left' : 'right',
-    writingDirection: IS_RTL ? 'rtl' : 'ltr',
+    textAlign: 'right',
+    writingDirection: 'rtl',
   },
   selectionSummaryRow: {
     flexDirection: ROW_DIR,

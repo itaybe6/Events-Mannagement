@@ -410,7 +410,7 @@ export default function SelectCategoryScreen() {
                   placeholder="למשל: חברים חתן"
                   placeholderTextColor={isDark ? 'rgba(241,245,249,0.35)' : 'rgba(15,23,42,0.35)'}
                   style={[styles.input, isDark && styles.inputDark]}
-                  textAlign={IS_RTL ? 'left' : 'right'}
+                  textAlign="right"
                   returnKeyType="done"
                   blurOnSubmit={false}
                   onSubmitEditing={() => {}}
@@ -981,8 +981,8 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: '#0F172A',
-    textAlign: IS_RTL ? 'left' : 'right',
-    writingDirection: IS_RTL ? 'rtl' : 'ltr',
+    textAlign: 'right',
+    writingDirection: 'rtl',
     paddingEnd: 34,
     paddingStart: 10,
     paddingVertical: 0,
