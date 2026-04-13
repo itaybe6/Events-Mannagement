@@ -9,6 +9,8 @@ import {
   StatusBar,
   TextInput,
   Alert,
+  Platform,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { colors } from '@/constants/colors';
@@ -356,20 +358,28 @@ export default function LoginScreen() {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={NAVY_DEEP} />
-      
-      <AppKeyboardAwareScrollView
-        style={styles.scrollView}
-        contentContainerStyle={[
-          styles.scrollContent,
-          { paddingBottom: Math.max(insets.bottom, 18) },
-        ]}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-        bounces={false}
-        alwaysBounceVertical={false}
-        overScrollMode="never"
-        enableResetScrollToCoords={false}
+
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoiding}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 0}
       >
+        <AppKeyboardAwareScrollView
+          style={styles.scrollView}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: Math.max(insets.bottom, 18) },
+          ]}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+          alwaysBounceVertical={false}
+          overScrollMode="never"
+          enableResetScrollToCoords={false}
+          extraHeight={120}
+          extraScrollHeight={Platform.OS === 'ios' ? 140 : 160}
+          keyboardOpeningTime={Platform.OS === 'ios' ? 0 : 100}
+        >
         {/* Top hero (55%) */}
         <View style={styles.hero}>
           <LavaLampBackground />
@@ -485,7 +495,8 @@ export default function LoginScreen() {
             </View>
           </View>
         </View>
-      </AppKeyboardAwareScrollView>
+        </AppKeyboardAwareScrollView>
+      </KeyboardAvoidingView>
     </View>
   );
 }
@@ -495,13 +506,16 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.white,
   },
+  keyboardAvoiding: {
+    flex: 1,
+  },
   scrollView: {
     flex: 1,
     backgroundColor: colors.white,
   },
   scrollContent: {
-    flex: 1,
     flexGrow: 1,
+    minHeight: height,
     backgroundColor: colors.white,
   },
   lavaLampLayer: {
@@ -566,7 +580,6 @@ const styles = StyleSheet.create({
   },
 
   cardArea: {
-    flex: 1,
     backgroundColor: colors.white,
   },
   card: {
@@ -576,9 +589,8 @@ const styles = StyleSheet.create({
     marginTop: -34,
     paddingHorizontal: 24,
     paddingTop: 22,
-    paddingBottom: 12,
-    minHeight: Math.max(330, height * 0.44),
-    flex: 1,
+    paddingBottom: 28,
+    minHeight: Math.max(360, height * 0.48),
   },
 
   brandWrap: {
