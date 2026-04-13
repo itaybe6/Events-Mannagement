@@ -10,7 +10,6 @@ import {
   TextInput,
   Alert,
   Platform,
-  KeyboardAvoidingView,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { colors } from '@/constants/colors';
@@ -359,12 +358,7 @@ export default function LoginScreen() {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={NAVY_DEEP} />
 
-      <KeyboardAvoidingView
-        style={styles.keyboardAvoiding}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 0}
-      >
-        <AppKeyboardAwareScrollView
+      <AppKeyboardAwareScrollView
           style={styles.scrollView}
           contentContainerStyle={[
             styles.scrollContent,
@@ -496,7 +490,6 @@ export default function LoginScreen() {
           </View>
         </View>
         </AppKeyboardAwareScrollView>
-      </KeyboardAvoidingView>
     </View>
   );
 }
@@ -505,9 +498,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.white,
-  },
-  keyboardAvoiding: {
-    flex: 1,
   },
   scrollView: {
     flex: 1,
