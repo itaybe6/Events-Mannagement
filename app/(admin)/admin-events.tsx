@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Platform, Alert, Image, Modal, Animated, Easing } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Platform, Alert, Image, Modal, Animated, Easing, Switch } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { colors } from '@/constants/colors';
@@ -52,6 +52,7 @@ export default function AdminEventsScreen() {
   const userType = useUserStore((state) => state.userType);
   const isEmployeeAppUser = userType === 'employee' && Platform.OS !== 'web';
 
+  const [approvingEventId, setApprovingEventId] = useState<string | null>(null);
   const [showFilterDialog, setShowFilterDialog] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showMonthPicker, setShowMonthPicker] = useState(false);
@@ -78,6 +79,20 @@ export default function AdminEventsScreen() {
     refresh,
     filteredEvents,
   } = useEventsListModel(loadEventsFn, { errorTitle: 'שגיאה', errorMessage: 'לא ניתן לטעון אירועים כרגע' });
+
+  const handleToggleApproval = async (event: Event, nextValue: boolean) => {
+    if (approvingEventId) return;
+    setApprovingEventId(event.id);
+    try {
+      await eventService.setEventApproval(event.id, nextValue);
+      await refresh();
+    } catch (err) {
+      console.error('Toggle event approval error:', err);
+      Alert.alert('שגיאה', 'לא ניתן לעדכן את סטטוס האישור כרגע. נסה שוב.');
+    } finally {
+      setApprovingEventId(null);
+    }
+  };
 
   // רענון ראשוני
   useEffect(() => {
@@ -642,6 +657,39 @@ export default function AdminEventsScreen() {
                           </View>
                         ) : null}
                       </View>
+
+                      <TouchableOpacity
+                        activeOpacity={1}
+                        onPress={(e) => e.stopPropagation?.()}
+                        style={styles.approvalRow}
+                      >
+                        <View style={styles.approvalLeft}>
+                          {event.isApproved === false ? (
+                            <View style={styles.approvalBadgePending}>
+                              <Ionicons name="time-outline" size={12} color="#92400E" />
+                              <Text style={styles.approvalBadgePendingText}>ממתין לאישור</Text>
+                            </View>
+                          ) : (
+                            <View style={styles.approvalBadgeApproved}>
+                              <Ionicons name="checkmark-circle" size={12} color="#065F46" />
+                              <Text style={styles.approvalBadgeApprovedText}>מאושר</Text>
+                            </View>
+                          )}
+                        </View>
+                        <View style={styles.approvalRight}>
+                          <Text style={styles.approvalLabel}>
+                            {event.isApproved === false ? 'אשר אירוע' : 'ביטול אישור'}
+                          </Text>
+                          <Switch
+                            value={event.isApproved !== false}
+                            onValueChange={(val) => handleToggleApproval(event, val)}
+                            disabled={approvingEventId === event.id}
+                            trackColor={{ false: '#FCD34D', true: '#86EFAC' }}
+                            thumbColor={event.isApproved !== false ? '#059669' : '#D97706'}
+                            ios_backgroundColor="#FCD34D"
+                          />
+                        </View>
+                      </TouchableOpacity>
 
                       <View style={styles.cardFooterRow}>
                         <View style={styles.openActionPill}>
@@ -1293,6 +1341,66 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: colors.primary,
     textAlign: 'right',
+  },
+  approvalRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginTop: 10,
+    marginBottom: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    backgroundColor: 'rgba(6, 23, 62, 0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(6, 23, 62, 0.08)',
+  },
+  approvalLeft: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+  },
+  approvalRight: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 10,
+  },
+  approvalLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.primary,
+  },
+  approvalBadgePending: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: 'rgba(254, 243, 199, 0.95)',
+    borderWidth: 1,
+    borderColor: 'rgba(217, 119, 6, 0.30)',
+  },
+  approvalBadgePendingText: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#92400E',
+  },
+  approvalBadgeApproved: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: 'rgba(209, 250, 229, 0.95)',
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.30)',
+  },
+  approvalBadgeApprovedText: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#065F46',
   },
   cardFooterRow: {
     flexDirection: ROW_DIR,

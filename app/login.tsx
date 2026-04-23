@@ -486,6 +486,18 @@ export default function LoginScreen() {
                   style={{ marginLeft: 8 }}
                 />
               </TouchableOpacity>
+
+              <View style={styles.signupWrap}>
+                <Text style={styles.signupText}>עדיין אין לך חשבון? </Text>
+                <TouchableOpacity
+                  onPress={() => router.push('/signup')}
+                  accessibilityRole="link"
+                  accessibilityLabel="מעבר למסך הרשמה"
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.signupLink}>הירשם</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         </View>

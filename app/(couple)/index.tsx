@@ -496,6 +496,20 @@ export default function HomeScreen() {
       >
         {!isWeb ? <View style={{ height: insets.top + 74 }} /> : null}
 
+        {currentEvent && currentEvent.isApproved === false ? (
+          <View style={styles.pendingBanner}>
+            <View style={styles.pendingBannerIconWrap}>
+              <Ionicons name="time-outline" size={22} color="#92400E" />
+            </View>
+            <View style={styles.pendingBannerTextWrap}>
+              <Text style={styles.pendingBannerTitle}>ברוכים הבאים למשפחת MOON! 🎉</Text>
+              <Text style={styles.pendingBannerBody}>
+                קיבלנו את פרטי האירוע שלך. צוות ניהול האירועים שלנו יצור איתך קשר בהקדם כדי לסייע במילוי מפת ההושבה ולהשלים את ההכנות. עד לאישור ניתן להזין עד 10 מוזמנים.
+              </Text>
+            </View>
+          </View>
+        ) : null}
+
         <View style={styles.hero}>
           {currentEvent?.invitationImageUrl ? (
             <View style={styles.heroBanner}>
@@ -728,6 +742,47 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
 
+  pendingBanner: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 12,
+    padding: 14,
+    marginBottom: 14,
+    borderRadius: 18,
+    backgroundColor: 'rgba(254, 243, 199, 0.95)',
+    borderWidth: 1,
+    borderColor: 'rgba(217, 119, 6, 0.30)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  pendingBannerIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(245, 158, 11, 0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pendingBannerTextWrap: {
+    flex: 1,
+  },
+  pendingBannerTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#92400E',
+    textAlign: 'right',
+    marginBottom: 4,
+  },
+  pendingBannerBody: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: '#78350F',
+    textAlign: 'right',
+    fontWeight: '700',
+  },
   hero: {
     alignItems: 'center',
     paddingTop: 0,

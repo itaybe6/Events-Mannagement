@@ -12,7 +12,11 @@ import {
   Modal,
 } from 'react-native';
 import * as Contacts from 'expo-contacts';
-import { guestService } from '@/lib/services/guestService';
+import {
+  guestService,
+  UNAPPROVED_EVENT_GUEST_LIMIT,
+  UNAPPROVED_EVENT_GUEST_LIMIT_ERROR,
+} from '@/lib/services/guestService';
 import { eventService } from '@/lib/services/eventService';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
@@ -30,6 +34,7 @@ export default function ContactsListScreen() {
   const [categories, setCategories] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<any>(null);
   const [existingGuests, setExistingGuests] = useState<any[]>([]);
+  const [isEventApproved, setIsEventApproved] = useState<boolean>(true);
   const [searchFocused, setSearchFocused] = useState(false);
   const [enableSides, setEnableSides] = useState(true);
   const [successModal, setSuccessModal] = useState<{ visible: boolean; count: number }>({ visible: false, count: 0 });
@@ -115,6 +120,7 @@ export default function ContactsListScreen() {
 
           const shouldEnable = !!groom || !!bride ? true : inferredType && inferredType !== 'חתונה' ? false : true;
           setEnableSides(shouldEnable);
+          setIsEventApproved(evt?.isApproved !== false);
         } catch (e) {
           console.warn('ContactsList: failed to load event for side UI', e);
           setEnableSides(true);
@@ -195,6 +201,26 @@ export default function ContactsListScreen() {
       Alert.alert('שגיאה', 'יש לבחור קטגוריה לפני הוספת אורחים');
       return;
     }
+
+    // בדיקת הגבלת מוזמנים לאירוע שטרם אושר
+    if (!isEventApproved) {
+      const currentCount = existingGuests.length;
+      const remaining = Math.max(0, UNAPPROVED_EVENT_GUEST_LIMIT - currentCount);
+      if (remaining === 0) {
+        Alert.alert(
+          'הגבלת מוזמנים',
+          UNAPPROVED_EVENT_GUEST_LIMIT_ERROR
+        );
+        return;
+      }
+      if (selectedContacts.size > remaining) {
+        Alert.alert(
+          'הגבלת מוזמנים',
+          `האירוע עדיין ממתין לאישור. ניתן להוסיף עוד ${remaining} מוזמנים בלבד עד לאישור האירוע על ידי צוות MOON.`
+        );
+        return;
+      }
+    }
     
     const contactsToAdd = Array.from(selectedContacts).map(id => 
       contacts.find(c => c.id === id)
@@ -206,7 +232,6 @@ export default function ContactsListScreen() {
       const duplicateNames = duplicates.map(d => d.name || 'ללא שם').join(', ');
       
       if (newGuests.length === 0) {
-        // כל האורחים כפולים
         Alert.alert(
           'אורחים כפולים',
           `כל האורחים שנבחרו כבר קיימים באירוע:\n${duplicateNames}`,
@@ -214,7 +239,6 @@ export default function ContactsListScreen() {
         );
         return;
       } else {
-        // חלק כפולים וחלק חדשים
         Alert.alert(
           'האם להמשיך?',
           `האורחים הבאים כבר קיימים ולא יתווספו:\n${duplicateNames}\n\nהאם להוסיף את שאר האורחים (${newGuests.length})?`,
@@ -231,7 +255,6 @@ export default function ContactsListScreen() {
       }
     }
     
-    // אין כפילויות - הוסף את כל האורחים
     addGuestsToDatabase(newGuests);
   };
 
@@ -261,7 +284,16 @@ export default function ContactsListScreen() {
           numberOfPeople: 1,
         });
         added++;
-      } catch (e) {
+      } catch (e: any) {
+        if (e?.message === UNAPPROVED_EVENT_GUEST_LIMIT_ERROR) {
+          // הגענו לגבול - עצור ותצג הודעה
+          if (added > 0) {
+            // הוספנו חלק - נציג כמה נוספו ומדוע עצרנו
+            setSuccessModal({ visible: true, count: added });
+          }
+          Alert.alert('הגבלת מוזמנים', UNAPPROVED_EVENT_GUEST_LIMIT_ERROR);
+          return;
+        }
         console.error('Error adding guest:', e);
       }
     }

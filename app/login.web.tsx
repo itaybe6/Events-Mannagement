@@ -296,6 +296,27 @@ export default function LoginWebScreen() {
           >
             {loading ? <ActivityIndicator color={colors.white} /> : <Text style={styles.buttonText}>התחבר</Text>}
           </Pressable>
+
+          <View style={styles.signupRow}>
+            <Text style={styles.signupRowText}>עדיין אין לך חשבון? </Text>
+            <Pressable
+              onPress={() => router.push('/signup')}
+              accessibilityRole="link"
+              accessibilityLabel="מעבר למסך הרשמה"
+            >
+              {({ hovered }: any) => (
+                <Text
+                  style={[
+                    styles.signupRowLink,
+                    { color: theme.primary },
+                    hovered ? styles.signupRowLinkHover : null,
+                  ]}
+                >
+                  הירשם
+                </Text>
+              )}
+            </Pressable>
+          </View>
         </View>
       </View>
     </View>
@@ -739,6 +760,26 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontSize: 15,
     fontWeight: '900',
+  },
+  signupRow: {
+    marginTop: 18,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+  },
+  signupRowText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.gray[600],
+  },
+  signupRowLink: {
+    fontSize: 13,
+    fontWeight: '900',
+    textDecorationLine: 'underline',
+  },
+  signupRowLinkHover: {
+    opacity: 0.85,
   },
 });
 

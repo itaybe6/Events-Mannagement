@@ -18,6 +18,7 @@ import Reanimated, {
   withTiming,
 } from 'react-native-reanimated';
 import { supabase } from '@/lib/supabase';
+import { eventService } from '@/lib/services/eventService';
 import { useUserStore } from '@/store/userStore';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import { Entypo, Ionicons } from '@expo/vector-icons';
@@ -625,6 +626,25 @@ export default function BrideGroomSeating() {
       setTabBarVisible(true);
       return undefined;
     }, [setTabBarVisible])
+  );
+
+  // הצגת הודעה כשאירוע עדיין לא מאושר
+  useFocusEffect(
+    useCallback(() => {
+      if (!resolvedEventId || isAdminContext) return;
+      let cancelled = false;
+      eventService.getEvent(resolvedEventId).then((evt) => {
+        if (cancelled) return;
+        if (evt?.isApproved === false) {
+          Alert.alert(
+            'האירוע עדיין ממתין לאישור',
+            'מפת הושבה תהיה זמינה לאחר שצוות MOON יאשר את האירוע שלך.',
+            [{ text: 'הבנתי', style: 'default', onPress: () => router.replace(eventBackHref as any) }]
+          );
+        }
+      }).catch(() => {/* fail open */});
+      return () => { cancelled = true; };
+    }, [resolvedEventId, isAdminContext, router, eventBackHref])
   );
 
   // If user rotates while in drag mode, exit drag mode.
