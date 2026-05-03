@@ -19,6 +19,7 @@ import { useUserStore } from '@/store/userStore';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { avatarService } from '@/lib/services/avatarService';
+import { ensurePhotoLibraryPermission } from '@/lib/permissions';
 import BackSwipe from '@/components/BackSwipe';
 import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -55,13 +56,8 @@ export default function ProfileEditor() {
     if (!userData?.id) return;
 
     try {
-      if (Platform.OS !== 'web') {
-        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (!permission.granted) {
-          Alert.alert('הרשאה נדרשת', 'כדי לבחור תמונה יש לאשר גישה לגלריה');
-          return;
-        }
-      }
+      const permission = await ensurePhotoLibraryPermission({ purpose: 'profile' });
+      if (!permission.granted) return;
 
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,

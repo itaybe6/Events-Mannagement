@@ -12,6 +12,7 @@ import {
   Modal,
 } from 'react-native';
 import * as Contacts from 'expo-contacts';
+import { ensureContactsPermission } from '@/lib/permissions';
 import {
   guestService,
   UNAPPROVED_EVENT_GUEST_LIMIT,
@@ -126,9 +127,9 @@ export default function ContactsListScreen() {
           setEnableSides(true);
         }
       }
-      // טען אנשי קשר
-      const { status } = await Contacts.requestPermissionsAsync();
-      if (status === 'granted') {
+      // טען אנשי קשר עם הסבר ברור למטרת השימוש (לפי דרישות App Store)
+      const permission = await ensureContactsPermission();
+      if (permission.granted) {
         const { data } = await Contacts.getContactsAsync({
           fields: [Contacts.Fields.Name, Contacts.Fields.PhoneNumbers],
         });
@@ -136,8 +137,6 @@ export default function ContactsListScreen() {
           Array.isArray(contact.phoneNumbers) && contact.phoneNumbers.length > 0 && contact.phoneNumbers[0].number
         );
         setContacts(contactsWithPhones);
-      } else {
-        Alert.alert('נדרשת הרשאה', 'כדי לייבא אנשי קשר, יש צורך בהרשאה לגישה לאנשי הקשר');
       }
       setLoading(false);
     };

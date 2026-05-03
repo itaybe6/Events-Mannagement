@@ -31,7 +31,17 @@ module.exports = {
     ios: {
       supportsTablet: true,
       bundleIdentifier: "com.itaybenyair.moonapp",
-      icon: "./assets/images/icon.png"
+      icon: "./assets/images/icon.png",
+      infoPlist: {
+        NSPhotoLibraryUsageDescription:
+          "האפליקציה מבקשת גישה לגלריה כדי שתוכלו לבחור תמונת פרופיל אישית או תמונת הזמנה לאירוע, להעלות אותן לחשבון שלכם ולהציג אותן בעמודי האפליקציה (פרופיל, הזמנה ועריכת אירוע).",
+        NSPhotoLibraryAddUsageDescription:
+          "האפליקציה מבקשת הרשאה לשמור תמונות של ההזמנה או הפרופיל בגלריית המכשיר שלכם, רק לאחר אישורכם המפורש בכל פעם.",
+        NSCameraUsageDescription:
+          "האפליקציה מבקשת גישה למצלמה כדי שתוכלו לצלם תמונת פרופיל חדשה או תמונת הזמנה ולהעלות אותה ישירות לאירוע שלכם, ללא צורך לשמור את התמונה בגלריה תחילה.",
+        NSContactsUsageDescription:
+          "האפליקציה מבקשת גישה לאנשי הקשר במכשיר כדי שתוכלו לייבא בקלות מוזמנים לרשימת האורחים של האירוע (שם וטלפון בלבד). הגישה משמשת אך ורק לתצוגה ולבחירה ידנית שלכם, ולא נשלחת לשום שרת מבלי שתאשרו זאת."
+      }
     },
     android: {
       adaptiveIcon: {
@@ -39,7 +49,12 @@ module.exports = {
         backgroundColor: "#ffffff"
       },
       package: "com.moonevents.app",
-      supportsRtl: true
+      supportsRtl: true,
+      permissions: [
+        "android.permission.READ_CONTACTS",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ]
     },
     web: {
       favicon: "./assets/images/favicon.png",
@@ -55,7 +70,22 @@ module.exports = {
           origin: "https://rork.com/"
         }
       ],
-      ["expo-contacts"],
+      [
+        "expo-image-picker",
+        {
+          photosPermission:
+            "האפליקציה מבקשת גישה לגלריה כדי שתוכלו לבחור תמונת פרופיל או תמונת הזמנה לאירוע ולהעלות אותן לחשבון שלכם.",
+          cameraPermission:
+            "האפליקציה מבקשת גישה למצלמה כדי שתוכלו לצלם תמונת פרופיל או תמונת הזמנה חדשה ולהעלות אותה ישירות לאירוע."
+        }
+      ],
+      [
+        "expo-contacts",
+        {
+          contactsPermission:
+            "האפליקציה מבקשת גישה לאנשי הקשר כדי לייבא מוזמנים (שם וטלפון בלבד) לרשימת האורחים של האירוע, לאחר בחירה ידנית שלכם."
+        }
+      ],
       "@react-native-community/datetimepicker",
       "expo-web-browser"
     ],

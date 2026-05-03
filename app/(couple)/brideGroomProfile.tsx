@@ -11,8 +11,10 @@ import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import * as ImagePicker from 'expo-image-picker';
 import { invitationAssetService } from '@/lib/services/invitationAssetService';
 import { avatarService } from '@/lib/services/avatarService';
+import { ensurePhotoLibraryPermission } from '@/lib/permissions';
 import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
 import { EventSwitcher } from '@/components/EventSwitcher';
+import { DeleteAccountSection } from '@/components/DeleteAccountSection';
 import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -301,13 +303,8 @@ export default function BrideGroomSettings() {
     if (!userData?.id || profileAvatarUploading) return;
 
     try {
-      if (Platform.OS !== 'web') {
-        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (!permission.granted) {
-          Alert.alert('הרשאה נדרשת', 'כדי לבחור תמונה יש לאשר גישה לגלריה');
-          return;
-        }
-      }
+      const permission = await ensurePhotoLibraryPermission({ purpose: 'profile' });
+      if (!permission.granted) return;
 
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -408,13 +405,8 @@ export default function BrideGroomSettings() {
     if (invitationUploading) return;
 
     try {
-      if (Platform.OS !== 'web') {
-        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (!permission.granted) {
-          Alert.alert('הרשאה נדרשת', 'כדי לבחור תמונה יש לאשר גישה לגלריה');
-          return;
-        }
-      }
+      const permission = await ensurePhotoLibraryPermission({ purpose: 'invitation' });
+      if (!permission.granted) return;
 
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -751,6 +743,13 @@ export default function BrideGroomSettings() {
             />
           </View>
         )}
+
+        {/* מחיקת חשבון - נדרש לפי הנחיות App Store 5.1.1(v) */}
+        <DeleteAccountSection
+          onDeleted={() => {
+            router.replace('/onboarding');
+          }}
+        />
 
         <View style={styles.logoutPanel}>
           <TouchableOpacity style={styles.logoutButton} onPress={askLogout} activeOpacity={0.92}>

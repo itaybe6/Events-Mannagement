@@ -16,6 +16,7 @@ interface UserState {
   signIn: (email: string, password: string) => Promise<void>;
   login: (userType: UserType, userData: AuthUser) => void;
   logout: () => Promise<void>;
+  deleteAccount: () => Promise<void>;
   resetAuth: () => void;
   updateUserData: (userData: Partial<AuthUser>) => Promise<void>;
   initializeAuth: () => Promise<void>;
@@ -86,6 +87,22 @@ export const useUserStore = create<UserState>()(
             isLoggedIn: false,
             userType: null,
             userData: null,
+          });
+        }
+      },
+
+      deleteAccount: async () => {
+        try {
+          await authService.deleteOwnAccount();
+        } finally {
+          // Whether or not the server-side deletion succeeded, fully clear
+          // local session state so the user is never left in a half-deleted
+          // signed-in state on the device.
+          set({
+            isLoggedIn: false,
+            userType: null,
+            userData: null,
+            loading: false,
           });
         }
       },

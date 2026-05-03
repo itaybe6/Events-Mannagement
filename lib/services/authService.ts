@@ -1,6 +1,74 @@
 import { supabase, supabaseAdmin } from '../supabase';
 import { UserType } from '@/store/userStore';
 
+/**
+ * Best-effort removal of every object stored under a given prefix in a
+ * Supabase Storage bucket. Lists files page-by-page (Storage `list` is
+ * limited to ~100 entries by default) and removes them in batches.
+ *
+ * Failures are swallowed and logged so they cannot block the parent
+ * operation - this helper is only used for housekeeping during account
+ * deletion, where the database rows are the source of truth.
+ */
+async function safeRemoveStorageFolder(
+  bucket: string,
+  folderPath: string
+): Promise<void> {
+  const cleanedFolder = folderPath.replace(/^\/+|\/+$/g, '');
+  if (!cleanedFolder) return;
+
+  try {
+    let offset = 0;
+    const pageSize = 100;
+
+    // Loop until `list` returns fewer items than requested, which means we've
+    // exhausted the folder.
+    // The `limit` option caps a single response.
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const { data: entries, error: listError } = await supabaseAdmin.storage
+        .from(bucket)
+        .list(cleanedFolder, { limit: pageSize, offset });
+
+      if (listError) {
+        console.warn(
+          `safeRemoveStorageFolder: list error for ${bucket}/${cleanedFolder}`,
+          listError
+        );
+        return;
+      }
+
+      const items = Array.isArray(entries) ? entries : [];
+      if (items.length === 0) return;
+
+      const paths = items
+        .filter((item) => item && typeof item.name === 'string' && item.name)
+        .map((item) => `${cleanedFolder}/${item.name}`);
+
+      if (paths.length > 0) {
+        const { error: removeError } = await supabaseAdmin.storage
+          .from(bucket)
+          .remove(paths);
+        if (removeError) {
+          console.warn(
+            `safeRemoveStorageFolder: remove error for ${bucket}/${cleanedFolder}`,
+            removeError
+          );
+          return;
+        }
+      }
+
+      if (items.length < pageSize) return;
+      offset += pageSize;
+    }
+  } catch (e) {
+    console.warn(
+      `safeRemoveStorageFolder: unexpected error for ${bucket}/${folderPath}`,
+      e
+    );
+  }
+}
+
 export interface AuthUser {
   id: string;
   email: string;
@@ -291,6 +359,132 @@ export const authService = {
       }
     } catch (error) {
       console.error('❌ Delete user error:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Allow the currently authenticated user to delete their own account along
+   * with every record they own.
+   *
+   * Required by Apple App Store Guideline 5.1.1(v) for any app that supports
+   * account creation. The flow:
+   *   1. Verify there is an authenticated session.
+   *   2. Look up the user's profile to know their type and (for `event_owner`)
+   *      the list of event ids they own.
+   *   3. For event owners: best-effort cleanup of invitation images and any
+   *      other storage objects scoped to those events.
+   *   4. Best-effort cleanup of the user's own avatar files.
+   *   5. Delete the user's profile row from the `users` table.
+   *      All related rows in `events`, `guests`, `tasks`, `tables`,
+   *      `seating_maps`, `messages`, `notification_settings`, `notifications`,
+   *      `guest_categories`, `scheduled_notification_sms_runs`,
+   *      `scheduled_notification_sms_run_recipients` and
+   *      `notification_sms_catchup_queue` are cascaded automatically by the
+   *      foreign-key constraints in the database schema.
+   *   6. Delete the auth user via the admin client (service role).
+   *   7. Sign out locally so the client state is fully cleared.
+   *
+   * Storage cleanup failures never block the account deletion itself - we log
+   * a warning and proceed. Without this guarantee a transient storage error
+   * could leave the user unable to remove their account, which violates
+   * Apple's policy.
+   */
+  deleteOwnAccount: async (): Promise<void> => {
+    try {
+      const {
+        data: { user },
+        error: getUserError,
+      } = await supabase.auth.getUser();
+
+      if (getUserError) {
+        console.error('Delete own account: getUser error', getUserError);
+        throw getUserError;
+      }
+
+      if (!user) {
+        throw new Error('אין משתמש מחובר למחיקה');
+      }
+
+      const userId = user.id;
+
+      // Best-effort: gather profile + owned events so we can clean up storage
+      // before the cascade kicks in (after the row is gone we can no longer
+      // resolve event ids cheaply).
+      let userType: string | null = null;
+      let ownedEventIds: string[] = [];
+
+      try {
+        const { data: profile, error: profileError } = await supabaseAdmin
+          .from('users')
+          .select('user_type')
+          .eq('id', userId)
+          .maybeSingle();
+
+        if (profileError) {
+          console.warn('Delete own account: profile lookup warning', profileError);
+        } else if (profile) {
+          userType = String((profile as any).user_type || '') || null;
+        }
+      } catch (profileException) {
+        console.warn('Delete own account: profile lookup exception', profileException);
+      }
+
+      if (userType === 'event_owner') {
+        try {
+          const { data: events, error: eventsError } = await supabaseAdmin
+            .from('events')
+            .select('id')
+            .eq('user_id', userId);
+
+          if (eventsError) {
+            console.warn('Delete own account: events lookup warning', eventsError);
+          } else if (Array.isArray(events)) {
+            ownedEventIds = events
+              .map((row: any) => String(row?.id ?? ''))
+              .filter((id) => id.length > 0);
+          }
+        } catch (eventsException) {
+          console.warn('Delete own account: events lookup exception', eventsException);
+        }
+      }
+
+      // 1) Remove invitation images for each owned event (best-effort).
+      for (const eventId of ownedEventIds) {
+        await safeRemoveStorageFolder('event-images', `invitations/${eventId}`);
+      }
+
+      // 2) Remove the user's avatar folder (best-effort).
+      await safeRemoveStorageFolder('avatars', `users/${userId}`);
+
+      // 3) Delete the profile row. All FK-cascaded rows (events and everything
+      //    scoped to them) are removed in the same transaction by Postgres.
+      const { error: profileDeleteError } = await supabaseAdmin
+        .from('users')
+        .delete()
+        .eq('id', userId);
+
+      if (profileDeleteError) {
+        console.error('Delete own account: profile delete error', profileDeleteError);
+        throw profileDeleteError;
+      }
+
+      // 4) Remove the auth user so the email can never log in again.
+      const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(userId);
+      if (authError) {
+        console.error('Delete own account: auth delete error', authError);
+        throw authError;
+      }
+
+      // 5) Make sure the local session is fully cleared on this device.
+      try {
+        await supabase.auth.signOut({ scope: 'local' });
+      } catch (signOutError) {
+        // Non-fatal: account is already gone server-side.
+        console.warn('Delete own account: local signOut warning', signOutError);
+      }
+    } catch (error) {
+      console.error('❌ Delete own account error:', error);
       throw error;
     }
   },

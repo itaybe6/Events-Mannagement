@@ -30,6 +30,7 @@ import { avatarService } from '@/lib/services/avatarService';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLayoutStore } from '@/store/layoutStore';
 import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
+import { ensurePhotoLibraryPermission } from '@/lib/permissions';
 
 const ui = {
   // Use the app's brand dark-blue
@@ -276,13 +277,8 @@ export default function AddUserScreenV2({
 
   const handlePickAvatar = async () => {
     try {
-      if (Platform.OS !== 'web') {
-        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (!permission.granted) {
-          Alert.alert('הרשאה נדרשת', 'כדי לבחור תמונה יש לאשר גישה לגלריה');
-          return;
-        }
-      }
+      const permission = await ensurePhotoLibraryPermission({ purpose: 'profile' });
+      if (!permission.granted) return;
 
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
