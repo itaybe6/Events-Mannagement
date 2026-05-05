@@ -10,16 +10,20 @@ import * as Contacts from 'expo-contacts';
 
 type EnsureResult = { granted: boolean; canAskAgain: boolean };
 
-const showRationale = (title: string, message: string): Promise<boolean> =>
+/**
+ * Displays a "rationale" dialog explaining why we are about to ask for an OS
+ * permission. As required by Apple App Store Guideline 5.1.1(iv), this dialog
+ * only offers a single "Continue" action - it must NOT include a cancel
+ * button. The user can still decline access via the official iOS / Android
+ * system permission dialog that is shown immediately afterwards.
+ */
+const showRationale = (title: string, message: string): Promise<void> =>
   new Promise((resolve) => {
     Alert.alert(
       title,
       message,
-      [
-        { text: 'ביטול', style: 'cancel', onPress: () => resolve(false) },
-        { text: 'המשך', style: 'default', onPress: () => resolve(true) },
-      ],
-      { cancelable: true, onDismiss: () => resolve(false) }
+      [{ text: 'המשך', style: 'default', onPress: () => resolve() }],
+      { cancelable: false }
     );
   });
 
@@ -69,8 +73,11 @@ export async function ensurePhotoLibraryPermission(options?: {
     return { granted: false, canAskAgain: false };
   }
 
-  const accepted = await showRationale('הרשאת גישה לתמונות', rationaleMessage);
-  if (!accepted) return { granted: false, canAskAgain: existing.canAskAgain };
+  // Show our explanatory dialog, then immediately trigger the iOS/Android
+  // system permission prompt. The user makes the actual decision in the
+  // system dialog (Don't Allow / Allow), so we don't expose a cancel option
+  // on the rationale itself - that would violate Apple Guideline 5.1.1(iv).
+  await showRationale('הרשאת גישה לתמונות', rationaleMessage);
 
   const result = await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (!result.granted && !result.canAskAgain) {
@@ -100,11 +107,14 @@ export async function ensureContactsPermission(): Promise<EnsureResult> {
     return { granted: false, canAskAgain: false };
   }
 
-  const accepted = await showRationale(
+  // Show explanatory dialog and immediately trigger the system permission
+  // prompt. No cancel option on the rationale - per Apple Guideline 5.1.1(iv)
+  // the user must always reach the official system dialog where they can
+  // tap "Don't Allow".
+  await showRationale(
     'הרשאת גישה לאנשי קשר',
     'נבקש הרשאת גישה לאנשי הקשר במכשיר כדי שתוכלו לייבא בקלות מוזמנים לרשימת האורחים של האירוע.\n\nנשתמש בשם ובמספר הטלפון של אנשי הקשר שתבחרו ידנית בלבד. לא נשמור ולא נעלה לשרת אנשי קשר שלא תבחרו במפורש.'
   );
-  if (!accepted) return { granted: false, canAskAgain: existing.canAskAgain };
 
   const result = await Contacts.requestPermissionsAsync();
   const granted = result.status === 'granted';
