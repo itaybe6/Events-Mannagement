@@ -14,6 +14,7 @@ import { eventService } from "@/lib/services/eventService";
 import { EVENT_BADGE_META, inferEventType, type EventType } from "@/features/events/eventsConstants";
 import type { Event } from "@/types";
 import { ALIGN_RIGHT, ROW_DIR } from "@/lib/rtl";
+import { DeleteAccountSection } from "@/components/DeleteAccountSection";
 
 const ui = {
   bg: colors.gray[100],
@@ -587,6 +588,15 @@ export default function AdminProfileScreen() {
           </ScrollView>
         </View>
 
+        {/* מחיקת חשבון - נדרש לפי הנחיות App Store 5.1.1(v) */}
+        <View style={styles.deleteAccountSection}>
+          <DeleteAccountSection
+            onDeleted={() => {
+              router.replace("/login");
+            }}
+          />
+        </View>
+
         {/* כפתור התנתק בתחתית העמוד */}
         <View style={[styles.footerSection, { marginBottom: insets.bottom + 12 }]}>
           <View style={styles.footerPanel}>
@@ -1014,8 +1024,12 @@ const styles = StyleSheet.create({
   },
   linkPillText: { fontSize: 12, fontWeight: "900", color: ui.primary },
 
+  deleteAccountSection: {
+    marginTop: 16,
+    paddingHorizontal: 0,
+  },
   footerSection: {
-    marginTop: 24,
+    marginTop: 16,
     paddingHorizontal: 0,
   },
   footerPanel: {

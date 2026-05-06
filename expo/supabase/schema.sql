@@ -73,6 +73,10 @@ ALTER TABLE events ADD COLUMN IF NOT EXISTS bride_name TEXT;
 -- Add RSVP link column if missing (safe re-run)
 ALTER TABLE events ADD COLUMN IF NOT EXISTS rsvp_link TEXT;
 
+-- Add approval flag column if missing (safe re-run)
+ALTER TABLE events ADD COLUMN IF NOT EXISTS is_approved BOOLEAN NOT NULL DEFAULT FALSE;
+CREATE INDEX IF NOT EXISTS idx_events_is_approved ON events(is_approved);
+
 -- Tasks table
 CREATE TABLE IF NOT EXISTS tasks (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

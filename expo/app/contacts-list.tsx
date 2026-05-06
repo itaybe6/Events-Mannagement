@@ -12,7 +12,12 @@ import {
   Modal,
 } from 'react-native';
 import * as Contacts from 'expo-contacts';
-import { guestService } from '@/lib/services/guestService';
+import { ensureContactsPermission } from '@/lib/permissions';
+import {
+  guestService,
+  UNAPPROVED_EVENT_GUEST_LIMIT,
+  UNAPPROVED_EVENT_GUEST_LIMIT_ERROR,
+} from '@/lib/services/guestService';
 import { eventService } from '@/lib/services/eventService';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
@@ -20,6 +25,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppKeyboardAwareFlatList } from '@/components/AppKeyboardAware';
 import BackSwipe from '@/components/BackSwipe';
+import { IS_RTL, ROW_DIR, rtlText } from '@/lib/rtl';
 
 export default function ContactsListScreen() {
   const [contacts, setContacts] = useState<any[]>([]);
@@ -29,6 +35,7 @@ export default function ContactsListScreen() {
   const [categories, setCategories] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<any>(null);
   const [existingGuests, setExistingGuests] = useState<any[]>([]);
+  const [isEventApproved, setIsEventApproved] = useState<boolean>(true);
   const [searchFocused, setSearchFocused] = useState(false);
   const [enableSides, setEnableSides] = useState(true);
   const [successModal, setSuccessModal] = useState<{ visible: boolean; count: number }>({ visible: false, count: 0 });
@@ -114,14 +121,15 @@ export default function ContactsListScreen() {
 
           const shouldEnable = !!groom || !!bride ? true : inferredType && inferredType !== 'חתונה' ? false : true;
           setEnableSides(shouldEnable);
+          setIsEventApproved(evt?.isApproved !== false);
         } catch (e) {
           console.warn('ContactsList: failed to load event for side UI', e);
           setEnableSides(true);
         }
       }
-      // טען אנשי קשר
-      const { status } = await Contacts.requestPermissionsAsync();
-      if (status === 'granted') {
+      // טען אנשי קשר עם הסבר ברור למטרת השימוש (לפי דרישות App Store)
+      const permission = await ensureContactsPermission();
+      if (permission.granted) {
         const { data } = await Contacts.getContactsAsync({
           fields: [Contacts.Fields.Name, Contacts.Fields.PhoneNumbers],
         });
@@ -129,8 +137,6 @@ export default function ContactsListScreen() {
           Array.isArray(contact.phoneNumbers) && contact.phoneNumbers.length > 0 && contact.phoneNumbers[0].number
         );
         setContacts(contactsWithPhones);
-      } else {
-        Alert.alert('נדרשת הרשאה', 'כדי לייבא אנשי קשר, יש צורך בהרשאה לגישה לאנשי הקשר');
       }
       setLoading(false);
     };
@@ -194,6 +200,26 @@ export default function ContactsListScreen() {
       Alert.alert('שגיאה', 'יש לבחור קטגוריה לפני הוספת אורחים');
       return;
     }
+
+    // בדיקת הגבלת מוזמנים לאירוע שטרם אושר
+    if (!isEventApproved) {
+      const currentCount = existingGuests.length;
+      const remaining = Math.max(0, UNAPPROVED_EVENT_GUEST_LIMIT - currentCount);
+      if (remaining === 0) {
+        Alert.alert(
+          'הגבלת מוזמנים',
+          UNAPPROVED_EVENT_GUEST_LIMIT_ERROR
+        );
+        return;
+      }
+      if (selectedContacts.size > remaining) {
+        Alert.alert(
+          'הגבלת מוזמנים',
+          `האירוע עדיין ממתין לאישור. ניתן להוסיף עוד ${remaining} מוזמנים בלבד עד לאישור האירוע על ידי צוות MOON.`
+        );
+        return;
+      }
+    }
     
     const contactsToAdd = Array.from(selectedContacts).map(id => 
       contacts.find(c => c.id === id)
@@ -205,7 +231,6 @@ export default function ContactsListScreen() {
       const duplicateNames = duplicates.map(d => d.name || 'ללא שם').join(', ');
       
       if (newGuests.length === 0) {
-        // כל האורחים כפולים
         Alert.alert(
           'אורחים כפולים',
           `כל האורחים שנבחרו כבר קיימים באירוע:\n${duplicateNames}`,
@@ -213,7 +238,6 @@ export default function ContactsListScreen() {
         );
         return;
       } else {
-        // חלק כפולים וחלק חדשים
         Alert.alert(
           'האם להמשיך?',
           `האורחים הבאים כבר קיימים ולא יתווספו:\n${duplicateNames}\n\nהאם להוסיף את שאר האורחים (${newGuests.length})?`,
@@ -230,7 +254,6 @@ export default function ContactsListScreen() {
       }
     }
     
-    // אין כפילויות - הוסף את כל האורחים
     addGuestsToDatabase(newGuests);
   };
 
@@ -260,7 +283,16 @@ export default function ContactsListScreen() {
           numberOfPeople: 1,
         });
         added++;
-      } catch (e) {
+      } catch (e: any) {
+        if (e?.message === UNAPPROVED_EVENT_GUEST_LIMIT_ERROR) {
+          // הגענו לגבול - עצור ותצג הודעה
+          if (added > 0) {
+            // הוספנו חלק - נציג כמה נוספו ומדוע עצרנו
+            setSuccessModal({ visible: true, count: added });
+          }
+          Alert.alert('הגבלת מוזמנים', UNAPPROVED_EVENT_GUEST_LIMIT_ERROR);
+          return;
+        }
         console.error('Error adding guest:', e);
       }
     }
@@ -306,6 +338,7 @@ export default function ContactsListScreen() {
       <View style={[styles.container, { backgroundColor: ui.bg }]}>
         <Stack.Screen options={{ headerShown: false }} />
         <LinearGradient
+          pointerEvents="none"
           colors={['#F0F9FF', '#EEF2FF', '#FFF1F2']}
           locations={[0, 0.55, 1]}
           start={{ x: 0, y: 0 }}
@@ -313,12 +346,14 @@ export default function ContactsListScreen() {
           style={StyleSheet.absoluteFillObject}
         />
         <LinearGradient
+          pointerEvents="none"
           colors={['rgba(255,255,255,0.78)', 'rgba(255,255,255,0)']}
           start={{ x: 0.05, y: 0 }}
           end={{ x: 0.72, y: 0.48 }}
           style={styles.bgHighlight}
         />
         <LinearGradient
+          pointerEvents="none"
           colors={['rgba(29,78,216,0.10)', 'rgba(244,114,182,0.08)', 'rgba(255,255,255,0)']}
           start={{ x: 1, y: 0.08 }}
           end={{ x: 0.2, y: 0.82 }}
@@ -349,7 +384,7 @@ export default function ContactsListScreen() {
           accessibilityRole="button"
           accessibilityLabel="חזרה"
         >
-          <Ionicons name="chevron-forward" size={22} color={ui.primary} />
+          <Ionicons name="chevron-back" size={22} color={ui.primary} />
         </TouchableOpacity>
 
         <View style={styles.navRow}>
@@ -388,12 +423,18 @@ export default function ContactsListScreen() {
                   <Text style={styles.headerHeroCountText}>{filteredContacts.length} אנשי קשר</Text>
                 </View>
               </View>
-              <Text style={styles.headerHeroTitle}>
-                {selectedCategory ? `מוסיפים אורחים לקטגוריה ${selectedCategory.name}` : 'בחר קטגוריה כדי להתחיל'}
-              </Text>
-              <Text style={styles.headerHeroSubtitle}>
-                סמן כמה אנשי קשר שתרצה, ונוסיף אותם ישירות לרשימת המוזמנים באפליקציה.
-              </Text>
+              <View style={styles.headerHeroTextCol}>
+                <Text style={styles.headerHeroTitle}>
+                  {rtlText(
+                    selectedCategory
+                      ? `מוסיפים אורחים לקטגוריה ${selectedCategory.name}`
+                      : 'בחר קטגוריה כדי להתחיל'
+                  )}
+                </Text>
+                <Text style={styles.headerHeroSubtitle}>
+                  {rtlText('סמן כמה אנשי קשר שתרצה, ונוסיף אותם ישירות לרשימת המוזמנים באפליקציה.')}
+                </Text>
+              </View>
             </View>
 
             <View style={{ gap: 16, paddingBottom: 18 }}>
@@ -508,6 +549,7 @@ export default function ContactsListScreen() {
                       color: ui.textStrong,
                     },
                   ]}
+                  textAlign="right"
                   placeholder="חפש איש קשר..."
                   value={search}
                   onChangeText={setSearch}
@@ -795,6 +837,9 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.58)',
     paddingHorizontal: 16,
     paddingVertical: 14,
+    alignSelf: 'stretch',
+    width: '100%',
+    alignItems: 'stretch',
     shadowColor: '#0f172a',
     shadowOpacity: 0.05,
     shadowRadius: 12,
@@ -802,14 +847,21 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   headerHeroTopRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 10,
     marginBottom: 10,
+    alignSelf: 'stretch',
+    width: '100%',
+  },
+  headerHeroTextCol: {
+    alignSelf: 'stretch',
+    width: '100%',
+    alignItems: 'stretch',
   },
   headerHeroCategoryPill: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 6,
     maxWidth: '68%',
@@ -824,7 +876,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '900',
     color: '#1d4ed8',
-    textAlign: 'right',
+    // forceRTL: logical "left" is the visual right edge (same pattern as TablesList / BrideGroomSeating).
+    textAlign: IS_RTL ? 'left' : 'right',
+    writingDirection: IS_RTL ? 'rtl' : 'ltr',
     flexShrink: 1,
   },
   headerHeroCountPill: {
@@ -843,7 +897,11 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '900',
     color: '#0f172a',
-    textAlign: 'right',
+    textAlign: IS_RTL ? 'left' : 'right',
+    writingDirection: IS_RTL ? 'rtl' : 'ltr',
+    alignSelf: 'stretch',
+    width: '100%',
+    maxWidth: '100%',
   },
   headerHeroSubtitle: {
     marginTop: 6,
@@ -851,10 +909,14 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     fontWeight: '700',
     color: 'rgba(51,65,85,0.74)',
-    textAlign: 'right',
+    textAlign: IS_RTL ? 'left' : 'right',
+    writingDirection: IS_RTL ? 'rtl' : 'ltr',
+    alignSelf: 'stretch',
+    width: '100%',
+    maxWidth: '100%',
   },
   topButtonsGrid: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'stretch',
   },
   topButtonCol: {
@@ -892,14 +954,14 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderWidth: 1.5,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
     backgroundColor: '#FFFFFF',
   },
   buttonContent: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 1,
@@ -907,7 +969,8 @@ const styles = StyleSheet.create({
   topButtonText: {
     fontSize: 15,
     fontWeight: '700',
-    textAlign: 'right',
+    textAlign: IS_RTL ? 'left' : 'right',
+    writingDirection: IS_RTL ? 'rtl' : 'ltr',
     flexShrink: 1,
   },
   topButtonPrimary: {
@@ -955,9 +1018,10 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     textAlign: 'right',
+    writingDirection: 'rtl',
   },
   selectionSummaryRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     gap: 10,
   },
   selectionSummaryCard: {
@@ -1000,7 +1064,7 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
     paddingHorizontal: 16,
     borderWidth: 1,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
     shadowColor: '#000',
@@ -1032,7 +1096,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     backgroundColor: '#FFFFFF',
     overflow: 'hidden',
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'space-between',
     shadowColor: '#000',
@@ -1047,7 +1111,7 @@ const styles = StyleSheet.create({
     }),
   },
   contactLeft: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 12,
     flex: 1,
@@ -1067,7 +1131,8 @@ const styles = StyleSheet.create({
   contactName: {
     fontSize: 15,
     fontWeight: '800',
-    textAlign: 'right',
+    textAlign: IS_RTL ? 'left' : 'right',
+    writingDirection: IS_RTL ? 'rtl' : 'ltr',
   },
   contactPhone: {
     fontSize: 12,
@@ -1139,7 +1204,7 @@ const styles = StyleSheet.create({
     height: 60,
     borderRadius: 18,
     borderWidth: 1,
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
@@ -1155,7 +1220,7 @@ const styles = StyleSheet.create({
     opacity: 0.96,
   },
   bottomButtonContent: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 14,
@@ -1172,7 +1237,8 @@ const styles = StyleSheet.create({
   bottomButtonText: {
     fontSize: 16,
     fontWeight: '800',
-    textAlign: 'right',
+    textAlign: IS_RTL ? 'left' : 'right',
+    writingDirection: IS_RTL ? 'rtl' : 'ltr',
   },
 
   /* ─── Success Modal ─────────────────────────────── */
@@ -1234,7 +1300,7 @@ const styles = StyleSheet.create({
     color: '#059669',
   },
   modalCategoryPill: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 6,
     backgroundColor: '#EEF2FF',

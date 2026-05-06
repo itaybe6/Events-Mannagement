@@ -26,7 +26,7 @@ import { guestService } from '@/lib/services/guestService';
 import { eventService } from '@/lib/services/eventService';
 import { useLayoutStore } from '@/store/layoutStore';
 import { colors } from '@/constants/colors';
-import { ROW_DIR, ROW_REVERSE_DIR } from '@/lib/rtl';
+import { IS_RTL, ROW_DIR, ROW_REVERSE_DIR } from '@/lib/rtl';
 
 type Side = 'groom' | 'bride';
 type Mode = 'existing' | 'new';
@@ -333,24 +333,6 @@ export default function SelectCategoryScreen() {
           ]}
         />
         <View style={styles.headerSide}>
-          {/* כפתור חזרה - View עוטף עם העיצוב (NativeWind דורס style על Pressable) */}
-          <Pressable
-            onPress={goBack}
-            accessibilityRole="button"
-            accessibilityLabel="חזרה"
-            style={({ pressed }) => ({ opacity: pressed ? 0.70 : 1 })}
-          >
-            <View style={styles.headerBackBtn}>
-              <Ionicons name="chevron-back" size={16} color={NAVY} />
-            </View>
-          </Pressable>
-        </View>
-
-        <View pointerEvents="none" style={styles.headerCenter}>
-          <Text style={[styles.headerTitle, isDark && styles.headerTitleDark]}>בחירת קטגוריה</Text>
-        </View>
-
-        <View style={[styles.headerSide, styles.headerSideEnd]}>
           <Pressable
             onPress={handleNext}
             disabled={isNextDisabled}
@@ -369,6 +351,24 @@ export default function SelectCategoryScreen() {
                 <Ionicons name="chevron-forward" size={17} color="#fff" />
                 <Text style={styles.headerNextBtnText}>{saving ? 'שומר...' : 'הבא'}</Text>
               </View>
+            </View>
+          </Pressable>
+        </View>
+
+        <View pointerEvents="none" style={styles.headerCenter}>
+          <Text style={[styles.headerTitle, isDark && styles.headerTitleDark]}>בחירת קטגוריה</Text>
+        </View>
+
+        <View style={[styles.headerSide, styles.headerSideEnd]}>
+          {/* כפתור חזרה - View עוטף עם העיצוב (NativeWind דורס style על Pressable) */}
+          <Pressable
+            onPress={goBack}
+            accessibilityRole="button"
+            accessibilityLabel="חזרה"
+            style={({ pressed }) => ({ opacity: pressed ? 0.70 : 1 })}
+          >
+            <View style={styles.headerBackBtn}>
+              <Ionicons name="chevron-back" size={16} color={NAVY} />
             </View>
           </Pressable>
         </View>
@@ -730,7 +730,13 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   segmentBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', zIndex: 1 },
-  segmentText: { fontSize: 14, fontWeight: '500', color: SUBTEXT },
+  segmentText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: SUBTEXT,
+    textAlign: 'center',
+    writingDirection: IS_RTL ? 'rtl' : 'ltr',
+  },
   segmentTextActive: { fontWeight: '700', color: NAVY },
   segmentTextDark: { color: SUBTEXT_DARK },
   segmentTextActiveDark: { color: TEXT_DARK },
@@ -750,6 +756,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.58)',
     paddingHorizontal: 18,
     paddingVertical: 16,
+    alignItems: 'stretch',
     shadowColor: '#0f172a',
     shadowOpacity: 0.06,
     shadowRadius: 14,
@@ -760,7 +767,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '900',
     color: BG_TEXT,
-    textAlign: 'right',
+    textAlign: IS_RTL ? 'left' : 'right',
+    writingDirection: IS_RTL ? 'rtl' : 'ltr',
+    alignSelf: 'stretch',
+    width: '100%',
   },
   heroSubtitle: {
     marginTop: 6,
@@ -768,7 +778,10 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     fontWeight: '700',
     color: 'rgba(30,41,59,0.68)',
-    textAlign: 'right',
+    textAlign: IS_RTL ? 'left' : 'right',
+    writingDirection: IS_RTL ? 'rtl' : 'ltr',
+    alignSelf: 'stretch',
+    width: '100%',
   },
 
   /* content */
@@ -924,7 +937,8 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: 'rgba(100,116,139,0.95)',
-    textAlign: 'right',
+    textAlign: IS_RTL ? 'left' : 'right',
+    writingDirection: IS_RTL ? 'rtl' : 'ltr',
     marginBottom: 8,
   },
   fieldLabelDark: {
@@ -937,7 +951,8 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     fontWeight: '700',
     color: 'rgba(100,116,139,0.78)',
-    textAlign: 'right',
+    textAlign: IS_RTL ? 'left' : 'right',
+    writingDirection: IS_RTL ? 'rtl' : 'ltr',
   },
   inputWrap: {
     backgroundColor: '#fff',
@@ -967,6 +982,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#0F172A',
     textAlign: 'right',
+    writingDirection: 'rtl',
     paddingEnd: 34,
     paddingStart: 10,
     paddingVertical: 0,
@@ -991,7 +1007,8 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.text,
     marginBottom: 8,
-    textAlign: 'right',
+    textAlign: IS_RTL ? 'left' : 'right',
+    writingDirection: IS_RTL ? 'rtl' : 'ltr',
     fontWeight: '700',
   },
   sideButtons: {

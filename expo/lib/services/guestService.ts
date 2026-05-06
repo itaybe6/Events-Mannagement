@@ -1,6 +1,51 @@
 import { supabase } from '../supabase';
 import { Guest } from '@/types';
 
+/**
+ * Maximum number of guests allowed on an event that has NOT been approved yet.
+ * Self-signup events start unapproved; once MOON staff approves the event, the limit is lifted.
+ */
+export const UNAPPROVED_EVENT_GUEST_LIMIT = 10;
+
+/**
+ * Error message (Hebrew) surfaced when the unapproved-event guest limit is reached.
+ * Callers can match against this to display a localized alert to users.
+ */
+export const UNAPPROVED_EVENT_GUEST_LIMIT_ERROR =
+  'האירוע עדיין ממתין לאישור. ניתן להזין עד 10 מוזמנים בלבד עד שצוות MOON יאשר את האירוע.';
+
+async function ensureUnapprovedEventGuestLimit(eventId: string): Promise<void> {
+  if (!eventId) return;
+  try {
+    const { data: eventRow, error: eventErr } = await supabase
+      .from('events')
+      .select('is_approved')
+      .eq('id', eventId)
+      .maybeSingle();
+
+    if (eventErr) {
+      // Fail open: if we can't read the flag, don't block the user.
+      return;
+    }
+    // If column hasn't been migrated yet we treat it as approved.
+    const isApproved = (eventRow as any)?.is_approved;
+    if (isApproved !== false) return;
+
+    const { count, error: countErr } = await supabase
+      .from('guests')
+      .select('id', { count: 'exact', head: true })
+      .eq('event_id', eventId);
+    if (countErr) return;
+
+    if ((count ?? 0) >= UNAPPROVED_EVENT_GUEST_LIMIT) {
+      throw new Error(UNAPPROVED_EVENT_GUEST_LIMIT_ERROR);
+    }
+  } catch (e) {
+    if (e instanceof Error && e.message === UNAPPROVED_EVENT_GUEST_LIMIT_ERROR) throw e;
+    // Any other error is treated as "fail open" to avoid blocking normal usage.
+  }
+}
+
 export const guestService = {
   // Get all guests for an event
   getGuests: async (eventId: string): Promise<Guest[]> => {
@@ -41,6 +86,7 @@ export const guestService = {
   // Add new guest
   addGuest: async (eventId: string, guest: Omit<Guest, 'id'>): Promise<Guest> => {
     try {
+      await ensureUnapprovedEventGuestLimit(eventId);
       const { data, error } = await supabase
         .from('guests')
         .insert({

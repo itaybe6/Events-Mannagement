@@ -7,6 +7,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   useWindowDimensions,
@@ -304,6 +305,22 @@ export function AdminEventsListWebScreen() {
       cancelled = true;
     };
   }, []);
+
+  const [approvingEventId, setApprovingEventId] = useState<string | null>(null);
+
+  const handleToggleApproval = async (targetEvent: Event, nextValue: boolean) => {
+    if (approvingEventId) return;
+    setApprovingEventId(targetEvent.id);
+    try {
+      await eventService.setEventApproval(targetEvent.id, nextValue);
+      await refresh();
+    } catch (err) {
+      console.error('Toggle event approval error:', err);
+      Alert.alert('שגיאה', 'לא ניתן לעדכן את סטטוס האישור כרגע. נסה שוב.');
+    } finally {
+      setApprovingEventId(null);
+    }
+  };
 
   const visibleEventIds = useMemo(
     () => filteredEvents.map((e) => String(e.id)).filter(Boolean),
@@ -898,6 +915,36 @@ export function AdminEventsListWebScreen() {
                         </View>
                       </View>
 
+                      <Pressable
+                        onPress={(evt: any) => evt?.stopPropagation?.()}
+                        style={approvalStyles.row}
+                      >
+                        {e.isApproved === false ? (
+                          <View style={approvalStyles.badgePending}>
+                            <Ionicons name="time-outline" size={12} color="#92400E" />
+                            <Text style={approvalStyles.badgePendingText}>ממתין לאישור</Text>
+                          </View>
+                        ) : (
+                          <View style={approvalStyles.badgeApproved}>
+                            <Ionicons name="checkmark-circle" size={12} color="#065F46" />
+                            <Text style={approvalStyles.badgeApprovedText}>מאושר</Text>
+                          </View>
+                        )}
+                        <View style={approvalStyles.right}>
+                          <Text style={approvalStyles.label}>
+                            {e.isApproved === false ? 'אשר אירוע' : 'ביטול אישור'}
+                          </Text>
+                          <Switch
+                            value={e.isApproved !== false}
+                            onValueChange={(val) => handleToggleApproval(e, val)}
+                            disabled={approvingEventId === e.id}
+                            trackColor={{ false: '#FCD34D', true: '#86EFAC' }}
+                            thumbColor={e.isApproved !== false ? '#059669' : '#D97706'}
+                            ios_backgroundColor="#FCD34D"
+                          />
+                        </View>
+                      </Pressable>
+
                       <View style={styles.eventOverviewFooter}>
                         <View style={styles.eventOverviewOwnerBlock}>
                           <View style={styles.eventOverviewOwnerAvatar}>
@@ -1070,6 +1117,64 @@ export function AdminEventsListWebScreen() {
     </>
   );
 }
+
+const approvalStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.6)',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
+  },
+  right: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+  },
+  label: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.gray[700],
+    textAlign: 'right',
+  },
+  badgePending: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FEF3C7',
+    borderColor: '#FCD34D',
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  badgePendingText: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#92400E',
+  },
+  badgeApproved: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#D1FAE5',
+    borderColor: '#6EE7B7',
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  badgeApprovedText: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#065F46',
+  },
+});
 
 const styles = StyleSheet.create({
   page: {

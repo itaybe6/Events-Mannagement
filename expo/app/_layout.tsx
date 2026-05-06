@@ -370,10 +370,11 @@ function RootLayoutNav() {
     const isPublicInvitation = segments[0] === 'invitation' || segments[0] === 'i' || segments[0] === 'w';
     const isOnboarding = segments[0] === 'onboarding';
     const isLogin = segments[0] === 'login';
+    const isSignup = segments[0] === 'signup';
     const isIndex = segments[0] === 'index';
 
-    // אם המשתמש מחובר והוא בעמוד public (index/login/onboarding) - העבר לקבוצת הטאבים לפי תפקיד
-    if (isLoggedIn && (isLogin || isIndex || isOnboarding)) {
+    // אם המשתמש מחובר והוא בעמוד public (index/login/onboarding/signup) - העבר לקבוצת הטאבים לפי תפקיד
+    if (isLoggedIn && (isLogin || isIndex || isOnboarding || isSignup)) {
       const { userType } = useUserStore.getState();
       if (userType === 'admin') {
         router.replace('/(admin)/admin-events');
@@ -386,7 +387,7 @@ function RootLayoutNav() {
     // אם המשתמש לא מחובר - ברירת מחדל היא onboarding (גם אחרי התנתקות).
     // את login נציג רק אם המשתמש כבר נמצא שם (למשל אחרי לחיצה על הכפתור ב-onboarding).
     else if (!isLoggedIn && !isPublicInvitation) {
-      if (isOnboarding || isLogin) return;
+      if (isOnboarding || isLogin || isSignup) return;
       router.replace('/onboarding');
     }
   }, [isLoggedIn, segments, initializing, loading]);
@@ -437,6 +438,7 @@ function RootLayoutNav() {
       <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="onboarding" options={{ headerShown: false }} />
       <Stack.Screen name="login" options={{ headerShown: false }} />
+      <Stack.Screen name="signup" options={{ headerShown: false }} />
       {/* Legacy mixed tabs kept for backward compatibility */}
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       {/* New role-based groups */}

@@ -292,6 +292,20 @@ export default function CoupleHomeWebScreen() {
           },
         ]}
       >
+        {currentEvent && currentEvent.isApproved === false ? (
+          <View style={styles.pendingBanner}>
+            <View style={styles.pendingBannerIconWrap}>
+              <Ionicons name="time-outline" size={22} color="#92400E" />
+            </View>
+            <View style={styles.pendingBannerTextWrap}>
+              <Text style={styles.pendingBannerTitle}>ברוכים הבאים למשפחת MOON! 🎉</Text>
+              <Text style={styles.pendingBannerBody}>
+                קיבלנו את פרטי האירוע שלך. צוות ניהול האירועים שלנו יצור איתך קשר בהקדם כדי לסייע במילוי מפת ההושבה ולהשלים את ההכנות. עד לאישור ניתן להזין עד 10 מוזמנים.
+              </Text>
+            </View>
+          </View>
+        ) : null}
+
         <View style={[styles.heroSection, isCompactDesktop ? styles.heroSectionStack : null]}>
           <Surface style={styles.heroMainCard} hoverStyle={styles.surfaceHoverSoft}>
             <View pointerEvents="none" style={styles.heroMainGlowTop} />
@@ -947,6 +961,42 @@ const styles = StyleSheet.create({
           backgroundImage: 'radial-gradient(circle, rgba(139,92,246,0.09) 0%, rgba(255,255,255,0) 72%)',
         } as any)
       : { backgroundColor: 'rgba(139,92,246,0.09)' }),
+  },
+  pendingBanner: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 14,
+    padding: 16,
+    marginBottom: 18,
+    borderRadius: 20,
+    backgroundColor: 'rgba(254, 243, 199, 0.95)',
+    borderWidth: 1,
+    borderColor: 'rgba(217, 119, 6, 0.30)',
+  },
+  pendingBannerIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: 'rgba(245, 158, 11, 0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pendingBannerTextWrap: {
+    flex: 1,
+  },
+  pendingBannerTitle: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: '#92400E',
+    textAlign: 'right',
+    marginBottom: 4,
+  },
+  pendingBannerBody: {
+    fontSize: 13,
+    lineHeight: 20,
+    color: '#78350F',
+    textAlign: 'right',
+    fontWeight: '700',
   },
   heroSection: {
     flexDirection: 'row',

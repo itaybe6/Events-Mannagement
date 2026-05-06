@@ -5,6 +5,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { authService } from '@/lib/services/authService';
 import { userService, type UserWithMetadata } from '@/lib/services/userService';
 import { avatarService } from '@/lib/services/avatarService';
+import { ensurePhotoLibraryPermission } from '@/lib/permissions';
 
 export type UserFilter = 'all' | 'admin' | 'event_owner' | 'employee';
 
@@ -135,13 +136,8 @@ export function useUsersModel(opts: { demoUsers: UserWithMetadata[] }) {
   const pickAvatarForSelectedUser = useCallback(async () => {
     if (!selectedUser) return;
     try {
-      if (Platform.OS !== 'web') {
-        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (!permission.granted) {
-          Alert.alert('הרשאה נדרשת', 'כדי לבחור תמונה יש לאשר גישה לגלריה');
-          return;
-        }
-      }
+      const permission = await ensurePhotoLibraryPermission({ purpose: 'profile' });
+      if (!permission.granted) return;
 
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,

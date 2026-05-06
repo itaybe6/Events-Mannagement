@@ -282,13 +282,6 @@ export default function LoginWebScreen() {
               </View>
               <Text style={styles.rememberText}>זכור אותי</Text>
             </Pressable>
-
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => Alert.alert('איפוס סיסמה', 'לאיפוס סיסמה יש לפנות למנהל המערכת.')}
-            >
-              <Text style={[styles.forgotLink, { color: theme.primary }]}>שכחת סיסמה?</Text>
-            </Pressable>
           </View>
 
           <Pressable
@@ -303,6 +296,27 @@ export default function LoginWebScreen() {
           >
             {loading ? <ActivityIndicator color={colors.white} /> : <Text style={styles.buttonText}>התחבר</Text>}
           </Pressable>
+
+          <View style={styles.signupRow}>
+            <Text style={styles.signupRowText}>עדיין אין לך חשבון? </Text>
+            <Pressable
+              onPress={() => router.push('/signup')}
+              accessibilityRole="link"
+              accessibilityLabel="מעבר למסך הרשמה"
+            >
+              {({ hovered }: any) => (
+                <Text
+                  style={[
+                    styles.signupRowLink,
+                    { color: theme.primary },
+                    hovered ? styles.signupRowLinkHover : null,
+                  ]}
+                >
+                  הירשם
+                </Text>
+              )}
+            </Pressable>
+          </View>
         </View>
       </View>
     </View>
@@ -727,11 +741,6 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     userSelect: 'none' as any,
   },
-  forgotLink: {
-    fontSize: 12,
-    fontWeight: '800',
-    textAlign: 'right',
-  },
   button: {
     marginTop: 12,
     borderRadius: 12,
@@ -751,6 +760,26 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontSize: 15,
     fontWeight: '900',
+  },
+  signupRow: {
+    marginTop: 18,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+  },
+  signupRowText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.gray[600],
+  },
+  signupRowLink: {
+    fontSize: 13,
+    fontWeight: '900',
+    textDecorationLine: 'underline',
+  },
+  signupRowLinkHover: {
+    opacity: 0.85,
   },
 });
 

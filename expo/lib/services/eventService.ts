@@ -37,6 +37,7 @@ export const eventService = {
         user_id: event.user_id,
         userName: (event as any)?.users?.name ?? undefined,
         userAvatarUrl: (event as any)?.users?.avatar_url ?? undefined,
+        isApproved: (event as any).is_approved ?? undefined,
         tasks: event.tasks.map((task: any) => ({
           id: task.id,
           title: task.title,
@@ -125,6 +126,7 @@ export const eventService = {
         user_id: data.user_id, // הוסף את user_id
         userName: (data as any)?.users?.name ?? undefined,
         userAvatarUrl: (data as any)?.users?.avatar_url ?? undefined,
+        isApproved: (data as any).is_approved ?? undefined,
         tasks: ((data as any).tasks || []).map((task: any) => ({
           id: task.id,
           title: task.title,
@@ -154,6 +156,7 @@ export const eventService = {
         guests_count: eventData.guests,
         budget: eventData.budget,
       };
+      if (eventData.isApproved !== undefined) insertData.is_approved = eventData.isApproved;
       if (eventData.groomName !== undefined) insertData.groom_name = eventData.groomName;
       if (eventData.brideName !== undefined) insertData.bride_name = eventData.brideName;
       if (eventData.rsvpLink !== undefined) insertData.rsvp_link = eventData.rsvpLink;
@@ -190,6 +193,7 @@ export const eventService = {
         ceremonyTime: (data as any).ceremony_time ?? undefined,
         brideParents: (data as any).bride_parents ?? undefined,
         groomParents: (data as any).groom_parents ?? undefined,
+        isApproved: (data as any).is_approved ?? undefined,
         tasks: [],
       };
     } catch (error) {
@@ -198,7 +202,8 @@ export const eventService = {
     }
   },
 
-  // Create new event for a specific user (admin)
+  // Create new event for a specific user (admin).
+  // Admin-created events are approved by default unless `isApproved` is passed explicitly.
   createEventForUser: async (userId: string, eventData: Omit<Event, 'id' | 'tasks'>): Promise<Event> => {
     try {
       const insertData: any = {
@@ -210,6 +215,7 @@ export const eventService = {
         story: eventData.story,
         guests_count: eventData.guests,
         budget: eventData.budget,
+        is_approved: eventData.isApproved ?? true,
       };
       if (eventData.groomName !== undefined) insertData.groom_name = eventData.groomName;
       if (eventData.brideName !== undefined) insertData.bride_name = eventData.brideName;
@@ -253,10 +259,76 @@ export const eventService = {
         ceremonyTime: (data as any).ceremony_time ?? undefined,
         brideParents: (data as any).bride_parents ?? undefined,
         groomParents: (data as any).groom_parents ?? undefined,
+        isApproved: (data as any).is_approved ?? undefined,
         tasks: [],
       };
     } catch (error) {
       console.error('Create event for user error:', error);
+      throw error;
+    }
+  },
+
+  // Create a new event for the currently authenticated user (self-signup).
+  // Always starts unapproved unless explicitly overridden.
+  createEventForCurrentUser: async (eventData: Omit<Event, 'id' | 'tasks'>): Promise<Event> => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('No authenticated user');
+
+      const insertData: any = {
+        user_id: user.id,
+        title: eventData.title,
+        date: eventData.date.toISOString(),
+        location: eventData.location,
+        city: eventData.city,
+        story: eventData.story,
+        guests_count: eventData.guests,
+        budget: eventData.budget,
+        is_approved: eventData.isApproved ?? false,
+      };
+
+      const { data, error } = await supabase
+        .from('events')
+        .insert(insertData)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Link the user's primary event to the newly-created one.
+      await supabase
+        .from('users')
+        .update({ event_id: data.id })
+        .eq('id', user.id);
+
+      return {
+        id: data.id,
+        title: data.title,
+        date: new Date(data.date),
+        location: data.location,
+        city: data.city || '',
+        story: data.story || '',
+        guests: data.guests_count || 0,
+        budget: Number(data.budget) || 0,
+        isApproved: (data as any).is_approved ?? undefined,
+        tasks: [],
+      };
+    } catch (error) {
+      console.error('Create event for current user error:', error);
+      throw error;
+    }
+  },
+
+  // Admin-only: toggle approval status for an event.
+  setEventApproval: async (eventId: string, approved: boolean): Promise<void> => {
+    try {
+      const { error } = await supabase
+        .from('events')
+        .update({ is_approved: approved })
+        .eq('id', eventId);
+      if (error) throw error;
+    } catch (error) {
+      console.error('Set event approval error:', error);
       throw error;
     }
   },
@@ -282,6 +354,7 @@ export const eventService = {
       if ((updates as any).ceremonyTime !== undefined) updateData.ceremony_time = (updates as any).ceremonyTime;
       if ((updates as any).brideParents !== undefined) updateData.bride_parents = (updates as any).brideParents;
       if ((updates as any).groomParents !== undefined) updateData.groom_parents = (updates as any).groomParents;
+      if (updates.isApproved !== undefined) updateData.is_approved = updates.isApproved;
 
       const { data, error } = await supabase
         .from('events')
@@ -313,6 +386,7 @@ export const eventService = {
         ceremonyTime: (data as any).ceremony_time ?? undefined,
         brideParents: (data as any).bride_parents ?? undefined,
         groomParents: (data as any).groom_parents ?? undefined,
+        isApproved: (data as any).is_approved ?? undefined,
         tasks: data.tasks.map((task: any) => ({
           id: task.id,
           title: task.title,
