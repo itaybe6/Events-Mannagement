@@ -21,16 +21,15 @@ import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors } from '@/constants/colors';
 import { useUserStore } from '@/store/userStore';
-import { useDemoUsersStore } from '@/store/demoUsersStore';
-import { userService, UserWithMetadata } from '@/lib/services/userService';
+import { userService } from '@/lib/services/userService';
 import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
-import { authService } from '@/lib/services/authService';
 import * as ImagePicker from 'expo-image-picker';
 import { avatarService } from '@/lib/services/avatarService';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLayoutStore } from '@/store/layoutStore';
 import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
 import { ensurePhotoLibraryPermission } from '@/lib/permissions';
+
 
 const ui = {
   // Use the app's brand dark-blue
@@ -57,16 +56,10 @@ type AddUserScreenV2Props = {
    * `webPremiumEmbedded`: intended to be rendered inside a centered web "card" wrapper.
    */
   variant?: 'default' | 'webPremiumEmbedded';
-  /**
-   * When true, show an automatic alert if DB connection test fails.
-   * For web we usually keep this false to avoid blocking UI; the screen already shows a demo-mode banner.
-   */
-  autoShowDbConnectionAlert?: boolean;
 };
 
 export default function AddUserScreenV2({
   variant = 'default',
-  autoShowDbConnectionAlert = true,
 }: AddUserScreenV2Props) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -76,11 +69,9 @@ export default function AddUserScreenV2({
   const isSm = width >= 640;
   const isWebPremium = variant === 'webPremiumEmbedded';
   const { isLoggedIn, userType } = useUserStore();
-  const addDemoUser = useDemoUsersStore((state) => state.addUser);
   const setTabBarVisible = useLayoutStore((s) => s.setTabBarVisible);
 
   const [loading, setLoading] = useState(false);
-  const [isDemoMode, setIsDemoMode] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [createdUserId, setCreatedUserId] = useState<string | null>(null);
@@ -139,9 +130,7 @@ export default function AddUserScreenV2({
   useEffect(() => {
     if (!isLoggedIn || userType !== 'admin') {
       router.replace('/login');
-      return;
     }
-    void checkConnection();
   }, [isLoggedIn, userType, router]);
 
   useFocusEffect(
@@ -163,18 +152,6 @@ export default function AddUserScreenV2({
     };
   }, []);
 
-  const checkConnection = async () => {
-    try {
-      const connectionResult = await authService.testConnection();
-      setIsDemoMode(!connectionResult.success);
-      if (!connectionResult.success && autoShowDbConnectionAlert) {
-        Alert.alert('אבחון בעיות דאטאבייס', connectionResult.message, [{ text: 'הבנתי' }]);
-      }
-    } catch {
-      setIsDemoMode(true);
-    }
-  };
-
   const handleAddUser = async () => {
     try {
       if (!newUser.name.trim() || !newUser.email.trim() || !newUser.password.trim()) {
@@ -193,40 +170,6 @@ export default function AddUserScreenV2({
       }
 
       setLoading(true);
-
-      if (isDemoMode) {
-        const demoUserData: UserWithMetadata = {
-          id: `demo-${Date.now()}`,
-          name: `${newUser.name} (דמו)`,
-          email: newUser.email,
-          phone: newUser.phone || undefined,
-          avatar_url: avatar?.uri,
-          userType: newUser.user_type,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          events_count: 0,
-          last_login: undefined,
-        };
-
-        addDemoUser(demoUserData);
-        setCreatedUserId(demoUserData.id);
-
-        const message = `המשתמש "${newUser.name}" נוסף לרשימה המקומית.\n\n⚠️ זה לא נשמר בדאטאבייס האמיתי.`;
-
-        // מציגים חלון "המשך להוספת אירוע" רק לבעל אירוע
-        if (newUser.user_type === 'event_owner') {
-          setSuccessMessage(message);
-          setShowSuccessModal(true);
-        } else {
-          Alert.alert('המשתמש נוסף בהצלחה', message, [
-            {
-              text: 'אישור',
-              onPress: goBackOrUsers,
-            },
-          ]);
-        }
-        return;
-      }
 
       const createdUser = await userService.createUser(
         newUser.email,
@@ -505,25 +448,6 @@ export default function AddUserScreenV2({
                 </View>
               </View>
 
-              {isDemoMode && (
-                <View
-                  style={[
-                    styles.mobileDemoNote,
-                    {
-                      borderColor: 'rgba(6, 23, 62, 0.12)',
-                      backgroundColor: 'rgba(255,255,255,0.72)',
-                    },
-                  ]}
-                >
-                  <View style={styles.mobileDemoNoteIconWrap}>
-                    <Ionicons name="information-circle" size={18} color={ui.primary} />
-                  </View>
-                  <Text style={[styles.demoNoteText, { color: theme.text }]}>
-                    מצב דמו: הנתונים נשמרים מקומית ולא בדאטאבייס.
-                  </Text>
-                </View>
-              )}
-
               <View style={styles.mobileHeroCard}>
                 <LinearGradient
                   colors={['rgba(255,255,255,0.98)', 'rgba(249,247,242,0.96)']}
@@ -784,13 +708,6 @@ export default function AddUserScreenV2({
           contentContainerStyle={styles.webPremiumContent}
           keyboardShouldPersistTaps="handled"
         >
-          {isDemoMode ? (
-            <View style={styles.webDemoNote}>
-              <Ionicons name="information-circle" size={18} color={ui.primary} style={{ marginStart: 8 }} />
-              <Text style={styles.webDemoNoteText}>מצב דמו: הנתונים נשמרים מקומית ולא בדאטאבייס.</Text>
-            </View>
-          ) : null}
-
           <View style={styles.webHeader}>
             <View style={styles.webAvatarHeroWrap}>
               <Pressable

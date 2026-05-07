@@ -199,9 +199,16 @@ export default function AdminProfileScreen() {
   const avatarUri = useMemo(() => {
     const direct = String(userData?.avatar_url ?? "").trim();
     if (direct) return direct;
-    const seed = encodeURIComponent(userData?.email ?? "admin");
-    return `https://i.pravatar.cc/256?u=${seed}`;
-  }, [userData?.avatar_url, userData?.email]);
+    return null;
+  }, [userData?.avatar_url]);
+
+  const avatarInitials = useMemo(() => {
+    const name = String(userData?.name ?? "").trim();
+    if (!name) return "M";
+    const parts = name.split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+    return name.slice(0, 2).toUpperCase();
+  }, [userData?.name]);
 
   const canPrevHalf = useMemo(() => {
     if (availableYears.length === 0) return true;
@@ -432,7 +439,13 @@ export default function AdminProfileScreen() {
         <View style={styles.heroCard}>
           <View style={styles.heroIdentity}>
             <View style={styles.avatarRing}>
-              <Image source={{ uri: avatarUri }} style={styles.avatar} contentFit="cover" />
+              {avatarUri ? (
+                <Image source={{ uri: avatarUri }} style={styles.avatar} contentFit="cover" />
+              ) : (
+                <View style={styles.avatarFallback}>
+                  <Text style={styles.avatarInitials}>{avatarInitials}</Text>
+                </View>
+              )}
             </View>
 
             <View style={styles.heroTextCol}>
@@ -802,6 +815,20 @@ const styles = StyleSheet.create({
     borderColor: "rgba(6,23,62,0.08)",
   },
   avatar: { width: "100%", height: "100%", borderRadius: 999 },
+  avatarFallback: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 999,
+    backgroundColor: ui.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarInitials: {
+    fontSize: 26,
+    fontWeight: "900",
+    color: colors.white,
+    letterSpacing: 1,
+  },
   heroTextCol: { flex: 1, minWidth: 0, justifyContent: "flex-start", alignItems: ALIGN_RIGHT, alignSelf: "stretch", gap: 8 },
   heroName: { fontSize: 24, fontWeight: "900", color: ui.primary, textAlign: "right" },
   rolePill: {
