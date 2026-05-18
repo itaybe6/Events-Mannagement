@@ -14,7 +14,10 @@ import {
 import * as Contacts from 'expo-contacts';
 import { ensureContactsPermission } from '@/lib/permissions';
 import {
+  DUPLICATE_GUEST_ERROR,
+  getPhoneDuplicateKeys,
   guestService,
+  normalizeGuestNameForDuplicate,
   UNAPPROVED_EVENT_GUEST_LIMIT,
   UNAPPROVED_EVENT_GUEST_LIMIT_ERROR,
 } from '@/lib/services/guestService';
@@ -152,16 +155,21 @@ export default function ContactsListScreen() {
     router.replace({ pathname: '/(couple)/select-category', params: { eventId } });
   }, [categoryIdParam, eventId, router]);
 
-  const normalizePhoneNumber = (phone: string) => {
-    // הסרת כל הרווחים, מקפים וסימנים מיוחדים ושמירה על מספרים בלבד
-    return phone.replace(/\D/g, '');
-  };
-
   const existingGuestPhones = useMemo(() => {
     const set = new Set<string>();
     for (const g of existingGuests) {
-      const p = normalizePhoneNumber(String((g as any)?.phone ?? ''));
-      if (p) set.add(p);
+      for (const key of getPhoneDuplicateKeys(String((g as any)?.phone ?? ''))) {
+        if (key) set.add(key);
+      }
+    }
+    return set;
+  }, [existingGuests]);
+
+  const existingGuestNames = useMemo(() => {
+    const set = new Set<string>();
+    for (const g of existingGuests) {
+      const name = normalizeGuestNameForDuplicate(String((g as any)?.name ?? ''));
+      if (name) set.add(name);
     }
     return set;
   }, [existingGuests]);
@@ -178,16 +186,21 @@ export default function ContactsListScreen() {
   const checkForDuplicates = (contactsToAdd: any[]) => {
     const duplicates: any[] = [];
     const newGuests: any[] = [];
+    const pendingPhoneKeys = new Set<string>();
+    const pendingNames = new Set<string>();
     
     contactsToAdd.forEach(contact => {
-      const contactPhone = normalizePhoneNumber(contact.phoneNumbers[0]?.number || '');
-      const isDuplicate = existingGuests.some(guest => 
-        normalizePhoneNumber(guest.phone) === contactPhone
-      );
+      const phoneKeys = getPhoneDuplicateKeys(contact.phoneNumbers[0]?.number || '');
+      const contactName = normalizeGuestNameForDuplicate(contact.name || '');
+      const isDuplicate =
+        phoneKeys.some((key) => existingGuestPhones.has(key) || pendingPhoneKeys.has(key)) ||
+        Boolean(contactName && (existingGuestNames.has(contactName) || pendingNames.has(contactName)));
       
       if (isDuplicate) {
         duplicates.push(contact);
       } else {
+        phoneKeys.forEach((key) => pendingPhoneKeys.add(key));
+        if (contactName) pendingNames.add(contactName);
         newGuests.push(contact);
       }
     });
@@ -268,6 +281,7 @@ export default function ContactsListScreen() {
 
   const addGuestsToDatabase = async (guestsToAdd: any[]) => {
     let added = 0;
+    let duplicateSkipped = 0;
     for (const contact of guestsToAdd) {
       const phoneNumber = contact.phoneNumbers[0]?.number || '';
       const name = contact.name || '';
@@ -293,10 +307,18 @@ export default function ContactsListScreen() {
           Alert.alert('הגבלת מוזמנים', UNAPPROVED_EVENT_GUEST_LIMIT_ERROR);
           return;
         }
+        if (e?.message === DUPLICATE_GUEST_ERROR) {
+          duplicateSkipped++;
+          continue;
+        }
         console.error('Error adding guest:', e);
       }
     }
-    setSuccessModal({ visible: true, count: added });
+    if (added > 0) {
+      setSuccessModal({ visible: true, count: added });
+    } else if (duplicateSkipped > 0) {
+      Alert.alert('אורחים כפולים', 'כל האורחים שנבחרו כבר קיימים באירוע לפי שם או מספר טלפון.');
+    }
   };
 
   const toggleContact = (id: string) => {
@@ -316,9 +338,10 @@ export default function ContactsListScreen() {
     const filtered = contacts.filter(c => {
       const name = String(c?.name || '');
       const phone = String(c?.phoneNumbers?.[0]?.number || '');
-      const normalizedPhone = normalizePhoneNumber(phone);
-      // הצג רק אנשי קשר שלא קיימים כבר כאורחים (כלומר לא משויכים לקטגוריה).
-      if (normalizedPhone && existingGuestPhones.has(normalizedPhone)) return false;
+      const normalizedName = normalizeGuestNameForDuplicate(name);
+      const phoneExists = getPhoneDuplicateKeys(phone).some((key) => existingGuestPhones.has(key));
+      // הצג רק אנשי קשר שלא קיימים כבר כאורחים באירוע, לפי מספר או שם.
+      if (phoneExists || (normalizedName && existingGuestNames.has(normalizedName))) return false;
       if (!q) return !!name;
       return name.toLowerCase().includes(q) || phone.includes(search.trim());
     });
@@ -328,7 +351,7 @@ export default function ContactsListScreen() {
       const bn = String(b?.name || '').trim();
       return an.localeCompare(bn, 'he', { sensitivity: 'base' });
     });
-  }, [contacts, existingGuestPhones, search]);
+  }, [contacts, existingGuestNames, existingGuestPhones, search]);
 
   const canAdd = !!selectedCategory && selectedContacts.size > 0;
   const bottomSafe = Math.max(16, insets.bottom + 12);

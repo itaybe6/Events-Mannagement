@@ -9,6 +9,7 @@ import { Button } from '@/components/Button';
 import { EventSwitcher } from '@/components/EventSwitcher';
 import { Ionicons as IoniconsIcon } from '@expo/vector-icons';
 import {
+  DUPLICATE_GUEST_ERROR,
   guestService,
   UNAPPROVED_EVENT_GUEST_LIMIT,
   UNAPPROVED_EVENT_GUEST_LIMIT_ERROR,
@@ -332,6 +333,7 @@ export default function GuestsScreen() {
     }
 
     const toAdd = Array.from(selectedContacts);
+    let duplicateSkipped = 0;
     for (const contactId of toAdd) {
       const contact = deviceContacts.find(c => c.id === contactId);
       if (contact && selectedCategory) {
@@ -353,12 +355,19 @@ export default function GuestsScreen() {
             Alert.alert('הגבלת מוזמנים', UNAPPROVED_EVENT_GUEST_LIMIT_ERROR);
             break;
           }
+          if (err?.message === DUPLICATE_GUEST_ERROR) {
+            duplicateSkipped++;
+            continue;
+          }
           console.error('Add guest error:', err);
         }
       }
     }
     setSelectedContacts(new Set());
     setContactsModalVisible(false);
+    if (duplicateSkipped > 0) {
+      Alert.alert('אורחים כפולים', 'חלק מהאורחים לא נוספו כי הם כבר קיימים באירוע לפי שם או מספר טלפון.');
+    }
   };
 
   // פונקציות לעריכת ומחיקת אורחים
@@ -403,8 +412,8 @@ export default function GuestsScreen() {
       setEditGuestPhone('');
       setEditGuestStatus('ממתין');
       setEditGuestPeopleCount('1');
-    } catch (e) {
-      Alert.alert('שגיאה', 'לא ניתן לעדכן את האורח');
+    } catch (e: any) {
+      Alert.alert('שגיאה', e?.message === DUPLICATE_GUEST_ERROR ? DUPLICATE_GUEST_ERROR : 'לא ניתן לעדכן את האורח');
     }
   };
 

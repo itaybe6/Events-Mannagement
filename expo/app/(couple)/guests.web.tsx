@@ -21,6 +21,7 @@ import { useUserStore } from '@/store/userStore';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import { eventService } from '@/lib/services/eventService';
 import {
+  DUPLICATE_GUEST_ERROR,
   guestService,
   UNAPPROVED_EVENT_GUEST_LIMIT,
   UNAPPROVED_EVENT_GUEST_LIMIT_ERROR,
@@ -267,9 +268,9 @@ export default function CoupleGuestsWebScreen() {
         )
       );
       closeEdit();
-    } catch (e) {
+    } catch (e: any) {
       console.error('Save guest error:', e);
-      Alert.alert('שגיאה', 'לא ניתן לשמור את השינויים.');
+      Alert.alert('שגיאה', e?.message === DUPLICATE_GUEST_ERROR ? DUPLICATE_GUEST_ERROR : 'לא ניתן לשמור את השינויים.');
     }
   };
 
@@ -465,6 +466,8 @@ export default function CoupleGuestsWebScreen() {
       console.error('Add guest inline error:', e);
       if (e?.message === UNAPPROVED_EVENT_GUEST_LIMIT_ERROR) {
         Alert.alert('הגבלת מוזמנים', UNAPPROVED_EVENT_GUEST_LIMIT_ERROR);
+      } else if (e?.message === DUPLICATE_GUEST_ERROR) {
+        Alert.alert('מוזמן כפול', DUPLICATE_GUEST_ERROR);
       } else {
         Alert.alert('שגיאה', 'לא ניתן להוסיף את המוזמן.');
       }
