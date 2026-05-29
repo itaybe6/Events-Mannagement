@@ -9,6 +9,7 @@ import {
   StatusBar,
   TextInput,
   Alert,
+  Platform,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { colors } from '@/constants/colors';
@@ -233,7 +234,14 @@ export default function LoginScreen() {
 
       if (error || !data.user) {
         const msg = error?.message ?? '';
-        if (typeof msg === 'string' && msg.includes('Email not confirmed')) {
+        if (
+          typeof msg === 'string' &&
+          (msg.includes('Network request failed') || msg.includes('Failed to fetch'))
+        ) {
+          setErrorMessage(
+            'אין גישה לשרת Supabase (רשת או כתובת פרויקט). בדוק ב-Supabase → Settings → API שה־Project URL ב־.env תואם (EXPO_PUBLIC_SUPABASE_URL), ואז הרץ מחדש עם ניקוי מטמון: npx expo start --clear.'
+          );
+        } else if (typeof msg === 'string' && msg.includes('Email not confirmed')) {
           setErrorMessage('יש לאמת את כתובת המייל לפני ההתחברות.');
         } else if (typeof msg === 'string' && msg.includes('Too many requests')) {
           setErrorMessage('יותר מדי ניסיונות התחברות. נסה שוב מאוחר יותר.');
@@ -328,7 +336,17 @@ export default function LoginScreen() {
       }
     } catch (error) {
       console.error('Login error:', error);
-      setErrorMessage('אירעה שגיאה במהלך ההתחברות. נסה שוב.');
+      const msg = error instanceof Error ? error.message : String(error);
+      if (
+        msg.includes('Network request failed') ||
+        msg.includes('Failed to fetch')
+      ) {
+        setErrorMessage(
+          'אין גישה לשרת Supabase (רשת או כתובת פרויקט). עדכן את EXPO_PUBLIC_SUPABASE_URL מלוח הבקרה של Supabase והרץ npx expo start --clear.'
+        );
+      } else {
+        setErrorMessage('אירעה שגיאה במהלך ההתחברות. נסה שוב.');
+      }
     } finally {
       setLoading(false);
     }
@@ -339,20 +357,23 @@ export default function LoginScreen() {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={NAVY_DEEP} />
-      
+
       <AppKeyboardAwareScrollView
-        style={styles.scrollView}
-        contentContainerStyle={[
-          styles.scrollContent,
-          { paddingBottom: Math.max(insets.bottom, 18) },
-        ]}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-        bounces={false}
-        alwaysBounceVertical={false}
-        overScrollMode="never"
-        enableResetScrollToCoords={false}
-      >
+          style={styles.scrollView}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: Math.max(insets.bottom, 18) },
+          ]}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+          alwaysBounceVertical={false}
+          overScrollMode="never"
+          enableResetScrollToCoords={false}
+          extraHeight={120}
+          extraScrollHeight={Platform.OS === 'ios' ? 140 : 160}
+          keyboardOpeningTime={Platform.OS === 'ios' ? 0 : 100}
+        >
         {/* Top hero (55%) */}
         <View style={styles.hero}>
           <LavaLampBackground />
@@ -449,15 +470,6 @@ export default function LoginScreen() {
                 </View>
               ) : null}
 
-              <View style={styles.forgotWrap}>
-                <TouchableOpacity
-                  onPress={() => Alert.alert('איפוס סיסמה', 'בקרוב נוסיף אפשרות לאיפוס סיסמה.')}
-                  accessibilityRole="button"
-                >
-                  <Text style={styles.forgotText}>שכחת סיסמה?</Text>
-                </TouchableOpacity>
-              </View>
-
               <TouchableOpacity
                 style={[styles.primaryButton, isLoginDisabled && styles.primaryButtonDisabled]}
                 onPress={handleLogin}
@@ -474,10 +486,22 @@ export default function LoginScreen() {
                   style={{ marginLeft: 8 }}
                 />
               </TouchableOpacity>
+
+              <View style={styles.signupWrap}>
+                <Text style={styles.signupText}>עדיין אין לך חשבון? </Text>
+                <TouchableOpacity
+                  onPress={() => router.push('/signup')}
+                  accessibilityRole="link"
+                  accessibilityLabel="מעבר למסך הרשמה"
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.signupLink}>הירשם</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         </View>
-      </AppKeyboardAwareScrollView>
+        </AppKeyboardAwareScrollView>
     </View>
   );
 }
@@ -492,8 +516,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
   },
   scrollContent: {
-    flex: 1,
     flexGrow: 1,
+    minHeight: height,
     backgroundColor: colors.white,
   },
   lavaLampLayer: {
@@ -558,7 +582,6 @@ const styles = StyleSheet.create({
   },
 
   cardArea: {
-    flex: 1,
     backgroundColor: colors.white,
   },
   card: {
@@ -568,9 +591,8 @@ const styles = StyleSheet.create({
     marginTop: -34,
     paddingHorizontal: 24,
     paddingTop: 22,
-    paddingBottom: 12,
-    minHeight: Math.max(330, height * 0.44),
-    flex: 1,
+    paddingBottom: 28,
+    minHeight: Math.max(360, height * 0.48),
   },
 
   brandWrap: {
@@ -655,17 +677,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     textAlign: 'right',
     lineHeight: 18,
-  },
-
-  forgotWrap: {
-    alignItems: 'flex-end',
-    marginTop: 2,
-    marginBottom: 14,
-  },
-  forgotText: {
-    fontSize: 13,
-    color: colors.gray[600],
-    fontWeight: '600',
   },
 
   primaryButton: {

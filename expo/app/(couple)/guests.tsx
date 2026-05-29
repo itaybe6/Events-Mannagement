@@ -8,7 +8,12 @@ import { GuestItem } from '@/components/GuestItem';
 import { Button } from '@/components/Button';
 import { EventSwitcher } from '@/components/EventSwitcher';
 import { Ionicons as IoniconsIcon } from '@expo/vector-icons';
-import { guestService } from '@/lib/services/guestService';
+import {
+  DUPLICATE_GUEST_ERROR,
+  guestService,
+  UNAPPROVED_EVENT_GUEST_LIMIT,
+  UNAPPROVED_EVENT_GUEST_LIMIT_ERROR,
+} from '@/lib/services/guestService';
 import { eventService } from '@/lib/services/eventService';
 import { supabase } from '@/lib/supabase';
 import { BlurView } from 'expo-blur';
@@ -46,6 +51,7 @@ export default function GuestsScreen() {
     ).trim() || null;
 
   const [eventTitle, setEventTitle] = useState<string>('');
+  const [isEventApproved, setIsEventApproved] = useState<boolean>(true);
   const isWeddingEvent = React.useMemo(() => {
     const t = String(eventTitle ?? '').trim();
     if (!t) return false;
@@ -90,6 +96,7 @@ export default function GuestsScreen() {
       setGuests([]);
       setCategories([]);
       setEventTitle('');
+      setIsEventApproved(true);
       setSentGuestIds(new Set());
       return;
     }
@@ -105,6 +112,7 @@ export default function GuestsScreen() {
         ]);
         setGuests(guestsData);
         setEventTitle(event?.title ?? '');
+        setIsEventApproved(event?.isApproved !== false);
         await loadSentGuestIds(resolvedEventId);
         await loadCategories(resolvedEventId);
       }
@@ -123,6 +131,7 @@ export default function GuestsScreen() {
           ]);
           setGuests(guestsData);
           setEventTitle(event?.title ?? '');
+          setIsEventApproved(event?.isApproved !== false);
           await loadSentGuestIds(resolvedEventId);
           await loadCategories(resolvedEventId);
         };
@@ -306,26 +315,59 @@ export default function GuestsScreen() {
     setSelectedContacts(newSelected);
   };
 
-  const addSelectedContacts = () => {
-    selectedContacts.forEach(contactId => {
+  const addSelectedContacts = async () => {
+    if (!isEventApproved) {
+      const currentCount = guests.length;
+      const remaining = Math.max(0, UNAPPROVED_EVENT_GUEST_LIMIT - currentCount);
+      if (remaining === 0) {
+        Alert.alert('הגבלת מוזמנים', UNAPPROVED_EVENT_GUEST_LIMIT_ERROR);
+        return;
+      }
+      if (selectedContacts.size > remaining) {
+        Alert.alert(
+          'הגבלת מוזמנים',
+          `האירוע עדיין ממתין לאישור. ניתן להוסיף עוד ${remaining} מוזמנים בלבד עד לאישור האירוע על ידי צוות MOON.`
+        );
+        return;
+      }
+    }
+
+    const toAdd = Array.from(selectedContacts);
+    let duplicateSkipped = 0;
+    for (const contactId of toAdd) {
       const contact = deviceContacts.find(c => c.id === contactId);
       if (contact && selectedCategory) {
         const phoneNumber = contact.phoneNumbers[0]?.number || '';
         const name = contact.name || '';
-        guestService.addGuest(resolvedEventId || '', {
-          name,
-          phone: phoneNumber,
-          status: 'ממתין',
-          tableId: null,
-          gift: 0,
-          message: '',
-          category_id: selectedCategory.id,
-          numberOfPeople: 1,
-        });
+        try {
+          await guestService.addGuest(resolvedEventId || '', {
+            name,
+            phone: phoneNumber,
+            status: 'ממתין',
+            tableId: null,
+            gift: 0,
+            message: '',
+            category_id: selectedCategory.id,
+            numberOfPeople: 1,
+          });
+        } catch (err: any) {
+          if (err?.message === UNAPPROVED_EVENT_GUEST_LIMIT_ERROR) {
+            Alert.alert('הגבלת מוזמנים', UNAPPROVED_EVENT_GUEST_LIMIT_ERROR);
+            break;
+          }
+          if (err?.message === DUPLICATE_GUEST_ERROR) {
+            duplicateSkipped++;
+            continue;
+          }
+          console.error('Add guest error:', err);
+        }
       }
-    });
+    }
     setSelectedContacts(new Set());
     setContactsModalVisible(false);
+    if (duplicateSkipped > 0) {
+      Alert.alert('אורחים כפולים', 'חלק מהאורחים לא נוספו כי הם כבר קיימים באירוע לפי שם או מספר טלפון.');
+    }
   };
 
   // פונקציות לעריכת ומחיקת אורחים
@@ -370,8 +412,8 @@ export default function GuestsScreen() {
       setEditGuestPhone('');
       setEditGuestStatus('ממתין');
       setEditGuestPeopleCount('1');
-    } catch (e) {
-      Alert.alert('שגיאה', 'לא ניתן לעדכן את האורח');
+    } catch (e: any) {
+      Alert.alert('שגיאה', e?.message === DUPLICATE_GUEST_ERROR ? DUPLICATE_GUEST_ERROR : 'לא ניתן לעדכן את האורח');
     }
   };
 

@@ -28,6 +28,7 @@ import { useAdminEventDetailsModel } from '@/features/events/useAdminEventDetail
 import { eventService } from '@/lib/services/eventService';
 import { invitationAssetService } from '@/lib/services/invitationAssetService';
 import { ROW_DIR } from '@/lib/rtl';
+import { ensurePhotoLibraryPermission } from '@/lib/permissions';
 
 function getEventTypeLabel(rawTitle: string) {
   const raw = String(rawTitle ?? '').trim();
@@ -259,13 +260,8 @@ export default function AdminInvitationLinksScreen() {
     if (uploading) return;
 
     try {
-      if (Platform.OS !== 'web') {
-        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (!permission.granted) {
-          Alert.alert('הרשאה נדרשת', 'כדי לבחור תמונה יש לאשר גישה לגלריה');
-          return;
-        }
-      }
+      const permission = await ensurePhotoLibraryPermission({ purpose: 'invitation' });
+      if (!permission.granted) return;
 
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Platform, Alert, Image, Modal, Animated, Easing } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Platform, Alert, Image, Modal, Animated, Easing, Switch } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { colors } from '@/constants/colors';
@@ -12,7 +12,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { inferEventType, MONTHS, type EventType } from '@/features/events/eventsConstants';
 import { useEventsListModel } from '@/features/events/useEventsListModel';
 import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
-import { ALIGN_RIGHT, ROW_DIR, rtlText } from '@/lib/rtl';
+import { ALIGN_RIGHT, IS_RTL, ROW_DIR, rtlText } from '@/lib/rtl';
+
+// With I18nManager.forceRTL, `textAlign: 'right'` often pins Hebrew to the physical LEFT (mirroring).
+// Same pattern as BrideGroomSeating `guestName` / admin-event-details modals.
+const filterSheetTextDir = {
+  textAlign: (IS_RTL ? 'left' : 'right') as 'left' | 'right',
+  writingDirection: 'rtl' as const,
+};
 import { useUserStore } from '@/store/userStore';
 
 const EVENT_IMAGE_BY_TYPE: Record<EventType, number> = {
@@ -45,6 +52,7 @@ export default function AdminEventsScreen() {
   const userType = useUserStore((state) => state.userType);
   const isEmployeeAppUser = userType === 'employee' && Platform.OS !== 'web';
 
+  const [approvingEventId, setApprovingEventId] = useState<string | null>(null);
   const [showFilterDialog, setShowFilterDialog] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showMonthPicker, setShowMonthPicker] = useState(false);
@@ -71,6 +79,20 @@ export default function AdminEventsScreen() {
     refresh,
     filteredEvents,
   } = useEventsListModel(loadEventsFn, { errorTitle: 'שגיאה', errorMessage: 'לא ניתן לטעון אירועים כרגע' });
+
+  const handleToggleApproval = async (event: Event, nextValue: boolean) => {
+    if (approvingEventId) return;
+    setApprovingEventId(event.id);
+    try {
+      await eventService.setEventApproval(event.id, nextValue);
+      await refresh();
+    } catch (err) {
+      console.error('Toggle event approval error:', err);
+      Alert.alert('שגיאה', 'לא ניתן לעדכן את סטטוס האישור כרגע. נסה שוב.');
+    } finally {
+      setApprovingEventId(null);
+    }
+  };
 
   // רענון ראשוני
   useEffect(() => {
@@ -353,6 +375,13 @@ export default function AdminEventsScreen() {
               />
 
               <View style={styles.filterDialogHeader}>
+                <View style={styles.filterDialogTitleWrap}>
+                  <Text style={[styles.filterDialogTitle, filterSheetTextDir]}>בחר סוג סינון</Text>
+                  <Text style={[styles.filterDialogSubtitle, filterSheetTextDir]}>
+                    {rtlText(currentFilterLabel)}
+                  </Text>
+                </View>
+
                 <TouchableOpacity
                   style={styles.filterDialogCloseBtn}
                   onPress={() => setShowFilterDialog(false)}
@@ -360,11 +389,6 @@ export default function AdminEventsScreen() {
                 >
                   <Ionicons name="close" size={18} color={colors.text} />
                 </TouchableOpacity>
-
-                <View style={styles.filterDialogTitleWrap}>
-                  <Text style={styles.filterDialogTitle}>בחר סוג סינון</Text>
-                  <Text style={styles.filterDialogSubtitle}>{currentFilterLabel}</Text>
-                </View>
               </View>
 
               <View style={styles.filterOptionsList}>
@@ -376,12 +400,14 @@ export default function AdminEventsScreen() {
                   }}
                   activeOpacity={0.9}
                 >
+                  <View style={styles.filterOptionTextWrap}>
+                    <Text style={[styles.filterOptionTitle, filterSheetTextDir]}>בחירת תאריך מדויק</Text>
+                    <Text style={[styles.filterOptionText, filterSheetTextDir]}>
+                      לבחור יום מסוים להצגת האירועים
+                    </Text>
+                  </View>
                   <View style={styles.filterOptionIconWrap}>
                     <Ionicons name="calendar-outline" size={18} color={colors.primary} />
-                  </View>
-                  <View style={styles.filterOptionTextWrap}>
-                    <Text style={styles.filterOptionTitle}>בחירת תאריך מדויק</Text>
-                    <Text style={styles.filterOptionText}>לבחור יום מסוים להצגת האירועים</Text>
                   </View>
                 </TouchableOpacity>
 
@@ -393,12 +419,14 @@ export default function AdminEventsScreen() {
                   }}
                   activeOpacity={0.9}
                 >
+                  <View style={styles.filterOptionTextWrap}>
+                    <Text style={[styles.filterOptionTitle, filterSheetTextDir]}>בחירת חודש</Text>
+                    <Text style={[styles.filterOptionText, filterSheetTextDir]}>
+                      לסנן את הרשימה לפי חודש של האירוע
+                    </Text>
+                  </View>
                   <View style={styles.filterOptionIconWrap}>
                     <Ionicons name="calendar-number-outline" size={18} color={colors.primary} />
-                  </View>
-                  <View style={styles.filterOptionTextWrap}>
-                    <Text style={styles.filterOptionTitle}>בחירת חודש</Text>
-                    <Text style={styles.filterOptionText}>לסנן את הרשימה לפי חודש של האירוע</Text>
                   </View>
                 </TouchableOpacity>
               </View>
@@ -413,8 +441,8 @@ export default function AdminEventsScreen() {
                   }}
                   activeOpacity={0.88}
                 >
+                  <Text style={[styles.clearFilterBtnText, filterSheetTextDir]}>נקה סינון</Text>
                   <Ionicons name="refresh-outline" size={16} color={colors.primary} />
-                  <Text style={styles.clearFilterBtnText}>נקה סינון</Text>
                 </TouchableOpacity>
               ) : null}
             </View>
@@ -630,6 +658,39 @@ export default function AdminEventsScreen() {
                         ) : null}
                       </View>
 
+                      <TouchableOpacity
+                        activeOpacity={1}
+                        onPress={(e) => e.stopPropagation?.()}
+                        style={styles.approvalRow}
+                      >
+                        <View style={styles.approvalLeft}>
+                          {event.isApproved === false ? (
+                            <View style={styles.approvalBadgePending}>
+                              <Ionicons name="time-outline" size={12} color="#92400E" />
+                              <Text style={styles.approvalBadgePendingText}>ממתין לאישור</Text>
+                            </View>
+                          ) : (
+                            <View style={styles.approvalBadgeApproved}>
+                              <Ionicons name="checkmark-circle" size={12} color="#065F46" />
+                              <Text style={styles.approvalBadgeApprovedText}>מאושר</Text>
+                            </View>
+                          )}
+                        </View>
+                        <View style={styles.approvalRight}>
+                          <Text style={styles.approvalLabel}>
+                            {event.isApproved === false ? 'אשר אירוע' : 'ביטול אישור'}
+                          </Text>
+                          <Switch
+                            value={event.isApproved !== false}
+                            onValueChange={(val) => handleToggleApproval(event, val)}
+                            disabled={approvingEventId === event.id}
+                            trackColor={{ false: '#FCD34D', true: '#86EFAC' }}
+                            thumbColor={event.isApproved !== false ? '#059669' : '#D97706'}
+                            ios_backgroundColor="#FCD34D"
+                          />
+                        </View>
+                      </TouchableOpacity>
+
                       <View style={styles.cardFooterRow}>
                         <View style={styles.openActionPill}>
                           <Text style={styles.openActionText}>לפרטי האירוע</Text>
@@ -806,6 +867,7 @@ const styles = StyleSheet.create({
   filterDialogCard: {
     width: '100%',
     maxWidth: 420,
+    alignSelf: 'center',
     padding: 18,
     borderRadius: 28,
     overflow: 'hidden',
@@ -840,20 +902,18 @@ const styles = StyleSheet.create({
   },
   filterDialogTitleWrap: {
     flex: 1,
-    alignItems: 'flex-end',
+    alignItems: ALIGN_RIGHT,
     gap: 4,
   },
   filterDialogTitle: {
     fontSize: 18,
     fontWeight: '900',
     color: colors.text,
-    textAlign: 'right',
   },
   filterDialogSubtitle: {
     fontSize: 12,
     fontWeight: '700',
     color: colors.gray[600],
-    textAlign: 'right',
   },
   filterOptionsList: {
     gap: 10,
@@ -878,7 +938,7 @@ const styles = StyleSheet.create({
   },
   filterOptionTextWrap: {
     flex: 1,
-    alignItems: 'flex-end',
+    alignItems: ALIGN_RIGHT,
     gap: 4,
   },
   filterOptionTitle: {
@@ -886,14 +946,12 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '900',
     color: colors.text,
-    textAlign: 'right',
   },
   filterOptionText: {
     width: '100%',
     fontSize: 12,
     fontWeight: '700',
     color: colors.gray[600],
-    textAlign: 'right',
     lineHeight: 18,
   },
   clearFilterBtn: {
@@ -910,7 +968,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '900',
     color: colors.primary,
-    textAlign: 'right',
   },
   modalOverlay: {
     flex: 1,
@@ -1284,6 +1341,66 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: colors.primary,
     textAlign: 'right',
+  },
+  approvalRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginTop: 10,
+    marginBottom: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    backgroundColor: 'rgba(6, 23, 62, 0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(6, 23, 62, 0.08)',
+  },
+  approvalLeft: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+  },
+  approvalRight: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 10,
+  },
+  approvalLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.primary,
+  },
+  approvalBadgePending: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: 'rgba(254, 243, 199, 0.95)',
+    borderWidth: 1,
+    borderColor: 'rgba(217, 119, 6, 0.30)',
+  },
+  approvalBadgePendingText: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#92400E',
+  },
+  approvalBadgeApproved: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: 'rgba(209, 250, 229, 0.95)',
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.30)',
+  },
+  approvalBadgeApprovedText: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#065F46',
   },
   cardFooterRow: {
     flexDirection: ROW_DIR,

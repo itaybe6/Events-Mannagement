@@ -269,9 +269,7 @@ export default function UsersWebScreen() {
         ...(nextPassword ? { password: nextPassword } : null),
       };
 
-      if (!isDemoMode) {
-        await userService.adminUpdateUser(selectedUser.id, updates);
-      }
+      await userService.adminUpdateUser(selectedUser.id, updates);
 
       const mergedUser: UserWithMetadata = {
         ...selectedUser,
@@ -286,14 +284,14 @@ export default function UsersWebScreen() {
       setSelectedUser(mergedUser);
       setEditOpen(false);
       setEditForm((f) => ({ ...f, password: '', confirmPassword: '' }));
-      Alert.alert('נשמר', isDemoMode ? 'מצב דמו: הפרטים עודכנו מקומית.' : 'פרטי המשתמש עודכנו בהצלחה.');
+      Alert.alert('נשמר', 'פרטי המשתמש עודכנו בהצלחה.');
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'שגיאה לא ידועה';
       Alert.alert('שגיאה', `לא ניתן לעדכן משתמש.\n\n${msg}`);
     } finally {
       setEditSaving(false);
     }
-  }, [editForm, editSaving, isDemoMode, selectedUser, setSelectedUser, setUsers]);
+  }, [editForm, editSaving, selectedUser, setSelectedUser, setUsers]);
 
   const savePasswordChange = useCallback(async () => {
     if (!selectedUser) return;
@@ -323,20 +321,18 @@ export default function UsersWebScreen() {
 
     setPasswordSaving(true);
     try {
-      if (!isDemoMode) {
-        await userService.adminUpdateUser(selectedUser.id, { password: nextPassword });
-      }
+      await userService.adminUpdateUser(selectedUser.id, { password: nextPassword });
 
       setPasswordOpen(false);
       setPasswordForm({ password: '', confirmPassword: '' });
-      Alert.alert('נשמר', isDemoMode ? 'מצב דמו: הסיסמה עודכנה מקומית.' : 'הסיסמה עודכנה בהצלחה.');
+      Alert.alert('נשמר', 'הסיסמה עודכנה בהצלחה.');
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'שגיאה לא ידועה';
       Alert.alert('שגיאה', `לא ניתן לעדכן סיסמה.\n\n${msg}`);
     } finally {
       setPasswordSaving(false);
     }
-  }, [canManagePasswords, isDemoMode, passwordForm, passwordSaving, selectedUser]);
+  }, [canManagePasswords, passwordForm, passwordSaving, selectedUser]);
 
   return (
     <>
@@ -816,14 +812,6 @@ export default function UsersWebScreen() {
                             </Pressable>
                           </View>
 
-                          {isDemoMode ? (
-                            <View style={styles.userModalDemoNote}>
-                              <Ionicons name="information-circle-outline" size={16} color={colors.gray[600]} />
-                              <Text style={styles.userModalDemoNoteText}>
-                                מצב דמו: חלק מהפעולות אינן נשמרות בדאטאבייס.
-                              </Text>
-                            </View>
-                          ) : null}
                         </View>
                       </View>
                     </View>

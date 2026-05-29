@@ -30,6 +30,7 @@ import AppHeader from "@/components/AppHeader";
 import { useGuestCheckInModel } from "@/features/guests/useGuestCheckInModel";
 import { useSeatingMapModel } from "@/features/seating/useSeatingMapModel";
 import { supabase } from "@/lib/supabase";
+import { ALIGN_RIGHT, ROW_DIR, ROW_REVERSE_DIR } from "@/lib/rtl";
 import type { Guest } from "@/types";
 
 type Props = { hideTopBar?: boolean };
@@ -1153,7 +1154,7 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   topRow: {
-    flexDirection: "row-reverse",
+    flexDirection: ROW_DIR,
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
@@ -1185,7 +1186,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingTop: 8,
     paddingBottom: 10,
-    flexDirection: "row-reverse",
+    flexDirection: ROW_DIR,
     alignItems: "center",
     justifyContent: "space-between",
   },
@@ -1226,7 +1227,7 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   adminMobileIntroHeader: {
-    flexDirection: "row-reverse",
+    flexDirection: ROW_DIR,
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
@@ -1241,11 +1242,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  adminMobileIntroText: { flex: 1, alignItems: "flex-end", gap: 4 },
+  adminMobileIntroText: { flex: 1, alignItems: ALIGN_RIGHT, gap: 4 },
   adminMobileIntroTitle: { fontSize: 15, fontWeight: "900", color: colors.text, textAlign: "right" },
-  adminMobileIntroStats: { alignItems: "flex-end", gap: 2 },
+  adminMobileIntroStats: { alignItems: ALIGN_RIGHT, gap: 2 },
   adminMobileIntroStatRow: {
-    flexDirection: "row-reverse",
+    flexDirection: ROW_DIR,
     alignItems: "center",
     gap: 6,
   },
@@ -1262,7 +1263,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  tabletBody: { flex: 1, flexDirection: "row-reverse", alignItems: "stretch" },
+  tabletBody: { flex: 1, flexDirection: ROW_DIR, alignItems: "stretch" },
   guestsPane: {
     width: 420,
     maxWidth: 460,
@@ -1272,9 +1273,9 @@ const styles = StyleSheet.create({
   },
   mapPane: { flex: 1, padding: 16, paddingTop: 6 },
 
-  tableFilterRow: { marginTop: 8, flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", gap: 10 },
+  tableFilterRow: { marginTop: 8, flexDirection: ROW_DIR, alignItems: "center", justifyContent: "space-between", gap: 10 },
   tableFilterPill: {
-    flexDirection: "row-reverse",
+    flexDirection: ROW_DIR,
     alignItems: "center",
     gap: 8,
     paddingHorizontal: 12,
@@ -1287,7 +1288,7 @@ const styles = StyleSheet.create({
   },
   tableFilterText: { fontSize: 12, fontWeight: "900", color: colors.primary, textAlign: "right", flex: 1 },
   tableFilterClearBtn: {
-    flexDirection: "row-reverse",
+    flexDirection: ROW_DIR,
     alignItems: "center",
     gap: 6,
     paddingHorizontal: 10,
@@ -1304,7 +1305,7 @@ const styles = StyleSheet.create({
     height: 54,
     borderRadius: 22,
     paddingHorizontal: 14,
-    flexDirection: "row-reverse",
+    flexDirection: ROW_DIR,
     alignItems: "center",
     gap: 10,
     backgroundColor: colors.white,
@@ -1315,7 +1316,7 @@ const styles = StyleSheet.create({
 
   filtersRow: {
     marginTop: 12,
-    flexDirection: "row-reverse",
+    flexDirection: ROW_DIR,
     flexWrap: "wrap",
     gap: 10,
   },
@@ -1347,7 +1348,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   categoryHeader: {
-    flexDirection: "row-reverse",
+    flexDirection: ROW_DIR,
     alignItems: "center",
     justifyContent: "space-between",
     gap: 10,
@@ -1355,7 +1356,7 @@ const styles = StyleSheet.create({
   categoryHeaderRight: {
     flex: 1,
     minWidth: 0,
-    flexDirection: "row-reverse",
+    flexDirection: ROW_DIR,
     alignItems: "center",
     justifyContent: "flex-start",
     gap: 10,
@@ -1427,7 +1428,7 @@ const styles = StyleSheet.create({
   tabletAccentBarOn: { backgroundColor: "#10B981" },
 
   tabletGuestInner: {
-    flexDirection: "row",
+    flexDirection: ROW_REVERSE_DIR,
     alignItems: "stretch",
     justifyContent: "space-between",
     gap: 12,
@@ -1441,7 +1442,7 @@ const styles = StyleSheet.create({
   },
   tabletButtonsRow: {
     width: "100%",
-    flexDirection: "row-reverse",
+    flexDirection: ROW_DIR,
     alignItems: "center",
     justifyContent: "space-between",
     gap: 10,
@@ -1457,13 +1458,13 @@ const styles = StyleSheet.create({
   tabletInfoCol: {
     flex: 1,
     minWidth: 0,
-    alignItems: "flex-end",
+    alignItems: ALIGN_RIGHT,
     justifyContent: "center",
     gap: 8,
   },
   tabletInfoMetaRow: {
     width: "100%",
-    flexDirection: "row-reverse",
+    flexDirection: ROW_DIR,
     alignItems: "center",
     justifyContent: "space-between",
     gap: 10,
@@ -1493,7 +1494,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderWidth: 1,
     borderColor: "rgba(0,0,0,0.06)",
-    flexDirection: "row-reverse",
+    flexDirection: ROW_DIR,
     direction: "rtl",
     alignItems: "center",
     justifyContent: "space-between",
@@ -1508,12 +1509,19 @@ const styles = StyleSheet.create({
     borderColor: "rgba(52, 199, 89, 0.22)",
     backgroundColor: "rgba(52, 199, 89, 0.06)",
   },
-  guestMain: { flex: 1, minWidth: 0, alignItems: "flex-end", justifyContent: "center", gap: 12 },
-  guestName: { fontSize: 17, fontWeight: "900", color: colors.text, textAlign: "right", writingDirection: "rtl" },
+  guestMain: { flex: 1, minWidth: 0, alignItems: ALIGN_RIGHT, justifyContent: "center", gap: 12 },
+  guestName: {
+    alignSelf: "stretch",
+    fontSize: 17,
+    fontWeight: "900",
+    color: colors.text,
+    textAlign: "right",
+    writingDirection: "rtl",
+  },
   guestPhone: { fontSize: 13, fontWeight: "700", color: colors.gray[600], textAlign: "right" },
-  guestMetaRow: { width: "100%", flexDirection: "row-reverse", alignItems: "center", justifyContent: "flex-start", gap: 10, flexWrap: "wrap", direction: "rtl" },
+  guestMetaRow: { width: "100%", flexDirection: ROW_DIR, alignItems: "center", justifyContent: "flex-start", gap: 10, flexWrap: "wrap", direction: "rtl" },
   peoplePill: {
-    flexDirection: "row-reverse",
+    flexDirection: ROW_DIR,
     alignItems: "center",
     gap: 6,
     minWidth: 50,
@@ -1611,7 +1619,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(0,0,0,0.06)",
     paddingHorizontal: 6,
-    flexDirection: "row-reverse",
+    flexDirection: ROW_DIR,
     alignItems: "center",
     gap: 8,
   },
@@ -1687,7 +1695,7 @@ const styles = StyleSheet.create({
     elevation: 2,
     overflow: "hidden",
   },
-  mapHeaderRow: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", gap: 12 },
+  mapHeaderRow: { flexDirection: ROW_DIR, alignItems: "center", justifyContent: "space-between", gap: 12 },
   mapTitle: { fontSize: 16, fontWeight: "900", color: colors.text, textAlign: "right" },
   mapHint: { fontSize: 12, fontWeight: "800", color: colors.gray[600], textAlign: "left" },
   mapLoadingWrap: { flex: 1, alignItems: "center", justifyContent: "center", gap: 10 },
@@ -1780,7 +1788,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 16,
     paddingBottom: 12,
-    flexDirection: "row-reverse",
+    flexDirection: ROW_DIR,
     alignItems: "center",
     justifyContent: "space-between",
   },
@@ -1798,7 +1806,7 @@ const styles = StyleSheet.create({
   modalBody: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 14, gap: 10 },
 
   modalGuestRow: {
-    flexDirection: "row-reverse",
+    flexDirection: ROW_DIR,
     alignItems: "center",
     justifyContent: "space-between",
     paddingVertical: 12,
@@ -1811,7 +1819,7 @@ const styles = StyleSheet.create({
   },
   modalGuestRowOn: { backgroundColor: "rgba(52, 199, 89, 0.10)", borderColor: "rgba(52, 199, 89, 0.22)" },
   modalGuestName: { flex: 1, textAlign: "right", fontSize: 14, fontWeight: "900", color: colors.text },
-  modalGuestMeta: { width: 74, flexDirection: "row-reverse", alignItems: "center", justifyContent: "flex-start", gap: 4 },
+  modalGuestMeta: { width: 74, flexDirection: ROW_DIR, alignItems: "center", justifyContent: "flex-start", gap: 4 },
   modalGuestCount: { fontSize: 13, fontWeight: "900", color: colors.primary },
   modalGuestCountDim: { fontSize: 12, fontWeight: "900", color: colors.gray[600] },
   modalToggleBtn: {

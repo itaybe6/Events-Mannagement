@@ -545,7 +545,8 @@ export default function TablesList() {
           </View>
         </View>
 
-        <AppKeyboardAwareScrollView style={styles.scrollView} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollViewContent}>
+        <View style={styles.scrollFill}>
+          <AppKeyboardAwareScrollView style={styles.scrollView} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollViewContent}>
           <View style={styles.statsBar}>
             <View style={styles.statsGrid}>
               <View style={styles.statCard}>
@@ -745,6 +746,7 @@ export default function TablesList() {
             );
           })}
         </AppKeyboardAwareScrollView>
+        </View>
       </View>
 
       {/* Add Guests Modal */}
@@ -972,6 +974,7 @@ export default function TablesList() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    minHeight: 0,
     backgroundColor: '#F7FAFF',
   },
   bg: {
@@ -1089,6 +1092,10 @@ const styles = StyleSheet.create({
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 8 },
     elevation: 2,
+  },
+  scrollFill: {
+    flex: 1,
+    minHeight: 0,
   },
   scrollView: {
     flex: 1,

@@ -1,6 +1,123 @@
 import { supabase } from '../supabase';
 import { Guest } from '@/types';
 
+/**
+ * Maximum number of guests allowed on an event that has NOT been approved yet.
+ * Self-signup events start unapproved; once MOON staff approves the event, the limit is lifted.
+ */
+export const UNAPPROVED_EVENT_GUEST_LIMIT = 10;
+
+/**
+ * Error message (Hebrew) surfaced when the unapproved-event guest limit is reached.
+ * Callers can match against this to display a localized alert to users.
+ */
+export const UNAPPROVED_EVENT_GUEST_LIMIT_ERROR =
+  'האירוע עדיין ממתין לאישור. ניתן להזין עד 10 מוזמנים בלבד עד שצוות MOON יאשר את האירוע.';
+
+export const DUPLICATE_GUEST_ERROR =
+  'המוזמן כבר קיים באירוע לפי שם או מספר טלפון.';
+
+export function normalizeGuestNameForDuplicate(name: string): string {
+  return String(name || '')
+    .normalize('NFKC')
+    .trim()
+    .toLowerCase()
+    .replace(/["'׳״.,:;!?()[\]{}<>_-]+/g, ' ')
+    .replace(/\s+/g, ' ');
+}
+
+export function getPhoneDuplicateKeys(phone: string): string[] {
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (!digits) return [];
+
+  const keys = new Set<string>([digits]);
+  if (digits.startsWith('00972') && digits.length > 5) {
+    const local = `0${digits.slice(5)}`;
+    keys.add(local);
+    keys.add(`972${local.slice(1)}`);
+  }
+  if (digits.startsWith('972') && digits.length > 3) {
+    const local = `0${digits.slice(3)}`;
+    keys.add(local);
+    keys.add(`972${local.slice(1)}`);
+  }
+  if (digits.startsWith('0') && digits.length > 1) {
+    keys.add(`972${digits.slice(1)}`);
+  }
+
+  return Array.from(keys);
+}
+
+function hasSharedPhoneKey(a: string, b: string): boolean {
+  const aKeys = new Set(getPhoneDuplicateKeys(a));
+  if (aKeys.size === 0) return false;
+  return getPhoneDuplicateKeys(b).some((key) => aKeys.has(key));
+}
+
+async function ensureGuestIsUniqueForEvent(
+  eventId: string,
+  guest: Pick<Guest, 'name' | 'phone'>,
+  excludeGuestId?: string
+): Promise<void> {
+  if (!eventId) return;
+
+  const nextName = normalizeGuestNameForDuplicate(guest.name);
+  const nextPhone = String(guest.phone || '').trim();
+  if (!nextName && getPhoneDuplicateKeys(nextPhone).length === 0) return;
+
+  const { data, error } = await supabase
+    .from('guests')
+    .select('id, name, phone')
+    .eq('event_id', eventId);
+
+  if (error) throw error;
+
+  const duplicate = ((data as any[]) || []).some((row) => {
+    if (excludeGuestId && String((row as any)?.id) === String(excludeGuestId)) return false;
+
+    const existingName = normalizeGuestNameForDuplicate(String((row as any)?.name ?? ''));
+    const existingPhone = String((row as any)?.phone ?? '');
+    const sameName = Boolean(nextName && existingName && existingName === nextName);
+    const samePhone = hasSharedPhoneKey(nextPhone, existingPhone);
+
+    return sameName || samePhone;
+  });
+
+  if (duplicate) throw new Error(DUPLICATE_GUEST_ERROR);
+}
+
+async function ensureUnapprovedEventGuestLimit(eventId: string): Promise<void> {
+  if (!eventId) return;
+  try {
+    const { data: eventRow, error: eventErr } = await supabase
+      .from('events')
+      .select('is_approved')
+      .eq('id', eventId)
+      .maybeSingle();
+
+    if (eventErr) {
+      // Fail open: if we can't read the flag, don't block the user.
+      return;
+    }
+    // If column hasn't been migrated yet we treat it as approved.
+    const isApproved = (eventRow as any)?.is_approved;
+    if (isApproved !== false) return;
+
+    const { count, error: countErr } = await supabase
+      .from('guests')
+      .select('id', { count: 'exact', head: true })
+      .eq('event_id', eventId);
+    if (countErr) return;
+
+    if ((count ?? 0) >= UNAPPROVED_EVENT_GUEST_LIMIT) {
+      throw new Error(UNAPPROVED_EVENT_GUEST_LIMIT_ERROR);
+    }
+  } catch (e) {
+    if (e instanceof Error && e.message === UNAPPROVED_EVENT_GUEST_LIMIT_ERROR) throw e;
+    // Any other error is treated as "fail open" to avoid blocking normal usage.
+  }
+}
+
 export const guestService = {
   // Get all guests for an event
   getGuests: async (eventId: string): Promise<Guest[]> => {
@@ -41,6 +158,8 @@ export const guestService = {
   // Add new guest
   addGuest: async (eventId: string, guest: Omit<Guest, 'id'>): Promise<Guest> => {
     try {
+      await ensureGuestIsUniqueForEvent(eventId, guest);
+      await ensureUnapprovedEventGuestLimit(eventId);
       const { data, error } = await supabase
         .from('guests')
         .insert({
@@ -82,6 +201,26 @@ export const guestService = {
   updateGuest: async (guestId: string, updates: Partial<Omit<Guest, 'id'>>): Promise<Guest> => {
     try {
       const updateData: any = {};
+      let currentGuest: any = null;
+
+      if (updates.name !== undefined || updates.phone !== undefined) {
+        const { data: current, error: currentError } = await supabase
+          .from('guests')
+          .select('id, event_id, name, phone')
+          .eq('id', guestId)
+          .single();
+
+        if (currentError) throw currentError;
+        currentGuest = current;
+        await ensureGuestIsUniqueForEvent(
+          String((currentGuest as any)?.event_id || ''),
+          {
+            name: updates.name ?? String((currentGuest as any)?.name ?? ''),
+            phone: updates.phone ?? String((currentGuest as any)?.phone ?? ''),
+          } as Pick<Guest, 'name' | 'phone'>,
+          guestId
+        );
+      }
       
       if (updates.name) updateData.name = updates.name;
       if (updates.phone) updateData.phone = updates.phone;

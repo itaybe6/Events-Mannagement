@@ -11,8 +11,10 @@ import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import * as ImagePicker from 'expo-image-picker';
 import { invitationAssetService } from '@/lib/services/invitationAssetService';
 import { avatarService } from '@/lib/services/avatarService';
+import { ensurePhotoLibraryPermission } from '@/lib/permissions';
 import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
 import { EventSwitcher } from '@/components/EventSwitcher';
+import { DeleteAccountSection } from '@/components/DeleteAccountSection';
 import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -50,6 +52,14 @@ function getEventTitleBadgeText(title: string) {
   }
 
   return raw;
+}
+
+/** שמות חתן/כלה רלוונטיים רק כשסוג האירוע בכותרת הוא חתונה (פורמט כמו בשאר המערכת). */
+function isWeddingEventTitle(title: string) {
+  const t = String(title || '').trim();
+  if (!t) return false;
+  if (t.startsWith('חתונה')) return true;
+  return t.toLowerCase().includes('wedding');
 }
 
 function InfoRow({
@@ -293,13 +303,8 @@ export default function BrideGroomSettings() {
     if (!userData?.id || profileAvatarUploading) return;
 
     try {
-      if (Platform.OS !== 'web') {
-        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (!permission.granted) {
-          Alert.alert('הרשאה נדרשת', 'כדי לבחור תמונה יש לאשר גישה לגלריה');
-          return;
-        }
-      }
+      const permission = await ensurePhotoLibraryPermission({ purpose: 'profile' });
+      if (!permission.granted) return;
 
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -400,13 +405,8 @@ export default function BrideGroomSettings() {
     if (invitationUploading) return;
 
     try {
-      if (Platform.OS !== 'web') {
-        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (!permission.granted) {
-          Alert.alert('הרשאה נדרשת', 'כדי לבחור תמונה יש לאשר גישה לגלריה');
-          return;
-        }
-      }
+      const permission = await ensurePhotoLibraryPermission({ purpose: 'invitation' });
+      if (!permission.granted) return;
 
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -474,11 +474,11 @@ export default function BrideGroomSettings() {
     const groom = String(draftGroomName || '').trim();
     const bride = String(draftBrideName || '').trim();
 
-    const updates: any = {
-      title,
-      groom_name: groom || null,
-      bride_name: bride || null,
-    };
+    const updates: Record<string, unknown> = { title };
+    if (isWeddingEventTitle(draftEventTitle)) {
+      updates.groom_name = groom || null;
+      updates.bride_name = bride || null;
+    }
 
     try {
       setEventSaving(true);
@@ -744,6 +744,13 @@ export default function BrideGroomSettings() {
           </View>
         )}
 
+        {/* מחיקת חשבון - נדרש לפי הנחיות App Store 5.1.1(v) */}
+        <DeleteAccountSection
+          onDeleted={() => {
+            router.replace('/onboarding');
+          }}
+        />
+
         <View style={styles.logoutPanel}>
           <TouchableOpacity style={styles.logoutButton} onPress={askLogout} activeOpacity={0.92}>
             <LinearGradient
@@ -810,45 +817,49 @@ export default function BrideGroomSettings() {
                   />
                 </View>
 
-                <View style={styles.eventFieldCard}>
-                  <View style={styles.eventFieldHeader}>
-                    <View style={styles.eventFieldIconBox}>
-                      <Ionicons name="person-outline" size={18} color={ui.primary} />
+                {isWeddingEventTitle(draftEventTitle) ? (
+                  <>
+                    <View style={styles.eventFieldCard}>
+                      <View style={styles.eventFieldHeader}>
+                        <View style={styles.eventFieldIconBox}>
+                          <Ionicons name="person-outline" size={18} color={ui.primary} />
+                        </View>
+                        <View style={styles.eventFieldTitleWrap}>
+                          <Text style={styles.eventFieldLabel}>שם חתן</Text>
+                          <Text style={styles.eventFieldHint}>השם שיופיע לצד פרטי האירוע</Text>
+                        </View>
+                      </View>
+                      <TextInput
+                        value={draftGroomName}
+                        onChangeText={setDraftGroomName}
+                        style={[styles.simpleInput, styles.eventEditorInput]}
+                        placeholder="לדוגמה: דניאל"
+                        placeholderTextColor="#9CA3AF"
+                        textAlign="right"
+                      />
                     </View>
-                    <View style={styles.eventFieldTitleWrap}>
-                      <Text style={styles.eventFieldLabel}>שם חתן</Text>
-                      <Text style={styles.eventFieldHint}>השם שיופיע לצד פרטי האירוע</Text>
-                    </View>
-                  </View>
-                  <TextInput
-                    value={draftGroomName}
-                    onChangeText={setDraftGroomName}
-                    style={[styles.simpleInput, styles.eventEditorInput]}
-                    placeholder="לדוגמה: דניאל"
-                    placeholderTextColor="#9CA3AF"
-                    textAlign="right"
-                  />
-                </View>
 
-                <View style={styles.eventFieldCard}>
-                  <View style={styles.eventFieldHeader}>
-                    <View style={styles.eventFieldIconBox}>
-                      <Ionicons name="person-outline" size={18} color={ui.primary} />
+                    <View style={styles.eventFieldCard}>
+                      <View style={styles.eventFieldHeader}>
+                        <View style={styles.eventFieldIconBox}>
+                          <Ionicons name="person-outline" size={18} color={ui.primary} />
+                        </View>
+                        <View style={styles.eventFieldTitleWrap}>
+                          <Text style={styles.eventFieldLabel}>שם כלה</Text>
+                          <Text style={styles.eventFieldHint}>השם השני שיופיע בפרופיל ובהזמנה</Text>
+                        </View>
+                      </View>
+                      <TextInput
+                        value={draftBrideName}
+                        onChangeText={setDraftBrideName}
+                        style={[styles.simpleInput, styles.eventEditorInput]}
+                        placeholder="לדוגמה: נועה"
+                        placeholderTextColor="#9CA3AF"
+                        textAlign="right"
+                      />
                     </View>
-                    <View style={styles.eventFieldTitleWrap}>
-                      <Text style={styles.eventFieldLabel}>שם כלה</Text>
-                      <Text style={styles.eventFieldHint}>השם השני שיופיע בפרופיל ובהזמנה</Text>
-                    </View>
-                  </View>
-                  <TextInput
-                    value={draftBrideName}
-                    onChangeText={setDraftBrideName}
-                    style={[styles.simpleInput, styles.eventEditorInput]}
-                    placeholder="לדוגמה: נועה"
-                    placeholderTextColor="#9CA3AF"
-                    textAlign="right"
-                  />
-                </View>
+                  </>
+                ) : null}
 
                 <View style={styles.eventFieldCard}>
                   <View style={styles.eventFieldHeader}>
@@ -908,10 +919,22 @@ export default function BrideGroomSettings() {
         </View>
       </Modal>
 
-      <Modal visible={invitationEditorOpen} transparent animationType="fade" onRequestClose={() => setInvitationEditorOpen(false)}>
+      <Modal
+        visible={invitationEditorOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!invitationUploading && !invitationSaving) setInvitationEditorOpen(false);
+        }}
+      >
         <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.35)' }]}>
           <AppKeyboardAwareScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} showsVerticalScrollIndicator={false}>
-            <Pressable style={styles.modalOverlayTouchable} onPress={() => setInvitationEditorOpen(false)} />
+            <Pressable
+              style={styles.modalOverlayTouchable}
+              onPress={() => {
+                if (!invitationUploading && !invitationSaving) setInvitationEditorOpen(false);
+              }}
+            />
 
             <View style={[styles.modalCard, styles.invitationEditorCard]}>
               <LinearGradient
@@ -923,7 +946,7 @@ export default function BrideGroomSettings() {
                 <Pressable
                   onPress={() => setInvitationEditorOpen(false)}
                   style={styles.eventEditorCloseBtn}
-                  disabled={invitationSaving}
+                  disabled={invitationSaving || invitationUploading}
                   accessibilityRole="button"
                   accessibilityLabel="סגור"
                 >
@@ -966,6 +989,12 @@ export default function BrideGroomSettings() {
                         <Text style={styles.invitationEmptyText}>אין הזמנה שמורה כרגע</Text>
                       </View>
                     )}
+                    {invitationUploading ? (
+                      <View style={styles.invitationPreviewUploadOverlay} accessibilityLabel="מעלה הזמנה">
+                        <ActivityIndicator size="large" color={ui.primary} />
+                        <Text style={styles.invitationUploadingText}>מעלה הזמנה...</Text>
+                      </View>
+                    ) : null}
                   </View>
 
                   <View style={styles.invitationActionsRow}>
@@ -976,7 +1005,11 @@ export default function BrideGroomSettings() {
                       accessibilityRole="button"
                       accessibilityLabel="העלה הזמנה חדשה"
                     >
-                      <Ionicons name="cloud-upload-outline" size={16} color={colors.gray[800]} />
+                      {invitationUploading ? (
+                        <ActivityIndicator size="small" color={ui.primary} />
+                      ) : (
+                        <Ionicons name="cloud-upload-outline" size={16} color={colors.gray[800]} />
+                      )}
                       <Text style={styles.invitationActionText}>{invitationUploading ? 'מעלה...' : 'העלה חדשה'}</Text>
                     </Pressable>
 
@@ -1000,18 +1033,26 @@ export default function BrideGroomSettings() {
 
               <View style={[styles.modalFooter, styles.eventEditorFooter]}>
                 <Pressable
-                  style={[styles.footerBtnSecondary, styles.eventEditorSecondaryBtn, invitationSaving && styles.eventEditorBtnDisabled]}
+                  style={[
+                    styles.footerBtnSecondary,
+                    styles.eventEditorSecondaryBtn,
+                    (invitationSaving || invitationUploading) && styles.eventEditorBtnDisabled,
+                  ]}
                   onPress={() => setInvitationEditorOpen(false)}
-                  disabled={invitationSaving}
+                  disabled={invitationSaving || invitationUploading}
                   accessibilityRole="button"
                   accessibilityLabel="ביטול"
                 >
                   <Text style={styles.footerBtnSecondaryText}>ביטול</Text>
                 </Pressable>
                 <Pressable
-                  style={[styles.footerBtnPrimary, styles.eventEditorPrimaryBtn, invitationSaving && styles.eventEditorBtnDisabled]}
+                  style={[
+                    styles.footerBtnPrimary,
+                    styles.eventEditorPrimaryBtn,
+                    (invitationSaving || invitationUploading) && styles.eventEditorBtnDisabled,
+                  ]}
                   onPress={saveInvitationEdits}
-                  disabled={invitationSaving}
+                  disabled={invitationSaving || invitationUploading}
                   accessibilityRole="button"
                   accessibilityLabel="שמור"
                 >
@@ -2065,10 +2106,24 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 6 },
     elevation: 1,
+    position: 'relative',
   },
   invitationPreviewImg: {
     width: '100%',
     height: '100%',
+  },
+  invitationPreviewUploadOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255,255,255,0.82)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 12,
+  },
+  invitationUploadingText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: ui.primary,
+    letterSpacing: 0.2,
   },
   invitationEmpty: {
     flex: 1,

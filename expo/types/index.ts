@@ -77,6 +77,11 @@ export type Event = {
   user_id?: string; // מזהה המשתמש שהאירוע שלו
   userName?: string; // שם המשתמש שהאירוע שלו (לתצוגת אדמין)
   userAvatarUrl?: string; // תמונת המשתמש שהאירוע שלו
+  /**
+   * Whether the event has been approved by MOON staff.
+   * Events created via self-signup start unapproved until an admin approves.
+   */
+  isApproved?: boolean;
 };
 
 export type Message = {

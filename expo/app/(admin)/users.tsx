@@ -106,7 +106,6 @@ export default function UsersScreen() {
     avatarLoadErrors,
     setAvatarLoadErrors,
     pickAvatarForSelectedUser,
-    testConnection,
     refreshUsers,
     deleteUserNow,
   } = useUsersModel({ demoUsers });
@@ -114,9 +113,7 @@ export default function UsersScreen() {
   useEffect(() => {
     if (!isLoggedIn || userType !== 'admin') {
       router.replace('/login');
-      return;
     }
-    void testConnection();
   }, [isLoggedIn, userType, router]);
 
   useFocusEffect(

@@ -1,7 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
+  Modal,
   Platform,
   Pressable,
   StyleSheet,
@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useUserStore } from '@/store/userStore';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
@@ -22,7 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GuestCategorySelectionSheet } from '@/components/GuestCategorySelectionSheet';
 import { useLayoutStore } from '@/store/layoutStore';
 import BackSwipe from '@/components/BackSwipe';
-import { ALIGN_RIGHT, IS_RTL, ROW_DIR, RTL_MARK } from '@/lib/rtl';
+import { ALIGN_RIGHT, ROW_DIR, RTL_MARK } from '@/lib/rtl';
 
 export default function EditCategoryScreen() {
   const router = useRouter();
@@ -59,6 +60,65 @@ export default function EditCategoryScreen() {
   const [enableSides, setEnableSides] = useState(true);
   const [confirmMoveVisible, setConfirmMoveVisible] = useState(false);
   const [pendingMoveTarget, setPendingMoveTarget] = useState<any | null>(null);
+
+  type AppDialogTone = 'neutral' | 'success' | 'danger';
+
+  type AppDialogState =
+    | { visible: false }
+    | {
+        visible: true;
+        kind: 'alert' | 'confirm';
+        title: string;
+        message: string;
+        tone: AppDialogTone;
+        confirmLabel: string;
+        cancelLabel?: string;
+        destructiveConfirm?: boolean;
+      };
+
+  const [appDialog, setAppDialog] = useState<AppDialogState>({ visible: false });
+  const dialogConfirmRef = useRef<(() => void) | null>(null);
+
+  const hideAppDialog = useCallback(() => {
+    dialogConfirmRef.current = null;
+    setAppDialog({ visible: false });
+  }, []);
+
+  const showAppAlert = useCallback((title: string, message: string, tone: AppDialogTone = 'neutral') => {
+    dialogConfirmRef.current = null;
+    setAppDialog({
+      visible: true,
+      kind: 'alert',
+      title,
+      message,
+      tone,
+      confirmLabel: 'אישור',
+    });
+  }, []);
+
+  const showAppConfirm = useCallback(
+    (title: string, message: string, onConfirm: () => void, options?: { destructive?: boolean }) => {
+      dialogConfirmRef.current = onConfirm;
+      setAppDialog({
+        visible: true,
+        kind: 'confirm',
+        title,
+        message,
+        tone: options?.destructive ? 'danger' : 'neutral',
+        destructiveConfirm: options?.destructive,
+        confirmLabel: options?.destructive ? 'מחק' : 'אישור',
+        cancelLabel: 'ביטול',
+      });
+    },
+    []
+  );
+
+  const runDialogConfirm = useCallback(() => {
+    const fn = dialogConfirmRef.current;
+    dialogConfirmRef.current = null;
+    hideAppDialog();
+    if (fn) requestAnimationFrame(() => fn());
+  }, [hideAppDialog]);
 
   const ui = useMemo(() => {
     return {
@@ -102,11 +162,11 @@ export default function EditCategoryScreen() {
       setSelectedToDelete(new Set());
     } catch (e) {
       console.error('EditCategory load error:', e);
-      Alert.alert('שגיאה', 'לא ניתן לטעון את הקטגוריה');
+      showAppAlert('שגיאה', 'לא ניתן לטעון את הקטגוריה', 'danger');
     } finally {
       setLoading(false);
     }
-  }, [categoryId, eventId]);
+  }, [categoryId, eventId, showAppAlert]);
 
   useFocusEffect(
     useCallback(() => {
@@ -120,7 +180,7 @@ export default function EditCategoryScreen() {
     if (!target?.id) return;
     const targetId = String(target.id);
     if (targetId === categoryId) {
-      Alert.alert('שגיאה', 'בחר קטגוריה אחרת');
+      showAppAlert('שגיאה', 'בחר קטגוריה אחרת', 'danger');
       return;
     }
     if (selectedToDelete.size === 0) return;
@@ -133,10 +193,14 @@ export default function EditCategoryScreen() {
       }
       setGuestsInCategory(prev => prev.filter(g => !selectedToDelete.has(String(g.id))));
       setSelectedToDelete(new Set());
-      Alert.alert('הועבר', `הועברו ${ids.length} אורחים לקטגוריה "${String(target?.name ?? '')}"`);
+      showAppAlert(
+        'הועבר',
+        `הועברו ${ids.length} אורחים לקטגוריה "${String(target?.name ?? '')}"`,
+        'success'
+      );
     } catch (e) {
       console.error('Move guests error:', e);
-      Alert.alert('שגיאה', 'לא ניתן להעביר אורחים');
+      showAppAlert('שגיאה', 'לא ניתן להעביר אורחים', 'danger');
     } finally {
       setMoving(false);
     }
@@ -180,7 +244,7 @@ export default function EditCategoryScreen() {
     if (!categoryId) return;
     const name = (categoryName || '').trim();
     if (!name) {
-      Alert.alert('שגיאה', 'יש להזין שם קטגוריה');
+      showAppAlert('שגיאה', 'יש להזין שם קטגוריה', 'danger');
       return;
     }
     if (saving) return;
@@ -188,10 +252,10 @@ export default function EditCategoryScreen() {
     try {
       await guestService.updateGuestCategory(categoryId, { name });
       setInitialCategoryName(name);
-      Alert.alert('נשמר', 'שם הקטגוריה עודכן בהצלחה');
+      showAppAlert('נשמר', 'שם הקטגוריה עודכן בהצלחה', 'success');
     } catch (e) {
       console.error('Save category name error:', e);
-      Alert.alert('שגיאה', 'לא ניתן לעדכן את שם הקטגוריה');
+      showAppAlert('שגיאה', 'לא ניתן לעדכן את שם הקטגוריה', 'danger');
     } finally {
       setSaving(false);
     }
@@ -202,12 +266,13 @@ export default function EditCategoryScreen() {
     if (deleting) return;
 
     const count = selectedToDelete.size;
-    Alert.alert('מחיקת אורחים', `האם למחוק ${count} אורחים מהקטגוריה?`, [
-      { text: 'ביטול', style: 'cancel' },
-      {
-        text: 'מחק',
-        style: 'destructive',
-        onPress: async () => {
+    const deleteQuestion =
+      count === 1 ? 'האם למחוק אורח אחד מהקטגוריה?' : `האם למחוק ${count} אורחים מהקטגוריה?`;
+    showAppConfirm(
+      'מחיקת אורחים',
+      deleteQuestion,
+      () => {
+        void (async () => {
           setDeleting(true);
           try {
             for (const id of selectedToDelete) {
@@ -215,16 +280,17 @@ export default function EditCategoryScreen() {
             }
             setGuestsInCategory(prev => prev.filter(g => !selectedToDelete.has(String(g.id))));
             setSelectedToDelete(new Set());
-            Alert.alert('הושלם', 'האורחים נמחקו');
+            showAppAlert('הושלם', 'האורחים נמחקו', 'success');
           } catch (e) {
             console.error('Delete selected guests error:', e);
-            Alert.alert('שגיאה', 'לא ניתן למחוק אורחים');
+            showAppAlert('שגיאה', 'לא ניתן למחוק אורחים', 'danger');
           } finally {
             setDeleting(false);
           }
-        },
+        })();
       },
-    ]);
+      { destructive: true }
+    );
   };
 
   const headerTitle = 'עריכת קטגוריה';
@@ -237,7 +303,7 @@ export default function EditCategoryScreen() {
     if (!target?.id) return;
     const targetId = String(target.id);
     if (targetId === categoryId) {
-      Alert.alert('שגיאה', 'בחר קטגוריה אחרת');
+      showAppAlert('שגיאה', 'בחר קטגוריה אחרת', 'danger');
       return;
     }
     if (selectedToDelete.size === 0) return;
@@ -422,7 +488,7 @@ export default function EditCategoryScreen() {
           setCategories(prev => prev.filter((item: any) => String(item.id) !== String(category.id)));
           setPendingMoveTarget(prev => (prev && String(prev.id) === String(category.id) ? null : prev));
           setConfirmMoveVisible(false);
-          Alert.alert('נמחק', `הקטגוריה "${String(category.name || '')}" נמחקה`);
+          showAppAlert('נמחק', `הקטגוריה "${String(category.name || '')}" נמחקה`, 'success');
         }}
       />
 
@@ -638,11 +704,245 @@ export default function EditCategoryScreen() {
         </>
       )}
       </View>
+
+      <Modal
+        visible={appDialog.visible}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={hideAppDialog}
+      >
+        {appDialog.visible ? (
+          <View style={styles.appDialogRoot} accessibilityViewIsModal>
+            <Pressable
+              style={StyleSheet.absoluteFill}
+              onPress={appDialog.kind === 'alert' ? hideAppDialog : undefined}
+              accessibilityLabel="סגור"
+            />
+            {Platform.OS !== 'web' ? (
+              <BlurView intensity={28} tint="dark" style={StyleSheet.absoluteFillObject} />
+            ) : null}
+            <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, styles.appDialogDim]} />
+
+            <View style={styles.appDialogCardOuter}>
+              <View style={[styles.appDialogCard, { backgroundColor: ui.surface, borderColor: ui.border }]}>
+                <View style={styles.appDialogHeaderRow}>
+                  <View style={styles.appDialogTitleWrap}>
+                    <Text style={[styles.appDialogTitle, { color: ui.text }]}>
+                      {RTL_MARK}
+                      {appDialog.title}
+                    </Text>
+                  </View>
+                  <LinearGradient
+                    colors={
+                      appDialog.destructiveConfirm && appDialog.kind === 'confirm'
+                        ? ['#FB7185', '#DC2626']
+                        : appDialog.tone === 'success'
+                          ? ['#34D399', '#059669']
+                          : appDialog.tone === 'danger'
+                            ? ['#FB7185', '#DC2626']
+                            : ['#2F6BFF', '#135BEC']
+                    }
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.appDialogIconBadge}
+                  >
+                    <Ionicons
+                      name={
+                        appDialog.destructiveConfirm && appDialog.kind === 'confirm'
+                          ? 'trash-outline'
+                          : appDialog.tone === 'success'
+                            ? 'checkmark-circle'
+                            : appDialog.tone === 'danger'
+                              ? 'alert-circle'
+                              : 'information-circle'
+                      }
+                      size={26}
+                      color="#fff"
+                    />
+                  </LinearGradient>
+                </View>
+
+                <Text style={[styles.appDialogMessage, { color: ui.sub }]}>
+                  {RTL_MARK}
+                  {appDialog.message}
+                </Text>
+
+                {appDialog.kind === 'confirm' ? (
+                  <View style={styles.appDialogButtonsRow}>
+                    <TouchableOpacity
+                      onPress={runDialogConfirm}
+                      activeOpacity={0.92}
+                      style={[
+                        styles.appDialogBtn,
+                        {
+                          backgroundColor: appDialog.destructiveConfirm ? '#DC2626' : ui.primary,
+                          shadowColor: appDialog.destructiveConfirm ? '#DC2626' : ui.primary,
+                          shadowOpacity: 0.28,
+                          shadowRadius: 14,
+                          shadowOffset: { width: 0, height: 8 },
+                          elevation: 5,
+                        },
+                      ]}
+                      accessibilityRole="button"
+                      accessibilityLabel={appDialog.confirmLabel}
+                    >
+                      {appDialog.destructiveConfirm ? (
+                        <Ionicons name="trash-outline" size={18} color="#fff" />
+                      ) : (
+                        <Ionicons name="checkmark-circle" size={18} color="#fff" />
+                      )}
+                      <Text style={styles.appDialogBtnPrimaryText}>{appDialog.confirmLabel}</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      onPress={hideAppDialog}
+                      activeOpacity={0.92}
+                      style={[
+                        styles.appDialogBtn,
+                        styles.appDialogBtnSecondary,
+                        { borderColor: 'rgba(148,163,184,0.28)' },
+                      ]}
+                      accessibilityRole="button"
+                      accessibilityLabel={appDialog.cancelLabel ?? 'ביטול'}
+                    >
+                      <Ionicons name="close" size={18} color={ui.text} />
+                      <Text style={[styles.appDialogBtnSecondaryText, { color: ui.text }]}>
+                        {appDialog.cancelLabel ?? 'ביטול'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    onPress={hideAppDialog}
+                    activeOpacity={0.92}
+                    style={[
+                      styles.appDialogBtn,
+                      styles.appDialogBtnSingle,
+                      {
+                        backgroundColor: ui.primary,
+                        shadowColor: ui.primary,
+                        shadowOpacity: 0.22,
+                        shadowRadius: 14,
+                        shadowOffset: { width: 0, height: 8 },
+                        elevation: 5,
+                      },
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel={appDialog.confirmLabel}
+                  >
+                    <Text style={styles.appDialogBtnPrimaryText}>{appDialog.confirmLabel}</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          </View>
+        ) : null}
+      </Modal>
     </BackSwipe>
   );
 }
 
 const styles = StyleSheet.create({
+  appDialogRoot: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 22,
+    paddingVertical: 28,
+  },
+  appDialogDim: {
+    backgroundColor: 'rgba(15,23,42,0.48)',
+  },
+  appDialogCardOuter: {
+    width: '100%',
+    maxWidth: 400,
+    alignSelf: 'center',
+  },
+  appDialogCard: {
+    borderRadius: 28,
+    borderWidth: 1,
+    paddingHorizontal: 20,
+    paddingTop: 22,
+    paddingBottom: 20,
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.2,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 16 },
+    elevation: 12,
+    alignItems: 'stretch',
+    direction: 'rtl',
+  },
+  appDialogHeaderRow: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    marginBottom: 14,
+  },
+  appDialogTitleWrap: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'stretch',
+  },
+  appDialogIconBadge: {
+    width: 52,
+    height: 52,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  appDialogTitle: {
+    width: '100%',
+    fontSize: 22,
+    fontWeight: '900',
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  appDialogMessage: {
+    width: '100%',
+    alignSelf: 'stretch',
+    fontSize: 15,
+    fontWeight: '700',
+    lineHeight: 24,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+    marginBottom: 22,
+  },
+  appDialogButtonsRow: {
+    width: '100%',
+    flexDirection: 'row',
+    gap: 12,
+  },
+  appDialogBtn: {
+    flex: 1,
+    minHeight: 50,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  appDialogBtnSingle: {
+    flex: 0,
+    width: '100%',
+    alignSelf: 'stretch',
+  },
+  appDialogBtnSecondary: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+  },
+  appDialogBtnPrimaryText: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    textAlign: 'center',
+  },
+  appDialogBtnSecondaryText: {
+    fontSize: 15,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
   page: { flex: 1 },
   pageBg: {
     ...StyleSheet.absoluteFillObject,

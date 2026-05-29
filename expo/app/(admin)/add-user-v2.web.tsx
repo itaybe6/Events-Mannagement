@@ -17,9 +17,7 @@ import * as ImagePicker from 'expo-image-picker';
 
 import { colors } from '@/constants/colors';
 import { useUserStore } from '@/store/userStore';
-import { useDemoUsersStore } from '@/store/demoUsersStore';
-import { authService } from '@/lib/services/authService';
-import { userService, type UserWithMetadata } from '@/lib/services/userService';
+import { userService } from '@/lib/services/userService';
 import { avatarService, type UploadableImage } from '@/lib/services/avatarService';
 import AdminWebPageHeader from '@/components/desktop/AdminWebPageHeader';
 
@@ -46,13 +44,10 @@ export default function AddUserV2WebScreen() {
   const router = useRouter();
   const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
   const { isLoggedIn, userType } = useUserStore();
-  const addDemoUser = useDemoUsersStore((s) => s.addUser);
   const { width } = useWindowDimensions();
 
   const isTwoCol = Platform.OS === 'web' && width >= 860;
 
-  const [isDemoMode, setIsDemoMode] = useState(false);
-  const [checking, setChecking] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
   const [successText, setSuccessText] = useState<string | null>(null);
@@ -83,27 +78,6 @@ export default function AddUserV2WebScreen() {
       router.replace('/login');
     }
   }, [isLoggedIn, userType, router]);
-
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        setChecking(true);
-        const r = await authService.testConnection();
-        if (!alive) return;
-        setIsDemoMode(!r.success);
-      } catch {
-        if (!alive) return;
-        setIsDemoMode(true);
-      } finally {
-        if (!alive) return;
-        setChecking(false);
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
 
   const setField = useCallback((key: keyof typeof form, value: string) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -171,34 +145,6 @@ export default function AddUserV2WebScreen() {
 
     setSubmitting(true);
     try {
-      if (isDemoMode) {
-        const demoUser: UserWithMetadata = {
-          id: `demo-${Date.now()}`,
-          name: `${name} (דמו)`,
-          email,
-          phone: phone || undefined,
-          avatar_url: avatarImage?.uri,
-          userType: form.user_type,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          events_count: 0,
-          last_login: undefined,
-        };
-        addDemoUser(demoUser);
-        setSuccessText('מצב דמו: המשתמש נוסף מקומית (לא נשמר בדאטאבייס).');
-        setTimeout(() => {
-          if (returnTo === 'admin-events-create') {
-            router.replace({
-              pathname: '/(admin)/admin-events-create',
-              params: { userId: demoUser.id },
-            });
-            return;
-          }
-          router.replace('/users');
-        }, 800);
-        return;
-      }
-
       const createdUser = await userService.createUser(email, password, name, form.user_type, phone || undefined);
       if (avatarImage) {
         await avatarService.uploadUserAvatar(createdUser.id, avatarImage);
@@ -220,7 +166,7 @@ export default function AddUserV2WebScreen() {
     } finally {
       setSubmitting(false);
     }
-  }, [addDemoUser, avatarImage, form, isDemoMode, returnTo, router, submitting]);
+  }, [avatarImage, form, returnTo, router, submitting]);
 
   const RoleCard = ({
     value,
@@ -300,18 +246,6 @@ export default function AddUserV2WebScreen() {
 
         <View style={styles.card}>
           <View style={styles.cardBody}>
-            {checking ? (
-              <View style={styles.bannerInfo}>
-                <ActivityIndicator size="small" color={colors.primary} />
-                <Text style={styles.bannerInfoText}>בודק חיבור לדאטאבייס...</Text>
-              </View>
-            ) : isDemoMode ? (
-              <View style={styles.bannerWarn}>
-                <MaterialIcons name="info" size={18} color={colors.primary} />
-                <Text style={styles.bannerWarnText}>מצב דמו: לא ניתן להתחבר לדאטאבייס. המשתמש יתווסף מקומית בלבד.</Text>
-              </View>
-            ) : null}
-
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>בחר/י סוג משתמש</Text>
               <View style={[styles.roleGrid, isTwoCol ? styles.roleGrid3 : styles.roleGrid1]}>

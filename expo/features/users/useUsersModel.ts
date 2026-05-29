@@ -2,9 +2,9 @@ import { useCallback, useMemo, useState } from 'react';
 import { Alert, Platform } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 
-import { authService } from '@/lib/services/authService';
 import { userService, type UserWithMetadata } from '@/lib/services/userService';
 import { avatarService } from '@/lib/services/avatarService';
+import { ensurePhotoLibraryPermission } from '@/lib/permissions';
 
 export type UserFilter = 'all' | 'admin' | 'event_owner' | 'employee';
 
@@ -29,7 +29,6 @@ export type UsersModel = {
   setAvatarLoadErrors: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   pickAvatarForSelectedUser: () => Promise<void>;
 
-  testConnection: () => Promise<void>;
   refreshUsers: () => Promise<void>;
   deleteUserNow: (u: UserWithMetadata) => Promise<void>;
 };
@@ -46,23 +45,6 @@ export function useUsersModel(opts: { demoUsers: UserWithMetadata[] }) {
   const [showUserModal, setShowUserModal] = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [avatarLoadErrors, setAvatarLoadErrors] = useState<Record<string, boolean>>({});
-
-  const testConnection = useCallback(async () => {
-    try {
-      const connectionResult = await authService.testConnection();
-      if (!connectionResult.success) {
-        setIsDemoMode(true);
-        // On web, blocking alerts can feel like the UI "froze".
-        if (Platform.OS !== 'web') {
-          Alert.alert('אבחון בעיות דאטאבייס', connectionResult.message, [{ text: 'הבנתי' }]);
-        }
-      } else {
-        setIsDemoMode(false);
-      }
-    } catch {
-      setIsDemoMode(true);
-    }
-  }, []);
 
   const refreshUsers = useCallback(async () => {
     try {
@@ -110,18 +92,13 @@ export function useUsersModel(opts: { demoUsers: UserWithMetadata[] }) {
     }
   }, [opts.demoUsers]);
 
-  const deleteUserNow = useCallback(
-    async (u: UserWithMetadata) => {
-      if (!u?.id) return;
-      if (!isDemoMode) {
-        await userService.deleteUser(u.id);
-      }
-      setUsers((prev) => prev.filter((x) => x.id !== u.id));
-      setSelectedUser((prev) => (prev?.id === u.id ? null : prev));
-      setShowUserModal(false);
-    },
-    [isDemoMode]
-  );
+  const deleteUserNow = useCallback(async (u: UserWithMetadata) => {
+    if (!u?.id) return;
+    await userService.deleteUser(u.id);
+    setUsers((prev) => prev.filter((x) => x.id !== u.id));
+    setSelectedUser((prev) => (prev?.id === u.id ? null : prev));
+    setShowUserModal(false);
+  }, []);
 
   const filteredUsers = useMemo(() => {
     return users.filter((u) => {
@@ -135,13 +112,8 @@ export function useUsersModel(opts: { demoUsers: UserWithMetadata[] }) {
   const pickAvatarForSelectedUser = useCallback(async () => {
     if (!selectedUser) return;
     try {
-      if (Platform.OS !== 'web') {
-        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (!permission.granted) {
-          Alert.alert('הרשאה נדרשת', 'כדי לבחור תמונה יש לאשר גישה לגלריה');
-          return;
-        }
-      }
+      const permission = await ensurePhotoLibraryPermission({ purpose: 'profile' });
+      if (!permission.granted) return;
 
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -155,15 +127,6 @@ export function useUsersModel(opts: { demoUsers: UserWithMetadata[] }) {
       const asset = result.assets[0];
 
       setAvatarUploading(true);
-
-      // Demo mode: keep locally (won't persist to DB)
-      if (isDemoMode) {
-        setUsers((prev) => prev.map((u) => (u.id === selectedUser.id ? { ...u, avatar_url: asset.uri } : u)));
-        setSelectedUser((prev) => (prev ? { ...prev, avatar_url: asset.uri } : prev));
-        setAvatarLoadErrors((prev) => ({ ...prev, [selectedUser.id]: false }));
-        Alert.alert('הועלה בהצלחה', 'התמונה עודכנה מקומית (מצב דמו).', [{ text: 'אישור' }]);
-        return;
-      }
 
       const publicUrl = await avatarService.uploadUserAvatar(selectedUser.id, {
         uri: asset.uri,
@@ -183,7 +146,7 @@ export function useUsersModel(opts: { demoUsers: UserWithMetadata[] }) {
     } finally {
       setAvatarUploading(false);
     }
-  }, [selectedUser, isDemoMode]);
+  }, [selectedUser]);
 
   return {
     users,
@@ -203,7 +166,6 @@ export function useUsersModel(opts: { demoUsers: UserWithMetadata[] }) {
     avatarLoadErrors,
     setAvatarLoadErrors,
     pickAvatarForSelectedUser,
-    testConnection,
     refreshUsers,
     deleteUserNow,
   } satisfies UsersModel;

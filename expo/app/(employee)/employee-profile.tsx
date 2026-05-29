@@ -21,6 +21,7 @@ import { colors } from "@/constants/colors";
 import { useUserStore } from "@/store/userStore";
 import { supabase } from "@/lib/supabase";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { DeleteAccountSection } from "@/components/DeleteAccountSection";
 
 const ui = {
   primary: colors.primary,
@@ -241,6 +242,15 @@ export default function EmployeeProfileScreen() {
             <Text style={styles.logoutBtnText}>התנתק</Text>
           </TouchableOpacity>
         </View>
+
+        {/* מחיקת חשבון - נדרש לפי הנחיות App Store 5.1.1(v) */}
+        <View style={styles.deleteAccountWrap}>
+          <DeleteAccountSection
+            onDeleted={() => {
+              router.replace("/login");
+            }}
+          />
+        </View>
       </ScrollView>
 
       {/* Edit modal */}
@@ -413,6 +423,9 @@ const styles = StyleSheet.create({
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 8 },
     elevation: 3,
+  },
+  deleteAccountWrap: {
+    marginTop: 16,
   },
   cardHeader: {
     flexDirection: "row-reverse",

@@ -20,7 +20,12 @@ import { colors } from '@/constants/colors';
 import { useUserStore } from '@/store/userStore';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import { eventService } from '@/lib/services/eventService';
-import { guestService } from '@/lib/services/guestService';
+import {
+  DUPLICATE_GUEST_ERROR,
+  guestService,
+  UNAPPROVED_EVENT_GUEST_LIMIT,
+  UNAPPROVED_EVENT_GUEST_LIMIT_ERROR,
+} from '@/lib/services/guestService';
 import { supabase } from '@/lib/supabase';
 
 type GuestStatus = 'ממתין' | 'אולי מגיע' | 'מגיע' | 'לא מגיע';
@@ -68,6 +73,7 @@ export default function CoupleGuestsWebScreen() {
 
   const [loading, setLoading] = useState(false);
   const [eventTitle, setEventTitle] = useState('');
+  const [isEventApproved, setIsEventApproved] = useState<boolean>(true);
 
   const [categories, setCategories] = useState<GuestCategoryRow[]>([]);
   const [guests, setGuests] = useState<GuestRow[]>([]);
@@ -120,6 +126,7 @@ export default function CoupleGuestsWebScreen() {
         guestService.getGuests(resolvedEventId),
       ]);
       setEventTitle(String((evt as any)?.title || '').trim());
+      setIsEventApproved((evt as any)?.isApproved !== false);
       setCategories(cats as any);
       setGuests(g as any);
       setExpandedByCategoryId((prev) => {
@@ -261,9 +268,9 @@ export default function CoupleGuestsWebScreen() {
         )
       );
       closeEdit();
-    } catch (e) {
+    } catch (e: any) {
       console.error('Save guest error:', e);
-      Alert.alert('שגיאה', 'לא ניתן לשמור את השינויים.');
+      Alert.alert('שגיאה', e?.message === DUPLICATE_GUEST_ERROR ? DUPLICATE_GUEST_ERROR : 'לא ניתן לשמור את השינויים.');
     }
   };
 
@@ -417,6 +424,10 @@ export default function CoupleGuestsWebScreen() {
       return;
     }
     if (addSaving) return;
+    if (!isEventApproved && guests.length >= UNAPPROVED_EVENT_GUEST_LIMIT) {
+      Alert.alert('הגבלת מוזמנים', UNAPPROVED_EVENT_GUEST_LIMIT_ERROR);
+      return;
+    }
     setAddSaving(true);
     try {
       const categoryId =
@@ -451,9 +462,15 @@ export default function CoupleGuestsWebScreen() {
       setAddGuestName('');
       setAddGuestPhone('');
       Alert.alert('נוסף', 'המוזמן נוסף בהצלחה');
-    } catch (e) {
+    } catch (e: any) {
       console.error('Add guest inline error:', e);
-      Alert.alert('שגיאה', 'לא ניתן להוסיף את המוזמן.');
+      if (e?.message === UNAPPROVED_EVENT_GUEST_LIMIT_ERROR) {
+        Alert.alert('הגבלת מוזמנים', UNAPPROVED_EVENT_GUEST_LIMIT_ERROR);
+      } else if (e?.message === DUPLICATE_GUEST_ERROR) {
+        Alert.alert('מוזמן כפול', DUPLICATE_GUEST_ERROR);
+      } else {
+        Alert.alert('שגיאה', 'לא ניתן להוסיף את המוזמן.');
+      }
     } finally {
       setAddSaving(false);
     }
