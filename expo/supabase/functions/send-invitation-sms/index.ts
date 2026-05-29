@@ -193,6 +193,88 @@ function pulseemBodyLooksOk(text: string): { ok: boolean; reason?: string } {
   }
 }
 
+// The edge runtime occasionally fails outbound requests (even to the project's own
+// PostgREST endpoint) with a transient "error sending request". Retry such failures
+// with backoff so one flaky connection doesn't abort the whole invocation.
+function isTransientNetworkError(err: unknown): boolean {
+  const msg = (err instanceof Error ? err.message : String(err ?? "")).toLowerCase();
+  return (
+    msg.includes("error sending request") ||
+    msg.includes("connection") ||
+    msg.includes("connect") ||
+    msg.includes("reset") ||
+    msg.includes("timeout") ||
+    msg.includes("timed out") ||
+    msg.includes("aborted") ||
+    msg.includes("broken pipe") ||
+    msg.includes("unexpected eof") ||
+    msg.includes("stream") ||
+    msg.includes("dns") ||
+    msg.includes("tls") ||
+    msg.includes("handshake") ||
+    msg.includes("os error")
+  );
+}
+
+async function withRetry<T>(label: string, fn: () => Promise<T>, attempts = 4): Promise<T> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      lastErr = e;
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn(`withRetry[${label}] attempt ${i + 1}/${attempts} failed: ${msg}`);
+      if (i === attempts - 1 || !isTransientNetworkError(e)) break;
+      await new Promise((r) => setTimeout(r, 400 * (i + 1)));
+    }
+  }
+  throw lastErr;
+}
+
+// Fetch guests without ever building a huge GET URL or a single oversized response.
+// When explicit guestIds are given we chunk the `in(...)` filter (a long id list in
+// the query string overflows URL limits and fails with "error sending request").
+// Otherwise we page through the result set so no single response is too large.
+const GUESTS_SELECT = "id, name, phone, status, invitation_code, invitation_token";
+
+async function fetchAllGuests(
+  adminClient: any,
+  eventId: string,
+  guestIds: string[],
+  statusList: string[] | null
+): Promise<any[]> {
+  const all: any[] = [];
+
+  if (guestIds.length > 0) {
+    for (const ids of chunk(guestIds, 100)) {
+      const { data, error } = await withRetry("query.guests.in", () =>
+        adminClient.from("guests").select(GUESTS_SELECT).eq("event_id", eventId).in("id", ids)
+      );
+      if (error) throw new Error(error.message);
+      if (data) all.push(...data);
+    }
+    return all;
+  }
+
+  const pageSize = 200;
+  for (let from = 0; ; from += pageSize) {
+    const to = from + pageSize - 1;
+    const { data, error } = await withRetry("query.guests.page", () => {
+      let q = adminClient.from("guests").select(GUESTS_SELECT).eq("event_id", eventId);
+      if (statusList && statusList.length > 0) {
+        q = statusList.length === 1 ? q.eq("status", statusList[0]) : q.in("status", statusList);
+      }
+      return q.range(from, to);
+    });
+    if (error) throw new Error(error.message);
+    const rows = data ?? [];
+    all.push(...rows);
+    if (rows.length < pageSize) break;
+  }
+  return all;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, { status: 405 });
@@ -235,13 +317,13 @@ serve(async (req) => {
     let authError: any = null;
 
     {
-      const res = await userClient.auth.getUser();
+      const res = await withRetry("auth.getUser", () => userClient.auth.getUser());
       authError = res.error;
       authData = res.data?.user ? ({ user: { id: res.data.user.id } } as any) : null;
     }
 
     if (!authData?.user?.id) {
-      const res2 = await adminClient.auth.getUser(bearerToken);
+      const res2 = await withRetry("admin.getUser", () => adminClient.auth.getUser(bearerToken));
       if (!res2.error && res2.data?.user) {
         authData = { user: { id: res2.data.user.id } };
         authError = null;
@@ -270,12 +352,16 @@ serve(async (req) => {
     const userId = authData.user.id;
 
     const [{ data: profile, error: profileError }, { data: eventRow, error: eventError }] = await Promise.all([
-      adminClient.from("users").select("id, user_type").eq("id", userId).maybeSingle(),
-      adminClient
-        .from("events")
-        .select("id, user_id, title, date, location, city, groom_name, bride_name, rsvp_link")
-        .eq("id", eventId)
-        .maybeSingle(),
+      withRetry("query.users", () =>
+        adminClient.from("users").select("id, user_type").eq("id", userId).maybeSingle()
+      ),
+      withRetry("query.events", () =>
+        adminClient
+          .from("events")
+          .select("id, user_id, title, date, location, city, groom_name, bride_name, rsvp_link")
+          .eq("id", eventId)
+          .maybeSingle()
+      ),
     ]);
     if (profileError) return json({ error: profileError.message }, { status: 500 });
     if (eventError) return json({ error: eventError.message }, { status: 500 });
@@ -287,19 +373,14 @@ serve(async (req) => {
     const isAllowed = userType === "admin" || (userType === "event_owner" && ownerId === userId);
     if (!isAllowed) return json({ error: "Forbidden" }, { status: 403 });
 
-    let q = adminClient
-      .from("guests")
-      .select("id, name, phone, status, invitation_code, invitation_token")
-      .eq("event_id", eventId);
-
-    if (guestIds.length > 0) {
-      q = q.in("id", guestIds);
-    } else if (statusList && statusList.length > 0) {
-      q = statusList.length === 1 ? q.eq("status", statusList[0]) : q.in("status", statusList);
+    // Avoid huge GET URLs (many ids) and oversized single responses: chunk/paginate.
+    let guests: any[] = [];
+    try {
+      guests = await fetchAllGuests(adminClient, eventId, guestIds, statusList);
+    } catch (guestsErr) {
+      const m = guestsErr instanceof Error ? guestsErr.message : String(guestsErr);
+      return json({ error: `Failed to load guests: ${m}` }, { status: 500 });
     }
-
-    const { data: guests, error: guestsError } = await q;
-    if (guestsError) return json({ error: guestsError.message }, { status: 500 });
 
     const eventRsvpBase = getOriginFromUrl((eventRow as any)?.rsvp_link);
     const baseUrl = eventRsvpBase || getBaseUrl(req, body.baseUrl);
@@ -397,14 +478,18 @@ serve(async (req) => {
     });
 
     const pulseemUrl = "https://api.pulseem.com/api/v1/SmsApi/SendSms";
+    // Abort a single Pulseem request that hangs, so one slow/blocked batch can't
+    // crash the whole invocation (the edge runtime is far from Pulseem's region).
+    const PULSEEM_TIMEOUT_MS = 30000;
 
     let sent = 0;
     let failed = 0;
     const pulseemSendIds: string[] = [];
     const pulseemResponses: SendInvitationSmsResult["pulseemResponses"] = [];
 
-    // Pulseem supports bulk lists; chunk to be safe.
-    const batches = chunk(sendable, 200);
+    // Pulseem supports bulk lists; keep batches small to reduce per-request latency
+    // and the chance of a timeout/connection reset on large synchronous sends.
+    const batches = chunk(sendable, 50);
     for (let bi = 0; bi < batches.length; bi++) {
       const batch = batches[bi];
       const sendId = makePulseemSendId(eventId, bi);
@@ -424,29 +509,65 @@ serve(async (req) => {
         payload.smsSendData.fromNumber = pulseemFromNumber;
       }
 
-      const resp = await fetch(pulseemUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          // Pulseem Swagger defines header name as `APIKey` (and some docs mention `X-Api-Key`).
-          // Send both to be safe across accounts/environments.
-          "APIKey": pulseemApiKey,
-          "X-Api-Key": pulseemApiKey,
-        },
-        body: JSON.stringify(payload),
-      });
+      // A network failure here must NOT bubble up and abort the whole request;
+      // otherwise a single bad batch turns into an opaque 500 with no detail and
+      // no per-recipient logging. Retry transient failures, then treat as failed.
+      let resp: Response | null = null;
+      let respText = "";
+      let networkError = "";
+      try {
+        const out = await withRetry(`pulseem.batch_${bi}`, async () => {
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), PULSEEM_TIMEOUT_MS);
+          try {
+            const r = await fetch(pulseemUrl, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                // Pulseem Swagger defines header name as `APIKey` (and some docs mention `X-Api-Key`).
+                // Send both to be safe across accounts/environments.
+                "APIKey": pulseemApiKey,
+                "X-Api-Key": pulseemApiKey,
+              },
+              body: JSON.stringify(payload),
+              signal: controller.signal,
+            });
+            const t = await r.text().catch(() => "");
+            return { r, t };
+          } finally {
+            clearTimeout(timer);
+          }
+        });
+        resp = out.r;
+        respText = out.t;
+      } catch (fetchErr) {
+        networkError =
+          fetchErr instanceof Error
+            ? fetchErr.name === "AbortError"
+              ? `timeout_after_${PULSEEM_TIMEOUT_MS}ms`
+              : fetchErr.message
+            : String(fetchErr);
+      }
 
-      const respText = await resp.text().catch(() => "");
       const snippet = respText ? respText.slice(0, 500) : "";
-      const parsed = pulseemBodyLooksOk(respText);
-      const effectiveOk = resp.ok && parsed.ok;
+      const httpStatus = resp?.status ?? 0;
+      const parsed = networkError
+        ? { ok: false, reason: `network:${networkError}` }
+        : pulseemBodyLooksOk(respText);
+      const effectiveOk = Boolean(resp?.ok) && parsed.ok;
 
-      pulseemResponses.push({ sendId, httpStatus: resp.status, ok: effectiveOk, bodySnippet: snippet || undefined });
-      console.log("Pulseem response", { sendId, httpStatus: resp.status, ok: effectiveOk, snippet });
+      pulseemResponses.push({
+        sendId,
+        httpStatus,
+        ok: effectiveOk,
+        bodySnippet: snippet || (networkError ? `network_error:${networkError}` : undefined),
+      });
+      console.log("Pulseem response", { sendId, httpStatus, ok: effectiveOk, snippet, networkError });
       if (!effectiveOk) {
         for (const b of batch) {
-          const why = parsed.reason ? `pulseem:${parsed.reason}` : `pulseem_http_${resp.status}`;
-          failures.push({ guestId: b.id, phone: b.phoneOk, reason: `${why}${respText ? `:${respText}` : ""}` });
+          const why = parsed.reason ? `pulseem:${parsed.reason}` : `pulseem_http_${httpStatus}`;
+          const detail = respText || networkError;
+          failures.push({ guestId: b.id, phone: b.phoneOk, reason: `${why}${detail ? `:${String(detail).slice(0, 200)}` : ""}` });
         }
         failed += batch.length;
       } else {
@@ -463,10 +584,16 @@ serve(async (req) => {
         status,
         sent_date: new Date().toISOString(),
       }));
-      const { error: logError } = await adminClient.from("messages").insert(rows);
-      if (logError) {
-        // Don't fail the whole request because of logging
-        console.warn("Failed to insert messages log:", logError);
+      try {
+        const { error: logError } = await withRetry("insert.messages", () =>
+          adminClient.from("messages").insert(rows)
+        );
+        if (logError) {
+          // Don't fail the whole request because of logging
+          console.warn("Failed to insert messages log:", logError);
+        }
+      } catch (logErr) {
+        console.warn("Failed to insert messages log (network):", logErr);
       }
     }
 
