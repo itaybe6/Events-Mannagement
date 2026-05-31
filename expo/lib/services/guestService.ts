@@ -54,36 +54,51 @@ function hasSharedPhoneKey(a: string, b: string): boolean {
   return getPhoneDuplicateKeys(b).some((key) => aKeys.has(key));
 }
 
-async function ensureGuestIsUniqueForEvent(
-  eventId: string,
-  guest: Pick<Guest, 'name' | 'phone'>,
-  excludeGuestId?: string
-): Promise<void> {
-  if (!eventId) return;
+type ExistingGuestRow = { id?: string; name?: string | null; phone?: string | null };
 
+function isDuplicateGuestCandidate(
+  guest: Pick<Guest, 'name' | 'phone'>,
+  existingRows: ExistingGuestRow[],
+  excludeGuestId?: string
+): boolean {
   const nextName = normalizeGuestNameForDuplicate(guest.name);
   const nextPhone = String(guest.phone || '').trim();
-  if (!nextName && getPhoneDuplicateKeys(nextPhone).length === 0) return;
+  if (!nextName && getPhoneDuplicateKeys(nextPhone).length === 0) return false;
 
+  return existingRows.some((row) => {
+    if (excludeGuestId && String(row?.id) === String(excludeGuestId)) return false;
+
+    const existingName = normalizeGuestNameForDuplicate(String(row?.name ?? ''));
+    const existingPhone = String(row?.phone ?? '');
+    const sameName = Boolean(nextName && existingName && existingName === nextName);
+    const samePhone = hasSharedPhoneKey(nextPhone, existingPhone);
+
+    return sameName || samePhone;
+  });
+}
+
+async function fetchExistingGuestsForDuplicateCheck(eventId: string): Promise<ExistingGuestRow[]> {
   const { data, error } = await supabase
     .from('guests')
     .select('id, name, phone')
     .eq('event_id', eventId);
 
   if (error) throw error;
+  return ((data as ExistingGuestRow[]) || []);
+}
 
-  const duplicate = ((data as any[]) || []).some((row) => {
-    if (excludeGuestId && String((row as any)?.id) === String(excludeGuestId)) return false;
+async function ensureGuestIsUniqueForEvent(
+  eventId: string,
+  guest: Pick<Guest, 'name' | 'phone'>,
+  excludeGuestId?: string,
+  existingRows?: ExistingGuestRow[]
+): Promise<void> {
+  if (!eventId) return;
 
-    const existingName = normalizeGuestNameForDuplicate(String((row as any)?.name ?? ''));
-    const existingPhone = String((row as any)?.phone ?? '');
-    const sameName = Boolean(nextName && existingName && existingName === nextName);
-    const samePhone = hasSharedPhoneKey(nextPhone, existingPhone);
-
-    return sameName || samePhone;
-  });
-
-  if (duplicate) throw new Error(DUPLICATE_GUEST_ERROR);
+  const rows = existingRows ?? (await fetchExistingGuestsForDuplicateCheck(eventId));
+  if (isDuplicateGuestCandidate(guest, rows, excludeGuestId)) {
+    throw new Error(DUPLICATE_GUEST_ERROR);
+  }
 }
 
 async function ensureUnapprovedEventGuestLimit(eventId: string): Promise<void> {
@@ -151,6 +166,111 @@ export const guestService = {
       }));
     } catch (error) {
       console.error('Get guests error:', error);
+      throw error;
+    }
+  },
+
+  addGuestsBatch: async (
+    eventId: string,
+    guests: Array<Omit<Guest, 'id'>>,
+    opts?: { existingRows?: ExistingGuestRow[] }
+  ): Promise<{ added: Guest[]; duplicateSkipped: number }> => {
+    if (!eventId || guests.length === 0) {
+      return { added: [], duplicateSkipped: 0 };
+    }
+
+    try {
+      const existingRows = opts?.existingRows ?? (await fetchExistingGuestsForDuplicateCheck(eventId));
+      const knownRows = [...existingRows];
+      const toInsert: Array<Omit<Guest, 'id'>> = [];
+      let duplicateSkipped = 0;
+
+      for (const guest of guests) {
+        if (isDuplicateGuestCandidate(guest, knownRows)) {
+          duplicateSkipped++;
+          continue;
+        }
+        toInsert.push(guest);
+        knownRows.push({
+          name: guest.name,
+          phone: guest.phone,
+        });
+      }
+
+      if (toInsert.length === 0) {
+        return { added: [], duplicateSkipped };
+      }
+
+      await ensureUnapprovedEventGuestLimit(eventId);
+
+      const { count, error: countErr } = await supabase
+        .from('guests')
+        .select('id', { count: 'exact', head: true })
+        .eq('event_id', eventId);
+      if (countErr) throw countErr;
+
+      const { data: eventRow, error: eventErr } = await supabase
+        .from('events')
+        .select('is_approved')
+        .eq('id', eventId)
+        .maybeSingle();
+      if (eventErr) throw eventErr;
+
+      const isApproved = (eventRow as any)?.is_approved;
+      if (isApproved === false) {
+        const remaining = Math.max(0, UNAPPROVED_EVENT_GUEST_LIMIT - (count ?? 0));
+        if (remaining === 0) {
+          throw new Error(UNAPPROVED_EVENT_GUEST_LIMIT_ERROR);
+        }
+        if (toInsert.length > remaining) {
+          throw new Error(UNAPPROVED_EVENT_GUEST_LIMIT_ERROR);
+        }
+      }
+
+      const added: Guest[] = [];
+      const batchSize = 100;
+
+      for (let i = 0; i < toInsert.length; i += batchSize) {
+        const batch = toInsert.slice(i, i + batchSize);
+        const { data, error } = await supabase
+          .from('guests')
+          .insert(
+            batch.map((guest) => ({
+              event_id: eventId,
+              name: guest.name,
+              phone: guest.phone,
+              status: guest.status,
+              table_id: guest.tableId,
+              gift_amount: guest.gift,
+              message: guest.message,
+              category_id: guest.category_id,
+              number_of_people: guest.numberOfPeople,
+            }))
+          )
+          .select();
+
+        if (error) throw error;
+
+        for (const row of data || []) {
+          added.push({
+            id: row.id,
+            name: row.name,
+            phone: row.phone || '',
+            status: row.status as Guest['status'],
+            tableId: row.table_id,
+            gift: Number(row.gift_amount) || 0,
+            message: row.message || '',
+            category_id: row.category_id,
+            numberOfPeople: row.number_of_people || 1,
+            invitationToken: (row as any).invitation_token ? String((row as any).invitation_token) : undefined,
+            invitationCode: (row as any).invitation_code ? String((row as any).invitation_code) : undefined,
+          });
+        }
+      }
+
+      return { added, duplicateSkipped };
+    } catch (error) {
+      console.error('Add guests batch error:', error);
       throw error;
     }
   },

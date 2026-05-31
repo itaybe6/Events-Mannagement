@@ -209,6 +209,7 @@ export default function GuestsScreen() {
   const [sideFilter, setSideFilter] = useState<'groom' | 'bride' | null>(null);
   const [filterModalVisible, setFilterModalVisible] = useState(false);
   const [contactsModalVisible, setContactsModalVisible] = useState(false);
+  const [addingContacts, setAddingContacts] = useState(false);
   const [deviceContacts, setDeviceContacts] = useState<any[]>([]);
   const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set());
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
@@ -316,6 +317,7 @@ export default function GuestsScreen() {
   };
 
   const addSelectedContacts = async () => {
+    if (addingContacts) return;
     if (!isEventApproved) {
       const currentCount = guests.length;
       const remaining = Math.max(0, UNAPPROVED_EVENT_GUEST_LIMIT - currentCount);
@@ -332,41 +334,51 @@ export default function GuestsScreen() {
       }
     }
 
-    const toAdd = Array.from(selectedContacts);
-    let duplicateSkipped = 0;
-    for (const contactId of toAdd) {
-      const contact = deviceContacts.find(c => c.id === contactId);
-      if (contact && selectedCategory) {
-        const phoneNumber = contact.phoneNumbers[0]?.number || '';
-        const name = contact.name || '';
-        try {
-          await guestService.addGuest(resolvedEventId || '', {
-            name,
-            phone: phoneNumber,
-            status: 'ממתין',
-            tableId: null,
-            gift: 0,
-            message: '',
-            category_id: selectedCategory.id,
-            numberOfPeople: 1,
-          });
-        } catch (err: any) {
-          if (err?.message === UNAPPROVED_EVENT_GUEST_LIMIT_ERROR) {
-            Alert.alert('הגבלת מוזמנים', UNAPPROVED_EVENT_GUEST_LIMIT_ERROR);
-            break;
-          }
-          if (err?.message === DUPLICATE_GUEST_ERROR) {
-            duplicateSkipped++;
-            continue;
-          }
-          console.error('Add guest error:', err);
-        }
+    if (!selectedCategory) return;
+
+    setAddingContacts(true);
+    try {
+      const payload = Array.from(selectedContacts)
+        .map((contactId) => deviceContacts.find((c) => c.id === contactId))
+        .filter(Boolean)
+        .map((contact) => ({
+          name: contact!.name || '',
+          phone: contact!.phoneNumbers[0]?.number || '',
+          status: 'ממתין' as const,
+          tableId: null,
+          gift: 0,
+          message: '',
+          category_id: selectedCategory.id,
+          numberOfPeople: 1,
+        }));
+
+      const { added, duplicateSkipped } = await guestService.addGuestsBatch(resolvedEventId || '', payload, {
+        existingRows: guests.map((guest) => ({
+          id: guest.id,
+          name: guest.name,
+          phone: guest.phone,
+        })),
+      });
+
+      if (added.length > 0) {
+        setGuests((prev) => [...prev, ...added]);
       }
-    }
-    setSelectedContacts(new Set());
-    setContactsModalVisible(false);
-    if (duplicateSkipped > 0) {
-      Alert.alert('אורחים כפולים', 'חלק מהאורחים לא נוספו כי הם כבר קיימים באירוע לפי שם או מספר טלפון.');
+
+      setSelectedContacts(new Set());
+      setContactsModalVisible(false);
+
+      if (duplicateSkipped > 0) {
+        Alert.alert('אורחים כפולים', 'חלק מהאורחים לא נוספו כי הם כבר קיימים באירוע לפי שם או מספר טלפון.');
+      }
+    } catch (err: any) {
+      if (err?.message === UNAPPROVED_EVENT_GUEST_LIMIT_ERROR) {
+        Alert.alert('הגבלת מוזמנים', UNAPPROVED_EVENT_GUEST_LIMIT_ERROR);
+        return;
+      }
+      console.error('Add guest error:', err);
+      Alert.alert('שגיאה', 'לא ניתן להוסיף את האורחים. נסה שוב.');
+    } finally {
+      setAddingContacts(false);
     }
   };
 
@@ -1170,9 +1182,9 @@ export default function GuestsScreen() {
           
           <View style={styles.modalActions}>
             <Button
-              title={`הוסף ${selectedContacts.size} אנשי קשר`}
+              title={addingContacts ? `מוסיף ${selectedContacts.size} אנשי קשר...` : `הוסף ${selectedContacts.size} אנשי קשר`}
               onPress={addSelectedContacts}
-              disabled={selectedContacts.size === 0}
+              disabled={selectedContacts.size === 0 || addingContacts}
               style={styles.addContactsButton}
             />
           </View>

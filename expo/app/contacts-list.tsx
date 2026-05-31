@@ -10,11 +10,11 @@ import {
   Pressable,
   Platform,
   Modal,
+  ActivityIndicator,
 } from 'react-native';
 import * as Contacts from 'expo-contacts';
 import { ensureContactsPermission } from '@/lib/permissions';
 import {
-  DUPLICATE_GUEST_ERROR,
   getPhoneDuplicateKeys,
   guestService,
   normalizeGuestNameForDuplicate,
@@ -42,6 +42,7 @@ export default function ContactsListScreen() {
   const [searchFocused, setSearchFocused] = useState(false);
   const [enableSides, setEnableSides] = useState(true);
   const [successModal, setSuccessModal] = useState<{ visible: boolean; count: number }>({ visible: false, count: 0 });
+  const [addingGuests, setAddingGuests] = useState(false);
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
@@ -209,6 +210,7 @@ export default function ContactsListScreen() {
   };
 
   const handleAddGuests = async () => {
+    if (addingGuests) return;
     if (!eventId || !selectedCategory) {
       Alert.alert('שגיאה', 'יש לבחור קטגוריה לפני הוספת אורחים');
       return;
@@ -259,7 +261,7 @@ export default function ContactsListScreen() {
             { 
               text: 'הוסף את החדשים', 
               style: 'default',
-              onPress: () => addGuestsToDatabase(newGuests)
+              onPress: () => { void addGuestsToDatabase(newGuests); }
             }
           ]
         );
@@ -267,7 +269,7 @@ export default function ContactsListScreen() {
       }
     }
     
-    addGuestsToDatabase(newGuests);
+    void addGuestsToDatabase(newGuests);
   };
 
   const safeBack = () => {
@@ -280,44 +282,45 @@ export default function ContactsListScreen() {
   };
 
   const addGuestsToDatabase = async (guestsToAdd: any[]) => {
-    let added = 0;
-    let duplicateSkipped = 0;
-    for (const contact of guestsToAdd) {
-      const phoneNumber = contact.phoneNumbers[0]?.number || '';
-      const name = contact.name || '';
-      try {
-        await guestService.addGuest(eventId!, {
-          name,
-          phone: phoneNumber,
-          status: 'ממתין',
-          tableId: null,
-          gift: 0,
-          message: '',
-          category_id: selectedCategory.id,
-          numberOfPeople: 1,
-        });
-        added++;
-      } catch (e: any) {
-        if (e?.message === UNAPPROVED_EVENT_GUEST_LIMIT_ERROR) {
-          // הגענו לגבול - עצור ותצג הודעה
-          if (added > 0) {
-            // הוספנו חלק - נציג כמה נוספו ומדוע עצרנו
-            setSuccessModal({ visible: true, count: added });
-          }
-          Alert.alert('הגבלת מוזמנים', UNAPPROVED_EVENT_GUEST_LIMIT_ERROR);
-          return;
-        }
-        if (e?.message === DUPLICATE_GUEST_ERROR) {
-          duplicateSkipped++;
-          continue;
-        }
-        console.error('Error adding guest:', e);
+    if (!eventId || !selectedCategory || guestsToAdd.length === 0 || addingGuests) return;
+
+    setAddingGuests(true);
+    try {
+      const payload = guestsToAdd.map((contact) => ({
+        name: contact.name || '',
+        phone: contact.phoneNumbers[0]?.number || '',
+        status: 'ממתין' as const,
+        tableId: null,
+        gift: 0,
+        message: '',
+        category_id: selectedCategory.id,
+        numberOfPeople: 1,
+      }));
+
+      const { added, duplicateSkipped } = await guestService.addGuestsBatch(eventId, payload, {
+        existingRows: existingGuests.map((guest) => ({
+          id: guest.id,
+          name: guest.name,
+          phone: guest.phone,
+        })),
+      });
+
+      if (added.length > 0) {
+        setExistingGuests((prev) => [...prev, ...added]);
+        setSelectedContacts(new Set());
+        setSuccessModal({ visible: true, count: added.length });
+      } else if (duplicateSkipped > 0) {
+        Alert.alert('אורחים כפולים', 'כל האורחים שנבחרו כבר קיימים באירוע לפי שם או מספר טלפון.');
       }
-    }
-    if (added > 0) {
-      setSuccessModal({ visible: true, count: added });
-    } else if (duplicateSkipped > 0) {
-      Alert.alert('אורחים כפולים', 'כל האורחים שנבחרו כבר קיימים באירוע לפי שם או מספר טלפון.');
+    } catch (e: any) {
+      if (e?.message === UNAPPROVED_EVENT_GUEST_LIMIT_ERROR) {
+        Alert.alert('הגבלת מוזמנים', UNAPPROVED_EVENT_GUEST_LIMIT_ERROR);
+        return;
+      }
+      console.error('Error adding guests:', e);
+      Alert.alert('שגיאה', 'לא ניתן להוסיף את האורחים. נסה שוב.');
+    } finally {
+      setAddingGuests(false);
     }
   };
 
@@ -353,7 +356,7 @@ export default function ContactsListScreen() {
     });
   }, [contacts, existingGuestNames, existingGuestPhones, search]);
 
-  const canAdd = !!selectedCategory && selectedContacts.size > 0;
+  const canAdd = !!selectedCategory && selectedContacts.size > 0 && !addingGuests;
   const bottomSafe = Math.max(16, insets.bottom + 12);
 
   return (
@@ -618,8 +621,8 @@ export default function ContactsListScreen() {
           const avatar = avatarGradientFor(item?.name);
           return (
             <Pressable
-              onPress={() => (selectedCategory ? toggleContact(item.id) : undefined)}
-              disabled={disabled}
+              onPress={() => (selectedCategory && !addingGuests ? toggleContact(item.id) : undefined)}
+              disabled={disabled || addingGuests}
               style={styles.itemRow}
             >
               {({ pressed }) => (
@@ -708,7 +711,7 @@ export default function ContactsListScreen() {
                 pressed && canAdd && styles.bottomButtonInnerPressed,
               ]}
             >
-              {canAdd ? (
+              {canAdd || addingGuests ? (
                 <LinearGradient
                   colors={['#1d4ed8', '#1e40af']}
                   start={{ x: 0, y: 0 }}
@@ -722,16 +725,22 @@ export default function ContactsListScreen() {
                   style={[
                     styles.bottomIconPill,
                     {
-                      backgroundColor: canAdd ? 'rgba(255,255,255,0.18)' : '#F3F4F6',
-                      borderColor: canAdd ? 'rgba(255,255,255,0.28)' : '#E5E7EB',
+                      backgroundColor: canAdd || addingGuests ? 'rgba(255,255,255,0.18)' : '#F3F4F6',
+                      borderColor: canAdd || addingGuests ? 'rgba(255,255,255,0.28)' : '#E5E7EB',
                     },
                   ]}
                 >
-                  <MaterialIcons name="group-add" size={22} color={canAdd ? '#FFFFFF' : '#9CA3AF'} />
+                  {addingGuests ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <MaterialIcons name="group-add" size={22} color={canAdd ? '#FFFFFF' : '#9CA3AF'} />
+                  )}
                 </View>
 
-                <Text style={[styles.bottomButtonText, { color: canAdd ? '#FFFFFF' : '#9CA3AF' }]}>
-                  הוסף {selectedContacts.size} אורחים
+                <Text style={[styles.bottomButtonText, { color: canAdd || addingGuests ? '#FFFFFF' : '#9CA3AF' }]}>
+                  {addingGuests
+                    ? `מוסיף ${selectedContacts.size} אורחים...`
+                    : `הוסף ${selectedContacts.size} אורחים`}
                 </Text>
               </View>
             </View>

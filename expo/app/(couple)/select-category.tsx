@@ -341,15 +341,11 @@ export default function SelectCategoryScreen() {
             style={({ pressed }) => ({ opacity: !isNextDisabled && pressed ? 0.78 : 1 })}
           >
             <View style={[styles.headerNextBtnShell, isNextDisabled && styles.headerNextBtnShellDisabled]}>
-              <LinearGradient
-                colors={isNextDisabled ? ['#94A3B8', '#94A3B8'] : ['#0B1E4F', '#123A8C']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.headerNextBtnBg}
-              />
               <View style={styles.headerNextBtn}>
-                <Ionicons name="chevron-forward" size={17} color="#fff" />
-                <Text style={styles.headerNextBtnText}>{saving ? 'שומר...' : 'הבא'}</Text>
+                <Ionicons name="chevron-forward" size={17} color={isNextDisabled ? '#94A3B8' : NAVY} />
+                <Text style={[styles.headerNextBtnText, isNextDisabled && styles.headerNextBtnTextDisabled]}>
+                  {saving ? 'שומר...' : 'הבא'}
+                </Text>
               </View>
             </View>
           </Pressable>
@@ -545,20 +541,22 @@ export default function SelectCategoryScreen() {
 
                       {/* Icon circle */}
                       <View style={[styles.cardIconCircle, { backgroundColor: tone.soft }]}>
-                        <Ionicons name={iconName} size={36} color={tone.icon} />
+                        <Ionicons name={iconName} size={30} color={tone.icon} />
                       </View>
 
-                      <Text
-                        style={[styles.cardText, isDark && styles.cardTextDark]}
-                        numberOfLines={2}
-                        ellipsizeMode="tail"
-                      >
-                        {item.name}
-                      </Text>
+                      <View style={styles.cardTextWrap}>
+                        <Text
+                          style={[styles.cardText, isDark && styles.cardTextDark]}
+                          numberOfLines={2}
+                          ellipsizeMode="tail"
+                        >
+                          {item.name}
+                        </Text>
 
-                      <Text style={[styles.cardSubText, isDark && styles.cardSubTextDark]}>
-                        {count} אורחים
-                      </Text>
+                        <Text style={[styles.cardSubText, isDark && styles.cardSubTextDark]}>
+                          {count} אורחים
+                        </Text>
+                      </View>
                     </View>
                   </Pressable>
                 </View>
@@ -665,40 +663,42 @@ const styles = StyleSheet.create({
     zIndex: 2,
     borderRadius: 999,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: 'rgba(29,78,216,0.40)',
     ...(Platform.OS === 'web'
-      ? ({ boxShadow: '0 6px 18px rgba(6,23,62,0.35)' } as any)
+      ? ({ boxShadow: '0 2px 10px rgba(0,0,0,0.10)' } as any)
       : {
-          shadowColor: '#0B1E4F',
-          shadowOpacity: 0.24,
-          shadowRadius: 14,
-          shadowOffset: { width: 0, height: 6 },
-          elevation: 6,
+          shadowColor: '#000',
+          shadowOpacity: 0.10,
+          shadowRadius: 8,
+          shadowOffset: { width: 0, height: 3 },
+          elevation: 3,
         }),
   },
   headerNextBtnShellDisabled: {
+    borderColor: 'rgba(148,163,184,0.40)',
     ...(Platform.OS === 'web'
       ? ({ boxShadow: 'none' } as any)
-      : { shadowOpacity: 0.12, elevation: 2 }),
-  },
-  headerNextBtnBg: {
-    ...StyleSheet.absoluteFillObject,
+      : { shadowOpacity: 0.06, elevation: 2 }),
   },
   headerNextBtn: {
     flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 5,
-    minWidth: 88,
-    paddingHorizontal: 14,
+    gap: 4,
+    minWidth: 72,
+    paddingHorizontal: 11,
     paddingVertical: 9,
   },
   headerNextBtnText: {
     fontSize: 15,
     fontWeight: '900',
-    color: '#FFFFFF',
+    color: NAVY,
     letterSpacing: 0.1,
+  },
+  headerNextBtnTextDisabled: {
+    color: '#94A3B8',
   },
 
   /* segment */
@@ -813,7 +813,7 @@ const styles = StyleSheet.create({
   cardOuter: {
     borderRadius: 24,
     width: '100%',
-    aspectRatio: 1 / 1.15, // keep constant size; 2 cards always fit the row
+    aspectRatio: 1 / 1.2, // keep constant size; 2 cards always fit the row
     shadowColor: '#000',
     shadowOpacity: 0.08,
     shadowRadius: 40,
@@ -832,11 +832,11 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     overflow: 'hidden',
     backgroundColor: '#FFFFFF',
-    paddingHorizontal: 18,
-    paddingVertical: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 20,
+    gap: 14,
     borderWidth: 2.5,
     borderColor: 'transparent',
   },
@@ -850,21 +850,25 @@ const styles = StyleSheet.create({
     opacity: 0.50,
   },
   cardIconCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+  },
+  cardTextWrap: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   cardText: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '700',
     color: '#1F2937',
     textAlign: 'center',
-    maxWidth: '100%',
-    flexShrink: 1,
-    lineHeight: 22,
+    width: '100%',
+    lineHeight: 21,
+    paddingHorizontal: 2,
   },
   cardTextDark: { color: TEXT_DARK },
   cardSubText: {
@@ -872,9 +876,8 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#9CA3AF',
     textAlign: 'center',
-    maxWidth: '100%',
-    flexShrink: 1,
-    marginTop: 2,
+    width: '100%',
+    marginTop: 6,
   },
   cardSubTextDark: {
     color: 'rgba(148,163,184,0.90)',
