@@ -10,8 +10,8 @@ module.exports = {
   expo: {
     name: "Moon",
     slug: "euroe-nitgmal-eiroom-mekapim",
-    version: "1.0.2",
-    runtimeVersion: "1.0.2",
+    version: "1.0.3",
+    runtimeVersion: "1.0.3",
     updates: {
       url: "https://u.expo.dev/292e2bf1-e784-4c87-9375-36040694dec9",
     },
