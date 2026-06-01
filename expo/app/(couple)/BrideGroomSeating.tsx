@@ -28,6 +28,7 @@ import { Stack, useRouter, useFocusEffect, useLocalSearchParams, useSegments } f
 import { colors } from '@/constants/colors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { EventSwitcher } from '@/components/EventSwitcher';
+import { AppLoader, AppLoaderScreen } from '@/components/AppLoader';
 import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
 import { SeatingGridReadonly } from '../seating/web/SeatingGridReadonly';
 import { CELL_SIZE, DEFAULT_GRID_COLS, DEFAULT_GRID_ROWS, tableCellSize, type Orientation, type TableType } from '../seating/web/_types';
@@ -1608,7 +1609,13 @@ export default function BrideGroomSeating() {
   );
 
   if (loading) {
-    return <View style={styles.centered}><ActivityIndicator size="large" /></View>;
+    return (
+      <AppLoaderScreen
+        variant="default"
+        title="טוען מפת ישיבה"
+        subtitle="מכין את השולחנות והאורחים"
+      />
+    );
   }
   
   if (!resolvedEventId) {

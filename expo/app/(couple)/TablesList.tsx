@@ -13,7 +13,6 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '@/lib/supabase';
 import { useUserStore } from '@/store/userStore';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
@@ -25,6 +24,7 @@ import { useLayoutStore } from '@/store/layoutStore';
 import { colors } from '@/constants/colors';
 import { EventSwitcher } from '@/components/EventSwitcher';
 import BackSwipe from '@/components/BackSwipe';
+import { AppLoader, AppLoaderScreen } from '@/components/AppLoader';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ALIGN_LEFT, ALIGN_RIGHT, IS_RTL, ROW_DIR, ROW_REVERSE_DIR } from '@/lib/rtl';
 
@@ -53,6 +53,7 @@ export default function TablesList() {
   const [savingTableName, setSavingTableName] = useState(false);
   const [moveGuestsOpen, setMoveGuestsOpen] = useState(false);
   const [moveGuestsSaving, setMoveGuestsSaving] = useState(false);
+  const [addingGuestsToTable, setAddingGuestsToTable] = useState(false);
   const [moveTargetTableId, setMoveTargetTableId] = useState<string | null>(null);
   const [hasMultipleEvents, setHasMultipleEvents] = useState(false);
   const categoryScrollRef = useRef<ScrollView | null>(null);
@@ -213,49 +214,52 @@ export default function TablesList() {
   };
 
   const handleAddGuestsToTable = async () => {
-    if (selectedGuestsToAdd.size === 0 || !selectedTable) return;
+    if (selectedGuestsToAdd.size === 0 || !selectedTable || addingGuestsToTable) return;
 
     const guestIds = Array.from(selectedGuestsToAdd);
     const tableId = selectedTable.id;
 
-    // חישוב סכום האנשים שמתווספים
-    const guestsToAdd = guests.filter(g => guestIds.includes(g.id));
-    const totalPeopleToAdd = guestsToAdd.reduce((sum, guest) => sum + (guest.numberOfPeople || 1), 0);
+    setAddingGuestsToTable(true);
+    try {
+      // חישוב סכום האנשים שמתווספים
+      const guestsToAdd = guests.filter(g => guestIds.includes(g.id));
+      const totalPeopleToAdd = guestsToAdd.reduce((sum, guest) => sum + (guest.numberOfPeople || 1), 0);
 
-    // Update guests
-    const { error: guestUpdateError } = await supabase
-      .from('guests')
-      .update({ table_id: tableId })
-      .in('id', guestIds);
-    
-    if (guestUpdateError) {
-      console.error("Error updating guests:", guestUpdateError);
-      return;
-    }
-    
-    // עדכון מספר המוזמנים בשולחן - חישוב מחדש של כל האנשים בשולחן
-    const currentGuestsAtTable = guests.filter(g => g.table_id === tableId);
-    const currentTotalPeople = currentGuestsAtTable.reduce((sum, guest) => sum + (guest.numberOfPeople || 1), 0);
-    const newTotalPeople = currentTotalPeople + totalPeopleToAdd;
-    
-    const { error: tableUpdateError } = await supabase
-      .from('tables')
-      .update({ seated_guests: newTotalPeople })
-      .eq('id', tableId);
-      
-    if (tableUpdateError) {
-      console.error("Error updating table count:", tableUpdateError);
-      return;
-    }
+      const { error: guestUpdateError } = await supabase
+        .from('guests')
+        .update({ table_id: tableId })
+        .in('id', guestIds);
 
-    // Refresh data
-    await fetchGuests();
-    await fetchTables();
-    
-    // Close modal
-    setModalVisible(false);
-    setTabBarVisible(true);
-    setSelectedGuestsToAdd(new Set());
+      if (guestUpdateError) {
+        console.error("Error updating guests:", guestUpdateError);
+        Alert.alert('שגיאה', 'לא ניתן להוסיף את האורחים לשולחן');
+        return;
+      }
+
+      const currentGuestsAtTable = guests.filter(g => g.table_id === tableId);
+      const currentTotalPeople = currentGuestsAtTable.reduce((sum, guest) => sum + (guest.numberOfPeople || 1), 0);
+      const newTotalPeople = currentTotalPeople + totalPeopleToAdd;
+
+      const { error: tableUpdateError } = await supabase
+        .from('tables')
+        .update({ seated_guests: newTotalPeople })
+        .eq('id', tableId);
+
+      if (tableUpdateError) {
+        console.error("Error updating table count:", tableUpdateError);
+        Alert.alert('שגיאה', 'לא ניתן לעדכן את מספר היושבים בשולחן');
+        return;
+      }
+
+      await fetchGuests();
+      await fetchTables();
+
+      setModalVisible(false);
+      setTabBarVisible(true);
+      setSelectedGuestsToAdd(new Set());
+    } finally {
+      setAddingGuestsToTable(false);
+    }
   };
 
   const openAddGuestsModal = (table: Table) => {
@@ -273,6 +277,7 @@ export default function TablesList() {
   };
 
   const closeModal = () => {
+    if (addingGuestsToTable) return;
     setModalVisible(false);
     setTabBarVisible(true);
   };
@@ -439,27 +444,7 @@ export default function TablesList() {
     return (
       <BackSwipe fallbackHref={backHref} onBack={handleBack}>
         <Stack.Screen options={{ headerShown: false }} />
-        <View style={styles.centered}>
-          <LinearGradient
-            colors={['#F7FAFF', '#E8F1FF', '#F2E0BA']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.bg}
-          />
-          <LinearGradient
-            colors={['rgba(255,255,255,0.68)', 'rgba(255,255,255,0)']}
-            start={{ x: 0.05, y: 0 }}
-            end={{ x: 0.75, y: 0.55 }}
-            style={styles.bgHighlight}
-          />
-          <LinearGradient
-            colors={['rgba(232,196,122,0.58)', 'rgba(244,224,186,0.22)', 'rgba(244,224,186,0)']}
-            start={{ x: 1, y: 0.95 }}
-            end={{ x: 0.18, y: 0.22 }}
-            style={styles.bgWarmGlow}
-          />
-          <ActivityIndicator size="large" color={colors.primary} />
-        </View>
+        <AppLoaderScreen variant="default" title="טוען שולחנות" subtitle="מעדכן את רשימת השולחנות" />
       </BackSwipe>
     );
   }
@@ -469,24 +454,6 @@ export default function TablesList() {
       <BackSwipe fallbackHref={backHref} onBack={handleBack}>
         <Stack.Screen options={{ headerShown: false }} />
         <View style={styles.centered}>
-          <LinearGradient
-            colors={['#F7FAFF', '#E8F1FF', '#F2E0BA']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.bg}
-          />
-          <LinearGradient
-            colors={['rgba(255,255,255,0.68)', 'rgba(255,255,255,0)']}
-            start={{ x: 0.05, y: 0 }}
-            end={{ x: 0.75, y: 0.55 }}
-            style={styles.bgHighlight}
-          />
-          <LinearGradient
-            colors={['rgba(232,196,122,0.58)', 'rgba(244,224,186,0.22)', 'rgba(244,224,186,0)']}
-            start={{ x: 1, y: 0.95 }}
-            end={{ x: 0.18, y: 0.22 }}
-            style={styles.bgWarmGlow}
-          />
           <Text style={styles.errorText}>אין אירוע זמין</Text>
         </View>
       </BackSwipe>
@@ -512,25 +479,6 @@ export default function TablesList() {
     <BackSwipe fallbackHref={backHref} onBack={handleBack}>
       <Stack.Screen options={{ headerShown: false }} />
       <View style={styles.container}>
-        <LinearGradient
-          colors={['#F7FAFF', '#E8F1FF', '#F2E0BA']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.bg}
-        />
-        <LinearGradient
-          colors={['rgba(255,255,255,0.68)', 'rgba(255,255,255,0)']}
-          start={{ x: 0.05, y: 0 }}
-          end={{ x: 0.75, y: 0.55 }}
-          style={styles.bgHighlight}
-        />
-        <LinearGradient
-          colors={['rgba(232,196,122,0.58)', 'rgba(244,224,186,0.22)', 'rgba(244,224,186,0)']}
-          start={{ x: 1, y: 0.95 }}
-          end={{ x: 0.18, y: 0.22 }}
-          style={styles.bgWarmGlow}
-        />
-
         <View style={[styles.topSpacer, { paddingTop: topContentInset }]}>
           <View style={styles.topRow}>
             <TouchableOpacity
@@ -758,9 +706,20 @@ export default function TablesList() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
+            <AppLoader
+              visible={addingGuestsToTable}
+              variant="seating"
+              count={selectedGuestsToAdd.size}
+              tableNumber={selectedTable?.number}
+            />
             <View style={styles.modalHandle} />
             <View style={styles.modalHeader}>
-              <TouchableOpacity style={styles.closeModalButton} onPress={closeModal} activeOpacity={0.85}>
+              <TouchableOpacity
+                style={styles.closeModalButton}
+                onPress={closeModal}
+                activeOpacity={0.85}
+                disabled={addingGuestsToTable}
+              >
                 <Ionicons name="close" size={18} color="#6B7280" />
               </TouchableOpacity>
               <View style={styles.modalTitleWrap}>
@@ -841,6 +800,7 @@ export default function TablesList() {
                   style={styles.selectableGuestItem}
                   onPress={() => handleToggleGuestSelection(item.id)}
                   activeOpacity={0.7}
+                  disabled={addingGuestsToTable}
                 >
                   {/* Top row: status icon (left) + checkbox (right) */}
                   <View style={styles.guestCardTop}>
@@ -880,18 +840,33 @@ export default function TablesList() {
             />
 
             <TouchableOpacity
-              style={[styles.finalAddButton, selectedGuestsToAdd.size === 0 && styles.disabledButton]}
+              style={[
+                styles.finalAddButton,
+                (selectedGuestsToAdd.size === 0 || addingGuestsToTable) && styles.disabledButton,
+              ]}
               onPress={handleAddGuestsToTable}
-              disabled={selectedGuestsToAdd.size === 0}
+              disabled={selectedGuestsToAdd.size === 0 || addingGuestsToTable}
               activeOpacity={0.8}
             >
-              <Ionicons 
-                name="add-circle" 
-                size={20} 
-                color={selectedGuestsToAdd.size === 0 ? '#9CA3AF' : '#FFFFFF'} 
-              />
+              {addingGuestsToTable ? (
+                <View style={styles.buttonLoaderWrap}>
+                  <View style={styles.buttonLoaderDot} />
+                  <View style={[styles.buttonLoaderDot, styles.buttonLoaderDotMid]} />
+                  <View style={styles.buttonLoaderDot} />
+                </View>
+              ) : (
+                <Ionicons
+                  name="add-circle"
+                  size={20}
+                  color={selectedGuestsToAdd.size === 0 ? '#9CA3AF' : '#FFFFFF'}
+                />
+              )}
               <Text style={styles.finalAddButtonText}>
-                {selectedGuestsToAdd.size > 0 ? `הוסף ${selectedGuestsToAdd.size}` : 'בחר אורחים'}
+                {addingGuestsToTable
+                  ? 'מושיב...'
+                  : selectedGuestsToAdd.size > 0
+                    ? `הוסף ${selectedGuestsToAdd.size}`
+                    : 'בחר אורחים'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -975,21 +950,13 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     minHeight: 0,
-    backgroundColor: '#F7FAFF',
-  },
-  bg: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  bgHighlight: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  bgWarmGlow: {
-    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#FFFFFF',
   },
   centered: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#FFFFFF',
   },
   topSpacer: {
     paddingTop: 18,
@@ -1417,6 +1384,7 @@ const styles = StyleSheet.create({
     minHeight: Platform.OS === 'web' ? undefined : '80%',
     maxHeight: Platform.OS === 'web' ? '92%' : undefined,
     width: '100%',
+    overflow: 'hidden',
   },
   modalHandle: {
     width: 36,
@@ -1662,6 +1630,23 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
+  },
+  buttonLoaderWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    height: 20,
+  },
+  buttonLoaderDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#FFFFFF',
+    opacity: 0.55,
+  },
+  buttonLoaderDotMid: {
+    opacity: 1,
+    transform: [{ scale: 1.15 }],
   },
   disabledButton: {
     backgroundColor: '#D1D5DB',

@@ -390,6 +390,18 @@ export const guestService = {
     }
   },
 
+  moveGuestsToCategory: async (guestIds: string[], categoryId: string): Promise<void> => {
+    const ids = (guestIds || []).map(String).filter(Boolean);
+    if (!ids.length) return;
+    try {
+      const { error } = await supabase.from('guests').update({ category_id: categoryId }).in('id', ids);
+      if (error) throw error;
+    } catch (error) {
+      console.error('Move guests to category error:', error);
+      throw error;
+    }
+  },
+
   // Delete guest
   deleteGuest: async (guestId: string): Promise<void> => {
     try {

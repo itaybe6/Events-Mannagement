@@ -1,43 +1,22 @@
-import React, { useEffect } from 'react';
-import { ActivityIndicator, Text, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import React from 'react';
+import { Redirect } from 'expo-router';
+import { AppLoaderScreen } from '@/components/AppLoader';
 import { useUserStore } from '@/store/userStore';
 
 export default function IndexScreen() {
-  const router = useRouter();
   const { isLoggedIn, userType, loading } = useUserStore();
 
-  useEffect(() => {
-    // Index is only a transitional route; never keep users here.
-    if (loading) return;
+  if (isLoggedIn) {
+    if (userType === 'admin') return <Redirect href="/(admin)/admin-events" />;
+    if (userType === 'employee') return <Redirect href="/(employee)/employee-events" />;
+    return <Redirect href="/(couple)" />;
+  }
 
-    if (isLoggedIn) {
-      if (userType === 'admin') {
-        router.replace('/(admin)/admin-events');
-        return;
-      }
-      if (userType === 'employee') {
-        router.replace('/(employee)/employee-events');
-        return;
-      }
-      router.replace('/(couple)');
-      return;
-    }
+  if (loading) {
+    return (
+      <AppLoaderScreen variant="default" title="טוען" subtitle="מעביר למסך הפתיחה..." />
+    );
+  }
 
-    router.replace('/onboarding');
-  }, [isLoggedIn, userType, loading, router]);
-
-  useEffect(() => {
-    // Hard fallback: avoid endless loader if state hydration/auth hangs.
-    const t = setTimeout(() => router.replace('/onboarding'), 4000);
-    return () => clearTimeout(t);
-  }, [router]);
-
-  return (
-    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff' }}>
-      <ActivityIndicator size="large" />
-      <Text style={{ marginTop: 12, fontSize: 16 }}>מעביר למסך הפתיחה...</Text>
-    </View>
-  );
+  return <Redirect href="/onboarding" />;
 }
-

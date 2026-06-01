@@ -19,7 +19,6 @@ import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-rou
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
-import { BlurView } from 'expo-blur';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import { buildDirectionsDetailsText, normalizeBaseUrl } from '@/lib/navigationLinks';
 import { supabase } from '@/lib/supabase';
@@ -350,7 +349,7 @@ export default function NotificationEditorScreen() {
     return {
       primary: '#1d4ed8',
       primaryHover: '#1e40af',
-      bg: '#F2F4F7',
+      bg: '#FFFFFF',
       surface: '#FFFFFF',
       surfaceMuted: '#F3F4F6',
       softBlue: '#EFF6FF',
@@ -1442,17 +1441,11 @@ export default function NotificationEditorScreen() {
           styles.headerWrap,
           {
             paddingTop: Math.max(12, insets.top + 10),
-            backgroundImage:
-              Platform.OS === 'web'
-                ? 'linear-gradient(135deg, rgba(29,78,216,0.12), rgba(255,255,255,0.65), rgba(16,185,129,0.08))'
-                : undefined,
-            backgroundColor: Platform.OS === 'web' ? undefined : 'rgba(29,78,216,0.10)',
+            backgroundColor: '#FFFFFF',
             borderBottomColor: 'rgba(229,231,235,0.95)',
           },
         ]}
       >
-        {Platform.OS === 'web' ? null : <BlurView intensity={22} tint="light" style={StyleSheet.absoluteFillObject} />}
-
         <View style={styles.header}>
           <Pressable
             accessibilityRole="button"
@@ -2004,11 +1997,10 @@ export default function NotificationEditorScreen() {
           {
             paddingBottom: bottomSafe,
             borderTopColor: 'rgba(229,231,235,0.85)',
-            backgroundColor: 'rgba(255,255,255,0.88)',
+            backgroundColor: '#FFFFFF',
           },
         ]}
       >
-        <BlurView intensity={24} tint="light" style={StyleSheet.absoluteFillObject} />
         <View style={[styles.bottomBarInner, { paddingBottom: bottomSafe }]}>
           <View style={styles.bottomButtonsRow}>
             <TouchableOpacity
@@ -2108,7 +2100,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   webProgressFill: { height: 6, borderRadius: 999 },
-  webBody: { flex: 1, minHeight: 0, backgroundColor: 'rgba(248,250,252,1)' },
+  webBody: { flex: 1, minHeight: 0, backgroundColor: '#FFFFFF' },
   webContent: { paddingHorizontal: 18, paddingTop: 16, paddingBottom: 16, gap: 16 },
 
   webRecipientsWrap: { gap: 14 },

@@ -28,7 +28,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppKeyboardAwareFlatList } from '@/components/AppKeyboardAware';
 import BackSwipe from '@/components/BackSwipe';
-import { IS_RTL, ROW_DIR, rtlText } from '@/lib/rtl';
+import { AppLoader, AppLoaderScreen } from '@/components/AppLoader';
+import { IS_RTL, ROW_DIR } from '@/lib/rtl';
 
 export default function ContactsListScreen() {
   const [contacts, setContacts] = useState<any[]>([]);
@@ -55,7 +56,7 @@ export default function ContactsListScreen() {
   const ui = useMemo(
     () => ({
       primary: '#1d4ed8', // App primary (blue)
-      bg: '#F3F4F6', // Gray background behind cards
+      bg: '#FFFFFF',
       surface: '#FFFFFF',
       surfaceSoft: 'rgba(255,255,255,0.98)',
       text: '#1F2937',
@@ -359,31 +360,26 @@ export default function ContactsListScreen() {
   const canAdd = !!selectedCategory && selectedContacts.size > 0 && !addingGuests;
   const bottomSafe = Math.max(16, insets.bottom + 12);
 
+  if (loading) {
+    return (
+      <BackSwipe>
+        <View style={[styles.container, { backgroundColor: ui.bg }]}>
+          <Stack.Screen options={{ headerShown: false }} />
+          <AppLoaderScreen variant="contacts" />
+        </View>
+      </BackSwipe>
+    );
+  }
+
   return (
     <BackSwipe>
       <View style={[styles.container, { backgroundColor: ui.bg }]}>
         <Stack.Screen options={{ headerShown: false }} />
-        <LinearGradient
-          pointerEvents="none"
-          colors={['#F0F9FF', '#EEF2FF', '#FFF1F2']}
-          locations={[0, 0.55, 1]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={StyleSheet.absoluteFillObject}
-        />
-        <LinearGradient
-          pointerEvents="none"
-          colors={['rgba(255,255,255,0.78)', 'rgba(255,255,255,0)']}
-          start={{ x: 0.05, y: 0 }}
-          end={{ x: 0.72, y: 0.48 }}
-          style={styles.bgHighlight}
-        />
-        <LinearGradient
-          pointerEvents="none"
-          colors={['rgba(29,78,216,0.10)', 'rgba(244,114,182,0.08)', 'rgba(255,255,255,0)']}
-          start={{ x: 1, y: 0.08 }}
-          end={{ x: 0.2, y: 0.82 }}
-          style={styles.bgGlow}
+        <AppLoader
+          visible={addingGuests}
+          variant="adding"
+          count={selectedContacts.size}
+          categoryName={selectedCategory?.name}
         />
 
       <View
@@ -396,6 +392,19 @@ export default function ContactsListScreen() {
           },
         ]}
       >
+        <TouchableOpacity
+          style={[styles.backBtn, styles.swapBtnAbs, !eventId && styles.headerBtnDisabled]}
+          onPress={() => {
+            if (!eventId) return;
+            router.push({ pathname: '/(couple)/select-category', params: { eventId, categoryId: selectedCategory?.id } });
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="החלף קטגוריה"
+          disabled={!eventId}
+        >
+          <MaterialIcons name="swap-horiz" size={22} color={eventId ? ui.primary : '#9CA3AF'} />
+        </TouchableOpacity>
+
         <TouchableOpacity
           style={[styles.backBtn, styles.backBtnAbs]}
           onPress={() => {
@@ -414,7 +423,9 @@ export default function ContactsListScreen() {
         </TouchableOpacity>
 
         <View style={styles.navRow}>
-          <Text style={[styles.navTitle, { color: ui.textStrong }]}>רשימת אנשי קשר</Text>
+          <Text style={[styles.navTitle, { color: ui.textStrong }]} numberOfLines={1}>
+            {selectedCategory?.name || 'בחר קטגוריה'}
+          </Text>
         </View>
       </View>
 
@@ -435,130 +446,7 @@ export default function ContactsListScreen() {
               },
             ]}
           >
-            <View style={styles.headerHero}>
-              <View style={styles.headerHeroTopRow}>
-                {selectedCategory ? (
-                  <View style={styles.headerHeroCategoryPill}>
-                    <MaterialIcons name="label" size={15} color={ui.primary} />
-                    <Text style={styles.headerHeroCategoryText} numberOfLines={1}>
-                      {selectedCategory.name}
-                    </Text>
-                  </View>
-                ) : null}
-                <View style={styles.headerHeroCountPill}>
-                  <Text style={styles.headerHeroCountText}>{filteredContacts.length} אנשי קשר</Text>
-                </View>
-              </View>
-              <View style={styles.headerHeroTextCol}>
-                <Text style={styles.headerHeroTitle}>
-                  {rtlText(
-                    selectedCategory
-                      ? `מוסיפים אורחים לקטגוריה ${selectedCategory.name}`
-                      : 'בחר קטגוריה כדי להתחיל'
-                  )}
-                </Text>
-                <Text style={styles.headerHeroSubtitle}>
-                  {rtlText('סמן כמה אנשי קשר שתרצה, ונוסיף אותם ישירות לרשימת המוזמנים באפליקציה.')}
-                </Text>
-              </View>
-            </View>
-
-            <View style={{ gap: 16, paddingBottom: 18 }}>
-              <View style={styles.topButtonsGrid}>
-                <View style={styles.topButtonCol}>
-                  <Pressable
-                    onPress={() => {
-                      if (!eventId) return;
-                      router.push({ pathname: '/(couple)/select-category', params: { eventId, categoryId: selectedCategory?.id } });
-                    }}
-                    accessibilityRole="button"
-                    accessibilityLabel="בחר קטגוריה"
-                    style={({ pressed }) => [
-                      styles.topButtonBase,
-                      styles.topButtonOuterPrimary,
-                      pressed && styles.topButtonOuterPressed,
-                    ]}
-                  >
-                    {({ pressed }) => (
-                      <View
-                        style={[
-                          styles.topButtonInner,
-                          selectedCategory ? styles.topButtonPrimarySelected : styles.topButtonPrimary,
-                          pressed && styles.topButtonPrimaryPressed,
-                        ]}
-                      >
-                        {selectedCategory ? (
-                          <LinearGradient
-                  colors={['rgba(29,78,216,0.20)', 'rgba(29,78,216,0.12)']}
-                            start={{ x: 0, y: 0 }}
-                            end={{ x: 1, y: 1 }}
-                            style={StyleSheet.absoluteFillObject}
-                          />
-                        ) : null}
-                        <View style={styles.buttonContent}>
-                          <View style={styles.buttonIconWrap}>
-                            <MaterialIcons
-                              name={selectedCategory ? 'check-circle' : 'label'}
-                              size={20}
-                              color={ui.primary}
-                            />
-                          </View>
-                          <Text style={[styles.topButtonText, { color: ui.primary }]} numberOfLines={1}>
-                            {selectedCategory ? selectedCategory.name : 'בחר קטגוריה'}
-                          </Text>
-                        </View>
-                      </View>
-                    )}
-                  </Pressable>
-                </View>
-
-                <View style={styles.topButtonsSpacer} />
-
-                <View style={styles.topButtonCol}>
-                  <Pressable
-                    onPress={() => {
-                      if (!eventId) return;
-                      router.push({ pathname: '/(couple)/select-category', params: { eventId, categoryId: selectedCategory?.id } });
-                    }}
-                    accessibilityRole="button"
-                    accessibilityLabel="החלף קטגוריה"
-                    style={({ pressed }) => [
-                      styles.topButtonBase,
-                      !selectedCategory && styles.topButtonDisabled,
-                      styles.topButtonOuterSecondary,
-                      pressed && styles.topButtonOuterPressed,
-                    ]}
-                    disabled={!selectedCategory}
-                  >
-                    {({ pressed }) => (
-                      <View
-                        style={[
-                          styles.topButtonInner,
-                          styles.topButtonSecondary,
-                          pressed && styles.topButtonSecondaryPressed,
-                        ]}
-                      >
-                        <View style={styles.buttonContent}>
-                          <View style={styles.buttonIconWrap}>
-                            <MaterialIcons
-                              name="swap-horiz"
-                              size={20}
-                              color={selectedCategory ? '#374151' : '#9CA3AF'}
-                            />
-                          </View>
-                          <Text
-                            style={[styles.topButtonText, { color: selectedCategory ? '#374151' : '#9CA3AF' }]}
-                            numberOfLines={1}
-                          >
-                            החלף קטגוריה
-                          </Text>
-                        </View>
-                      </View>
-                    )}
-                  </Pressable>
-                </View>
-              </View>
-
+            <View style={{ paddingBottom: 18 }}>
               <View style={styles.searchWrap}>
                 <MaterialIcons
                   name="search"
@@ -585,32 +473,15 @@ export default function ContactsListScreen() {
                   onBlur={() => setSearchFocused(false)}
                 />
               </View>
-
-              <View style={styles.selectionSummaryRow}>
-                <View style={styles.selectionSummaryCard}>
-                  <Text style={styles.selectionSummaryValue}>{selectedContacts.size}</Text>
-                  <Text style={styles.selectionSummaryLabel}>נבחרו להוספה</Text>
-                </View>
-                <View style={styles.selectionSummaryCard}>
-                  <Text style={styles.selectionSummaryValue}>{filteredContacts.length}</Text>
-                  <Text style={styles.selectionSummaryLabel}>אנשי קשר זמינים</Text>
-                </View>
-              </View>
             </View>
           </View>
         }
         ListEmptyComponent={
-          loading ? (
-            <View style={{ paddingHorizontal: 20, paddingVertical: 18 }}>
-              <Text style={{ color: ui.muted, fontWeight: '700', textAlign: 'center' }}>טוען אנשי קשר...</Text>
-            </View>
-          ) : (
-            <View style={{ paddingHorizontal: 20, paddingVertical: 18 }}>
-              <Text style={{ color: ui.muted, fontWeight: '700', textAlign: 'center' }}>
-                לא נמצאו אנשי קשר עם מספר טלפון
-              </Text>
-            </View>
-          )
+          <View style={{ paddingHorizontal: 20, paddingVertical: 18 }}>
+            <Text style={{ color: ui.muted, fontWeight: '700', textAlign: 'center' }}>
+              לא נמצאו אנשי קשר עם מספר טלפון
+            </Text>
+          </View>
         }
         renderItem={({ item }) => {
           const selected = selectedContacts.has(item.id);
@@ -807,12 +678,8 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '100%',
     alignSelf: 'stretch',
-  },
-  bgHighlight: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  bgGlow: {
-    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#FFFFFF',
+    overflow: 'hidden',
   },
   stickyTitleBar: {
     position: 'relative',
@@ -854,183 +721,21 @@ const styles = StyleSheet.create({
     bottom: 12,
     zIndex: 10,
   },
+  swapBtnAbs: {
+    position: 'absolute',
+    left: 16,
+    bottom: 12,
+    zIndex: 10,
+  },
+  headerBtnDisabled: {
+    opacity: 0.55,
+  },
   navTitle: {
     fontSize: 22,
     fontWeight: '900',
     textAlign: 'center',
     flex: 1,
-    paddingHorizontal: 56,
-  },
-  headerHero: {
-    marginBottom: 14,
-    borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.72)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.58)',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    alignSelf: 'stretch',
-    width: '100%',
-    alignItems: 'stretch',
-    shadowColor: '#0f172a',
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 2,
-  },
-  headerHeroTopRow: {
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-    marginBottom: 10,
-    alignSelf: 'stretch',
-    width: '100%',
-  },
-  headerHeroTextCol: {
-    alignSelf: 'stretch',
-    width: '100%',
-    alignItems: 'stretch',
-  },
-  headerHeroCategoryPill: {
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    gap: 6,
-    maxWidth: '68%',
-    borderRadius: 999,
-    backgroundColor: 'rgba(29,78,216,0.10)',
-    borderWidth: 1,
-    borderColor: 'rgba(29,78,216,0.18)',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  headerHeroCategoryText: {
-    fontSize: 12,
-    fontWeight: '900',
-    color: '#1d4ed8',
-    // forceRTL: logical "left" is the visual right edge (same pattern as TablesList / BrideGroomSeating).
-    textAlign: IS_RTL ? 'left' : 'right',
-    writingDirection: IS_RTL ? 'rtl' : 'ltr',
-    flexShrink: 1,
-  },
-  headerHeroCountPill: {
-    borderRadius: 999,
-    backgroundColor: 'rgba(15,23,42,0.06)',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  headerHeroCountText: {
-    fontSize: 12,
-    fontWeight: '900',
-    color: '#475569',
-    textAlign: 'center',
-  },
-  headerHeroTitle: {
-    fontSize: 15,
-    fontWeight: '900',
-    color: '#0f172a',
-    textAlign: IS_RTL ? 'left' : 'right',
-    writingDirection: IS_RTL ? 'rtl' : 'ltr',
-    alignSelf: 'stretch',
-    width: '100%',
-    maxWidth: '100%',
-  },
-  headerHeroSubtitle: {
-    marginTop: 6,
-    fontSize: 13,
-    lineHeight: 20,
-    fontWeight: '700',
-    color: 'rgba(51,65,85,0.74)',
-    textAlign: IS_RTL ? 'left' : 'right',
-    writingDirection: IS_RTL ? 'rtl' : 'ltr',
-    alignSelf: 'stretch',
-    width: '100%',
-    maxWidth: '100%',
-  },
-  topButtonsGrid: {
-    flexDirection: ROW_DIR,
-    alignItems: 'stretch',
-  },
-  topButtonCol: {
-    flex: 1,
-    minWidth: 0,
-  },
-  topButtonsSpacer: {
-    width: 12,
-  },
-  topButtonBase: {
-    flex: 1,
-    height: 52,
-    borderRadius: 14,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 12,
-    elevation: 3,
-    shadowOpacity: 0.10,
-  },
-  topButtonOuterPrimary: {
-    shadowColor: '#1d4ed8',
-  },
-  topButtonOuterSecondary: {
-    shadowColor: '#000',
-  },
-  topButtonOuterPressed: {
-    transform: [{ scale: 0.985 }],
-    shadowOpacity: 0.16,
-  },
-  topButtonInner: {
-    flex: 1,
-    width: '100%',
-    height: '100%',
-    borderRadius: 14,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderWidth: 1.5,
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-    backgroundColor: '#FFFFFF',
-  },
-  buttonContent: {
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 1,
-  },
-  topButtonText: {
-    fontSize: 15,
-    fontWeight: '700',
-    textAlign: IS_RTL ? 'left' : 'right',
-    writingDirection: IS_RTL ? 'rtl' : 'ltr',
-    flexShrink: 1,
-  },
-  topButtonPrimary: {
-    backgroundColor: 'rgba(29,78,216,0.14)',
-    borderColor: 'rgba(29,78,216,0.32)',
-  },
-  topButtonPrimarySelected: {
-    borderColor: 'rgba(29,78,216,0.42)',
-  },
-  topButtonPrimaryPressed: {
-    backgroundColor: 'rgba(29,78,216,0.22)',
-    borderColor: 'rgba(29,78,216,0.52)',
-  },
-  topButtonSecondary: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E5E7EB',
-  },
-  topButtonDisabled: {
-    opacity: 0.55,
-  },
-  topButtonSecondaryPressed: {
-    backgroundColor: '#F9FAFB',
-    borderColor: '#D1D5DB',
-  },
-  buttonIconWrap: {
-    marginLeft: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
+    paddingHorizontal: 64,
   },
   searchWrap: {
     position: 'relative',
@@ -1051,39 +756,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textAlign: 'right',
     writingDirection: 'rtl',
-  },
-  selectionSummaryRow: {
-    flexDirection: ROW_DIR,
-    gap: 10,
-  },
-  selectionSummaryCard: {
-    flex: 1,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.82)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.58)',
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#0f172a',
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 1,
-  },
-  selectionSummaryValue: {
-    fontSize: 18,
-    fontWeight: '900',
-    color: '#0f172a',
-    textAlign: 'center',
-  },
-  selectionSummaryLabel: {
-    marginTop: 4,
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#64748b',
-    textAlign: 'center',
   },
   itemRow: {
     width: '100%',

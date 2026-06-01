@@ -1,35 +1,26 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
-  Animated,
   FlatList,
   Keyboard,
-  KeyboardAvoidingView,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
-  useWindowDimensions,
 } from 'react-native';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
-import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
 
+import { AppLoader, AppLoaderScreen } from '@/components/AppLoader';
 import { guestService } from '@/lib/services/guestService';
 import { eventService } from '@/lib/services/eventService';
 import { useLayoutStore } from '@/store/layoutStore';
-import { colors } from '@/constants/colors';
-import { IS_RTL, ROW_DIR, ROW_REVERSE_DIR } from '@/lib/rtl';
+import { IS_RTL, ROW_DIR, rtlText } from '@/lib/rtl';
 
 type Side = 'groom' | 'bride';
-type Mode = 'existing' | 'new';
 
 type GuestCategory = {
   id: string;
@@ -37,30 +28,112 @@ type GuestCategory = {
   side: Side;
 };
 
-const PRIMARY = '#1D4ED8';
-const PRIMARY_SOFT = 'rgba(29,78,216,0.09)';
-const PRIMARY_BORDER = 'rgba(29,78,216,0.22)';
-const NAVY = '#0F172A';
-const BG_TEXT = '#1E293B';
-const SUBTEXT = '#64748B';
-const BG_LIGHT = '#F8FAFC';
-const ACCENT_PINK = '#F472B6';
-const ACCENT_BLUE = '#60A5FA';
-const ICON_PINK = '#EC4899';
-const ICON_BLUE = '#3B82F6';
-const CARD_DARK = '#1E293B';
-const TEXT_DARK = '#F1F5F9';
-const SUBTEXT_DARK = '#94A3B8';
-const BORDER_LIGHT = 'rgba(0,0,0,0.06)';
-const UI_REV = 'select-category-ui-rev-2026-02-28-3';
+type CategoryStats = {
+  invites: number;
+  people: number;
+  names: string[];
+};
+
+const ACCENT = '#1E3A6E';
+const ACCENT_BG = 'rgba(30,58,110,0.10)';
+const ACCENT_LINE = 'rgba(30,58,110,0.22)';
+const BRIDE_PINK = '#F47C8C';
+const BRIDE_PINK_DEEP = '#C94F61';
+const BRIDE_PINK_LIGHT = '#FEECEF';
+const BRIDE_PINK_LINE = 'rgba(244, 124, 140, 0.28)';
+const L_BG = '#FBFAF7';
+const L_SURFACE = '#FFFFFF';
+const L_TEXT = '#161D38';
+const L_DIM = '#6C7187';
+const L_FAINT = '#A6A8B4';
+const L_LINE = 'rgba(22,29,56,0.09)';
+
+function getInitials(name: string) {
+  const parts = String(name || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!parts.length) return 'א';
+  return parts
+    .slice(0, 2)
+    .map((w) => w[0])
+    .join('');
+}
+
+type SideTheme = {
+  label: string;
+  badgeBg: string;
+  badgeText: string;
+  accent: string;
+  accentBg: string;
+  accentLine: string;
+};
+
+function sideMeta(side: Side | string, enableSides: boolean): SideTheme {
+  if (!enableSides) {
+    return {
+      label: 'כללי',
+      badgeBg: 'rgba(22,29,56,0.06)',
+      badgeText: L_DIM,
+      accent: ACCENT,
+      accentBg: ACCENT_BG,
+      accentLine: ACCENT_LINE,
+    };
+  }
+  if (side === 'bride') {
+    return {
+      label: 'צד כלה',
+      badgeBg: BRIDE_PINK_LIGHT,
+      badgeText: BRIDE_PINK_DEEP,
+      accent: BRIDE_PINK,
+      accentBg: BRIDE_PINK_LIGHT,
+      accentLine: BRIDE_PINK_LINE,
+    };
+  }
+  if (side === 'groom') {
+    return {
+      label: 'צד חתן',
+      badgeBg: ACCENT_BG,
+      badgeText: ACCENT,
+      accent: ACCENT,
+      accentBg: ACCENT_BG,
+      accentLine: ACCENT_LINE,
+    };
+  }
+  return {
+    label: 'כללי',
+    badgeBg: 'rgba(22,29,56,0.06)',
+    badgeText: L_DIM,
+    accent: ACCENT,
+    accentBg: ACCENT_BG,
+    accentLine: ACCENT_LINE,
+  };
+}
+
+function buildCategoryStats(guests: any[]): Record<string, CategoryStats> {
+  const stats: Record<string, CategoryStats> = {};
+  for (const g of guests || []) {
+    const cid = String((g as any)?.category_id ?? '').trim();
+    if (!cid) continue;
+    if (!stats[cid]) stats[cid] = { invites: 0, people: 0, names: [] };
+    const row = stats[cid];
+    row.invites += 1;
+    const status = String((g as any)?.status ?? '');
+    if (status !== 'לא מגיע') {
+      row.people += Number((g as any)?.numberOfPeople ?? 1) || 1;
+    }
+    if (row.names.length < 3) {
+      const name = String((g as any)?.name ?? '').trim();
+      if (name) row.names.push(name);
+    }
+  }
+  return stats;
+}
 
 export default function SelectCategoryScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const setTabBarVisible = useLayoutStore((s) => s.setTabBarVisible);
-  // Force light theme for this screen (always white/bright background).
-  const isDark = false;
-  const { width: windowWidth } = useWindowDimensions();
   const params = useLocalSearchParams<{ eventId?: string; categoryId?: string }>();
 
   const eventId = useMemo(() => String(params.eventId || '').trim(), [params.eventId]);
@@ -69,15 +142,12 @@ export default function SelectCategoryScreen() {
   const [loading, setLoading] = useState(true);
   const [enableSides, setEnableSides] = useState(true);
   const [categories, setCategories] = useState<GuestCategory[]>([]);
-  const [guestCountByCategoryId, setGuestCountByCategoryId] = useState<Record<string, number>>({});
-  const [mode, setMode] = useState<Mode>('existing');
+  const [categoryStats, setCategoryStats] = useState<Record<string, CategoryStats>>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState('');
   const [newSide, setNewSide] = useState<Side>('groom');
   const [saving, setSaving] = useState(false);
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
-  const [segWidth, setSegWidth] = useState(0);
-  const scrollY = useMemo(() => new Animated.Value(0), []);
 
   useFocusEffect(
     useCallback(() => {
@@ -92,21 +162,11 @@ export default function SelectCategoryScreen() {
   }, [setTabBarVisible]);
 
   useEffect(() => {
-    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-
-    const showSub = Keyboard.addListener(showEvent, () => setKeyboardVisible(true));
-    const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardVisible(false));
-
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, []);
-
-  useEffect(() => {
     const load = async () => {
-      if (!eventId) { setLoading(false); return; }
+      if (!eventId) {
+        setLoading(false);
+        return;
+      }
       setLoading(true);
       try {
         const [catsRaw, guestsRaw, evt] = await Promise.all([
@@ -123,22 +183,15 @@ export default function SelectCategoryScreen() {
           ) || null;
         const shouldEnable = !!groom || !!bride ? true : inferredType && inferredType !== 'חתונה' ? false : true;
         setEnableSides(shouldEnable);
+
         const normalized: GuestCategory[] = (catsRaw || []).map((c: any) => ({
           id: String(c.id),
           name: String(c.name || ''),
           side: (String(c.side || 'groom') as Side) || 'groom',
         }));
         setCategories(normalized);
+        setCategoryStats(buildCategoryStats(guestsRaw || []));
         setSelectedId(initialCategoryId || (normalized[0]?.id ?? null));
-
-        const counts: Record<string, number> = {};
-        for (const g of (guestsRaw || []) as any[]) {
-          const cid = String((g as any)?.category_id ?? '').trim();
-          if (!cid) continue;
-          const n = Number((g as any)?.numberOfPeople ?? 1) || 1;
-          counts[cid] = (counts[cid] || 0) + Math.max(1, n);
-        }
-        setGuestCountByCategoryId(counts);
       } catch (e) {
         console.error('SelectCategory load error:', e);
         Alert.alert('שגיאה', 'לא ניתן לטעון קטגוריות');
@@ -153,19 +206,9 @@ export default function SelectCategoryScreen() {
     if (!enableSides) setNewSide('groom');
   }, [enableSides]);
 
-  const selectedCategory = useMemo(() => {
-    if (!selectedId) return null;
-    return categories.find((c) => c.id === selectedId) ?? null;
-  }, [categories, selectedId]);
-
   const bottomPadding = Math.max(20, insets.bottom + 16);
 
-  const gridGap = 14;
-  const colPad = 16;
-  const gridSidePad = Math.max(0, colPad - gridGap / 2);
-
   const goBack = () => {
-    // Always return to the guests screen (not navigation history).
     router.replace({ pathname: '/(couple)/guests', params: eventId ? { eventId } : undefined });
   };
 
@@ -173,15 +216,9 @@ export default function SelectCategoryScreen() {
     router.replace({ pathname: '/contacts-list', params: { eventId, categoryId: catId } });
   };
 
-  const handleNext = async () => {
-    if (!eventId || saving) return;
-    if (mode === 'existing') {
-      if (!selectedCategory) return;
-      goToContacts(selectedCategory.id);
-      return;
-    }
+  const createCategory = async () => {
     const name = newName.trim();
-    if (!name) return;
+    if (!eventId || !name || saving) return;
     setSaving(true);
     try {
       const created = (await guestService.addGuestCategory(eventId, name, newSide)) as any;
@@ -191,6 +228,8 @@ export default function SelectCategoryScreen() {
         side: (String(created?.side || newSide) as Side) || newSide,
       };
       setCategories((prev) => [...prev, cat]);
+      setAdding(false);
+      setNewName('');
       goToContacts(cat.id);
     } catch (e: any) {
       Alert.alert('שגיאה', e?.message || e?.details || 'לא ניתן להוסיף קטגוריה');
@@ -199,387 +238,310 @@ export default function SelectCategoryScreen() {
     }
   };
 
-  const nextLabel = mode === 'new' ? (saving ? 'שומר...' : 'הבא') : 'הבא';
-
-  const isNextDisabled =
-    saving ||
-    (mode === 'existing' && !selectedCategory) ||
-    (mode === 'new' && !newName.trim());
-
-  const categoryTone = (c: GuestCategory) => {
-    if (c.side === 'bride')
-      return {
-        accent: ACCENT_PINK,
-        icon: ICON_PINK,
-        soft: '#FDF2F8',
-        blob: '#FCE7F3',
-      };
-    if (c.side === 'groom')
-      return {
-        accent: ACCENT_BLUE,
-        icon: ICON_BLUE,
-        soft: '#EFF6FF',
-        blob: '#DBEAFE',
-      };
-    // deterministic fallback from name
-    const palette = [
-      { accent: '#A78BFA', icon: '#8B5CF6', soft: '#F5F3FF', blob: '#EDE9FE' }, // purple
-      { accent: '#2DD4BF', icon: '#14B8A6', soft: '#F0FDFA', blob: '#CCFBF1' }, // teal
-      { accent: '#FB7185', icon: '#F43F5E', soft: '#FFF1F2', blob: '#FFE4E6' }, // rose
-      { accent: '#818CF8', icon: '#6366F1', soft: '#EEF2FF', blob: '#E0E7FF' }, // indigo
-    ];
-    const name = String(c?.name || '');
-    let hash = 0;
-    for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
-    return palette[hash % palette.length];
+  const handleContinue = () => {
+    if (!eventId || saving || !selectedId) return;
+    goToContacts(selectedId);
   };
 
-  const segIndicatorWidth = segWidth > 0 ? (segWidth - 12) / 2 : 0;
-  const segIndicatorLeft = segWidth > 0 ? (mode === 'existing' ? segWidth / 2 : 6) : 0;
-  const headerBgOpacity = scrollY.interpolate({
-    inputRange: [0, 36],
-    outputRange: [0, 1],
-    extrapolate: 'clamp',
-  });
+  const renderCategoryCard = ({ item }: { item: GuestCategory }) => {
+    const isSelected = selectedId === item.id;
+    const meta = sideMeta(item.side, enableSides);
+    const st = categoryStats[item.id] || { invites: 0, people: 0, names: [] };
 
-  const topSection = (
-    <>
-      <View style={styles.heroCard}>
-        <Text style={styles.heroTitle}>
-          {mode === 'new' ? 'יוצרים קטגוריה חדשה' : 'בוחרים קטגוריה וממשיכים לאנשי קשר'}
-        </Text>
-        <Text style={styles.heroSubtitle}>
-          {mode === 'new'
-            ? 'תן שם ברור לקטגוריה ובחר צד, ואז נעבור ישירות לייבוא אנשי הקשר.'
-            : 'בחר קטגוריה קיימת מהרשימה כדי לשייך אליה במהירות את אנשי הקשר החדשים.'}
-        </Text>
+    const isBrideSide = enableSides && item.side === 'bride';
+
+    return (
+      <Pressable
+        onPress={() => setSelectedId(item.id)}
+        style={({ pressed }) => [
+          styles.categoryCard,
+          isSelected && { borderColor: meta.accent },
+          isSelected && isBrideSide && styles.categoryCardSelectedBride,
+          isSelected && !isBrideSide && styles.categoryCardSelectedGroom,
+          pressed && styles.categoryCardPressed,
+        ]}
+      >
+        <View
+          style={[
+            styles.categoryAccentBar,
+            { backgroundColor: meta.accent },
+            !isSelected && styles.categoryAccentBarMuted,
+          ]}
+        />
+
+        <View
+          style={[
+            styles.countMedallion,
+            { backgroundColor: meta.accent, borderColor: meta.accent },
+          ]}
+        >
+          <Text style={styles.countMedallionValue}>{st.invites}</Text>
+          <Text style={styles.countMedallionLabel}>הזמנות</Text>
+        </View>
+
+        <View style={styles.categoryBody}>
+          <View style={styles.categoryTitleRow}>
+            <Text style={styles.categoryName} numberOfLines={1}>
+              {item.name}
+            </Text>
+            <View style={[styles.sideBadge, { backgroundColor: meta.badgeBg }]}>
+              <Text style={[styles.sideBadgeText, { color: meta.badgeText }]}>{meta.label}</Text>
+            </View>
+          </View>
+
+          {st.invites > 0 ? (
+            st.names.length > 0 ? (
+              <View style={styles.categoryMetaRow}>
+                <View style={styles.avatarStack}>
+                  {st.names.map((name, i) => (
+                    <View
+                      key={`${item.id}-${name}-${i}`}
+                      style={[
+                        styles.avatarChip,
+                        i > 0 && styles.avatarChipOverlap,
+                        { borderColor: meta.accentLine },
+                      ]}
+                    >
+                      <Text style={[styles.avatarChipText, { color: meta.accent }]}>
+                        {getInitials(name)}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            ) : null
+          ) : (
+            <Text style={styles.emptyGuestsText}>אין מוזמנים עדיין</Text>
+          )}
+        </View>
+
+        <View
+          style={[
+            styles.selectCircle,
+            isBrideSide && !isSelected && styles.selectCircleBrideIdle,
+            isSelected && { backgroundColor: meta.accent, borderColor: meta.accent },
+          ]}
+        >
+          {isSelected ? <Ionicons name="checkmark" size={16} color="#fff" /> : null}
+        </View>
+      </Pressable>
+    );
+  };
+
+  const listHeader = (
+    <View style={styles.pageIntro}>
+      <Text style={styles.pageTitle}>{rtlText('לאיזו קטגוריה?')}</Text>
+      <Text style={styles.pageSubtitle}>
+        {rtlText('בחרו שיוך למוזמנים שתייבאו, או צרו קטגוריה חדשה')}
+      </Text>
+    </View>
+  );
+
+  const createCanSubmit = newName.trim().length >= 2 && !saving;
+  const createAccent = enableSides && newSide === 'bride' ? BRIDE_PINK : ACCENT;
+  const createAccentBg = enableSides && newSide === 'bride' ? BRIDE_PINK_LIGHT : ACCENT_BG;
+
+  if (loading) {
+    return (
+      <View style={styles.root}>
+        <Stack.Screen options={{ headerShown: false }} />
+        <AppLoaderScreen variant="categories" />
       </View>
+    );
+  }
 
-      <View style={styles.segmentContainer}>
-        <View style={styles.segmentWrap} onLayout={(e) => setSegWidth(e.nativeEvent.layout.width)}>
-          <View
-            style={[
-              styles.segmentIndicator,
-              segWidth > 0 && { width: segIndicatorWidth, left: segIndicatorLeft, opacity: 1 },
-              segWidth <= 0 && { opacity: 0 },
+  const listFooter = (
+    <View style={styles.footerSection}>
+      {adding ? (
+        <View style={styles.createCard}>
+          <View style={styles.createCardHeader}>
+            <View style={[styles.createCardHeaderIcon, { backgroundColor: createAccentBg }]}>
+              <Ionicons name="folder-open-outline" size={22} color={createAccent} />
+            </View>
+            <View style={styles.createCardHeaderText}>
+              <Text style={styles.createCardTitle}>{rtlText('קטגוריה חדשה')}</Text>
+              <Text style={styles.createCardSubtitle}>{rtlText('תנו שם ושייכו לצד המתאים')}</Text>
+            </View>
+            <Pressable
+              onPress={() => {
+                setAdding(false);
+                setNewName('');
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="סגירה"
+              style={({ pressed }) => [styles.createCloseBtn, pressed && styles.createCloseBtnPressed]}
+            >
+              <Ionicons name="close" size={18} color={L_DIM} />
+            </Pressable>
+          </View>
+
+          <Text style={styles.createFieldLabel}>{rtlText('שם הקטגוריה')}</Text>
+          <View style={styles.createInputWrap}>
+            <TextInput
+              value={newName}
+              onChangeText={setNewName}
+              placeholder="למשל: משפחת כלה"
+              placeholderTextColor={L_FAINT}
+              style={styles.createInput}
+              textAlign="right"
+              autoFocus
+              returnKeyType="done"
+            />
+            <View style={styles.createInputIcon}>
+              <Ionicons name="create-outline" size={18} color={L_FAINT} />
+            </View>
+          </View>
+
+          {enableSides ? (
+            <>
+              <Text style={styles.createFieldLabel}>{rtlText('שיוך לצד')}</Text>
+              <View style={styles.sidePickerRow}>
+                {(
+                  [
+                    ['groom', 'צד חתן', 'male' as const, ACCENT, ACCENT_BG],
+                    ['bride', 'צד כלה', 'female' as const, BRIDE_PINK, BRIDE_PINK_LIGHT],
+                  ] as const
+                ).map(([value, label, icon, accent, accentBg]) => {
+                  const on = newSide === value;
+                  return (
+                    <Pressable
+                      key={value}
+                      onPress={() => setNewSide(value)}
+                      style={[
+                        styles.sidePickerBtn,
+                        on && { backgroundColor: accentBg, borderColor: accent },
+                      ]}
+                    >
+                      <View style={[styles.sidePickerIconWrap, on && { backgroundColor: accent }]}>
+                        <Ionicons name={icon} size={16} color={on ? '#fff' : L_DIM} />
+                      </View>
+                      <Text style={[styles.sidePickerBtnText, on && { color: accent, fontWeight: '700' }]}>
+                        {label}
+                      </Text>
+                      {on ? (
+                        <View style={[styles.sidePickerCheck, { backgroundColor: accent }]}>
+                          <Ionicons name="checkmark" size={12} color="#fff" />
+                        </View>
+                      ) : null}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </>
+          ) : null}
+
+          <Pressable
+            onPress={() => void createCategory()}
+            disabled={!createCanSubmit}
+            style={({ pressed }) => [
+              styles.createSubmitBtn,
+              { backgroundColor: createCanSubmit ? createAccent : '#c9c2b2' },
+              pressed && createCanSubmit && styles.createSubmitBtnPressed,
             ]}
-          />
-          <Pressable style={styles.segmentBtn} onPress={() => setMode('existing')}>
-            <Text
-              style={[
-                styles.segmentText,
-                isDark && styles.segmentTextDark,
-                mode === 'existing' && styles.segmentTextActive,
-                mode === 'existing' && isDark && styles.segmentTextActiveDark,
-              ]}
-            >
-              קטגוריה קיימת
-            </Text>
+          >
+            <Ionicons name="add-circle-outline" size={20} color="#fff" />
+            <Text style={styles.createSubmitText}>{saving ? 'יוצר...' : 'יצירה והמשך'}</Text>
           </Pressable>
-          <Pressable style={styles.segmentBtn} onPress={() => setMode('new')}>
-            <Text
-              style={[
-                styles.segmentText,
-                isDark && styles.segmentTextDark,
-                mode === 'new' && styles.segmentTextActive,
-                mode === 'new' && isDark && styles.segmentTextActiveDark,
-              ]}
-            >
-              קטגוריה חדשה
-            </Text>
+
+          <Pressable
+            onPress={() => {
+              setAdding(false);
+              setNewName('');
+            }}
+            style={({ pressed }) => [styles.createCancelLink, pressed && { opacity: 0.7 }]}
+          >
+            <Text style={styles.createCancelText}>ביטול</Text>
           </Pressable>
         </View>
-      </View>
-
-      <View style={styles.divider} />
-    </>
+      ) : (
+        <Pressable
+          onPress={() => setAdding(true)}
+          style={({ pressed }) => [styles.addCategoryBtn, pressed && styles.addCategoryBtnPressed]}
+        >
+          <View style={styles.addCategoryIconWrap}>
+            <Ionicons name="add" size={22} color={ACCENT} />
+          </View>
+          <View style={styles.addCategoryTextWrap}>
+            <Text style={styles.addCategoryText}>קטגוריה חדשה</Text>
+            <Text style={styles.addCategoryHint}>הוסיפו קבוצה משלכם</Text>
+          </View>
+          <Ionicons name="chevron-back" size={18} color={L_FAINT} />
+        </Pressable>
+      )}
+    </View>
   );
 
   return (
-    <View style={[styles.root, isDark && styles.rootDark]}>
+    <View style={styles.root}>
       <Stack.Screen options={{ headerShown: false }} />
-
-      {/* Background gradient (like the HTML design) */}
-      <LinearGradient
-        // Keep this screen in premium LIGHT style (like the provided HTML mock).
-        colors={['#F0F9FF', '#EEF2FF', '#FFF1F2']}
-        locations={[0, 0.5, 1]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={StyleSheet.absoluteFillObject}
-      />
-      <LinearGradient
-        colors={['rgba(255,255,255,0.78)', 'rgba(255,255,255,0)']}
-        start={{ x: 0.08, y: 0 }}
-        end={{ x: 0.78, y: 0.48 }}
-        style={styles.bgHighlight}
-      />
-      <LinearGradient
-        colors={['rgba(244,114,182,0.12)', 'rgba(96,165,250,0.10)', 'rgba(255,255,255,0)']}
-        start={{ x: 1, y: 0.1 }}
-        end={{ x: 0.2, y: 0.8 }}
-        style={styles.bgGlow}
+      <AppLoader
+        visible={saving}
+        variant="adding"
+        title="יוצר קטגוריה"
+        subtitle="שומר את הקטגוריה החדשה"
       />
 
-      {/* ─── header ───────────────────────────────────── */}
-      <View style={[styles.header, { paddingTop: Math.max(10, insets.top + 6) }]}>
-        <Animated.View
-          pointerEvents="none"
-          style={[
-            styles.stickyHeaderBg,
-            {
-              opacity: headerBgOpacity,
-            },
-          ]}
-        />
-        <View style={styles.headerSide}>
-          <Pressable
-            onPress={handleNext}
-            disabled={isNextDisabled}
-            accessibilityRole="button"
-            accessibilityLabel="הבא"
-            style={({ pressed }) => ({ opacity: !isNextDisabled && pressed ? 0.78 : 1 })}
-          >
-            <View style={[styles.headerNextBtnShell, isNextDisabled && styles.headerNextBtnShellDisabled]}>
-              <View style={styles.headerNextBtn}>
-                <Ionicons name="chevron-forward" size={17} color={isNextDisabled ? '#94A3B8' : NAVY} />
-                <Text style={[styles.headerNextBtnText, isNextDisabled && styles.headerNextBtnTextDisabled]}>
-                  {saving ? 'שומר...' : 'הבא'}
-                </Text>
-              </View>
-            </View>
-          </Pressable>
+      <View style={[styles.header, { paddingTop: Math.max(12, insets.top + 8) }]}>
+        <Pressable
+          onPress={goBack}
+          accessibilityRole="button"
+          accessibilityLabel="חזרה"
+          style={({ pressed }) => [styles.headerIconBtn, pressed && styles.headerIconBtnPressed]}
+        >
+          <Ionicons name="chevron-forward" size={20} color={L_TEXT} />
+        </Pressable>
+
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerTitle}>{rtlText('ייבוא מאנשי קשר')}</Text>
+          <Text style={styles.headerStep}>{rtlText('שלב 1 מתוך 2')}</Text>
         </View>
 
-        <View pointerEvents="none" style={styles.headerCenter}>
-          <Text style={[styles.headerTitle, isDark && styles.headerTitleDark]}>בחירת קטגוריה</Text>
-        </View>
-
-        <View style={[styles.headerSide, styles.headerSideEnd]}>
-          {/* כפתור חזרה - View עוטף עם העיצוב (NativeWind דורס style על Pressable) */}
-          <Pressable
-            onPress={goBack}
-            accessibilityRole="button"
-            accessibilityLabel="חזרה"
-            style={({ pressed }) => ({ opacity: pressed ? 0.70 : 1 })}
-          >
-            <View style={styles.headerBackBtn}>
-              <Ionicons name="chevron-back" size={16} color={NAVY} />
-            </View>
-          </Pressable>
-        </View>
+        <Pressable
+          onPress={goBack}
+          accessibilityRole="button"
+          accessibilityLabel="סגירה"
+          style={({ pressed }) => [styles.headerIconBtn, pressed && styles.headerIconBtnPressed]}
+        >
+          <Ionicons name="close" size={18} color={L_DIM} />
+        </Pressable>
       </View>
 
-      {/* ─── content ──────────────────────────────────── */}
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.contentWrap}
-      >
-        {loading ? (
-          <View style={styles.center}>
-            <ActivityIndicator size="large" color={NAVY} />
-            <Text style={[styles.loadingText, isDark && styles.loadingTextDark]}>טוען קטגוריות...</Text>
+      <View style={styles.progressRow}>
+        <View style={[styles.progressSegment, styles.progressSegmentActive]} />
+        <View style={styles.progressSegment} />
+      </View>
+
+      <FlatList
+        data={categories}
+        keyExtractor={(item) => item.id}
+        renderItem={renderCategoryCard}
+        ListHeaderComponent={listHeader}
+        ListFooterComponent={listFooter}
+        contentContainerStyle={[styles.listContent, { paddingBottom: bottomPadding + 100 }]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        onScrollBeginDrag={() => Keyboard.dismiss()}
+        ListEmptyComponent={
+          <View style={styles.emptyWrap}>
+            <Text style={styles.emptyTitle}>אין קטגוריות עדיין</Text>
+            <Text style={styles.emptySubtitle}>צרו קטגוריה חדשה כדי להתחיל בייבוא</Text>
           </View>
-        ) : mode === 'new' ? (
-          <AppKeyboardAwareScrollView
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            contentContainerStyle={[styles.createScroll, { paddingBottom: bottomPadding + 24 }]}
-            bounces={false}
-            alwaysBounceVertical={false}
-            overScrollMode="never"
-            enableResetScrollToCoords={false}
-            scrollEnabled={keyboardVisible}
-            onScroll={(event: any) => {
-              scrollY.setValue(event?.nativeEvent?.contentOffset?.y ?? 0);
-            }}
-            scrollEventThrottle={16}
-          >
-            {topSection}
-            <View style={styles.createCard}>
-              {/* name field */}
-              <Text style={[styles.fieldLabel, isDark && styles.fieldLabelDark]}>שם הקטגוריה</Text>
-              <View style={[styles.inputWrap, isDark && styles.inputWrapDark]}>
-                <TextInput
-                  value={newName}
-                  onChangeText={setNewName}
-                  placeholder="למשל: חברים חתן"
-                  placeholderTextColor={isDark ? 'rgba(241,245,249,0.35)' : 'rgba(15,23,42,0.35)'}
-                  style={[styles.input, isDark && styles.inputDark]}
-                  textAlign="right"
-                  returnKeyType="done"
-                  blurOnSubmit={false}
-                  onSubmitEditing={() => {}}
-                  autoFocus
-                />
-                <View style={styles.inputIcon}>
-                  <Ionicons name="create-outline" size={18} color="#9CA3AF" />
-                </View>
-              </View>
+        }
+      />
 
-              {enableSides ? (
-                <View style={styles.sideSelector}>
-                  <Text style={[styles.sideSelectorLabel, isDark && styles.fieldLabelDark]}>שייך לצד:</Text>
-                  <View style={styles.sideButtons}>
-                    <TouchableOpacity
-                      onPress={() => setNewSide('groom')}
-                      activeOpacity={0.92}
-                      style={[
-                        styles.sideButton,
-                        newSide === 'groom' && styles.sideButtonActive,
-                      ]}
-                    >
-                      <Ionicons
-                        name="male"
-                        size={20}
-                        color={newSide === 'groom' ? colors.white : colors.primary}
-                      />
-                      <Text style={[styles.sideButtonText, newSide === 'groom' && styles.sideButtonTextActive]}>
-                        חתן
-                      </Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      onPress={() => setNewSide('bride')}
-                      activeOpacity={0.92}
-                      style={[
-                        styles.sideButton,
-                        newSide === 'bride' && styles.sideButtonActive,
-                      ]}
-                    >
-                      <Ionicons
-                        name="female"
-                        size={20}
-                        color={newSide === 'bride' ? colors.white : colors.primary}
-                      />
-                      <Text style={[styles.sideButtonText, newSide === 'bride' && styles.sideButtonTextActive]}>
-                        כלה
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ) : null}
-
-              <Pressable
-                onPress={handleNext}
-                disabled={isNextDisabled}
-                accessibilityRole="button"
-                accessibilityLabel="הוסף קטגוריה"
-                style={({ pressed }) => [
-                  styles.createSubmitOuter,
-                  isNextDisabled && styles.createSubmitOuterDisabled,
-                  pressed && !isNextDisabled && styles.createSubmitOuterPressed,
-                ]}
-              >
-                <LinearGradient
-                  colors={isNextDisabled ? ['#E2E8F0', '#CBD5E1'] : ['#0B1E4F', '#123A8C']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.createSubmitBg}
-                />
-                <View style={[styles.createSubmitInner, isNextDisabled && styles.createSubmitInnerDisabled]}>
-                  <Ionicons
-                    name={isNextDisabled ? 'add-circle' : 'add-circle-outline'}
-                    size={20}
-                    color={isNextDisabled ? '#64748B' : '#fff'}
-                  />
-                  <Text style={[styles.createSubmitText, isNextDisabled && styles.createSubmitTextDisabled]}>
-                    {saving ? 'מוסיף...' : 'הוסף קטגוריה'}
-                  </Text>
-                </View>
-              </Pressable>
-            </View>
-          </AppKeyboardAwareScrollView>
-        ) : (
-          <FlatList
-            data={categories}
-            keyExtractor={(item) => item.id}
-            numColumns={2}
-            columnWrapperStyle={styles.gridRow}
-            style={styles.gridList}
-            contentInsetAdjustmentBehavior="never"
-            contentContainerStyle={[
-              styles.gridContent,
-              { paddingBottom: bottomPadding + 24, paddingHorizontal: gridSidePad },
-            ]}
-            showsVerticalScrollIndicator={false}
-            ListHeaderComponent={topSection}
-            onScroll={(event) => {
-              scrollY.setValue(event.nativeEvent.contentOffset.y);
-            }}
-            scrollEventThrottle={16}
-            renderItem={({ item }) => {
-              const isSelected = selectedId === item.id;
-              const iconName: keyof typeof Ionicons.glyphMap =
-                !enableSides
-                  ? 'people'
-                  : item.side === 'groom'
-                    ? 'male'
-                    : item.side === 'bride'
-                      ? 'female'
-                      : 'ellipsis-horizontal';
-              const tone = categoryTone(item);
-              const count = guestCountByCategoryId[item.id] || 0;
-              return (
-                <View style={[styles.gridItem, { margin: gridGap / 2 }]}>
-                  <Pressable
-                    onPress={() => setSelectedId(item.id)}
-                    style={({ pressed }) => [
-                      styles.cardOuter,
-                      isSelected ? styles.cardOuterSelected : styles.cardOuterUnselected,
-                      pressed && { transform: [{ scale: 0.98 }] },
-                    ]}
-                  >
-                    <View
-                      style={[
-                        styles.cardInner,
-                        isSelected ? { borderColor: tone.accent } : { borderColor: 'transparent' },
-                      ]}
-                    >
-                      {/* corner blob */}
-                      <View style={[styles.cornerBlob, { backgroundColor: tone.blob }]} />
-
-                      {/* Icon circle */}
-                      <View style={[styles.cardIconCircle, { backgroundColor: tone.soft }]}>
-                        <Ionicons name={iconName} size={30} color={tone.icon} />
-                      </View>
-
-                      <View style={styles.cardTextWrap}>
-                        <Text
-                          style={[styles.cardText, isDark && styles.cardTextDark]}
-                          numberOfLines={2}
-                          ellipsizeMode="tail"
-                        >
-                          {item.name}
-                        </Text>
-
-                        <Text style={[styles.cardSubText, isDark && styles.cardSubTextDark]}>
-                          {count} אורחים
-                        </Text>
-                      </View>
-                    </View>
-                  </Pressable>
-                </View>
-              );
-            }}
-            ListEmptyComponent={
-              <View style={styles.emptyWrap}>
-                <View style={[styles.emptyIconCircle, isDark && styles.emptyIconCircleDark]}>
-                  <Ionicons
-                    name="folder-open-outline"
-                    size={36}
-                    color={isDark ? 'rgba(241,245,249,0.35)' : 'rgba(15,23,42,0.28)'}
-                  />
-                </View>
-                <Text style={[styles.emptyTitle, isDark && styles.emptyTitleDark]}>אין קטגוריות עדיין</Text>
-                <Text style={[styles.emptySubtitle, isDark && styles.emptySubtitleDark]}>
-                  עבור לכרטיסייה "קטגוריה חדשה" כדי ליצור אחת
-                </Text>
-              </View>
-            }
-          />
-        )}
-      </KeyboardAvoidingView>
+      <View style={[styles.bottomBar, { paddingBottom: bottomPadding }]}>
+        <Pressable
+          onPress={handleContinue}
+          disabled={!selectedId || saving}
+          style={({ pressed }) => [
+            styles.continueBtn,
+            (!selectedId || saving) && styles.continueBtnDisabled,
+            pressed && selectedId && !saving && styles.continueBtnPressed,
+          ]}
+        >
+          <Text style={styles.continueBtnText}>המשך לבחירת אנשי קשר</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -587,520 +549,506 @@ export default function SelectCategoryScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#F0F9FF',
+    overflow: 'hidden',
+    backgroundColor: L_BG,
   },
-  bgHighlight: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  bgGlow: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  rootDark: {
-    backgroundColor: '#0B1220',
-  },
-
-  /* header */
   header: {
-    flexDirection: 'row',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingBottom: 4,
-    backgroundColor: 'transparent',
-    minHeight: 46,
-    position: 'relative',
-    zIndex: 20,
-  },
-  stickyHeaderBg: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255,255,255,0.96)',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingBottom: 12,
+    backgroundColor: L_SURFACE,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(11,28,65,0.06)',
+    borderBottomColor: L_LINE,
   },
-  headerSide: {
-    flex: 1,
-    zIndex: 2,
-  },
-  headerSideEnd: {
-    alignItems: 'flex-end',
-  },
-  headerCenter: {
-    flex: 1.35,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    textAlign: 'center',
-    fontSize: 20,
-    fontWeight: '900',
-    color: BG_TEXT,
-    letterSpacing: -0.2,
-  },
-  headerTitleDark: {
-    color: TEXT_DARK,
-  },
-  /* כפתורי header - העיצוב על View (NativeWind דורס style על Pressable) */
-  headerBackBtn: {
-    alignItems: 'center',
-    justifyContent: 'center',
+  headerIconBtn: {
     width: 40,
     height: 40,
-    zIndex: 2,
     borderRadius: 20,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1.5,
-    borderColor: 'rgba(29,78,216,0.40)',
-    ...(Platform.OS === 'web'
-      ? ({ boxShadow: '0 2px 10px rgba(0,0,0,0.10)' } as any)
-      : {
-          shadowColor: '#000',
-          shadowOpacity: 0.10,
-          shadowRadius: 8,
-          shadowOffset: { width: 0, height: 3 },
-          elevation: 3,
-        }),
-  },
-  headerNextBtnShell: {
-    zIndex: 2,
-    borderRadius: 999,
-    overflow: 'hidden',
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1.5,
-    borderColor: 'rgba(29,78,216,0.40)',
-    ...(Platform.OS === 'web'
-      ? ({ boxShadow: '0 2px 10px rgba(0,0,0,0.10)' } as any)
-      : {
-          shadowColor: '#000',
-          shadowOpacity: 0.10,
-          shadowRadius: 8,
-          shadowOffset: { width: 0, height: 3 },
-          elevation: 3,
-        }),
-  },
-  headerNextBtnShellDisabled: {
-    borderColor: 'rgba(148,163,184,0.40)',
-    ...(Platform.OS === 'web'
-      ? ({ boxShadow: 'none' } as any)
-      : { shadowOpacity: 0.06, elevation: 2 }),
-  },
-  headerNextBtn: {
-    flexDirection: ROW_DIR,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: L_LINE,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
-    minWidth: 72,
-    paddingHorizontal: 11,
-    paddingVertical: 9,
   },
-  headerNextBtnText: {
-    fontSize: 15,
-    fontWeight: '900',
-    color: NAVY,
-    letterSpacing: 0.1,
+  headerIconBtnPressed: {
+    opacity: 0.75,
   },
-  headerNextBtnTextDisabled: {
-    color: '#94A3B8',
+  headerCenter: {
+    flex: 1,
+    alignItems: 'center',
   },
-
-  /* segment */
-  segmentContainer: {
-    paddingHorizontal: 20,
-    paddingBottom: 12,
-    paddingTop: 8,
-  },
-  segmentWrap: {
-    height: 52,
-    borderRadius: 18,
-    padding: 6,
-    flexDirection: ROW_DIR,
-    position: 'relative',
-    backgroundColor: 'rgba(255,255,255,0.72)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.55)',
-  },
-  segmentIndicator: {
-    position: 'absolute',
-    top: 6,
-    bottom: 6,
-    borderRadius: 12,
-    backgroundColor: '#fff',
-    shadowColor: '#000',
-    shadowOpacity: 0.10,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 3,
-  },
-  segmentBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', zIndex: 1 },
-  segmentText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: SUBTEXT,
+  headerTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: L_TEXT,
     textAlign: 'center',
     writingDirection: IS_RTL ? 'rtl' : 'ltr',
   },
-  segmentTextActive: { fontWeight: '700', color: NAVY },
-  segmentTextDark: { color: SUBTEXT_DARK },
-  segmentTextActiveDark: { color: TEXT_DARK },
-
-  divider: {
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.55)',
-    marginHorizontal: 0,
-  },
-  heroCard: {
-    marginHorizontal: 20,
-    marginTop: 6,
-    marginBottom: 2,
-    borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.68)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.58)',
-    paddingHorizontal: 18,
-    paddingVertical: 16,
-    alignItems: 'stretch',
-    shadowColor: '#0f172a',
-    shadowOpacity: 0.06,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 3,
-  },
-  heroTitle: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: BG_TEXT,
-    textAlign: IS_RTL ? 'left' : 'right',
+  headerStep: {
+    marginTop: 2,
+    fontSize: 12,
+    color: L_DIM,
+    textAlign: 'center',
     writingDirection: IS_RTL ? 'rtl' : 'ltr',
-    alignSelf: 'stretch',
-    width: '100%',
   },
-  heroSubtitle: {
-    marginTop: 6,
-    fontSize: 13,
-    lineHeight: 20,
-    fontWeight: '700',
-    color: 'rgba(30,41,59,0.68)',
-    textAlign: IS_RTL ? 'left' : 'right',
-    writingDirection: IS_RTL ? 'rtl' : 'ltr',
-    alignSelf: 'stretch',
-    width: '100%',
+  progressRow: {
+    flexDirection: ROW_DIR,
+    gap: 6,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 4,
+    backgroundColor: L_SURFACE,
   },
-
-  /* content */
-  contentWrap: { flex: 1, backgroundColor: 'transparent' },
+  progressSegment: {
+    flex: 1,
+    height: 4,
+    borderRadius: 99,
+    backgroundColor: L_LINE,
+  },
+  progressSegmentActive: {
+    backgroundColor: ACCENT,
+  },
   center: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 12,
-    paddingTop: 30,
   },
   loadingText: {
     fontSize: 14,
-    fontWeight: '800',
-    color: 'rgba(15,23,42,0.55)',
+    fontWeight: '600',
+    color: L_DIM,
   },
-  loadingTextDark: {
-    color: 'rgba(241,245,249,0.70)',
+  listContent: {
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    backgroundColor: L_SURFACE,
+    flexGrow: 1,
   },
-
-  /* grid */
-  gridList: { flex: 1 },
-  gridContent: { paddingTop: 6 },
-  gridRow: { flexDirection: ROW_DIR },
-  gridItem: {
-    flex: 1,
-    minWidth: 0, // critical for web: allow shrink instead of sizing to content
+  pageIntro: {
+    paddingTop: 8,
+    paddingBottom: 18,
   },
-  cardOuter: {
-    borderRadius: 24,
-    width: '100%',
-    aspectRatio: 1 / 1.2, // keep constant size; 2 cards always fit the row
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 40,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 4,
-    backgroundColor: 'transparent',
-  },
-  cardOuterSelected: {
-    shadowOpacity: 0.10,
-    elevation: 6,
-  },
-  cardOuterUnselected: {},
-  cardInner: {
-    flex: 1,
-    width: '100%',
-    borderRadius: 24,
-    overflow: 'hidden',
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 12,
-    paddingVertical: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 14,
-    borderWidth: 2.5,
-    borderColor: 'transparent',
-  },
-  cornerBlob: {
-    position: 'absolute',
-    top: -32,
-    right: -32,
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    opacity: 0.50,
-  },
-  cardIconCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cardTextWrap: {
-    width: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cardText: {
-    fontSize: 16,
+  pageTitle: {
+    fontSize: 22,
     fontWeight: '700',
-    color: '#1F2937',
-    textAlign: 'center',
-    width: '100%',
-    lineHeight: 21,
-    paddingHorizontal: 2,
+    color: L_TEXT,
+    textAlign: IS_RTL ? 'left' : 'right',
+    writingDirection: IS_RTL ? 'rtl' : 'ltr',
   },
-  cardTextDark: { color: TEXT_DARK },
-  cardSubText: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#9CA3AF',
-    textAlign: 'center',
-    width: '100%',
-    marginTop: 6,
-  },
-  cardSubTextDark: {
-    color: 'rgba(148,163,184,0.90)',
-  },
-
-  /* empty */
-  emptyWrap: {
-    paddingTop: 50,
-    paddingHorizontal: 30,
-    alignItems: 'center',
-    gap: 10,
-  },
-  emptyIconCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: 'rgba(15,23,42,0.05)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 6,
-  },
-  emptyIconCircleDark: {
-    backgroundColor: 'rgba(241,245,249,0.06)',
-  },
-  emptyTitle: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: '#0F172A',
-    textAlign: 'center',
-  },
-  emptyTitleDark: {
-    color: TEXT_DARK,
-  },
-  emptySubtitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: 'rgba(15,23,42,0.50)',
-    textAlign: 'center',
+  pageSubtitle: {
+    marginTop: 4,
+    fontSize: 13.5,
     lineHeight: 20,
-  },
-  emptySubtitleDark: {
-    color: 'rgba(148,163,184,0.85)',
-  },
-
-  /* new-category form */
-  createScroll: { paddingHorizontal: 18, paddingTop: 18 },
-  createCard: {
-    borderRadius: 24,
-    backgroundColor: 'rgba(248,250,252,0.96)',
-    borderWidth: 1,
-    borderColor: 'rgba(203,213,225,0.85)',
-    padding: 16,
-    shadowColor: '#000',
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
-  },
-  fieldLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: 'rgba(100,116,139,0.95)',
-    textAlign: IS_RTL ? 'left' : 'right',
-    writingDirection: IS_RTL ? 'rtl' : 'ltr',
-    marginBottom: 8,
-  },
-  fieldLabelDark: {
-    color: 'rgba(241,245,249,0.70)',
-  },
-  fieldHint: {
-    marginTop: -2,
-    marginBottom: 12,
-    fontSize: 12,
-    lineHeight: 17,
-    fontWeight: '700',
-    color: 'rgba(100,116,139,0.78)',
+    color: L_DIM,
     textAlign: IS_RTL ? 'left' : 'right',
     writingDirection: IS_RTL ? 'rtl' : 'ltr',
   },
-  inputWrap: {
-    backgroundColor: '#fff',
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: 'rgba(203,213,225,0.95)',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    minHeight: 56,
+  categoryCard: {
     position: 'relative',
     flexDirection: ROW_DIR,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.03,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    gap: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    marginBottom: 12,
+    borderRadius: 20,
+    backgroundColor: L_SURFACE,
+    borderWidth: 1.5,
+    borderColor: L_LINE,
+    overflow: 'hidden',
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 2px 12px -7px rgba(22,29,56,0.2)' } as object)
+      : {
+          shadowColor: '#161D38',
+          shadowOpacity: 0.08,
+          shadowRadius: 10,
+          shadowOffset: { width: 0, height: 4 },
+          elevation: 2,
+        }),
   },
-  inputWrapDark: {
-    backgroundColor: 'rgba(30,41,59,0.72)',
-    borderColor: 'rgba(255,255,255,0.10)',
-    shadowOpacity: 0.06,
+  categoryCardSelectedGroom: {
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: `0 10px 26px -14px ${ACCENT}` } as object)
+      : {
+          shadowColor: ACCENT,
+          shadowOpacity: 0.18,
+          shadowRadius: 14,
+          shadowOffset: { width: 0, height: 6 },
+          elevation: 4,
+        }),
   },
-  input: {
-    flex: 1,
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#0F172A',
-    textAlign: 'right',
-    writingDirection: 'rtl',
-    paddingEnd: 34,
-    paddingStart: 10,
-    paddingVertical: 0,
+  categoryCardSelectedBride: {
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: `0 10px 26px -14px ${BRIDE_PINK}` } as object)
+      : {
+          shadowColor: BRIDE_PINK,
+          shadowOpacity: 0.18,
+          shadowRadius: 14,
+          shadowOffset: { width: 0, height: 6 },
+          elevation: 4,
+        }),
   },
-  inputDark: {
-    color: TEXT_DARK,
+  categoryCardPressed: {
+    opacity: 0.92,
   },
-  inputIcon: {
+  categoryAccentBar: {
     position: 'absolute',
-    right: 12,
     top: 0,
     bottom: 0,
+    right: 0,
+    width: 5,
+  },
+  categoryAccentBarMuted: {
+    opacity: 0.45,
+  },
+  countMedallion: {
+    width: 54,
+    height: 54,
+    borderRadius: 17,
+    borderWidth: 1,
+    alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
+  },
+  countMedallionValue: {
+    fontSize: 21,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    lineHeight: 22,
+    fontVariant: ['tabular-nums'],
+  },
+  countMedallionLabel: {
+    marginTop: 1,
+    fontSize: 9,
+    color: '#FFFFFF',
+    opacity: 0.85,
+  },
+  categoryBody: {
+    flex: 1,
+    minWidth: 0,
+  },
+  categoryTitleRow: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  categoryName: {
+    fontSize: 16.5,
+    fontWeight: '700',
+    color: L_TEXT,
+    flexShrink: 1,
+    textAlign: IS_RTL ? 'left' : 'right',
+    writingDirection: IS_RTL ? 'rtl' : 'ltr',
+  },
+  sideBadge: {
+    paddingHorizontal: 9,
+    paddingVertical: 2,
+    borderRadius: 99,
+  },
+  sideBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  categoryMetaRow: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 7,
+    minHeight: 22,
+  },
+  avatarStack: {
+    flexDirection: 'row-reverse',
     alignItems: 'center',
   },
-  sideSelector: {
-    width: '100%',
-    marginTop: 20,
-    marginBottom: 4,
+  avatarChip: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#fff',
+    borderWidth: 1.5,
+    borderColor: L_BG,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  sideSelectorLabel: {
-    fontSize: 15,
-    color: colors.text,
+  avatarChipOverlap: {
+    marginRight: -7,
+  },
+  avatarChipText: {
+    fontSize: 9.5,
+    fontWeight: '700',
+  },
+  emptyGuestsText: {
+    marginTop: 7,
+    fontSize: 12.5,
+    color: L_FAINT,
+    textAlign: IS_RTL ? 'left' : 'right',
+    writingDirection: IS_RTL ? 'rtl' : 'ltr',
+  },
+  selectCircle: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 2,
+    borderColor: L_LINE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  selectCircleBrideIdle: {
+    borderColor: 'rgba(244, 124, 140, 0.45)',
+  },
+  footerSection: {
+    paddingTop: 4,
+    paddingBottom: 8,
+  },
+  addCategoryBtn: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    gap: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    backgroundColor: L_SURFACE,
+    borderWidth: 1,
+    borderColor: L_LINE,
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 4px 18px -8px rgba(22,29,56,0.18)' } as object)
+      : {
+          shadowColor: '#161D38',
+          shadowOpacity: 0.07,
+          shadowRadius: 12,
+          shadowOffset: { width: 0, height: 4 },
+          elevation: 2,
+        }),
+  },
+  addCategoryBtnPressed: {
+    opacity: 0.92,
+    transform: [{ scale: 0.99 }],
+  },
+  addCategoryIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: ACCENT_BG,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addCategoryTextWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  addCategoryText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: L_TEXT,
+    textAlign: IS_RTL ? 'left' : 'right',
+    writingDirection: IS_RTL ? 'rtl' : 'ltr',
+  },
+  addCategoryHint: {
+    marginTop: 2,
+    fontSize: 12.5,
+    color: L_DIM,
+    textAlign: IS_RTL ? 'left' : 'right',
+    writingDirection: IS_RTL ? 'rtl' : 'ltr',
+  },
+  createCard: {
+    padding: 18,
+    borderRadius: 22,
+    backgroundColor: L_SURFACE,
+    borderWidth: 1,
+    borderColor: L_LINE,
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 8px 28px -12px rgba(22,29,56,0.22)' } as object)
+      : {
+          shadowColor: '#161D38',
+          shadowOpacity: 0.1,
+          shadowRadius: 16,
+          shadowOffset: { width: 0, height: 6 },
+          elevation: 4,
+        }),
+  },
+  createCardHeader: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 18,
+  },
+  createCardHeaderIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  createCardHeaderText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  createCardTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: L_TEXT,
+    textAlign: IS_RTL ? 'left' : 'right',
+    writingDirection: IS_RTL ? 'rtl' : 'ltr',
+  },
+  createCardSubtitle: {
+    marginTop: 3,
+    fontSize: 12.5,
+    color: L_DIM,
+    textAlign: IS_RTL ? 'left' : 'right',
+    writingDirection: IS_RTL ? 'rtl' : 'ltr',
+  },
+  createCloseBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: L_BG,
+    borderWidth: 1,
+    borderColor: L_LINE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  createCloseBtnPressed: {
+    opacity: 0.75,
+  },
+  createFieldLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: L_DIM,
     marginBottom: 8,
     textAlign: IS_RTL ? 'left' : 'right',
     writingDirection: IS_RTL ? 'rtl' : 'ltr',
-    fontWeight: '700',
   },
-  sideButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    backgroundColor: colors.gray[100],
-    borderRadius: 12,
-    padding: 4,
-    gap: 8,
+  createInputWrap: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    backgroundColor: L_BG,
+    borderWidth: 1,
+    borderColor: L_LINE,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    minHeight: 52,
+    marginBottom: 16,
   },
-  sideButton: {
+  createInput: {
     flex: 1,
-    minHeight: 44,
-    flexDirection: 'row',
+    fontSize: 16,
+    fontWeight: '600',
+    color: L_TEXT,
+    paddingVertical: 12,
+    writingDirection: 'rtl',
+  },
+  createInputIcon: {
+    marginStart: 8,
+  },
+  sidePickerRow: {
+    flexDirection: ROW_DIR,
+    gap: 10,
+    marginBottom: 18,
+  },
+  sidePickerBtn: {
+    flex: 1,
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    backgroundColor: L_BG,
+    borderWidth: 1.5,
+    borderColor: L_LINE,
+  },
+  sidePickerIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: 'rgba(22,29,56,0.06)',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 10,
-    backgroundColor: colors.white,
-    borderWidth: 1,
-    borderColor: 'rgba(37,99,235,0.18)',
   },
-  sideButtonActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  sideButtonPressed: {
-    opacity: 0.92,
-  },
-  sideButtonText: {
-    marginStart: 8,
-    fontSize: 15,
+  sidePickerBtnText: {
+    flex: 1,
+    fontSize: 14,
     fontWeight: '600',
-    color: colors.primary,
+    color: L_DIM,
+    textAlign: IS_RTL ? 'left' : 'right',
+    writingDirection: IS_RTL ? 'rtl' : 'ltr',
   },
-  sideButtonTextActive: {
-    color: colors.white,
+  sidePickerCheck: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  createSubmitOuter: {
-    marginTop: 24,
-    borderRadius: 18,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(29,78,216,0.14)',
-    backgroundColor: '#0B1E4F',
-    position: 'relative',
-    ...(Platform.OS === 'web'
-      ? ({ boxShadow: '0 12px 28px rgba(11,30,79,0.22)' } as any)
-      : {
-          shadowColor: '#0B1E4F',
-          shadowOpacity: 0.20,
-          shadowRadius: 18,
-          shadowOffset: { width: 0, height: 8 },
-          elevation: 5,
-        }),
-  },
-  createSubmitOuterDisabled: {
-    borderColor: 'rgba(148,163,184,0.28)',
-    ...(Platform.OS === 'web'
-      ? ({ boxShadow: 'none' } as any)
-      : { shadowOpacity: 0.08, elevation: 2 }),
-  },
-  createSubmitOuterPressed: {
-    transform: [{ scale: 0.99 }],
-  },
-  createSubmitBg: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: 18,
-  },
-  createSubmitInner: {
-    minHeight: 56,
-    paddingHorizontal: 18,
-    flexDirection: ROW_REVERSE_DIR,
+  createSubmitBtn: {
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
+    paddingVertical: 15,
+    borderRadius: 15,
+    marginBottom: 10,
   },
-  createSubmitInnerDisabled: {
-    backgroundColor: 'rgba(255,255,255,0.10)',
+  createSubmitBtnPressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.99 }],
   },
   createSubmitText: {
     fontSize: 16,
-    fontWeight: '900',
-    color: '#FFFFFF',
+    fontWeight: '700',
+    color: '#fff',
   },
-  createSubmitTextDisabled: {
-    color: '#64748B',
+  createCancelLink: {
+    alignItems: 'center',
+    paddingVertical: 6,
   },
-
-  // bottom bar removed (button moved to header)
+  createCancelText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: L_DIM,
+  },
+  emptyWrap: {
+    paddingTop: 40,
+    alignItems: 'center',
+    gap: 6,
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: L_TEXT,
+  },
+  emptySubtitle: {
+    fontSize: 13,
+    color: L_DIM,
+    textAlign: 'center',
+  },
+  bottomBar: {
+    paddingHorizontal: 20,
+    paddingTop: 14,
+    backgroundColor: L_SURFACE,
+    borderTopWidth: 1,
+    borderTopColor: L_LINE,
+  },
+  continueBtn: {
+    paddingVertical: 15,
+    borderRadius: 15,
+    backgroundColor: ACCENT,
+    alignItems: 'center',
+  },
+  continueBtnDisabled: {
+    backgroundColor: '#c9c2b2',
+  },
+  continueBtnPressed: {
+    opacity: 0.9,
+  },
+  continueBtnText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
 });

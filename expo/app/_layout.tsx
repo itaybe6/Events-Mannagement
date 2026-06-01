@@ -4,7 +4,8 @@ import { useFonts } from "expo-font";
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, I18nManager, Platform, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, I18nManager, Platform, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { AppLoaderScreen } from '@/components/AppLoader';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { rubikBaseFontFamily, rubikFonts } from "@/lib/fonts";
 import { useUserStore } from '@/store/userStore';
@@ -289,6 +290,35 @@ function RootLayoutNav() {
   const isMountedRef = useRef(true);
   const AUTH_INIT_UI_TIMEOUT_MS = 15_000;
 
+  // Wait only for the (fast, local) persisted-state hydration before deciding
+  // what to render. Once hydrated, an already-logged-in user is shown the app
+  // immediately while we validate/refresh the session in the background.
+  const [hydrated, setHydrated] = useState<boolean>(() => {
+    try {
+      return (useUserStore as any).persist?.hasHydrated?.() ?? false;
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    const persistApi = (useUserStore as any).persist;
+    if (!persistApi?.onFinishHydration) {
+      setHydrated(true);
+      return;
+    }
+    if (persistApi.hasHydrated?.()) {
+      setHydrated(true);
+    }
+    const unsub = persistApi.onFinishHydration(() => setHydrated(true));
+    // Safety net: never block forever if hydration never resolves.
+    const t = setTimeout(() => setHydrated(true), 1500);
+    return () => {
+      if (typeof unsub === 'function') unsub();
+      clearTimeout(t);
+    };
+  }, []);
+
   const startAuthInit = useCallback(async () => {
     if (!isMountedRef.current) return;
 
@@ -364,8 +394,12 @@ function RootLayoutNav() {
   }, []);
 
   useEffect(() => {
-    // Don't navigate until we've finished initializing
-    if (initializing || loading) return;
+    // Wait for the local persisted state to hydrate before routing.
+    if (!hydrated) return;
+    // For users without a (persisted) session, wait for the initial auth check
+    // before deciding where to send them. Logged-in users route immediately
+    // from persisted state while the background refresh runs.
+    if (!isLoggedIn && (initializing || loading)) return;
 
     const isPublicInvitation = segments[0] === 'invitation' || segments[0] === 'i' || segments[0] === 'w';
     const isOnboarding = segments[0] === 'onboarding';
@@ -390,9 +424,9 @@ function RootLayoutNav() {
       if (isOnboarding || isLogin || isSignup) return;
       router.replace('/onboarding');
     }
-  }, [isLoggedIn, segments, initializing, loading]);
+  }, [isLoggedIn, segments, initializing, loading, hydrated]);
 
-  if (initTimedOut) {
+  if (initTimedOut && !isLoggedIn) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', padding: 24 }}>
         <Text style={{ fontSize: 18, fontWeight: '600', marginBottom: 8 }}>לא ניתן להתחבר כרגע</Text>
@@ -418,13 +452,12 @@ function RootLayoutNav() {
     );
   }
 
-  // Show loading screen while initializing (avoid blocking if already logged in)
-  if (initializing || (loading && !isLoggedIn)) {
+  // Show loading screen only until local state hydrates, and (for users
+  // without a persisted session) until the first auth check completes.
+  // An already logged-in user skips this and goes straight into the app.
+  if (!hydrated || (!isLoggedIn && (initializing || loading))) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff' }}>
-        <ActivityIndicator size="large" />
-        <Text style={{ marginTop: 12, fontSize: 16 }}>מתחבר...</Text>
-      </View>
+      <AppLoaderScreen variant="default" title="מתחבר" subtitle="מכין את האפליקציה..." />
     );
   }
 
