@@ -16,6 +16,7 @@ import { invitationAssetService } from '@/lib/services/invitationAssetService';
 import { avatarService } from '@/lib/services/avatarService';
 import { ensurePhotoLibraryPermission } from '@/lib/permissions';
 import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
+import { AppLoader, AppLoaderScreen } from '@/components/AppLoader';
 import { EventSwitcher } from '@/components/EventSwitcher';
 import { DeleteAccountSection } from '@/components/DeleteAccountSection';
 import { ProfileMenuCard, ProfileMenuRow } from '@/components/couple/ProfileMenuRow';
@@ -545,9 +546,8 @@ export default function BrideGroomSettings() {
 
   if (loading) {
     return (
-      <View style={[styles.root, styles.centered]}>
-        <ActivityIndicator size="large" color={ui.primary} />
-        <Text style={styles.loadingText}>טוען פרופיל...</Text>
+      <View style={styles.root}>
+        <AppLoaderScreen variant="default" title="טוען פרופיל" subtitle="מכין את פרטי האירוע והחשבון" />
       </View>
     );
   }
@@ -559,8 +559,6 @@ export default function BrideGroomSettings() {
         contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 8, paddingBottom: 120 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.pageTitle}>הפרופיל שלי</Text>
-
         <View style={styles.identityCard}>
           <NavyCardBackground variant="compact" />
           <View style={styles.identityContent}>
@@ -660,12 +658,30 @@ export default function BrideGroomSettings() {
 
       </AppKeyboardAwareScrollView>
 
-      <Modal visible={eventEditorOpen} transparent animationType="fade" onRequestClose={() => setEventEditorOpen(false)}>
+      <Modal
+        visible={eventEditorOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!eventSaving) setEventEditorOpen(false);
+        }}
+      >
         <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.35)' }]}>
           <AppKeyboardAwareScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} showsVerticalScrollIndicator={false}>
-            <Pressable style={styles.modalOverlayTouchable} onPress={() => setEventEditorOpen(false)} />
+            <Pressable
+              style={styles.modalOverlayTouchable}
+              onPress={() => {
+                if (!eventSaving) setEventEditorOpen(false);
+              }}
+            />
 
             <View style={[styles.modalCard, styles.eventEditorCard]}>
+              <AppLoader
+                visible={eventSaving}
+                variant="default"
+                title="שומר אירוע"
+                subtitle="מעדכן את פרטי האירוע"
+              />
               <LinearGradient
                 colors={['#F8FBFF', '#EEF4FF', '#F5E8C8']}
                 start={{ x: 0, y: 0 }}
@@ -831,6 +847,12 @@ export default function BrideGroomSettings() {
             />
 
             <View style={[styles.modalCard, styles.invitationEditorCard]}>
+              <AppLoader
+                visible={invitationSaving || invitationUploading}
+                variant="default"
+                title={invitationUploading ? 'מעלה הזמנה' : 'שומר הזמנה'}
+                subtitle={invitationUploading ? 'מעלה את קובץ ההזמנה' : 'שומר את פרטי ההזמנה'}
+              />
               <LinearGradient
                 colors={['#FFF9F3', '#F7F9FF', '#EEF4FF']}
                 start={{ x: 0, y: 0 }}
@@ -883,12 +905,6 @@ export default function BrideGroomSettings() {
                         <Text style={styles.invitationEmptyText}>אין הזמנה שמורה כרגע</Text>
                       </View>
                     )}
-                    {invitationUploading ? (
-                      <View style={styles.invitationPreviewUploadOverlay} accessibilityLabel="מעלה הזמנה">
-                        <ActivityIndicator size="large" color={ui.primary} />
-                        <Text style={styles.invitationUploadingText}>מעלה הזמנה...</Text>
-                      </View>
-                    ) : null}
                   </View>
 
                   <View style={styles.invitationActionsRow}>
@@ -968,12 +984,30 @@ export default function BrideGroomSettings() {
         </View>
       </Modal>
 
-      <Modal visible={profileEditorOpen} transparent animationType="fade" onRequestClose={() => setProfileEditorOpen(false)}>
+      <Modal
+        visible={profileEditorOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!profileSaving && !profileAvatarUploading) setProfileEditorOpen(false);
+        }}
+      >
         <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.35)' }]}>
           <AppKeyboardAwareScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} showsVerticalScrollIndicator={false}>
-            <Pressable style={styles.modalOverlayTouchable} onPress={() => setProfileEditorOpen(false)} />
+            <Pressable
+              style={styles.modalOverlayTouchable}
+              onPress={() => {
+                if (!profileSaving && !profileAvatarUploading) setProfileEditorOpen(false);
+              }}
+            />
 
             <View style={[styles.modalCard, styles.profileEditorCard]}>
+              <AppLoader
+                visible={profileSaving || profileAvatarUploading}
+                variant="default"
+                title={profileAvatarUploading ? 'מעלה תמונה' : 'שומר פרופיל'}
+                subtitle={profileAvatarUploading ? 'מעלה את תמונת הפרופיל' : 'מעדכן את פרטי החשבון'}
+              />
               <LinearGradient
                 colors={['#F8FBFF', '#EEF4FF', '#F5E8C8']}
                 start={{ x: 0, y: 0 }}
@@ -1258,14 +1292,6 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 18,
     gap: 16,
-  },
-  pageTitle: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: ui.text,
-    textAlign: 'right',
-    marginBottom: 2,
-    writingDirection: 'rtl',
   },
   identityCard: {
     position: 'relative',

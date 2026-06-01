@@ -473,28 +473,19 @@ export default function TablesList() {
     return totalPeopleSeated >= t.capacity;
   }).length;
   const totalTables = tables.length;
-  const topContentInset = Math.max(30, (insets.top || 0) + 14);
+  const topBarTop = Math.max(insets.top || 0, 10);
+  const headerTopPad = topBarTop + 52;
 
   return (
     <BackSwipe fallbackHref={backHref} onBack={handleBack}>
       <Stack.Screen options={{ headerShown: false }} />
       <View style={styles.container}>
-        <View style={[styles.topSpacer, { paddingTop: topContentInset }]}>
-          <View style={styles.topRow}>
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={handleBack}
-              accessibilityRole="button"
-              accessibilityLabel="חזרה לעמוד האירוע"
-              activeOpacity={0.86}
-            >
-              <Ionicons name="chevron-back" size={22} color={colors.primary} />
-            </TouchableOpacity>
-          </View>
-        </View>
-
         <View style={styles.scrollFill}>
-          <AppKeyboardAwareScrollView style={styles.scrollView} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollViewContent}>
+          <AppKeyboardAwareScrollView
+            style={styles.scrollView}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={[styles.scrollViewContent, { paddingTop: headerTopPad }]}
+          >
           <View style={styles.statsBar}>
             <View style={styles.statsGrid}>
               <View style={styles.statCard}>
@@ -694,6 +685,18 @@ export default function TablesList() {
             );
           })}
         </AppKeyboardAwareScrollView>
+        </View>
+
+        <View pointerEvents="box-none" style={[styles.floatingTopBar, { top: topBarTop }]}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={handleBack}
+            accessibilityRole="button"
+            accessibilityLabel="חזרה לעמוד האירוע"
+            activeOpacity={0.86}
+          >
+            <Ionicons name="chevron-back" size={22} color={colors.primary} />
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -958,16 +961,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
   },
-  topSpacer: {
-    paddingTop: 18,
-    paddingHorizontal: 16,
-    paddingBottom: 8,
-  },
-  topRow: {
+  floatingTopBar: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
     flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'flex-end',
-    gap: 12,
+    zIndex: 30,
   },
   backButton: {
     width: 44,
@@ -1069,7 +1070,6 @@ const styles = StyleSheet.create({
   },
   scrollViewContent: {
     paddingHorizontal: 16,
-    paddingTop: 14,
     paddingBottom: 100,
   },
   tableCard: {

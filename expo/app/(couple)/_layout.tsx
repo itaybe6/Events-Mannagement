@@ -121,6 +121,7 @@ export default function CoupleTabsLayout() {
           name="TablesList"
           options={{
             title: "שולחנות",
+            headerShown: false,
           }}
         />
         <Tabs.Screen

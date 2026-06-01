@@ -27,6 +27,8 @@ import { SeatingGridReadonly } from '../seating/web/SeatingGridReadonly';
 import { DEFAULT_GRID_COLS, DEFAULT_GRID_ROWS, tableCellSize, type Orientation, type TableType } from '../seating/web/_types';
 import type { Table } from '@/types';
 
+const TABLE_NAME_MAX_LENGTH = 10;
+
 type GuestRow = {
   id: string;
   name: string;
@@ -901,17 +903,18 @@ export default function BrideGroomSeatingWebScreen() {
   const handleSaveTableName = useCallback(async () => {
     if (!selectedTableForModal) return;
     const currentName = selectedTableForModal.name || '';
-    if (tableName.trim() === currentName.trim()) return;
+    const nextName = tableName.trim().slice(0, TABLE_NAME_MAX_LENGTH);
+    if (nextName === currentName.trim()) return;
     const { error } = await supabase
       .from('tables')
-      .update({ name: tableName.trim() || null })
+      .update({ name: nextName || null })
       .eq('id', selectedTableForModal.id);
     if (error) {
       console.error('Error updating table name:', error);
       return;
     }
-    setTables((prev) => prev.map((t) => (t.id === selectedTableForModal.id ? { ...t, name: tableName.trim() || null } : t)));
-    setSelectedTableForModal((prev) => (prev ? { ...prev, name: tableName.trim() || null } : null));
+    setTables((prev) => prev.map((t) => (t.id === selectedTableForModal.id ? { ...t, name: nextName || null } : t)));
+    setSelectedTableForModal((prev) => (prev ? { ...prev, name: nextName || null } : null));
   }, [selectedTableForModal, tableName]);
 
   const closeTableModal = useCallback(async () => {
@@ -2282,10 +2285,11 @@ export default function BrideGroomSeatingWebScreen() {
                     <View style={styles.tableNameInputWrap}>
                       <TextInput
                         value={tableName}
-                        onChangeText={setTableName}
+                        onChangeText={(text) => setTableName(text.slice(0, TABLE_NAME_MAX_LENGTH))}
                         placeholder="לדוגמה: משפחה / חברים / VIP"
                         placeholderTextColor={colors.gray[500]}
                         style={styles.fieldInputModern}
+                        maxLength={TABLE_NAME_MAX_LENGTH}
                         onBlur={() => void handleSaveTableName()}
                         onSubmitEditing={() => void handleSaveTableName()}
                         returnKeyType="done"
