@@ -473,8 +473,7 @@ export default function TablesList() {
     return totalPeopleSeated >= t.capacity;
   }).length;
   const totalTables = tables.length;
-  const topBarTop = Math.max(insets.top || 0, 10);
-  const headerTopPad = topBarTop + 52;
+  const scrollTopPad = Math.max(14, (insets.top || 0) + 14);
 
   return (
     <BackSwipe fallbackHref={backHref} onBack={handleBack}>
@@ -484,7 +483,7 @@ export default function TablesList() {
           <AppKeyboardAwareScrollView
             style={styles.scrollView}
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={[styles.scrollViewContent, { paddingTop: headerTopPad }]}
+            contentContainerStyle={[styles.scrollViewContent, { paddingTop: scrollTopPad }]}
           >
           <View style={styles.statsBar}>
             <View style={styles.statsGrid}>
@@ -685,18 +684,6 @@ export default function TablesList() {
             );
           })}
         </AppKeyboardAwareScrollView>
-        </View>
-
-        <View pointerEvents="box-none" style={[styles.floatingTopBar, { top: topBarTop }]}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={handleBack}
-            accessibilityRole="button"
-            accessibilityLabel="חזרה לעמוד האירוע"
-            activeOpacity={0.86}
-          >
-            <Ionicons name="chevron-back" size={22} color={colors.primary} />
-          </TouchableOpacity>
         </View>
       </View>
 
@@ -960,30 +947,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-  },
-  floatingTopBar: {
-    position: 'absolute',
-    left: 16,
-    right: 16,
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    zIndex: 30,
-  },
-  backButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.96)',
-    borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.08)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: colors.richBlack,
-    shadowOpacity: 0.14,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
   },
   errorText: {
     fontSize: 17,
