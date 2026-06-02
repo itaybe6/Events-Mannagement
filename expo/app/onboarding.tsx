@@ -161,13 +161,23 @@ export default function OnboardingScreen() {
           />
         </Animated.View>
 
-        <Animated.Text
+        <Animated.View
           entering={FadeInDown.springify().delay(_initialDelay + 100)}
-          style={{ color: colors.white, fontSize: 28, textAlign: 'center', marginTop: -6 }}
+          style={{ alignItems: 'center', marginTop: -6, gap: 2 }}
         >
-          ברוכים הבאים
-          {'\n'}סידורי הושבה ואישורי הגעה
-        </Animated.Text>
+          <Text
+            style={{
+              color: colors.white,
+              fontSize: Platform.OS === 'web' ? 30 : 28,
+              textAlign: 'center',
+            }}
+          >
+            ברוכים הבאים
+          </Text>
+          <Text style={{ color: colors.white, fontSize: 28, textAlign: 'center' }}>
+            סידורי הושבה ואישורי הגעה
+          </Text>
+        </Animated.View>
 
         <AnimatedPressable
           entering={FadeInDown.springify().delay(_initialDelay + 300)}
