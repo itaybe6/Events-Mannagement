@@ -553,15 +553,9 @@ export default function AutomaticNotificationsWebScreen() {
 
     setExportingPendingGuests(true);
     try {
-      const origin = typeof window !== 'undefined' ? String(window.location.origin) : '';
-      const configuredBaseUrl = normalizeBaseUrl(process.env.EXPO_PUBLIC_SITE_BASE_URL);
-      const baseUrl =
-        origin && !origin.includes('localhost') && !origin.includes('127.0.0.1')
-          ? normalizeBaseUrl(origin)
-          : configuredBaseUrl || origin || undefined;
       const result = exportPendingGuestsToExcel(allGuests, {
         eventTitle: String((event as any)?.title || ownerTitle || 'אירוע'),
-        baseUrl,
+        eventRsvpLink: String((event as any)?.rsvpLink || ''),
       });
       showToast(`יוצאו ${result.count} מוזמנים ממתינים לאקסל`);
     } catch (error) {

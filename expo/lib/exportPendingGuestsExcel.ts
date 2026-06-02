@@ -11,20 +11,50 @@ export type PendingGuestExportRow = {
   invitationToken?: string;
 };
 
-function resolveWebBaseUrl(): string {
-  const origin = typeof window !== 'undefined' ? String(window.location.origin || '').trim() : '';
-  const configuredBaseUrl = normalizeBaseUrl(process.env.EXPO_PUBLIC_SITE_BASE_URL);
-  if (origin && !origin.includes('localhost') && !origin.includes('127.0.0.1')) {
-    return normalizeBaseUrl(origin);
+const DEFAULT_PUBLIC_SITE_BASE_URL = 'https://events-mannagement.vercel.app';const SITE_BASE_URL_PLACEHOLDER = 'https://rork.com';
+
+function getOriginFromUrl(raw: unknown): string {
+  const value = normalizeBaseUrl(String(raw ?? ''));
+  if (!value) return '';
+  try {
+    return new URL(value).origin;
+  } catch {
+    const match = value.match(/^(https?:\/\/[^/]+)/i);
+    return match?.[1] ?? '';
   }
-  return configuredBaseUrl || origin;
+}
+
+function isLocalHostUrl(value: string) {
+  return /localhost|127\.0\.0\.1/i.test(String(value || ''));
+}
+
+function getConfiguredSiteBaseUrl(): string {
+  const configured = normalizeBaseUrl(process.env.EXPO_PUBLIC_SITE_BASE_URL);
+  if (!configured || configured === SITE_BASE_URL_PLACEHOLDER) return '';
+  return configured;
+}
+
+export function resolveGuestInvitationBaseUrl(opts?: { baseUrl?: string; eventRsvpLink?: string }) {
+  const explicit = normalizeBaseUrl(opts?.baseUrl);
+  if (explicit && !isLocalHostUrl(explicit)) return explicit;
+
+  const fromEvent = getOriginFromUrl(opts?.eventRsvpLink);
+  if (fromEvent && !isLocalHostUrl(fromEvent)) return fromEvent;
+
+  const configured = getConfiguredSiteBaseUrl();
+  if (configured) return configured;
+
+  const origin = typeof window !== 'undefined' ? String(window.location.origin || '').trim() : '';
+  if (origin && !isLocalHostUrl(origin)) return normalizeBaseUrl(origin);
+
+  return DEFAULT_PUBLIC_SITE_BASE_URL;
 }
 
 export function buildGuestInvitationUrl(guest: Pick<PendingGuestExportRow, 'invitationCode' | 'invitationToken'>, baseUrl?: string) {
   const token = String(guest.invitationCode ?? guest.invitationToken ?? '').trim();
   if (!token) return '';
-  const base = normalizeBaseUrl(baseUrl || resolveWebBaseUrl());
-  return base ? `${base}/i/${token}` : `/i/${token}`;
+  const base = normalizeBaseUrl(baseUrl || resolveGuestInvitationBaseUrl());
+  return `${base}/i/${token}`;
 }
 
 function sanitizeFilePart(value: string) {
@@ -37,7 +67,7 @@ function sanitizeFilePart(value: string) {
 
 export function exportPendingGuestsToExcel(
   guests: PendingGuestExportRow[],
-  opts?: { eventTitle?: string; baseUrl?: string }
+  opts?: { eventTitle?: string; baseUrl?: string; eventRsvpLink?: string }
 ) {
   if (typeof window === 'undefined' || typeof document === 'undefined') {
     throw new Error('ייצוא לאקסל זמין רק בדפדפן');
@@ -45,7 +75,10 @@ export function exportPendingGuestsToExcel(
 
   const filtered = guests.filter((guest) => String(guest.status ?? 'ממתין').trim() === 'ממתין');
 
-  const baseUrl = opts?.baseUrl || resolveWebBaseUrl();
+  const baseUrl = resolveGuestInvitationBaseUrl({
+    baseUrl: opts?.baseUrl,
+    eventRsvpLink: opts?.eventRsvpLink,
+  });
   const rows = filtered.map((guest) => ({
     שם: String(guest.name ?? '').trim(),
     'מספר טלפון': guest.phone ? String(guest.phone).trim() : '',
