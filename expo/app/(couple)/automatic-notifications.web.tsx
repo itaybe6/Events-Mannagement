@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import AdminWebPageHeader from '@/components/desktop/AdminWebPageHeader';
 import { colors } from '@/constants/colors';
 import { buildDirectionsDetailsText, buildEventLocationText, normalizeBaseUrl } from '@/lib/navigationLinks';
+import { exportPendingGuestsToExcel } from '@/lib/exportPendingGuestsExcel';
 import { supabase } from '@/lib/supabase';
 import { eventService } from '@/lib/services/eventService';
 import { useUserStore } from '@/store/userStore';
@@ -452,6 +453,7 @@ export default function AutomaticNotificationsWebScreen() {
     Array<{ id: string; name: string; phone?: string; status: string; invitationCode?: string; invitationToken?: string }>
   >([]);
   const [sendingNow, setSendingNow] = useState(false);
+  const [exportingPendingGuests, setExportingPendingGuests] = useState(false);
 
   // Recipient picking: required for message 1, optional for message 2 ("מאשרים").
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -540,6 +542,35 @@ export default function AutomaticNotificationsWebScreen() {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     toastTimerRef.current = setTimeout(() => setToastText(null), 2200);
   }, []);
+
+  const handleExportPendingGuests = useCallback(() => {
+    if (exportingPendingGuests) return;
+    const pendingCount = allGuests.filter((guest) => String(guest.status || '').trim() === 'ממתין').length;
+    if (pendingCount === 0) {
+      showToast('אין מוזמנים בסטטוס ממתין לייצוא');
+      return;
+    }
+
+    setExportingPendingGuests(true);
+    try {
+      const origin = typeof window !== 'undefined' ? String(window.location.origin) : '';
+      const configuredBaseUrl = normalizeBaseUrl(process.env.EXPO_PUBLIC_SITE_BASE_URL);
+      const baseUrl =
+        origin && !origin.includes('localhost') && !origin.includes('127.0.0.1')
+          ? normalizeBaseUrl(origin)
+          : configuredBaseUrl || origin || undefined;
+      const result = exportPendingGuestsToExcel(allGuests, {
+        eventTitle: String((event as any)?.title || ownerTitle || 'אירוע'),
+        baseUrl,
+      });
+      showToast(`יוצאו ${result.count} מוזמנים ממתינים לאקסל`);
+    } catch (error) {
+      console.warn('Failed to export pending guests:', error);
+      showToast('לא ניתן לייצא את רשימת הממתינים');
+    } finally {
+      setExportingPendingGuests(false);
+    }
+  }, [allGuests, event, exportingPendingGuests, ownerTitle, showToast]);
 
   const formatHeDateTimeShort = (value: unknown) => {
     const d = value instanceof Date ? value : new Date(String(value ?? ''));
@@ -2579,21 +2610,42 @@ export default function AutomaticNotificationsWebScreen() {
                         </View>
                       ))}
                     </View>
-                    {canEdit ? (
+                    <View style={styles.headerSubtitleActions}>
                       <Pressable
                         accessibilityRole="button"
-                        accessibilityLabel="הוסף הודעה חדשה"
-                        onPress={openAddWizard}
+                        accessibilityLabel="ייצוא ממתינים לאקסל"
+                        disabled={exportingPendingGuests}
+                        onPress={handleExportPendingGuests}
                         style={({ hovered, pressed }: any) => [
-                          styles.headerSubtitleActionBtn,
-                          Platform.OS === 'web' && hovered ? styles.headerSubtitleActionBtnHover : null,
+                          styles.headerSubtitleSecondaryBtn,
+                          Platform.OS === 'web' && hovered ? styles.headerSubtitleSecondaryBtnHover : null,
+                          exportingPendingGuests ? styles.headerSubtitleSecondaryBtnDisabled : null,
                           pressed ? { opacity: 0.92 } : null,
                         ]}
                       >
-                        <Ionicons name="add" size={16} color={colors.white} />
-                        <Text style={styles.headerSubtitleActionBtnText}>הוסף הודעה חדשה</Text>
+                        {exportingPendingGuests ? (
+                          <ActivityIndicator size="small" color={colors.primary} />
+                        ) : (
+                          <Ionicons name="download-outline" size={16} color={colors.primary} />
+                        )}
+                        <Text style={styles.headerSubtitleSecondaryBtnText}>ייצוא ממתינים לאקסל</Text>
                       </Pressable>
-                    ) : null}
+                      {canEdit ? (
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel="הוסף הודעה חדשה"
+                          onPress={openAddWizard}
+                          style={({ hovered, pressed }: any) => [
+                            styles.headerSubtitleActionBtn,
+                            Platform.OS === 'web' && hovered ? styles.headerSubtitleActionBtnHover : null,
+                            pressed ? { opacity: 0.92 } : null,
+                          ]}
+                        >
+                          <Ionicons name="add" size={16} color={colors.white} />
+                          <Text style={styles.headerSubtitleActionBtnText}>הוסף הודעה חדשה</Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
                   </View>
                 }
                 showNav={false}
@@ -5609,6 +5661,47 @@ const styles = StyleSheet.create({
           boxShadow: '0 10px 22px rgba(25,93,230,0.18)',
         } as any)
       : null),
+  },
+  headerSubtitleActions: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 10,
+    flexShrink: 0,
+    flexWrap: 'wrap',
+  },
+  headerSubtitleSecondaryBtn: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    minHeight: 38,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(25,93,230,0.22)',
+    flexShrink: 0,
+    ...(Platform.OS === 'web'
+      ? ({
+          cursor: 'pointer',
+          boxShadow: '0 8px 18px rgba(15,23,42,0.06)',
+        } as any)
+      : null),
+  },
+  headerSubtitleSecondaryBtnHover: {
+    backgroundColor: '#F8FAFF',
+    borderColor: 'rgba(25,93,230,0.34)',
+  },
+  headerSubtitleSecondaryBtnDisabled: {
+    opacity: 0.7,
+    ...(Platform.OS === 'web' ? ({ cursor: 'not-allowed' } as any) : null),
+  },
+  headerSubtitleSecondaryBtnText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: colors.primary,
+    textAlign: 'right',
   },
   headerSubtitleActionBtnHover: {
     backgroundColor: '#134FC5',

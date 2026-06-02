@@ -22,6 +22,7 @@
     "@react-native-community/datetimepicker": "8.4.4",
     "@react-native-picker/picker": "2.11.1",
     "@react-navigation/native": "^7.1.6",
+    "@rork-ai/toolkit-sdk": "latest",
     "@shopify/react-native-skia": "2.2.12",
     "@supabase/supabase-js": "^2.52.0",
     "dotenv": "^17.2.0",
@@ -65,8 +66,8 @@
     "react-sortablejs": "^6.1.4",
     "victory": "^37.3.6",
     "victory-native": "^41.17.4",
-    "zustand": "^5.0.2",
-    "@rork-ai/toolkit-sdk": "latest"
+    "xlsx": "^0.18.5",
+    "zustand": "^5.0.2"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
