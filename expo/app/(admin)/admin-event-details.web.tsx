@@ -21,6 +21,7 @@ import Svg, { Circle, Line, Path } from 'react-native-svg';
 import { colors } from '@/constants/colors';
 import AdminWebPageHeader from '@/components/desktop/AdminWebPageHeader';
 import { useAdminEventDetailsModel } from '@/features/events/useAdminEventDetailsModel';
+import { creditTerminalService } from '@/lib/services/creditTerminalService';
 import { eventService } from '@/lib/services/eventService';
 import { supabase } from '@/lib/supabase';
 import { useUserStore } from '@/store/userStore';
@@ -113,6 +114,7 @@ export default function AdminEventDetailsWebScreen() {
   const [editSaving, setEditSaving] = useState(false);
   const [deleteSaving, setDeleteSaving] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [creditTerminalSending, setCreditTerminalSending] = useState(false);
   const [editDatePickerOpen, setEditDatePickerOpen] = useState(false);
   const [webCalendarOpen, setWebCalendarOpen] = useState(false);
   const [now, setNow] = useState(() => new Date());
@@ -320,6 +322,25 @@ export default function AdminEventDetailsWebScreen() {
     router.push(`/(admin)/BrideGroomSeating?eventId=${event.id}`);
   };
 
+  const handleRegisterCreditTerminal = async () => {
+    if (!event?.id || creditTerminalSending) return;
+
+    setCreditTerminalSending(true);
+    try {
+      const result = await creditTerminalService.registerTerminal(event.id);
+      if (result.ok) {
+        Alert.alert('נשלח', 'בקשת פתיחת מסוף למתנות באשראי נשלחה לספק.');
+        return;
+      }
+      Alert.alert('שגיאה', result.error || 'לא ניתן לשלוח את הבקשה כרגע');
+    } catch (e) {
+      console.error('Register credit terminal error:', e);
+      Alert.alert('שגיאה', 'לא ניתן לשלוח את הבקשה כרגע');
+    } finally {
+      setCreditTerminalSending(false);
+    }
+  };
+
   const dateObj = new Date(event?.date ?? '');
   const dateLabel = Number.isFinite(dateObj.getTime())
     ? dateObj.toLocaleDateString('he-IL', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })
@@ -462,6 +483,19 @@ export default function AdminEventDetailsWebScreen() {
       tint: 'rgba(17,24,39,0.10)',
       onPress: handleSeatingMap,
     },
+    {
+      key: 'credit-terminal',
+      step: 'מתנות',
+      title: 'פתיחת מסוף אשראי',
+      subtitle: 'שליחת בקשה לספק לפתיחת מסוף למתנות באשראי לאירוע.',
+      meta: creditTerminalSending ? 'שולח...' : 'Moon events',
+      icon: 'card-outline' as const,
+      accent: '#7C3AED',
+      tint: 'rgba(124,58,237,0.14)',
+      disabledForEmployee: true,
+      loading: creditTerminalSending,
+      onPress: handleRegisterCreditTerminal,
+    },
   ] as const;
   const seatedPeople = guests.filter((g) => Boolean(g.tableId)).reduce((sum, guest) => sum + (Number(guest.numberOfPeople) || 1), 0);
   const unassignedConfirmedPeople = Math.max(stats.confirmedPeople - seatedPeople, 0);
@@ -478,11 +512,11 @@ export default function AdminEventDetailsWebScreen() {
         [workflowSteps[0], workflowSteps[1]],
         [workflowSteps[2], workflowSteps[3]],
         [workflowSteps[4], workflowSteps[5]],
-        [workflowSteps[6]],
+        [workflowSteps[6], workflowSteps[7]],
       ]
     : [
         [workflowSteps[0], workflowSteps[1], workflowSteps[2], workflowSteps[3]],
-        [workflowSteps[4], workflowSteps[5], workflowSteps[6]],
+        [workflowSteps[4], workflowSteps[5], workflowSteps[6], workflowSteps[7]],
       ];
   const invitedBase = Math.max(0, Number(stats.invitedPeople) || 0);
   const overviewStats = [
@@ -687,7 +721,9 @@ export default function AdminEventDetailsWebScreen() {
                       {workflowActionRows.filter((row) => row.length).map((row) => (
                         <View key={row.map((step) => step.key).join('-')} style={styles.workflowActionsRow}>
                           {row.map((step, index) => {
-                            const isDisabled = isEmployeeWebUser && Boolean(step.disabledForEmployee);
+                            const isLoading = Boolean((step as { loading?: boolean }).loading);
+                            const isDisabled =
+                              isLoading || (isEmployeeWebUser && Boolean(step.disabledForEmployee));
 
                             return (
                             <Pressable
@@ -723,7 +759,11 @@ export default function AdminEventDetailsWebScreen() {
                                       { backgroundColor: step.tint, borderColor: 'transparent' },
                                     ]}
                                   >
-                                    <Ionicons name={step.icon} size={16} color={step.accent} />
+                                    {isLoading ? (
+                                      <ActivityIndicator size="small" color={step.accent} />
+                                    ) : (
+                                      <Ionicons name={step.icon} size={16} color={step.accent} />
+                                    )}
                                   </View>
                                 </View>
 
@@ -737,7 +777,11 @@ export default function AdminEventDetailsWebScreen() {
                                 </View>
 
                                 <View style={styles.workflowActionFooter}>
-                                  <Ionicons name="arrow-back" size={14} color={step.accent} />
+                                  {isLoading ? (
+                                    <ActivityIndicator size="small" color={step.accent} />
+                                  ) : (
+                                    <Ionicons name="arrow-back" size={14} color={step.accent} />
+                                  )}
                                   <Text style={[styles.workflowActionMetaText, { color: step.accent }]} numberOfLines={1}>
                                     {step.meta}
                                   </Text>
