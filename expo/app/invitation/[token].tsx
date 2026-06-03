@@ -1,7 +1,6 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Animated,
   Alert,
   Pressable,
   ScrollView,
@@ -39,9 +38,7 @@ export default function InvitationLandingScreen() {
   const [info, setInfo] = useState<InvitationInfo | null>(null);
   const [status, setStatus] = useState<Status>('ממתין');
   const [peopleCount, setPeopleCount] = useState(1);
-  const [submittedLocked, setSubmittedLocked] = useState(false);
-
-  const successAnim = useRef(new Animated.Value(0)).current;
+  const [demoSubmitted, setDemoSubmitted] = useState(false);
 
   const invitationImageUrl = useMemo(() => {
     const s = String(info?.event?.invitationImageUrl ?? '').trim();
@@ -91,7 +88,7 @@ export default function InvitationLandingScreen() {
         setInfo(data);
         if (!isDemo && data?.guest?.status) setStatus(data.guest.status);
         if (!isDemo) setPeopleCount(Math.max(1, Math.min(99, Number(data?.guest?.numberOfPeople) || 1)));
-        setSubmittedLocked(isDemo ? false : Boolean((data as any)?.guest?.rsvpLocked));
+        setDemoSubmitted(false);
       } catch (e: any) {
         if (!alive) return;
         const message = e?.message ? String(e.message) : 'שגיאה לא ידועה';
@@ -112,15 +109,20 @@ export default function InvitationLandingScreen() {
 
   const canSubmit = Boolean(info) && !saving && (isDemo || Boolean(info?.guest?.id));
 
+  const hasExistingRsvp = useMemo(() => {
+    const guestStatus = info?.guest?.status;
+    return Boolean(guestStatus && guestStatus !== 'ממתין');
+  }, [info?.guest?.status]);
+
   const submit = async () => {
     if (saving) return;
-    if (submittedLocked) return;
+    if (isDemo && demoSubmitted) return;
 
     setSaving(true);
     try {
       if (isDemo) {
         // Demo mode: keep changes local only (do not update DB / guests).
-        setSubmittedLocked(true);
+        setDemoSubmitted(true);
         return;
       }
 
@@ -137,7 +139,7 @@ export default function InvitationLandingScreen() {
       });
 
       setInfo((prev) => (prev ? { ...prev, guest: prev.guest ? { ...prev.guest, ...updatedGuest } : updatedGuest } : prev));
-      setSubmittedLocked(true);
+      Alert.alert('תודה', 'העדכון נשמר בהצלחה. אפשר לשנות שוב בכל עת דרך אותו קישור.');
     } catch (e: any) {
       const message = e?.message ? String(e.message) : 'שגיאה לא ידועה';
       Alert.alert('שגיאה', `לא ניתן לעדכן.\n\n${message}`);
@@ -145,18 +147,6 @@ export default function InvitationLandingScreen() {
       setSaving(false);
     }
   };
-
-  useEffect(() => {
-    if (!submittedLocked) return;
-    successAnim.setValue(0);
-    Animated.spring(successAnim, {
-      toValue: 1,
-      useNativeDriver: true,
-      damping: 14,
-      stiffness: 160,
-      mass: 0.8,
-    }).start();
-  }, [submittedLocked, successAnim]);
 
   if (loading) {
     return (
@@ -190,36 +180,16 @@ export default function InvitationLandingScreen() {
     );
   }
 
-  if (submittedLocked) {
+  if (isDemo && demoSubmitted) {
     return (
       <View style={styles.page}>
         <View style={styles.thanksWrap}>
-          <Animated.View
-            style={[
-              styles.successIconWrap,
-              {
-                transform: [
-                  {
-                    scale: successAnim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [0.72, 1],
-                    }),
-                  },
-                ],
-                opacity: successAnim,
-              },
-            ]}
-          >
-            <View style={styles.successIconCircle}>
-              <Ionicons name="checkmark" size={38} color="#fff" />
-            </View>
-          </Animated.View>
-
-          <Text style={styles.successTitle}>{isDemo ? 'מצב דמו' : 'תודה שעדכנתם אותנו'}</Text>
+          <View style={styles.successIconCircle}>
+            <Ionicons name="checkmark" size={38} color="#fff" />
+          </View>
+          <Text style={styles.successTitle}>מצב דמו</Text>
           <Text style={styles.successText}>
-            {isDemo
-              ? 'הבחירה נשמרה מקומית בלבד — לא נשמר שום עדכון ולא שונתה תשובה של אף אורח.'
-              : 'העדכון נשמר בהצלחה, ולא ניתן לשנות שוב דרך הקישור הזה.'}
+            הבחירה נשמרה מקומית בלבד — לא נשמר שום עדכון ולא שונתה תשובה של אף אורח.
           </Text>
           <View style={styles.thanksMeta}>
             <Text style={styles.thanksMetaText}>
@@ -227,19 +197,15 @@ export default function InvitationLandingScreen() {
               {status === 'מגיע' || status === 'אולי מגיע' ? ` · ${Math.max(1, Number(peopleCount) || 1)} אורחים` : ''}
             </Text>
           </View>
-          {isDemo ? (
-            <Pressable
-              onPress={() => setSubmittedLocked(false)}
-              style={({ pressed }) => [styles.demoResetBtn, pressed ? { opacity: 0.94 } : null]}
-              accessibilityRole="button"
-              accessibilityLabel="חזרה לדמו"
-            >
-              <Ionicons name="refresh" size={18} color={'rgba(2,6,23,0.78)'} />
-              <Text style={styles.demoResetText}>חזרה לדמו</Text>
-            </Pressable>
-          ) : (
-            <Text style={styles.thanksHint}>אפשר לסגור את הדף.</Text>
-          )}
+          <Pressable
+            onPress={() => setDemoSubmitted(false)}
+            style={({ pressed }) => [styles.demoResetBtn, pressed ? { opacity: 0.94 } : null]}
+            accessibilityRole="button"
+            accessibilityLabel="חזרה לדמו"
+          >
+            <Ionicons name="refresh" size={18} color={'rgba(2,6,23,0.78)'} />
+            <Text style={styles.demoResetText}>חזרה לדמו</Text>
+          </Pressable>
         </View>
       </View>
     );
@@ -327,6 +293,9 @@ export default function InvitationLandingScreen() {
           {/* RSVP card */}
           <View style={styles.rsvpCard}>
             <Text style={styles.rsvpTitle}>אישור הגעה</Text>
+            {hasExistingRsvp ? (
+              <Text style={styles.rsvpHint}>כבר עדכנתם — אפשר לשנות את הסטטוס או מספר האורחים ולשלוח שוב.</Text>
+            ) : null}
 
             <View style={styles.rsvpButtonsRow}>
               <Pressable
@@ -407,17 +376,19 @@ export default function InvitationLandingScreen() {
 
             <Pressable
               onPress={() => void submit()}
-              disabled={!canSubmit || submittedLocked}
+              disabled={!canSubmit}
               style={({ pressed }) => [
                 styles.submitBtn,
                 pressed ? { opacity: 0.94, transform: [{ scale: 0.995 }] } : null,
-                !canSubmit || submittedLocked ? { opacity: 0.6 } : null,
+                !canSubmit ? { opacity: 0.6 } : null,
               ]}
               accessibilityRole="button"
-              accessibilityLabel="שליחה ואישור"
+              accessibilityLabel={hasExistingRsvp ? 'עדכון תשובה' : 'שליחה ואישור'}
             >
               {saving ? <ActivityIndicator color="#fff" /> : null}
-              <Text style={styles.submitText}>{saving ? 'שולח...' : 'שליחה ואישור'}</Text>
+              <Text style={styles.submitText}>
+                {saving ? 'שולח...' : hasExistingRsvp ? 'עדכון תשובה' : 'שליחה ואישור'}
+              </Text>
               {!saving ? <Ionicons name="paper-plane-outline" size={20} color="#fff" /> : null}
             </Pressable>
           </View>
@@ -443,7 +414,6 @@ const styles = StyleSheet.create({
     padding: 18,
     gap: 10,
   },
-  successIconWrap: { marginTop: 4 },
   successIconCircle: {
     width: 74,
     height: 74,
@@ -469,7 +439,6 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(2,6,23,0.10)',
   },
   thanksMetaText: { fontSize: 12, fontWeight: '900', color: 'rgba(2,6,23,0.78)', textAlign: 'center' },
-  thanksHint: { marginTop: 10, fontSize: 12, fontWeight: '800', color: 'rgba(2,6,23,0.55)', textAlign: 'center' },
   demoResetBtn: {
     marginTop: 10,
     height: 44,
@@ -559,6 +528,13 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   rsvpTitle: { fontSize: 14, fontWeight: '900', color: colors.text, textAlign: 'center' },
+  rsvpHint: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: 'rgba(2,6,23,0.62)',
+    textAlign: 'center',
+    lineHeight: 18,
+  },
   rsvpButtonsRow: { flexDirection: 'row-reverse', gap: 10 },
   rsvpBtn: {
     flex: 1,
