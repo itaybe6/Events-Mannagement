@@ -2,6 +2,13 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "npx expo export --platform web",
   "outputDirectory": "dist",
+  "redirects": [
+    {
+      "source": "/i/fCdvMYab4H16:slug",
+      "destination": "/i/:slug",
+      "permanent": false
+    }
+  ],
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
   ]

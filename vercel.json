@@ -3,5 +3,12 @@
   "installCommand": "cd expo && npm install",
   "buildCommand": "cd expo && npx expo export --platform web",
   "outputDirectory": "expo/dist",
+  "redirects": [
+    {
+      "source": "/i/fCdvMYab4H16:slug",
+      "destination": "/i/:slug",
+      "permanent": false
+    }
+  ],
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
 }

@@ -8,13 +8,18 @@ import {
   Text,
   View,
 } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
+import { Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 
 import { colors } from '@/constants/colors';
 import type { Guest } from '@/types';
-import { invitationService, type InvitationInfo } from '@/lib/services/invitationService';
+import {
+  invitationService,
+  normalizeInvitationToken,
+  type InvitationInfo,
+} from '@/lib/services/invitationService';
 
 type Status = Guest['status'];
 const GOLD = '#D4AF37';
@@ -28,9 +33,15 @@ function formatDateNumeric(d: Date) {
 
 export default function InvitationLandingScreen() {
   const { token, eventId } = useLocalSearchParams<{ token?: string; eventId?: string }>();
-  const t = useMemo(() => String(token || '').trim(), [token]);
+  const rawToken = useMemo(() => String(token || '').trim(), [token]);
+  const t = useMemo(() => normalizeInvitationToken(rawToken), [rawToken]);
   const demoEventId = useMemo(() => String(eventId || '').trim(), [eventId]);
   const isDemo = useMemo(() => t.toLowerCase() === 'demo', [t]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !rawToken || rawToken === t || isDemo) return;
+    router.replace(`/i/${encodeURIComponent(t)}`);
+  }, [rawToken, t, isDemo]);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
