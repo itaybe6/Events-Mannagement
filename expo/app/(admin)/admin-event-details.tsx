@@ -132,10 +132,10 @@ export default function AdminEventDetailsScreen() {
     );
   }
 
-  const confirmed = stats.confirmed;
-  const declined = stats.declined;
-  const pending = stats.pending;
-  const totalGuests = stats.totalGuests;
+  const confirmed = stats.confirmedPeople;
+  const declined = stats.declinedPeople;
+  const pending = stats.pendingPeople;
+  const totalGuests = stats.invitedPeople;
   const seatedPercent = stats.seatedPercent;
   const invitedPeople = stats.invitedPeople;
   const confirmedPeople = stats.confirmedPeople;
@@ -681,10 +681,12 @@ export default function AdminEventDetailsScreen() {
             <View style={styles.guestStatusGrid}>
               <View style={styles.guestStatusCard}>
                 <View style={styles.guestStatusTopRow}>
+                  <View style={styles.guestStatusMetaCol}>
+                    <Text style={[styles.guestStatusPercent, { color: colors.yaleBlue }]}>{`${getProgressPercent(confirmed, totalGuests)}%`}</Text>
+                    <Text style={[styles.guestStatusValue, { color: ui.text }]}>{confirmed}</Text>
+                  </View>
                   <Text style={[styles.guestStatusLabel, { color: 'rgba(17,24,39,0.62)' }]}>אישרו</Text>
-                  <Text style={[styles.guestStatusPercent, { color: colors.yaleBlue }]}>{`${getProgressPercent(confirmed, totalGuests)}%`}</Text>
                 </View>
-                <Text style={[styles.guestStatusValue, { color: ui.text }]}>{confirmed}</Text>
                 <View style={styles.guestStatusBarTrack}>
                   <View style={[styles.guestStatusBarFill, { width: `${getProgressPercent(confirmed, totalGuests)}%`, backgroundColor: colors.yaleBlue }]} />
                 </View>
@@ -692,10 +694,12 @@ export default function AdminEventDetailsScreen() {
 
               <View style={styles.guestStatusCard}>
                 <View style={styles.guestStatusTopRow}>
+                  <View style={styles.guestStatusMetaCol}>
+                    <Text style={[styles.guestStatusPercent, { color: colors.gold }]}>{`${getProgressPercent(pending, totalGuests)}%`}</Text>
+                    <Text style={[styles.guestStatusValue, { color: ui.text }]}>{pending}</Text>
+                  </View>
                   <Text style={[styles.guestStatusLabel, { color: 'rgba(17,24,39,0.62)' }]}>ממתינים</Text>
-                  <Text style={[styles.guestStatusPercent, { color: colors.gold }]}>{`${getProgressPercent(pending, totalGuests)}%`}</Text>
                 </View>
-                <Text style={[styles.guestStatusValue, { color: ui.text }]}>{pending}</Text>
                 <View style={styles.guestStatusBarTrack}>
                   <View style={[styles.guestStatusBarFill, { width: `${getProgressPercent(pending, totalGuests)}%`, backgroundColor: colors.gold }]} />
                 </View>
@@ -703,10 +707,12 @@ export default function AdminEventDetailsScreen() {
 
               <View style={styles.guestStatusCard}>
                 <View style={styles.guestStatusTopRow}>
+                  <View style={styles.guestStatusMetaCol}>
+                    <Text style={[styles.guestStatusPercent, { color: colors.error }]}>{`${getProgressPercent(declined, totalGuests)}%`}</Text>
+                    <Text style={[styles.guestStatusValue, { color: ui.text }]}>{declined}</Text>
+                  </View>
                   <Text style={[styles.guestStatusLabel, { color: 'rgba(17,24,39,0.62)' }]}>לא מגיעים</Text>
-                  <Text style={[styles.guestStatusPercent, { color: colors.error }]}>{`${getProgressPercent(declined, totalGuests)}%`}</Text>
                 </View>
-                <Text style={[styles.guestStatusValue, { color: ui.text }]}>{declined}</Text>
                 <View style={styles.guestStatusBarTrack}>
                   <View style={[styles.guestStatusBarFill, { width: `${getProgressPercent(declined, totalGuests)}%`, backgroundColor: colors.error }]} />
                 </View>
@@ -2138,11 +2144,18 @@ const styles = StyleSheet.create({
   },
   guestStatusTopRow: {
     flexDirection: ROW_DIR,
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: 12,
+    marginBottom: 10,
+  },
+  guestStatusMetaCol: {
+    alignItems: ALIGN_RIGHT,
+    gap: 2,
+    minWidth: 72,
   },
   guestStatusLabel: {
+    flex: 1,
     fontSize: 13,
     fontWeight: '700',
     textAlign: 'right',
@@ -2150,11 +2163,9 @@ const styles = StyleSheet.create({
   guestStatusPercent: {
     fontSize: 13,
     fontWeight: '800',
-    textAlign: 'left',
+    textAlign: 'right',
   },
   guestStatusValue: {
-    marginTop: 6,
-    marginBottom: 10,
     fontSize: 28,
     fontWeight: '900',
     textAlign: 'right',

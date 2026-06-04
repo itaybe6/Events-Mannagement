@@ -34,6 +34,27 @@ export const tableService = {
     }
   },
 
+  // Count tables for an event without pulling rows or the guests join.
+  // The couple home screen only needs the number of tables, so a head/count
+  // query is dramatically cheaper than `getTables` (which joins every guest).
+  getTablesCount: async (eventId: string): Promise<number> => {
+    try {
+      const cleanId = String(eventId || '').trim();
+      if (!cleanId) return 0;
+
+      const { count, error } = await supabase
+        .from('tables')
+        .select('id', { count: 'exact', head: true })
+        .eq('event_id', cleanId);
+
+      if (error) throw error;
+      return count ?? 0;
+    } catch (error) {
+      console.error('Get tables count error:', error);
+      throw error;
+    }
+  },
+
   // Add new table
   addTable: async (eventId: string, table: Omit<Table, 'id' | 'guests'>): Promise<Table> => {
     try {

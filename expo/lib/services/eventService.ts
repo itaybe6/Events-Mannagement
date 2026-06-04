@@ -140,6 +140,52 @@ export const eventService = {
     }
   },
 
+  // Lightweight single-event fetch for screens that only need the event header
+  // info (couple home screen). Skips the `tasks(*)` join and pulls just the
+  // columns actually rendered, which keeps the initial load fast.
+  getEventLite: async (
+    eventId: string
+  ): Promise<
+    | (Pick<Event, 'id' | 'title' | 'date' | 'location' | 'city'> & {
+        brideName?: string;
+        groomName?: string;
+        isApproved?: boolean;
+      })
+    | null
+  > => {
+    try {
+      const cleanId = String(eventId || '').trim();
+      if (!cleanId) return null;
+
+      const { data, error } = await supabase
+        .from('events')
+        .select('id, title, date, location, city, groom_name, bride_name, is_approved')
+        .eq('id', cleanId)
+        .maybeSingle();
+
+      if (error) {
+        const code = (error as any)?.code ? String((error as any).code) : '';
+        if (code === 'PGRST116') return null;
+        throw error;
+      }
+      if (!data) return null;
+
+      return {
+        id: data.id,
+        title: data.title,
+        date: new Date(data.date),
+        location: data.location,
+        city: data.city || '',
+        groomName: (data as any).groom_name ?? undefined,
+        brideName: (data as any).bride_name ?? undefined,
+        isApproved: (data as any).is_approved ?? undefined,
+      };
+    } catch (error) {
+      console.error('Get event (lite) error:', error);
+      throw error;
+    }
+  },
+
   // Create new event
   createEvent: async (eventData: Omit<Event, 'id' | 'tasks'>): Promise<Event> => {
     try {

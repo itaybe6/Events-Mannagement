@@ -3,7 +3,13 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { DonutChart, type DonutSegment } from '@/components/couple/DonutChart';
 import { NavyCardBackground } from '@/components/couple/NavyCardBackground';
-import { ROW_DIR } from '@/lib/rtl';
+import { IS_RTL, ROW_DIR } from '@/lib/rtl';
+
+// With I18nManager.forceRTL (native build), `textAlign: 'right'` mirrors to the physical left.
+const rtlTextAlign = {
+  textAlign: (IS_RTL ? 'left' : 'right') as 'left' | 'right',
+  writingDirection: 'rtl' as const,
+};
 import { colors } from '@/constants/colors';
 
 const DACC = '#1E3A6E';
@@ -69,7 +75,7 @@ function RsvpLegendItem({ color, label, value }: { color: string; label: string;
   return (
     <View style={styles.legendRow}>
       <Text style={styles.legendValue}>{value}</Text>
-      <Text style={styles.legendLabel}>{label}</Text>
+      <Text style={[styles.legendLabel, rtlTextAlign]}>{label}</Text>
       <View style={[styles.legendDot, { backgroundColor: color }]} />
     </View>
   );
@@ -106,8 +112,8 @@ export function CoupleHomeDashboardCards({
     <View style={styles.stack}>
       <View style={styles.countdownCard}>
         <View style={styles.countdownGlow} pointerEvents="none" />
-        <Text style={styles.countdownEyebrow}>הספירה לחתונה שלכם</Text>
-        <Text style={styles.eventTitle} numberOfLines={2}>
+        <Text style={[styles.countdownEyebrow, rtlTextAlign]}>הספירה לחתונה שלכם</Text>
+        <Text style={[styles.eventTitle, rtlTextAlign]} numberOfLines={2}>
           {eventTitle}
         </Text>
         {countdown ? (
@@ -144,8 +150,8 @@ export function CoupleHomeDashboardCards({
         <NavyCardBackground variant="full" />
         <View style={styles.rsvpContent}>
         <View style={styles.rsvpHeader}>
-          <Text style={styles.rsvpCountLabel}>{guestInviteCount} הזמנות</Text>
-          <Text style={styles.rsvpTitle}>אישורי הגעה</Text>
+          <Text style={[styles.rsvpTitle, rtlTextAlign]}>אישורי הגעה</Text>
+          <Text style={[styles.rsvpCountLabel, rtlTextAlign]}>{guestInviteCount} הזמנות</Text>
         </View>
         <View style={styles.rsvpBody}>
           <View style={styles.legendCol}>
@@ -168,13 +174,13 @@ export function CoupleHomeDashboardCards({
         style={({ pressed }) => [styles.seatingCard, pressed && styles.cardPressed]}
       >
         <View style={styles.seatingHeader}>
-          <Text style={styles.seatingPct}>{seatPct}%</Text>
           <View style={styles.seatingTitleRow}>
-            <Text style={styles.seatingTitle}>הושבה</Text>
+            <Text style={[styles.seatingTitle, rtlTextAlign]}>הושבה</Text>
             <View style={styles.seatingIconWrap}>
               <Ionicons name="grid-outline" size={20} color={DACC} />
             </View>
           </View>
+          <Text style={[styles.seatingPct, rtlTextAlign]}>{seatPct}%</Text>
         </View>
         <View style={styles.progressTrack}>
           <View style={[styles.progressFill, { width: `${seatPct}%` }]} />
@@ -188,7 +194,7 @@ export function CoupleHomeDashboardCards({
           ) : (
             <View />
           )}
-          <Text style={styles.seatingStats}>
+          <Text style={[styles.seatingStats, rtlTextAlign]}>
             {seatedGuests} שובצו · {tablesCount} שולחנות
           </Text>
         </View>
@@ -228,7 +234,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: DACC,
-    textAlign: 'right',
     letterSpacing: 0.5,
     marginBottom: 4,
   },
@@ -236,7 +241,6 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '700',
     color: colors.text,
-    textAlign: 'right',
     marginBottom: 18,
     lineHeight: 34,
   },
@@ -330,7 +334,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#FFFFFF',
-    textAlign: 'right',
   },
   rsvpCountLabel: {
     fontSize: 13,
@@ -360,7 +363,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: 'rgba(220, 228, 245, 0.92)',
-    textAlign: 'right',
   },
   legendValue: {
     fontSize: 17,
@@ -416,7 +418,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: colors.text,
-    textAlign: 'right',
   },
   seatingPct: {
     fontSize: 20,
@@ -445,7 +446,6 @@ const styles = StyleSheet.create({
   seatingStats: {
     fontSize: 12.5,
     color: colors.gray[600],
-    textAlign: 'right',
     flex: 1,
   },
   seatingPendingRow: {

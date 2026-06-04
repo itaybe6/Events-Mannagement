@@ -170,6 +170,88 @@ export const guestService = {
     }
   },
 
+  /**
+   * Lightweight aggregate stats for the couple home screen.
+   *
+   * Instead of pulling every guest row with `select('*')` (which on large events
+   * is the main reason the home screen feels slow to load), we fetch only the
+   * columns required to compute the dashboard numbers and reduce them once.
+   * Status counts (`coming`, `maybe`, `pending`, `declined`) are people totals
+   * (sum of `number_of_people`), matching the donut center (`confirmedPeople`).
+   */
+  getEventGuestStats: async (
+    eventId: string
+  ): Promise<{
+    inviteCount: number;
+    coming: number;
+    maybe: number;
+    pending: number;
+    declined: number;
+    confirmedPeople: number;
+    seatedPeople: number;
+  }> => {
+    const empty = {
+      inviteCount: 0,
+      coming: 0,
+      maybe: 0,
+      pending: 0,
+      declined: 0,
+      confirmedPeople: 0,
+      seatedPeople: 0,
+    };
+
+    try {
+      const cleanId = String(eventId || '').trim();
+      if (!cleanId) return empty;
+
+      const { data, error } = await supabase
+        .from('guests')
+        .select('status, number_of_people, table_id')
+        .eq('event_id', cleanId);
+
+      if (error) throw error;
+
+      const rows = data || [];
+      let coming = 0;
+      let maybe = 0;
+      let pending = 0;
+      let declined = 0;
+      let confirmedPeople = 0;
+      let seatedPeople = 0;
+
+      for (const row of rows) {
+        const status = (row as any).status;
+        const people = Number((row as any).number_of_people ?? 1) || 1;
+        const hasTable = String((row as any).table_id ?? '').trim().length > 0;
+
+        if (status === 'מגיע') {
+          coming += people;
+          confirmedPeople += people;
+          if (hasTable) seatedPeople += people;
+        } else if (status === 'אולי מגיע') {
+          maybe += people;
+        } else if (status === 'ממתין') {
+          pending += people;
+        } else if (status === 'לא מגיע') {
+          declined += people;
+        }
+      }
+
+      return {
+        inviteCount: rows.length,
+        coming,
+        maybe,
+        pending,
+        declined,
+        confirmedPeople,
+        seatedPeople,
+      };
+    } catch (error) {
+      console.error('Get event guest stats error:', error);
+      throw error;
+    }
+  },
+
   addGuestsBatch: async (
     eventId: string,
     guests: Array<Omit<Guest, 'id'>>,

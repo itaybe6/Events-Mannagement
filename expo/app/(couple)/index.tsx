@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, ScrollView, View, Text, StyleSheet, Platform, Pressable, Image, useWindowDimensions } from 'react-native';
 import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useUserStore } from '@/store/userStore';
@@ -11,8 +11,33 @@ import { tableService } from '@/lib/services/tableService';
 import { BlurView } from 'expo-blur';
 import { EventSwitcher } from '@/components/EventSwitcher';
 import { CoupleHomeDashboardCards } from '@/components/couple/CoupleHomeDashboardCards';
-import { ALIGN_RIGHT, ROW_DIR, rtlText } from '@/lib/rtl';
+import { ALIGN_RIGHT, IS_RTL, ROW_DIR, rtlText } from '@/lib/rtl';
+
+const rtlTextAlign = {
+  textAlign: (IS_RTL ? 'left' : 'right') as 'left' | 'right',
+  writingDirection: 'rtl' as const,
+};
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+type HomeStats = {
+  inviteCount: number;
+  coming: number;
+  maybe: number;
+  pending: number;
+  declined: number;
+  confirmedPeople: number;
+  seatedPeople: number;
+};
+
+const EMPTY_HOME_STATS: HomeStats = {
+  inviteCount: 0,
+  coming: 0,
+  maybe: 0,
+  pending: 0,
+  declined: 0,
+  confirmedPeople: 0,
+  seatedPeople: 0,
+};
 
 export default function HomeScreen() {
   const { isLoggedIn, userData, initializeAuth } = useUserStore();
@@ -24,11 +49,14 @@ export default function HomeScreen() {
   const activeEventId = useEventSelectionStore((s) => s.activeEventId);
   const setActiveEvent = useEventSelectionStore((s) => s.setActiveEvent);
   const [currentEvent, setCurrentEvent] = useState<any>(null);
-  const [guests, setGuests] = useState<any[]>([]);
+  const [stats, setStats] = useState<HomeStats>(EMPTY_HOME_STATS);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(() => new Date());
   const [hasMultipleEvents, setHasMultipleEvents] = useState(false);
   const [tablesCount, setTablesCount] = useState(0);
+  // Guards against the duplicate fetch that used to run on the first mount
+  // (the mount effect and the focus effect both firing at once).
+  const hasLoadedOnceRef = useRef(false);
   const isWeb = Platform.OS === 'web';
   const isDesktopWeb = isWeb && windowWidth >= 1024;
   const AnimatedPressable = useMemo(() => Animated.createAnimatedComponent(Pressable), []);
@@ -47,11 +75,38 @@ export default function HomeScreen() {
     router.replace({ pathname: './', params: { eventId: nextEventId } });
   };
 
+  // Single, deduplicated loader. The event header, guest stats and table count
+  // are fetched in parallel using lightweight queries (only the columns/counts
+  // the home screen actually needs), so the screen renders as fast as possible.
+  const fetchHomeData = useCallback(
+    async (eventId: string) => {
+      const [event, guestStats, tablesTotal] = await Promise.all([
+        eventService.getEventLite(eventId),
+        guestService.getEventGuestStats(eventId),
+        tableService.getTablesCount(eventId),
+      ]);
+
+      if (event) {
+        setCurrentEvent(event);
+        setStats(guestStats);
+        setTablesCount(tablesTotal);
+      } else {
+        setCurrentEvent(null);
+        setStats(EMPTY_HOME_STATS);
+        setTablesCount(0);
+      }
+    },
+    []
+  );
+
   useEffect(() => {
     if (!isLoggedIn) {
       router.replace('/login');
       return;
     }
+
+    let cancelled = false;
+
     const loadData = async () => {
       try {
         setLoading(true);
@@ -61,67 +116,59 @@ export default function HomeScreen() {
           eventId = useUserStore.getState().userData?.event_id || null;
         }
         if (!eventId) {
+          if (cancelled) return;
           setCurrentEvent(null);
-          setGuests([]);
+          setStats(EMPTY_HOME_STATS);
           setTablesCount(0);
-          setLoading(false);
           return;
         }
 
         if (userData?.id) setActiveEvent(userData.id, eventId);
 
-        const event = await eventService.getEvent(eventId);
-        if (event) {
-          setCurrentEvent(event);
-          const [guestsData, tablesData] = await Promise.all([
-            guestService.getGuests(event.id),
-            tableService.getTables(event.id),
-          ]);
-          setGuests(guestsData);
-          setTablesCount(tablesData.length);
-        } else {
-          setCurrentEvent(null);
-          setGuests([]);
-          setTablesCount(0);
-        }
+        await fetchHomeData(eventId);
+        // Mark that the initial load is done so the focus effect doesn't
+        // immediately re-fetch the same data on first mount.
+        hasLoadedOnceRef.current = true;
       } catch (error) {
+        if (cancelled) return;
         setCurrentEvent(null);
-        setGuests([]);
+        setStats(EMPTY_HOME_STATS);
         setTablesCount(0);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
-    loadData();
-  }, [isLoggedIn, router, userData?.id, resolvedEventId]);
 
-  // טען מחדש נתונים כשהמסך חוזר למוקד
+    loadData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoggedIn, router, userData?.id, resolvedEventId, fetchHomeData]);
+
+  // Refresh data when returning to the screen, but skip the very first focus
+  // (which coincides with the mount effect above) to avoid a duplicate fetch.
   useFocusEffect(
     React.useCallback(() => {
-      if (isLoggedIn && resolvedEventId) {
-        const reloadData = async () => {
-          try {
-            const event = await eventService.getEvent(resolvedEventId as string);
-            setCurrentEvent(event);
-            if (event) {
-              const [guestsData, tablesData] = await Promise.all([
-                guestService.getGuests(event.id),
-                tableService.getTables(event.id),
-              ]);
-              setGuests(guestsData);
-              setTablesCount(tablesData.length);
-            } else {
-              setGuests([]);
-              setTablesCount(0);
-            }
-          } catch (error) {
-            setGuests([]);
+      if (!isLoggedIn || !resolvedEventId) return;
+      if (!hasLoadedOnceRef.current) return;
+
+      let cancelled = false;
+      (async () => {
+        try {
+          await fetchHomeData(resolvedEventId as string);
+        } catch (error) {
+          if (!cancelled) {
+            setStats(EMPTY_HOME_STATS);
             setTablesCount(0);
           }
-        };
-        reloadData();
-      }
-    }, [isLoggedIn, resolvedEventId])
+        }
+      })();
+
+      return () => {
+        cancelled = true;
+      };
+    }, [isLoggedIn, resolvedEventId, fetchHomeData])
   );
 
   useEffect(() => {
@@ -170,15 +217,8 @@ export default function HomeScreen() {
     );
   }
 
-  const confirmedPeople = guests.reduce((sum: number, guest: any) => {
-    if (guest?.status !== 'מגיע') return sum;
-    return sum + (Number(guest?.numberOfPeople ?? guest?.number_of_people ?? 1) || 1);
-  }, 0);
-  const seatedGuests = guests.reduce((sum: number, guest: any) => {
-    const assignedTableId = String(guest?.tableId ?? guest?.table_id ?? '').trim();
-    if (guest?.status !== 'מגיע' || assignedTableId.length === 0) return sum;
-    return sum + (Number(guest?.numberOfPeople ?? guest?.number_of_people ?? 1) || 1);
-  }, 0);
+  const confirmedPeople = stats.confirmedPeople;
+  const seatedGuests = stats.seatedPeople;
   const eventDateLabel = currentEvent?.date
     ? new Date(currentEvent.date).toLocaleDateString('he-IL', {
         year: 'numeric',
@@ -199,10 +239,10 @@ export default function HomeScreen() {
   const locationLabel = venueLabel && cityLabel ? `${venueLabel}, ${cityLabel}` : venueLabel || cityLabel;
 
   const guestCounts = {
-    coming: guests.filter((g) => g?.status === 'מגיע').length,
-    maybe: guests.filter((g) => g?.status === 'אולי מגיע').length,
-    pending: guests.filter((g) => g?.status === 'ממתין').length,
-    declined: guests.filter((g) => g?.status === 'לא מגיע').length,
+    coming: stats.coming,
+    maybe: stats.maybe,
+    pending: stats.pending,
+    declined: stats.declined,
   };
 
   const ActionTile = ({
@@ -366,7 +406,7 @@ export default function HomeScreen() {
           eventDateLabel={eventDateLabel}
           locationLabel={locationLabel}
           countdown={countdown}
-          guestInviteCount={guests.length}
+          guestInviteCount={stats.inviteCount}
           guestCounts={guestCounts}
           confirmedPeople={confirmedPeople}
           seatedGuests={seatedGuests}
@@ -393,7 +433,7 @@ export default function HomeScreen() {
           }
         />
 
-        <Text style={[styles.sectionTitle, styles.sectionTitleSpacious]}>פעולות מהירות</Text>
+        <Text style={[styles.sectionTitle, styles.sectionTitleSpacious, rtlTextAlign]}>פעולות מהירות</Text>
         <View style={[styles.actionsGrid, isDesktopWeb && styles.actionsGridDesktop]}>
           <View style={[styles.actionTileWrapper, isDesktopWeb && styles.actionTileWrapperWeb]}>
             <ActionTile
@@ -913,7 +953,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '900',
     color: colors.text,
-    textAlign: 'right',
     alignSelf: ALIGN_RIGHT,
   },
   sectionTitleSpacious: {
