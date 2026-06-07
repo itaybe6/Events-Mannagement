@@ -630,7 +630,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   cardIntroTitle: {
-    fontSize: 26,
+    fontSize: 28,
     fontWeight: '800',
     color: '#010c21',
     textAlign: 'center',
