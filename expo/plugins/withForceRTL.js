@@ -65,7 +65,7 @@ function addRTLToMainApplication(contents) {
       '      I18nUtil.getInstance().forceRTL(this, true);',
     ].join('\n'),
     anchor: /super\.onCreate\(\)/,
-    offset: -1,
+    offset: 1,
     comment: '//',
   });
   return withRTL;
