@@ -7,28 +7,43 @@ import { colors } from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
+import { NavyCardBackground } from '@/components/couple/NavyCardBackground';
+import { guestService } from '@/lib/services/guestService';
+import { tableService } from '@/lib/services/tableService';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import * as ImagePicker from 'expo-image-picker';
 import { invitationAssetService } from '@/lib/services/invitationAssetService';
 import { avatarService } from '@/lib/services/avatarService';
 import { ensurePhotoLibraryPermission } from '@/lib/permissions';
 import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
+import { AppLoader, AppLoaderScreen } from '@/components/AppLoader';
 import { EventSwitcher } from '@/components/EventSwitcher';
 import { DeleteAccountSection } from '@/components/DeleteAccountSection';
+import { ProfileMenuCard, ProfileMenuRow } from '@/components/couple/ProfileMenuRow';
 import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const ui = {
-  bg: '#E8F1FF',
+  bg: '#FDFCF9',
   card: colors.white,
-  text: colors.text,
-  muted: colors.gray[600],
-  border: 'rgba(6,23,62,0.08)',
+  text: '#1A2A4A',
+  muted: '#6B7A94',
+  faint: '#9AA0B4',
+  border: 'rgba(22,29,56,0.08)',
+  line: 'rgba(22,29,56,0.07)',
+  navy: '#152949',
+  iconBg: '#E8EEF5',
   primary: colors.primary,
   accent: colors.accent,
   gold: colors.gold,
   danger: colors.error,
 };
+
+function getNameInitial(name: string) {
+  const trimmed = String(name || '').trim();
+  if (!trimmed) return '?';
+  return trimmed.charAt(0);
+}
 
 function formatDateDisplay(value?: Date | string | null) {
   const date = value instanceof Date ? value : value ? new Date(value) : null;
@@ -62,60 +77,6 @@ function isWeddingEventTitle(title: string) {
   return t.toLowerCase().includes('wedding');
 }
 
-function InfoRow({
-  icon,
-  label,
-  value,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  value: string;
-}) {
-  return (
-    <View style={styles.infoRow}>
-      <View style={styles.infoTextWrap}>
-        <Text style={styles.infoLabel}>{label}</Text>
-        <Text style={styles.infoValue}>{value}</Text>
-      </View>
-      <View style={styles.infoIconBox}>
-        <Ionicons name={icon} size={18} color={ui.primary} />
-      </View>
-    </View>
-  );
-}
-
-function ActionCard({
-  icon,
-  title,
-  subtitle,
-  accentColor,
-  onPress,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  title: string;
-  subtitle: string;
-  accentColor: string;
-  onPress: () => void;
-}) {
-  return (
-    <TouchableOpacity style={styles.actionCard} onPress={onPress} activeOpacity={0.88}>
-      <View style={[styles.actionAccent, { backgroundColor: accentColor }]} />
-      <View style={[styles.actionIconBox, { backgroundColor: `${accentColor}15` }]}>
-        <Ionicons name={icon} size={22} color={accentColor} />
-      </View>
-      <View style={styles.actionBody}>
-        <Text style={styles.actionTitle}>{title}</Text>
-        <Text style={styles.actionSubtitle}>{subtitle}</Text>
-      </View>
-      <View style={styles.actionChevron}>
-        <View style={[styles.actionChevronCircle, { backgroundColor: `${accentColor}12` }]}>
-          <Ionicons name="chevron-back" size={15} color={accentColor} />
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
-}
-
 export default function BrideGroomSettings() {
   const { userData, logout } = useUserStore();
   const router = useRouter();
@@ -145,6 +106,7 @@ export default function BrideGroomSettings() {
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileAvatarUploading, setProfileAvatarUploading] = useState(false);
   const [hasMultipleEvents, setHasMultipleEvents] = useState(false);
+  const [profileStats, setProfileStats] = useState({ invitations: 0, attending: 0, tables: 0 });
   const [draftEventTitle, setDraftEventTitle] = useState('');
   const [draftGroomName, setDraftGroomName] = useState('');
   const [draftBrideName, setDraftBrideName] = useState('');
@@ -192,6 +154,7 @@ export default function BrideGroomSettings() {
 
         if (!resolvedEventId) {
           setEventMeta(null);
+          setProfileStats({ invitations: 0, attending: 0, tables: 0 });
           return;
         }
 
@@ -221,6 +184,26 @@ export default function BrideGroomSettings() {
           rsvpLink: (eventRow as any).rsvp_link ?? undefined,
           invitationImageUrl: (eventRow as any).invitation_image_url ?? undefined,
         });
+
+        try {
+          const [guestsData, tablesData] = await Promise.all([
+            guestService.getGuests(resolvedEventId),
+            tableService.getTables(resolvedEventId),
+          ]);
+          const attending = guestsData.reduce((sum, guest) => {
+            if (guest?.status !== 'מגיע') return sum;
+            return sum + (Number(guest?.numberOfPeople ?? 1) || 1);
+          }, 0);
+          if (active) {
+            setProfileStats({
+              invitations: guestsData.length,
+              attending,
+              tables: tablesData.length,
+            });
+          }
+        } catch {
+          if (active) setProfileStats({ invitations: 0, attending: 0, tables: 0 });
+        }
       } catch (e) {
         console.error('Error loading couple profile:', e);
         Alert.alert('שגיאה', 'לא ניתן לטעון את הפרופיל');
@@ -267,8 +250,19 @@ export default function BrideGroomSettings() {
       return eventMeta.date.toDateString();
     }
   }, [eventMeta?.date]);
-  const rsvpStatus = eventMeta?.rsvpLink ? 'קישור אישור הגעה פעיל' : 'אין עדיין קישור אישור הגעה';
-  const invitationStatus = invitationImageUrl ? 'יש תמונת הזמנה מעודכנת' : 'עדיין לא נוספה תמונת הזמנה';
+  const invitationMenuDetail = invitationImageUrl
+    ? eventMeta?.rsvpLink
+      ? 'הזמנה וקישור RSVP'
+      : 'תמונת הזמנה מעודכנת'
+    : eventMeta?.rsvpLink
+      ? 'קישור RSVP פעיל'
+      : 'טרם הוגדרה הזמנה';
+  const profileSubtitle = weddingNames
+    ? `בעלי אירוע · ${weddingNames}`
+    : eventTitleBadgeText
+      ? `בעלי אירוע · ${eventTitleBadgeText}`
+      : 'בעלי אירוע';
+  const nameInitial = getNameInitial(String(userData?.name || ''));
   const readonlyEventDateDisplay = useMemo(() => formatDateDisplay(eventMeta?.date), [eventMeta?.date]);
 
   const askLogout = () => setLogoutModalOpen(true);
@@ -550,180 +544,97 @@ export default function BrideGroomSettings() {
     }
   };
 
-  const getEventCoverSource = () => {
-    const title = String(eventMeta?.title ?? '').toLowerCase();
-
-    const hasBarMitzvah = title.includes('בר מצו') || title.includes('בר-מצו') || title.includes('bar mitz');
-    const hasBaby =
-      title.includes('ברית') ||
-      title.includes('בריתה') ||
-      title.includes('תינוק') ||
-      title.includes('תינוקת') ||
-      title.includes('baby') ||
-      title.includes('בייבי');
-
-    if (hasBarMitzvah) return require('../../assets/images/Bar Mitzvah.jpg');
-    if (hasBaby) return require('../../assets/images/baby.jpg');
-
-    const hasCoupleNames = Boolean(eventMeta?.groomName || eventMeta?.brideName);
-    const isWedding = hasCoupleNames || title.includes('חתונה') || title.includes('wedding');
-    if (isWedding) return require('../../assets/images/bride and groom.jpg');
-
-    return require('../../assets/images/wedding.jpg');
-  };
-
   if (loading) {
     return (
-      <View style={[styles.root, styles.centered]}>
-        <ActivityIndicator size="large" color={ui.primary} />
-        <Text style={styles.loadingText}>טוען פרופיל...</Text>
+      <View style={styles.root}>
+        <AppLoaderScreen variant="default" title="טוען פרופיל" subtitle="מכין את פרטי האירוע והחשבון" />
       </View>
     );
   }
 
   return (
     <View style={styles.root}>
-      <View style={styles.bg} pointerEvents="none">
-        <LinearGradient
-          colors={['#F7FAFF', '#E8F1FF', '#F2E0BA']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.bg}
-        />
-        <LinearGradient
-          colors={['rgba(255,255,255,0.72)', 'rgba(255,255,255,0)']}
-          start={{ x: 0.05, y: 0 }}
-          end={{ x: 0.7, y: 0.55 }}
-          style={styles.bgHighlight}
-        />
-        <LinearGradient
-          colors={['rgba(232,196,122,0.52)', 'rgba(244,224,186,0.18)', 'rgba(244,224,186,0)']}
-          start={{ x: 1, y: 1 }}
-          end={{ x: 0.1, y: 0.15 }}
-          style={styles.bgWarmGlow}
-        />
-      </View>
-
       <AppKeyboardAwareScrollView
         style={styles.scrollView}
-        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 12, paddingBottom: 120 + insets.bottom }]}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 8, paddingBottom: 120 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Hero Card ── */}
-        <View style={styles.heroCard}>
-          {/* Cover image with overlay info */}
-          <View style={styles.heroCoverWrap}>
-            <Image
-              source={invitationImageUrl ? { uri: invitationImageUrl } : getEventCoverSource()}
-              style={styles.heroCoverImg}
-              contentFit="cover"
-              transition={150}
-              cachePolicy="none"
-              recyclingKey={invitationImageUrl || 'fallback-cover'}
-            />
-            <LinearGradient
-              colors={['rgba(6,23,62,0.0)', 'rgba(6,23,62,0.18)', 'rgba(6,23,62,0.88)']}
-              style={styles.heroCoverOverlay}
-            />
-
-            {eventTitleBadgeText ? (
-              <View style={styles.heroCoverTopRow}>
-                <View style={styles.heroTitlePill}>
-                  <Text style={styles.heroTitlePillText} numberOfLines={1}>
-                    {eventTitleBadgeText}
-                  </Text>
+        <View style={styles.identityCard}>
+          <NavyCardBackground variant="compact" />
+          <View style={styles.identityContent}>
+            <View style={styles.identityAvatarRing}>
+              {avatarUri ? (
+                <Image source={{ uri: avatarUri }} style={styles.identityAvatarImg} contentFit="cover" transition={120} />
+              ) : (
+                <View style={styles.identityAvatarFallback}>
+                  <Text style={styles.identityAvatarInitial}>{nameInitial}</Text>
                 </View>
-              </View>
-            ) : null}
-
-            <View style={styles.heroCoverBottom}>
-              {groomName && brideName ? (
-                <View style={styles.coupleRow}>
-                  <Text style={styles.coupleName}>{brideName}</Text>
-                  <View style={styles.coupleHeart}>
-                    <Ionicons name="heart" size={12} color={colors.gold} />
-                  </View>
-                  <Text style={styles.coupleName}>{groomName}</Text>
-                </View>
-              ) : null}
+              )}
             </View>
-          </View>
+            <Text style={styles.identityName}>{String(userData?.name || '')}</Text>
+            <Text style={styles.identitySubtitle} numberOfLines={2}>
+              {profileSubtitle}
+            </Text>
 
-          {/* Avatar + user info */}
-          <View style={styles.heroBody}>
-            <View style={styles.heroAvatarWrap}>
-              <View style={styles.heroAvatarRing}>
-                {avatarUri ? (
-                  <Image source={{ uri: avatarUri }} style={styles.heroAvatar} contentFit="cover" transition={120} />
-                ) : (
-                  <View style={styles.heroAvatarFallback}>
-                    <Ionicons name="person" size={40} color={ui.primary} />
+            <View style={styles.statsRow}>
+              {(
+                [
+                  ['הזמנות', profileStats.invitations],
+                  ['מגיעים', profileStats.attending],
+                  ['שולחנות', profileStats.tables],
+                ] as const
+              ).map(([label, value], index) => (
+                <React.Fragment key={label}>
+                  {index > 0 ? <View style={styles.statsDivider} /> : null}
+                  <View style={styles.statCell}>
+                    <Text style={styles.statValue}>{value}</Text>
+                    <Text style={styles.statLabel}>{label}</Text>
                   </View>
-                )}
-              </View>
-            </View>
-
-            <View style={styles.heroTextCol}>
-              <Text style={styles.heroUserName}>{String(userData?.name || '')}</Text>
-              <View style={styles.heroDatePill}>
-                <Ionicons name="calendar-outline" size={13} color={ui.primary} />
-                <Text style={styles.heroDatePillText}>{formattedEventDate}</Text>
-              </View>
-              <Text style={styles.heroEmail}>{String(userData?.email || '')}</Text>
-              {userData?.phone ? <Text style={styles.heroPhone}>{String(userData.phone)}</Text> : null}
+                </React.Fragment>
+              ))}
             </View>
           </View>
         </View>
 
-        {/* ── Quick Actions Card ── */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <View style={styles.cardHeaderIcon}>
-              <Ionicons name="flash-outline" size={18} color={ui.primary} />
-            </View>
-            <View style={styles.cardHeaderText}>
-              <Text style={styles.cardTitle}>ניהול מהיר</Text>
-              <Text style={styles.cardSubtitle}>עריכת פרטי האירוע, ההזמנה והפרופיל האישי</Text>
-            </View>
-          </View>
-
-          <View style={styles.actionsStack}>
-            <ActionCard
-              icon="calendar-outline"
-              title="עריכת פרטי אירוע"
-              subtitle="כותרת, שמות ותאריך האירוע"
-              accentColor="#2563EB"
-              onPress={openEventEditor}
-            />
-            <ActionCard
-              icon="image-outline"
-              title="עריכת הזמנה"
-              subtitle="תמונה וקישור אישור הגעה"
-              accentColor="#16A34A"
-              onPress={openInvitationEditor}
-            />
-            <ActionCard
-              icon="person-outline"
-              title="עריכת פרופיל"
-              subtitle="שם, אימייל ותמונת פרופיל"
-              accentColor={colors.primary}
-              onPress={openProfileEditor}
-            />
-          </View>
-        </View>
+        <ProfileMenuCard>
+          <ProfileMenuRow
+            icon="calendar-outline"
+            label="עריכת פרטי אירוע"
+            detail={formattedEventDate}
+            onPress={openEventEditor}
+          />
+          <ProfileMenuRow
+            icon="image-outline"
+            label="עריכת הזמנה"
+            detail={invitationMenuDetail}
+            onPress={openInvitationEditor}
+          />
+          <ProfileMenuRow icon="person-outline" label="עריכת פרופיל" onPress={openProfileEditor} />
+          <DeleteAccountSection
+            embedded
+            last={false}
+            onDeleted={() => {
+              router.replace('/onboarding');
+            }}
+          />
+          <ProfileMenuRow
+            icon="log-out-outline"
+            label="התנתק"
+            onPress={askLogout}
+            variant="danger"
+            last
+          />
+        </ProfileMenuCard>
 
         {hasMultipleEvents ? (
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <View style={styles.cardHeaderIcon}>
-                <Ionicons name="swap-horizontal-outline" size={18} color={ui.primary} />
+          <ProfileMenuCard>
+            <View style={styles.eventSwitcherHeader}>
+              <View style={styles.eventSwitcherIconBox}>
+                <Ionicons name="swap-horizontal-outline" size={19} color={ui.navy} />
               </View>
-              <View style={styles.cardHeaderText}>
-                <Text style={styles.cardTitle}>בחירת אירוע</Text>
-                <Text style={styles.cardSubtitle}>אם יש לך כמה אירועים מקושרים, אפשר לעבור מכאן בין האירועים שברצונך לנהל</Text>
-              </View>
+              <Text style={styles.eventSwitcherTitle}>בחירת אירוע</Text>
             </View>
-
+            <View style={styles.eventSwitcherBody}>
             <EventSwitcher
               userId={userData?.id}
               selectedEventId={resolvedEventId}
@@ -731,7 +642,8 @@ export default function BrideGroomSettings() {
               label="אירוע לניהול"
               onHasMultipleChange={setHasMultipleEvents}
             />
-          </View>
+            </View>
+          </ProfileMenuCard>
         ) : (
           <View style={styles.hiddenEventSwitcherProbe}>
             <EventSwitcher
@@ -744,34 +656,32 @@ export default function BrideGroomSettings() {
           </View>
         )}
 
-        {/* מחיקת חשבון - נדרש לפי הנחיות App Store 5.1.1(v) */}
-        <DeleteAccountSection
-          onDeleted={() => {
-            router.replace('/onboarding');
-          }}
-        />
-
-        <View style={styles.logoutPanel}>
-          <TouchableOpacity style={styles.logoutButton} onPress={askLogout} activeOpacity={0.92}>
-            <LinearGradient
-              colors={['#e53935', '#c62828', '#b71c1c']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.logoutGradient}
-            >
-              <Ionicons name="log-out-outline" size={22} color="#FFFFFF" />
-              <Text style={styles.logoutButtonText}>התנתק</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
       </AppKeyboardAwareScrollView>
 
-      <Modal visible={eventEditorOpen} transparent animationType="fade" onRequestClose={() => setEventEditorOpen(false)}>
+      <Modal
+        visible={eventEditorOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!eventSaving) setEventEditorOpen(false);
+        }}
+      >
         <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.35)' }]}>
           <AppKeyboardAwareScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} showsVerticalScrollIndicator={false}>
-            <Pressable style={styles.modalOverlayTouchable} onPress={() => setEventEditorOpen(false)} />
+            <Pressable
+              style={styles.modalOverlayTouchable}
+              onPress={() => {
+                if (!eventSaving) setEventEditorOpen(false);
+              }}
+            />
 
             <View style={[styles.modalCard, styles.eventEditorCard]}>
+              <AppLoader
+                visible={eventSaving}
+                variant="default"
+                title="שומר אירוע"
+                subtitle="מעדכן את פרטי האירוע"
+              />
               <LinearGradient
                 colors={['#F8FBFF', '#EEF4FF', '#F5E8C8']}
                 start={{ x: 0, y: 0 }}
@@ -937,6 +847,12 @@ export default function BrideGroomSettings() {
             />
 
             <View style={[styles.modalCard, styles.invitationEditorCard]}>
+              <AppLoader
+                visible={invitationSaving || invitationUploading}
+                variant="default"
+                title={invitationUploading ? 'מעלה הזמנה' : 'שומר הזמנה'}
+                subtitle={invitationUploading ? 'מעלה את קובץ ההזמנה' : 'שומר את פרטי ההזמנה'}
+              />
               <LinearGradient
                 colors={['#FFF9F3', '#F7F9FF', '#EEF4FF']}
                 start={{ x: 0, y: 0 }}
@@ -989,12 +905,6 @@ export default function BrideGroomSettings() {
                         <Text style={styles.invitationEmptyText}>אין הזמנה שמורה כרגע</Text>
                       </View>
                     )}
-                    {invitationUploading ? (
-                      <View style={styles.invitationPreviewUploadOverlay} accessibilityLabel="מעלה הזמנה">
-                        <ActivityIndicator size="large" color={ui.primary} />
-                        <Text style={styles.invitationUploadingText}>מעלה הזמנה...</Text>
-                      </View>
-                    ) : null}
                   </View>
 
                   <View style={styles.invitationActionsRow}>
@@ -1074,12 +984,30 @@ export default function BrideGroomSettings() {
         </View>
       </Modal>
 
-      <Modal visible={profileEditorOpen} transparent animationType="fade" onRequestClose={() => setProfileEditorOpen(false)}>
+      <Modal
+        visible={profileEditorOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!profileSaving && !profileAvatarUploading) setProfileEditorOpen(false);
+        }}
+      >
         <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.35)' }]}>
           <AppKeyboardAwareScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} showsVerticalScrollIndicator={false}>
-            <Pressable style={styles.modalOverlayTouchable} onPress={() => setProfileEditorOpen(false)} />
+            <Pressable
+              style={styles.modalOverlayTouchable}
+              onPress={() => {
+                if (!profileSaving && !profileAvatarUploading) setProfileEditorOpen(false);
+              }}
+            />
 
             <View style={[styles.modalCard, styles.profileEditorCard]}>
+              <AppLoader
+                visible={profileSaving || profileAvatarUploading}
+                variant="default"
+                title={profileAvatarUploading ? 'מעלה תמונה' : 'שומר פרופיל'}
+                subtitle={profileAvatarUploading ? 'מעלה את תמונת הפרופיל' : 'מעדכן את פרטי החשבון'}
+              />
               <LinearGradient
                 colors={['#F8FBFF', '#EEF4FF', '#F5E8C8']}
                 start={{ x: 0, y: 0 }}
@@ -1348,17 +1276,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: ui.bg,
   },
-  bg: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  bgHighlight: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.95,
-  },
-  bgWarmGlow: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.82,
-  },
   centered: {
     justifyContent: 'center',
     alignItems: 'center',
@@ -1373,368 +1290,131 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 18,
     gap: 16,
   },
-
-  // ── Hero card ──
-  heroCard: {
-    backgroundColor: 'rgba(255,255,255,0.98)',
-    borderRadius: 28,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: ui.border,
-    shadowColor: colors.black,
-    shadowOpacity: 0.08,
-    shadowRadius: 26,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 4,
-  },
-  heroCoverWrap: {
-    height: 230,
+  identityCard: {
     position: 'relative',
-    backgroundColor: colors.gray[200],
+    overflow: 'hidden',
+    backgroundColor: ui.navy,
+    borderRadius: 22,
+    padding: 20,
+    shadowColor: ui.navy,
+    shadowOpacity: 0.28,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 6,
   },
-  heroCoverImg: {
+  identityContent: {
+    alignItems: 'center',
+    position: 'relative',
+    zIndex: 1,
+  },
+  identityAvatarRing: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    borderWidth: 1.5,
+    borderColor: 'rgba(126,168,232,0.4)',
+    backgroundColor: 'rgba(126,168,232,0.16)',
+    overflow: 'hidden',
+    marginBottom: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  identityAvatarImg: {
     width: '100%',
     height: '100%',
   },
-  heroCoverOverlay: {
-    ...StyleSheet.absoluteFillObject,
-  },
-
-  heroDatePill: {
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: 'rgba(6,23,62,0.05)',
-    borderWidth: 1,
-    borderColor: 'rgba(6,23,62,0.10)',
-  },
-  heroDatePillText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: ui.primary,
-    textAlign: 'center',
-  },
-  heroCoverTopRow: {
-    position: 'absolute',
-    top: 14,
-    right: 14,
-    left: 14,
-    alignItems: 'flex-end',
-  },
-  heroTitlePill: {
-    maxWidth: '82%',
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 999,
-    backgroundColor: 'rgba(6,23,62,0.62)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.24)',
-  },
-  heroTitlePillText: {
-    fontSize: 13,
-    fontWeight: '900',
-    color: '#FFFFFF',
-    textAlign: 'right',
-    writingDirection: 'rtl',
-  },
-
-  // Event title + couple names at bottom of cover
-  heroCoverBottom: {
-    position: 'absolute',
-    bottom: 18,
-    left: 16,
-    right: 16,
-    alignItems: 'center',
-    gap: 8,
-  },
-  coupleRow: {
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    gap: 8,
-  },
-  coupleName: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: 'rgba(255,255,255,0.88)',
-  },
-  coupleHeart: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: 'rgba(204,160,0,0.28)',
-    borderWidth: 1,
-    borderColor: 'rgba(204,160,0,0.45)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  // Avatar + user info section
-  heroBody: {
-    marginTop: -50,
-    paddingHorizontal: 18,
-    paddingBottom: 22,
-    alignItems: 'center',
-    gap: 0,
-  },
-  heroAvatarWrap: {
-    marginBottom: 14,
-  },
-  heroAvatarRing: {
-    width: 108,
-    height: 108,
-    borderRadius: 999,
-    padding: 4,
-    backgroundColor: colors.white,
-    borderWidth: 3,
-    borderColor: colors.gold,
-    shadowColor: colors.black,
-    shadowOpacity: 0.15,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 8,
-  },
-  heroAvatar: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 999,
-  },
-  heroAvatarFallback: {
+  identityAvatarFallback: {
     flex: 1,
-    borderRadius: 999,
-    backgroundColor: 'rgba(6,23,62,0.06)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  heroTextCol: {
     width: '100%',
     alignItems: 'center',
-    gap: 5,
-  },
-  heroUserName: {
-    fontSize: 22,
-    fontWeight: '900',
-    color: ui.primary,
-    textAlign: 'center',
-    letterSpacing: -0.3,
-  },
-  heroEmail: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: ui.muted,
-    textAlign: 'center',
-  },
-  heroPhone: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.gray[500],
-    textAlign: 'center',
-  },
-
-  // ── Generic card ──
-  card: {
-    backgroundColor: ui.card,
-    borderRadius: 24,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: ui.border,
-    shadowColor: colors.black,
-    shadowOpacity: 0.05,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 2,
-  },
-  cardHeader: {
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 16,
-    paddingBottom: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(6,23,62,0.06)',
-  },
-  cardHeaderIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 16,
-    backgroundColor: 'rgba(6,23,62,0.07)',
-    borderWidth: 1,
-    borderColor: 'rgba(6,23,62,0.10)',
-    alignItems: 'center',
     justifyContent: 'center',
   },
-  cardHeaderText: {
-    flex: 1,
-    alignItems: ALIGN_RIGHT,
-  },
-  cardTitle: {
-    fontSize: 17,
-    fontWeight: '900',
-    color: ui.primary,
-    textAlign: 'right',
-  },
-  cardSubtitle: {
-    marginTop: 3,
-    fontSize: 12,
+  identityAvatarInitial: {
+    fontSize: 30,
     fontWeight: '600',
-    color: ui.muted,
-    textAlign: 'right',
-    lineHeight: 18,
+    color: '#cfe0fb',
+    textAlign: 'center',
   },
-
-  // ── Info rows (used inside cards) ──
-  infoList: {
-    gap: 10,
-  },
-  infoRow: {
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    gap: 12,
-    padding: 14,
-    borderRadius: 18,
-    backgroundColor: 'rgba(6,23,62,0.03)',
-    borderWidth: 1,
-    borderColor: 'rgba(6,23,62,0.05)',
-  },
-  infoTextWrap: {
-    flex: 1,
-    alignItems: ALIGN_RIGHT,
-  },
-  infoLabel: {
-    fontSize: 11,
+  identityName: {
+    fontSize: 20,
     fontWeight: '700',
-    color: ui.muted,
-    textAlign: 'right',
-    letterSpacing: 0.3,
+    color: '#FFFFFF',
+    textAlign: 'center',
   },
-  infoValue: {
-    marginTop: 3,
-    fontSize: 14,
-    fontWeight: '800',
-    color: ui.text,
-    textAlign: 'right',
-    lineHeight: 20,
+  identitySubtitle: {
+    marginTop: 2,
+    fontSize: 13.5,
+    fontWeight: '500',
+    color: 'rgba(220,228,245,0.7)',
+    textAlign: 'center',
+    lineHeight: 19,
+    paddingHorizontal: 8,
   },
-  infoIconBox: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.94)',
-    borderWidth: 1,
-    borderColor: 'rgba(6,23,62,0.08)',
+  statsRow: {
+    flexDirection: ROW_DIR,
+    alignItems: 'stretch',
+    width: '100%',
+    marginTop: 18,
+  },
+  statsDivider: {
+    width: 1,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    marginVertical: 4,
+  },
+  statCell: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 2,
+  },
+  statValue: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    textAlign: 'center',
+  },
+  statLabel: {
+    marginTop: 2,
+    fontSize: 12,
+    fontWeight: '500',
+    color: 'rgba(220,228,245,0.6)',
+    textAlign: 'center',
+  },
+  eventSwitcherIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 11,
+    backgroundColor: ui.iconBg,
     alignItems: 'center',
     justifyContent: 'center',
   },
-
-  // ── Action cards ──
-  actionsStack: {
-    gap: 12,
-  },
-  actionCard: {
-    position: 'relative',
+  eventSwitcherHeader: {
     flexDirection: ROW_DIR,
     alignItems: 'center',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(6,23,62,0.07)',
-    paddingVertical: 18,
-    paddingHorizontal: 14,
-    paddingStart: 16,
-    backgroundColor: 'rgba(255,255,255,0.97)',
-    shadowColor: colors.black,
-    shadowOpacity: 0.04,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 2,
-    overflow: 'hidden',
+    gap: 13,
+    paddingTop: 12,
+    paddingBottom: 4,
+    paddingHorizontal: 4,
   },
-  actionAccent: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    right: 0,
-    width: 5,
-    borderTopRightRadius: 20,
-    borderBottomRightRadius: 20,
-  },
-  actionChevron: {
-    paddingStart: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  actionChevronCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  actionBody: {
+  eventSwitcherTitle: {
     flex: 1,
-    alignItems: ALIGN_RIGHT,
-    paddingHorizontal: 10,
-  },
-  actionTitle: {
-    fontSize: 15,
-    fontWeight: '900',
+    fontSize: 15.5,
+    fontWeight: '600',
     color: ui.text,
     textAlign: 'right',
   },
-  actionSubtitle: {
-    marginTop: 4,
-    fontSize: 12,
-    fontWeight: '600',
-    color: ui.muted,
-    textAlign: 'right',
-    lineHeight: 17,
-  },
-  actionIconBox: {
-    width: 50,
-    height: 50,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
+  eventSwitcherBody: {
+    paddingBottom: 12,
+    paddingHorizontal: 4,
   },
 
-  // ── Hidden probe + logout ──
   hiddenEventSwitcherProbe: {
     position: 'absolute',
     opacity: 0,
     pointerEvents: 'none',
-  },
-  logoutPanel: {
-    marginTop: 4,
-    marginBottom: 8,
-  },
-  logoutButton: {
-    width: '100%',
-    minHeight: 58,
-    borderRadius: 22,
-    overflow: 'hidden',
-    shadowColor: '#b71c1c',
-    shadowOpacity: 0.28,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
-  },
-  logoutGradient: {
-    minHeight: 58,
-    borderRadius: 22,
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-  },
-  logoutButtonText: {
-    color: colors.white,
-    fontSize: 17,
-    fontWeight: '900',
-    letterSpacing: 0.2,
   },
   modalOverlay: {
     flex: 1,

@@ -121,6 +121,7 @@ export default function CoupleTabsLayout() {
           name="TablesList"
           options={{
             title: "שולחנות",
+            headerShown: false,
           }}
         />
         <Tabs.Screen
@@ -134,6 +135,7 @@ export default function CoupleTabsLayout() {
           name="automatic-notifications"
           options={{
             title: "הודעות",
+            headerShown: false,
           }}
         />
 
@@ -166,8 +168,9 @@ export default function CoupleTabsLayout() {
 
 const styles = StyleSheet.create({
   homeLogoTweaks: {
-    width: 350,
-    height: 80,
+    width: 400,
+    height: 92,
+    marginTop: -6,
   },
 
   // ─── Header ────────────────────────────────────────────────

@@ -23,7 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GuestCategorySelectionSheet } from '@/components/GuestCategorySelectionSheet';
 import { useLayoutStore } from '@/store/layoutStore';
 import BackSwipe from '@/components/BackSwipe';
-import { ALIGN_RIGHT, ROW_DIR, RTL_MARK } from '@/lib/rtl';
+import { ALIGN_RIGHT, IS_RTL, ROW_DIR, rtlText } from '@/lib/rtl';
 
 export default function EditCategoryScreen() {
   const router = useRouter();
@@ -58,7 +58,6 @@ export default function EditCategoryScreen() {
   const [categories, setCategories] = useState<any[]>([]);
   const [moveSheetVisible, setMoveSheetVisible] = useState(false);
   const [enableSides, setEnableSides] = useState(true);
-  const [confirmMoveVisible, setConfirmMoveVisible] = useState(false);
   const [pendingMoveTarget, setPendingMoveTarget] = useState<any | null>(null);
 
   type AppDialogTone = 'neutral' | 'success' | 'danger';
@@ -81,6 +80,7 @@ export default function EditCategoryScreen() {
 
   const hideAppDialog = useCallback(() => {
     dialogConfirmRef.current = null;
+    setPendingMoveTarget(null);
     setAppDialog({ visible: false });
   }, []);
 
@@ -97,7 +97,7 @@ export default function EditCategoryScreen() {
   }, []);
 
   const showAppConfirm = useCallback(
-    (title: string, message: string, onConfirm: () => void, options?: { destructive?: boolean }) => {
+    (title: string, message: string, onConfirm: () => void, options?: { destructive?: boolean; confirmLabel?: string }) => {
       dialogConfirmRef.current = onConfirm;
       setAppDialog({
         visible: true,
@@ -106,7 +106,7 @@ export default function EditCategoryScreen() {
         message,
         tone: options?.destructive ? 'danger' : 'neutral',
         destructiveConfirm: options?.destructive,
-        confirmLabel: options?.destructive ? 'מחק' : 'אישור',
+        confirmLabel: options?.confirmLabel ?? (options?.destructive ? 'מחק' : 'אישור'),
         cancelLabel: 'ביטול',
       });
     },
@@ -185,21 +185,37 @@ export default function EditCategoryScreen() {
     }
     if (selectedToDelete.size === 0) return;
     if (moving) return;
+
+    const ids = Array.from(selectedToDelete);
+    const idsSet = new Set(ids.map(String));
+    const movedCount = ids.length;
+
     setMoving(true);
+    setGuestsInCategory(prev => prev.filter(g => !idsSet.has(String(g.id))));
+    setSelectedToDelete(new Set());
+    setMoveSheetVisible(false);
+    setPendingMoveTarget(null);
+
     try {
-      const ids = Array.from(selectedToDelete);
-      for (const id of ids) {
-        await guestService.updateGuest(id, { category_id: targetId });
-      }
-      setGuestsInCategory(prev => prev.filter(g => !selectedToDelete.has(String(g.id))));
-      setSelectedToDelete(new Set());
-      showAppAlert(
-        'הועבר',
-        `הועברו ${ids.length} אורחים לקטגוריה "${String(target?.name ?? '')}"`,
-        'success'
-      );
+      await guestService.moveGuestsToCategory(ids, targetId);
+      requestAnimationFrame(() => {
+        showAppAlert(
+          'הועבר',
+          `הועברו ${movedCount} אורחים לקטגוריה "${String(target?.name ?? '')}"`,
+          'success'
+        );
+      });
     } catch (e) {
       console.error('Move guests error:', e);
+      if (eventId && categoryId) {
+        try {
+          const guests = await guestService.getGuests(eventId);
+          const inCat = (guests || []).filter((g: any) => String(g.category_id) === categoryId);
+          setGuestsInCategory(inCat);
+        } catch (reloadError) {
+          console.error('Reload guests after failed move:', reloadError);
+        }
+      }
       showAppAlert('שגיאה', 'לא ניתן להעביר אורחים', 'danger');
     } finally {
       setMoving(false);
@@ -307,24 +323,26 @@ export default function EditCategoryScreen() {
       return;
     }
     if (selectedToDelete.size === 0) return;
+
+    const count = selectedToDelete.size;
+    const question =
+      count === 1
+        ? `האם להעביר אורח אחד לקטגוריה "${String(target.name ?? '')}"?`
+        : `האם להעביר ${count} אורחים לקטגוריה "${String(target.name ?? '')}"?`;
+
     setPendingMoveTarget(target);
-    setConfirmMoveVisible(false);
+    setMoveSheetVisible(false);
+
     requestAnimationFrame(() => {
-      setConfirmMoveVisible(true);
+      showAppConfirm(
+        'אישור העברה',
+        question,
+        () => {
+          void moveSelectedToCategory(target);
+        },
+        { confirmLabel: 'העבר' }
+      );
     });
-  };
-
-  const cancelMove = () => {
-    setConfirmMoveVisible(false);
-    setPendingMoveTarget(null);
-  };
-
-  const confirmMove = async () => {
-    const target = pendingMoveTarget;
-    if (!target?.id) return;
-    setConfirmMoveVisible(false);
-    await moveSelectedToCategory(target);
-    setPendingMoveTarget(null);
   };
 
   const initials = (name?: string) => {
@@ -379,83 +397,10 @@ export default function EditCategoryScreen() {
         selectedCategoryId={pendingMoveTarget ? String(pendingMoveTarget.id) : null}
         enableSides={enableSides}
         closeOnSelect={false}
-        overlay={
-          confirmMoveVisible ? (
-            <View style={styles.confirmBackdrop}>
-              <Pressable style={StyleSheet.absoluteFill} onPress={() => (moving ? null : cancelMove())} />
-              <View style={[styles.confirmCard, { backgroundColor: ui.surface, borderColor: ui.border }]}>
-                <View style={styles.confirmHeaderRow}>
-                  <LinearGradient
-                    colors={['#2F6BFF', '#135BEC']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.confirmIconBadge}
-                  >
-                    <Ionicons name="swap-horizontal" size={20} color="#fff" />
-                  </LinearGradient>
-                  <View style={styles.confirmHeaderText}>
-                    <Text style={[styles.confirmEyebrow, { color: '#135BEC' }]}>
-                      {RTL_MARK}העברת אורחים
-                    </Text>
-                    <Text style={[styles.confirmTitle, { color: ui.text }]}>
-                      {RTL_MARK}אישור העברה
-                    </Text>
-                  </View>
-                </View>
-                <View style={styles.confirmTextWrap}>
-                  <Text style={[styles.confirmSubtitle, { color: ui.sub }]}>
-                    {RTL_MARK}האם אתה בטוח שברצונך להעביר {selectedCount} אורחים לקטגוריה "{String(pendingMoveTarget?.name ?? '')}"?
-                  </Text>
-                </View>
-                <View style={styles.confirmMetaRow}>
-                  <View style={[styles.confirmMetaCard, styles.confirmMetaCardPrimary]}>
-                    <Text style={styles.confirmMetaValue}>{selectedCount}</Text>
-                    <Text style={styles.confirmMetaLabel}>אורחים נבחרו</Text>
-                  </View>
-                  <View style={styles.confirmMetaCard}>
-                    <Text style={styles.confirmMetaValueDark} numberOfLines={1}>
-                      {String(pendingMoveTarget?.name ?? '')}
-                    </Text>
-                    <Text style={styles.confirmMetaLabel}>קטגוריית יעד</Text>
-                  </View>
-                </View>
-
-                <View style={styles.confirmButtonsRow}>
-                  <TouchableOpacity
-                    onPress={cancelMove}
-                    disabled={moving}
-                    activeOpacity={0.92}
-                    style={[
-                      styles.confirmBtn,
-                      styles.confirmBtnSecondary,
-                      { borderColor: 'rgba(148,163,184,0.22)', opacity: moving ? 0.6 : 1 },
-                    ]}
-                  >
-                    <Ionicons name="close" size={16} color={ui.text} />
-                    <Text style={[styles.confirmBtnText, { color: ui.text }]}>ביטול</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    onPress={() => void confirmMove()}
-                    disabled={moving}
-                    activeOpacity={0.92}
-                    style={[
-                      styles.confirmBtn,
-                      styles.confirmBtnPrimary,
-                      { backgroundColor: ui.primary, opacity: moving ? 0.7 : 1 },
-                    ]}
-                  >
-                    <Ionicons name="swap-horizontal" size={18} color="#fff" />
-                    <Text style={[styles.confirmBtnText, { color: '#fff' }]}>
-                      {moving ? 'מאשר...' : 'אישור'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
-          ) : null
-        }
-        onClose={() => setMoveSheetVisible(false)}
+        onClose={() => {
+          setMoveSheetVisible(false);
+          setPendingMoveTarget(null);
+        }}
         onSelect={(cat) => {
           requestMoveToCategory(cat as any);
         }}
@@ -727,12 +672,6 @@ export default function EditCategoryScreen() {
             <View style={styles.appDialogCardOuter}>
               <View style={[styles.appDialogCard, { backgroundColor: ui.surface, borderColor: ui.border }]}>
                 <View style={styles.appDialogHeaderRow}>
-                  <View style={styles.appDialogTitleWrap}>
-                    <Text style={[styles.appDialogTitle, { color: ui.text }]}>
-                      {RTL_MARK}
-                      {appDialog.title}
-                    </Text>
-                  </View>
                   <LinearGradient
                     colors={
                       appDialog.destructiveConfirm && appDialog.kind === 'confirm'
@@ -761,12 +700,18 @@ export default function EditCategoryScreen() {
                       color="#fff"
                     />
                   </LinearGradient>
+                  <View style={styles.appDialogTitleWrap}>
+                    <Text style={[styles.appDialogTitle, { color: ui.text }]}>
+                      {rtlText(appDialog.title)}
+                    </Text>
+                  </View>
                 </View>
 
-                <Text style={[styles.appDialogMessage, { color: ui.sub }]}>
-                  {RTL_MARK}
-                  {appDialog.message}
-                </Text>
+                <View style={styles.appDialogMessageWrap}>
+                  <Text style={[styles.appDialogMessage, { color: ui.sub }]}>
+                    {rtlText(appDialog.message)}
+                  </Text>
+                </View>
 
                 {appDialog.kind === 'confirm' ? (
                   <View style={styles.appDialogButtonsRow}>
@@ -870,11 +815,10 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 16 },
     elevation: 12,
     alignItems: 'stretch',
-    direction: 'rtl',
   },
   appDialogHeaderRow: {
     width: '100%',
-    flexDirection: 'row',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 14,
     marginBottom: 14,
@@ -882,7 +826,7 @@ const styles = StyleSheet.create({
   appDialogTitleWrap: {
     flex: 1,
     minWidth: 0,
-    alignItems: 'stretch',
+    alignItems: ALIGN_RIGHT,
   },
   appDialogIconBadge: {
     width: 52,
@@ -896,8 +840,14 @@ const styles = StyleSheet.create({
     width: '100%',
     fontSize: 22,
     fontWeight: '900',
-    textAlign: 'right',
+    textAlign: IS_RTL ? 'left' : 'right',
     writingDirection: 'rtl',
+  },
+  appDialogMessageWrap: {
+    width: '100%',
+    alignSelf: 'stretch',
+    marginBottom: 22,
+    alignItems: ALIGN_RIGHT,
   },
   appDialogMessage: {
     width: '100%',
@@ -905,13 +855,12 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     lineHeight: 24,
-    textAlign: 'right',
+    textAlign: IS_RTL ? 'left' : 'right',
     writingDirection: 'rtl',
-    marginBottom: 22,
   },
   appDialogButtonsRow: {
     width: '100%',
-    flexDirection: 'row',
+    flexDirection: ROW_DIR,
     gap: 12,
   },
   appDialogBtn: {
@@ -920,7 +869,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    flexDirection: 'row',
+    flexDirection: ROW_DIR,
     gap: 8,
   },
   appDialogBtnSingle: {
@@ -949,153 +898,6 @@ const styles = StyleSheet.create({
   },
   pageBgHighlight: {
     ...StyleSheet.absoluteFillObject,
-  },
-  confirmBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(15,23,42,0.58)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 18,
-  },
-  confirmCard: {
-    width: '100%',
-    maxWidth: 420,
-    borderRadius: 28,
-    borderWidth: 1,
-    paddingHorizontal: 18,
-    paddingTop: 18,
-    paddingBottom: 18,
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.18,
-    shadowRadius: 28,
-    shadowOffset: { width: 0, height: 16 },
-    elevation: 10,
-    alignItems: ALIGN_RIGHT,
-  },
-  confirmHeaderRow: {
-    width: '100%',
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 14,
-  },
-  confirmHeaderText: {
-    flex: 1,
-    alignItems: ALIGN_RIGHT,
-  },
-  confirmIconBadge: {
-    width: 50,
-    height: 50,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#135BEC',
-    shadowOpacity: 0.28,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
-  },
-  confirmTextWrap: {
-    width: '100%',
-    alignSelf: 'stretch',
-    marginBottom: 14,
-    alignItems: ALIGN_RIGHT,
-  },
-  confirmEyebrow: {
-    fontSize: 12,
-    fontWeight: '900',
-    writingDirection: 'rtl',
-    textAlign: 'right',
-    width: '100%',
-    marginBottom: 4,
-  },
-  confirmTitle: {
-    fontSize: 26,
-    fontWeight: '900',
-    writingDirection: 'rtl',
-    textAlign: 'right',
-    width: '100%',
-  },
-  confirmSubtitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    lineHeight: 23,
-    writingDirection: 'rtl',
-    textAlign: 'right',
-    width: '100%',
-  },
-  confirmMetaRow: {
-    width: '100%',
-    flexDirection: ROW_DIR,
-    gap: 10,
-    marginBottom: 16,
-  },
-  confirmMetaCard: {
-    flex: 1,
-    minHeight: 76,
-    borderRadius: 18,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: 'rgba(148,163,184,0.18)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-  },
-  confirmMetaCardPrimary: {
-    backgroundColor: '#EEF4FF',
-    borderColor: 'rgba(19,91,236,0.16)',
-  },
-  confirmMetaValue: {
-    fontSize: 24,
-    fontWeight: '900',
-    color: '#135BEC',
-    textAlign: 'center',
-  },
-  confirmMetaValueDark: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: '#0F172A',
-    textAlign: 'center',
-  },
-  confirmMetaLabel: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#64748B',
-    textAlign: 'center',
-  },
-  confirmButtonsRow: {
-    width: '100%',
-    alignSelf: 'stretch',
-    flexDirection: ROW_DIR,
-    gap: 12,
-  },
-  confirmBtn: {
-    flex: 1,
-    height: 50,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: ROW_DIR,
-    gap: 8,
-  },
-  confirmBtnSecondary: {
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-  },
-  confirmBtnPrimary: {
-    borderWidth: 0,
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.18,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 4,
-  },
-  confirmBtnText: {
-    fontSize: 15,
-    fontWeight: '900',
-    textAlign: 'center',
   },
   headerWrap: {
     position: 'relative',

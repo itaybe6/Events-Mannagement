@@ -1,7 +1,7 @@
 {
   "name": "expo-app",
   "main": "expo-router/entry",
-  "version": "1.0.1",
+  "version": "1.0.5",
   "scripts": {
     "start": "npx expo start --tunnel",
     "start-web": "npx expo start --web --tunnel",
@@ -65,6 +65,7 @@
     "react-sortablejs": "^6.1.4",
     "victory": "^37.3.6",
     "victory-native": "^41.17.4",
+    "xlsx": "^0.18.5",
     "zustand": "^5.0.2"
   },
   "devDependencies": {

@@ -1,17 +1,43 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, ScrollView, View, Text, StyleSheet, Platform, Pressable, Image, useWindowDimensions } from 'react-native';
 import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useUserStore } from '@/store/userStore';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import { colors } from '@/constants/colors';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { eventService } from '@/lib/services/eventService';
 import { guestService } from '@/lib/services/guestService';
+import { tableService } from '@/lib/services/tableService';
 import { BlurView } from 'expo-blur';
 import { EventSwitcher } from '@/components/EventSwitcher';
-import { ALIGN_RIGHT, ROW_DIR, rtlText } from '@/lib/rtl';
+import { CoupleHomeDashboardCards } from '@/components/couple/CoupleHomeDashboardCards';
+import { ALIGN_RIGHT, IS_RTL, ROW_DIR, rtlText } from '@/lib/rtl';
+
+const rtlTextAlign = {
+  textAlign: (IS_RTL ? 'left' : 'right') as 'left' | 'right',
+  writingDirection: 'rtl' as const,
+};
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+type HomeStats = {
+  inviteCount: number;
+  coming: number;
+  maybe: number;
+  pending: number;
+  declined: number;
+  confirmedPeople: number;
+  seatedPeople: number;
+};
+
+const EMPTY_HOME_STATS: HomeStats = {
+  inviteCount: 0,
+  coming: 0,
+  maybe: 0,
+  pending: 0,
+  declined: 0,
+  confirmedPeople: 0,
+  seatedPeople: 0,
+};
 
 export default function HomeScreen() {
   const { isLoggedIn, userData, initializeAuth } = useUserStore();
@@ -23,19 +49,17 @@ export default function HomeScreen() {
   const activeEventId = useEventSelectionStore((s) => s.activeEventId);
   const setActiveEvent = useEventSelectionStore((s) => s.setActiveEvent);
   const [currentEvent, setCurrentEvent] = useState<any>(null);
-  const [guests, setGuests] = useState<any[]>([]);
+  const [stats, setStats] = useState<HomeStats>(EMPTY_HOME_STATS);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(() => new Date());
   const [hasMultipleEvents, setHasMultipleEvents] = useState(false);
+  const [tablesCount, setTablesCount] = useState(0);
+  // Guards against the duplicate fetch that used to run on the first mount
+  // (the mount effect and the focus effect both firing at once).
+  const hasLoadedOnceRef = useRef(false);
   const isWeb = Platform.OS === 'web';
   const isDesktopWeb = isWeb && windowWidth >= 1024;
   const AnimatedPressable = useMemo(() => Animated.createAnimatedComponent(Pressable), []);
-  const scrollY = React.useRef(new Animated.Value(0)).current;
-  const mobileGradientOpacity = scrollY.interpolate({
-    inputRange: [0, 160],
-    outputRange: [1, 0.18],
-    extrapolate: 'clamp',
-  });
 
   const resolvedEventId =
     String(
@@ -51,11 +75,38 @@ export default function HomeScreen() {
     router.replace({ pathname: './', params: { eventId: nextEventId } });
   };
 
+  // Single, deduplicated loader. The event header, guest stats and table count
+  // are fetched in parallel using lightweight queries (only the columns/counts
+  // the home screen actually needs), so the screen renders as fast as possible.
+  const fetchHomeData = useCallback(
+    async (eventId: string) => {
+      const [event, guestStats, tablesTotal] = await Promise.all([
+        eventService.getEventLite(eventId),
+        guestService.getEventGuestStats(eventId),
+        tableService.getTablesCount(eventId),
+      ]);
+
+      if (event) {
+        setCurrentEvent(event);
+        setStats(guestStats);
+        setTablesCount(tablesTotal);
+      } else {
+        setCurrentEvent(null);
+        setStats(EMPTY_HOME_STATS);
+        setTablesCount(0);
+      }
+    },
+    []
+  );
+
   useEffect(() => {
     if (!isLoggedIn) {
       router.replace('/login');
       return;
     }
+
+    let cancelled = false;
+
     const loadData = async () => {
       try {
         setLoading(true);
@@ -65,54 +116,59 @@ export default function HomeScreen() {
           eventId = useUserStore.getState().userData?.event_id || null;
         }
         if (!eventId) {
+          if (cancelled) return;
           setCurrentEvent(null);
-          setGuests([]);
-          setLoading(false);
+          setStats(EMPTY_HOME_STATS);
+          setTablesCount(0);
           return;
         }
 
         if (userData?.id) setActiveEvent(userData.id, eventId);
 
-        const event = await eventService.getEvent(eventId);
-        if (event) {
-          setCurrentEvent(event);
-          const guestsData = await guestService.getGuests(event.id);
-          setGuests(guestsData);
-        } else {
-          setCurrentEvent(null);
-          setGuests([]);
-        }
+        await fetchHomeData(eventId);
+        // Mark that the initial load is done so the focus effect doesn't
+        // immediately re-fetch the same data on first mount.
+        hasLoadedOnceRef.current = true;
       } catch (error) {
+        if (cancelled) return;
         setCurrentEvent(null);
-        setGuests([]);
+        setStats(EMPTY_HOME_STATS);
+        setTablesCount(0);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
-    loadData();
-  }, [isLoggedIn, router, userData?.id, resolvedEventId]);
 
-  // טען מחדש נתונים כשהמסך חוזר למוקד
+    loadData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoggedIn, router, userData?.id, resolvedEventId, fetchHomeData]);
+
+  // Refresh data when returning to the screen, but skip the very first focus
+  // (which coincides with the mount effect above) to avoid a duplicate fetch.
   useFocusEffect(
     React.useCallback(() => {
-      if (isLoggedIn && resolvedEventId) {
-        const reloadData = async () => {
-          try {
-            const event = await eventService.getEvent(resolvedEventId as string);
-            setCurrentEvent(event);
-            if (event) {
-              const guestsData = await guestService.getGuests(event.id);
-              setGuests(guestsData);
-            } else {
-              setGuests([]);
-            }
-          } catch (error) {
-            setGuests([]);
+      if (!isLoggedIn || !resolvedEventId) return;
+      if (!hasLoadedOnceRef.current) return;
+
+      let cancelled = false;
+      (async () => {
+        try {
+          await fetchHomeData(resolvedEventId as string);
+        } catch (error) {
+          if (!cancelled) {
+            setStats(EMPTY_HOME_STATS);
+            setTablesCount(0);
           }
-        };
-        reloadData();
-      }
-    }, [isLoggedIn, resolvedEventId])
+        }
+      })();
+
+      return () => {
+        cancelled = true;
+      };
+    }, [isLoggedIn, resolvedEventId, fetchHomeData])
   );
 
   useEffect(() => {
@@ -161,27 +217,8 @@ export default function HomeScreen() {
     );
   }
 
-  const confirmedPeople = guests.reduce((sum: number, guest: any) => {
-    if (guest?.status !== 'מגיע') return sum;
-    return sum + (Number(guest?.numberOfPeople ?? guest?.number_of_people ?? 1) || 1);
-  }, 0);
-  const maybePeople = guests.reduce((sum: number, guest: any) => {
-    if (guest?.status !== 'אולי מגיע') return sum;
-    return sum + (Number(guest?.numberOfPeople ?? guest?.number_of_people ?? 1) || 1);
-  }, 0);
-  const declinedPeople = guests.reduce((sum: number, guest: any) => {
-    if (guest?.status !== 'לא מגיע') return sum;
-    return sum + (Number(guest?.numberOfPeople ?? guest?.number_of_people ?? 1) || 1);
-  }, 0);
-  const pendingPeople = guests.reduce((sum: number, guest: any) => {
-    if (guest?.status !== 'ממתין') return sum;
-    return sum + (Number(guest?.numberOfPeople ?? guest?.number_of_people ?? 1) || 1);
-  }, 0);
-  const seatedGuests = guests.reduce((sum: number, guest: any) => {
-    const assignedTableId = String(guest?.tableId ?? guest?.table_id ?? '').trim();
-    if (guest?.status !== 'מגיע' || assignedTableId.length === 0) return sum;
-    return sum + (Number(guest?.numberOfPeople ?? guest?.number_of_people ?? 1) || 1);
-  }, 0);
+  const confirmedPeople = stats.confirmedPeople;
+  const seatedGuests = stats.seatedPeople;
   const eventDateLabel = currentEvent?.date
     ? new Date(currentEvent.date).toLocaleDateString('he-IL', {
         year: 'numeric',
@@ -190,107 +227,41 @@ export default function HomeScreen() {
       })
     : '';
 
-  const getInitials = (name?: string) => {
-    if (!name) return '';
-    const parts = name.trim().split(/\s+/).filter(Boolean);
-    if (parts.length === 0) return '';
-    const first = parts[0][0] ?? '';
-    const last = parts.length > 1 ? parts[parts.length - 1][0] ?? '' : '';
-    return (first + last).toUpperCase();
+  const brideName = String(currentEvent.brideName ?? '').trim();
+  const groomName = String(currentEvent.groomName ?? '').trim();
+  const eventTitle =
+    brideName && groomName
+      ? `${brideName} & ${groomName}`
+      : brideName || groomName || String(currentEvent.title ?? '').trim() || 'האירוע שלכם';
+
+  const venueLabel = String(currentEvent.location ?? '').trim();
+  const cityLabel = String(currentEvent.city ?? '').trim();
+  const locationLabel = venueLabel && cityLabel ? `${venueLabel}, ${cityLabel}` : venueLabel || cityLabel;
+
+  const guestCounts = {
+    coming: stats.coming,
+    maybe: stats.maybe,
+    pending: stats.pending,
+    declined: stats.declined,
   };
-
-  const StatPill = ({
-    title,
-    value,
-    iconName,
-    tintColor,
-    iconBg,
-  }: {
-    title: string;
-    value: string | number;
-    iconName: keyof typeof Ionicons.glyphMap;
-    tintColor: string;
-    iconBg: string;
-  }) => (
-    <View style={styles.statPill}>
-      <View style={[styles.statIconWrap, { backgroundColor: iconBg }]}>
-        <Ionicons name={iconName} size={18} color={tintColor} />
-      </View>
-      <View style={styles.statTextWrap}>
-        <Text
-          numberOfLines={2}
-          adjustsFontSizeToFit
-          minimumFontScale={0.85}
-          style={styles.statTitle}
-        >
-          {title}
-        </Text>
-        <Text style={styles.statValue}>{value}</Text>
-      </View>
-    </View>
-  );
-
-  const StatusSquareCard = ({
-    title,
-    value,
-    iconName,
-    tintColor,
-    iconBg,
-    onPress,
-  }: {
-    title: string;
-    value: string | number;
-    iconName: keyof typeof Ionicons.glyphMap;
-    tintColor: string;
-    iconBg: string;
-    onPress?: () => void;
-  }) => {
-    const content = (
-      <>
-        <View style={[styles.statusSquareIconWrap, { backgroundColor: iconBg }]}>
-          <Ionicons name={iconName} size={18} color={tintColor} />
-        </View>
-        <Text style={styles.statusSquareTitle}>{title}</Text>
-        <Text style={styles.statusSquareValue}>{value}</Text>
-      </>
-    );
-
-    if (!onPress) return <View style={styles.statusSquareCard}>{content}</View>;
-
-    return (
-      <Pressable
-        onPress={onPress}
-        accessibilityRole="button"
-        style={styles.statusSquareCard}
-      >
-        {content}
-      </Pressable>
-    );
-  };
-
-  const CountdownUnit = ({ label, value }: { label: string; value: number }) => (
-    <View style={styles.countdownUnit}>
-      <Text style={styles.countdownValue}>{String(value).padStart(2, '0')}</Text>
-      <Text style={styles.countdownLabel}>{label}</Text>
-    </View>
-  );
-
-  const CountdownSeparator = () => <Text style={styles.countdownSeparator}>:</Text>;
 
   const ActionTile = ({
     title,
     subtitle,
     iconName,
     variant = 'square',
+    theme = 'light',
     onPress,
   }: {
     title: string;
     subtitle: string;
     iconName: keyof typeof Ionicons.glyphMap;
     variant?: 'square' | 'wide' | 'round';
+    theme?: 'light' | 'navy';
     onPress?: () => void;
   }) => {
     const isRound = variant === 'round';
+    const isNavy = theme === 'navy';
     const scale = React.useRef(new Animated.Value(1)).current;
 
     const springTo = (toValue: number) => {
@@ -323,23 +294,50 @@ export default function HomeScreen() {
         ]}
       >
         {isRound ? (
-          <View style={styles.actionTileFrameRound}>
-            <BlurView
-              intensity={24}
-              tint="light"
-              style={[styles.actionTileInner, styles.actionTileInnerNoBorder, styles.actionTileInnerRound]}
-            >
-              <View style={styles.actionTileTopRow}>
-                <View style={styles.actionTileIconBox}>
-                  <Ionicons name={iconName} size={22} color={colors.text} />
+          <View style={[styles.actionTileFrameRound, isNavy && styles.actionTileFrameNavy]}>
+            {isNavy ? (
+              <>
+                {NAVY_TILE_STAR_OFFSETS.map((pos, i) => (
+                  <View
+                    key={i}
+                    pointerEvents="none"
+                    style={[styles.actionTileStarDot, { top: pos.top as any, left: pos.left as any }]}
+                  />
+                ))}
+                <View style={styles.actionTileNavyGlow} pointerEvents="none" />
+              </>
+            ) : null}
+            {isNavy ? (
+              <View style={[styles.actionTileInner, styles.actionTileInnerNoBorder, styles.actionTileInnerRound, styles.actionTileInnerNavy]}>
+                <View style={styles.actionTileTopRow}>
+                  <View style={styles.actionTileIconBoxNavy}>
+                    <Ionicons name={iconName} size={22} color="#FFFFFF" />
+                  </View>
+                  <View style={styles.actionTileDotNavy} />
                 </View>
-                <View style={styles.actionTileDot} />
+                <View style={styles.actionTileTextBlock}>
+                  <Text style={styles.actionTileTitleNavy}>{rtlText(title)}</Text>
+                  <Text style={styles.actionTileSubtitleNavy}>{subtitle}</Text>
+                </View>
               </View>
-              <View style={styles.actionTileTextBlock}>
-                <Text style={styles.actionTileTitle}>{rtlText(title)}</Text>
-                <Text style={styles.actionTileSubtitle}>{subtitle}</Text>
-              </View>
-            </BlurView>
+            ) : (
+              <BlurView
+                intensity={24}
+                tint="light"
+                style={[styles.actionTileInner, styles.actionTileInnerNoBorder, styles.actionTileInnerRound]}
+              >
+                <View style={styles.actionTileTopRow}>
+                  <View style={styles.actionTileIconBox}>
+                    <Ionicons name={iconName} size={22} color={colors.text} />
+                  </View>
+                  <View style={styles.actionTileDot} />
+                </View>
+                <View style={styles.actionTileTextBlock}>
+                  <Text style={styles.actionTileTitle}>{rtlText(title)}</Text>
+                  <Text style={styles.actionTileSubtitle}>{subtitle}</Text>
+                </View>
+              </BlurView>
+            )}
           </View>
         ) : (
           <BlurView intensity={24} tint="light" style={styles.actionTileInner}>
@@ -373,128 +371,21 @@ export default function HomeScreen() {
     });
   };
 
-  const statusStatsContent = (
-    <>
-      <View style={styles.statusSquareWrapper}>
-        <StatusSquareCard
-          title="אולי מגיע"
-          value={maybePeople}
-          iconName="help-circle"
-          tintColor={stylesVars.primaryBlue}
-          iconBg="rgba(19, 91, 236, 0.10)"
-          onPress={() => navigateToGuests('אולי מגיע')}
-        />
-      </View>
-      <View style={styles.statusSquareWrapper}>
-        <StatusSquareCard
-          title="ממתין"
-          value={pendingPeople}
-          iconName="time"
-          tintColor={stylesVars.amber}
-          iconBg="rgba(245, 158, 11, 0.12)"
-          onPress={() => navigateToGuests('ממתין')}
-        />
-      </View>
-      <View style={styles.statusSquareWrapper}>
-        <StatusSquareCard
-          title="לא מגיע"
-          value={declinedPeople}
-          iconName="close-circle"
-          tintColor={stylesVars.red}
-          iconBg="rgba(239, 68, 68, 0.10)"
-          onPress={() => navigateToGuests('לא מגיע')}
-        />
-      </View>
-      <View style={styles.statusSquareWrapper}>
-        <StatusSquareCard
-          title="מגיע"
-          value={confirmedPeople}
-          iconName="checkmark-circle"
-          tintColor="#16A34A"
-          iconBg="rgba(22, 163, 74, 0.10)"
-          onPress={() => navigateToGuests('מגיע')}
-        />
-      </View>
-    </>
-  );
-
   return (
     <View style={styles.screen}>
-      {!isWeb ? (
-        <>
-          <Animated.View
-            pointerEvents="none"
-            style={[
-              styles.mobileTopGradient,
-              {
-                height: insets.top + 230,
-                opacity: mobileGradientOpacity,
-              },
-            ]}
-          >
-            <LinearGradient
-              colors={['#F7FAFF', '#E8F1FF', '#F2E0BA']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={StyleSheet.absoluteFill}
-            />
-          </Animated.View>
-
-          <Animated.View
-            pointerEvents="none"
-            style={[
-              styles.mobileHeader,
-              {
-                height: insets.top + 72,
-                paddingTop: insets.top + 2,
-              },
-            ]}
-          >
-            <View style={styles.mobileHeaderBg} />
-            <Image
-              source={require('../../assets/images/logoMoon.png')}
-              style={styles.mobileHeaderLogo}
-              resizeMode="contain"
-            />
-          </Animated.View>
-        </>
-      ) : null}
-
-      <LinearGradient
-        pointerEvents="none"
-        colors={['#F7FAFF', '#E8F1FF', '#F2E0BA']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.bg}
-      />
-      <LinearGradient
-        pointerEvents="none"
-        colors={['rgba(255,255,255,0.68)', 'rgba(255,255,255,0)']}
-        start={{ x: 0.05, y: 0 }}
-        end={{ x: 0.75, y: 0.55 }}
-        style={styles.bgHighlight}
-      />
-      <LinearGradient
-        pointerEvents="none"
-        colors={['rgba(232,196,122,0.58)', 'rgba(244,224,186,0.22)', 'rgba(244,224,186,0)']}
-        start={{ x: 1, y: 0.95 }}
-        end={{ x: 0.18, y: 0.22 }}
-        style={styles.bgWarmGlow}
-      />
-
-      <Animated.ScrollView
+      <ScrollView
         style={styles.container}
         contentContainerStyle={[styles.contentContainer, isWeb && styles.contentContainerWeb]}
-        onScroll={
-          !isWeb
-            ? Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
-                useNativeDriver: false,
-              })
-            : undefined
-        }
-        scrollEventThrottle={16}
       >
-        {!isWeb ? <View style={{ height: insets.top + 74 }} /> : null}
+        {!isWeb ? (
+          <View style={[styles.scrollHeader, { paddingTop: Math.max(insets.top - 10, 4) }]}>
+            <Image
+              source={require('../../assets/images/logoMoon.png')}
+              style={styles.scrollHeaderLogo}
+              resizeMode="contain"
+            />
+          </View>
+        ) : null}
 
         {currentEvent && currentEvent.isApproved === false ? (
           <View style={styles.pendingBanner}>
@@ -510,97 +401,39 @@ export default function HomeScreen() {
           </View>
         ) : null}
 
-        <View style={styles.hero}>
-          {currentEvent?.invitationImageUrl ? (
-            <View style={styles.heroBanner}>
-              <Image source={{ uri: currentEvent.invitationImageUrl }} style={styles.heroBannerImage} resizeMode="cover" />
-              <View style={styles.heroBannerFrame} />
-            </View>
-          ) : (
-            <View style={styles.heroAvatar}>
-              {userData?.avatar_url ? (
-                <Image source={{ uri: userData.avatar_url }} style={styles.avatarImage} />
-              ) : (
-                <View style={styles.avatarFallback}>
-                  {getInitials(userData?.name) ? (
-                    <Text style={styles.avatarInitials}>{getInitials(userData?.name)}</Text>
-                  ) : (
-                    <Ionicons name="person" size={28} color={stylesVars.primaryBlue} />
-                  )}
-                </View>
-              )}
-            </View>
-          )}
-          <LinearGradient
-            colors={['rgba(255,255,255,0.98)', 'rgba(248,251,255,0.98)', 'rgba(255,248,232,0.96)']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.countdownSection}
-          >
-            <Text style={styles.countdownHeading}>הספירה לאחור החלה</Text>
-            <Text style={styles.countdownSubtext}>{eventDateLabel || '--:--'}</Text>
-            {countdown ? (
-              <View style={styles.countdownWrap}>
-                <CountdownUnit label="ימים" value={countdown.days} />
-                <CountdownSeparator />
-                <CountdownUnit label="שעות" value={countdown.hours} />
-                <CountdownSeparator />
-                <CountdownUnit label="דקות" value={countdown.minutes} />
-                <CountdownSeparator />
-                <CountdownUnit label="שניות" value={countdown.seconds} />
-              </View>
-            ) : (
-              <Text style={styles.heroDate}>--:--</Text>
-            )}
-          </LinearGradient>
+        <CoupleHomeDashboardCards
+          eventTitle={eventTitle}
+          eventDateLabel={eventDateLabel}
+          locationLabel={locationLabel}
+          countdown={countdown}
+          guestInviteCount={stats.inviteCount}
+          guestCounts={guestCounts}
+          confirmedPeople={confirmedPeople}
+          seatedGuests={seatedGuests}
+          notSeatedPeople={notSeatedPeople}
+          tablesCount={tablesCount}
+          onPressRsvp={() => navigateToGuests()}
+          onPressSeating={() =>
+            router.push({
+              pathname: '/(couple)/BrideGroomSeating',
+              params: resolvedEventId ? { eventId: resolvedEventId } : {},
+            })
+          }
+          middleSlot={
+            hasMultipleEvents ? (
+              <EventSwitcher
+                userId={userData?.id}
+                selectedEventId={resolvedEventId}
+                onSelectEventId={handleSelectEventId}
+                label="אירוע פעיל"
+                pillVariant="soft"
+                onHasMultipleChange={setHasMultipleEvents}
+              />
+            ) : null
+          }
+        />
 
-          <View style={{ width: '100%', marginTop: hasMultipleEvents ? 12 : 0 }}>
-            <EventSwitcher
-              userId={userData?.id}
-              selectedEventId={resolvedEventId}
-              onSelectEventId={handleSelectEventId}
-              label="אירוע פעיל"
-              pillVariant="soft"
-              onHasMultipleChange={setHasMultipleEvents}
-            />
-          </View>
-        </View>
-
-        <Text style={[styles.sectionTitle, styles.sectionTitleSpacious]}>סטטוס הגעה</Text>
-        <View style={styles.statusSquaresRow}>
-          {statusStatsContent}
-        </View>
-
-        <Text style={styles.sectionTitle}>תמונת מצב</Text>
-        <View style={styles.quickInfoRow}>
-          <View style={styles.locationCard}>
-            <View style={styles.locationCardIcon}>
-              <Ionicons name="location" size={18} color={stylesVars.primaryBlue} />
-            </View>
-            <View style={styles.locationCardText}>
-              <Text style={styles.locationCardTitle}>מיקום</Text>
-              <Text style={styles.locationCardValue} numberOfLines={1}>
-                {String(currentEvent.location || '').trim() || '—'}
-              </Text>
-            </View>
-          </View>
-          <View style={styles.daysCard}>
-            <View
-              style={[
-                styles.daysCardIcon,
-                { backgroundColor: 'rgba(239, 68, 68, 0.10)', borderColor: 'rgba(239, 68, 68, 0.16)' },
-              ]}
-            >
-              <Ionicons name="alert-circle" size={18} color={stylesVars.red} />
-            </View>
-            <View style={styles.daysCardText}>
-              <Text style={styles.daysCardTitle}>לא הושבו</Text>
-              <Text style={styles.daysCardValue}>{notSeatedPeople}</Text>
-            </View>
-          </View>
-        </View>
-
-        <Text style={[styles.sectionTitle, styles.sectionTitleSpacious]}>פעולות מהירות</Text>
+        <Text style={[styles.sectionTitle, styles.sectionTitleSpacious, rtlTextAlign]}>פעולות מהירות</Text>
         <View style={[styles.actionsGrid, isDesktopWeb && styles.actionsGridDesktop]}>
           <View style={[styles.actionTileWrapper, isDesktopWeb && styles.actionTileWrapperWeb]}>
             <ActionTile
@@ -623,6 +456,7 @@ export default function HomeScreen() {
               subtitle="גרור ושחרר אורחים"
               iconName="grid"
               variant="round"
+              theme="navy"
               onPress={() =>
                 router.push({
                   pathname: '/(couple)/BrideGroomSeating',
@@ -638,6 +472,7 @@ export default function HomeScreen() {
               subtitle="SMS / וואטסאפ"
               iconName="chatbubble-ellipses-outline"
               variant="round"
+              theme="navy"
               onPress={() =>
                 router.push({
                   pathname: '/(couple)/automatic-notifications',
@@ -665,7 +500,7 @@ export default function HomeScreen() {
             />
           </View>
         </View>
-      </Animated.ScrollView>
+      </ScrollView>
     </View>
   );
 }
@@ -677,51 +512,39 @@ const stylesVars = {
   amber: '#f59e0b',
 };
 
+const DNAVY = '#152949';
+
+const NAVY_TILE_STAR_OFFSETS = [
+  { top: '14%', left: '10%' },
+  { top: '28%', left: '78%' },
+  { top: '52%', left: '42%' },
+  { top: '72%', left: '16%' },
+  { top: '82%', left: '70%' },
+  { top: '36%', left: '88%' },
+];
+
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#E8F1FF',
-  },
-  bg: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  bgHighlight: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  bgWarmGlow: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  mobileTopGradient: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 0,
-  },
-  mobileHeader: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 5,
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-  },
-  mobileHeaderBg: {
-    ...StyleSheet.absoluteFillObject,
     backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(11, 28, 65, 0.06)',
   },
-  mobileHeaderLogo: {
-    width: 310,
-    height: 68,
+  scrollHeader: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingBottom: 0,
+    marginBottom: 0,
+    backgroundColor: '#FFFFFF',
+  },
+  scrollHeaderLogo: {
+    width: 370,
+    height: 76,
+    marginTop: -4,
   },
   center: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#f6f6f8',
+    backgroundColor: '#FFFFFF',
     padding: 24,
   },
   centerTitle: {
@@ -732,9 +555,10 @@ const styles = StyleSheet.create({
   },
   container: { flex: 1, backgroundColor: 'transparent' },
   contentContainer: {
-    paddingHorizontal: 24,
-    paddingTop: Platform.OS === 'web' ? 22 : 18,
+    paddingHorizontal: 18,
+    paddingTop: Platform.OS === 'web' ? 22 : 4,
     paddingBottom: Platform.OS === 'web' ? 56 : 130,
+    gap: 16,
   },
   contentContainerWeb: {
     width: '100%',
@@ -858,6 +682,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingTop: 18,
     paddingBottom: 16,
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: 'rgba(11, 28, 65, 0.08)',
     shadowColor: colors.black,
@@ -1128,7 +953,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '900',
     color: colors.text,
-    textAlign: 'right',
     alignSelf: ALIGN_RIGHT,
   },
   sectionTitleSpacious: {
@@ -1183,6 +1007,69 @@ const styles = StyleSheet.create({
           willChange: 'transform',
         } as any)
       : null),
+  },
+  actionTileFrameNavy: {
+    borderWidth: 0,
+    backgroundColor: DNAVY,
+    shadowColor: DNAVY,
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.35,
+    shadowRadius: 18,
+    elevation: 6,
+  },
+  actionTileStarDot: {
+    position: 'absolute',
+    width: 2,
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: 'rgba(255,255,255,0.55)',
+    zIndex: 1,
+  },
+  actionTileNavyGlow: {
+    position: 'absolute',
+    top: -36,
+    left: -28,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: 'rgba(126, 168, 232, 0.18)',
+    zIndex: 1,
+  },
+  actionTileInnerNavy: {
+    backgroundColor: 'transparent',
+    zIndex: 2,
+  },
+  actionTileIconBoxNavy: {
+    width: 48,
+    height: 48,
+    borderRadius: 18,
+    backgroundColor: 'rgba(126, 168, 232, 0.22)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+  },
+  actionTileDotNavy: {
+    width: 8,
+    height: 8,
+    borderRadius: 8,
+    backgroundColor: 'rgba(126, 168, 232, 0.55)',
+  },
+  actionTileTitleNavy: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    textAlign: 'right',
+    writingDirection: 'rtl',
+    lineHeight: 26,
+  },
+  actionTileSubtitleNavy: {
+    marginTop: 6,
+    fontSize: 12,
+    fontWeight: '700',
+    color: 'rgba(220, 228, 245, 0.72)',
+    textAlign: 'right',
+    writingDirection: 'rtl',
   },
   actionTilePressed: {
     transform: [{ scale: 0.99 }],

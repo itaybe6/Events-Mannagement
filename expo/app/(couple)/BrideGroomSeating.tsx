@@ -4,6 +4,7 @@ import Svg, { Defs, Line, Pattern, Rect } from 'react-native-svg';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Reanimated, {
   cancelAnimation,
+  Easing,
   FadeIn,
   FadeInDown,
   FadeOut,
@@ -11,10 +12,10 @@ import Reanimated, {
   interpolate,
   KeyboardState,
   LinearTransition,
-  runOnUI,
   useAnimatedKeyboard,
   useAnimatedStyle,
   useSharedValue,
+  withSpring,
   withTiming,
 } from 'react-native-reanimated';
 import { supabase } from '@/lib/supabase';
@@ -28,13 +29,19 @@ import { Stack, useRouter, useFocusEffect, useLocalSearchParams, useSegments } f
 import { colors } from '@/constants/colors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { EventSwitcher } from '@/components/EventSwitcher';
+import { AppLoader, AppLoaderScreen } from '@/components/AppLoader';
 import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
 import { SeatingGridReadonly } from '../seating/web/SeatingGridReadonly';
 import { CELL_SIZE, DEFAULT_GRID_COLS, DEFAULT_GRID_ROWS, tableCellSize, type Orientation, type TableType } from '../seating/web/_types';
 import { BlurView } from 'expo-blur';
 import { ALIGN_RIGHT, IS_RTL, ROW_DIR } from '@/lib/rtl';
+import { TableSeatRing, getTableSeatBorderColor, getTableSeatFillColor } from '@/components/couple/TableSeatRing';
+import { SeatingViewHeader, type SeatingViewMode } from '@/components/couple/SeatingViewHeader';
+import { NavyCardBackground } from '@/components/couple/NavyCardBackground';
+import { SeatingTablesGridView, type SeatingGridTableItem } from '@/components/couple/SeatingTablesGridView';
 
 const TABLE_PANEL_DURATION = 500;
+const TABLE_NAME_MAX_LENGTH = 10;
 const AnimatedEntypo = Reanimated.createAnimatedComponent(Entypo);
 const AnimatedBlurView = Reanimated.createAnimatedComponent(BlurView);
 
@@ -214,10 +221,6 @@ export default function BrideGroomSeating() {
     return isAdminContext ? '/(admin)/admin-events' : '/(couple)';
   }, [isAdminContext, resolvedEventId]);
 
-  const handleBackToEvent = useCallback(() => {
-    router.replace(eventBackHref as any);
-  }, [eventBackHref, router]);
-
   const [tables, setTables] = useState<Table[]>([]);
   const [guests, setGuests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -225,6 +228,7 @@ export default function BrideGroomSeating() {
   const [zoom, setZoom] = useState(1);
   const [textAreas, setTextAreas] = useState<any[]>([]);
   const [webSketch, setWebSketch] = useState<null | { gridCols: number; gridRows: number; tables: any[]; zones: any[]; labels: any[] }>(null);
+  const [seatingViewMode, setSeatingViewMode] = useState<SeatingViewMode>('map');
   const [pressedTable, setPressedTable] = useState<string | null>(null);
   const positions = useRef<{ [id: string]: Animated.ValueXY }>({}).current;
   const scrollViewRef = useRef<ScrollView>(null);
@@ -273,6 +277,7 @@ export default function BrideGroomSeating() {
   const [movePickerVisible, setMovePickerVisible] = useState(false);
   const [moveTargetTableId, setMoveTargetTableId] = useState<string | null>(null);
   const [moveBusy, setMoveBusy] = useState(false);
+  const [addingGuestsToTable, setAddingGuestsToTable] = useState(false);
   const [successVisible, setSuccessVisible] = useState(false);
   const [successTitle, setSuccessTitle] = useState('הצלחה');
   const [successMessage, setSuccessMessage] = useState('');
@@ -359,62 +364,63 @@ export default function BrideGroomSeating() {
   };
 
   const handleAddGuestsToTable = async () => {
-    if (selectedGuestsToAdd.size === 0) return;
+    if (selectedGuestsToAdd.size === 0 || addingGuestsToTable) return;
 
     const guestIds = Array.from(selectedGuestsToAdd);
     const tableId = selectedTableForModal?.id;
 
-    if (!tableId) return; // Ensure tableId is available
+    if (!tableId) return;
 
-    // חישוב סכום האנשים שמתווספים
-    const guestsToAdd = guests.filter(g => guestIds.includes(g.id));
-    const totalPeopleToAdd = guestsToAdd.reduce((sum, guest) => sum + (guest.numberOfPeople || 1), 0);
+    setAddingGuestsToTable(true);
+    try {
+      const guestsToAdd = guests.filter(g => guestIds.includes(g.id));
+      const totalPeopleToAdd = guestsToAdd.reduce((sum, guest) => sum + (guest.numberOfPeople || 1), 0);
 
-    // 1. עדכון האורחים
-    const { error: guestUpdateError } = await supabase
-      .from('guests')
-      .update({ table_id: tableId })
-      .in('id', guestIds);
-    
-    if (guestUpdateError) {
-      console.error("Error updating guests:", guestUpdateError);
-      return;
+      const { error: guestUpdateError } = await supabase
+        .from('guests')
+        .update({ table_id: tableId })
+        .in('id', guestIds);
+
+      if (guestUpdateError) {
+        console.error("Error updating guests:", guestUpdateError);
+        Alert.alert('שגיאה', 'לא ניתן להוסיף את האורחים לשולחן');
+        return;
+      }
+
+      const currentGuestsAtTable = guests.filter(g => g.table_id === tableId);
+      const currentTotalPeople = currentGuestsAtTable.reduce((sum, guest) => sum + (guest.numberOfPeople || 1), 0);
+      const newTotalPeople = currentTotalPeople + totalPeopleToAdd;
+
+      const { error: tableUpdateError } = await supabase
+        .from('tables')
+        .update({ seated_guests: newTotalPeople })
+        .eq('id', tableId);
+
+      if (tableUpdateError) {
+        console.error("Error updating table count:", tableUpdateError);
+        Alert.alert('שגיאה', 'לא ניתן לעדכן את מספר היושבים בשולחן');
+        return;
+      }
+
+      await fetchGuests();
+      await fetchTables();
+
+      setTableModalView('seated');
+      setSelectedGuestsToAdd(new Set());
+
+      const tableNum = selectedTableForModal?.number ?? '';
+      const peopleText = totalPeopleToAdd > 0 ? ` (${totalPeopleToAdd} אנשים)` : '';
+
+      setSeatedGuestsForTable((prev) => {
+        const existingIds = new Set((prev || []).map((g: any) => String(g?.id)));
+        const added = guestsToAdd.map((g: any) => ({ ...g, table_id: tableId }));
+        return [...prev, ...added.filter((g: any) => !existingIds.has(String(g?.id)))];
+      });
+
+      showSuccess('נוסף לשולחן', `נוספו ${guestIds.length} אורחים${peopleText} לשולחן ${tableNum}`);
+    } finally {
+      setAddingGuestsToTable(false);
     }
-    
-    // 2. עדכון מספר המוזמנים בשולחן - חישוב מחדש של כל האנשים בשולחן
-    const currentGuestsAtTable = guests.filter(g => g.table_id === tableId);
-    const currentTotalPeople = currentGuestsAtTable.reduce((sum, guest) => sum + (guest.numberOfPeople || 1), 0);
-    const newTotalPeople = currentTotalPeople + totalPeopleToAdd;
-    
-    const { error: tableUpdateError } = await supabase
-      .from('tables')
-      .update({ seated_guests: newTotalPeople })
-      .eq('id', tableId);
-      
-    if (tableUpdateError) {
-      console.error("Error updating table count:", tableUpdateError);
-      return;
-    }
-
-    // Refresh data
-    await fetchGuests();
-    await fetchTables();
-    
-    // Keep table modal open: go back to "seated" tab and clear selection.
-    setTableModalView('seated');
-    setSelectedGuestsToAdd(new Set());
-
-    const tableNum = selectedTableForModal?.number ?? '';
-    const peopleText = totalPeopleToAdd > 0 ? ` (${totalPeopleToAdd} אנשים)` : '';
-
-    // Update the seated list immediately (so the UI reflects the change right away).
-    setSeatedGuestsForTable((prev) => {
-      const existingIds = new Set((prev || []).map((g: any) => String(g?.id)));
-      const added = guestsToAdd.map((g: any) => ({ ...g, table_id: tableId }));
-      return [...prev, ...added.filter((g: any) => !existingIds.has(String(g?.id)))];
-    });
-
-    showSuccess('נוסף לשולחן', `נוספו ${guestIds.length} אורחים${peopleText} לשולחן ${tableNum}`);
   };
 
   const toggleSeatedGuestRemovalSelection = useCallback((guestId: string) => {
@@ -596,13 +602,14 @@ export default function BrideGroomSeating() {
     }
     
     const currentName = selectedTableForModal.name || '';
-    if (tableName.trim() === currentName.trim()) {
+    const nextName = tableName.trim().slice(0, TABLE_NAME_MAX_LENGTH);
+    if (nextName === currentName.trim()) {
       return; // No change, do nothing
     }
     
     const { error } = await supabase
       .from('tables')
-      .update({ name: tableName.trim() || null })
+      .update({ name: nextName || null })
       .eq('id', selectedTableForModal.id);
   
     if (error) {
@@ -611,11 +618,11 @@ export default function BrideGroomSeating() {
       // Update local state to reflect the change immediately
       setTables(currentTables => 
         currentTables.map(t => 
-          t.id === selectedTableForModal.id ? { ...t, name: tableName.trim() || null } : t
+          t.id === selectedTableForModal.id ? { ...t, name: nextName || null } : t
         )
       );
       // Update the selected table for modal as well
-      setSelectedTableForModal(prev => prev ? { ...prev, name: tableName.trim() || null } : null);
+      setSelectedTableForModal(prev => prev ? { ...prev, name: nextName || null } : null);
     }
   };
 
@@ -688,6 +695,7 @@ export default function BrideGroomSeating() {
   };
 
   const closeModalAndShowTabBar = async () => {
+    if (addingGuestsToTable) return;
     // Save table name best-effort (don't block the close animation).
     void handleSaveTableName();
 
@@ -1352,7 +1360,38 @@ export default function BrideGroomSeating() {
   // Keep these hooks ABOVE early returns (loading / no event) to preserve hook order.
   const unseatedGuestsList = guests.filter((g) => !g.table_id);
 
-  // (dashboardStats removed: this screen is map-only)
+  const seatingHeaderStats = useMemo(() => {
+    const seatableGuests = (guests || []).filter(isGuestSeatable);
+    const peopleAt = (g: any) => Number(g?.numberOfPeople ?? g?.number_of_people ?? 1) || 1;
+
+    const totalSeatablePeople = seatableGuests.reduce((sum, g) => sum + peopleAt(g), 0);
+    const seatedPeople = seatableGuests
+      .filter((g) => g?.table_id)
+      .reduce((sum, g) => sum + peopleAt(g), 0);
+    const seatedPercent =
+      totalSeatablePeople > 0 ? (seatedPeople / totalSeatablePeople) * 100 : 0;
+
+    const waitingCount = seatableGuests
+      .filter((g) => !g?.table_id)
+      .reduce((sum, g) => sum + peopleAt(g), 0);
+
+    let fullTablesCount = 0;
+    for (const t of tables || []) {
+      const cap = Number(t?.capacity ?? 0) || 0;
+      if (cap <= 0) continue;
+      const seated = (guests || [])
+        .filter((g) => String(g?.table_id) === String(t.id))
+        .reduce((sum, g) => sum + peopleAt(g), 0);
+      if (seated >= cap) fullTablesCount += 1;
+    }
+
+    return {
+      seatedPercent,
+      tablesCount: (tables || []).length,
+      fullTablesCount,
+      waitingCount,
+    };
+  }, [guests, tables]);
 
   const webSketchWithNames = useMemo(() => {
     if (!webSketch) return null;
@@ -1387,6 +1426,33 @@ export default function BrideGroomSeating() {
     return { ...webSketch, tables: mergedTables };
   }, [tables, webSketch]);
 
+  const gridTables = useMemo((): SeatingGridTableItem[] => {
+    const sketchTables = webSketchWithNames?.tables ?? webSketch?.tables;
+    if (sketchTables?.length) {
+      return sketchTables.map((t: any) => ({
+        id: String(t.id),
+        type: (t.type ?? 'regular') as TableType,
+        seats: Number(t.seats ?? 0) || 0,
+        orientation: t.orientation,
+        gridX: t.gridX,
+        gridY: t.gridY,
+        number: t.number,
+        name: t.name ?? null,
+      }));
+    }
+
+    return (tables || []).map((t) => ({
+      id: String(t.id),
+      type: (t.shape === 'reserve' ? 'reserve' : t.shape === 'rectangle' ? 'knight' : 'regular') as TableType,
+      seats: Number(t.capacity ?? 0) || 0,
+      number: t.number,
+      name: t.name ?? null,
+      area: t.area ?? null,
+    }));
+  }, [tables, webSketch, webSketchWithNames]);
+
+  const gridZones = webSketchWithNames?.zones ?? webSketch?.zones ?? [];
+
   const mapNode = webSketch ? (
     <View style={styles.canvasScroll}>
       {Platform.OS === 'web' ? (
@@ -1400,6 +1466,13 @@ export default function BrideGroomSeating() {
           cellSizeMultiplier={2}
           useBaseColorAsWebBackground
           showTableBorder={false}
+          showSeatRing
+          getTableOccupancy={(t: any) => {
+            const num = Number(t?.number);
+            const cap = Number(t?.seats ?? 0) || 0;
+            if (!Number.isFinite(num)) return { seated: 0, capacity: cap };
+            return { seated: seatedByNumber.get(num) ?? 0, capacity: cap };
+          }}
           getTableBaseColor={(t: any) => {
             const num = Number(t?.number);
             const cap = Number(t?.seats ?? 0) || 0;
@@ -1608,7 +1681,13 @@ export default function BrideGroomSeating() {
   );
 
   if (loading) {
-    return <View style={styles.centered}><ActivityIndicator size="large" /></View>;
+    return (
+      <AppLoaderScreen
+        variant="default"
+        title="טוען מפת ישיבה"
+        subtitle="מכין את השולחנות והאורחים"
+      />
+    );
   }
   
   if (!resolvedEventId) {
@@ -1621,50 +1700,69 @@ export default function BrideGroomSeating() {
 
   // (landscape hooks already computed above)
 
-  const topBarTop = Math.max(insets.top || 0, Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) : 0) + 10;
+  const safeTopInset = Math.max(
+    insets.top || 0,
+    Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) : 0,
+  );
 
   return (
     <View style={styles.container}>
       <Stack.Screen options={{ headerShown: false }} />
+      <StatusBar barStyle="light-content" backgroundColor="#152949" />
 
-      {/* Full-screen map frame */}
-      <View style={styles.mapFrame}>{mapNode}</View>
-
-      {/* Floating top bar */}
-      <View
-        pointerEvents="box-none"
-        style={[
-          styles.floatingTopBar,
-          {
-            top: topBarTop,
-          },
-        ]}
-      >
-        <View style={{ flex: 1 }} />
-
-        <View style={styles.eventSwitcherWrap}>
-          <EventSwitcher
-            userId={userData?.id}
-            selectedEventId={resolvedEventId}
-            onSelectEventId={handleSelectEventId}
-            label="אירוע פעיל"
+      <View style={styles.seatingHeaderShell}>
+        <NavyCardBackground variant="compact" />
+        <View style={[styles.seatingHeaderInner, { paddingTop: safeTopInset + 8 }]}>
+          <View style={styles.eventSwitcherInHeader}>
+            <EventSwitcher
+              userId={userData?.id}
+              selectedEventId={resolvedEventId}
+              onSelectEventId={handleSelectEventId}
+              label="אירוע פעיל"
+            />
+          </View>
+          <SeatingViewHeader
+            flush
+            viewMode={seatingViewMode}
+            onChangeViewMode={setSeatingViewMode}
+            seatedPercent={seatingHeaderStats.seatedPercent}
+            tablesCount={seatingHeaderStats.tablesCount}
+            fullTablesCount={seatingHeaderStats.fullTablesCount}
+            waitingCount={seatingHeaderStats.waitingCount}
           />
         </View>
+      </View>
 
-        <TouchableOpacity
-          onPress={handleBackToEvent}
-          accessibilityRole="button"
-          accessibilityLabel="חזרה לעמוד האירוע"
-          activeOpacity={0.86}
-          style={styles.backFab}
-        >
-          <Ionicons name="chevron-back" size={22} color={colors.primary} />
-        </TouchableOpacity>
+      <View style={styles.mapFrame}>
+        {seatingViewMode === 'map' ? (
+          mapNode
+        ) : (
+          <SeatingTablesGridView
+            tables={gridTables}
+            zones={gridZones}
+            getOccupancy={(t) => {
+              const num = Number(t.number);
+              const cap = Number(t.seats ?? 0) || 0;
+              if (!Number.isFinite(num)) return { seated: 0, capacity: cap };
+              return { seated: seatedByNumber.get(num) ?? 0, capacity: cap };
+            }}
+            onPressTable={(num) => {
+              if (!num) return;
+              const t = tables.find((x) => x.number === num);
+              if (t) {
+                handleTablePress(t, {
+                  x: windowWidth / 2,
+                  y: windowHeight / 2,
+                });
+              }
+            }}
+          />
+        )}
       </View>
 
       {dragMode && (
         <TouchableOpacity
-          style={[styles.dragModePill, { top: topBarTop + 6 }]}
+          style={[styles.dragModePill, { top: safeTopInset + 8 }]}
           onPress={() => setDragMode(false)}
           activeOpacity={0.85}
         >
@@ -1678,6 +1776,7 @@ export default function BrideGroomSeating() {
         transparent={true}
         visible={tableModalVisible}
         onRequestClose={() => {
+          if (addingGuestsToTable) return;
           if (movePickerVisible) {
             if (moveBusy) return;
             setMovePickerVisible(false);
@@ -1704,6 +1803,7 @@ export default function BrideGroomSeating() {
           >
             <Pressable
               onPress={() => {
+                if (addingGuestsToTable) return;
                 if (movePickerVisible) {
                   if (moveBusy) return;
                   setMovePickerVisible(false);
@@ -1737,6 +1837,7 @@ export default function BrideGroomSeating() {
           >
             <Pressable
               onPress={() => {
+                if (addingGuestsToTable) return;
                 if (movePickerVisible) {
                   if (moveBusy) return;
                   setMovePickerVisible(false);
@@ -1757,6 +1858,13 @@ export default function BrideGroomSeating() {
             >
               <AnimatedEntypo name="cross" size={22} color={colors.text} />
             </Pressable>
+
+            <AppLoader
+              visible={addingGuestsToTable}
+              variant="seating"
+              count={selectedGuestsToAdd.size}
+              tableNumber={selectedTableForModal?.number}
+            />
 
             <View style={styles.modalSheetContent}>
               <View style={styles.modalHero}>
@@ -1786,9 +1894,10 @@ export default function BrideGroomSeating() {
                   <TextInput
                     style={styles.tableNameInput}
                     value={tableName}
-                    onChangeText={setTableName}
+                    onChangeText={(text) => setTableName(text.slice(0, TABLE_NAME_MAX_LENGTH))}
                     placeholder="הוסף שם לשולחן (אופציונלי)"
                     placeholderTextColor={colors.gray[500]}
+                    maxLength={TABLE_NAME_MAX_LENGTH}
                     onBlur={handleSaveTableName}
                     onSubmitEditing={handleSaveTableName}
                     returnKeyType="done"
@@ -1811,9 +1920,11 @@ export default function BrideGroomSeating() {
                 <TouchableOpacity
                   style={[styles.toggleButton, tableModalView === 'add' && styles.toggleButtonActive]}
                   onPress={() => {
+                    if (addingGuestsToTable) return;
                     setTableModalView('add');
                     clearSeatedEditState();
                   }}
+                  disabled={addingGuestsToTable}
                 >
                   <Text style={[styles.toggleButtonText, tableModalView === 'add' && styles.toggleButtonTextActive]}>
                     הוספת אורחים
@@ -2009,10 +2120,11 @@ export default function BrideGroomSeating() {
                             !seatable && styles.selectableGuestItemDisabled,
                           ]}
                           onPress={() => {
-                            if (!seatable) return;
+                            if (addingGuestsToTable || !seatable) return;
                             handleToggleGuestSelection(item.id);
                           }}
-                          activeOpacity={seatable ? 0.85 : 1}
+                          activeOpacity={seatable && !addingGuestsToTable ? 0.85 : 1}
+                          disabled={addingGuestsToTable || !seatable}
                         >
                           <View style={styles.selectableGuestMain}>
                             <View style={styles.selectableGuestTopRow}>
@@ -2051,12 +2163,19 @@ export default function BrideGroomSeating() {
                   />
 
                   <TouchableOpacity
-                    style={[styles.finalAddButton, selectedGuestsToAdd.size === 0 && styles.disabledButton]}
+                    style={[
+                      styles.finalAddButton,
+                      (selectedGuestsToAdd.size === 0 || addingGuestsToTable) && styles.disabledButton,
+                    ]}
                     onPress={handleAddGuestsToTable}
-                    disabled={selectedGuestsToAdd.size === 0}
+                    disabled={selectedGuestsToAdd.size === 0 || addingGuestsToTable}
                   >
                     <Text style={styles.finalAddButtonText}>
-                      {selectedGuestsToAdd.size > 0 ? `הוסף ${selectedGuestsToAdd.size} אורחים` : 'בחר אורחים להוספה'}
+                      {addingGuestsToTable
+                        ? 'מושיב...'
+                        : selectedGuestsToAdd.size > 0
+                          ? `הוסף ${selectedGuestsToAdd.size} אורחים`
+                          : 'בחר אורחים להוספה'}
                     </Text>
                   </TouchableOpacity>
                 </>
@@ -2295,6 +2414,9 @@ function clampNumber(n: number, min: number, max: number) {
 
 // Larger cell size for the map-only view so table names are readable.
 const MAP_CELL = 36;
+const MAP_CLAMP_TIMING = { duration: 180, easing: Easing.out(Easing.cubic) };
+const MAP_CLAMP_SPRING = { damping: 24, stiffness: 200, mass: 0.85 };
+const MAP_MIN_PAN_SLACK = 56;
 
 function MobileSeatingMap({
   sketch,
@@ -2307,8 +2429,10 @@ function MobileSeatingMap({
   getTableSubLabel?: (t: any) => string | null;
   getTableOccupancy?: (t: any) => { seated: number; capacity: number } | null;
 }) {
-  // useWindowDimensions gives us rotation events for free.
   const { width: winW, height: winH } = useWindowDimensions();
+  const [mapViewport, setMapViewport] = useState<{ w: number; h: number } | null>(null);
+  const viewportW = mapViewport?.w ?? winW;
+  const viewportH = mapViewport?.h ?? winH;
 
   // ── Content bounds ────────────────────────────────────────────────────────
   const contentRect = useMemo(() => {
@@ -2350,50 +2474,91 @@ function MobileSeatingMap({
   const sv_tx = useSharedValue(0);
   const sv_ty = useSharedValue(0);
   // Viewport + content dims available to worklets
-  const vW = useSharedValue(winW);
-  const vH = useSharedValue(winH);
+  const vW = useSharedValue(viewportW);
+  const vH = useSharedValue(viewportH);
   const cW = useSharedValue(baseW);
   const cH = useSharedValue(baseH);
 
-  useEffect(() => { vW.value = winW; vH.value = winH; }, [winW, winH, vW, vH]);
+  useEffect(() => {
+    vW.value = viewportW;
+    vH.value = viewportH;
+  }, [viewportW, viewportH, vW, vH]);
   useEffect(() => { cW.value = baseW; cH.value = baseH; }, [baseW, baseH, cW, cH]);
+
+  const syncSavedFromCurrent = () => {
+    'worklet';
+    sv_s.value = scale.value;
+    sv_tx.value = tx.value;
+    sv_ty.value = ty.value;
+  };
+
+  const clampTiming = MAP_CLAMP_TIMING;
 
   // ── Fit: scale to fill viewport, center (tx=ty=0) ────────────────────────
   const doFit = useCallback(() => {
-    const vw = winW, vh = winH, bw = baseW, bh = baseH;
+    const vw = viewportW;
+    const vh = viewportH;
+    const bw = baseW;
+    const bh = baseH;
     if (!vw || !vh || !bw || !bh) return;
-    // Sync shared values immediately so worklets see up-to-date viewport
-    vW.value = vw; vH.value = vh;
-    cW.value = bw; cH.value = bh;
-    const s = clampNumber(Math.min(vw / bw, vh / bh) * 1.12, 0.1, 10);
-    cancelAnimation(scale); cancelAnimation(tx); cancelAnimation(ty);
-    scale.value = withTiming(s, { duration: 260 });
-    tx.value    = withTiming(0, { duration: 260 });
-    ty.value    = withTiming(0, { duration: 260 });
-    sv_s.value  = s; sv_tx.value = 0; sv_ty.value = 0;
-  }, [winW, winH, baseW, baseH, scale, tx, ty, sv_s, sv_tx, sv_ty, vW, vH, cW, cH]);
+    vW.value = vw;
+    vH.value = vh;
+    cW.value = bw;
+    cH.value = bh;
+    const s = clampNumber(Math.min(vw / bw, vh / bh) * 1.08, 0.1, 10);
+    cancelAnimation(scale);
+    cancelAnimation(tx);
+    cancelAnimation(ty);
+    scale.value = withTiming(s, clampTiming, (finished) => {
+      if (finished) syncSavedFromCurrent();
+    });
+    tx.value = withTiming(0, clampTiming);
+    ty.value = withTiming(0, clampTiming);
+  }, [viewportW, viewportH, baseW, baseH, scale, tx, ty, sv_s, sv_tx, sv_ty, vW, vH, cW, cH]);
 
-  // Fit on rotation or initial content load.
-  const didFitRef = useRef(false);
-  useEffect(() => { doFit(); }, [winW, winH]);
-  useEffect(() => { if (!didFitRef.current) { didFitRef.current = true; doFit(); } }, [baseW, baseH]);
+  const lastFitKeyRef = useRef('');
+  useEffect(() => {
+    if (!mapViewport?.w || !mapViewport?.h) return;
+    const key = `${Math.round(mapViewport.w)}|${Math.round(mapViewport.h)}|${baseW}|${baseH}`;
+    if (lastFitKeyRef.current === key) return;
+    lastFitKeyRef.current = key;
+    doFit();
+  }, [mapViewport?.w, mapViewport?.h, baseW, baseH, doFit]);
 
   // ── Clamp: keep map reachable; called on UI thread after each gesture ─────
-  const doClamp = () => {
+  const doClamp = (animate = false) => {
     'worklet';
     const s = scale.value;
-    const bw = cW.value, bh = cH.value;
-    const vw = vW.value, vh = vH.value;
-    const pad = 40; // px the user can drag "past" the edge
-    // Max pan so that the edge of the scaled content is still 'pad' px inside viewport
+    const bw = cW.value;
+    const bh = cH.value;
+    const vw = vW.value;
+    const vh = vH.value;
+    const pad = 32;
     const mxRaw = (bw * s - vw) / 2;
     const myRaw = (bh * s - vh) / 2;
-    const mx = mxRaw > 0 ? mxRaw + pad : 0;
-    const my = myRaw > 0 ? myRaw + pad : 0;
-    tx.value = clampNumber(tx.value, -mx, mx);
-    ty.value = clampNumber(ty.value, -my, my);
-    sv_tx.value = tx.value;
-    sv_ty.value = ty.value;
+    const mx = Math.max(MAP_MIN_PAN_SLACK, mxRaw > 0 ? mxRaw + pad : MAP_MIN_PAN_SLACK);
+    const my = Math.max(MAP_MIN_PAN_SLACK, myRaw > 0 ? myRaw + pad : MAP_MIN_PAN_SLACK);
+    const ntx = clampNumber(tx.value, -mx, mx);
+    const nty = clampNumber(ty.value, -my, my);
+    const dx = ntx - tx.value;
+    const dy = nty - ty.value;
+    const needsAdjust = Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5;
+    const snapDistance = Math.hypot(dx, dy);
+
+    if (animate && needsAdjust && snapDistance > 10) {
+      cancelAnimation(tx);
+      cancelAnimation(ty);
+      tx.value = withSpring(ntx, MAP_CLAMP_SPRING, (finished) => {
+        if (finished) syncSavedFromCurrent();
+      });
+      ty.value = withSpring(nty, MAP_CLAMP_SPRING);
+    } else if (needsAdjust) {
+      tx.value = ntx;
+      ty.value = nty;
+      syncSavedFromCurrent();
+    } else {
+      syncSavedFromCurrent();
+    }
   };
 
   // ── Gestures ──────────────────────────────────────────────────────────────
@@ -2417,11 +2582,15 @@ function MobileSeatingMap({
       tx.value = sv_tx.value - fpx * (ns - sv_s.value);
       ty.value = sv_ty.value - fpy * (ns - sv_s.value);
     })
-    .onEnd(() => { doClamp(); });
+    .onEnd(() => {
+      'worklet';
+      doClamp(true);
+      sv_s.value = scale.value;
+    });
 
   const pan = Gesture.Pan()
     .averageTouches(true)
-    .minDistance(0)
+    .minDistance(2)
     .onBegin(() => {
       cancelAnimation(tx); cancelAnimation(ty);
       sv_tx.value = tx.value;
@@ -2431,33 +2600,57 @@ function MobileSeatingMap({
       tx.value = sv_tx.value + e.translationX;
       ty.value = sv_ty.value + e.translationY;
     })
-    .onEnd(() => { doClamp(); });
+    .onEnd(() => {
+      'worklet';
+      doClamp(true);
+    });
 
   const gesture = Gesture.Simultaneous(pan, pinch);
 
-  // ── Animated style ────────────────────────────────────────────────────────
-  // translateX/Y then scale: translate moves center, scale expands around it.
-  // This keeps the math: tx=0 → centered, |tx| ≤ (bw*s-vw)/2+pad.
-  const animStyle = useAnimatedStyle(() => ({
+  const panStyle = useAnimatedStyle(() => ({
     transform: [
       { translateX: tx.value },
       { translateY: ty.value },
-      { scale: scale.value },
     ],
+  }));
+
+  const scaleStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
   }));
 
   // ── Zoom buttons ─────────────────────────────────────────────────────────
   const zoomBy = useCallback((factor: number) => {
-    const minS = clampNumber(Math.min(winW / Math.max(1, baseW), winH / Math.max(1, baseH)) * 0.4, 0.08, 1);
+    const minS = clampNumber(
+      Math.min(viewportW / Math.max(1, baseW), viewportH / Math.max(1, baseH)) * 0.4,
+      0.08,
+      1,
+    );
     const ns = clampNumber(scale.value * factor, minS, 10);
     cancelAnimation(scale);
-    scale.value = withTiming(ns, { duration: 200 });
-    sv_s.value = ns;
-    runOnUI(doClamp)();
-  }, [winW, winH, baseW, baseH, scale, sv_s, doClamp]);
+    scale.value = withTiming(ns, clampTiming, (finished) => {
+      'worklet';
+      if (finished) {
+        sv_s.value = ns;
+        doClamp(true);
+      }
+    });
+  }, [viewportW, viewportH, baseW, baseH, scale, sv_s, doClamp]);
 
   return (
-    <View style={styles.mobileMapRoot}>
+    <View
+      style={styles.mobileMapRoot}
+      onLayout={(e) => {
+        const w = e.nativeEvent.layout.width;
+        const h = e.nativeEvent.layout.height;
+        if (w > 0 && h > 0) {
+          setMapViewport((prev) =>
+            prev && Math.round(prev.w) === Math.round(w) && Math.round(prev.h) === Math.round(h)
+              ? prev
+              : { w, h },
+          );
+        }
+      }}
+    >
       {/* Full-screen grid background so no white space outside map */}
       <Svg width="100%" height="100%" style={StyleSheet.absoluteFill as any}>
         <Defs>
@@ -2473,7 +2666,8 @@ function MobileSeatingMap({
       <GestureDetector gesture={gesture}>
         {/* flex centering: at tx=0,ty=0 the content is exactly centered */}
         <View style={styles.mobileCenter}>
-          <Reanimated.View style={[{ width: baseW, height: baseH }, animStyle]}>
+          <Reanimated.View style={panStyle}>
+            <Reanimated.View style={[{ width: baseW, height: baseH }, scaleStyle]}>
 
             {/* Zones */}
             {(sketch.zones || []).map((z: any) => {
@@ -2502,22 +2696,22 @@ function MobileSeatingMap({
               const occ = getTableOccupancy?.(t) ?? null;
               const cap = Number(occ?.capacity ?? t?.seats ?? 0) || 0;
               const seated = Number(occ?.seated ?? 0) || 0;
-              const isFull = cap > 0 && seated >= cap;
-              const isOver = cap > 0 && seated > cap;
-
-              const greenFull = 'rgba(16, 185, 129, 0.24)'; // emerald-500
-              const greenOver = 'rgba(5, 150, 105, 0.34)';  // emerald-600 (darker)
-              const greenBorderFull = 'rgba(16, 185, 129, 0.70)';
-              const greenBorderOver = 'rgba(5, 150, 105, 0.86)';
-
-              const base = isReserve ? '#F59E0B' : '#06173d';
-              const bg = isOver ? greenOver : isFull ? greenFull : isReserve ? `${base}22` : 'rgba(6, 23, 61, 0.76)';
-              const border = isOver ? greenBorderOver : isFull ? greenBorderFull : isReserve ? `${base}55` : 'rgba(6, 23, 61, 1)';
-              const textColor = isOver || isFull ? 'rgba(6, 95, 70, 1)' : isReserve ? base : '#FFFFFF';
+              const reserveBorder = 'rgba(245, 158, 11, 0.55)';
+              const defaultBorder = 'rgba(203, 213, 225, 0.85)';
+              const border = getTableSeatBorderColor(
+                seated,
+                cap,
+                isReserve ? reserveBorder : defaultBorder,
+              );
               const w = sz.w * MAP_CELL;
               const h = sz.h * MAP_CELL;
               const tableName = String(t?.name ?? '').trim();
-              const sub  = getTableSubLabel?.(t) ?? null;
+              const isKnight = t.type === 'knight';
+              const namePad = tableName ? (isKnight ? 13 : 20) : 4;
+              const ringW = w - 4;
+              const ringH = h - namePad;
+              const ringSize = isKnight ? Math.min(ringW, ringH) : Math.min(w, h) - (tableName ? 24 : 8);
+              const filledColor = getTableSeatFillColor(seated, cap);
               return (
                 <Pressable
                   key={String(t.id)}
@@ -2529,27 +2723,30 @@ function MobileSeatingMap({
                   }
                   style={[styles.mobileTable, {
                     width: w, height: h,
-                    backgroundColor: bg, borderColor: border,
+                    backgroundColor: '#FFFFFF',
+                    borderColor: border,
                     transform: [{ translateX: left }, { translateY: top }],
                   }]}
                 >
-                  <Text style={[styles.mobileTableNum, { color: textColor }]}>{t.number ?? ''}</Text>
+                  <TableSeatRing
+                    layout={isKnight ? 'knight' : 'round'}
+                    tableNumber={t.number ?? ''}
+                    seated={seated}
+                    capacity={cap}
+                    size={ringSize}
+                    width={isKnight ? ringW : undefined}
+                    height={isKnight ? ringH : undefined}
+                    orientation={t.orientation ?? 'column'}
+                    showRatio
+                    filledColor={filledColor}
+                    numberColor={isReserve ? '#B45309' : '#06173d'}
+                  />
                   {tableName ? (
                     <Text
-                      style={styles.mobileTableName}
-                      numberOfLines={2}
+                      style={[styles.mobileTableName, isKnight && styles.mobileTableNameKnight]}
+                      numberOfLines={1}
                     >
                       {tableName}
-                    </Text>
-                  ) : null}
-                  {sub ? (
-                    <Text
-                      style={[
-                        styles.mobileTableSub,
-                        isOver || isFull ? { color: textColor } : !isReserve ? { color: 'rgba(255,255,255,0.92)' } : null,
-                      ]}
-                    >
-                      {sub}
                     </Text>
                   ) : null}
                 </Pressable>
@@ -2568,6 +2765,7 @@ function MobileSeatingMap({
             })}
 
           </Reanimated.View>
+          </Reanimated.View>
         </View>
       </GestureDetector>
     </View>
@@ -2577,6 +2775,27 @@ function MobileSeatingMap({
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.gray[100] },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  seatingHeaderShell: {
+    backgroundColor: '#152949',
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    overflow: 'hidden',
+    zIndex: 20,
+    shadowColor: '#152949',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.28,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  seatingHeaderInner: {
+    position: 'relative',
+    zIndex: 2,
+  },
+  eventSwitcherInHeader: {
+    paddingHorizontal: 16,
+    paddingBottom: 4,
+    alignItems: 'center',
+  },
   mapFrame: {
     flex: 1,
     backgroundColor: colors.white,
@@ -2584,35 +2803,6 @@ const styles = StyleSheet.create({
     borderRadius: 0,
     borderWidth: 0,
     overflow: 'hidden',
-  },
-  floatingTopBar: {
-    position: 'absolute',
-    left: 12,
-    right: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    zIndex: 30,
-  },
-  backFab: {
-    width: 44,
-    height: 44,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.96)',
-    borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.08)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: colors.richBlack,
-    shadowOpacity: 0.16,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
-  },
-  eventSwitcherWrap: {
-    flexShrink: 1,
-    minWidth: 0,
-    maxWidth: '72%',
   },
   statsContainer: {
     flexDirection: 'row',
@@ -2709,12 +2899,27 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 6,
+    paddingHorizontal: 4,
     paddingVertical: 4,
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
   },
-  mobileTableNum: { fontSize: 20, fontWeight: '900' },
-  mobileTableName: { marginTop: 3, fontSize: 13, fontWeight: '900', textAlign: 'center', paddingHorizontal: 4, color: colors.gold },
-  mobileTableSub: { marginTop: 3, fontSize: 13, fontWeight: '900', color: 'rgba(17,24,39,0.78)' },
+  mobileTableName: {
+    marginTop: 2,
+    fontSize: 14,
+    fontWeight: '900',
+    textAlign: 'center',
+    paddingHorizontal: 2,
+    color: '#06173d',
+  },
+  mobileTableNameKnight: {
+    marginTop: 1,
+    fontSize: 9,
+    paddingHorizontal: 1,
+  },
   mobileZone: {
     position: 'absolute',
     borderRadius: 16,

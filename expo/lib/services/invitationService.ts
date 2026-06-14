@@ -37,6 +37,28 @@ export type InvitationInfo = {
   event: InvitationEventInfo;
 };
 
+/** Static segment baked into WhatsApp template button URL before {{1}}. */
+export const WHATSAPP_TEMPLATE_URL_PREFIX = 'fCdvMYab4H16';
+
+/** Legacy unprefixed links; WhatsApp uses full prefixed codes in DB. */
+export function normalizeInvitationToken(token: string): string {
+  const t = String(token || '').trim();
+  if (t.startsWith(WHATSAPP_TEMPLATE_URL_PREFIX) && t.length > WHATSAPP_TEMPLATE_URL_PREFIX.length) {
+    return t.slice(WHATSAPP_TEMPLATE_URL_PREFIX.length);
+  }
+  return t;
+}
+
+function invitationTokenCandidates(token: string): string[] {
+  const raw = String(token || '').trim();
+  if (!raw) return [];
+  const stripped = normalizeInvitationToken(raw);
+  const prefixed = raw.startsWith(WHATSAPP_TEMPLATE_URL_PREFIX)
+    ? raw
+    : `${WHATSAPP_TEMPLATE_URL_PREFIX}${raw}`;
+  return [...new Set([raw, prefixed, stripped].filter(Boolean))];
+}
+
 function getExpoExtra(): Record<string, any> | undefined {
   return (
     (Constants.expoConfig?.extra as any) ??
@@ -80,12 +102,24 @@ function createPublicClient() {
 
 export const invitationService = {
   async getInvitationByToken(token: string): Promise<InvitationInfo | null> {
-    const t = String(token || '').trim();
-    if (!t) return null;
+    const candidates = invitationTokenCandidates(token);
+    if (!candidates.length) return null;
 
     const client = createPublicClient();
-    const { data, error } = await client.rpc('get_invitation', { p_token: t });
-    if (error) throw error;
+    let data: unknown = null;
+    let lastError: unknown = null;
+    for (const t of candidates) {
+      const { data: row, error } = await client.rpc('get_invitation', { p_token: t });
+      if (error) {
+        lastError = error;
+        break;
+      }
+      if (row) {
+        data = row;
+        break;
+      }
+    }
+    if (lastError) throw lastError;
     if (!data) return null;
 
     const guestRow: any = (data as any).guest;
@@ -166,8 +200,8 @@ export const invitationService = {
   },
 
   async updateRsvpByToken(token: string, payload: { status: Guest['status']; numberOfPeople?: number }) {
-    const t = String(token || '').trim();
-    if (!t) throw new Error('Missing invitation token');
+    const candidates = invitationTokenCandidates(token);
+    if (!candidates.length) throw new Error('Missing invitation token');
 
     const client = createPublicClient();
     const nextStatus = payload.status;
@@ -177,12 +211,24 @@ export const invitationService = {
       nextStatus === 'מגיע' || nextStatus === 'אולי מגיע'
         ? Math.max(1, Math.min(99, Number(nextPeopleRaw) || 1))
         : null;
-    const { data, error } = await client.rpc('update_invitation_rsvp', {
-      p_token: t,
-      p_status: nextStatus,
-      p_people: people,
-    });
-    if (error) throw error;
+    let data: unknown = null;
+    let lastError: unknown = null;
+    for (const t of candidates) {
+      const { data: row, error } = await client.rpc('update_invitation_rsvp', {
+        p_token: t,
+        p_status: nextStatus,
+        p_people: people,
+      });
+      if (error) {
+        lastError = error;
+        break;
+      }
+      if (row) {
+        data = row;
+        break;
+      }
+    }
+    if (lastError) throw lastError;
     if (!data) throw new Error('Invitation token not found');
 
     return {

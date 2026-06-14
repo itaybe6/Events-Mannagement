@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { colors } from '@/constants/colors';
+import { ProfileMenuCard, ProfileMenuRow } from '@/components/couple/ProfileMenuRow';
 import { useUserStore } from '@/store/userStore';
 import { ROW_DIR } from '@/lib/rtl';
 
@@ -36,9 +37,14 @@ type Props = {
    */
   title?: string;
   /**
-   * Optional subtitle shown on the action card. Defaults to a Hebrew string.
+   * When true, renders only the menu row (no outer card). Use when grouping
+   * with other rows inside a shared ProfileMenuCard.
    */
-  subtitle?: string;
+  embedded?: boolean;
+  /**
+   * Hides the divider below the row when grouped with following rows.
+   */
+  last?: boolean;
 };
 
 /**
@@ -55,7 +61,8 @@ type Props = {
 export function DeleteAccountSection({
   onDeleted,
   title = 'מחיקת חשבון',
-  subtitle = 'מחיקה תמידית של החשבון והנתונים האישיים שלך',
+  embedded = false,
+  last = true,
 }: Props) {
   const deleteAccount = useUserStore((s) => s.deleteAccount);
   const userType = useUserStore((s) => s.userType);
@@ -92,29 +99,20 @@ export function DeleteAccountSection({
     }
   };
 
+  const row = (
+    <ProfileMenuRow
+      icon="trash-outline"
+      label={title}
+      onPress={() => setOpen(true)}
+      variant="danger"
+      last={last}
+      accessibilityLabel={title}
+    />
+  );
+
   return (
     <>
-      <TouchableOpacity
-        style={styles.actionCard}
-        onPress={() => setOpen(true)}
-        activeOpacity={0.88}
-        accessibilityRole="button"
-        accessibilityLabel={title}
-      >
-        <View style={[styles.actionAccent, { backgroundColor: ACCENT_COLOR }]} />
-        <View style={[styles.actionIconBox, { backgroundColor: `${ACCENT_COLOR}15` }]}>
-          <Ionicons name="trash-outline" size={22} color={ACCENT_COLOR} />
-        </View>
-        <View style={styles.actionBody}>
-          <Text style={styles.actionTitle}>{title}</Text>
-          <Text style={styles.actionSubtitle}>{subtitle}</Text>
-        </View>
-        <View style={styles.actionChevron}>
-          <View style={[styles.actionChevronCircle, { backgroundColor: `${ACCENT_COLOR}12` }]}>
-            <Ionicons name="chevron-back" size={15} color={ACCENT_COLOR} />
-          </View>
-        </View>
-      </TouchableOpacity>
+      {embedded ? row : <ProfileMenuCard>{row}</ProfileMenuCard>}
 
       <Modal
         visible={open}
@@ -251,73 +249,6 @@ function BulletRow({ text }: { text: string }) {
 }
 
 const styles = StyleSheet.create({
-  // ── Action card (matches the rest of the profile cards: עריכת פרטי אירוע / עריכת הזמנה / עריכת פרופיל) ──
-  actionCard: {
-    position: 'relative',
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(6,23,62,0.07)',
-    paddingVertical: 18,
-    paddingHorizontal: 14,
-    paddingStart: 16,
-    backgroundColor: 'rgba(255,255,255,0.97)',
-    shadowColor: colors.black,
-    shadowOpacity: 0.04,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 2,
-    overflow: 'hidden',
-  },
-  actionAccent: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    right: 0,
-    width: 5,
-    borderTopRightRadius: 20,
-    borderBottomRightRadius: 20,
-  },
-  actionIconBox: {
-    width: 50,
-    height: 50,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  actionBody: {
-    flex: 1,
-    alignItems: 'flex-end',
-    paddingHorizontal: 10,
-  },
-  actionTitle: {
-    fontSize: 15,
-    fontWeight: '900',
-    color: colors.text,
-    textAlign: 'right',
-  },
-  actionSubtitle: {
-    marginTop: 4,
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.gray[600],
-    textAlign: 'right',
-    lineHeight: 17,
-  },
-  actionChevron: {
-    paddingStart: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  actionChevronCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
   // ── Confirmation modal ──
   kbAvoider: {
     flex: 1,

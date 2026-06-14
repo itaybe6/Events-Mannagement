@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
   Modal,
   SafeAreaView,
   ScrollView,
@@ -11,10 +10,10 @@ import {
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors } from '@/constants/colors';
+import { AppLoader, AppLoaderScreen } from '@/components/AppLoader';
 import { supabase } from '@/lib/supabase';
 import { eventService } from '@/lib/services/eventService';
 import { useUserStore } from '@/store/userStore';
@@ -188,7 +187,7 @@ export default function AutomaticNotificationsScreen(props?: { editorPathname?: 
     // Light-only palette (always white UI)
     const primary = '#3b82f6';
     const whatsapp = '#25D366';
-    const bg = '#F9FAFB';
+    const bg = '#FFFFFF';
     const card = '#FFFFFF';
     const text = '#111827';
     const sub = '#6B7280';
@@ -703,34 +702,19 @@ export default function AutomaticNotificationsScreen(props?: { editorPathname?: 
   if (loading || !event) {
     return (
       <SafeAreaView style={[styles.safe, { backgroundColor: ui.bg }]}>
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color={ui.primary} />
-        </View>
+        <Stack.Screen options={{ headerShown: false }} />
+        <AppLoaderScreen
+          variant="default"
+          title="טוען הודעות"
+          subtitle="מכין את ההודעות האוטומטיות"
+        />
       </SafeAreaView>
     );
   }
 
   return (
-    <View style={styles.safe}>
+    <View style={[styles.safe, { backgroundColor: ui.bg }]}>
       <Stack.Screen options={{ headerShown: false }} />
-      <LinearGradient
-        colors={['#F7FAFF', '#E8F1FF', '#F2E0BA']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.bg}
-      />
-      <LinearGradient
-        colors={['rgba(255,255,255,0.68)', 'rgba(255,255,255,0)']}
-        start={{ x: 0.05, y: 0 }}
-        end={{ x: 0.75, y: 0.55 }}
-        style={styles.bgHighlight}
-      />
-      <LinearGradient
-        colors={['rgba(232,196,122,0.58)', 'rgba(244,224,186,0.22)', 'rgba(244,224,186,0)']}
-        start={{ x: 1, y: 0.95 }}
-        end={{ x: 0.18, y: 0.22 }}
-        style={styles.bgWarmGlow}
-      />
 
       <ScrollView
         style={styles.scroll}
@@ -784,6 +768,12 @@ export default function AutomaticNotificationsScreen(props?: { editorPathname?: 
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setSendStatusOpen(false)} />
           <View style={styles.modalCard}>
+            <AppLoader
+              visible={sendStatusLoading}
+              variant="default"
+              title="טוען סטטוס"
+              subtitle="מביא את פרטי השליחה"
+            />
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle} numberOfLines={1}>
                 {sendStatusTitle}
@@ -800,11 +790,7 @@ export default function AutomaticNotificationsScreen(props?: { editorPathname?: 
                 </Text>
               ) : null}
 
-              {sendStatusLoading ? (
-                <View style={styles.modalCenter}>
-                  <ActivityIndicator />
-                </View>
-              ) : sendStatusRows.length === 0 ? (
+              {sendStatusLoading ? null : sendStatusRows.length === 0 ? (
                 <Text style={styles.modalEmpty}>אין נתונים להצגה.</Text>
               ) : (
                 <ScrollView style={{ maxHeight: 420 }} contentContainerStyle={{ gap: 10, paddingBottom: 6 }}>
@@ -841,6 +827,12 @@ export default function AutomaticNotificationsScreen(props?: { editorPathname?: 
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setCatchupOpen(false)} />
           <View style={styles.modalCard}>
+            <AppLoader
+              visible={catchupLoading}
+              variant="default"
+              title="טוען תור"
+              subtitle="מביא את רשימת האורחים בתור"
+            />
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle} numberOfLines={1}>
                 {catchupTitle}
@@ -851,11 +843,7 @@ export default function AutomaticNotificationsScreen(props?: { editorPathname?: 
             </View>
 
             <View style={styles.modalBody}>
-              {catchupLoading ? (
-                <View style={styles.modalCenter}>
-                  <ActivityIndicator />
-                </View>
-              ) : catchupRows.length === 0 ? (
+              {catchupLoading ? null : catchupRows.length === 0 ? (
                 <Text style={styles.modalEmpty}>אין אורחים בתור כרגע.</Text>
               ) : (
                 <ScrollView style={{ maxHeight: 420 }} contentContainerStyle={{ gap: 10, paddingBottom: 6 }}>
@@ -891,17 +879,8 @@ export default function AutomaticNotificationsScreen(props?: { editorPathname?: 
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1 },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  bg: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  bgHighlight: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  bgWarmGlow: {
-    ...StyleSheet.absoluteFillObject,
-  },
+  safe: { flex: 1, backgroundColor: '#FFFFFF' },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFFFFF' },
   topSpacer: {
     paddingHorizontal: 16,
     paddingBottom: 8,

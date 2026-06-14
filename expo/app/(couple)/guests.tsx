@@ -19,6 +19,7 @@ import { supabase } from '@/lib/supabase';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
+import { AppLoader, AppLoaderScreen } from '@/components/AppLoader';
 import { ALIGN_RIGHT, ROW_DIR, ROW_REVERSE_DIR, rtlText } from '@/lib/rtl';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -65,113 +66,6 @@ export default function GuestsScreen() {
     router.replace({ pathname: './', params: { eventId: nextEventId } });
   };
 
-  async function loadSentGuestIds(eventId: string) {
-    try {
-      const { data, error } = await supabase
-        .from('scheduled_notification_sms_run_recipients')
-        .select('guest_id')
-        .eq('event_id', eventId)
-        .eq('status', 'sent');
-      if (error) throw error;
-
-      const next = new Set<string>();
-      for (const row of (data as any[]) || []) {
-        const guestId = String((row as any)?.guest_id || '').trim();
-        if (guestId) next.add(guestId);
-      }
-      setSentGuestIds(next);
-    } catch (e) {
-      console.warn('Load sent guest ids error:', e);
-      setSentGuestIds(new Set());
-    }
-  }
-
-  useEffect(() => {
-    if (!isLoggedIn) {
-      router.replace('/login');
-      return;
-    }
-
-    if (!resolvedEventId) {
-      setGuests([]);
-      setCategories([]);
-      setEventTitle('');
-      setIsEventApproved(true);
-      setSentGuestIds(new Set());
-      return;
-    }
-
-    if (userData?.id) setActiveEvent(userData.id, resolvedEventId);
-
-    // טען אורחים, קטגוריות ופרטי אירוע (לבדיקת סוג אירוע)
-    const fetchGuestsAndCategories = async () => {
-      if (resolvedEventId) {
-        const [guestsData, event] = await Promise.all([
-          guestService.getGuests(resolvedEventId),
-          eventService.getEvent(resolvedEventId),
-        ]);
-        setGuests(guestsData);
-        setEventTitle(event?.title ?? '');
-        setIsEventApproved(event?.isApproved !== false);
-        await loadSentGuestIds(resolvedEventId);
-        await loadCategories(resolvedEventId);
-      }
-    };
-    fetchGuestsAndCategories();
-  }, [isLoggedIn, router, resolvedEventId, userData?.id]);
-
-  // טען מחדש אורחים וקטגוריות כשהמסך חוזר למוקד
-  useFocusEffect(
-    React.useCallback(() => {
-      if (resolvedEventId) {
-        const reloadGuests = async () => {
-          const [guestsData, event] = await Promise.all([
-            guestService.getGuests(resolvedEventId),
-            eventService.getEvent(resolvedEventId),
-          ]);
-          setGuests(guestsData);
-          setEventTitle(event?.title ?? '');
-          setIsEventApproved(event?.isApproved !== false);
-          await loadSentGuestIds(resolvedEventId);
-          await loadCategories(resolvedEventId);
-        };
-        reloadGuests();
-      }
-    }, [resolvedEventId])
-  );
-
-  const loadCategories = async (eid?: string) => {
-    const id = eid || resolvedEventId;
-    if (!id) return;
-    try {
-      const cats = await guestService.getGuestCategories(id);
-      
-      // בדוק אם יש קטגוריות ללא שדה side ועדכן אותן
-      const categoriesToUpdate = cats.filter(cat => !cat.side);
-      if (categoriesToUpdate.length > 0) {
-        // עדכן את הקטגוריות ללא side ל-groom (ברירת מחדל)
-        for (const cat of categoriesToUpdate) {
-          try {
-            await supabase
-              .from('guest_categories')
-              .update({ side: 'groom' })
-              .eq('id', cat.id);
-          } catch (e) {
-            console.error(`Failed to update category ${cat.name}:`, e);
-          }
-        }
-        // טען מחדש את הקטגוריות
-        const updatedCats = await guestService.getGuestCategories(id);
-        setCategories(updatedCats);
-      } else {
-        setCategories(cats);
-      }
-    } catch (e) {
-      console.error('Load categories error:', e);
-      setCategories([]);
-    }
-  };
-
   const handleAddCategory = async () => {
     if (!newCategoryName.trim() || !resolvedEventId) return;
     try {
@@ -209,6 +103,7 @@ export default function GuestsScreen() {
   const [sideFilter, setSideFilter] = useState<'groom' | 'bride' | null>(null);
   const [filterModalVisible, setFilterModalVisible] = useState(false);
   const [contactsModalVisible, setContactsModalVisible] = useState(false);
+  const [addingContacts, setAddingContacts] = useState(false);
   const [deviceContacts, setDeviceContacts] = useState<any[]>([]);
   const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set());
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
@@ -222,6 +117,7 @@ export default function GuestsScreen() {
   const [categoryPendingDeleteCounts, setCategoryPendingDeleteCounts] = useState<{ guestsCount: number; peopleCount: number } | null>(null);
   // הוסף guests ל-state
   const [guests, setGuests] = useState<any[]>([]);
+  const [loading, setLoading] = useState(() => Boolean(resolvedEventId));
   const [sentGuestIds, setSentGuestIds] = useState<Set<string>>(new Set());
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [selectedGuest, setSelectedGuest] = useState<any>(null);
@@ -230,6 +126,96 @@ export default function GuestsScreen() {
   const [editGuestStatus, setEditGuestStatus] = useState<'ממתין' | 'אולי מגיע' | 'מגיע' | 'לא מגיע'>('ממתין');
   const [editGuestPeopleCount, setEditGuestPeopleCount] = useState('1');
   // Category editing moved to a dedicated screen: `/(couple)/edit-category`.
+
+  const skipFocusLoadRef = React.useRef(true);
+
+  const loadPageData = React.useCallback(async ({ showLoader = true }: { showLoader?: boolean } = {}) => {
+    if (!resolvedEventId) {
+      setGuests([]);
+      setCategories([]);
+      setEventTitle('');
+      setIsEventApproved(true);
+      setSentGuestIds(new Set());
+      setLoading(false);
+      return;
+    }
+
+    if (userData?.id) setActiveEvent(userData.id, resolvedEventId);
+    if (showLoader) setLoading(true);
+
+    try {
+      const [guestsData, event, cats, sentResult] = await Promise.all([
+        guestService.getGuests(resolvedEventId),
+        eventService.getEvent(resolvedEventId),
+        guestService.getGuestCategories(resolvedEventId),
+        supabase
+          .from('scheduled_notification_sms_run_recipients')
+          .select('guest_id')
+          .eq('event_id', resolvedEventId)
+          .eq('status', 'sent'),
+      ]);
+
+      setGuests(guestsData);
+      setEventTitle(event?.title ?? '');
+      setIsEventApproved(event?.isApproved !== false);
+      setCategories(
+        (cats || []).map((cat) => ({
+          ...cat,
+          side: cat.side || 'groom',
+        }))
+      );
+
+      if (sentResult.error) throw sentResult.error;
+      const nextSentGuestIds = new Set<string>();
+      for (const row of (sentResult.data as any[]) || []) {
+        const guestId = String((row as any)?.guest_id || '').trim();
+        if (guestId) nextSentGuestIds.add(guestId);
+      }
+      setSentGuestIds(nextSentGuestIds);
+
+      const categoriesToUpdate = (cats || []).filter((cat) => !cat.side);
+      if (categoriesToUpdate.length > 0) {
+        void Promise.all(
+          categoriesToUpdate.map((cat) =>
+            supabase.from('guest_categories').update({ side: 'groom' }).eq('id', cat.id)
+          )
+        ).catch((e) => console.error('Background category side fix error:', e));
+      }
+    } catch (e) {
+      console.error('Load guests page error:', e);
+      setGuests([]);
+      setCategories([]);
+      setSentGuestIds(new Set());
+    } finally {
+      if (showLoader) setLoading(false);
+    }
+  }, [resolvedEventId, setActiveEvent, userData?.id]);
+
+  useEffect(() => {
+    if (!isLoggedIn) {
+      router.replace('/login');
+      return;
+    }
+
+    void loadPageData({ showLoader: true });
+  }, [isLoggedIn, router, resolvedEventId, loadPageData]);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      if (!isLoggedIn || !resolvedEventId) return;
+
+      if (skipFocusLoadRef.current) {
+        skipFocusLoadRef.current = false;
+        return;
+      }
+
+      void loadPageData({ showLoader: false });
+    }, [isLoggedIn, resolvedEventId, loadPageData])
+  );
+
+  useEffect(() => {
+    skipFocusLoadRef.current = true;
+  }, [resolvedEventId]);
 
   useEffect(() => {
     if (!queryStatus) return;
@@ -245,12 +231,6 @@ export default function GuestsScreen() {
     outputRange: [0, 1],
     extrapolate: 'clamp',
   });
-
-  useEffect(() => {
-    if (resolvedEventId) {
-      loadCategories();
-    }
-  }, [resolvedEventId]);
 
   useEffect(() => {
     if (!isWeddingEvent) setSideFilter(null);
@@ -316,6 +296,7 @@ export default function GuestsScreen() {
   };
 
   const addSelectedContacts = async () => {
+    if (addingContacts) return;
     if (!isEventApproved) {
       const currentCount = guests.length;
       const remaining = Math.max(0, UNAPPROVED_EVENT_GUEST_LIMIT - currentCount);
@@ -332,41 +313,51 @@ export default function GuestsScreen() {
       }
     }
 
-    const toAdd = Array.from(selectedContacts);
-    let duplicateSkipped = 0;
-    for (const contactId of toAdd) {
-      const contact = deviceContacts.find(c => c.id === contactId);
-      if (contact && selectedCategory) {
-        const phoneNumber = contact.phoneNumbers[0]?.number || '';
-        const name = contact.name || '';
-        try {
-          await guestService.addGuest(resolvedEventId || '', {
-            name,
-            phone: phoneNumber,
-            status: 'ממתין',
-            tableId: null,
-            gift: 0,
-            message: '',
-            category_id: selectedCategory.id,
-            numberOfPeople: 1,
-          });
-        } catch (err: any) {
-          if (err?.message === UNAPPROVED_EVENT_GUEST_LIMIT_ERROR) {
-            Alert.alert('הגבלת מוזמנים', UNAPPROVED_EVENT_GUEST_LIMIT_ERROR);
-            break;
-          }
-          if (err?.message === DUPLICATE_GUEST_ERROR) {
-            duplicateSkipped++;
-            continue;
-          }
-          console.error('Add guest error:', err);
-        }
+    if (!selectedCategory) return;
+
+    setAddingContacts(true);
+    try {
+      const payload = Array.from(selectedContacts)
+        .map((contactId) => deviceContacts.find((c) => c.id === contactId))
+        .filter(Boolean)
+        .map((contact) => ({
+          name: contact!.name || '',
+          phone: contact!.phoneNumbers[0]?.number || '',
+          status: 'ממתין' as const,
+          tableId: null,
+          gift: 0,
+          message: '',
+          category_id: selectedCategory.id,
+          numberOfPeople: 1,
+        }));
+
+      const { added, duplicateSkipped } = await guestService.addGuestsBatch(resolvedEventId || '', payload, {
+        existingRows: guests.map((guest) => ({
+          id: guest.id,
+          name: guest.name,
+          phone: guest.phone,
+        })),
+      });
+
+      if (added.length > 0) {
+        setGuests((prev) => [...prev, ...added]);
       }
-    }
-    setSelectedContacts(new Set());
-    setContactsModalVisible(false);
-    if (duplicateSkipped > 0) {
-      Alert.alert('אורחים כפולים', 'חלק מהאורחים לא נוספו כי הם כבר קיימים באירוע לפי שם או מספר טלפון.');
+
+      setSelectedContacts(new Set());
+      setContactsModalVisible(false);
+
+      if (duplicateSkipped > 0) {
+        Alert.alert('אורחים כפולים', 'חלק מהאורחים לא נוספו כי הם כבר קיימים באירוע לפי שם או מספר טלפון.');
+      }
+    } catch (err: any) {
+      if (err?.message === UNAPPROVED_EVENT_GUEST_LIMIT_ERROR) {
+        Alert.alert('הגבלת מוזמנים', UNAPPROVED_EVENT_GUEST_LIMIT_ERROR);
+        return;
+      }
+      console.error('Add guest error:', err);
+      Alert.alert('שגיאה', 'לא ניתן להוסיף את האורחים. נסה שוב.');
+    } finally {
+      setAddingContacts(false);
     }
   };
 
@@ -530,29 +521,16 @@ export default function GuestsScreen() {
     }
   };
 
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <AppLoaderScreen variant="guests" />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
-      <LinearGradient
-        pointerEvents="none"
-        colors={['#F7FAFF', '#E8F1FF', '#F2E0BA']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.bg}
-      />
-      <LinearGradient
-        pointerEvents="none"
-        colors={['rgba(255,255,255,0.68)', 'rgba(255,255,255,0)']}
-        start={{ x: 0.05, y: 0 }}
-        end={{ x: 0.75, y: 0.55 }}
-        style={styles.bgHighlight}
-      />
-      <LinearGradient
-        pointerEvents="none"
-        colors={['rgba(232,196,122,0.58)', 'rgba(244,224,186,0.22)', 'rgba(244,224,186,0)']}
-        start={{ x: 1, y: 0.95 }}
-        end={{ x: 0.18, y: 0.22 }}
-        style={styles.bgWarmGlow}
-      />
       {Platform.OS !== 'web' ? (
         <Animated.View
           pointerEvents="none"
@@ -897,7 +875,8 @@ export default function GuestsScreen() {
         </View>
 
         {categories.length > 0 ? (
-          categories
+          <View style={styles.categoryList}>
+          {categories
             .filter(cat => !effectiveSideFilter || cat.side === effectiveSideFilter) // סינון קטגוריות לפי צד (רק בחתונה)
             .map(cat => {
             const guestsInCat = filteredGuests.filter(g => g.category_id === cat.id);
@@ -946,16 +925,13 @@ export default function GuestsScreen() {
                     guestsInCat.map((guest, index) => (
                       <TouchableOpacity
                         key={guest.id}
-                        style={[
-                          styles.guestRow,
-                          index === guestsInCat.length - 1 && styles.guestRowLast
-                        ]}
+                        style={styles.guestRow}
                         onPress={() => handleLongPressGuest(guest)}
                       >
                         <View style={styles.guestMain}>
                           <View style={styles.guestAvatar}>
                             <Text>
-                              <Ionicons name="person" size={20} color={colors.gray[500]} />
+                              <Ionicons name="person" size={20} color={colors.primary} />
                             </Text>
                           </View>
                           <View style={styles.guestInfo}>
@@ -978,7 +954,7 @@ export default function GuestsScreen() {
                         <View style={styles.guestMeta}>
                           <View style={styles.peopleCountBadge}>
                             <Text>
-                              <Ionicons name="person" size={12} color={colors.gray[700]} />
+                              <Ionicons name="person" size={12} color={colors.primary} />
                             </Text>
                             <Text style={styles.peopleCountText}>{guest.numberOfPeople || 1}</Text>
                           </View>
@@ -992,7 +968,8 @@ export default function GuestsScreen() {
                 </View>
               </View>
             );
-          })
+          })}
+          </View>
         ) : (
           <View style={styles.emptyState}>
             <Text style={styles.emptyStateText}>אין קטגוריות עדיין. הוסף קטגוריה חדשה!</Text>
@@ -1123,10 +1100,19 @@ export default function GuestsScreen() {
       visible={contactsModalVisible}
       transparent={true}
       animationType="slide"
-      onRequestClose={() => setContactsModalVisible(false)}
+      onRequestClose={() => {
+        if (addingContacts) return;
+        setContactsModalVisible(false);
+      }}
     >
       <View style={styles.modalContainer}>
         <View style={styles.modalContent}>
+          <AppLoader
+            visible={addingContacts}
+            variant="adding"
+            count={selectedContacts.size}
+            categoryName={selectedCategory?.name}
+          />
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>בחר אנשי קשר</Text>
             <TouchableOpacity 
@@ -1170,9 +1156,9 @@ export default function GuestsScreen() {
           
           <View style={styles.modalActions}>
             <Button
-              title={`הוסף ${selectedContacts.size} אנשי קשר`}
+              title={addingContacts ? `מוסיף ${selectedContacts.size} אנשי קשר...` : `הוסף ${selectedContacts.size} אנשי קשר`}
               onPress={addSelectedContacts}
-              disabled={selectedContacts.size === 0}
+              disabled={selectedContacts.size === 0 || addingContacts}
               style={styles.addContactsButton}
             />
           </View>
@@ -1390,19 +1376,10 @@ const stylesApple = {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#E8F1FF',
+    backgroundColor: colors.white,
     paddingTop: Platform.OS === 'web' ? 12 : 0,
     paddingHorizontal: 16,
     paddingBottom: Platform.OS === 'web' ? 16 : 0,
-  },
-  bg: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  bgHighlight: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  bgWarmGlow: {
-    ...StyleSheet.absoluteFillObject,
   },
   pageHeader: {
     paddingBottom: 12,
@@ -1811,6 +1788,20 @@ const styles = StyleSheet.create({
     paddingBottom: Platform.OS === 'web' ? 80 : 122,
     flexGrow: 1,
   },
+  loadingBox: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 56,
+    gap: 12,
+  },
+  loadingText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.gray[600],
+    textAlign: 'center',
+    writingDirection: 'rtl',
+  },
   emptyState: {
     flex: 1,
     alignItems: 'center',
@@ -1871,6 +1862,7 @@ const styles = StyleSheet.create({
     margin: 20,
     maxHeight: '60%',
     minHeight: 300,
+    overflow: 'hidden',
   },
   editModalOverlay: {
     flex: 1,
@@ -2320,16 +2312,15 @@ const styles = StyleSheet.create({
     marginRight: 8,
     textAlign: 'right',
   },
+  categoryList: {
+    gap: 16,
+  },
   categoryCard: {
-    backgroundColor: colors.white,
+    backgroundColor: '#F8FAFD',
     borderRadius: 24,
     padding: 18,
-    marginBottom: 20,
-    shadowColor: colors.black,
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(6, 23, 62, 0.06)',
   },
   categoryHeader: {
     flexDirection: ROW_DIR,
@@ -2364,6 +2355,7 @@ const styles = StyleSheet.create({
   },
   guestsList: {
     marginTop: 8,
+    gap: 8,
   },
   guestRow: {
     // Keep a stable visual layout:
@@ -2373,11 +2365,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-start',
     paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.gray[100],
-  },
-  guestRowLast: {
-    borderBottomWidth: 0,
+    paddingHorizontal: 10,
+    backgroundColor: colors.white,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(6, 23, 62, 0.06)',
   },
   guestMain: {
     direction: 'ltr',
@@ -2391,7 +2383,9 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: colors.gray[200],
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: 'rgba(6, 23, 62, 0.08)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2450,14 +2444,16 @@ const styles = StyleSheet.create({
   peopleCountBadge: {
     flexDirection: ROW_DIR,
     alignItems: 'center',
-    backgroundColor: colors.gray[200],
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: 'rgba(6, 23, 62, 0.08)',
     borderRadius: 12,
     paddingHorizontal: 6,
     paddingVertical: 3,
   },
   peopleCountText: {
     fontSize: 11,
-    color: colors.gray[800],
+    color: colors.primary,
     fontWeight: '700',
     marginEnd: 4,
   },

@@ -3,6 +3,7 @@ import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Rect } from 'react-native-svg';
 import { CELL_SIZE, TABLE_LABELS, clamp, tableCellSize, type Orientation, type TableType } from './_types';
 import { colors } from '@/constants/colors';
+import { TableSeatRing, getTableSeatBorderColor, getTableSeatFillColor } from '@/components/couple/TableSeatRing';
 
 function hexToRgba(hex: string, alpha: number) {
   const raw = String(hex || '').trim().replace('#', '');
@@ -70,6 +71,8 @@ export function SeatingGridReadonly({
   isTableSelected,
   selectedRingColor,
   tableTextScale,
+  showSeatRing,
+  getTableOccupancy,
 }: {
   gridCols: number;
   gridRows: number;
@@ -91,6 +94,8 @@ export function SeatingGridReadonly({
   isTableSelected?: (t: TableItem) => boolean;
   selectedRingColor?: string;
   tableTextScale?: number;
+  showSeatRing?: boolean;
+  getTableOccupancy?: (t: TableItem) => { seated: number; capacity: number } | null;
 }) {
   const isWeb = Platform.OS === 'web';
   const fitBoost = Number.isFinite(autoFitZoomMultiplier as any) ? Math.max(0.6, Math.min(2, Number(autoFitZoomMultiplier))) : 1;
@@ -342,6 +347,24 @@ export function SeatingGridReadonly({
               const isKnightTable = t.type === 'knight';
               const resolvedTableNumFontSize = Math.max(12, Math.round((isKnightTable ? 14 : 18) * textScale));
               const tableSubFontSize = Math.max(8, Math.round((isKnightTable ? 9 : 12) * textScale));
+              const tableW = sz.w * CS;
+              const tableH = sz.h * CS;
+              const occ = getTableOccupancy?.(t) ?? null;
+              const cap = Number(occ?.capacity ?? t?.seats ?? 0) || 0;
+              const seated = Number(occ?.seated ?? 0) || 0;
+              const useRing = Boolean(showSeatRing);
+              const namePad = name && useRing ? (isKnightTable ? 13 : 20) : 4;
+              const ringW = tableW - 4;
+              const ringH = tableH - namePad;
+              const ringSize = isKnightTable ? Math.min(ringW, ringH) : Math.min(tableW, tableH) - (name && useRing ? 22 : 8);
+              const reserveBorder = 'rgba(245, 158, 11, 0.55)';
+              const defaultBorder = 'rgba(203, 213, 225, 0.85)';
+              const filledColor = getTableSeatFillColor(seated, cap);
+              const ringBorder = getTableSeatBorderColor(
+                seated,
+                cap,
+                isReserve ? reserveBorder : defaultBorder,
+              );
               return (
                 <Pressable
                   key={t.id}
@@ -373,7 +396,7 @@ export function SeatingGridReadonly({
                   style={({ pressed }) => [
                     styles.table,
                     !isWeb && selected ? styles.tableSelected : null,
-                    isWeb
+                    isWeb && !useRing
                       ? ({
                           boxShadow: selected
                             ? `0 12px 26px rgba(245,158,11,0.18), 0 0 0 3px ${hexToRgba(isHex6(ringBase) ? ringBase : '#F59E0B', 0.22)}`
@@ -385,15 +408,44 @@ export function SeatingGridReadonly({
                     {
                       left: (t.gridX - contentRect.originX) * CS,
                       top: (t.gridY - contentRect.originY) * CS,
-                      width: sz.w * CS,
-                      height: sz.h * CS,
-                      backgroundColor: bg,
-                      borderWidth: isWeb ? 2 : borderOn ? 1 : 0,
-                      borderColor: isWeb ? borderColor : borderOn ? borderColor : 'transparent',
+                      width: tableW,
+                      height: tableH,
+                      backgroundColor: useRing ? '#FFFFFF' : bg,
+                      borderWidth: isWeb ? (useRing ? 1 : 2) : borderOn ? 1 : 0,
+                      borderColor: useRing ? ringBorder : isWeb ? borderColor : borderOn ? borderColor : 'transparent',
                       opacity: pressed ? 0.9 : 1,
+                      ...(useRing && isWeb
+                        ? ({
+                            boxShadow: selected
+                              ? `0 12px 26px rgba(245,158,11,0.18), 0 0 0 3px ${hexToRgba(isHex6(ringBase) ? ringBase : '#F59E0B', 0.22)}`
+                              : '0 8px 18px rgba(15,23,42,0.08)',
+                          } as any)
+                        : null),
                     },
                   ]}
                 >
+                  {useRing ? (
+                    <>
+                      <TableSeatRing
+                        layout={isKnightTable ? 'knight' : 'round'}
+                        tableNumber={t.number ?? ''}
+                        seated={seated}
+                        capacity={cap}
+                        size={ringSize}
+                        width={isKnightTable ? ringW : undefined}
+                        height={isKnightTable ? ringH : undefined}
+                        orientation={t.orientation ?? 'column'}
+                        showRatio
+                        filledColor={filledColor}
+                        numberColor={isReserve ? '#B45309' : '#06173d'}
+                      />
+                      {name ? (
+                        <Text style={[styles.tableNameRing, isKnightTable && styles.tableNameRingKnight]} numberOfLines={1}>
+                          {name}
+                        </Text>
+                      ) : null}
+                    </>
+                  ) : (
                   <View style={[styles.tableContent, isKnightTable ? styles.tableContentKnight : null]}>
                     <Text style={[styles.tableNum, { color: isWeb ? webAccent : base, fontSize: resolvedTableNumFontSize }]}>
                       {t.number ?? ''}
@@ -432,6 +484,7 @@ export function SeatingGridReadonly({
                       </Text>
                     ) : null}
                   </View>
+                  )}
                 </Pressable>
               );
             })}
@@ -538,6 +591,8 @@ const styles = StyleSheet.create({
   },
   tableNum: { fontSize: 18, fontWeight: '900', lineHeight: 20 },
   tableName: { marginTop: 3, fontSize: 12, fontWeight: '900', color: colors.gold, textAlign: 'center' },
+  tableNameRing: { marginTop: 2, fontSize: 14, fontWeight: '900', color: '#06173d', textAlign: 'center', paddingHorizontal: 2 },
+  tableNameRingKnight: { marginTop: 1, fontSize: 9, paddingHorizontal: 1 },
   tableNameOnDark: { color: colors.gold },
   tableType: { marginTop: 2, fontSize: 11, fontWeight: '800', color: 'rgba(51,65,85,0.55)' },
   tableSub: {
