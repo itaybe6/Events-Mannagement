@@ -71,10 +71,23 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 });
 
-// Admin client for user management (using service role key)
-export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false,
-  },
-}); 
+// Admin client for user management (using service role key).
+// The service role key must NOT be bundled in the client; it is only present when
+// provided via an EAS env var. When it is missing we fall back to the regular
+// (anon) client so importing this module never throws ("supabaseKey is required")
+// and the app can still boot. Admin-only operations will then run with anon
+// privileges (and should ideally be moved to a Supabase Edge Function).
+export const supabaseAdmin = supabaseServiceKey
+  ? createClient(supabaseUrl, supabaseServiceKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    })
+  : supabase;
+
+if (!supabaseServiceKey) {
+  console.warn(
+    '[supabase] EXPO_PUBLIC_SUPABASE_SERVICE_KEY is not set. supabaseAdmin falls back to the anon client; admin-only operations may fail due to RLS.'
+  );
+}
