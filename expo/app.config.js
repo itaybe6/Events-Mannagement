@@ -10,10 +10,14 @@ module.exports = {
   expo: {
     name: "Moon",
     slug: "euroe-nitgmal-eiroom-mekapim",
-    version: "1.0.2",
-    runtimeVersion: "1.0.2",
+    version: "1.0.6",
+    runtimeVersion: "1.0.6",
     updates: {
       url: "https://u.expo.dev/292e2bf1-e784-4c87-9375-36040694dec9",
+      // Never block startup on (or instantly apply) an OTA update.
+      // Updates download in the background and apply on the next launch,
+      // which prevents a bad/partial bundle from crashing the app on open.
+      fallbackToCacheTimeout: 0,
     },
     // Allow device rotation (portrait + landscape).
     // If you want only specific screens to rotate, lock/unlock at runtime via expo-screen-orientation,
@@ -96,10 +100,12 @@ module.exports = {
       eas: {
         projectId: "292e2bf1-e784-4c87-9375-36040694dec9"
       },
-      EXPO_PUBLIC_SITE_BASE_URL: process.env.EXPO_PUBLIC_SITE_BASE_URL || "",
-      EXPO_PUBLIC_SUPABASE_URL: process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://yzsfozjrhznlzqcgoqar.supabase.co',
-      EXPO_PUBLIC_SUPABASE_ANON_KEY: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl6c2ZvempyaHpubHpxY2dvcWFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzY0OTIwNTUsImV4cCI6MjA1MjA2ODA1NX0.FXBSofoKWJVJfRJQ8IlXXLqT59BXnbhgqU4LNGVdRlg',
-      EXPO_PUBLIC_SUPABASE_SERVICE_KEY: process.env.EXPO_PUBLIC_SUPABASE_SERVICE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl6c2ZvempyaHpubGVxY2dnb3FyIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1Mjk5NDgwNSwiZXhwIjoyMDY4NTcwODA1fQ.vyF70hbjXOOne7mZgKL7bDHOnTKvP7UCiVFa1n2_ikE'
+      EXPO_PUBLIC_SITE_BASE_URL: process.env.EXPO_PUBLIC_SITE_BASE_URL || "https://events-mannagement.vercel.app",
+      // IMPORTANT: these fallbacks are used by EAS builds, where the local (gitignored)
+      // .env is NOT available. They must point at the CURRENT active Supabase project.
+      EXPO_PUBLIC_SUPABASE_URL: process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://cxlmixykahuchilhyjjv.supabase.co',
+      EXPO_PUBLIC_SUPABASE_ANON_KEY: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN4bG1peHlrYWh1Y2hpbGh5amp2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAxOTIxMTgsImV4cCI6MjA4NTc2ODExOH0.dFkhUWcHjqgqlfowNcl8EtNJ6e697x4tUrKkz7X5IjE',
+      EXPO_PUBLIC_SUPABASE_SERVICE_KEY: process.env.EXPO_PUBLIC_SUPABASE_SERVICE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN4bG1peHlrYWh1Y2hpbGh5amp2Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MDE5MjExOCwiZXhwIjoyMDg1NzY4MTE4fQ.v4b1cGRJiO3cR54UKkz1dQ34iTZBq3D-X90d_3iN9Cc'
     }
   }
 }; 
