@@ -24,10 +24,6 @@ export const creditTerminalService = {
       body: { eventId: cleanId },
     });
 
-    if (error) {
-      return { ok: false, error: error.message || 'שגיאה בשליחת הבקשה' };
-    }
-
     if (data?.ok === true) {
       return {
         ok: true,
@@ -37,9 +33,16 @@ export const creditTerminalService = {
       };
     }
 
+    const bodyError = data?.error ? String(data.error) : '';
+    const invokeError = error?.message ? String(error.message) : '';
+    const friendlyError =
+      bodyError ||
+      (invokeError.includes('non-2xx') ? 'שגיאה בשרת. נסו שוב או פנו למנהל המערכת.' : invokeError) ||
+      'שגיאה בשליחת הבקשה';
+
     return {
       ok: false,
-      error: String(data?.error ?? 'שגיאה בשליחת הבקשה'),
+      error: friendlyError,
       sent: data?.sent,
       upstreamStatus: data?.upstreamStatus,
       upstreamBody: data?.upstreamBody,
