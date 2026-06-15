@@ -413,7 +413,15 @@ export default function InvitationLandingScreen() {
 
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: '#F4F5F7' },
-  content: { padding: 16, paddingBottom: 34 },
+  content: {
+    padding: 16,
+    // Extra bottom space so the submit button is never hidden behind iOS
+    // Safari's bottom toolbar / home indicator and always stays tappable.
+    paddingBottom:
+      Platform.OS === 'web'
+        ? ('calc(48px + env(safe-area-inset-bottom, 0px))' as unknown as number)
+        : 48,
+  },
   shell: { width: '100%', maxWidth: 420, alignSelf: 'center', gap: 14 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 24, backgroundColor: '#fff' },
   centerText: { fontSize: 14, fontWeight: '800', color: colors.gray[700], textAlign: 'center' },

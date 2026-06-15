@@ -223,6 +223,23 @@ export default function RootLayout() {
 
       ensureLink('gf-preconnect-1', 'preconnect', 'https://fonts.googleapis.com');
       ensureLink('gf-preconnect-2', 'preconnect', 'https://fonts.gstatic.com', { crossorigin: '' });
+
+      // Ensure the viewport opts into `viewport-fit=cover` so iOS Safari exposes
+      // the safe-area insets (`env(safe-area-inset-*)`). Without this, bottom
+      // content like the RSVP submit button can sit under the browser toolbar /
+      // home indicator and become impossible to tap.
+      const viewport = document.querySelector('meta[name="viewport"]') as HTMLMetaElement | null;
+      const desiredViewport = 'width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover';
+      if (viewport) {
+        if (!/viewport-fit\s*=\s*cover/.test(viewport.content)) {
+          viewport.content = desiredViewport;
+        }
+      } else {
+        const meta = document.createElement('meta');
+        meta.name = 'viewport';
+        meta.content = desiredViewport;
+        head.appendChild(meta);
+      }
     } catch {
       // ignore
     }

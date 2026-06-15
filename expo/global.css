@@ -19,9 +19,22 @@ body {
   margin: 0;
 }
 
-/* Ensure the app can stretch to the viewport height (web) */
+/*
+ * Ensure the app stretches to the *visible* viewport height (web).
+ * iOS Safari's `100vh` includes the area behind the bottom browser toolbar,
+ * which pushes bottom content (e.g. the RSVP submit button) under the toolbar
+ * where it can't be tapped. `100dvh` tracks the visible viewport so the bottom
+ * stays reachable. `100vh` is kept as a fallback for older browsers.
+ */
+html,
+body {
+  height: 100vh;
+  height: 100dvh;
+}
+
 #root {
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 /* Strengthen RTL inheritance for web (incl. 3rd-party components) */
