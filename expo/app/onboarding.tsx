@@ -163,7 +163,7 @@ export default function OnboardingScreen() {
 
         <Animated.Text
           entering={FadeInDown.springify().delay(_initialDelay + 100)}
-          style={{ color: colors.white, fontSize: 28, textAlign: 'center', marginTop: -6 }}
+          style={{ color: colors.white, fontSize: 30, textAlign: 'center', marginTop: -6 }}
         >
           ברוכים הבאים
           {'\n'}סידורי הושבה ואישורי הגעה
