@@ -3294,23 +3294,6 @@ export default function AutomaticNotificationsWebScreen() {
                     <Text style={[styles.wizardChoiceTitle, addWizardChannel === 'SMS' ? styles.wizardChoiceTitleActive : null]}>SMS</Text>
                     <Text style={styles.wizardChoiceSub}>שליחה מתוזמנת נתמכת כרגע</Text>
                   </Pressable>
-
-                  <Pressable
-                    onPress={() => {
-                      setAddWizardChannel('WHATSAPP');
-                      setAddWizardStep(2);
-                      setAddWizardInsertAt(flowStepsSorted.length + 1);
-                    }}
-                    style={({ pressed }: any) => [
-                      styles.wizardChoiceBtn,
-                      addWizardChannel === 'WHATSAPP' ? styles.wizardChoiceBtnActive : null,
-                      pressed ? { opacity: 0.92 } : null,
-                    ]}
-                  >
-                    <Ionicons name="logo-whatsapp" size={20} color={addWizardChannel === 'WHATSAPP' ? '#4F46E5' : '#111827'} />
-                    <Text style={[styles.wizardChoiceTitle, addWizardChannel === 'WHATSAPP' ? styles.wizardChoiceTitleActive : null]}>WhatsApp</Text>
-                    <Text style={styles.wizardChoiceSub}>כרגע לא נשלח אוטומטית, אבל נשמר כשלב</Text>
-                  </Pressable>
                 </View>
 
                 <View style={styles.dialogActions}>
