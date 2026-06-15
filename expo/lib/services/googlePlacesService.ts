@@ -37,7 +37,7 @@ export const googlePlacesService = {
     if (error) throw error;
     return Array.isArray((data as any)?.predictions) ? ((data as any).predictions as GooglePlacePrediction[]) : [];
   },
-
+// asd
   async getPlaceDetails(placeId: string): Promise<GooglePlaceDetails> {
     const cleanPlaceId = String(placeId || '').trim();
     if (!cleanPlaceId) throw new Error('Missing placeId');
