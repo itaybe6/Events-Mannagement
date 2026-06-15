@@ -4,9 +4,23 @@ const { mergeContents } = require('@expo/config-plugins/build/utils/generateCode
 
 const RTL_TAG = 'expo-force-rtl';
 
+// Safe wrapper around mergeContents: if the anchor can't be matched (e.g. the
+// native template changed between Expo SDK versions), we log a warning and skip
+// the injection instead of throwing, which would crash the whole build/prebuild.
+function safeMerge(label, options) {
+  try {
+    return mergeContents(options);
+  } catch (e) {
+    console.warn(
+      `[withForceRTL] Skipped "${label}" injection: ${e?.message || e}`
+    );
+    return { contents: options.src, didMerge: false, didClear: false };
+  }
+}
+
 function addRTLToAppDelegateSwift(contents) {
-  // Match the didFinishLaunchingWithOptions parameter line; insert after next line (") -> Bool {") so offset 2.
-  return mergeContents({
+  // Insert right after the line that opens the function body ("... -> Bool {").
+  return safeMerge('AppDelegate.swift', {
     tag: RTL_TAG,
     src: contents,
     newSrc: [
@@ -21,7 +35,7 @@ function addRTLToAppDelegateSwift(contents) {
 }
 
 function addRTLToAppDelegateObjC(contents) {
-  const withImport = mergeContents({
+  const withImport = safeMerge('AppDelegate.m import', {
     tag: RTL_TAG + '-import',
     src: contents,
     newSrc: '#import <React/RCTI18nUtil.h>',
@@ -32,7 +46,7 @@ function addRTLToAppDelegateObjC(contents) {
   if (withImport.didMerge) {
     contents = withImport.contents;
   }
-  return mergeContents({
+  return safeMerge('AppDelegate.m', {
     tag: RTL_TAG,
     src: contents,
     newSrc: [
@@ -47,28 +61,30 @@ function addRTLToAppDelegateObjC(contents) {
 }
 
 function addRTLToMainApplication(contents) {
-  const withImport = mergeContents({
+  const withImport = safeMerge('MainApplication import', {
     tag: RTL_TAG + '-import-android',
     src: contents,
-    newSrc: 'import com.facebook.react.modules.i18nmanager.I18nUtil;',
+    newSrc: 'import com.facebook.react.modules.i18nmanager.I18nUtil',
     anchor: /import com\.facebook\.react/,
     offset: 0,
     comment: '//',
   });
-  let result = withImport.didMerge ? withImport : { contents, didMerge: false };
-  const withRTL = mergeContents({
+  const result = withImport.didMerge ? withImport : { contents, didMerge: false };
+  // Insert *after* super.onCreate() (offset 1) so the statements land inside the
+  // onCreate() function body. offset -1 would place them in the class body and
+  // produce "Expecting member declaration" Kotlin syntax errors.
+  return safeMerge('MainApplication onCreate', {
     tag: RTL_TAG,
     src: result.contents,
     newSrc: [
-      '      // Force RTL layout regardless of device language',
-      '      I18nUtil.getInstance().allowRTL(this, true);',
-      '      I18nUtil.getInstance().forceRTL(this, true);',
+      '    // Force RTL layout regardless of device language',
+      '    I18nUtil.getInstance().allowRTL(this, true)',
+      '    I18nUtil.getInstance().forceRTL(this, true)',
     ].join('\n'),
     anchor: /super\.onCreate\(\)/,
     offset: 1,
     comment: '//',
   });
-  return withRTL;
 }
 
 const withForceRTL = (config) => {
@@ -89,6 +105,13 @@ const withForceRTL = (config) => {
   });
 
   config = withMainApplication(config, (config) => {
+    // This plugin only supports Kotlin MainApplication (Expo SDK 50+).
+    if (config.modResults.language !== 'kt') {
+      console.warn(
+        '[withForceRTL] MainApplication is not Kotlin (.kt); skipping Android RTL injection.'
+      );
+      return config;
+    }
     const contents = config.modResults.contents;
     const result = addRTLToMainApplication(contents);
     if (result.didMerge) {
