@@ -93,6 +93,49 @@ export type Message = {
   status: string;
 };
 
+export type WhatsAppTemplateVariable = {
+  index: number;
+  label?: string;
+  sample?: string;
+};
+
+export type WhatsAppTemplateButton = {
+  index: number;
+  label?: string;
+  kind: 'invitation' | 'fixed';
+  base_url?: string;
+  suffix?: string;
+};
+
+export type WhatsAppTemplate = {
+  id: string;
+  label: string;
+  templateName: string;
+  languageCode: string;
+  category?: string | null;
+  headerType: 'none' | 'image' | 'text';
+  bodyText: string;
+  variables: WhatsAppTemplateVariable[];
+  buttons: WhatsAppTemplateButton[];
+  isActive: boolean;
+  createdAt?: Date;
+  updatedAt?: Date;
+};
+
+/** Per-step filled-in WhatsApp config, stored on a notification step. */
+export type WhatsAppStepParams = {
+  header_image_url?: string | null;
+  header_text?: string | null;
+  /** Body values aligned to template variable order (may include {name}/{link}/etc). */
+  body?: string[];
+  /** Per-button overrides, mainly fixed suffixes. */
+  buttons?: Array<{ index: number; kind?: string; suffix?: string }>;
+};
+
+export type WhatsAppSettings = {
+  dailyQuota: number;
+};
+
 export type Notification = {
   id: string;
   recipientUserId: string;

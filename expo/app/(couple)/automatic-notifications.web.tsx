@@ -13,7 +13,11 @@ import { eventService } from '@/lib/services/eventService';
 import { useUserStore } from '@/store/userStore';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import { Event } from '@/types';
+import type { WhatsAppStepParams, WhatsAppTemplate } from '@/types';
+import { whatsappTemplateService } from '@/lib/services/whatsappTemplateService';
 import IPhoneMockup from '@/components/ui/iphone-mockup';
+
+type WaRecipientMode = 'manual' | 'all' | 'pending' | 'coming' | 'not_coming' | 'maybe' | 'prev_pending';
 
 type NotificationTemplate = {
   notification_type: string;
@@ -38,9 +42,12 @@ type NotificationSettingRow = {
   flow_id?: string | null;
   sort_order?: number | null;
   depends_on_setting_id?: string | null;
-  recipient_mode?: 'manual' | 'all' | 'pending' | 'prev_pending' | null;
+  recipient_mode?: WaRecipientMode | null;
   recipient_rule?: any;
   ui_hidden?: boolean | null;
+  // WhatsApp template config (per step)
+  whatsapp_template_id?: string | null;
+  whatsapp_params?: WhatsAppStepParams | null;
   // Catch-up queue scheduling (reminder_1 only; may be missing in older DB envs)
   late_catchup_enabled?: boolean | null;
   late_catchup_send_time?: string | null; // time
@@ -471,9 +478,16 @@ export default function AutomaticNotificationsWebScreen() {
   const [recipientsWizardManual, setRecipientsWizardManual] = useState(false);
   const [flowDraft, setFlowDraft] = useState<{
     title: string;
-    recipientMode: 'manual' | 'pending' | 'prev_pending';
+    recipientMode: WaRecipientMode;
     dependsOnSettingId: string | null;
+    whatsappTemplateId: string | null;
+    whatsappParams: WhatsAppStepParams;
   } | null>(null);
+
+  // WhatsApp template registry + daily quota (managed in /(admin)/whatsapp-templates).
+  const [waTemplates, setWaTemplates] = useState<WhatsAppTemplate[]>([]);
+  const [waDailyQuota, setWaDailyQuota] = useState<number>(0);
+  const [waSentToday, setWaSentToday] = useState<number>(0);
   const [dependsPickerOpen, setDependsPickerOpen] = useState(false);
   const [addWizardOpen, setAddWizardOpen] = useState(false);
   const [addWizardStep, setAddWizardStep] = useState<1 | 2>(1);
@@ -1087,6 +1101,22 @@ export default function AutomaticNotificationsWebScreen() {
         setOwnerTitle(title);
         await fetchSettings((eventData as any).id, title, eventData);
 
+        // Load WhatsApp template registry + daily quota usage (best-effort).
+        try {
+          const [tpls, settings, today] = await Promise.all([
+            whatsappTemplateService.list().catch(() => []),
+            whatsappTemplateService.getSettings().catch(() => ({ dailyQuota: 0 })),
+            whatsappTemplateService.sentToday().catch(() => 0),
+          ]);
+          if (!cancelled) {
+            setWaTemplates(tpls);
+            setWaDailyQuota(settings.dailyQuota || 0);
+            setWaSentToday(today);
+          }
+        } catch (e) {
+          console.warn('Failed to load WhatsApp registry (couple web):', e);
+        }
+
         const { data: guestRows, error: guestError } = await supabase
           .from('guests')
           .select('id, name, phone, status, invitation_code, invitation_token')
@@ -1418,8 +1448,10 @@ export default function AutomaticNotificationsWebScreen() {
     setMessageSelection({ start: draftMessage.length, end: draftMessage.length });
     setFlowDraft({
       title: String(row.title ?? 'שלב'),
-      recipientMode: (String((row as any)?.recipient_mode || 'manual') as any) || 'manual',
+      recipientMode: (String((row as any)?.recipient_mode || 'manual') as WaRecipientMode) || 'manual',
       dependsOnSettingId: (row as any)?.depends_on_setting_id ? String((row as any).depends_on_setting_id) : null,
+      whatsappTemplateId: (row as any)?.whatsapp_template_id ? String((row as any).whatsapp_template_id) : null,
+      whatsappParams: ((row as any)?.whatsapp_params as WhatsAppStepParams) || {},
     });
     setEditorWizardStepIdx(0);
     setEditorOpen(true);
@@ -1575,7 +1607,12 @@ export default function AutomaticNotificationsWebScreen() {
 
   const displayRows = useMemo(() => {
     const order = ['reminder_1', 'reminder_2', 'whatsapp_event_day', 'after_1'];
-    return order.map((t) => rowsByType.get(t)).filter(Boolean) as NotificationSettingRow[];
+    // Fully dynamic: only show the legacy preset cards that already exist in the DB
+    // (so existing events keep working). New events start empty and are built via
+    // dynamic steps ("הוסף כרטיסיה").
+    return order
+      .map((t) => rowsByType.get(t))
+      .filter((r) => Boolean(r) && Boolean((r as any)?.id)) as NotificationSettingRow[];
   }, [rowsByType]);
 
   const flowStepsSorted = useMemo(() => {
@@ -1957,12 +1994,17 @@ export default function AutomaticNotificationsWebScreen() {
         payload.recipient_mode = mode;
         payload.depends_on_setting_id = flowDraft?.dependsOnSettingId ? String(flowDraft.dependsOnSettingId) : null;
         payload.recipient_rule =
-          mode === 'pending'
-            ? { mode: 'pending' }
-            : mode === 'prev_pending'
-              ? { mode: 'prev_pending', dependsOn: payload.depends_on_setting_id }
-              : { mode: 'manual' };
+          mode === 'prev_pending'
+            ? { mode: 'prev_pending', dependsOn: payload.depends_on_setting_id }
+            : { mode };
         if (mode !== 'manual') payload.recipient_guest_ids = [];
+
+        // WhatsApp steps: persist the chosen template + filled params.
+        const flowChannel = String((editorRow as any)?.channel || 'SMS').toUpperCase();
+        if (flowChannel === 'WHATSAPP') {
+          payload.whatsapp_template_id = flowDraft?.whatsappTemplateId || null;
+          payload.whatsapp_params = flowDraft?.whatsappParams || {};
+        }
       }
 
       if (editorRow.id) {
@@ -2141,26 +2183,39 @@ export default function AutomaticNotificationsWebScreen() {
     }
     if (!event?.id || !editorRow || !editDraft) return;
     if (sendingNow) return;
-    if (!editDraft.message.trim()) {
-      alert('יש למלא תוכן הודעה');
-      return;
-    }
-    if (editDraft.message.length > MESSAGE_MAX_CHARS) {
-      alert(`תוכן ההודעה מוגבל ל־${MESSAGE_MAX_CHARS} תווים. קיצר את ההודעה לפני שליחה.`);
-      return;
+    const sendChannel = String((editorRow as any)?.channel || 'SMS').toUpperCase();
+    const sendIsWhatsapp = sendChannel === 'WHATSAPP';
+    if (!sendIsWhatsapp) {
+      if (!editDraft.message.trim()) {
+        alert('יש למלא תוכן הודעה');
+        return;
+      }
+      if (editDraft.message.length > MESSAGE_MAX_CHARS) {
+        alert(`תוכן ההודעה מוגבל ל־${MESSAGE_MAX_CHARS} תווים. קיצר את ההודעה לפני שליחה.`);
+        return;
+      }
     }
 
     setSendingNow(true);
     try {
       const nt = String(editorRow.notification_type || '').trim();
-      const channel = String((editorRow as any)?.channel || 'SMS').toUpperCase();
-      if (channel === 'WHATSAPP') {
-        alert('שליחת WhatsApp עדיין לא זמינה מהמסך הזה.');
-        return;
-      }
+      const channel = sendChannel;
+      const isWhatsapp = sendIsWhatsapp;
       const isFlow = nt.startsWith('flow_step:');
       const flowMode = isFlow ? String((editorRow as any)?.recipient_mode || flowDraft?.recipientMode || 'manual') : null;
       const shouldAutoPending = nt === 'reminder_2' || (isFlow && flowMode === 'pending');
+
+      // Compute recipient ids for status-based audiences (flow steps).
+      const statusIdsFor = (mode: string): string[] => {
+        const byStatus = (set: string[]) =>
+          allGuests.filter((g) => set.includes(String(g.status || '').trim())).map((g) => String(g.id));
+        if (mode === 'all') return allGuests.map((g) => String(g.id));
+        if (mode === 'pending') return byStatus(['ממתין']);
+        if (mode === 'coming') return byStatus(['מגיע', 'אישר']);
+        if (mode === 'not_coming') return byStatus(['לא מגיע', 'לא מגיעים']);
+        if (mode === 'maybe') return byStatus(['אולי מגיע']);
+        return [];
+      };
       const rowIds = Array.isArray((editorRow as any).recipient_guest_ids)
         ? ((editorRow as any).recipient_guest_ids as any[]).map((x) => String(x))
         : [];
@@ -2179,6 +2234,14 @@ export default function AutomaticNotificationsWebScreen() {
       if (isRequiredList && ids.length === 0) {
         alert(isFlow ? 'במצב "בחירה ידנית" צריך לבחור מוזמנים.' : 'להודעה הראשונה צריך לבחור מוזמנים (לחץ "הוסף מוזמנים")');
         return;
+      }
+      // Flow: status-based audiences (all/pending/coming/not_coming/maybe) -> compute now.
+      if (isFlow && flowMode && flowMode !== 'manual' && flowMode !== 'prev_pending') {
+        ids = statusIdsFor(flowMode);
+        if (ids.length === 0) {
+          alert('לא נמצאו מוזמנים מתאימים לסטטוס שנבחר.');
+          return;
+        }
       }
       // Flow: prev_pending -> compute recipients from previous step's last run + current pending status
       if (isFlow && flowMode === 'prev_pending') {
@@ -2230,6 +2293,33 @@ export default function AutomaticNotificationsWebScreen() {
       const configuredBaseUrl = normalizeBaseUrl(process.env.EXPO_PUBLIC_SITE_BASE_URL);
       const baseUrl =
         origin && !origin.includes('localhost') && !origin.includes('127.0.0.1') ? normalizeBaseUrl(origin) : configuredBaseUrl || undefined;
+
+      // WhatsApp: send via approved template (Meta Cloud API).
+      if (isWhatsapp) {
+        const templateId = String(flowDraft?.whatsappTemplateId || (editorRow as any)?.whatsapp_template_id || '').trim();
+        if (!templateId) {
+          alert('בחר תבנית וואטסאפ לשלב הזה לפני שליחה.');
+          return;
+        }
+        const whatsappParams = flowDraft?.whatsappParams || (editorRow as any)?.whatsapp_params || {};
+        const { data, error } = await supabase.functions.invoke('send-whatsapp-template', {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          body: {
+            eventId: event.id,
+            guestIds: ids.length > 0 ? ids : undefined,
+            filterStatus: 'all',
+            templateId,
+            whatsappParams,
+            baseUrl,
+          },
+        });
+        if (error) throw error;
+        const result = (data as any)?.result;
+        const quotaNote = Number(result?.skippedQuota) > 0 ? ` · דולגו ${Number(result.skippedQuota)} (מכסה יומית)` : '';
+        alert(`נשלחו ${Number(result?.sent) || 0} · נכשלו ${Number(result?.failed) || 0}${quotaNote}`);
+        whatsappTemplateService.sentToday().then(setWaSentToday).catch(() => {});
+        return;
+      }
 
       const { data, error } = await supabase.functions.invoke('send-invitation-sms', {
         headers: { Authorization: `Bearer ${accessToken}` },
@@ -2605,6 +2695,23 @@ export default function AutomaticNotificationsWebScreen() {
                       ))}
                     </View>
                     <View style={styles.headerSubtitleActions}>
+                      {userType === 'admin' ? (
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel="ניהול תבניות וואטסאפ ומכסה יומית"
+                          onPress={() => router.push('/(admin)/whatsapp-templates' as any)}
+                          style={({ hovered, pressed }: any) => [
+                            styles.headerSubtitleSecondaryBtn,
+                            Platform.OS === 'web' && hovered ? styles.headerSubtitleSecondaryBtnHover : null,
+                            pressed ? { opacity: 0.92 } : null,
+                          ]}
+                        >
+                          <Ionicons name="logo-whatsapp" size={16} color="#25D366" />
+                          <Text style={styles.headerSubtitleSecondaryBtnText}>
+                            {`תבניות וואטסאפ${waDailyQuota > 0 ? ` · ${waSentToday}/${waDailyQuota} היום` : ''}`}
+                          </Text>
+                        </Pressable>
+                      ) : null}
                       <Pressable
                         accessibilityRole="button"
                         accessibilityLabel="ייצוא ממתינים לאקסל"
@@ -3491,48 +3598,31 @@ export default function AutomaticNotificationsWebScreen() {
 
                   <View style={styles.fieldRow}>
                     <Text style={styles.fieldLabel}>נמענים</Text>
-                    <View style={styles.modeRow}>
-                      <Pressable
-                        onPress={() => setFlowDraft((d) => (d ? { ...d, recipientMode: 'manual' } : d))}
-                        style={({ pressed }: any) => [
-                          styles.modePill,
-                          flowDraft?.recipientMode === 'manual' ? styles.modePillActive : null,
-                          pressed ? { opacity: 0.92 } : null,
-                        ]}
-                      >
-                        <Text style={[styles.modePillText, flowDraft?.recipientMode === 'manual' ? styles.modePillTextActive : null]}>
-                          בחירה ידנית
-                        </Text>
-                      </Pressable>
-                      <Pressable
-                        onPress={() => setFlowDraft((d) => (d ? { ...d, recipientMode: 'pending' } : d))}
-                        style={({ pressed }: any) => [
-                          styles.modePill,
-                          flowDraft?.recipientMode === 'pending' ? styles.modePillActive : null,
-                          pressed ? { opacity: 0.92 } : null,
-                        ]}
-                      >
-                        <Text style={[styles.modePillText, flowDraft?.recipientMode === 'pending' ? styles.modePillTextActive : null]}>
-                          כל הממתינים
-                        </Text>
-                      </Pressable>
-                      <Pressable
-                        onPress={() => setFlowDraft((d) => (d ? { ...d, recipientMode: 'prev_pending' } : d))}
-                        style={({ pressed }: any) => [
-                          styles.modePill,
-                          flowDraft?.recipientMode === 'prev_pending' ? styles.modePillActive : null,
-                          pressed ? { opacity: 0.92 } : null,
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.modePillText,
-                            flowDraft?.recipientMode === 'prev_pending' ? styles.modePillTextActive : null,
-                          ]}
-                        >
-                          ממתינים מהשלב הקודם
-                        </Text>
-                      </Pressable>
+                    <View style={[styles.modeRow, { flexWrap: 'wrap' }]}>
+                      {([
+                        { key: 'manual', label: 'בחירה ידנית' },
+                        { key: 'all', label: 'כל המוזמנים' },
+                        { key: 'pending', label: 'ממתינים' },
+                        { key: 'coming', label: 'מגיעים' },
+                        { key: 'not_coming', label: 'לא מגיעים' },
+                        { key: 'maybe', label: 'אולי מגיעים' },
+                        { key: 'prev_pending', label: 'ממתינים מהשלב הקודם' },
+                      ] as Array<{ key: WaRecipientMode; label: string }>).map((opt) => {
+                        const active = (flowDraft?.recipientMode || 'manual') === opt.key;
+                        return (
+                          <Pressable
+                            key={opt.key}
+                            onPress={() => setFlowDraft((d) => (d ? { ...d, recipientMode: opt.key } : d))}
+                            style={({ pressed }: any) => [
+                              styles.modePill,
+                              active ? styles.modePillActive : null,
+                              pressed ? { opacity: 0.92 } : null,
+                            ]}
+                          >
+                            <Text style={[styles.modePillText, active ? styles.modePillTextActive : null]}>{opt.label}</Text>
+                          </Pressable>
+                        );
+                      })}
                     </View>
                   </View>
 
@@ -3594,6 +3684,170 @@ export default function AutomaticNotificationsWebScreen() {
                         );
                       })()}
                     </View>
+                  ) : null}
+
+                  {String((editorRow as any)?.channel || 'SMS').toUpperCase() === 'WHATSAPP' ? (
+                    (() => {
+                      const selectedTpl = waTemplates.find((t) => t.id === (flowDraft?.whatsappTemplateId || ''));
+                      const params: WhatsAppStepParams = flowDraft?.whatsappParams || {};
+                      const setParams = (patch: Partial<WhatsAppStepParams>) =>
+                        setFlowDraft((d) => (d ? { ...d, whatsappParams: { ...(d.whatsappParams || {}), ...patch } } : d));
+                      const setBodyAt = (i: number, value: string) => {
+                        const body = Array.isArray(params.body) ? [...params.body] : [];
+                        body[i] = value;
+                        setParams({ body });
+                      };
+                      const setButtonSuffix = (index: number, suffix: string) => {
+                        const buttons = Array.isArray(params.buttons) ? [...params.buttons] : [];
+                        const at = buttons.findIndex((b) => Number(b.index) === Number(index));
+                        if (at >= 0) buttons[at] = { ...buttons[at], suffix };
+                        else buttons.push({ index, suffix });
+                        setParams({ buttons });
+                      };
+                      const buttonSuffixOf = (index: number) =>
+                        String((Array.isArray(params.buttons) ? params.buttons : []).find((b) => Number(b.index) === Number(index))?.suffix ?? '');
+
+                      return (
+                        <View style={styles.waBlock}>
+                          <View style={styles.editorSectionHeader}>
+                            <Ionicons name="logo-whatsapp" size={16} color="#25D366" />
+                            <Text style={styles.editorSectionTitle}>תבנית וואטסאפ</Text>
+                          </View>
+
+                          {waTemplates.length === 0 ? (
+                            <View style={styles.waEmpty}>
+                              <Text style={styles.editorSectionHint}>עדיין לא הוגדרו תבניות וואטסאפ.</Text>
+                              {userType === 'admin' ? (
+                                <Pressable
+                                  onPress={() => router.push('/(admin)/whatsapp-templates' as any)}
+                                  style={({ pressed }: any) => [styles.waManageBtn, pressed ? { opacity: 0.9 } : null]}
+                                >
+                                  <Ionicons name="add" size={16} color="#fff" />
+                                  <Text style={styles.waManageBtnText}>הוסף תבניות</Text>
+                                </Pressable>
+                              ) : (
+                                <Text style={styles.editorSectionHint}>פנה למנהל המערכת להוספת תבניות וואטסאפ.</Text>
+                              )}
+                            </View>
+                          ) : (
+                            <>
+                              <View style={styles.fieldRow}>
+                                <Text style={styles.fieldLabel}>בחר תבנית</Text>
+                                <View style={[styles.modeRow, { flexWrap: 'wrap' }]}>
+                                  {waTemplates.map((t) => {
+                                    const active = (flowDraft?.whatsappTemplateId || '') === t.id;
+                                    return (
+                                      <Pressable
+                                        key={t.id}
+                                        onPress={() => setFlowDraft((d) => (d ? { ...d, whatsappTemplateId: t.id, whatsappParams: {} } : d))}
+                                        style={({ pressed }: any) => [styles.modePill, active ? styles.modePillActive : null, pressed ? { opacity: 0.92 } : null]}
+                                      >
+                                        <Text style={[styles.modePillText, active ? styles.modePillTextActive : null]}>{t.label}</Text>
+                                      </Pressable>
+                                    );
+                                  })}
+                                </View>
+                              </View>
+
+                              {selectedTpl ? (
+                                <View style={{ gap: 12 }}>
+                                  {selectedTpl.bodyText ? (
+                                    <View style={styles.waPreview}>
+                                      <Text style={styles.waPreviewText}>{selectedTpl.bodyText}</Text>
+                                    </View>
+                                  ) : null}
+
+                                  {selectedTpl.headerType === 'image' ? (
+                                    <View style={styles.fieldRow}>
+                                      <Text style={styles.fieldLabel}>תמונת כותרת (קישור) — לא חובה</Text>
+                                      <TextInput
+                                        value={String(params.header_image_url ?? '')}
+                                        onChangeText={(t) => setParams({ header_image_url: t })}
+                                        style={styles.fieldInput}
+                                        placeholder="ברירת מחדל: תמונת ההזמנה של האירוע"
+                                        placeholderTextColor="rgba(100,116,139,0.6)"
+                                        autoCapitalize="none"
+                                      />
+                                    </View>
+                                  ) : null}
+
+                                  {selectedTpl.headerType === 'text' ? (
+                                    <View style={styles.fieldRow}>
+                                      <Text style={styles.fieldLabel}>טקסט כותרת</Text>
+                                      <TextInput
+                                        value={String(params.header_text ?? '')}
+                                        onChangeText={(t) => setParams({ header_text: t })}
+                                        style={styles.fieldInput}
+                                        placeholder="טקסט הכותרת"
+                                        placeholderTextColor="rgba(100,116,139,0.6)"
+                                      />
+                                    </View>
+                                  ) : null}
+
+                                  {selectedTpl.variables.length > 0 ? (
+                                    <View style={{ gap: 8 }}>
+                                      <Text style={styles.fieldLabel}>תוכן דינמי</Text>
+                                      <Text style={styles.editorSectionHint}>אפשר להשתמש במשתנים: {'{name}'} שם האורח · {'{link}'} קישור אישי · {'{event}'} שם האירוע · {'{date}'} תאריך</Text>
+                                      {[...selectedTpl.variables]
+                                        .sort((a, b) => Number(a.index) - Number(b.index))
+                                        .map((v, i) => (
+                                          <View key={i} style={styles.waVarRow}>
+                                            <View style={styles.waVarBadge}><Text style={styles.waVarBadgeText}>{`{{${i + 1}}}`}</Text></View>
+                                            <TextInput
+                                              value={String((Array.isArray(params.body) ? params.body : [])[i] ?? '')}
+                                              onChangeText={(t) => setBodyAt(i, t)}
+                                              style={[styles.fieldInput, { flex: 1 }]}
+                                              placeholder={v.label || v.sample || `ערך לשדה ${i + 1}`}
+                                              placeholderTextColor="rgba(100,116,139,0.6)"
+                                            />
+                                          </View>
+                                        ))}
+                                    </View>
+                                  ) : null}
+
+                                  {selectedTpl.buttons.length > 0 ? (
+                                    <View style={{ gap: 8 }}>
+                                      <Text style={styles.fieldLabel}>כפתורים</Text>
+                                      {selectedTpl.buttons.map((b, i) => (
+                                        <View key={i} style={styles.waBtnRow}>
+                                          <View style={styles.waVarBadge}><Text style={styles.waVarBadgeText}>{`#${b.index}`}</Text></View>
+                                          {b.kind === 'invitation' ? (
+                                            <Text style={[styles.editorSectionHint, { flex: 1 }]}>
+                                              {b.label || 'כפתור'} — מושלם אוטומטית עם הקישור האישי של כל אורח
+                                            </Text>
+                                          ) : (
+                                            <TextInput
+                                              value={buttonSuffixOf(b.index)}
+                                              onChangeText={(t) => setButtonSuffix(b.index, t)}
+                                              style={[styles.fieldInput, { flex: 1 }]}
+                                              placeholder={`${b.label || 'כפתור'} — ערך הקישור`}
+                                              placeholderTextColor="rgba(100,116,139,0.6)"
+                                              autoCapitalize="none"
+                                            />
+                                          )}
+                                        </View>
+                                      ))}
+                                    </View>
+                                  ) : null}
+                                </View>
+                              ) : (
+                                <Text style={styles.editorSectionHint}>בחר תבנית כדי למלא את התוכן הדינמי שלה.</Text>
+                              )}
+
+                              {userType === 'admin' ? (
+                                <Pressable
+                                  onPress={() => router.push('/(admin)/whatsapp-templates' as any)}
+                                  style={({ pressed }: any) => [styles.waManageLink, pressed ? { opacity: 0.85 } : null]}
+                                >
+                                  <Ionicons name="settings-outline" size={14} color="#1D4ED8" />
+                                  <Text style={styles.waManageLinkText}>ניהול תבניות ומכסה יומית</Text>
+                                </Pressable>
+                              ) : null}
+                            </>
+                          )}
+                        </View>
+                      );
+                    })()
                   ) : null}
                 </View>
               ) : null}
@@ -7028,6 +7282,19 @@ const styles = StyleSheet.create({
   modePillActive: { backgroundColor: 'rgba(79,70,229,0.10)', borderColor: 'rgba(79,70,229,0.26)' },
   modePillText: { fontSize: 12, fontWeight: '900', color: 'rgba(2,6,23,0.70)', textAlign: 'right' },
   modePillTextActive: { color: '#4F46E5' },
+
+  waBlock: { gap: 12, marginTop: 6, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(37,211,102,0.25)', backgroundColor: 'rgba(37,211,102,0.05)' },
+  waEmpty: { gap: 10, alignItems: 'flex-end' },
+  waManageBtn: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, backgroundColor: '#25D366', paddingHorizontal: 14, height: 40, borderRadius: 10, justifyContent: 'center', ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
+  waManageBtnText: { color: '#fff', fontSize: 13, fontWeight: '900' },
+  waPreview: { padding: 12, borderRadius: 10, backgroundColor: '#fff', borderWidth: 1, borderColor: 'rgba(2,6,23,0.08)' },
+  waPreviewText: { fontSize: 13, fontWeight: '700', color: 'rgba(2,6,23,0.78)', textAlign: 'right', lineHeight: 19 },
+  waVarRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
+  waBtnRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
+  waVarBadge: { paddingHorizontal: 8, height: 34, borderRadius: 8, backgroundColor: 'rgba(37,211,102,0.14)', alignItems: 'center', justifyContent: 'center' },
+  waVarBadgeText: { fontSize: 12, fontWeight: '900', color: '#0E7C46' },
+  waManageLink: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, alignSelf: 'flex-end', marginTop: 2, ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
+  waManageLinkText: { fontSize: 12, fontWeight: '900', color: '#1D4ED8' },
   dependsRow: { flexDirection: 'row', flexWrap: 'nowrap', gap: 8 },
   dependsPill: { maxWidth: 220, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(2,6,23,0.10)', backgroundColor: '#fff', ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
   dependsPillActive: { backgroundColor: 'rgba(79,70,229,0.10)', borderColor: 'rgba(79,70,229,0.26)' },

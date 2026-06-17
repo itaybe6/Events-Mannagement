@@ -1,6 +1,12 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.52.0";
+import {
+  buildGuestVars,
+  buildWaPayload,
+  normalizeWaPhone,
+  sendWaMessage,
+} from "../_shared/whatsapp.ts";
 
 type GuestStatus =
   | "מגיע"
@@ -150,10 +156,13 @@ type ClaimedJob = {
   setting_id?: string;
   event_id: string;
   notification_type: string;
+  channel?: string;
   message_content: string;
   recipient_guest_ids: string[];
   scheduled_for?: string;
   scheduled_for_at?: string;
+  whatsapp_template?: any;
+  whatsapp_params?: any;
 };
 
 type RecipientRunRow = {
@@ -257,6 +266,10 @@ serve(async (req) => {
       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
     });
 
+    // WhatsApp Cloud API secrets (optional; only needed when WhatsApp steps are due).
+    const waToken = String(Deno.env.get("WHATSAPP_ACCESS_TOKEN") ?? "").trim();
+    const waPhoneId = String(Deno.env.get("WHATSAPP_PHONE_NUMBER_ID") ?? "").trim();
+
     const { data: jobs, error: claimError } = await adminClient.rpc(
       "claim_due_sms_notification_settings",
       { p_limit: limit },
@@ -266,6 +279,21 @@ serve(async (req) => {
     const claimed: ClaimedJob[] = Array.isArray(jobs) ? jobs : [];
     if (claimed.length === 0) {
       return json({ ok: true, processed: 0, dryRun });
+    }
+
+    // Resolve the daily WhatsApp quota once per invocation.
+    let waRemainingQuota = Number.POSITIVE_INFINITY;
+    {
+      const { data: settings } = await adminClient
+        .from("whatsapp_settings")
+        .select("daily_quota")
+        .eq("id", true)
+        .maybeSingle();
+      const dailyQuota = Number((settings as any)?.daily_quota);
+      if (Number.isFinite(dailyQuota) && dailyQuota > 0) {
+        const { data: sentToday } = await adminClient.rpc("whatsapp_sends_today");
+        waRemainingQuota = Math.max(0, dailyQuota - (Number(sentToday) || 0));
+      }
     }
 
     const pulseemUrl = "https://api.pulseem.com/api/v1/SmsApi/SendSms";
@@ -288,8 +316,10 @@ serve(async (req) => {
         : [];
       const scheduledFor =
         job.scheduled_for_at ? String(job.scheduled_for_at) : job.scheduled_for ? String(job.scheduled_for) : "";
+      const channel = String(job.channel || "SMS").trim().toUpperCase();
+      const isWhatsapp = channel === "WHATSAPP";
 
-      if (!runId || !eventId || !messageTemplate) {
+      if (!runId || !eventId || (!isWhatsapp && !messageTemplate)) {
         if (runId) {
           await setRunStatus(adminClient, runId, {
             status: "failed",
@@ -321,7 +351,7 @@ serve(async (req) => {
       if (!eventRow) {
         const { data: ev, error: evErr } = await adminClient
           .from("events")
-          .select("id, title, date, location, city, groom_name, bride_name, rsvp_link")
+          .select("id, title, date, location, city, groom_name, bride_name, rsvp_link, invitation_image_url")
           .eq("id", eventId)
           .maybeSingle();
         if (evErr || !ev) {
@@ -378,6 +408,102 @@ serve(async (req) => {
       const baseUrl = eventRsvpBase || configuredBaseUrl;
 
       const failures: Array<{ guestId: string; phone?: string | null; reason: string }> = [];
+
+      // -----------------------------------------------------------------
+      // WhatsApp channel: send via Meta Cloud API templates (respect quota).
+      // -----------------------------------------------------------------
+      if (isWhatsapp) {
+        if (!waToken || !waPhoneId) {
+          await setRunStatus(adminClient, runId, { status: "failed", error: "missing_whatsapp_secrets" });
+          continue;
+        }
+        const template = job.whatsapp_template;
+        if (!template || !template.template_name) {
+          await setRunStatus(adminClient, runId, { status: "failed", error: "missing_whatsapp_template" });
+          continue;
+        }
+        const waParams: any = job.whatsapp_params || {};
+        if (String(template.header_type ?? "none") === "image" && !String(waParams.header_image_url ?? "").trim()) {
+          const evImg = String(eventRow?.invitation_image_url ?? "").trim();
+          if (evImg) waParams.header_image_url = evImg;
+        }
+
+        let waSent = 0;
+        let waFailed = 0;
+        let waSkippedQuota = 0;
+
+        for (const g of list) {
+          const nowIso = new Date().toISOString();
+          const n = normalizeWaPhone(g.phone);
+          if (!String(g.phone ?? "").trim()) {
+            failures.push({ guestId: String(g.id), phone: null, reason: "missing_phone" });
+            await upsertRecipientRunRows(adminClient, [{ run_id: runId, event_id: eventId, guest_id: String(g.id), status: "skipped", phone: null, sent_at: null, error: "missing_phone" }]);
+            continue;
+          }
+          if (!n.ok) {
+            failures.push({ guestId: String(g.id), phone: g.phone, reason: "invalid_phone" });
+            await upsertRecipientRunRows(adminClient, [{ run_id: runId, event_id: eventId, guest_id: String(g.id), status: "skipped", phone: n.value, sent_at: null, error: "invalid_phone" }]);
+            continue;
+          }
+          if (waRemainingQuota <= 0) {
+            waSkippedQuota += 1;
+            failures.push({ guestId: String(g.id), phone: n.value, reason: "daily_quota_reached" });
+            await upsertRecipientRunRows(adminClient, [{ run_id: runId, event_id: eventId, guest_id: String(g.id), status: "skipped", phone: n.value, sent_at: null, error: "daily_quota_reached" }]);
+            continue;
+          }
+
+          const vars = buildGuestVars({ guest: g, baseUrl, eventTitle, eventDateText, eventLocationText, groomName, brideName, coupleNames });
+          const invitationCode = String(g.invitation_code ?? g.invitation_token ?? "").trim();
+          const payload = buildWaPayload({ to: n.value, template, params: waParams, vars, invitationCode });
+          const res = await sendWaMessage({ phoneNumberId: waPhoneId, accessToken: waToken, payload });
+
+          if (res.ok) {
+            waSent += 1;
+            waRemainingQuota -= 1;
+          } else {
+            waFailed += 1;
+            failures.push({ guestId: String(g.id), phone: n.value, reason: `whatsapp:${res.error || res.status}` });
+          }
+          await upsertRecipientRunRows(adminClient, [{
+            run_id: runId,
+            event_id: eventId,
+            guest_id: String(g.id),
+            status: res.ok ? "sent" : "failed",
+            phone: n.value,
+            sent_at: nowIso,
+            error: res.ok ? null : `whatsapp:${res.error || res.status}`,
+          }]);
+          const { error: logError } = await adminClient.from("messages").insert({
+            event_id: eventId,
+            type: "וואטסאפ",
+            recipient: String(g.name ?? "").trim() || "מוזמן",
+            phone: n.value,
+            status: res.ok ? `נשלח${res.messageId ? ` (${res.messageId})` : ""}` : `נכשל (${res.error || res.status})`,
+            sent_date: nowIso,
+          });
+          if (logError) console.warn("Failed to insert WhatsApp messages log:", logError);
+        }
+
+        totalSent += waSent;
+        totalFailed += waFailed;
+
+        await setRunStatus(adminClient, runId, {
+          status: waFailed === 0 ? "sent" : "failed",
+          result: {
+            channel: "WHATSAPP",
+            notificationType,
+            scheduledFor,
+            totalSelected: list.length,
+            sent: waSent,
+            failed: waFailed,
+            skippedQuota: waSkippedQuota,
+            failuresSample: failures.slice(0, 20),
+            failuresCount: failures.length,
+          },
+          error: waFailed === 0 ? null : "some_messages_failed",
+        });
+        continue;
+      }
 
       // Only require an invitation token when the message actually needs the `{link}` placeholder.
       // Many scheduled messages may contain a fixed URL (or no URL at all), in which case token is not required.
