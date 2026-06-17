@@ -12,7 +12,9 @@ import {
 } from 'react-native';
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
+import { ROW_DIR } from '@/lib/rtl';
+import { colors } from '@/constants/colors';
+import AdminWebPageHeader from '@/components/desktop/AdminWebPageHeader';
 import { useLayoutStore } from '@/store/layoutStore';
 import {
   whatsappTemplateService,
@@ -25,14 +27,14 @@ import type {
 } from '@/types';
 
 const ui = {
-  primary: '#1d4ed8',
+  primary: '#4F46E5',
   whatsapp: '#25D366',
-  bg: '#F2F4F7',
+  bg: '#E8F1FF',
   surface: '#FFFFFF',
-  surfaceMuted: '#F3F4F6',
-  text: '#111827',
-  sub: '#6B7280',
-  border: '#E5E7EB',
+  surfaceMuted: '#F4F6FB',
+  text: '#0F172A',
+  sub: '#64748B',
+  border: 'rgba(6,23,62,0.08)',
   danger: '#EF4444',
 };
 
@@ -62,6 +64,11 @@ const emptyEditor = (): EditorState => ({
 export default function WhatsappTemplatesWebScreen() {
   const router = useRouter();
   const { setTabBarVisible } = useLayoutStore();
+
+  const goBack = useCallback(() => {
+    if (router.canGoBack()) router.back();
+    else router.push('/(admin)/automatic-notifications' as any);
+  }, [router]);
 
   const [loading, setLoading] = useState(true);
   const [templates, setTemplates] = useState<WhatsAppTemplate[]>([]);
@@ -207,16 +214,25 @@ export default function WhatsappTemplatesWebScreen() {
   return (
     <View style={styles.page}>
       <Stack.Screen options={{ headerShown: false }} />
+      <View style={styles.bg} />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <Pressable
+          onPress={goBack}
+          style={({ pressed }: any) => [styles.backPill, pressed ? { opacity: 0.9 } : null]}
+          accessibilityRole="button"
+          accessibilityLabel="חזור"
+        >
+          <Ionicons name="chevron-forward" size={18} color={ui.text} />
+          <Text style={styles.backPillText}>חזור</Text>
+        </Pressable>
+
         {/* Header */}
-        <View style={styles.headerRow}>
-          <Pressable style={styles.backBtn} onPress={() => router.back()}>
-            <Ionicons name="chevron-forward" size={20} color={ui.text} />
-          </Pressable>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.title}>תבניות וואטסאפ ומכסה יומית</Text>
-            <Text style={styles.subtitle}>נהל את התבניות שהמנהל יכול לבחור מהן, והגדר מכסת שליחה יומית</Text>
-          </View>
+        <View style={styles.heroShell}>
+          <AdminWebPageHeader
+            eyebrow="ניהול וואטסאפ"
+            title="תבניות וואטסאפ ומכסה יומית"
+            subtitle="נהל את התבניות שהמנהל יכול לבחור מהן, והגדר מכסת שליחה יומית"
+          />
         </View>
 
         {error ? (
@@ -271,28 +287,103 @@ export default function WhatsappTemplatesWebScreen() {
             <Text style={styles.emptySub}>לחץ על "הוסף תבנית" כדי להוסיף את התבניות המאושרות שלך.</Text>
           </View>
         ) : (
-          <View style={{ gap: 12 }}>
+          <View style={{ gap: 16 }}>
             {templates.map((t) => (
               <View key={t.id} style={styles.templateCard}>
-                <View style={styles.templateTop}>
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <View style={styles.templateTitleRow}>
-                      <Ionicons name="logo-whatsapp" size={18} color={ui.whatsapp} />
-                      <Text style={styles.templateLabel} numberOfLines={1}>
-                        {t.label}
-                      </Text>
-                      {!t.isActive ? <View style={styles.inactivePill}><Text style={styles.inactivePillText}>לא פעיל</Text></View> : null}
+                {/* Title + status */}
+                <View style={styles.templateTitleRow}>
+                  <View style={styles.templateWaIcon}>
+                    <Ionicons name="logo-whatsapp" size={18} color="#fff" />
+                  </View>
+                  <Text style={styles.templateLabel} numberOfLines={1}>
+                    {t.label}
+                  </Text>
+                  <View style={{ flex: 1 }} />
+                  {t.isActive ? (
+                    <View style={styles.activePill}>
+                      <Ionicons name="checkmark-circle" size={13} color="#0E7C46" />
+                      <Text style={styles.activePillText}>פעיל</Text>
                     </View>
-                    <Text style={styles.templateMeta} numberOfLines={1}>
-                      {t.templateName} · {t.languageCode} · כותרת: {headerLabel(t.headerType)} · {t.variables.length} שדות · {t.buttons.length} כפתורים
-                    </Text>
+                  ) : (
+                    <View style={styles.inactivePill}>
+                      <Text style={styles.inactivePillText}>לא פעיל</Text>
+                    </View>
+                  )}
+                </View>
+
+                {/* Meta chips */}
+                <View style={styles.metaChipsRow}>
+                  <View style={styles.metaChip}>
+                    <Ionicons name="pricetag-outline" size={12} color={ui.sub} />
+                    <Text style={styles.metaChipText}>{t.templateName}</Text>
+                  </View>
+                  <View style={styles.metaChip}>
+                    <Ionicons name="globe-outline" size={12} color={ui.sub} />
+                    <Text style={styles.metaChipText}>{t.languageCode}</Text>
+                  </View>
+                  <View style={styles.metaChip}>
+                    <Ionicons
+                      name={t.headerType === 'image' ? 'image-outline' : t.headerType === 'text' ? 'text-outline' : 'remove-outline'}
+                      size={12}
+                      color={ui.sub}
+                    />
+                    <Text style={styles.metaChipText}>כותרת: {headerLabel(t.headerType)}</Text>
+                  </View>
+                </View>
+
+                {/* WhatsApp-style preview with placeholders resolved to field labels */}
+                <View style={styles.previewWrap}>
+                  <Text style={styles.previewCaption}>תצוגה מקדימה</Text>
+                  <View style={styles.previewBubble}>
+                    {t.headerType === 'image' ? (
+                      <View style={styles.previewImagePlaceholder}>
+                        <Ionicons name="image-outline" size={18} color="#0E7C46" />
+                        <Text style={styles.previewImageText}>תמונת כותרת</Text>
+                      </View>
+                    ) : null}
                     {t.bodyText ? (
-                      <Text style={styles.templateBody} numberOfLines={3}>
-                        {t.bodyText}
-                      </Text>
+                      <Text style={styles.previewBodyText}>{renderTemplateParts(t.bodyText, t.variables)}</Text>
+                    ) : (
+                      <Text style={styles.previewEmptyText}>לא הוגדר טקסט גוף לתבנית.</Text>
+                    )}
+                    {t.buttons.length > 0 ? (
+                      <View style={styles.previewButtonsRow}>
+                        {t.buttons.map((b, i) => (
+                          <View key={i} style={styles.previewButtonChip}>
+                            <Ionicons
+                              name={b.kind === 'invitation' ? 'link-outline' : 'open-outline'}
+                              size={13}
+                              color={ui.primary}
+                            />
+                            <Text style={styles.previewButtonText}>{b.label || `כפתור ${i + 1}`}</Text>
+                          </View>
+                        ))}
+                      </View>
                     ) : null}
                   </View>
                 </View>
+
+                {/* Dynamic fields legend */}
+                {t.variables.length > 0 ? (
+                  <View style={styles.fieldsBlock}>
+                    <Text style={styles.fieldsBlockTitle}>שדות דינמיים למילוי ({t.variables.length})</Text>
+                    <View style={styles.fieldsRow}>
+                      {[...t.variables]
+                        .sort((a, b) => Number(a.index) - Number(b.index))
+                        .map((v, i) => (
+                          <View key={i} style={styles.fieldChip}>
+                            <View style={styles.fieldChipNum}>
+                              <Text style={styles.fieldChipNumText}>{Number(v.index) || i + 1}</Text>
+                            </View>
+                            <Text style={styles.fieldChipText}>{String(v.label || '').trim() || `שדה ${i + 1}`}</Text>
+                          </View>
+                        ))}
+                    </View>
+                  </View>
+                ) : null}
+
+                <View style={styles.templateDivider} />
+
                 <View style={styles.templateActions}>
                   <Pressable style={styles.ghostBtn} onPress={() => openEdit(t)}>
                     <Ionicons name="create-outline" size={16} color={ui.primary} />
@@ -328,6 +419,35 @@ function headerLabel(t: string) {
   if (t === 'image') return 'תמונה';
   if (t === 'text') return 'טקסט';
   return 'ללא';
+}
+
+// Renders the template body, replacing {{n}} placeholders with a highlighted
+// field label so the manager clearly sees what each dynamic value means.
+function renderTemplateParts(body: string, variables: WhatsAppTemplateVariable[]): React.ReactNode[] {
+  const labelFor = (n: number) => {
+    const v = variables.find((x) => Number(x.index) === n);
+    const label = String(v?.label || '').trim();
+    return label || `שדה ${n}`;
+  };
+  const parts: React.ReactNode[] = [];
+  const regex = /\{\{\s*(\d+)\s*\}\}/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  let key = 0;
+  while ((match = regex.exec(body)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(<Text key={`t${key++}`}>{body.slice(lastIndex, match.index)}</Text>);
+    }
+    const n = Number(match[1]);
+    parts.push(
+      <Text key={`v${key++}`} style={styles.previewVarToken}>{`【${labelFor(n)}】`}</Text>
+    );
+    lastIndex = regex.lastIndex;
+  }
+  if (lastIndex < body.length) {
+    parts.push(<Text key={`t${key++}`}>{body.slice(lastIndex)}</Text>);
+  }
+  return parts;
 }
 
 function TemplateEditor(props: {
@@ -484,17 +604,39 @@ function Field(props: { label: string; flex?: boolean; children: React.ReactNode
 
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: ui.bg },
+  bg: { ...StyleSheet.absoluteFillObject, backgroundColor: ui.bg },
   center: { justifyContent: 'center', alignItems: 'center' },
-  content: { paddingHorizontal: 20, paddingTop: 24, gap: 18, maxWidth: 860, width: '100%', alignSelf: 'center' },
-  headerRow: { flexDirection: ROW_DIR, alignItems: 'center', gap: 12 },
-  backBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: ui.surface, borderWidth: 1, borderColor: ui.border, alignItems: 'center', justifyContent: 'center' },
+  content: { paddingHorizontal: 24, paddingTop: 24, paddingBottom: 48, gap: 18, maxWidth: 1040, width: '100%', alignSelf: 'center' },
+  heroShell: { zIndex: 20 },
+  backPill: {
+    alignSelf: 'flex-end',
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    height: 40,
+    borderRadius: 999,
+    backgroundColor: ui.surface,
+    borderWidth: 1,
+    borderColor: ui.border,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer', boxShadow: '0 2px 8px rgba(11,28,65,0.05)' } as any) : null),
+  },
+  backPillText: { fontSize: 13, fontWeight: '900', color: ui.text },
   title: { fontSize: 22, fontWeight: '900', color: ui.text, textAlign: 'right' },
   subtitle: { marginTop: 4, fontSize: 13, fontWeight: '600', color: ui.sub, textAlign: 'right' },
 
   errorBox: { flexDirection: ROW_DIR, alignItems: 'center', gap: 8, backgroundColor: 'rgba(239,68,68,0.08)', borderColor: 'rgba(239,68,68,0.25)', borderWidth: 1, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12 },
   errorText: { flex: 1, color: ui.danger, fontSize: 13, fontWeight: '700', textAlign: 'right' },
 
-  card: { backgroundColor: ui.surface, borderRadius: 18, borderWidth: 1, borderColor: ui.border, padding: 18, gap: 12 },
+  card: {
+    backgroundColor: ui.surface,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: ui.border,
+    padding: 20,
+    gap: 12,
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 4px 14px rgba(11,28,65,0.04)' } as any) : null),
+  },
   cardHeader: { flexDirection: ROW_DIR, alignItems: 'center', gap: 10 },
   cardTitle: { fontSize: 16, fontWeight: '900', color: ui.text, textAlign: 'right' },
   helper: { fontSize: 12.5, fontWeight: '600', color: ui.sub, textAlign: 'right', lineHeight: 18 },
@@ -506,18 +648,81 @@ const styles = StyleSheet.create({
   addBtn: { flexDirection: ROW_DIR, alignItems: 'center', gap: 6, backgroundColor: ui.whatsapp, paddingHorizontal: 16, height: 44, borderRadius: 12, justifyContent: 'center' },
   addBtnText: { color: '#fff', fontSize: 14, fontWeight: '900' },
 
-  emptyBox: { alignItems: 'center', gap: 8, paddingVertical: 40, backgroundColor: ui.surface, borderRadius: 18, borderWidth: 1, borderColor: ui.border },
+  emptyBox: {
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 44,
+    backgroundColor: ui.surface,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: ui.border,
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 4px 14px rgba(11,28,65,0.04)' } as any) : null),
+  },
   emptyText: { fontSize: 15, fontWeight: '800', color: ui.text },
   emptySub: { fontSize: 13, fontWeight: '600', color: ui.sub },
 
-  templateCard: { backgroundColor: ui.surface, borderRadius: 16, borderWidth: 1, borderColor: ui.border, padding: 16, gap: 12 },
-  templateTop: { flexDirection: ROW_DIR, alignItems: 'flex-start', gap: 12 },
-  templateTitleRow: { flexDirection: ROW_DIR, alignItems: 'center', gap: 8 },
+  templateCard: {
+    backgroundColor: ui.surface,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: ui.border,
+    padding: 18,
+    gap: 14,
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 4px 14px rgba(11,28,65,0.04)' } as any) : null),
+  },
+  templateTitleRow: { flexDirection: ROW_DIR, alignItems: 'center', gap: 10 },
+  templateWaIcon: { width: 32, height: 32, borderRadius: 10, backgroundColor: ui.whatsapp, alignItems: 'center', justifyContent: 'center' },
   templateLabel: { fontSize: 16, fontWeight: '900', color: ui.text, textAlign: 'right' },
-  inactivePill: { backgroundColor: 'rgba(107,114,128,0.12)', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999 },
+  activePill: { flexDirection: ROW_DIR, alignItems: 'center', gap: 4, backgroundColor: 'rgba(37,211,102,0.12)', borderWidth: 1, borderColor: 'rgba(14,124,70,0.22)', paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999 },
+  activePillText: { fontSize: 11, fontWeight: '900', color: '#0E7C46' },
+  inactivePill: { backgroundColor: 'rgba(107,114,128,0.12)', paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999 },
   inactivePillText: { fontSize: 11, fontWeight: '800', color: ui.sub },
-  templateMeta: { marginTop: 4, fontSize: 12, fontWeight: '600', color: ui.sub, textAlign: 'right' },
-  templateBody: { marginTop: 8, fontSize: 13, fontWeight: '600', color: ui.text, textAlign: 'right', lineHeight: 19 },
+
+  metaChipsRow: { flexDirection: ROW_DIR, flexWrap: 'wrap', gap: 8 },
+  metaChip: { flexDirection: ROW_DIR, alignItems: 'center', gap: 5, backgroundColor: ui.surfaceMuted, borderWidth: 1, borderColor: ui.border, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999 },
+  metaChipText: { fontSize: 11.5, fontWeight: '800', color: ui.sub, textAlign: 'right' },
+
+  previewWrap: { gap: 6 },
+  previewCaption: { fontSize: 11, fontWeight: '800', color: ui.sub, textAlign: 'right' },
+  previewBubble: {
+    alignSelf: 'stretch',
+    backgroundColor: '#F0FBF4',
+    borderWidth: 1,
+    borderColor: 'rgba(37,211,102,0.22)',
+    borderRadius: 16,
+    borderTopRightRadius: 4,
+    padding: 14,
+    gap: 12,
+  },
+  previewImagePlaceholder: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    height: 64,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(14,124,70,0.25)',
+    borderStyle: 'dashed',
+    backgroundColor: 'rgba(37,211,102,0.06)',
+  },
+  previewImageText: { fontSize: 12, fontWeight: '800', color: '#0E7C46' },
+  previewBodyText: { fontSize: 14, fontWeight: '600', color: ui.text, textAlign: 'right', lineHeight: 22 },
+  previewVarToken: { fontWeight: '900', color: ui.primary },
+  previewEmptyText: { fontSize: 13, fontWeight: '600', color: ui.sub, textAlign: 'right' },
+  previewButtonsRow: { flexDirection: ROW_DIR, flexWrap: 'wrap', gap: 8, marginTop: 2, borderTopWidth: 1, borderTopColor: 'rgba(14,124,70,0.15)', paddingTop: 10 },
+  previewButtonChip: { flexDirection: ROW_DIR, alignItems: 'center', gap: 6, backgroundColor: '#fff', borderWidth: 1, borderColor: 'rgba(79,70,229,0.22)', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 },
+  previewButtonText: { fontSize: 12.5, fontWeight: '900', color: ui.primary },
+
+  fieldsBlock: { gap: 8, backgroundColor: ui.surfaceMuted, borderRadius: 14, padding: 12 },
+  fieldsBlockTitle: { fontSize: 12.5, fontWeight: '900', color: ui.text, textAlign: 'right' },
+  fieldsRow: { flexDirection: ROW_DIR, flexWrap: 'wrap', gap: 8 },
+  fieldChip: { flexDirection: ROW_DIR, alignItems: 'center', gap: 6, backgroundColor: '#fff', borderWidth: 1, borderColor: ui.border, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 999 },
+  fieldChipNum: { minWidth: 20, height: 20, paddingHorizontal: 5, borderRadius: 999, backgroundColor: 'rgba(79,70,229,0.12)', alignItems: 'center', justifyContent: 'center' },
+  fieldChipNumText: { fontSize: 11, fontWeight: '900', color: ui.primary },
+  fieldChipText: { fontSize: 12, fontWeight: '800', color: ui.text, textAlign: 'right' },
+
+  templateDivider: { height: 1, backgroundColor: ui.border },
   templateActions: { flexDirection: ROW_DIR, gap: 10 },
   ghostBtn: { flexDirection: ROW_DIR, alignItems: 'center', gap: 6, paddingHorizontal: 14, height: 40, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(29,78,216,0.25)', backgroundColor: 'rgba(29,78,216,0.06)' },
   ghostBtnDanger: { flexDirection: ROW_DIR, alignItems: 'center', gap: 6, paddingHorizontal: 14, height: 40, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(239,68,68,0.25)', backgroundColor: 'rgba(239,68,68,0.06)' },

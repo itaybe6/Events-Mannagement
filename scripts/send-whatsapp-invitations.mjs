@@ -43,21 +43,50 @@ const PHONE_NUMBER_ID = '1180631841797088';
 const TEMPLATE_NAME = 'event_invitation';
 const TEMPLATE_LANG = 'en';
 
-const EVENT_ID = '3b654ff7-38c3-4f85-9e37-17e5c8427827';
 const SUPABASE_URL = 'https://cxlmixykahuchilhyjjv.supabase.co';
-// Notification setting the "sent" run rows are attached to (drives the "הודעה נשלחה" badge).
-const NOTIFICATION_SETTING_ID = '6069117c-be23-4a63-b134-eddf27cf9359';
-
-// Header image shown at the top of the WhatsApp message (must be publicly reachable).
-const HEADER_IMAGE_URL =
-  'https://cxlmixykahuchilhyjjv.supabase.co/storage/v1/object/public/event-images/invitations/3b654ff7-38c3-4f85-9e37-17e5c8427827/1781008249893.jpg';
-
-// Body {{1}} – the invitation details sentence (same for every guest).
-const BODY_TEXT =
-  'הוזמנתם לחתונה של עידן וטליה ב-"אולמי סופיה" בתאריך 30/06/26 בשעה 19:30. הורי החתן: מקסים וניקול רביבו הורי הכלה: קובי וגלית כלפון נא לאשר הגעה או אי הגעה על ידי לחיצה על "עדכון הגעה"';
 
 // Test recipients (the script picks one real guest's invitation_code as the link).
 const TEST_NUMBERS = ['0502307500', '0527488779'];
+
+// Per-event configuration. Select with --event=<slug> (default: idan).
+//   eventId               -> guests source
+//   notificationSettingId -> required only for --mark-sent (badge rows); null = badge skipped
+//   headerImageUrl        -> public image shown at top of the WhatsApp message
+//   bodyText              -> the {{1}} body parameter (the invitation details)
+const EVENTS = {
+  idan: {
+    eventId: '3b654ff7-38c3-4f85-9e37-17e5c8427827',
+    notificationSettingId: '6069117c-be23-4a63-b134-eddf27cf9359',
+    headerImageUrl:
+      'https://cxlmixykahuchilhyjjv.supabase.co/storage/v1/object/public/event-images/invitations/3b654ff7-38c3-4f85-9e37-17e5c8427827/1781008249893.jpg',
+    bodyText:
+      'הוזמנתם לחתונה של עידן וטליה ב-"אולמי סופיה" בתאריך 30/06/26 בשעה 19:30. הורי החתן: מקסים וניקול רביבו הורי הכלה: קובי וגלית כלפון נא לאשר הגעה או אי הגעה על ידי לחיצה על "עדכון הגעה"',
+  },
+  chen: {
+    eventId: '3dfb0e62-3c74-4832-be0a-12675601c139',
+    notificationSettingId: null,
+    headerImageUrl:
+      'https://cxlmixykahuchilhyjjv.supabase.co/storage/v1/object/public/event-images/invitations/3dfb0e62-3c74-4832-be0a-12675601c139/1781601240816.jpg',
+    // WhatsApp rejects new-lines in body params, so this is one continuous line (like the idan template).
+    bodyText:
+      'הוזמנתם לחתונה של מוריאל וחן ב-"אולמי סופיה" בתאריך 01/07/26 בשעה 19:30. הורי החתן: אוסנת פיטוסי ושרלי אדרי הורי הכלה: שוש ומוטי בן חמו נא לאשר הגעה או אי הגעה על ידי לחיצה על "עדכון הגעה"',
+  },
+};
+
+const EVENT_SLUG = (() => {
+  const a = process.argv.slice(2).find((x) => x.startsWith('--event='));
+  return a ? a.split('=')[1] : 'idan';
+})();
+const EVENT_CFG = EVENTS[EVENT_SLUG];
+if (!EVENT_CFG) {
+  console.error(`Unknown --event "${EVENT_SLUG}". Known: ${Object.keys(EVENTS).join(', ')}`);
+  process.exit(1);
+}
+
+const EVENT_ID = EVENT_CFG.eventId;
+const NOTIFICATION_SETTING_ID = EVENT_CFG.notificationSettingId;
+const HEADER_IMAGE_URL = EVENT_CFG.headerImageUrl;
+const BODY_TEXT = EVENT_CFG.bodyText;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -248,7 +277,7 @@ async function sendTemplate(toWa, invitationCode, { dryRun } = {}) {
 // ---------------------------------------------------------------------------
 // Modes
 // ---------------------------------------------------------------------------
-async function runTest({ dryRun }) {
+async function runTest({ dryRun, numbers }) {
   const guests = await fetchGuests();
   const sample = guests.find((g) => String(g.invitation_code || '').trim());
   if (!sample) {
@@ -256,9 +285,11 @@ async function runTest({ dryRun }) {
     process.exit(1);
   }
   const code = String(sample.invitation_code).trim();
+  const list = Array.isArray(numbers) && numbers.length ? numbers : TEST_NUMBERS;
+  console.log(`Event: ${EVENT_SLUG} (${EVENT_ID})`);
   console.log(`Using sample guest "${sample.name}" → link https://events-mannagement.vercel.app/i/${code}\n`);
 
-  for (const raw of TEST_NUMBERS) {
+  for (const raw of list) {
     const wa = normalizeToWa(raw);
     process.stdout.write(`→ ${raw}  (${wa})  ... `);
     try {
@@ -358,12 +389,18 @@ async function runLive({ dryRun, limit, from, status, delay, mark, extra, unsent
 
   // Record a "sent" run + per-guest recipient rows so the app shows "הודעה נשלחה".
   if (mark && !dryRun && sentGuests.length) {
-    try {
-      const runId = await createSentRun(sentGuests.length);
-      await insertSentRecipients(runId, sentGuests);
-      console.log(`\nRecorded ${sentGuests.length} 'sent' recipient rows (run ${runId}).`);
-    } catch (e) {
-      console.log(`\nWARNING: failed to record run/recipient rows: ${e.message}`);
+    if (!NOTIFICATION_SETTING_ID) {
+      console.log(
+        `\nNote: no notificationSettingId for event "${EVENT_SLUG}" — guests marked (sms_invitation_sent_at) but badge rows skipped.`,
+      );
+    } else {
+      try {
+        const runId = await createSentRun(sentGuests.length);
+        await insertSentRecipients(runId, sentGuests);
+        console.log(`\nRecorded ${sentGuests.length} 'sent' recipient rows (run ${runId}).`);
+      } catch (e) {
+        console.log(`\nWARNING: failed to record run/recipient rows: ${e.message}`);
+      }
     }
   }
 
@@ -390,6 +427,7 @@ const opts = {
   unsentOnly: Boolean(flags['unsent-only']),
   mark: Boolean(flags.mark || flags['mark-sent']),
   extra: typeof flags.extra === 'string' ? flags.extra.split(',').map((s) => s.trim()).filter(Boolean) : [],
+  numbers: typeof flags.numbers === 'string' ? flags.numbers.split(',').map((s) => s.trim()).filter(Boolean) : [],
   delay: flags.delay ? Number(flags.delay) : 350,
 };
 

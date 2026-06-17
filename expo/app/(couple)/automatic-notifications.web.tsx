@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useWindowDimensions } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter, useSegments } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -15,9 +16,10 @@ import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import { Event } from '@/types';
 import type { WhatsAppStepParams, WhatsAppTemplate } from '@/types';
 import { whatsappTemplateService } from '@/lib/services/whatsappTemplateService';
+import { invitationAssetService } from '@/lib/services/invitationAssetService';
 import IPhoneMockup from '@/components/ui/iphone-mockup';
 
-type WaRecipientMode = 'manual' | 'all' | 'pending' | 'coming' | 'not_coming' | 'maybe' | 'prev_pending';
+type WaRecipientMode = 'manual' | 'all' | 'pending' | 'coming' | 'not_coming' | 'maybe' | 'prev_pending' | 'groups';
 
 type NotificationTemplate = {
   notification_type: string;
@@ -479,6 +481,7 @@ export default function AutomaticNotificationsWebScreen() {
   const [flowDraft, setFlowDraft] = useState<{
     title: string;
     recipientMode: WaRecipientMode;
+    recipientGroups: string[];
     dependsOnSettingId: string | null;
     whatsappTemplateId: string | null;
     whatsappParams: WhatsAppStepParams;
@@ -488,6 +491,7 @@ export default function AutomaticNotificationsWebScreen() {
   const [waTemplates, setWaTemplates] = useState<WhatsAppTemplate[]>([]);
   const [waDailyQuota, setWaDailyQuota] = useState<number>(0);
   const [waSentToday, setWaSentToday] = useState<number>(0);
+  const [waImageUploading, setWaImageUploading] = useState(false);
   const [dependsPickerOpen, setDependsPickerOpen] = useState(false);
   const [addWizardOpen, setAddWizardOpen] = useState(false);
   const [addWizardStep, setAddWizardStep] = useState<1 | 2>(1);
@@ -1246,6 +1250,35 @@ export default function AutomaticNotificationsWebScreen() {
   const editorWizardStepId =
     editorWizardSteps[Math.min(editorWizardStepIdx, Math.max(0, editorWizardSteps.length - 1))] ?? 'schedule';
   const editorWizardIsLast = editorWizardStepIdx >= editorWizardSteps.length - 1;
+  const editorIsWhatsapp = String((editorRow as any)?.channel || 'SMS').toUpperCase() === 'WHATSAPP';
+
+  const guestIdsForGroup = useCallback(
+    (group: string): string[] => {
+      const byStatus = (set: string[]) =>
+        allGuests.filter((g) => set.includes(String(g.status || '').trim())).map((g) => String(g.id));
+      if (group === 'all') return allGuests.map((g) => String(g.id));
+      if (group === 'pending') return byStatus(['ממתין']);
+      if (group === 'coming') return byStatus(['מגיע', 'אישר']);
+      if (group === 'not_coming') return byStatus(['לא מגיע', 'לא מגיעים']);
+      if (group === 'maybe') return byStatus(['אולי מגיע']);
+      return [];
+    },
+    [allGuests]
+  );
+
+  const waManualMode = editorIsWhatsapp && flowDraft?.recipientMode === 'manual';
+
+  const waSelectedRecipientIds = useMemo(() => {
+    if (waManualMode) return new Set(pickerSelectedIds);
+    const groups = flowDraft?.recipientGroups || [];
+    const set = new Set<string>();
+    for (const g of groups) for (const id of guestIdsForGroup(g)) set.add(id);
+    return set;
+  }, [waManualMode, pickerSelectedIds, flowDraft?.recipientGroups, guestIdsForGroup]);
+
+  const waRecipientCount = waSelectedRecipientIds.size;
+  const waQuotaRemaining = Math.max(0, Number(waDailyQuota || 0) - Number(waSentToday || 0));
+  const waOverQuota = Number(waDailyQuota || 0) > 0 && waRecipientCount > waQuotaRemaining;
 
   useEffect(() => {
     if (!editorOpen) return;
@@ -1446,9 +1479,32 @@ export default function AutomaticNotificationsWebScreen() {
       timeHm: hasValidDt ? formatTime(dt as any) : '11:00',
     });
     setMessageSelection({ start: draftMessage.length, end: draftMessage.length });
+    const rowMode = (String((row as any)?.recipient_mode || 'manual') as WaRecipientMode) || 'manual';
+    const isWa = String((row as any)?.channel || 'SMS').toUpperCase() === 'WHATSAPP';
+    const rawRule = (row as any)?.recipient_rule;
+    const ruleGroups =
+      rawRule && String(rawRule.mode || '') === 'groups' && Array.isArray(rawRule.groups)
+        ? (rawRule.groups as any[]).map((x) => String(x)).filter(Boolean)
+        : [];
+    const statusGroupKeys = ['all', 'pending', 'coming', 'not_coming', 'maybe'];
+    const initialGroups =
+      ruleGroups.length > 0
+        ? ruleGroups
+        : statusGroupKeys.includes(rowMode)
+          ? [rowMode]
+          : ['all'];
+    const savedIds = Array.isArray((row as any)?.recipient_guest_ids)
+      ? ((row as any).recipient_guest_ids as any[]).map((x) => String(x)).filter(Boolean)
+      : [];
+    // WhatsApp: manual only when explicitly saved as manual with a concrete list; otherwise groups.
+    const waMode: 'groups' | 'manual' = rowMode === 'manual' && savedIds.length > 0 ? 'manual' : 'groups';
+    setPickerSelectedIds(new Set(savedIds));
+    setPickerSearch('');
+    setPickerFilter('all');
     setFlowDraft({
       title: String(row.title ?? 'שלב'),
-      recipientMode: (String((row as any)?.recipient_mode || 'manual') as WaRecipientMode) || 'manual',
+      recipientMode: isWa ? (waMode === 'manual' ? 'manual' : 'groups') : rowMode,
+      recipientGroups: initialGroups,
       dependsOnSettingId: (row as any)?.depends_on_setting_id ? String((row as any).depends_on_setting_id) : null,
       whatsappTemplateId: (row as any)?.whatsapp_template_id ? String((row as any).whatsapp_template_id) : null,
       whatsappParams: ((row as any)?.whatsapp_params as WhatsAppStepParams) || {},
@@ -1990,20 +2046,34 @@ export default function AutomaticNotificationsWebScreen() {
       }
 
       if (isFlow) {
-        const mode = String(flowDraft?.recipientMode || 'manual');
-        payload.recipient_mode = mode;
-        payload.depends_on_setting_id = flowDraft?.dependsOnSettingId ? String(flowDraft.dependsOnSettingId) : null;
-        payload.recipient_rule =
-          mode === 'prev_pending'
-            ? { mode: 'prev_pending', dependsOn: payload.depends_on_setting_id }
-            : { mode };
-        if (mode !== 'manual') payload.recipient_guest_ids = [];
-
-        // WhatsApp steps: persist the chosen template + filled params.
         const flowChannel = String((editorRow as any)?.channel || 'SMS').toUpperCase();
-        if (flowChannel === 'WHATSAPP') {
+        const isWa = flowChannel === 'WHATSAPP';
+
+        if (isWa) {
+          payload.depends_on_setting_id = null;
           payload.whatsapp_template_id = flowDraft?.whatsappTemplateId || null;
           payload.whatsapp_params = flowDraft?.whatsappParams || {};
+          if (String(flowDraft?.recipientMode || '') === 'manual') {
+            // WhatsApp steps: manual hand-picked recipients.
+            payload.recipient_mode = 'manual';
+            payload.recipient_rule = { mode: 'manual' };
+            payload.recipient_guest_ids = Array.from(pickerSelectedIds);
+          } else {
+            // WhatsApp steps: multi-group audiences stored as recipient_mode='groups'.
+            const groups = (flowDraft?.recipientGroups || []).filter(Boolean);
+            payload.recipient_mode = 'groups';
+            payload.recipient_rule = { mode: 'groups', groups };
+            payload.recipient_guest_ids = [];
+          }
+        } else {
+          const mode = String(flowDraft?.recipientMode || 'manual');
+          payload.recipient_mode = mode;
+          payload.depends_on_setting_id = flowDraft?.dependsOnSettingId ? String(flowDraft.dependsOnSettingId) : null;
+          payload.recipient_rule =
+            mode === 'prev_pending'
+              ? { mode: 'prev_pending', dependsOn: payload.depends_on_setting_id }
+              : { mode };
+          if (mode !== 'manual') payload.recipient_guest_ids = [];
         }
       }
 
@@ -2202,7 +2272,13 @@ export default function AutomaticNotificationsWebScreen() {
       const channel = sendChannel;
       const isWhatsapp = sendIsWhatsapp;
       const isFlow = nt.startsWith('flow_step:');
-      const flowMode = isFlow ? String((editorRow as any)?.recipient_mode || flowDraft?.recipientMode || 'manual') : null;
+      const flowMode = isFlow
+        ? editorIsWhatsapp
+          ? String(flowDraft?.recipientMode || '') === 'manual'
+            ? 'manual'
+            : 'groups'
+          : String((editorRow as any)?.recipient_mode || flowDraft?.recipientMode || 'manual')
+        : null;
       const shouldAutoPending = nt === 'reminder_2' || (isFlow && flowMode === 'pending');
 
       // Compute recipient ids for status-based audiences (flow steps).
@@ -2220,7 +2296,8 @@ export default function AutomaticNotificationsWebScreen() {
         ? ((editorRow as any).recipient_guest_ids as any[]).map((x) => String(x))
         : [];
       let ids =
-        editorKind === 'template' && (nt === 'reminder_1' || nt === 'reminder_2') && !isFlow
+        (editorKind === 'template' && (nt === 'reminder_1' || nt === 'reminder_2') && !isFlow) ||
+        (isFlow && editorIsWhatsapp && flowMode === 'manual')
           ? Array.from(pickerSelectedIds)
           : rowIds;
       const isAutoAll =
@@ -2235,8 +2312,15 @@ export default function AutomaticNotificationsWebScreen() {
         alert(isFlow ? 'במצב "בחירה ידנית" צריך לבחור מוזמנים.' : 'להודעה הראשונה צריך לבחור מוזמנים (לחץ "הוסף מוזמנים")');
         return;
       }
-      // Flow: status-based audiences (all/pending/coming/not_coming/maybe) -> compute now.
-      if (isFlow && flowMode && flowMode !== 'manual' && flowMode !== 'prev_pending') {
+      // Flow (WhatsApp): multi-group audience -> union of selected groups.
+      if (isFlow && flowMode === 'groups') {
+        ids = Array.from(waSelectedRecipientIds);
+        if (ids.length === 0) {
+          alert('בחר לפחות קבוצת נמענים אחת לשליחה.');
+          return;
+        }
+      } else if (isFlow && flowMode && flowMode !== 'manual' && flowMode !== 'prev_pending') {
+        // Flow: status-based audiences (all/pending/coming/not_coming/maybe) -> compute now.
         ids = statusIdsFor(flowMode);
         if (ids.length === 0) {
           alert('לא נמצאו מוזמנים מתאימים לסטטוס שנבחר.');
@@ -3386,11 +3470,7 @@ export default function AutomaticNotificationsWebScreen() {
                 <Text style={styles.recipientsPreviewHint}>בחר סוג הודעה. לאחר מכן תבחר לאיזה שלב להכניס את הכרטיסיה.</Text>
                 <View style={styles.wizardChoiceRow}>
                   <Pressable
-                    onPress={() => {
-                      setAddWizardChannel('SMS');
-                      setAddWizardStep(2);
-                      setAddWizardInsertAt(flowStepsSorted.length + 1);
-                    }}
+                    onPress={() => setAddWizardChannel('SMS')}
                     style={({ pressed }: any) => [
                       styles.wizardChoiceBtn,
                       addWizardChannel === 'SMS' ? styles.wizardChoiceBtnActive : null,
@@ -3399,7 +3479,19 @@ export default function AutomaticNotificationsWebScreen() {
                   >
                     <Ionicons name="chatbubble-ellipses-outline" size={20} color={addWizardChannel === 'SMS' ? '#4F46E5' : '#111827'} />
                     <Text style={[styles.wizardChoiceTitle, addWizardChannel === 'SMS' ? styles.wizardChoiceTitleActive : null]}>SMS</Text>
-                    <Text style={styles.wizardChoiceSub}>שליחה מתוזמנת נתמכת כרגע</Text>
+                    <Text style={styles.wizardChoiceSub}>שליחה מתוזמנת בהתאם לרגע</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setAddWizardChannel('WHATSAPP')}
+                    style={({ pressed }: any) => [
+                      styles.wizardChoiceBtn,
+                      addWizardChannel === 'WHATSAPP' ? styles.wizardChoiceBtnActive : null,
+                      pressed ? { opacity: 0.92 } : null,
+                    ]}
+                  >
+                    <Ionicons name="logo-whatsapp" size={20} color={addWizardChannel === 'WHATSAPP' ? '#25D366' : '#111827'} />
+                    <Text style={[styles.wizardChoiceTitle, addWizardChannel === 'WHATSAPP' ? styles.wizardChoiceTitleActive : null]}>WhatsApp</Text>
+                    <Text style={styles.wizardChoiceSub}>שליחה מתוזמנת עם תבנית וואטסאפ</Text>
                   </Pressable>
                 </View>
 
@@ -3408,7 +3500,10 @@ export default function AutomaticNotificationsWebScreen() {
                     <Text style={styles.dialogBtnGhostText}>ביטול</Text>
                   </Pressable>
                   <Pressable
-                    onPress={() => setAddWizardStep(2)}
+                    onPress={() => {
+                      setAddWizardInsertAt(flowStepsSorted.length + 1);
+                      setAddWizardStep(2);
+                    }}
                     style={[styles.dialogBtn, styles.dialogBtnPrimary]}
                   >
                     <Text style={styles.dialogBtnPrimaryText}>המשך</Text>
@@ -3525,6 +3620,21 @@ export default function AutomaticNotificationsWebScreen() {
               </Pressable>
             </View>
 
+            {editorIsWhatsapp ? (
+              <View style={[styles.waQuotaBar, waOverQuota ? styles.waQuotaBarWarn : null]}>
+                <Ionicons name="logo-whatsapp" size={16} color={waOverQuota ? '#B45309' : '#0E7C46'} />
+                <Text style={styles.waQuotaBarText}>
+                  {`מכסת וואטסאפ יומית: ${waSentToday}/${Number(waDailyQuota || 0)} נשלחו · נותרו ${waQuotaRemaining}`}
+                </Text>
+                {waOverQuota ? (
+                  <View style={styles.waQuotaBadge}>
+                    <Ionicons name="alert-circle" size={13} color="#B45309" />
+                    <Text style={styles.waQuotaBadgeText}>חריגה ממכסה</Text>
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
+
             <ScrollView style={styles.editorBody} contentContainerStyle={styles.editorBodyContent} showsVerticalScrollIndicator={false}>
               {editorKind === 'template' ? (
                 <View style={styles.editorWizardTop}>
@@ -3579,23 +3689,193 @@ export default function AutomaticNotificationsWebScreen() {
                 </View>
               ) : null}
               {editorKind === 'flow' ? (
-                <View style={styles.editorSection}>
+                <View style={[styles.editorSection, editorIsWhatsapp ? styles.waStepCard : null]}>
                   <View style={styles.editorSectionHeader}>
-                    <Ionicons name="albums-outline" size={16} color="rgba(79,70,229,1)" />
-                    <Text style={styles.editorSectionTitle}>כרטיסיה</Text>
+                    {editorIsWhatsapp ? (
+                      <View style={styles.stepNumBadge}><Text style={styles.stepNumBadgeText}>1</Text></View>
+                    ) : (
+                      <Ionicons name="albums-outline" size={16} color="rgba(79,70,229,1)" />
+                    )}
+                    <Text style={styles.editorSectionTitle}>{editorIsWhatsapp ? 'בחירת נמענים' : 'כרטיסיה'}</Text>
                   </View>
 
-                  <View style={styles.fieldRow}>
-                    <Text style={styles.fieldLabel}>כותרת</Text>
-                    <TextInput
-                      value={flowDraft?.title ?? ''}
-                      onChangeText={(t) => setFlowDraft((d) => (d ? { ...d, title: String(t || '') } : d))}
-                      style={styles.fieldInput}
-                      placeholder="כותרת לשלב"
-                      placeholderTextColor="rgba(100,116,139,0.6)"
-                    />
-                  </View>
+                  {!editorIsWhatsapp ? (
+                    <View style={styles.fieldRow}>
+                      <Text style={styles.fieldLabel}>כותרת</Text>
+                      <TextInput
+                        value={flowDraft?.title ?? ''}
+                        onChangeText={(t) => setFlowDraft((d) => (d ? { ...d, title: String(t || '') } : d))}
+                        style={styles.fieldInput}
+                        placeholder="כותרת לשלב"
+                        placeholderTextColor="rgba(100,116,139,0.6)"
+                      />
+                    </View>
+                  ) : null}
 
+                  {editorIsWhatsapp ? (
+                    <View style={styles.fieldRow}>
+                      <Text style={styles.fieldLabel}>בחירת נמענים</Text>
+
+                      <View style={styles.waModeToggleRow}>
+                        <Pressable
+                          onPress={() => setFlowDraft((d) => (d ? { ...d, recipientMode: 'groups' } : d))}
+                          style={({ pressed }: any) => [
+                            styles.waModeToggleBtn,
+                            !waManualMode ? styles.waModeToggleBtnActive : null,
+                            pressed ? { opacity: 0.92 } : null,
+                          ]}
+                        >
+                          <Ionicons name="people-outline" size={15} color={!waManualMode ? '#4F46E5' : '#64748B'} />
+                          <Text style={[styles.waModeToggleText, !waManualMode ? styles.waModeToggleTextActive : null]}>לפי קבוצות</Text>
+                        </Pressable>
+                        <Pressable
+                          onPress={() => setFlowDraft((d) => (d ? { ...d, recipientMode: 'manual' } : d))}
+                          style={({ pressed }: any) => [
+                            styles.waModeToggleBtn,
+                            waManualMode ? styles.waModeToggleBtnActive : null,
+                            pressed ? { opacity: 0.92 } : null,
+                          ]}
+                        >
+                          <Ionicons name="hand-left-outline" size={15} color={waManualMode ? '#4F46E5' : '#64748B'} />
+                          <Text style={[styles.waModeToggleText, waManualMode ? styles.waModeToggleTextActive : null]}>בחירה ידנית</Text>
+                        </Pressable>
+                      </View>
+
+                      {waManualMode ? (
+                        <View style={styles.waManualWrap}>
+                          <Text style={styles.editorSectionHint}>בחר מוזמנים ספציפיים מהרשימה. אפשר לחפש ולסנן לפי סטטוס.</Text>
+                          <View style={styles.waManualSearchRow}>
+                            <Ionicons name="search" size={16} color="#94A3B8" />
+                            <TextInput
+                              value={pickerSearch}
+                              onChangeText={setPickerSearch}
+                              style={styles.waManualSearchInput}
+                              placeholder="חיפוש לפי שם או טלפון"
+                              placeholderTextColor="rgba(100,116,139,0.6)"
+                            />
+                          </View>
+                          <View style={[styles.modeRow, { flexWrap: 'wrap' }]}>
+                            {([
+                              { key: 'all', label: 'הכל' },
+                              { key: 'pending', label: 'ממתין' },
+                              { key: 'confirmed', label: 'מגיע' },
+                              { key: 'declined', label: 'לא מגיע' },
+                            ] as Array<{ key: 'all' | 'pending' | 'confirmed' | 'declined'; label: string }>).map((opt) => {
+                              const active = pickerFilter === opt.key;
+                              return (
+                                <Pressable
+                                  key={opt.key}
+                                  onPress={() => setPickerFilter(opt.key)}
+                                  style={({ pressed }: any) => [styles.modePill, active ? styles.modePillActive : null, pressed ? { opacity: 0.92 } : null]}
+                                >
+                                  <Text style={[styles.modePillText, active ? styles.modePillTextActive : null]}>{opt.label}</Text>
+                                </Pressable>
+                              );
+                            })}
+                          </View>
+                          <View style={styles.waManualActionsRow}>
+                            <Pressable onPress={pickerSelectAllFiltered} style={({ pressed }: any) => [styles.waManualLinkBtn, pressed ? { opacity: 0.9 } : null]}>
+                              <Ionicons name="checkmark-done-outline" size={14} color="#4F46E5" />
+                              <Text style={styles.waManualLinkText}>בחר את כל המסוננים</Text>
+                            </Pressable>
+                            <Pressable onPress={pickerClear} style={({ pressed }: any) => [styles.waManualLinkBtn, pressed ? { opacity: 0.9 } : null]}>
+                              <Ionicons name="close-outline" size={14} color="#4F46E5" />
+                              <Text style={styles.waManualLinkText}>נקה בחירה</Text>
+                            </Pressable>
+                          </View>
+                          <ScrollView style={styles.waManualList} nestedScrollEnabled contentContainerStyle={{ gap: 6, paddingVertical: 4 }}>
+                            {pickerFilteredGuests.length === 0 ? (
+                              <Text style={styles.editorSectionHint}>לא נמצאו מוזמנים תואמים.</Text>
+                            ) : (
+                              pickerFilteredGuests.map((g) => {
+                                const id = String(g.id);
+                                const checked = pickerSelectedIds.has(id);
+                                return (
+                                  <Pressable
+                                    key={id}
+                                    onPress={() => pickerToggleGuest(id)}
+                                    style={({ pressed }: any) => [styles.waGuestRow, checked ? styles.waGuestRowChecked : null, pressed ? { opacity: 0.92 } : null]}
+                                  >
+                                    <View style={[styles.waCheckbox, checked ? styles.waCheckboxChecked : null]}>
+                                      {checked ? <Ionicons name="checkmark" size={13} color="#fff" /> : null}
+                                    </View>
+                                    <View style={{ flex: 1, minWidth: 0 }}>
+                                      <Text style={styles.waGuestName} numberOfLines={1}>{String(g.name || 'ללא שם')}</Text>
+                                      <Text style={styles.waGuestMeta} numberOfLines={1}>
+                                        {`${String(g.phone || 'אין טלפון')}${g.status ? ` · ${String(g.status)}` : ''}`}
+                                      </Text>
+                                    </View>
+                                  </Pressable>
+                                );
+                              })
+                            )}
+                          </ScrollView>
+                        </View>
+                      ) : (
+                        <>
+                          <Text style={styles.editorSectionHint}>ניתן לבחור כמה קבוצות יחד. ההודעה תישלח לאיחוד הקבוצות שנבחרו (ללא כפילויות).</Text>
+                          <View style={[styles.modeRow, { flexWrap: 'wrap' }]}>
+                            {([
+                              { key: 'all', label: 'כל המוזמנים' },
+                              { key: 'pending', label: 'ממתינים' },
+                              { key: 'coming', label: 'מגיעים' },
+                              { key: 'not_coming', label: 'לא מגיעים' },
+                              { key: 'maybe', label: 'אולי מגיעים' },
+                            ] as Array<{ key: string; label: string }>).map((opt) => {
+                              const groups = flowDraft?.recipientGroups || [];
+                              const active = groups.includes(opt.key);
+                              const groupCount = guestIdsForGroup(opt.key).length;
+                              return (
+                                <Pressable
+                                  key={opt.key}
+                                  onPress={() =>
+                                    setFlowDraft((d) => {
+                                      if (!d) return d;
+                                      const cur = d.recipientGroups || [];
+                                      const next = cur.includes(opt.key) ? cur.filter((g) => g !== opt.key) : [...cur, opt.key];
+                                      return { ...d, recipientGroups: next };
+                                    })
+                                  }
+                                  style={({ pressed }: any) => [
+                                    styles.modePill,
+                                    active ? styles.modePillActive : null,
+                                    pressed ? { opacity: 0.92 } : null,
+                                  ]}
+                                >
+                                  {active ? <Ionicons name="checkmark-circle" size={14} color="#4F46E5" /> : null}
+                                  <Text style={[styles.modePillText, active ? styles.modePillTextActive : null]}>
+                                    {`${opt.label} (${groupCount})`}
+                                  </Text>
+                                </Pressable>
+                              );
+                            })}
+                          </View>
+                        </>
+                      )}
+
+                      <View style={[styles.waCountCard, waOverQuota ? styles.waCountCardWarn : null]}>
+                        <Ionicons
+                          name={waOverQuota ? 'alert-circle' : 'people'}
+                          size={18}
+                          color={waOverQuota ? '#B45309' : '#0E7C46'}
+                        />
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.waCountTitle}>
+                            {`ההודעה תישלח ל־${waRecipientCount} מוזמנים`}
+                          </Text>
+                          {waOverQuota ? (
+                            <Text style={styles.waCountWarnText}>
+                              {`חריגה ממכסת הוואטסאפ היומית — נותרו ${waQuotaRemaining} הודעות בלבד. העודפים ידולגו.`}
+                            </Text>
+                          ) : Number(waDailyQuota || 0) > 0 ? (
+                            <Text style={styles.waCountSubText}>
+                              {`נותרו ${waQuotaRemaining} הודעות מתוך מכסה יומית של ${waDailyQuota}.`}
+                            </Text>
+                          ) : null}
+                        </View>
+                      </View>
+                    </View>
+                  ) : (
                   <View style={styles.fieldRow}>
                     <Text style={styles.fieldLabel}>נמענים</Text>
                     <View style={[styles.modeRow, { flexWrap: 'wrap' }]}>
@@ -3625,8 +3905,9 @@ export default function AutomaticNotificationsWebScreen() {
                       })}
                     </View>
                   </View>
+                  )}
 
-                  {flowDraft?.recipientMode === 'prev_pending' ? (
+                  {!editorIsWhatsapp && flowDraft?.recipientMode === 'prev_pending' ? (
                     <View style={styles.fieldRow}>
                       <Text style={styles.fieldLabel}>שלב קודם</Text>
                       {(() => {
@@ -3685,6 +3966,15 @@ export default function AutomaticNotificationsWebScreen() {
                       })()}
                     </View>
                   ) : null}
+                </View>
+              ) : null}
+
+              {editorKind === 'flow' && editorIsWhatsapp ? (
+                <View style={[styles.editorSection, styles.waStepCard]}>
+                  <View style={styles.editorSectionHeader}>
+                    <View style={styles.stepNumBadge}><Text style={styles.stepNumBadgeText}>2</Text></View>
+                    <Text style={styles.editorSectionTitle}>תוכן ההודעה</Text>
+                  </View>
 
                   {String((editorRow as any)?.channel || 'SMS').toUpperCase() === 'WHATSAPP' ? (
                     (() => {
@@ -3706,6 +3996,40 @@ export default function AutomaticNotificationsWebScreen() {
                       };
                       const buttonSuffixOf = (index: number) =>
                         String((Array.isArray(params.buttons) ? params.buttons : []).find((b) => Number(b.index) === Number(index))?.suffix ?? '');
+
+                      const pickHeaderImage = async () => {
+                        if (!canEdit) {
+                          showToast('לצפייה בלבד');
+                          return;
+                        }
+                        if (!event?.id) {
+                          alert('לא נמצא אירוע לשיוך התמונה.');
+                          return;
+                        }
+                        try {
+                          const result = await ImagePicker.launchImageLibraryAsync({
+                            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                            quality: 0.9,
+                            base64: true,
+                          });
+                          if (result.canceled || !result.assets?.[0]) return;
+                          const asset = result.assets[0] as any;
+                          setWaImageUploading(true);
+                          const url = await invitationAssetService.uploadInvitationImage(String(event.id), {
+                            uri: asset.uri,
+                            fileName: asset.fileName,
+                            mimeType: asset.mimeType,
+                            file: asset.file,
+                            base64: asset.base64,
+                          });
+                          setParams({ header_image_url: url });
+                        } catch (e) {
+                          console.error('Failed to upload WhatsApp header image:', e);
+                          alert('העלאת התמונה נכשלה. נסה שוב.');
+                        } finally {
+                          setWaImageUploading(false);
+                        }
+                      };
 
                       return (
                         <View style={styles.waBlock}>
@@ -3759,15 +4083,61 @@ export default function AutomaticNotificationsWebScreen() {
 
                                   {selectedTpl.headerType === 'image' ? (
                                     <View style={styles.fieldRow}>
-                                      <Text style={styles.fieldLabel}>תמונת כותרת (קישור) — לא חובה</Text>
-                                      <TextInput
-                                        value={String(params.header_image_url ?? '')}
-                                        onChangeText={(t) => setParams({ header_image_url: t })}
-                                        style={styles.fieldInput}
-                                        placeholder="ברירת מחדל: תמונת ההזמנה של האירוע"
-                                        placeholderTextColor="rgba(100,116,139,0.6)"
-                                        autoCapitalize="none"
-                                      />
+                                      <Text style={styles.fieldLabel}>תמונת כותרת</Text>
+                                      <Text style={styles.editorSectionHint}>
+                                        העלה תמונה שתופיע בראש הודעת הוואטסאפ. אם לא תעלה תמונה, תישלח תמונת ההזמנה של האירוע כברירת מחדל.
+                                      </Text>
+
+                                      {(() => {
+                                        const eventInvImg = String((event as any)?.invitation_image_url ?? '').trim();
+                                        const customImg = String(params.header_image_url ?? '').trim();
+                                        const previewUri = customImg || eventInvImg;
+                                        const isDefault = !customImg && !!eventInvImg;
+                                        if (!previewUri) return null;
+                                        return (
+                                          <View style={styles.waImagePreviewWrap}>
+                                            <Image source={{ uri: previewUri }} style={styles.waImagePreview} resizeMode="cover" />
+                                            {isDefault ? (
+                                              <View style={styles.waImageDefaultBadge}>
+                                                <Ionicons name="image-outline" size={12} color="#fff" />
+                                                <Text style={styles.waImageDefaultBadgeText}>תמונת ברירת מחדל (הזמנת האירוע)</Text>
+                                              </View>
+                                            ) : null}
+                                          </View>
+                                        );
+                                      })()}
+
+                                      <View style={styles.waImageActionsRow}>
+                                        <Pressable
+                                          onPress={pickHeaderImage}
+                                          disabled={waImageUploading || !canEdit}
+                                          style={({ pressed }: any) => [
+                                            styles.waUploadBtn,
+                                            (waImageUploading || !canEdit) ? { opacity: 0.6 } : null,
+                                            pressed ? { opacity: 0.9 } : null,
+                                          ]}
+                                        >
+                                          {waImageUploading ? (
+                                            <ActivityIndicator size="small" color="#fff" />
+                                          ) : (
+                                            <Ionicons name={params.header_image_url ? 'sync-outline' : 'cloud-upload-outline'} size={16} color="#fff" />
+                                          )}
+                                          <Text style={styles.waUploadBtnText}>
+                                            {waImageUploading ? 'מעלה...' : params.header_image_url ? 'החלף תמונה' : 'העלה תמונה'}
+                                          </Text>
+                                        </Pressable>
+
+                                        {params.header_image_url ? (
+                                          <Pressable
+                                            onPress={() => setParams({ header_image_url: null })}
+                                            disabled={waImageUploading}
+                                            style={({ pressed }: any) => [styles.waImageRemoveBtn, pressed ? { opacity: 0.85 } : null]}
+                                          >
+                                            <Ionicons name="trash-outline" size={16} color="#DC2626" />
+                                            <Text style={styles.waImageRemoveBtnText}>הסר</Text>
+                                          </Pressable>
+                                        ) : null}
+                                      </View>
                                     </View>
                                   ) : null}
 
@@ -3785,42 +4155,49 @@ export default function AutomaticNotificationsWebScreen() {
                                   ) : null}
 
                                   {selectedTpl.variables.length > 0 ? (
-                                    <View style={{ gap: 8 }}>
-                                      <Text style={styles.fieldLabel}>תוכן דינמי</Text>
-                                      <Text style={styles.editorSectionHint}>אפשר להשתמש במשתנים: {'{name}'} שם האורח · {'{link}'} קישור אישי · {'{event}'} שם האירוע · {'{date}'} תאריך</Text>
+                                    <View style={{ gap: 12 }}>
                                       {[...selectedTpl.variables]
                                         .sort((a, b) => Number(a.index) - Number(b.index))
-                                        .map((v, i) => (
-                                          <View key={i} style={styles.waVarRow}>
-                                            <View style={styles.waVarBadge}><Text style={styles.waVarBadgeText}>{`{{${i + 1}}}`}</Text></View>
-                                            <TextInput
-                                              value={String((Array.isArray(params.body) ? params.body : [])[i] ?? '')}
-                                              onChangeText={(t) => setBodyAt(i, t)}
-                                              style={[styles.fieldInput, { flex: 1 }]}
-                                              placeholder={v.label || v.sample || `ערך לשדה ${i + 1}`}
-                                              placeholderTextColor="rgba(100,116,139,0.6)"
-                                            />
-                                          </View>
-                                        ))}
+                                        .map((v, i) => {
+                                          const fieldTitle = String(v.label || '').trim() || `שדה ${i + 1}`;
+                                          const fieldNumber = Number(v.index) || i + 1;
+                                          return (
+                                            <View key={i} style={styles.waVarField}>
+                                              <View style={styles.waVarLabelRow}>
+                                                <View style={styles.waVarNumBadge}>
+                                                  <Text style={styles.waVarNumBadgeText}>{fieldNumber}</Text>
+                                                </View>
+                                                <Text style={styles.waVarFieldLabel}>{fieldTitle}</Text>
+                                              </View>
+                                              <TextInput
+                                                value={String((Array.isArray(params.body) ? params.body : [])[i] ?? '')}
+                                                onChangeText={(t) => setBodyAt(i, t)}
+                                                style={styles.fieldInput}
+                                                placeholder={v.sample ? `לדוגמה: ${v.sample}` : `הזן ${fieldTitle}`}
+                                                placeholderTextColor="rgba(100,116,139,0.6)"
+                                              />
+                                            </View>
+                                          );
+                                        })}
                                     </View>
                                   ) : null}
 
                                   {selectedTpl.buttons.length > 0 ? (
-                                    <View style={{ gap: 8 }}>
+                                    <View style={{ gap: 12 }}>
                                       <Text style={styles.fieldLabel}>כפתורים</Text>
                                       {selectedTpl.buttons.map((b, i) => (
-                                        <View key={i} style={styles.waBtnRow}>
-                                          <View style={styles.waVarBadge}><Text style={styles.waVarBadgeText}>{`#${b.index}`}</Text></View>
+                                        <View key={i} style={styles.waVarField}>
+                                          <Text style={styles.waVarFieldLabel}>{b.label || `כפתור ${i + 1}`}</Text>
                                           {b.kind === 'invitation' ? (
-                                            <Text style={[styles.editorSectionHint, { flex: 1 }]}>
-                                              {b.label || 'כפתור'} — מושלם אוטומטית עם הקישור האישי של כל אורח
+                                            <Text style={styles.editorSectionHint}>
+                                              מושלם אוטומטית עם הקישור האישי של כל אורח
                                             </Text>
                                           ) : (
                                             <TextInput
                                               value={buttonSuffixOf(b.index)}
                                               onChangeText={(t) => setButtonSuffix(b.index, t)}
-                                              style={[styles.fieldInput, { flex: 1 }]}
-                                              placeholder={`${b.label || 'כפתור'} — ערך הקישור`}
+                                              style={styles.fieldInput}
+                                              placeholder="הזן את ערך הקישור"
                                               placeholderTextColor="rgba(100,116,139,0.6)"
                                               autoCapitalize="none"
                                             />
@@ -3973,10 +4350,14 @@ export default function AutomaticNotificationsWebScreen() {
                   </View>
                 ) : null
               ) : (
-                <View style={styles.editorSection}>
+                <View style={[styles.editorSection, editorIsWhatsapp ? styles.waStepCard : null]}>
                   <View style={styles.editorSectionHeader}>
-                    <Ionicons name="time-outline" size={16} color="rgba(79,70,229,1)" />
-                    <Text style={styles.editorSectionTitle}>תזמון</Text>
+                    {editorIsWhatsapp ? (
+                      <View style={styles.stepNumBadge}><Text style={styles.stepNumBadgeText}>3</Text></View>
+                    ) : (
+                      <Ionicons name="time-outline" size={16} color="rgba(79,70,229,1)" />
+                    )}
+                    <Text style={styles.editorSectionTitle}>תזמון שליחה</Text>
                   </View>
 
                   <View style={styles.timingRow}>
@@ -4025,7 +4406,7 @@ export default function AutomaticNotificationsWebScreen() {
                 </View>
               )}
 
-              {editorKind === 'template' && editorWizardStepId === 'message' ? null : editorKind !== 'template' ? (
+              {editorKind === 'template' && editorWizardStepId === 'message' ? null : (editorKind !== 'template' && !editorIsWhatsapp) ? (
                 <View style={styles.editorSection}>
                   <View style={styles.editorSectionHeader}>
                     <Ionicons name="pricetag-outline" size={16} color="rgba(79,70,229,1)" />
@@ -4182,7 +4563,7 @@ export default function AutomaticNotificationsWebScreen() {
                     </Pressable>
                   </View>
                 </View>
-              ) : editorKind === 'template' ? null : (
+              ) : (editorKind === 'template' || editorIsWhatsapp) ? null : (
                 <View style={styles.editorSection}>
                   <View style={styles.editorSectionHeader}>
                     <Ionicons name="chatbox-ellipses-outline" size={16} color="rgba(79,70,229,1)" />
@@ -5982,6 +6363,22 @@ const styles = StyleSheet.create({
   },
   editorSectionHeader: { width: '100%', flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
   editorSectionTitle: { fontSize: 13, fontWeight: '900', color: '#111827', textAlign: 'right' },
+  waStepCard: {
+    padding: 14,
+    borderRightWidth: 3,
+    borderRightColor: '#4F46E5',
+    backgroundColor: '#fff',
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 6px 18px rgba(79,70,229,0.06)' } as any) : null),
+  },
+  stepNumBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 999,
+    backgroundColor: '#4F46E5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepNumBadgeText: { fontSize: 13, fontWeight: '900', color: '#fff' },
   editorSectionHint: { width: '100%', marginTop: -2, fontSize: 12, fontWeight: '800', color: 'rgba(2,6,23,0.55)', textAlign: 'right', lineHeight: 18 },
 
   timingRow: {
@@ -7278,9 +7675,37 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : null),
   },
   modeRow: { flexDirection: 'row', flexWrap: 'nowrap', gap: 8 },
-  modePill: { paddingHorizontal: 10, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(2,6,23,0.10)', backgroundColor: '#fff', ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
+  modePill: { flexDirection: 'row-reverse', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(2,6,23,0.10)', backgroundColor: '#fff', ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
   modePillActive: { backgroundColor: 'rgba(79,70,229,0.10)', borderColor: 'rgba(79,70,229,0.26)' },
   modePillText: { fontSize: 12, fontWeight: '900', color: 'rgba(2,6,23,0.70)', textAlign: 'right' },
+  waModeToggleRow: { flexDirection: 'row-reverse', gap: 8, marginBottom: 4 },
+  waModeToggleBtn: { flex: 1, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(148,163,184,0.4)', backgroundColor: '#fff' },
+  waModeToggleBtnActive: { borderColor: '#4F46E5', backgroundColor: 'rgba(79,70,229,0.08)' },
+  waModeToggleText: { fontSize: 13, fontWeight: '800', color: '#64748B', textAlign: 'right' },
+  waModeToggleTextActive: { color: '#4F46E5' },
+  waManualWrap: { gap: 10 },
+  waManualSearchRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, paddingHorizontal: 12, height: 42, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(148,163,184,0.4)', backgroundColor: '#fff' },
+  waManualSearchInput: { flex: 1, fontSize: 14, color: '#0F172A', textAlign: 'right', height: '100%' },
+  waManualActionsRow: { flexDirection: 'row-reverse', gap: 16 },
+  waManualLinkBtn: { flexDirection: 'row-reverse', alignItems: 'center', gap: 4 },
+  waManualLinkText: { fontSize: 13, fontWeight: '800', color: '#4F46E5', textAlign: 'right' },
+  waManualList: { maxHeight: 280, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(148,163,184,0.3)', backgroundColor: 'rgba(248,250,252,0.6)', paddingHorizontal: 8 },
+  waGuestRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, paddingVertical: 9, paddingHorizontal: 10, borderRadius: 10, borderWidth: 1, borderColor: 'transparent', backgroundColor: '#fff' },
+  waGuestRowChecked: { borderColor: 'rgba(79,70,229,0.4)', backgroundColor: 'rgba(79,70,229,0.06)' },
+  waCheckbox: { width: 20, height: 20, borderRadius: 6, borderWidth: 1.5, borderColor: 'rgba(148,163,184,0.7)', alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff' },
+  waCheckboxChecked: { borderColor: '#4F46E5', backgroundColor: '#4F46E5' },
+  waGuestName: { fontSize: 13, fontWeight: '800', color: '#0F172A', textAlign: 'right' },
+  waGuestMeta: { fontSize: 11, fontWeight: '600', color: 'rgba(100,116,139,1)', textAlign: 'right', marginTop: 1 },
+  waCountCard: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, marginTop: 4, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(14,124,70,0.25)', backgroundColor: 'rgba(37,211,102,0.08)' },
+  waCountCardWarn: { borderColor: 'rgba(180,83,9,0.35)', backgroundColor: 'rgba(245,158,11,0.10)' },
+  waCountTitle: { fontSize: 13, fontWeight: '900', color: '#0F172A', textAlign: 'right' },
+  waCountSubText: { marginTop: 3, fontSize: 12, fontWeight: '700', color: 'rgba(71,85,105,1)', textAlign: 'right' },
+  waCountWarnText: { marginTop: 3, fontSize: 12, fontWeight: '800', color: '#B45309', textAlign: 'right' },
+  waQuotaBar: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(14,124,70,0.18)', backgroundColor: 'rgba(37,211,102,0.08)' },
+  waQuotaBarWarn: { borderBottomColor: 'rgba(180,83,9,0.30)', backgroundColor: 'rgba(245,158,11,0.12)' },
+  waQuotaBarText: { flex: 1, fontSize: 12.5, fontWeight: '900', color: '#0F172A', textAlign: 'right' },
+  waQuotaBadge: { flexDirection: 'row-reverse', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, backgroundColor: 'rgba(245,158,11,0.18)', borderWidth: 1, borderColor: 'rgba(180,83,9,0.30)' },
+  waQuotaBadgeText: { fontSize: 11, fontWeight: '900', color: '#B45309' },
   modePillTextActive: { color: '#4F46E5' },
 
   waBlock: { gap: 12, marginTop: 6, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(37,211,102,0.25)', backgroundColor: 'rgba(37,211,102,0.05)' },
@@ -7293,6 +7718,20 @@ const styles = StyleSheet.create({
   waBtnRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
   waVarBadge: { paddingHorizontal: 8, height: 34, borderRadius: 8, backgroundColor: 'rgba(37,211,102,0.14)', alignItems: 'center', justifyContent: 'center' },
   waVarBadgeText: { fontSize: 12, fontWeight: '900', color: '#0E7C46' },
+  waVarField: { gap: 6 },
+  waVarLabelRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
+  waVarNumBadge: { minWidth: 22, height: 22, paddingHorizontal: 6, borderRadius: 999, backgroundColor: 'rgba(37,211,102,0.16)', borderWidth: 1, borderColor: 'rgba(14,124,70,0.25)', alignItems: 'center', justifyContent: 'center' },
+  waVarNumBadgeText: { fontSize: 12, fontWeight: '900', color: '#0E7C46' },
+  waVarFieldLabel: { fontSize: 13, fontWeight: '900', color: '#0F172A', textAlign: 'right' },
+  waImagePreviewWrap: { position: 'relative', borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(2,6,23,0.10)', backgroundColor: '#fff', alignSelf: 'stretch' },
+  waImagePreview: { width: '100%', height: 180, backgroundColor: 'rgba(2,6,23,0.04)' },
+  waImageDefaultBadge: { position: 'absolute', top: 8, right: 8, flexDirection: 'row-reverse', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, backgroundColor: 'rgba(15,23,42,0.72)' },
+  waImageDefaultBadgeText: { fontSize: 11, fontWeight: '800', color: '#fff', textAlign: 'right' },
+  waImageActionsRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
+  waUploadBtn: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, backgroundColor: '#25D366', paddingHorizontal: 14, height: 40, borderRadius: 10, justifyContent: 'center', ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
+  waUploadBtnText: { color: '#fff', fontSize: 13, fontWeight: '900' },
+  waImageRemoveBtn: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, paddingHorizontal: 12, height: 40, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(220,38,38,0.30)', backgroundColor: 'rgba(220,38,38,0.06)', justifyContent: 'center', ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
+  waImageRemoveBtnText: { color: '#DC2626', fontSize: 13, fontWeight: '900' },
   waManageLink: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, alignSelf: 'flex-end', marginTop: 2, ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
   waManageLinkText: { fontSize: 12, fontWeight: '900', color: '#1D4ED8' },
   dependsRow: { flexDirection: 'row', flexWrap: 'nowrap', gap: 8 },

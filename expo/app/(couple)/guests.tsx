@@ -144,15 +144,11 @@ export default function GuestsScreen() {
     if (showLoader) setLoading(true);
 
     try {
-      const [guestsData, event, cats, sentResult] = await Promise.all([
+      const [guestsData, event, cats, messagedGuestIds] = await Promise.all([
         guestService.getGuests(resolvedEventId),
         eventService.getEvent(resolvedEventId),
         guestService.getGuestCategories(resolvedEventId),
-        supabase
-          .from('scheduled_notification_sms_run_recipients')
-          .select('guest_id')
-          .eq('event_id', resolvedEventId)
-          .eq('status', 'sent'),
+        guestService.getMessagedGuestIds(resolvedEventId),
       ]);
 
       setGuests(guestsData);
@@ -165,13 +161,7 @@ export default function GuestsScreen() {
         }))
       );
 
-      if (sentResult.error) throw sentResult.error;
-      const nextSentGuestIds = new Set<string>();
-      for (const row of (sentResult.data as any[]) || []) {
-        const guestId = String((row as any)?.guest_id || '').trim();
-        if (guestId) nextSentGuestIds.add(guestId);
-      }
-      setSentGuestIds(nextSentGuestIds);
+      setSentGuestIds(messagedGuestIds instanceof Set ? messagedGuestIds : new Set());
 
       const categoriesToUpdate = (cats || []).filter((cat) => !cat.side);
       if (categoriesToUpdate.length > 0) {

@@ -33,16 +33,18 @@ const webFontStack =
 const baseFontStyle = { fontFamily: (Platform.OS === 'web' ? webFontStack : rubikBaseFontFamily) as any };
 const RTL_MARK = '\u200F';
 
-// React 19 + RNW/RN can ignore `defaultProps`-based global styling in some cases.
-// To ensure Rubik is applied consistently, we patch `React.createElement` and inject
-// default styles for Text/TextInput unless a component already set them.
+// React 19 + RNW/RN ignore `defaultProps`-based global styling for function /
+// forwardRef components like `Text`/`TextInput`. To ensure Rubik (and RTL) is
+// applied consistently we patch the element factories and inject default styles
+// for Text/TextInput unless a component already set them.
+//
+// IMPORTANT: with Babel's automatic JSX runtime (the Expo default) JSX compiles
+// to `react/jsx-runtime`'s `jsx`/`jsxs` — NOT `React.createElement`. Patching
+// only `React.createElement` therefore has no effect on JSX-authored screens, so
+// we patch the jsx runtimes too (and keep createElement for legacy callers).
 (() => {
-  const reactAny = React as unknown as {
-    createElement: typeof React.createElement;
-    __rubikFontPatched?: boolean;
-  };
-
-  if (reactAny.__rubikFontPatched) return;
+  const patchedFlag = globalThis as typeof globalThis & { __rubikFontPatched?: boolean };
+  if (patchedFlag.__rubikFontPatched) return;
 
   const rubikKeys = new Set(Object.keys(rubikFonts ?? {}));
 
@@ -98,27 +100,70 @@ const RTL_MARK = '\u200F';
     return rubikKeys.has(pick) ? pick : rubikBaseFontFamily;
   };
 
-  const originalCreateElement = reactAny.createElement.bind(React);
-  reactAny.createElement = ((type: any, props: any, ...children: any[]) => {
-    if (type === Text || type === TextInput) {
-      const p = props ?? {};
-      const injectFont = !hasFontFamily(p.style);
-      const injectTextAlign = !hasStyleProp(p.style, 'textAlign');
-      const injectWritingDir = !hasStyleProp(p.style, 'writingDirection');
+  // Returns the original props if nothing needs injecting, otherwise a shallow
+  // clone with Rubik + RTL defaults merged *under* any caller-provided style.
+  const withRubikDefaults = (type: any, props: any) => {
+    if (type !== Text && type !== TextInput) return props;
+    const p = props ?? {};
+    const injectFont = !hasFontFamily(p.style);
+    const injectTextAlign = !hasStyleProp(p.style, 'textAlign');
+    const injectWritingDir = !hasStyleProp(p.style, 'writingDirection');
+    if (!injectFont && !injectTextAlign && !injectWritingDir) return props;
 
-      if (injectFont || injectTextAlign || injectWritingDir) {
-        const injected: any = {};
-        if (injectFont) injected.fontFamily = pickRubikFamily(getFontWeight(p.style)) as any;
-        if (injectTextAlign) injected.textAlign = 'right';
-        if (injectWritingDir) injected.writingDirection = 'rtl';
-        const nextStyle = p.style ? [injected, p.style] : injected;
-        return originalCreateElement(type, { ...p, style: nextStyle }, ...children);
+    const injected: any = {};
+    if (injectFont) injected.fontFamily = pickRubikFamily(getFontWeight(p.style)) as any;
+    if (injectTextAlign) injected.textAlign = 'right';
+    if (injectWritingDir) injected.writingDirection = 'rtl';
+    const nextStyle = p.style ? [injected, p.style] : injected;
+    return { ...p, style: nextStyle };
+  };
+
+  // 1) Patch the classic createElement path (legacy / non-JSX callers).
+  const reactAny = React as unknown as { createElement: typeof React.createElement };
+  const originalCreateElement = reactAny.createElement.bind(React);
+  reactAny.createElement = ((type: any, props: any, ...children: any[]) =>
+    originalCreateElement(type, withRubikDefaults(type, props), ...children)) as typeof React.createElement;
+
+  // 2) Patch the automatic JSX runtimes (the path actually used by screens).
+  // Use static require strings so Metro can resolve them at bundle time.
+  const patchJsxRuntime = (runtime: any) => {
+    if (!runtime || runtime.__rubikFontPatched) return;
+    for (const key of ['jsx', 'jsxs', 'jsxDEV'] as const) {
+      const original = runtime[key];
+      if (typeof original !== 'function') continue;
+      const wrapped = (type: any, props: any, ...rest: any[]) =>
+        original(type, withRubikDefaults(type, props), ...rest);
+      try {
+        runtime[key] = wrapped;
+      } catch {
+        try {
+          Object.defineProperty(runtime, key, { value: wrapped, configurable: true, writable: true });
+        } catch {
+          // last resort: leave the original in place for this key
+        }
       }
     }
-    return originalCreateElement(type, props, ...children);
-  }) as typeof React.createElement;
+    try {
+      Object.defineProperty(runtime, '__rubikFontPatched', { value: true });
+    } catch {
+      runtime.__rubikFontPatched = true;
+    }
+  };
 
-  reactAny.__rubikFontPatched = true;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    patchJsxRuntime(require('react/jsx-runtime'));
+  } catch {
+    // jsx-runtime may be unavailable in some environments; ignore.
+  }
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    patchJsxRuntime(require('react/jsx-dev-runtime'));
+  } catch {
+    // jsx-dev-runtime is only present in dev builds; ignore otherwise.
+  }
+
+  patchedFlag.__rubikFontPatched = true;
 })();
 
 const toRtlAlertText = (value?: string) => {

@@ -15,7 +15,7 @@ export const UNAPPROVED_EVENT_GUEST_LIMIT_ERROR =
   'האירוע עדיין ממתין לאישור. ניתן להזין עד 10 מוזמנים בלבד עד שצוות MOON יאשר את האירוע.';
 
 export const DUPLICATE_GUEST_ERROR =
-  'המוזמן כבר קיים באירוע לפי שם או מספר טלפון.';
+  'המוזמן כבר קיים באירוע לפי מספר טלפון.';
 
 export function normalizeGuestNameForDuplicate(name: string): string {
   return String(name || '')
@@ -61,19 +61,14 @@ function isDuplicateGuestCandidate(
   existingRows: ExistingGuestRow[],
   excludeGuestId?: string
 ): boolean {
-  const nextName = normalizeGuestNameForDuplicate(guest.name);
   const nextPhone = String(guest.phone || '').trim();
-  if (!nextName && getPhoneDuplicateKeys(nextPhone).length === 0) return false;
+  // Only check by phone. If there's no phone we can't determine a duplicate.
+  if (getPhoneDuplicateKeys(nextPhone).length === 0) return false;
 
   return existingRows.some((row) => {
     if (excludeGuestId && String(row?.id) === String(excludeGuestId)) return false;
-
-    const existingName = normalizeGuestNameForDuplicate(String(row?.name ?? ''));
     const existingPhone = String(row?.phone ?? '');
-    const sameName = Boolean(nextName && existingName && existingName === nextName);
-    const samePhone = hasSharedPhoneKey(nextPhone, existingPhone);
-
-    return sameName || samePhone;
+    return hasSharedPhoneKey(nextPhone, existingPhone);
   });
 }
 
@@ -171,6 +166,38 @@ export const guestService = {
   },
 
   /**
+   * Returns the set of guest IDs (for the given event) that have received at least
+   * one successfully sent message.
+   *
+   * Combines both messaging sources via the `get_event_messaged_guest_ids` RPC:
+   *   - automatic notifications (scheduled_notification_sms_run_recipients, status 'sent')
+   *   - invitation/other SMS logged in `messages` (status starting with 'נשלח', matched by phone)
+   *
+   * Fails open (returns an empty set) on error so callers never break.
+   */
+  getMessagedGuestIds: async (eventId: string): Promise<Set<string>> => {
+    const result = new Set<string>();
+    if (!eventId) return result;
+
+    try {
+      const { data, error } = await supabase.rpc('get_event_messaged_guest_ids', {
+        p_event_id: eventId,
+      });
+      if (error) throw error;
+
+      for (const row of (data as any[]) || []) {
+        const guestId = typeof row === 'string' ? row : String((row as any)?.guest_id ?? (row as any)?.id ?? row ?? '');
+        const trimmed = guestId.trim();
+        if (trimmed) result.add(trimmed);
+      }
+    } catch (error) {
+      console.warn('getMessagedGuestIds error:', error);
+    }
+
+    return result;
+  },
+
+  /**
    * Lightweight aggregate stats for the couple home screen.
    *
    * Instead of pulling every guest row with `select('*')` (which on large events
@@ -256,9 +283,9 @@ export const guestService = {
     eventId: string,
     guests: Array<Omit<Guest, 'id'>>,
     opts?: { existingRows?: ExistingGuestRow[] }
-  ): Promise<{ added: Guest[]; duplicateSkipped: number }> => {
+  ): Promise<{ added: Guest[]; duplicateSkipped: number; duplicateNames: string[] }> => {
     if (!eventId || guests.length === 0) {
-      return { added: [], duplicateSkipped: 0 };
+      return { added: [], duplicateSkipped: 0, duplicateNames: [] };
     }
 
     try {
@@ -266,10 +293,12 @@ export const guestService = {
       const knownRows = [...existingRows];
       const toInsert: Array<Omit<Guest, 'id'>> = [];
       let duplicateSkipped = 0;
+      const duplicateNames: string[] = [];
 
       for (const guest of guests) {
         if (isDuplicateGuestCandidate(guest, knownRows)) {
           duplicateSkipped++;
+          duplicateNames.push(String(guest.name || '').trim());
           continue;
         }
         toInsert.push(guest);
@@ -280,7 +309,7 @@ export const guestService = {
       }
 
       if (toInsert.length === 0) {
-        return { added: [], duplicateSkipped };
+        return { added: [], duplicateSkipped, duplicateNames };
       }
 
       await ensureUnapprovedEventGuestLimit(eventId);
@@ -350,7 +379,7 @@ export const guestService = {
         }
       }
 
-      return { added, duplicateSkipped };
+      return { added, duplicateSkipped, duplicateNames };
     } catch (error) {
       console.error('Add guests batch error:', error);
       throw error;

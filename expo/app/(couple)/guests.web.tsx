@@ -26,7 +26,11 @@ import {
   UNAPPROVED_EVENT_GUEST_LIMIT,
   UNAPPROVED_EVENT_GUEST_LIMIT_ERROR,
 } from '@/lib/services/guestService';
-import { supabase } from '@/lib/supabase';
+import {
+  downloadGuestImportTemplate,
+  pickAndParseGuestsFile,
+  type ParsedGuestRow,
+} from '@/lib/importGuestsExcel';
 
 type GuestStatus = 'ממתין' | 'אולי מגיע' | 'מגיע' | 'לא מגיע';
 type GuestRow = {
@@ -103,6 +107,18 @@ export default function CoupleGuestsWebScreen() {
   const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
   const [bulkDeleteSubmitting, setBulkDeleteSubmitting] = useState(false);
 
+  const [importOpen, setImportOpen] = useState(false);
+  const [importBusy, setImportBusy] = useState(false);
+  const [importStatusText, setImportStatusText] = useState('');
+  const [importSummary, setImportSummary] = useState<{
+    added: number;
+    duplicates: number;
+    duplicateNames: string[];
+    skipped: number;
+    newCategories: number;
+    mergedIntoExisting: number;
+  } | null>(null);
+
   useEffect(() => {
     if (!isLoggedIn) {
       router.replace('/login');
@@ -135,19 +151,7 @@ export default function CoupleGuestsWebScreen() {
         return next;
       });
       try {
-        const { data: sentRows, error: sentError } = await supabase
-          .from('scheduled_notification_sms_run_recipients')
-          .select('guest_id')
-          .eq('event_id', resolvedEventId)
-          .eq('status', 'sent');
-
-        if (sentError) throw sentError;
-        const next = new Set<string>();
-        for (const row of (sentRows as any[]) || []) {
-          const guestId = String((row as any)?.guest_id || '').trim();
-          if (guestId) next.add(guestId);
-        }
-        setSentGuestIds(next);
+        setSentGuestIds(await guestService.getMessagedGuestIds(resolvedEventId));
       } catch (sentError) {
         console.warn('Guests web sent status load error:', sentError);
         setSentGuestIds(new Set());
@@ -270,7 +274,7 @@ export default function CoupleGuestsWebScreen() {
       closeEdit();
     } catch (e: any) {
       console.error('Save guest error:', e);
-      Alert.alert('שגיאה', e?.message === DUPLICATE_GUEST_ERROR ? DUPLICATE_GUEST_ERROR : 'לא ניתן לשמור את השינויים.');
+      Alert.alert('שגיאה', e?.message === DUPLICATE_GUEST_ERROR ? `${editName.trim()} כבר קיים באירוע לפי מספר הטלפון.` : 'לא ניתן לשמור את השינויים.');
     }
   };
 
@@ -467,12 +471,173 @@ export default function CoupleGuestsWebScreen() {
       if (e?.message === UNAPPROVED_EVENT_GUEST_LIMIT_ERROR) {
         Alert.alert('הגבלת מוזמנים', UNAPPROVED_EVENT_GUEST_LIMIT_ERROR);
       } else if (e?.message === DUPLICATE_GUEST_ERROR) {
-        Alert.alert('מוזמן כפול', DUPLICATE_GUEST_ERROR);
+        Alert.alert('מוזמן כפול', `${addGuestName.trim()} כבר קיים באירוע לפי מספר הטלפון.`);
       } else {
         Alert.alert('שגיאה', 'לא ניתן להוסיף את המוזמן.');
       }
     } finally {
       setAddSaving(false);
+    }
+  };
+
+  const openImport = () => {
+    if (!resolvedEventId) {
+      Alert.alert('שגיאה', 'לא נמצא אירוע פעיל.');
+      return;
+    }
+    setImportSummary(null);
+    setImportStatusText('');
+    setImportBusy(false);
+    setImportOpen(true);
+  };
+
+  const closeImport = () => {
+    if (importBusy) return;
+    setImportOpen(false);
+    setImportSummary(null);
+    setImportStatusText('');
+  };
+
+  const handleDownloadTemplate = () => {
+    try {
+      downloadGuestImportTemplate({ eventTitle });
+    } catch (e: any) {
+      console.error('Download template error:', e);
+      Alert.alert('שגיאה', e?.message || 'לא ניתן להוריד את התבנית.');
+    }
+  };
+
+  const handleImportExcel = async () => {
+    if (!resolvedEventId || importBusy) return;
+
+    let parsed: { rows: ParsedGuestRow[]; skipped: number; totalRows: number } | null = null;
+    try {
+      parsed = await pickAndParseGuestsFile();
+    } catch (e: any) {
+      console.error('Parse guests file error:', e);
+      Alert.alert('שגיאה', e?.message || 'לא ניתן לקרוא את הקובץ. ודאו שזהו קובץ Excel או CSV תקין.');
+      return;
+    }
+
+    if (!parsed) return; // user cancelled
+    if (parsed.rows.length === 0) {
+      Alert.alert('לא נמצאו מוזמנים', 'לא נמצאו שורות תקינות בקובץ. ודאו שיש עמודת "שם" ולפחות שורה אחת עם נתונים.');
+      return;
+    }
+
+    if (!isEventApproved) {
+      const remaining = Math.max(0, UNAPPROVED_EVENT_GUEST_LIMIT - guests.length);
+      if (parsed.rows.length > remaining) {
+        Alert.alert('הגבלת מוזמנים', UNAPPROVED_EVENT_GUEST_LIMIT_ERROR);
+        return;
+      }
+    }
+
+    setImportBusy(true);
+    setImportSummary(null);
+    try {
+      setImportStatusText('יוצר קטגוריות חסרות...');
+
+      // Normalize category names for robust matching (collapse whitespace, lowercase).
+      const normalizeCatKey = (v: string) =>
+        String(v || '')
+          .trim()
+          .replace(/\s+/g, ' ')
+          .toLowerCase();
+
+      // Map of normalized-name → existing category id.
+      const categoryIdByName = new Map<string, string>();
+      for (const c of categories) {
+        categoryIdByName.set(normalizeCatKey(c.name), String(c.id));
+      }
+
+      const createdCategories: GuestCategoryRow[] = [];
+      let mergedIntoExisting = 0;
+
+      // Collect only category names that don't already exist.
+      const uniqueNewNames = new Map<string, string>();
+      for (const row of parsed.rows) {
+        const catName = String(row.category || '').trim();
+        if (!catName) continue;
+        const key = normalizeCatKey(catName);
+        if (categoryIdByName.has(key)) {
+          // Category already exists — guests will be added to it automatically.
+          mergedIntoExisting++;
+          continue;
+        }
+        if (!uniqueNewNames.has(key)) uniqueNewNames.set(key, catName);
+      }
+
+      for (const [key, name] of uniqueNewNames) {
+        try {
+          const created = (await guestService.addGuestCategory(resolvedEventId, name, 'groom')) as any;
+          categoryIdByName.set(key, String(created.id));
+          createdCategories.push(created as GuestCategoryRow);
+        } catch (e) {
+          console.error('Create category during import error:', e);
+        }
+      }
+
+      setImportStatusText(`מוסיף ${parsed.rows.length} מוזמנים...`);
+      const guestsToAdd = parsed.rows.map((row) => {
+        const key = normalizeCatKey(String(row.category || ''));
+        const categoryId = key ? categoryIdByName.get(key) ?? null : null;
+        return {
+          name: row.name,
+          phone: row.phone,
+          status: 'ממתין' as GuestStatus,
+          tableId: null,
+          gift: 0,
+          message: '',
+          category_id: categoryId,
+          numberOfPeople: row.numberOfPeople,
+        };
+      });
+
+      const { added, duplicateSkipped, duplicateNames } = await guestService.addGuestsBatch(resolvedEventId, guestsToAdd as any);
+
+      if (createdCategories.length) {
+        setCategories((prev) => [...prev, ...createdCategories]);
+      }
+      if (added.length) {
+        setGuests((prev) => {
+          const next: GuestRow[] = [
+            ...prev,
+            ...added.map((g) => ({
+              id: String(g.id),
+              name: String(g.name || ''),
+              phone: String(g.phone || ''),
+              status: (g.status || 'ממתין') as GuestStatus,
+              category_id: (g as any).category_id ?? null,
+              numberOfPeople: (g as any).numberOfPeople ?? 1,
+            })),
+          ];
+          next.sort((a, b) =>
+            String(a.name || '').localeCompare(String(b.name || ''), 'he', { sensitivity: 'base' })
+          );
+          return next;
+        });
+      }
+
+      setImportSummary({
+        added: added.length,
+        duplicates: duplicateSkipped,
+        duplicateNames,
+        skipped: parsed.skipped,
+        newCategories: createdCategories.length,
+        mergedIntoExisting,
+      });
+      setImportStatusText('');
+    } catch (e: any) {
+      console.error('Import excel error:', e);
+      if (e?.message === UNAPPROVED_EVENT_GUEST_LIMIT_ERROR) {
+        Alert.alert('הגבלת מוזמנים', UNAPPROVED_EVENT_GUEST_LIMIT_ERROR);
+      } else {
+        Alert.alert('שגיאה', e?.message || 'אירעה שגיאה בעת ייבוא המוזמנים.');
+      }
+      setImportStatusText('');
+    } finally {
+      setImportBusy(false);
     }
   };
 
@@ -564,19 +729,35 @@ export default function CoupleGuestsWebScreen() {
                     ))}
                   </View>
 
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="הוסף מוזמנים"
-                    onPress={openAdd}
-                    style={({ hovered, pressed }: any) => [
-                      styles.adminHeaderActionBtn,
-                      Platform.OS === 'web' && hovered ? styles.adminHeaderActionBtnHover : null,
-                      pressed ? styles.btnPressed : null,
-                    ]}
-                  >
-                    <Ionicons name="add" size={16} color={colors.white} />
-                    <Text style={styles.adminHeaderActionBtnText}>הוסף מוזמנים</Text>
-                  </Pressable>
+                  <View style={styles.adminHeaderActionsRow}>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="ייבוא מאקסל"
+                      onPress={openImport}
+                      style={({ hovered, pressed }: any) => [
+                        styles.adminHeaderImportBtn,
+                        Platform.OS === 'web' && hovered ? styles.adminHeaderImportBtnHover : null,
+                        pressed ? styles.btnPressed : null,
+                      ]}
+                    >
+                      <Ionicons name="cloud-upload-outline" size={16} color={colors.primary} />
+                      <Text style={styles.adminHeaderImportBtnText}>ייבוא מאקסל</Text>
+                    </Pressable>
+
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="הוסף מוזמנים"
+                      onPress={openAdd}
+                      style={({ hovered, pressed }: any) => [
+                        styles.adminHeaderActionBtn,
+                        Platform.OS === 'web' && hovered ? styles.adminHeaderActionBtnHover : null,
+                        pressed ? styles.btnPressed : null,
+                      ]}
+                    >
+                      <Ionicons name="add" size={16} color={colors.white} />
+                      <Text style={styles.adminHeaderActionBtnText}>הוסף מוזמנים</Text>
+                    </Pressable>
+                  </View>
                 </View>
               }
               actions={
@@ -683,20 +864,37 @@ export default function CoupleGuestsWebScreen() {
                 </Text>
               </Pressable>
             ) : (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="הוסף מוזמנים"
-                onPress={openAdd}
-                style={({ hovered, pressed }: any) => [
-                  styles.addGuestsBtn,
-                  isNarrow ? styles.addGuestsBtnNarrow : null,
-                  Platform.OS === 'web' && hovered ? styles.addGuestsBtnHover : null,
-                  pressed ? styles.btnPressed : null,
-                ]}
-              >
-                <Ionicons name="add" size={18} color={colors.white} />
-                <Text style={styles.addGuestsBtnText}>הוסף מוזמנים</Text>
-              </Pressable>
+              <View style={[styles.heroActionsRow, isNarrow ? styles.heroActionsRowNarrow : null]}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="ייבוא מאקסל"
+                  onPress={openImport}
+                  style={({ hovered, pressed }: any) => [
+                    styles.importGuestsBtn,
+                    isNarrow ? styles.importGuestsBtnNarrow : null,
+                    Platform.OS === 'web' && hovered ? styles.importGuestsBtnHover : null,
+                    pressed ? styles.btnPressed : null,
+                  ]}
+                >
+                  <Ionicons name="cloud-upload-outline" size={18} color={colors.primary} />
+                  <Text style={styles.importGuestsBtnText}>ייבוא מאקסל</Text>
+                </Pressable>
+
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="הוסף מוזמנים"
+                  onPress={openAdd}
+                  style={({ hovered, pressed }: any) => [
+                    styles.addGuestsBtn,
+                    isNarrow ? styles.addGuestsBtnNarrow : null,
+                    Platform.OS === 'web' && hovered ? styles.addGuestsBtnHover : null,
+                    pressed ? styles.btnPressed : null,
+                  ]}
+                >
+                  <Ionicons name="add" size={18} color={colors.white} />
+                  <Text style={styles.addGuestsBtnText}>הוסף מוזמנים</Text>
+                </Pressable>
+              </View>
             )}
           </View>
 
@@ -1207,6 +1405,184 @@ export default function CoupleGuestsWebScreen() {
                   {addSaving ? (addStep === 'category' ? 'טוען...' : 'מוסיף...') : addStep === 'category' ? 'המשך' : 'הוסף מוזמן'}
                 </Text>
               </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Import from Excel modal */}
+      <Modal visible={importOpen} transparent animationType="fade" onRequestClose={closeImport}>
+        <Pressable style={styles.modalOverlay} onPress={closeImport}>
+          <Pressable style={[styles.modalCard, { maxHeight: Math.min(0.92 * windowHeight, 680) }]} onPress={() => {}}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>ייבוא מוזמנים מאקסל</Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="סגירה"
+                onPress={closeImport}
+                disabled={importBusy}
+                style={({ hovered, pressed }: any) => [
+                  styles.modalCloseBtn,
+                  Platform.OS === 'web' && hovered ? styles.modalCloseBtnHover : null,
+                  pressed ? styles.btnPressed : null,
+                ]}
+              >
+                <Ionicons name="close" size={18} color={colors.gray[700]} />
+              </Pressable>
+            </View>
+
+            <ScrollView contentContainerStyle={styles.modalBody} showsVerticalScrollIndicator={false}>
+              {importSummary ? (
+                <View style={styles.importSummaryBox}>
+                  <Ionicons name="checkmark-circle" size={40} color={colors.success} />
+                  <Text style={styles.importSummaryTitle}>הייבוא הושלם</Text>
+                  <View style={styles.importSummaryRows}>
+                    <View style={styles.importSummaryRow}>
+                      <Text style={styles.importSummaryValue}>{importSummary.added}</Text>
+                      <Text style={styles.importSummaryLabel}>מוזמנים נוספו</Text>
+                    </View>
+                    {importSummary.newCategories > 0 ? (
+                      <View style={styles.importSummaryRow}>
+                        <Text style={styles.importSummaryValue}>{importSummary.newCategories}</Text>
+                        <Text style={styles.importSummaryLabel}>קטגוריות חדשות נוצרו</Text>
+                      </View>
+                    ) : null}
+                    {importSummary.mergedIntoExisting > 0 ? (
+                      <View style={styles.importSummaryRow}>
+                        <Text style={styles.importSummaryValue}>{importSummary.mergedIntoExisting}</Text>
+                        <Text style={styles.importSummaryLabel}>מוזמנים שויכו לקטגוריה קיימת</Text>
+                      </View>
+                    ) : null}
+                    {importSummary.duplicates > 0 ? (
+                      <View style={styles.importDuplicatesBox}>
+                        <View style={styles.importDuplicatesHeader}>
+                          <Ionicons name="alert-circle-outline" size={16} color={colors.warning} />
+                          <Text style={styles.importDuplicatesTitle}>
+                            {importSummary.duplicates} מוזמן{importSummary.duplicates !== 1 ? 'ים' : ''} דולג{importSummary.duplicates !== 1 ? 'ו' : ''} (טלפון כפול)
+                          </Text>
+                        </View>
+                        {importSummary.duplicateNames.map((name, idx) => (
+                          <Text key={idx} style={styles.importDuplicateName}>
+                            • {name} כבר קיים
+                          </Text>
+                        ))}
+                      </View>
+                    ) : null}
+                    {importSummary.skipped > 0 ? (
+                      <View style={styles.importSummaryRow}>
+                        <Text style={styles.importSummaryValue}>{importSummary.skipped}</Text>
+                        <Text style={styles.importSummaryLabel}>שורות ללא שם דולגו</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                </View>
+              ) : (
+                <>
+                  <View style={styles.importIntroBox}>
+                    <Ionicons name="document-text-outline" size={22} color={colors.primary} />
+                    <Text style={styles.importIntroText}>
+                      העלו קובץ Excel (xlsx/xls) או CSV עם המוזמנים. הקובץ צריך לכלול עמודות עם הכותרות הבאות:
+                    </Text>
+                  </View>
+
+                  <View style={styles.importColsTable}>
+                    {[
+                      { col: 'שם', req: 'חובה', desc: 'שם המוזמן' },
+                      { col: 'טלפון', req: 'מומלץ', desc: 'מספר נייד, למשל 0501234567' },
+                      { col: 'קטגוריה', req: 'רשות', desc: 'שם קבוצה (תיווצר אוטומטית אם לא קיימת)' },
+                    ].map((row) => (
+                      <View key={row.col} style={styles.importColRow}>
+                        <View style={styles.importColNameWrap}>
+                          <Text style={styles.importColName}>{row.col}</Text>
+                          <Text
+                            style={[
+                              styles.importColReq,
+                              row.req === 'חובה' ? styles.importColReqRequired : null,
+                            ]}
+                          >
+                            {row.req}
+                          </Text>
+                        </View>
+                        <Text style={styles.importColDesc}>{row.desc}</Text>
+                      </View>
+                    ))}
+                  </View>
+
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="הורד תבנית אקסל"
+                    onPress={handleDownloadTemplate}
+                    disabled={importBusy}
+                    style={({ hovered, pressed }: any) => [
+                      styles.importTemplateLink,
+                      Platform.OS === 'web' && hovered ? styles.importTemplateLinkHover : null,
+                      pressed ? styles.btnPressed : null,
+                    ]}
+                  >
+                    <Ionicons name="download-outline" size={16} color={colors.primary} />
+                    <Text style={styles.importTemplateLinkText}>הורדת קובץ תבנית לדוגמה</Text>
+                  </Pressable>
+
+                  {importBusy ? (
+                    <View style={styles.importBusyBox}>
+                      <ActivityIndicator size="small" color={colors.primary} />
+                      <Text style={styles.importBusyText}>{importStatusText || 'מייבא...'}</Text>
+                    </View>
+                  ) : null}
+                </>
+              )}
+
+              <View style={{ height: 10 }} />
+            </ScrollView>
+
+            <View style={styles.modalActions}>
+              {importSummary ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="סיום"
+                  onPress={closeImport}
+                  style={({ hovered, pressed }: any) => [
+                    styles.modalPrimaryBtn,
+                    Platform.OS === 'web' && hovered ? styles.modalPrimaryBtnHover : null,
+                    pressed ? styles.btnPressed : null,
+                  ]}
+                >
+                  <Ionicons name="checkmark" size={18} color={colors.white} />
+                  <Text style={styles.modalPrimaryBtnText}>סיום</Text>
+                </Pressable>
+              ) : (
+                <>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="ביטול"
+                    onPress={closeImport}
+                    disabled={importBusy}
+                    style={({ hovered, pressed }: any) => [
+                      styles.modalSecondaryBtn,
+                      Platform.OS === 'web' && hovered ? styles.modalSecondaryBtnHover : null,
+                      pressed ? styles.btnPressed : null,
+                    ]}
+                  >
+                    <Text style={styles.modalSecondaryBtnText}>ביטול</Text>
+                  </Pressable>
+
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="בחר קובץ"
+                    onPress={handleImportExcel}
+                    disabled={importBusy}
+                    style={({ hovered, pressed }: any) => [
+                      styles.modalPrimaryBtn,
+                      Platform.OS === 'web' && hovered ? styles.modalPrimaryBtnHover : null,
+                      pressed ? styles.btnPressed : null,
+                      importBusy ? styles.modalPrimaryBtnDisabled : null,
+                    ]}
+                  >
+                    <Ionicons name="cloud-upload-outline" size={18} color={colors.white} />
+                    <Text style={styles.modalPrimaryBtnText}>{importBusy ? 'מייבא...' : 'בחר קובץ וייבא'}</Text>
+                  </Pressable>
+                </>
+              )}
             </View>
           </Pressable>
         </Pressable>
@@ -1764,6 +2140,33 @@ const styles = StyleSheet.create({
     color: colors.white,
     textAlign: 'right',
   },
+  adminHeaderActionsRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  adminHeaderImportBtn: {
+    minHeight: 40,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.18)',
+    backgroundColor: colors.white,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  adminHeaderImportBtnHover: {
+    backgroundColor: colors.gray[100],
+  },
+  adminHeaderImportBtnText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.primary,
+    textAlign: 'right',
+  },
   adminHeaderSelectionBadge: {
     maxWidth: 320,
     minHeight: 40,
@@ -2125,6 +2528,33 @@ const styles = StyleSheet.create({
   addGuestsBtnNarrow: { width: '100%' },
   addGuestsBtnHover: { opacity: 0.97, transform: [{ translateY: -1 }] },
   addGuestsBtnText: { fontSize: 13, fontWeight: '900', color: colors.white, textAlign: 'right', writingDirection: 'rtl' },
+  heroActionsRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 10,
+    flexShrink: 0,
+  },
+  heroActionsRowNarrow: {
+    width: '100%',
+    flexDirection: 'column',
+  },
+  importGuestsBtn: {
+    height: 48,
+    paddingHorizontal: 18,
+    borderRadius: 18,
+    backgroundColor: colors.white,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+    flexShrink: 0,
+  },
+  importGuestsBtnNarrow: { width: '100%' },
+  importGuestsBtnHover: { backgroundColor: colors.gray[100] },
+  importGuestsBtnText: { fontSize: 13, fontWeight: '900', color: colors.primary, textAlign: 'right', writingDirection: 'rtl' },
   filterToggleBtn: {
     height: 48,
     paddingHorizontal: 18,
@@ -2836,6 +3266,181 @@ const styles = StyleSheet.create({
   },
   modalSecondaryBtnHover: { backgroundColor: colors.gray[200] },
   modalSecondaryBtnText: { color: colors.gray[800], fontSize: 13, fontWeight: '900', textAlign: 'right' },
+
+  importIntroBox: {
+    flexDirection: 'row-reverse',
+    alignItems: 'flex-start',
+    gap: 10,
+    padding: 14,
+    borderRadius: 14,
+    backgroundColor: '#F8FAFF',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.10)',
+  },
+  importIntroText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.gray[700],
+    textAlign: 'right',
+    writingDirection: 'rtl',
+    lineHeight: 20,
+  },
+  importColsTable: {
+    marginTop: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.10)',
+    overflow: 'hidden',
+  },
+  importColRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    gap: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(15,23,42,0.06)',
+  },
+  importColNameWrap: {
+    width: 96,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  importColName: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  importColReq: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: colors.gray[600],
+    backgroundColor: colors.gray[100],
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    overflow: 'hidden',
+  },
+  importColReqRequired: {
+    color: colors.error,
+    backgroundColor: 'rgba(244,54,54,0.10)',
+  },
+  importColDesc: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.gray[600],
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  importTemplateLink: {
+    marginTop: 14,
+    alignSelf: 'flex-end',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  importTemplateLinkHover: { opacity: 0.8 },
+  importTemplateLinkText: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: colors.primary,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+    textDecorationLine: 'underline',
+  },
+  importBusyBox: {
+    marginTop: 16,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 10,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: '#F8FAFF',
+  },
+  importBusyText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.primary,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  importSummaryBox: {
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 10,
+  },
+  importSummaryTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'center',
+  },
+  importSummaryRows: {
+    width: '100%',
+    marginTop: 8,
+    gap: 8,
+  },
+  importSummaryRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: colors.gray[50],
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.06)',
+  },
+  importSummaryValue: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: colors.primary,
+  },
+  importSummaryLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.gray[700],
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  importDuplicatesBox: {
+    width: '100%',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(240,203,70,0.4)',
+    backgroundColor: 'rgba(240,203,70,0.08)',
+    padding: 12,
+    gap: 6,
+  },
+  importDuplicatesHeader: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+  },
+  importDuplicatesTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.gray[800],
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  importDuplicateName: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.gray[700],
+    textAlign: 'right',
+    writingDirection: 'rtl',
+    paddingRight: 4,
+  },
 
   addHint: {
     fontSize: 12,

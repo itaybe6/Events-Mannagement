@@ -2,13 +2,14 @@ import { useEffect, useMemo, useState } from 'react';
 import { Alert } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { eventService } from '@/lib/services/eventService';
-import { guestService } from '@/lib/services/guestService';
+import { getPhoneDuplicateKeys, guestService } from '@/lib/services/guestService';
 import { Event, Guest } from '@/types';
 
 type AdminEventDetailsStats = {
   confirmed: number;
   declined: number;
   pending: number;
+  maybe: number;
   seated: number;
   totalGuests: number;
   seatedPercent: number;
@@ -16,6 +17,9 @@ type AdminEventDetailsStats = {
   confirmedPeople: number;
   pendingPeople: number;
   declinedPeople: number;
+  maybePeople: number;
+  uniquePhoneCount: number;
+  sentMessageCount: number;
 };
 
 export type AdminEventDetailsModel = {
@@ -24,6 +28,7 @@ export type AdminEventDetailsModel = {
   event: Event | null;
   setEvent: (next: Event | null | ((prev: Event | null) => Event | null)) => void;
   guests: Guest[];
+  sentGuestIds: Set<string>;
   userName: string;
   userAvatarUrl: string;
   stats: AdminEventDetailsStats;
@@ -33,11 +38,29 @@ export type AdminEventDetailsModel = {
 const sumPeople = (rows: Array<{ numberOfPeople?: number }>) =>
   rows.reduce((sum, r) => sum + (Number(r.numberOfPeople) || 1), 0);
 
+const countUniquePhones = (rows: Array<{ phone?: string }>) => {
+  const seenKeys = new Set<string>();
+  let count = 0;
+
+  for (const row of rows) {
+    const keys = getPhoneDuplicateKeys(String(row.phone ?? ''));
+    if (!keys.length) continue;
+
+    if (!keys.some((key) => seenKeys.has(key))) {
+      count += 1;
+      keys.forEach((key) => seenKeys.add(key));
+    }
+  }
+
+  return count;
+};
+
 export function useAdminEventDetailsModel(eventId: string) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [event, setEvent] = useState<Event | null>(null);
   const [guests, setGuests] = useState<Guest[]>([]);
+  const [sentGuestIds, setSentGuestIds] = useState<Set<string>>(new Set());
   const [userName, setUserName] = useState<string>('');
   const [userAvatarUrl, setUserAvatarUrl] = useState<string>('');
 
@@ -47,6 +70,7 @@ export function useAdminEventDetailsModel(eventId: string) {
       setError('חסר מזהה אירוע');
       setEvent(null);
       setGuests([]);
+      setSentGuestIds(new Set());
       setUserName('');
       setUserAvatarUrl('');
       setLoading(false);
@@ -57,13 +81,15 @@ export function useAdminEventDetailsModel(eventId: string) {
     setError(null);
 
     try {
-      const [eventData, guestsData] = await Promise.all([
+      const [eventData, guestsData, messagedGuestIds] = await Promise.all([
         eventService.getEvent(eventId),
         guestService.getGuests(eventId),
+        guestService.getMessagedGuestIds(eventId),
       ]);
 
       setEvent(eventData ?? null);
       setGuests(Array.isArray(guestsData) ? guestsData : []);
+      setSentGuestIds(messagedGuestIds instanceof Set ? messagedGuestIds : new Set());
 
       if (!eventData) {
         setError('האירוע לא נמצא');
@@ -95,6 +121,7 @@ export function useAdminEventDetailsModel(eventId: string) {
       setError('שגיאה בטעינת האירוע');
       setEvent(null);
       setGuests([]);
+      setSentGuestIds(new Set());
       setUserName('');
       setUserAvatarUrl('');
     } finally {
@@ -111,6 +138,7 @@ export function useAdminEventDetailsModel(eventId: string) {
     const confirmed = guests.filter((g) => g.status === 'מגיע').length;
     const declined = guests.filter((g) => g.status === 'לא מגיע').length;
     const pending = guests.filter((g) => g.status === 'ממתין').length;
+    const maybe = guests.filter((g) => g.status === 'אולי מגיע').length;
     const seated = guests.filter((g) => Boolean(g.tableId)).length;
     const totalGuests = guests.length;
     const seatedPercent = totalGuests ? Math.round((seated / totalGuests) * 100) : 0;
@@ -119,11 +147,14 @@ export function useAdminEventDetailsModel(eventId: string) {
     const confirmedPeople = sumPeople(guests.filter((g) => g.status === 'מגיע'));
     const pendingPeople = sumPeople(guests.filter((g) => g.status === 'ממתין'));
     const declinedPeople = sumPeople(guests.filter((g) => g.status === 'לא מגיע'));
+    const maybePeople = sumPeople(guests.filter((g) => g.status === 'אולי מגיע'));
+    const uniquePhoneCount = countUniquePhones(guests);
 
     return {
       confirmed,
       declined,
       pending,
+      maybe,
       seated,
       totalGuests,
       seatedPercent,
@@ -131,8 +162,11 @@ export function useAdminEventDetailsModel(eventId: string) {
       confirmedPeople,
       pendingPeople,
       declinedPeople,
+      maybePeople,
+      uniquePhoneCount,
+      sentMessageCount: sentGuestIds.size,
     };
-  }, [guests]);
+  }, [guests, sentGuestIds]);
 
   return {
     loading,
@@ -140,6 +174,7 @@ export function useAdminEventDetailsModel(eventId: string) {
     event,
     setEvent,
     guests,
+    sentGuestIds,
     userName,
     userAvatarUrl,
     stats,

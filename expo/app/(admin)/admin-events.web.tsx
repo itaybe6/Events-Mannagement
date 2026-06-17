@@ -7,7 +7,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   useWindowDimensions,
@@ -915,35 +914,82 @@ export function AdminEventsListWebScreen() {
                         </View>
                       </View>
 
-                      <Pressable
-                        onPress={(evt: any) => evt?.stopPropagation?.()}
-                        style={approvalStyles.row}
-                      >
-                        {e.isApproved === false ? (
-                          <View style={approvalStyles.badgePending}>
-                            <Ionicons name="time-outline" size={12} color="#92400E" />
-                            <Text style={approvalStyles.badgePendingText}>ממתין לאישור</Text>
-                          </View>
-                        ) : (
-                          <View style={approvalStyles.badgeApproved}>
-                            <Ionicons name="checkmark-circle" size={12} color="#065F46" />
-                            <Text style={approvalStyles.badgeApprovedText}>מאושר</Text>
-                          </View>
-                        )}
-                        <View style={approvalStyles.right}>
-                          <Text style={approvalStyles.label}>
-                            {e.isApproved === false ? 'אשר אירוע' : 'ביטול אישור'}
-                          </Text>
-                          <Switch
-                            value={e.isApproved !== false}
-                            onValueChange={(val) => handleToggleApproval(e, val)}
-                            disabled={approvingEventId === e.id}
-                            trackColor={{ false: '#FCD34D', true: '#86EFAC' }}
-                            thumbColor={e.isApproved !== false ? '#059669' : '#D97706'}
-                            ios_backgroundColor="#FCD34D"
-                          />
-                        </View>
-                      </Pressable>
+                      {(() => {
+                        const approved = e.isApproved !== false;
+                        const isToggling = approvingEventId === e.id;
+                        return (
+                          <Pressable
+                            accessibilityRole="switch"
+                            accessibilityState={{ checked: approved, disabled: isToggling, busy: isToggling }}
+                            accessibilityLabel={approved ? 'אירוע מאושר, הקש לביטול אישור' : 'אירוע ממתין לאישור, הקש לאישור'}
+                            disabled={isToggling}
+                            onPress={(evt: any) => {
+                              evt?.stopPropagation?.();
+                              handleToggleApproval(e, !approved);
+                            }}
+                            style={({ hovered, pressed }: any) => [
+                              approvalStyles.control,
+                              approved ? approvalStyles.controlApproved : approvalStyles.controlPending,
+                              Platform.OS === 'web' && hovered ? approvalStyles.controlHover : null,
+                              pressed ? approvalStyles.controlPressed : null,
+                              isToggling ? approvalStyles.controlBusy : null,
+                            ]}
+                          >
+                            <View style={approvalStyles.statusBlock}>
+                              <View
+                                style={[
+                                  approvalStyles.statusIcon,
+                                  approved ? approvalStyles.statusIconApproved : approvalStyles.statusIconPending,
+                                ]}
+                              >
+                                <Ionicons
+                                  name={approved ? 'checkmark-circle' : 'time-outline'}
+                                  size={15}
+                                  color={approved ? '#047857' : '#B45309'}
+                                />
+                              </View>
+                              <View style={approvalStyles.statusTextBlock}>
+                                <Text
+                                  style={[
+                                    approvalStyles.statusTitle,
+                                    approved ? approvalStyles.statusTitleApproved : approvalStyles.statusTitlePending,
+                                  ]}
+                                  numberOfLines={1}
+                                >
+                                  {approved ? 'אירוע מאושר' : 'ממתין לאישור'}
+                                </Text>
+                                <Text style={approvalStyles.statusHint} numberOfLines={1}>
+                                  {isToggling ? 'מעדכן…' : approved ? 'הקש לביטול האישור' : 'הקש לאישור האירוע'}
+                                </Text>
+                              </View>
+                            </View>
+
+                            <View
+                              style={[
+                                approvalStyles.track,
+                                approved ? approvalStyles.trackOn : approvalStyles.trackOff,
+                              ]}
+                            >
+                              <View
+                                style={[
+                                  approvalStyles.thumb,
+                                  approved ? approvalStyles.thumbOn : approvalStyles.thumbOff,
+                                ]}
+                              >
+                                {isToggling ? (
+                                  <ActivityIndicator size="small" color={approved ? '#047857' : '#B45309'} />
+                                ) : (
+                                  <Ionicons
+                                    name={approved ? 'checkmark' : 'close'}
+                                    size={13}
+                                    color={approved ? '#047857' : '#B45309'}
+                                  />
+                                )}
+                              </View>
+                            </View>
+                          </Pressable>
+                        );
+                      })()}
 
                       <View style={styles.eventOverviewFooter}>
                         <View style={styles.eventOverviewOwnerBlock}>
@@ -1119,61 +1165,130 @@ export function AdminEventsListWebScreen() {
 }
 
 const approvalStyles = StyleSheet.create({
-  row: {
+  control: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.6)',
+    paddingVertical: 7,
+    paddingHorizontal: 9,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.06)',
+    ...(Platform.OS === 'web'
+      ? ({
+          cursor: 'pointer',
+          transitionProperty: 'transform, box-shadow, background-color, border-color',
+          transitionDuration: '160ms',
+          transitionTimingFunction: 'ease',
+        } as any)
+      : null),
   },
-  right: {
+  controlApproved: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#A7F3D0',
+  },
+  controlPending: {
+    backgroundColor: '#FFFBEB',
+    borderColor: '#FDE68A',
+  },
+  controlHover: {
+    ...(Platform.OS === 'web'
+      ? ({
+          transform: 'translateY(-1px)',
+          boxShadow: '0 6px 16px rgba(15,23,42,0.10)',
+        } as any)
+      : null),
+  },
+  controlPressed: {
+    opacity: 0.92,
+    ...(Platform.OS === 'web' ? ({ transform: 'translateY(0px)' } as any) : null),
+  },
+  controlBusy: {
+    opacity: 0.75,
+  },
+  statusBlock: {
+    flex: 1,
     flexDirection: 'row-reverse',
     alignItems: 'center',
     gap: 8,
   },
-  label: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: colors.gray[700],
+  statusIcon: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statusIconApproved: {
+    backgroundColor: '#D1FAE5',
+  },
+  statusIconPending: {
+    backgroundColor: '#FEF3C7',
+  },
+  statusTextBlock: {
+    flex: 1,
+    alignItems: 'flex-end',
+  },
+  statusTitle: {
+    fontSize: 12.5,
+    fontWeight: '900',
     textAlign: 'right',
   },
-  badgePending: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#FEF3C7',
-    borderColor: '#FCD34D',
-    borderWidth: 1,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 999,
-  },
-  badgePendingText: {
-    fontSize: 11,
-    fontWeight: '900',
-    color: '#92400E',
-  },
-  badgeApproved: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#D1FAE5',
-    borderColor: '#6EE7B7',
-    borderWidth: 1,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 999,
-  },
-  badgeApprovedText: {
-    fontSize: 11,
-    fontWeight: '900',
+  statusTitleApproved: {
     color: '#065F46',
   },
+  statusTitlePending: {
+    color: '#92400E',
+  },
+  statusHint: {
+    marginTop: 1,
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: colors.gray[500],
+    textAlign: 'right',
+  },
+  track: {
+    width: 46,
+    height: 26,
+    borderRadius: 999,
+    padding: 3,
+    flexDirection: 'row',
+    alignItems: 'center',
+    ...(Platform.OS === 'web'
+      ? ({
+          transitionProperty: 'background-color',
+          transitionDuration: '160ms',
+          transitionTimingFunction: 'ease',
+        } as any)
+      : null),
+  },
+  trackOn: {
+    backgroundColor: '#34D399',
+    justifyContent: 'flex-end',
+  },
+  trackOff: {
+    backgroundColor: '#FBBF24',
+    justifyContent: 'flex-start',
+  },
+  thumb: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 1px 3px rgba(15,23,42,0.30)' } as any)
+      : {
+          shadowColor: '#0F172A',
+          shadowOpacity: 0.3,
+          shadowRadius: 2,
+          shadowOffset: { width: 0, height: 1 },
+          elevation: 2,
+        }),
+  },
+  thumbOn: {},
+  thumbOff: {},
 });
 
 const styles = StyleSheet.create({

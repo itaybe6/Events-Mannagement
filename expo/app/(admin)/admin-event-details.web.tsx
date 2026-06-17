@@ -16,7 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
-import Svg, { Circle, Line, Path } from 'react-native-svg';
+import Svg, { Circle } from 'react-native-svg';
 
 import { colors } from '@/constants/colors';
 import AdminWebPageHeader from '@/components/desktop/AdminWebPageHeader';
@@ -51,45 +51,57 @@ function getEventStatusMeta(date: Date | string | null | undefined) {
   return { label: 'בתכנון', tone: 'planning' as const };
 }
 
-function GaugeMeter({
-  value,
-  total,
-  color,
-  trackColor,
+function DonutChart({
+  segments,
+  size = 176,
+  strokeWidth = 26,
 }: {
-  value: number;
-  total: number;
-  color: string;
-  trackColor: string;
+  segments: { key: string; value: number; color: string }[];
+  size?: number;
+  strokeWidth?: number;
 }) {
-  const safeTotal = Math.max(0, Number(total) || 0);
-  const safeValue = Math.max(0, Math.min(Number(value) || 0, safeTotal || Number(value) || 0));
-  const progress = safeTotal > 0 ? Math.max(0, Math.min(1, safeValue / safeTotal)) : 0;
-  const width = 132;
-  const height = 84;
-  const cx = width / 2;
-  const cy = height - 8;
-  const radius = 46;
-  const arcLength = Math.PI * radius;
-  const pointerRadius = radius - 6;
-  const angle = Math.PI - progress * Math.PI;
-  const pointerX = cx + pointerRadius * Math.cos(angle);
-  const pointerY = cy - pointerRadius * Math.sin(angle);
-  const arcPath = `M ${cx - radius} ${cy} A ${radius} ${radius} 0 0 1 ${cx + radius} ${cy}`;
+  const radius = (size - strokeWidth) / 2;
+  const cx = size / 2;
+  const cy = size / 2;
+  const circumference = 2 * Math.PI * radius;
+  const total = segments.reduce((sum, seg) => sum + Math.max(0, seg.value), 0);
+
+  let offsetAccum = 0;
+  const arcs =
+    total > 0
+      ? segments
+          .filter((seg) => seg.value > 0)
+          .map((seg) => {
+            const dash = (seg.value / total) * circumference;
+            const arc = {
+              key: seg.key,
+              color: seg.color,
+              dashArray: `${dash} ${circumference - dash}`,
+              dashOffset: -offsetAccum,
+            };
+            offsetAccum += dash;
+            return arc;
+          })
+      : [];
 
   return (
-    <Svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
-      <Path d={arcPath} stroke={trackColor} strokeWidth={12} fill="none" strokeLinecap="round" />
-      <Path
-        d={arcPath}
-        stroke={color}
-        strokeWidth={12}
-        fill="none"
-        strokeLinecap="round"
-        strokeDasharray={`${Math.max(progress > 0 ? 3 : 0, progress * arcLength)} ${arcLength}`}
-      />
-      <Line x1={cx} y1={cy} x2={pointerX} y2={pointerY} stroke={'rgba(15,23,42,0.78)'} strokeWidth={3} strokeLinecap="round" />
-      <Circle cx={cx} cy={cy} r={9} fill="#FFFFFF" stroke={'rgba(15,23,42,0.78)'} strokeWidth={3} />
+    <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <Circle cx={cx} cy={cy} r={radius} stroke="rgba(15,23,42,0.06)" strokeWidth={strokeWidth} fill="none" />
+      {arcs.map((arc) => (
+        <Circle
+          key={arc.key}
+          cx={cx}
+          cy={cy}
+          r={radius}
+          stroke={arc.color}
+          strokeWidth={strokeWidth}
+          fill="none"
+          strokeDasharray={arc.dashArray}
+          strokeDashoffset={arc.dashOffset}
+          strokeLinecap="butt"
+          transform={`rotate(-90 ${cx} ${cy})`}
+        />
+      ))}
     </Svg>
   );
 }
@@ -106,10 +118,12 @@ export default function AdminEventDetailsWebScreen() {
     return fromId || fromEventId || '';
   }, [eventId, id]);
 
-  const { loading, error, event, setEvent, guests, userName, userAvatarUrl, stats, refresh } =
+  const { loading, error, event, setEvent, guests, sentGuestIds, userName, userAvatarUrl, stats, refresh } =
     useAdminEventDetailsModel(resolvedEventId);
 
   const [avatarPreviewOpen, setAvatarPreviewOpen] = useState(false);
+  const [messageStatusModalOpen, setMessageStatusModalOpen] = useState(false);
+  const [messageStatusTab, setMessageStatusTab] = useState<'sent' | 'not-sent'>('sent');
   const [editOpen, setEditOpen] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
   const [deleteSaving, setDeleteSaving] = useState(false);
@@ -518,53 +532,27 @@ export default function AdminEventDetailsWebScreen() {
         [workflowSteps[0], workflowSteps[1], workflowSteps[2], workflowSteps[3]],
         [workflowSteps[4], workflowSteps[5], workflowSteps[6], workflowSteps[7]],
       ];
-  const invitedBase = Math.max(0, Number(stats.invitedPeople) || 0);
-  const overviewStats = [
-    {
-      key: 'confirmed',
-      label: 'אישרו הגעה',
-      value: stats.confirmedPeople,
-      total: invitedBase,
-      hint: `${stats.seatedPercent}% שובצו לשולחנות`,
-      badge: 'מוכנים לאירוע',
-      icon: 'checkmark-circle-outline' as const,
-      accent: '#10B981',
-      tint: 'rgba(16,185,129,0.12)',
-    },
-    {
-      key: 'invited',
-      label: 'מוזמנים',
-      value: stats.invitedPeople,
-      total: stats.invitedPeople,
-      hint: 'סה"כ אנשים ברשימה',
-      badge: 'מאגר אורחים',
-      icon: 'mail-outline' as const,
-      accent: '#3B82F6',
-      tint: 'rgba(59,130,246,0.12)',
-    },
-    {
-      key: 'pending',
-      label: 'ממתינים',
-      value: stats.pendingPeople,
-      total: invitedBase,
-      hint: 'עדיין לא אישרו הגעה',
-      badge: 'דורש מעקב',
-      icon: 'hourglass-outline' as const,
-      accent: '#F59E0B',
-      tint: 'rgba(245,158,11,0.12)',
-    },
-    {
-      key: 'declined',
-      label: 'לא מגיעים',
-      value: stats.declinedPeople,
-      total: invitedBase,
-      hint: 'אורחים שביטלו הגעה',
-      badge: 'סטטוס שלילי',
-      icon: 'close-circle-outline' as const,
-      accent: '#EF4444',
-      tint: 'rgba(239,68,68,0.12)',
-    },
-  ] as const;
+  const sentGuestList = guests.filter((g) => sentGuestIds.has(String(g.id)));
+  const notSentGuestList = guests.filter((g) => !sentGuestIds.has(String(g.id)));
+  const phoneCard = {
+    uniquePhoneCount: Math.max(0, Number(stats.uniquePhoneCount) || 0),
+    sentMessageCount: sentGuestList.length,
+    notSentCount: notSentGuestList.length,
+  };
+  const phoneSegments = [
+    { key: 'sent', label: 'נשלחה הודעה', value: phoneCard.sentMessageCount, color: '#6366F1' },
+    { key: 'not-sent', label: 'טרם נשלחה', value: phoneCard.notSentCount, color: '#CBD5E1' },
+  ];
+  const messageStatusGuests = messageStatusTab === 'sent' ? sentGuestList : notSentGuestList;
+  const rsvpSegments = [
+    { key: 'confirmed', label: 'מגיעים', value: Math.max(0, stats.confirmedPeople), color: '#10B981' },
+    { key: 'maybe', label: 'אולי מגיעים', value: Math.max(0, stats.maybePeople), color: '#3B82F6' },
+    { key: 'pending', label: 'ממתינים', value: Math.max(0, stats.pendingPeople), color: '#F59E0B' },
+    { key: 'declined', label: 'לא מגיעים', value: Math.max(0, stats.declinedPeople), color: '#EF4444' },
+  ];
+  const rsvpTotal = rsvpSegments.reduce((sum, seg) => sum + seg.value, 0);
+  const confirmedPercent = rsvpTotal > 0 ? Math.round((stats.confirmedPeople / rsvpTotal) * 100) : 0;
+  const visibleRsvpSegments = rsvpSegments.filter((seg) => seg.key !== 'maybe' || seg.value > 0);
 
   return (
     <View style={styles.page}>
@@ -914,35 +902,98 @@ export default function AdminEventDetailsWebScreen() {
                         <Text style={styles.generalStatsSubtitle}>מבט מהיר על מצב האירוע והאורחים.</Text>
                       </View>
                       <View style={styles.generalStatsHeaderBadge}>
-                        <Text style={styles.generalStatsHeaderBadgeText}>{`${overviewStats.length}`}</Text>
+                        <Text style={styles.generalStatsHeaderBadgeText}>{`${stats.totalGuests}`}</Text>
                       </View>
                     </View>
 
-                    <View style={styles.generalStatsList}>
-                      {overviewStats.map((item) => (
-                        <View key={item.key} style={[styles.statCard, styles.generalStatCard, { borderColor: item.tint }]}>
-                          <View style={styles.statCardTop}>
-                            <View style={[styles.statBadge, { backgroundColor: item.tint }]}>
-                              <Text style={[styles.statBadgeText, { color: item.accent }]}>{item.badge}</Text>
-                            </View>
-                            <View style={[styles.statIconCircle, { backgroundColor: item.tint }]}>
-                              <Ionicons name={item.icon} size={18} color={item.accent} />
-                            </View>
-                          </View>
-
-                          <View style={styles.statCardBody}>
-                            <View style={styles.statGaugeWrap}>
-                              <GaugeMeter value={item.value} total={item.total} color={item.accent} trackColor={item.tint} />
-                            </View>
-                            <Text style={styles.statLabel}>{item.label}</Text>
-                            <View style={styles.statCardBottom}>
-                              <Text style={styles.statValue}>{item.value}</Text>
-                              <Text style={styles.statOutOf}>{`מתוך ${item.total}`}</Text>
-                            </View>
-                            <Text style={styles.statHint}>{item.hint}</Text>
-                          </View>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="צפייה במוזמנים שקיבלו ולא קיבלו הודעה"
+                      onPress={() => {
+                        setMessageStatusTab(phoneCard.sentMessageCount > 0 ? 'sent' : 'not-sent');
+                        setMessageStatusModalOpen(true);
+                      }}
+                      style={({ hovered, pressed }: any) => [
+                        styles.phoneStatCard,
+                        Platform.OS === 'web' && hovered ? styles.phoneStatCardHover : null,
+                        pressed ? { opacity: 0.94 } : null,
+                      ]}
+                    >
+                      <View style={styles.phoneStatHeader}>
+                        <View style={styles.phoneStatIconCircle}>
+                          <Ionicons name="call-outline" size={18} color="#6366F1" />
                         </View>
-                      ))}
+                        <View style={styles.phoneStatHeaderText}>
+                          <Text style={styles.phoneStatTitle}>מספרי טלפון</Text>
+                          <Text style={styles.phoneStatSubtitle}>אנשי קשר במערכת ולכמה נשלחה הודעה.</Text>
+                        </View>
+                        <Ionicons name="chevron-back" size={18} color={colors.gray[400]} />
+                      </View>
+
+                      <View style={styles.rsvpDonutWrap}>
+                        <DonutChart segments={phoneSegments} />
+                        <View style={styles.rsvpDonutCenter} pointerEvents="none">
+                          <Text style={styles.rsvpDonutCenterValue}>{phoneCard.uniquePhoneCount}</Text>
+                          <Text style={styles.rsvpDonutCenterLabel}>מספרים ייחודיים</Text>
+                        </View>
+                      </View>
+
+                      <View style={styles.phoneStatRow}>
+                        <View style={styles.phoneStatBlock}>
+                          <Text style={[styles.phoneStatValue, { color: '#6366F1' }]}>{phoneCard.sentMessageCount}</Text>
+                          <Text style={styles.phoneStatLabel}>נשלחה הודעה</Text>
+                        </View>
+                        <View style={styles.phoneStatDivider} />
+                        <View style={styles.phoneStatBlock}>
+                          <Text style={[styles.phoneStatValue, { color: colors.gray[500] }]}>{phoneCard.notSentCount}</Text>
+                          <Text style={styles.phoneStatLabel}>טרם נשלחה</Text>
+                        </View>
+                      </View>
+
+                      <View style={styles.phoneStatCta}>
+                        <Ionicons name="people-outline" size={14} color="#6366F1" />
+                        <Text style={styles.phoneStatCtaText}>לחצו לצפייה במי קיבל ומי טרם קיבל הודעה</Text>
+                      </View>
+                    </Pressable>
+
+                    <View style={styles.rsvpStatCard}>
+                      <View style={styles.rsvpStatHeaderText}>
+                        <Text style={styles.rsvpStatTitle}>התפלגות אישורי הגעה</Text>
+                        <Text style={styles.rsvpStatSubtitle}>חלוקת כלל המוזמנים (אנשים) לפי סטטוס.</Text>
+                      </View>
+
+                      <View style={styles.rsvpDonutWrap}>
+                        <DonutChart segments={rsvpSegments} />
+                        <View style={styles.rsvpDonutCenter} pointerEvents="none">
+                          <Text style={styles.rsvpDonutCenterValue}>{stats.confirmedPeople}</Text>
+                          <Text style={styles.rsvpDonutCenterLabel}>מגיעים</Text>
+                        </View>
+                      </View>
+
+                      <View style={styles.rsvpConfirmedPill}>
+                        <Ionicons name="checkmark-circle" size={15} color="#10B981" />
+                        <Text style={styles.rsvpConfirmedPillText}>
+                          {`${stats.confirmedPeople} אנשים מאושרים לאירוע (${confirmedPercent}%)`}
+                        </Text>
+                      </View>
+
+                      <View style={styles.rsvpLegend}>
+                        {visibleRsvpSegments.map((seg) => {
+                          const pct = rsvpTotal > 0 ? Math.round((seg.value / rsvpTotal) * 100) : 0;
+                          return (
+                            <View key={seg.key} style={styles.rsvpLegendRow}>
+                              <View style={styles.rsvpLegendLeft}>
+                                <View style={[styles.rsvpLegendDot, { backgroundColor: seg.color }]} />
+                                <Text style={styles.rsvpLegendLabel}>{seg.label}</Text>
+                              </View>
+                              <View style={styles.rsvpLegendRight}>
+                                <Text style={styles.rsvpLegendValue}>{seg.value}</Text>
+                                <Text style={styles.rsvpLegendPct}>{`${pct}%`}</Text>
+                              </View>
+                            </View>
+                          );
+                        })}
+                      </View>
                     </View>
                   </View>
                 </View>
@@ -953,6 +1004,112 @@ export default function AdminEventDetailsWebScreen() {
           </View>
         </View>
       </ScrollView>
+
+      {/* Message status (sent / not sent) */}
+      <Modal transparent visible={messageStatusModalOpen} animationType="fade" onRequestClose={() => setMessageStatusModalOpen(false)}>
+        <Pressable style={styles.msgModalOverlay} onPress={() => setMessageStatusModalOpen(false)}>
+          <Pressable style={styles.msgModalCard} onPress={() => null}>
+            <View style={styles.msgModalHeader}>
+              <View style={styles.msgModalHeaderText}>
+                <Text style={styles.msgModalTitle}>סטטוס שליחת הודעות</Text>
+                <Text style={styles.msgModalSubtitle}>
+                  {`${phoneCard.sentMessageCount} קיבלו הודעה · ${phoneCard.notSentCount} טרם קיבלו`}
+                </Text>
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="סגירה"
+                onPress={() => setMessageStatusModalOpen(false)}
+                style={({ hovered, pressed }: any) => [
+                  styles.iconCircle,
+                  Platform.OS === 'web' && hovered ? styles.iconCircleHover : null,
+                  pressed ? { opacity: 0.9 } : null,
+                ]}
+              >
+                <Ionicons name="close" size={18} color={'rgba(17,24,39,0.70)'} />
+              </Pressable>
+            </View>
+
+            <View style={styles.msgModalTabs}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setMessageStatusTab('sent')}
+                style={[styles.msgModalTab, messageStatusTab === 'sent' ? styles.msgModalTabActive : null]}
+              >
+                <Text style={[styles.msgModalTabText, messageStatusTab === 'sent' ? styles.msgModalTabTextActive : null]}>
+                  {`נשלחה הודעה (${phoneCard.sentMessageCount})`}
+                </Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setMessageStatusTab('not-sent')}
+                style={[styles.msgModalTab, messageStatusTab === 'not-sent' ? styles.msgModalTabActive : null]}
+              >
+                <Text style={[styles.msgModalTabText, messageStatusTab === 'not-sent' ? styles.msgModalTabTextActive : null]}>
+                  {`טרם נשלחה (${phoneCard.notSentCount})`}
+                </Text>
+              </Pressable>
+            </View>
+
+            <ScrollView style={styles.msgModalList} contentContainerStyle={styles.msgModalListContent} showsVerticalScrollIndicator>
+              {messageStatusGuests.length ? (
+                messageStatusGuests.map((guest) => {
+                  const initials = String(guest.name || '')
+                    .trim()
+                    .split(/\s+/)
+                    .filter(Boolean)
+                    .slice(0, 2)
+                    .map((part) => part.charAt(0))
+                    .join('');
+                  const isSent = messageStatusTab === 'sent';
+                  return (
+                    <View key={guest.id} style={styles.msgModalRow}>
+                      <View style={styles.msgModalRowBody}>
+                        <View
+                          style={[
+                            styles.msgModalAvatar,
+                            { backgroundColor: isSent ? 'rgba(99,102,241,0.12)' : 'rgba(148,163,184,0.16)' },
+                          ]}
+                        >
+                          <Text style={[styles.msgModalAvatarText, { color: isSent ? '#6366F1' : colors.gray[500] }]}>
+                            {initials || 'א'}
+                          </Text>
+                        </View>
+                        <View style={styles.msgModalRowText}>
+                          <Text style={styles.msgModalRowName} numberOfLines={1}>{guest.name || '—'}</Text>
+                          <Text style={styles.msgModalRowPhone} numberOfLines={1}>{guest.phone || 'אין מספר טלפון'}</Text>
+                        </View>
+                      </View>
+                      <View
+                        style={[
+                          styles.msgModalStatusPill,
+                          { backgroundColor: isSent ? 'rgba(16,185,129,0.12)' : 'rgba(245,158,11,0.12)' },
+                        ]}
+                      >
+                        <Ionicons
+                          name={isSent ? 'checkmark-circle' : 'time-outline'}
+                          size={14}
+                          color={isSent ? '#10B981' : '#F59E0B'}
+                        />
+                        <Text style={[styles.msgModalStatusText, { color: isSent ? '#0F7A56' : '#B45309' }]}>
+                          {isSent ? 'נשלחה' : 'ממתינה'}
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })
+              ) : (
+                <View style={styles.msgModalEmpty}>
+                  <Ionicons name="people-outline" size={26} color={colors.gray[400]} />
+                  <Text style={styles.msgModalEmptyText}>
+                    {messageStatusTab === 'sent' ? 'עדיין לא נשלחו הודעות למוזמנים.' : 'כל המוזמנים קיבלו הודעה.'}
+                  </Text>
+                </View>
+              )}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* Avatar preview */}
       <Modal transparent visible={avatarPreviewOpen} animationType="fade" onRequestClose={() => setAvatarPreviewOpen(false)}>
@@ -2084,6 +2241,33 @@ const styles = StyleSheet.create({
     gap: 2,
     minHeight: 44,
   },
+  statCardBottomDual: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    justifyContent: 'space-between',
+    gap: 10,
+    width: '100%',
+    minHeight: 56,
+  },
+  statDualBlock: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+    gap: 2,
+  },
+  statDualDivider: {
+    width: 1,
+    alignSelf: 'stretch',
+    backgroundColor: 'rgba(15,23,42,0.08)',
+    marginVertical: 4,
+  },
+  statDualLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.gray[500],
+    textAlign: 'right',
+  },
   statValue: { fontSize: 34, fontWeight: '900', color: colors.text, textAlign: 'right' },
   statOutOf: { fontSize: 12, fontWeight: '800', color: colors.gray[500], textAlign: 'right' },
   statHint: { fontSize: 11, fontWeight: '700', color: colors.gray[500], textAlign: 'right' },
@@ -2153,6 +2337,358 @@ const styles = StyleSheet.create({
     flexBasis: '48%',
     paddingHorizontal: 14,
     paddingVertical: 14,
+  },
+  phoneStatCard: {
+    width: '100%',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(99,102,241,0.18)',
+    backgroundColor: 'rgba(99,102,241,0.04)',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    gap: 14,
+  },
+  phoneStatCardHover: {
+    borderColor: 'rgba(99,102,241,0.45)',
+    backgroundColor: 'rgba(99,102,241,0.08)',
+  },
+  phoneStatCta: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingTop: 2,
+  },
+  phoneStatCtaText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#6366F1',
+    textAlign: 'center',
+  },
+  phoneStatHeader: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 10,
+  },
+  phoneStatIconCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(99,102,241,0.12)',
+  },
+  phoneStatHeaderText: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  phoneStatTitle: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'right',
+  },
+  phoneStatSubtitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.gray[500],
+    textAlign: 'right',
+  },
+  phoneStatRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  phoneStatBlock: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+  },
+  phoneStatDivider: {
+    width: 1,
+    alignSelf: 'stretch',
+    backgroundColor: 'rgba(15,23,42,0.10)',
+    marginVertical: 2,
+  },
+  phoneStatValue: {
+    fontSize: 30,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'center',
+  },
+  phoneStatLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.gray[500],
+    textAlign: 'center',
+  },
+  phoneStatHint: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.gray[500],
+    textAlign: 'center',
+  },
+  rsvpStatCard: {
+    width: '100%',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    gap: 14,
+  },
+  rsvpStatHeaderText: {
+    gap: 2,
+  },
+  rsvpStatTitle: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'right',
+  },
+  rsvpStatSubtitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.gray[500],
+    textAlign: 'right',
+  },
+  rsvpDonutWrap: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 4,
+  },
+  rsvpDonutCenter: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rsvpDonutCenterValue: {
+    fontSize: 30,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'center',
+  },
+  rsvpDonutCenterLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.gray[500],
+    textAlign: 'center',
+  },
+  rsvpConfirmedPill: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    alignSelf: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: 'rgba(16,185,129,0.10)',
+  },
+  rsvpConfirmedPillText: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: '#0F7A56',
+    textAlign: 'center',
+  },
+  rsvpLegend: {
+    width: '100%',
+    gap: 8,
+  },
+  rsvpLegendRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    backgroundColor: 'rgba(15,23,42,0.03)',
+  },
+  rsvpLegendLeft: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+  },
+  rsvpLegendDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  rsvpLegendLabel: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.text,
+    textAlign: 'right',
+  },
+  rsvpLegendRight: {
+    flexDirection: 'row-reverse',
+    alignItems: 'baseline',
+    gap: 6,
+  },
+  rsvpLegendValue: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'left',
+  },
+  rsvpLegendPct: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.gray[500],
+    textAlign: 'left',
+  },
+  msgModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15,23,42,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  msgModalCard: {
+    width: '100%',
+    maxWidth: 460,
+    maxHeight: '82%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 22,
+    paddingHorizontal: 18,
+    paddingVertical: 18,
+    gap: 14,
+    shadowColor: '#0b1c41',
+    shadowOpacity: 0.18,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 14 },
+  },
+  msgModalHeader: {
+    flexDirection: 'row-reverse',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  msgModalHeaderText: {
+    flex: 1,
+    minWidth: 0,
+    gap: 4,
+  },
+  msgModalTitle: {
+    fontSize: 19,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'right',
+  },
+  msgModalSubtitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.gray[500],
+    textAlign: 'right',
+  },
+  msgModalTabs: {
+    flexDirection: 'row-reverse',
+    gap: 8,
+  },
+  msgModalTab: {
+    flex: 1,
+    paddingVertical: 9,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(15,23,42,0.04)',
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  msgModalTabActive: {
+    backgroundColor: 'rgba(99,102,241,0.10)',
+    borderColor: 'rgba(99,102,241,0.35)',
+  },
+  msgModalTabText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.gray[500],
+    textAlign: 'center',
+  },
+  msgModalTabTextActive: {
+    color: '#4F46E5',
+  },
+  msgModalList: {
+    width: '100%',
+  },
+  msgModalListContent: {
+    gap: 8,
+    paddingBottom: 4,
+  },
+  msgModalRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    backgroundColor: 'rgba(15,23,42,0.03)',
+  },
+  msgModalRowBody: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 10,
+  },
+  msgModalAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  msgModalAvatarText: {
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  msgModalRowText: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  msgModalRowName: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.text,
+    textAlign: 'right',
+  },
+  msgModalRowPhone: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.gray[500],
+    textAlign: 'right',
+  },
+  msgModalStatusPill: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
+  msgModalStatusText: {
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  msgModalEmpty: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 32,
+  },
+  msgModalEmptyText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.gray[500],
+    textAlign: 'center',
   },
   workflowActionsCard: {
     backgroundColor: 'rgba(255,255,255,0.96)',
