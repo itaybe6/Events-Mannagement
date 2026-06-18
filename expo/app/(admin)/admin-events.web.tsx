@@ -28,6 +28,7 @@ import { useEventsListModel } from '@/features/events/useEventsListModel';
 import AdminEventsScreen from './admin-events';
 import AdminWebPageHeader from '@/components/desktop/AdminWebPageHeader';
 import { userService, type UserWithMetadata } from '@/lib/services/userService';
+import { pulseemBalanceService } from '@/lib/services/pulseemBalanceService';
 import { useUserStore } from '@/store/userStore';
 import { rtlText } from '@/lib/rtl';
 
@@ -2707,6 +2708,35 @@ export default function AdminEventsWebScreen() {
     };
   }, []);
 
+  const [smsBalance, setSmsBalance] = useState<{ loading: boolean; credits: string | null; error: string | null }>({
+    loading: true,
+    credits: null,
+    error: null,
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    setSmsBalance({ loading: true, credits: null, error: null });
+
+    pulseemBalanceService
+      .fetchDirectSmsBalance()
+      .then((res) => {
+        if (cancelled) return;
+        if (res.ok && res.directSmsCredits != null) {
+          setSmsBalance({ loading: false, credits: String(res.directSmsCredits), error: null });
+        } else {
+          setSmsBalance({ loading: false, credits: null, error: res.message || 'לא ניתן לקרוא יתרת SMS API' });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setSmsBalance({ loading: false, credits: null, error: 'לא ניתן לקרוא יתרת SMS API' });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const eventsForDashboard = useMemo(
     () =>
       filteredEvents.filter((event) => {
@@ -3065,6 +3095,36 @@ export default function AdminEventsWebScreen() {
       <ScrollView style={dashboardStyles.scroll} contentContainerStyle={dashboardStyles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={dashboardStyles.heroShell}>
           <AdminWebPageHeader eyebrow="ניהול אירועים" title="דשבורד אירועים למנהל" />
+
+          <LinearGradient
+            colors={['#0B3DA6', '#195de6', '#3B82F6']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={dashboardStyles.smsBalanceBanner}
+          >
+            <View style={dashboardStyles.smsBalanceBannerLeft}>
+              <View style={dashboardStyles.smsBalanceIconCircle}>
+                <Ionicons name="chatbubbles" size={18} color="#FFFFFF" />
+              </View>
+              <View style={dashboardStyles.smsBalanceBannerTextWrap}>
+                <Text style={dashboardStyles.smsBalanceBannerLabel}>יתרת הודעות SMS</Text>
+                <Text style={dashboardStyles.smsBalanceBannerSub}>חבילת SMS API · פולסים</Text>
+              </View>
+            </View>
+
+            <View style={dashboardStyles.smsBalanceBannerRight}>
+              {smsBalance.loading ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : smsBalance.credits != null ? (
+                <>
+                  <Text style={dashboardStyles.smsBalanceBannerValue}>{smsBalance.credits}</Text>
+                  <Text style={dashboardStyles.smsBalanceBannerUnit}>הודעות נותרו</Text>
+                </>
+              ) : (
+                <Text style={dashboardStyles.smsBalanceBannerErr}>{smsBalance.error || 'לא זמין'}</Text>
+              )}
+            </View>
+          </LinearGradient>
 
           <View style={dashboardStyles.heroCard}>
             <View style={dashboardStyles.heroChartCard}>
@@ -4440,6 +4500,81 @@ const dashboardStyles = StyleSheet.create({
     fontWeight: '900',
     color: colors.text,
     textAlign: 'right',
+  },
+  smsBalanceBanner: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 16,
+    minHeight: 60,
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 8px 20px rgba(25,93,230,0.20)' } as any)
+      : {
+          shadowColor: '#195de6',
+          shadowOpacity: 0.2,
+          shadowRadius: 14,
+          shadowOffset: { width: 0, height: 8 },
+        }),
+  },
+  smsBalanceBannerLeft: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 11,
+    flexShrink: 1,
+  },
+  smsBalanceIconCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.30)',
+  },
+  smsBalanceBannerTextWrap: {
+    alignItems: 'flex-end',
+    gap: 2,
+  },
+  smsBalanceBannerLabel: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    textAlign: 'right',
+  },
+  smsBalanceBannerSub: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.80)',
+    textAlign: 'right',
+  },
+  smsBalanceBannerRight: {
+    flexDirection: 'row-reverse',
+    alignItems: 'baseline',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  smsBalanceBannerValue: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    textAlign: 'center',
+  },
+  smsBalanceBannerUnit: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.85)',
+    textAlign: 'center',
+  },
+  smsBalanceBannerErr: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    maxWidth: 200,
   },
   inlineActionBtn: {
     paddingHorizontal: 12,

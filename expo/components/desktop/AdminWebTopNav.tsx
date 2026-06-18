@@ -9,6 +9,7 @@ import { useUserStore } from '@/store/userStore';
 const NAV_ITEMS = [
   { href: '/(admin)/admin-events', label: 'לוח בקרה', icon: 'speedometer-outline' },
   { href: '/(admin)/admin-events-list', label: 'אירועים', icon: 'calendar-outline' },
+  { href: '/(admin)/whatsapp-templates', label: 'וואטסאפ', icon: 'logo-whatsapp' },
   { href: '/(admin)/users', label: 'משתמשים', icon: 'people-outline' },
   { href: '/(admin)/admin-profile', label: 'פרופיל', icon: 'person-outline' },
 ] as const;

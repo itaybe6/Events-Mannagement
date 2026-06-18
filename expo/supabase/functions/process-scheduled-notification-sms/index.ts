@@ -5,6 +5,7 @@ import {
   buildGuestVars,
   buildWaPayload,
   normalizeWaPhone,
+  resolveWhatsappToken,
   sendWaMessage,
 } from "../_shared/whatsapp.ts";
 
@@ -267,7 +268,8 @@ serve(async (req) => {
     });
 
     // WhatsApp Cloud API secrets (optional; only needed when WhatsApp steps are due).
-    const waToken = String(Deno.env.get("WHATSAPP_ACCESS_TOKEN") ?? "").trim();
+    // Token resolves to the encrypted DB token (manager-uploaded) or env secret.
+    const waToken = await resolveWhatsappToken(adminClient, Deno.env.get("WHATSAPP_ACCESS_TOKEN"));
     const waPhoneId = String(Deno.env.get("WHATSAPP_PHONE_NUMBER_ID") ?? "").trim();
 
     const { data: jobs, error: claimError } = await adminClient.rpc(

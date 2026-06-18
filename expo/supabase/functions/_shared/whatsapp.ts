@@ -30,6 +30,84 @@ export type WaParams = {
 
 export const WA_GRAPH_VERSION = "v21.0";
 
+// ---------------------------------------------------------------------------
+// Dynamic access token: encrypted at rest (AES-256-GCM).
+// The key lives only in the Edge env and is never exposed to clients.
+// ---------------------------------------------------------------------------
+function bytesToBase64(bytes: Uint8Array): string {
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin);
+}
+
+function base64ToBytes(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+export function getTokenEncSecret(): string {
+  return String(
+    Deno.env.get("WHATSAPP_TOKEN_ENC_KEY") ||
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ||
+      "",
+  ).trim();
+}
+
+async function deriveAesKey(secret: string): Promise<CryptoKey> {
+  const enc = new TextEncoder();
+  const digest = await crypto.subtle.digest("SHA-256", enc.encode(secret));
+  return crypto.subtle.importKey("raw", digest, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
+}
+
+export async function encryptToken(
+  plaintext: string,
+  secret: string,
+): Promise<{ ciphertext: string; iv: string }> {
+  const key = await deriveAesKey(secret);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const enc = new TextEncoder();
+  const ctBuf = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, enc.encode(plaintext));
+  return { ciphertext: bytesToBase64(new Uint8Array(ctBuf)), iv: bytesToBase64(iv) };
+}
+
+export async function decryptToken(
+  ciphertextB64: string,
+  ivB64: string,
+  secret: string,
+): Promise<string> {
+  const key = await deriveAesKey(secret);
+  const ct = base64ToBytes(ciphertextB64);
+  const iv = base64ToBytes(ivB64);
+  const ptBuf = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ct);
+  return new TextDecoder().decode(ptBuf);
+}
+
+// Resolve the active WhatsApp token: prefer the encrypted DB token (uploaded by
+// the manager), fall back to the WHATSAPP_ACCESS_TOKEN env secret.
+export async function resolveWhatsappToken(adminClient: any, envToken: unknown): Promise<string> {
+  try {
+    const { data } = await adminClient
+      .from("whatsapp_settings")
+      .select("access_token_ciphertext, access_token_iv")
+      .eq("id", true)
+      .maybeSingle();
+    const ct = (data as any)?.access_token_ciphertext;
+    const iv = (data as any)?.access_token_iv;
+    if (ct && iv) {
+      const secret = getTokenEncSecret();
+      if (secret) {
+        const t = await decryptToken(String(ct), String(iv), secret);
+        if (t && t.trim()) return t.trim();
+      }
+    }
+  } catch (e) {
+    console.warn("resolveWhatsappToken failed:", e);
+  }
+  return String(envToken ?? "").trim();
+}
+
 export function stripMarks(s: unknown): string {
   return String(s ?? "").replace(/[\u200E\u200F\u202A-\u202E]/g, "").trim();
 }

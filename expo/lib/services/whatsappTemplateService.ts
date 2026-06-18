@@ -111,4 +111,34 @@ export const whatsappTemplateService = {
     if (error) throw error;
     return Number(data) || 0;
   },
+
+  /** Status of the dynamic access token (no secret value is ever returned). */
+  getTokenStatus: async (): Promise<{ hasToken: boolean; hint: string | null; updatedAt: Date | null }> => {
+    const { data, error } = await supabase
+      .from('whatsapp_settings')
+      .select('access_token_hint, access_token_updated_at')
+      .eq('id', true)
+      .maybeSingle();
+    if (error) throw error;
+    const hint = (data as any)?.access_token_hint ? String((data as any).access_token_hint) : null;
+    const updatedRaw = (data as any)?.access_token_updated_at;
+    return {
+      hasToken: Boolean(hint),
+      hint,
+      updatedAt: updatedRaw ? new Date(updatedRaw) : null,
+    };
+  },
+
+  /** Upload (encrypt + store) or clear the dynamic WhatsApp access token. Admin only. */
+  setToken: async (token: string): Promise<{ ok: boolean; hint?: string; cleared?: boolean }> => {
+    const sessionRes = await supabase.auth.getSession();
+    const accessToken = sessionRes.data.session?.access_token;
+    if (!accessToken) throw new Error('לא נמצא חיבור משתמש (נא להתחבר מחדש)');
+    const { data, error } = await supabase.functions.invoke('set-whatsapp-token', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      body: { token: String(token ?? '') },
+    });
+    if (error) throw error;
+    return (data as any) || { ok: true };
+  },
 };

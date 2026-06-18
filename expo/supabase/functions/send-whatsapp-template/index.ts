@@ -6,6 +6,7 @@ import {
   buildWaPayload,
   getEventDisplayTitle,
   normalizeWaPhone,
+  resolveWhatsappToken,
   sendWaMessage,
   type WaTemplate,
   type WaParams,
@@ -97,10 +98,10 @@ serve(async (req) => {
       return json({ error: "Missing Supabase environment variables" }, { status: 500 });
     }
 
-    const waToken = String(Deno.env.get("WHATSAPP_ACCESS_TOKEN") ?? "").trim();
+    const envWaToken = String(Deno.env.get("WHATSAPP_ACCESS_TOKEN") ?? "").trim();
     const waPhoneId = String(Deno.env.get("WHATSAPP_PHONE_NUMBER_ID") ?? "").trim();
-    if (!waToken || !waPhoneId) {
-      return json({ error: "Missing WhatsApp secrets (WHATSAPP_ACCESS_TOKEN / WHATSAPP_PHONE_NUMBER_ID)" }, { status: 500 });
+    if (!waPhoneId) {
+      return json({ error: "Missing WhatsApp phone id (WHATSAPP_PHONE_NUMBER_ID)" }, { status: 500 });
     }
 
     const authHeader = req.headers.get("authorization") ?? req.headers.get("Authorization") ?? "";
@@ -166,6 +167,12 @@ serve(async (req) => {
     }
     if (!template || !template.template_name) {
       return json({ error: "Missing WhatsApp template" }, { status: 400 });
+    }
+
+    // Resolve active token: encrypted DB token (manager-uploaded) or env secret.
+    const waToken = await resolveWhatsappToken(adminClient, envWaToken);
+    if (!waToken) {
+      return json({ error: "missing_whatsapp_token" }, { status: 500 });
     }
 
     // Daily quota check.

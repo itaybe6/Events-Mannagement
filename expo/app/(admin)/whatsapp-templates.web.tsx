@@ -8,14 +8,15 @@ import {
   Switch,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
-import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { ROW_DIR } from '@/lib/rtl';
-import { colors } from '@/constants/colors';
 import AdminWebPageHeader from '@/components/desktop/AdminWebPageHeader';
-import { useLayoutStore } from '@/store/layoutStore';
+
+const APP_LOGO = require('../../assets/images/logoMoon.png');
 import {
   whatsappTemplateService,
   type WhatsAppTemplateInput,
@@ -62,13 +63,8 @@ const emptyEditor = (): EditorState => ({
 });
 
 export default function WhatsappTemplatesWebScreen() {
-  const router = useRouter();
-  const { setTabBarVisible } = useLayoutStore();
-
-  const goBack = useCallback(() => {
-    if (router.canGoBack()) router.back();
-    else router.push('/(admin)/automatic-notifications' as any);
-  }, [router]);
+  const { width } = useWindowDimensions();
+  const showTemplateGrid = width >= 1350;
 
   const [loading, setLoading] = useState(true);
   const [templates, setTemplates] = useState<WhatsAppTemplate[]>([]);
@@ -76,29 +72,33 @@ export default function WhatsappTemplatesWebScreen() {
   const [sentToday, setSentToday] = useState<number>(0);
   const [savingQuota, setSavingQuota] = useState(false);
 
+  const [tokenStatus, setTokenStatus] = useState<{ hasToken: boolean; hint: string | null; updatedAt: Date | null }>({
+    hasToken: false,
+    hint: null,
+    updatedAt: null,
+  });
+  const [tokenInput, setTokenInput] = useState('');
+  const [savingToken, setSavingToken] = useState(false);
+  const [tokenSuccess, setTokenSuccess] = useState<string | null>(null);
+
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useFocusEffect(
-    useCallback(() => {
-      setTabBarVisible(false);
-      return () => setTabBarVisible(true);
-    }, [setTabBarVisible])
-  );
 
   const reload = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [list, settings, today] = await Promise.all([
+      const [list, settings, today, tok] = await Promise.all([
         whatsappTemplateService.list({ includeInactive: true }),
         whatsappTemplateService.getSettings().catch(() => ({ dailyQuota: 0 })),
         whatsappTemplateService.sentToday().catch(() => 0),
+        whatsappTemplateService.getTokenStatus().catch(() => ({ hasToken: false, hint: null, updatedAt: null })),
       ]);
       setTemplates(list);
       setDailyQuota(String(settings.dailyQuota || 0));
       setSentToday(today);
+      setTokenStatus(tok);
     } catch (e: any) {
       setError(e?.message ? String(e.message) : 'שגיאה בטעינת הנתונים');
     } finally {
@@ -124,6 +124,39 @@ export default function WhatsappTemplatesWebScreen() {
       setSavingQuota(false);
     }
   }, [dailyQuota, savingQuota]);
+
+  const saveToken = useCallback(
+    async (mode: 'save' | 'clear') => {
+      if (savingToken) return;
+      const value = mode === 'clear' ? '' : tokenInput.trim();
+      if (mode === 'save' && !value) {
+        setError('הדבק טוקן תקין לפני שמירה');
+        return;
+      }
+      setSavingToken(true);
+      setError(null);
+      setTokenSuccess(null);
+      try {
+        await whatsappTemplateService.setToken(value);
+        const status = await whatsappTemplateService.getTokenStatus();
+        setTokenStatus(status);
+        setTokenInput('');
+        setTokenSuccess(mode === 'clear' ? 'הטוקן הוסר בהצלחה' : 'הטוקן נשמר בהצלחה (מוצפן)');
+      } catch (e: any) {
+        let details = '';
+        try {
+          const ctx = e?.context;
+          if (ctx && typeof ctx.text === 'function') details = await ctx.text();
+        } catch {
+          // ignore
+        }
+        setError(`${e?.message ? String(e.message) : 'שמירת הטוקן נכשלה'}${details ? `\n${details}` : ''}`);
+      } finally {
+        setSavingToken(false);
+      }
+    },
+    [tokenInput, savingToken]
+  );
 
   const openCreate = () => setEditor(emptyEditor());
   const openEdit = (t: WhatsAppTemplate) =>
@@ -205,7 +238,6 @@ export default function WhatsappTemplatesWebScreen() {
   if (loading) {
     return (
       <View style={[styles.page, styles.center]}>
-        <Stack.Screen options={{ headerShown: false }} />
         <ActivityIndicator size="large" color={ui.primary} />
       </View>
     );
@@ -213,25 +245,12 @@ export default function WhatsappTemplatesWebScreen() {
 
   return (
     <View style={styles.page}>
-      <Stack.Screen options={{ headerShown: false }} />
-      <View style={styles.bg} />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <Pressable
-          onPress={goBack}
-          style={({ pressed }: any) => [styles.backPill, pressed ? { opacity: 0.9 } : null]}
-          accessibilityRole="button"
-          accessibilityLabel="חזור"
-        >
-          <Ionicons name="chevron-forward" size={18} color={ui.text} />
-          <Text style={styles.backPillText}>חזור</Text>
-        </Pressable>
-
         {/* Header */}
         <View style={styles.heroShell}>
           <AdminWebPageHeader
             eyebrow="ניהול וואטסאפ"
             title="תבניות וואטסאפ ומכסה יומית"
-            subtitle="נהל את התבניות שהמנהל יכול לבחור מהן, והגדר מכסת שליחה יומית"
           />
         </View>
 
@@ -271,6 +290,82 @@ export default function WhatsappTemplatesWebScreen() {
           </View>
         </View>
 
+        {/* Dynamic WhatsApp access token */}
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Ionicons name="key-outline" size={20} color={tokenStatus.hasToken ? '#0E7C46' : ui.primary} />
+            <Text style={styles.cardTitle}>טוקן וואטסאפ זמני</Text>
+          </View>
+          <Text style={styles.helper}>
+            עד לאישור העסק ב‑Meta, העלה כאן טוקן גישה זמני. הטוקן נשמר מוצפן (AES‑256) ולא נחשף בדפדפן.
+          </Text>
+
+          <View style={[styles.tokenStatusRow, tokenStatus.hasToken ? styles.tokenStatusRowOk : styles.tokenStatusRowEmpty]}>
+            <Ionicons
+              name={tokenStatus.hasToken ? 'checkmark-circle' : 'alert-circle-outline'}
+              size={18}
+              color={tokenStatus.hasToken ? '#0E7C46' : '#B45309'}
+            />
+            <Text style={styles.tokenStatusText}>
+              {tokenStatus.hasToken
+                ? `טוקן פעיל ${tokenStatus.hint ?? ''}${
+                    tokenStatus.updatedAt
+                      ? ` · עודכן ${tokenStatus.updatedAt.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' })} ${tokenStatus.updatedAt.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}`
+                      : ''
+                  }`
+                : 'אין טוקן שמור — ייעשה שימוש בטוקן ברירת המחדל של השרת (אם הוגדר).'}
+            </Text>
+          </View>
+
+          {tokenSuccess ? (
+            <View style={styles.tokenSuccessBox}>
+              <Ionicons name="checkmark-circle" size={16} color="#0E7C46" />
+              <Text style={styles.tokenSuccessText}>{tokenSuccess}</Text>
+            </View>
+          ) : null}
+
+          <TextInput
+            value={tokenInput}
+            onChangeText={setTokenInput}
+            style={styles.tokenInput}
+            placeholder="הדבק כאן את הטוקן (EAAB...)"
+            placeholderTextColor={ui.sub}
+            autoCapitalize="none"
+            autoCorrect={false}
+            secureTextEntry
+            multiline
+          />
+
+          <View style={styles.tokenActionsRow}>
+            {tokenStatus.hasToken ? (
+              <Pressable
+                style={[styles.tokenClearBtn, savingToken ? { opacity: 0.6 } : null]}
+                onPress={() => void saveToken('clear')}
+                disabled={savingToken}
+              >
+                <Ionicons name="trash-outline" size={16} color={ui.danger} />
+                <Text style={styles.tokenClearBtnText}>הסר טוקן</Text>
+              </Pressable>
+            ) : (
+              <View style={{ flex: 1 }} />
+            )}
+            <Pressable
+              style={[styles.tokenSaveBtn, savingToken ? { opacity: 0.6 } : null]}
+              onPress={() => void saveToken('save')}
+              disabled={savingToken}
+            >
+              {savingToken ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <View style={styles.tokenSaveBtnInner}>
+                  <Ionicons name="save-outline" size={16} color="#fff" />
+                  <Text style={styles.primaryBtnText}>שמור טוקן</Text>
+                </View>
+              )}
+            </Pressable>
+          </View>
+        </View>
+
         {/* Templates */}
         <View style={styles.sectionHeaderRow}>
           <Text style={styles.sectionTitle}>התבניות שלי ({templates.length})</Text>
@@ -287,9 +382,10 @@ export default function WhatsappTemplatesWebScreen() {
             <Text style={styles.emptySub}>לחץ על "הוסף תבנית" כדי להוסיף את התבניות המאושרות שלך.</Text>
           </View>
         ) : (
-          <View style={{ gap: 16 }}>
+          <View style={[styles.templatesGrid, showTemplateGrid ? styles.templatesGridWide : null]}>
             {templates.map((t) => (
-              <View key={t.id} style={styles.templateCard}>
+              <View key={t.id} style={[styles.templateCardWrap, showTemplateGrid ? styles.templateCardWrapWide : null]}>
+                <View style={styles.templateCard}>
                 {/* Title + status */}
                 <View style={styles.templateTitleRow}>
                   <View style={styles.templateWaIcon}>
@@ -331,35 +427,72 @@ export default function WhatsappTemplatesWebScreen() {
                   </View>
                 </View>
 
-                {/* WhatsApp-style preview with placeholders resolved to field labels */}
+                {/* WhatsApp phone-style preview — message shown at the bottom like a real chat */}
                 <View style={styles.previewWrap}>
                   <Text style={styles.previewCaption}>תצוגה מקדימה</Text>
-                  <View style={styles.previewBubble}>
-                    {t.headerType === 'image' ? (
-                      <View style={styles.previewImagePlaceholder}>
-                        <Ionicons name="image-outline" size={18} color="#0E7C46" />
-                        <Text style={styles.previewImageText}>תמונת כותרת</Text>
+                  <View style={styles.phone}>
+                    {/* Chat top bar */}
+                    <View style={styles.chatHeader}>
+                      <Ionicons name="chevron-forward" size={18} color="#fff" />
+                      <View style={styles.chatAvatar}>
+                        <Image source={APP_LOGO} style={styles.chatAvatarImg} contentFit="contain" transition={0} />
                       </View>
-                    ) : null}
-                    {t.bodyText ? (
-                      <Text style={styles.previewBodyText}>{renderTemplateParts(t.bodyText, t.variables)}</Text>
-                    ) : (
-                      <Text style={styles.previewEmptyText}>לא הוגדר טקסט גוף לתבנית.</Text>
-                    )}
-                    {t.buttons.length > 0 ? (
-                      <View style={styles.previewButtonsRow}>
-                        {t.buttons.map((b, i) => (
-                          <View key={i} style={styles.previewButtonChip}>
-                            <Ionicons
-                              name={b.kind === 'invitation' ? 'link-outline' : 'open-outline'}
-                              size={13}
-                              color={ui.primary}
-                            />
-                            <Text style={styles.previewButtonText}>{b.label || `כפתור ${i + 1}`}</Text>
-                          </View>
-                        ))}
+                      <View style={styles.chatHeaderText}>
+                        <Text style={styles.chatName} numberOfLines={1}>MOON</Text>
+                        <Text style={styles.chatStatus} numberOfLines={1}>חשבון עסקי</Text>
                       </View>
-                    ) : null}
+                      <Ionicons name="videocam" size={16} color="rgba(255,255,255,0.92)" />
+                      <Ionicons name="call" size={14} color="rgba(255,255,255,0.92)" />
+                    </View>
+
+                    {/* Chat body with wallpaper — bubble pinned to the bottom */}
+                    <View style={styles.chatBody}>
+                      <View style={styles.chatDateChip}>
+                        <Text style={styles.chatDateText}>היום</Text>
+                      </View>
+                      <View style={styles.chatBubbleRow}>
+                        <View style={styles.chatBubble}>
+                          <View style={styles.chatBubbleTail} />
+                          {t.headerType === 'image' ? (
+                            <View style={styles.chatImagePlaceholder}>
+                              <Ionicons name="image-outline" size={20} color="#0E7C46" />
+                              <Text style={styles.chatImageText}>תמונת כותרת</Text>
+                            </View>
+                          ) : null}
+                          {t.bodyText ? (
+                            <Text style={styles.chatBodyText}>{renderTemplateParts(t.bodyText, t.variables)}</Text>
+                          ) : (
+                            <Text style={styles.chatEmptyText}>לא הוגדר טקסט גוף לתבנית.</Text>
+                          )}
+                          <Text style={styles.chatTime}>9:41</Text>
+
+                          {t.buttons.length > 0 ? (
+                            <View style={styles.chatButtons}>
+                              {t.buttons.map((b, i) => (
+                                <View key={i} style={styles.chatButton}>
+                                  <Ionicons
+                                    name={b.kind === 'invitation' ? 'link-outline' : 'open-outline'}
+                                    size={15}
+                                    color="#0A7CFF"
+                                  />
+                                  <Text style={styles.chatButtonText}>{b.label || `כפתור ${i + 1}`}</Text>
+                                </View>
+                              ))}
+                            </View>
+                          ) : null}
+                        </View>
+                      </View>
+
+                      {/* Fake input bar to complete the phone look */}
+                      <View style={styles.chatInputBar}>
+                        <View style={styles.chatInputField}>
+                          <Text style={styles.chatInputPlaceholder}>הודעה</Text>
+                        </View>
+                        <View style={styles.chatSendBtn}>
+                          <Ionicons name="mic" size={15} color="#fff" />
+                        </View>
+                      </View>
+                    </View>
                   </View>
                 </View>
 
@@ -394,6 +527,7 @@ export default function WhatsappTemplatesWebScreen() {
                     <Text style={[styles.ghostBtnText, { color: ui.danger }]}>מחיקה</Text>
                   </Pressable>
                 </View>
+              </View>
               </View>
             ))}
           </View>
@@ -603,25 +737,27 @@ function Field(props: { label: string; flex?: boolean; children: React.ReactNode
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: ui.bg },
-  bg: { ...StyleSheet.absoluteFillObject, backgroundColor: ui.bg },
-  center: { justifyContent: 'center', alignItems: 'center' },
-  content: { paddingHorizontal: 24, paddingTop: 24, paddingBottom: 48, gap: 18, maxWidth: 1040, width: '100%', alignSelf: 'center' },
-  heroShell: { zIndex: 20 },
-  backPill: {
-    alignSelf: 'flex-end',
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 14,
-    height: 40,
-    borderRadius: 999,
-    backgroundColor: ui.surface,
-    borderWidth: 1,
-    borderColor: ui.border,
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer', boxShadow: '0 2px 8px rgba(11,28,65,0.05)' } as any) : null),
+  page: {
+    flex: 1,
+    backgroundColor: '#F7FAFF',
+    ...(Platform.OS === 'web'
+      ? ({
+          minHeight: '100vh',
+          overflowY: 'auto',
+          backgroundImage:
+            'radial-gradient(circle at top right, rgba(25,93,230,0.14), rgba(25,93,230,0) 40%), radial-gradient(circle at top left, rgba(232,241,255,0.95), rgba(232,241,255,0) 34%), radial-gradient(circle at bottom left, rgba(242,224,186,0.34), rgba(242,224,186,0) 32%), radial-gradient(circle at bottom center, rgba(240,203,70,0.12), rgba(240,203,70,0) 26%)',
+        } as any)
+      : null),
   },
-  backPillText: { fontSize: 13, fontWeight: '900', color: ui.text },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  content: {
+    paddingHorizontal: 24,
+    paddingTop: 24,
+    paddingBottom: 40,
+    gap: 18,
+    width: '100%',
+  },
+  heroShell: { zIndex: 20 },
   title: { fontSize: 22, fontWeight: '900', color: ui.text, textAlign: 'right' },
   subtitle: { marginTop: 4, fontSize: 13, fontWeight: '600', color: ui.sub, textAlign: 'right' },
 
@@ -643,6 +779,19 @@ const styles = StyleSheet.create({
   quotaRow: { flexDirection: ROW_DIR, alignItems: 'center', gap: 12 },
   quotaInput: { flex: 1, height: 48, borderRadius: 12, borderWidth: 1, borderColor: ui.border, backgroundColor: ui.surfaceMuted, paddingHorizontal: 14, fontSize: 16, fontWeight: '800', color: ui.text },
 
+  tokenStatusRow: { flexDirection: ROW_DIR, alignItems: 'center', gap: 10, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, borderWidth: 1 },
+  tokenStatusRowOk: { backgroundColor: 'rgba(37,211,102,0.08)', borderColor: 'rgba(37,211,102,0.25)' },
+  tokenStatusRowEmpty: { backgroundColor: 'rgba(245,158,11,0.08)', borderColor: 'rgba(245,158,11,0.25)' },
+  tokenStatusText: { flex: 1, fontSize: 13, fontWeight: '800', color: ui.text, textAlign: 'right', lineHeight: 19 },
+  tokenSuccessBox: { flexDirection: ROW_DIR, alignItems: 'center', gap: 8, backgroundColor: 'rgba(37,211,102,0.10)', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 },
+  tokenSuccessText: { flex: 1, fontSize: 13, fontWeight: '800', color: '#0E7C46', textAlign: 'right' },
+  tokenInput: { minHeight: 88, borderRadius: 12, borderWidth: 1, borderColor: ui.border, backgroundColor: ui.surfaceMuted, paddingHorizontal: 14, paddingVertical: 12, fontSize: 13, fontWeight: '600', color: ui.text, textAlign: 'left', textAlignVertical: 'top' },
+  tokenActionsRow: { flexDirection: ROW_DIR, alignItems: 'center', gap: 12 },
+  tokenSaveBtn: { flex: 1, maxWidth: 220, height: 48, borderRadius: 12, backgroundColor: ui.primary, alignItems: 'center', justifyContent: 'center', alignSelf: 'flex-end' },
+  tokenSaveBtnInner: { flexDirection: ROW_DIR, alignItems: 'center', gap: 8 },
+  tokenClearBtn: { flexDirection: ROW_DIR, alignItems: 'center', gap: 6, paddingHorizontal: 16, height: 48, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(239,68,68,0.28)', backgroundColor: 'rgba(239,68,68,0.06)' },
+  tokenClearBtnText: { fontSize: 14, fontWeight: '900', color: ui.danger },
+
   sectionHeaderRow: { flexDirection: ROW_DIR, alignItems: 'center', justifyContent: 'space-between' },
   sectionTitle: { fontSize: 18, fontWeight: '900', color: ui.text, textAlign: 'right' },
   addBtn: { flexDirection: ROW_DIR, alignItems: 'center', gap: 6, backgroundColor: ui.whatsapp, paddingHorizontal: 16, height: 44, borderRadius: 12, justifyContent: 'center' },
@@ -661,6 +810,25 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: 15, fontWeight: '800', color: ui.text },
   emptySub: { fontSize: 13, fontWeight: '600', color: ui.sub },
 
+  templatesGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginHorizontal: -8,
+    gap: 0,
+  },
+  templatesGridWide: {
+    marginHorizontal: -10,
+  },
+  templateCardWrap: {
+    width: '100%',
+    paddingHorizontal: 8,
+    paddingBottom: 16,
+  },
+  templateCardWrapWide: {
+    width: '50%',
+    paddingHorizontal: 10,
+    paddingBottom: 20,
+  },
   templateCard: {
     backgroundColor: ui.surface,
     borderRadius: 20,
@@ -682,37 +850,150 @@ const styles = StyleSheet.create({
   metaChip: { flexDirection: ROW_DIR, alignItems: 'center', gap: 5, backgroundColor: ui.surfaceMuted, borderWidth: 1, borderColor: ui.border, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999 },
   metaChipText: { fontSize: 11.5, fontWeight: '800', color: ui.sub, textAlign: 'right' },
 
-  previewWrap: { gap: 6 },
+  previewWrap: { gap: 8 },
   previewCaption: { fontSize: 11, fontWeight: '800', color: ui.sub, textAlign: 'right' },
-  previewBubble: {
+  previewVarToken: { fontWeight: '900', color: '#0E7C46' },
+
+  // Phone / WhatsApp chat mockup
+  phone: {
     alignSelf: 'stretch',
-    backgroundColor: '#F0FBF4',
-    borderWidth: 1,
-    borderColor: 'rgba(37,211,102,0.22)',
-    borderRadius: 16,
-    borderTopRightRadius: 4,
-    padding: 14,
-    gap: 12,
+    borderRadius: 22,
+    overflow: 'hidden',
+    backgroundColor: '#ECE5DD',
+    borderWidth: 6,
+    borderColor: '#0B141A',
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 12px 30px rgba(11,28,65,0.18)' } as any)
+      : null),
   },
-  previewImagePlaceholder: {
+  chatHeader: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: '#075E54',
+  },
+  chatAvatar: {
+    width: 30,
+    height: 30,
+    borderRadius: 999,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  chatAvatarImg: { width: '82%', height: '82%' },
+  chatHeaderText: { flex: 1, minWidth: 0 },
+  chatName: { fontSize: 13.5, fontWeight: '900', color: '#fff', textAlign: 'right' },
+  chatStatus: { fontSize: 10.5, fontWeight: '600', color: 'rgba(255,255,255,0.8)', textAlign: 'right' },
+  chatBody: {
+    minHeight: 230,
+    paddingHorizontal: 12,
+    paddingTop: 12,
+    paddingBottom: 10,
+    gap: 12,
+    justifyContent: 'flex-end',
+    ...(Platform.OS === 'web'
+      ? ({
+          backgroundColor: '#ECE5DD',
+          backgroundImage:
+            'radial-gradient(rgba(11,20,26,0.04) 1px, transparent 1px), radial-gradient(rgba(11,20,26,0.04) 1px, transparent 1px)',
+          backgroundSize: '18px 18px',
+          backgroundPosition: '0 0, 9px 9px',
+        } as any)
+      : { backgroundColor: '#ECE5DD' }),
+  },
+  chatDateChip: {
+    alignSelf: 'center',
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  chatDateText: { fontSize: 10.5, fontWeight: '700', color: '#54656F' },
+  chatBubbleRow: { flexDirection: ROW_DIR, justifyContent: 'flex-start' },
+  chatBubble: {
+    maxWidth: '78%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderTopRightRadius: 2,
+    paddingHorizontal: 10,
+    paddingTop: 8,
+    paddingBottom: 6,
+    position: 'relative',
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 1px 1px rgba(11,20,26,0.13)' } as any)
+      : null),
+  },
+  chatBubbleTail: {
+    position: 'absolute',
+    top: 0,
+    right: -6,
+    width: 0,
+    height: 0,
+    borderTopWidth: 8,
+    borderTopColor: '#FFFFFF',
+    borderLeftWidth: 8,
+    borderLeftColor: 'transparent',
+  },
+  chatImagePlaceholder: {
     flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    height: 64,
-    borderRadius: 10,
+    height: 74,
+    marginBottom: 8,
+    borderRadius: 8,
+    backgroundColor: 'rgba(37,211,102,0.10)',
     borderWidth: 1,
-    borderColor: 'rgba(14,124,70,0.25)',
+    borderColor: 'rgba(14,124,70,0.18)',
     borderStyle: 'dashed',
-    backgroundColor: 'rgba(37,211,102,0.06)',
   },
-  previewImageText: { fontSize: 12, fontWeight: '800', color: '#0E7C46' },
-  previewBodyText: { fontSize: 14, fontWeight: '600', color: ui.text, textAlign: 'right', lineHeight: 22 },
-  previewVarToken: { fontWeight: '900', color: ui.primary },
-  previewEmptyText: { fontSize: 13, fontWeight: '600', color: ui.sub, textAlign: 'right' },
-  previewButtonsRow: { flexDirection: ROW_DIR, flexWrap: 'wrap', gap: 8, marginTop: 2, borderTopWidth: 1, borderTopColor: 'rgba(14,124,70,0.15)', paddingTop: 10 },
-  previewButtonChip: { flexDirection: ROW_DIR, alignItems: 'center', gap: 6, backgroundColor: '#fff', borderWidth: 1, borderColor: 'rgba(79,70,229,0.22)', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 },
-  previewButtonText: { fontSize: 12.5, fontWeight: '900', color: ui.primary },
+  chatImageText: { fontSize: 12, fontWeight: '800', color: '#0E7C46' },
+  chatBodyText: { fontSize: 13.5, fontWeight: '500', color: '#111B21', textAlign: 'right', lineHeight: 20 },
+  chatEmptyText: { fontSize: 12.5, fontWeight: '600', color: ui.sub, textAlign: 'right' },
+  chatTime: { fontSize: 10, fontWeight: '600', color: '#8696A0', textAlign: 'left', marginTop: 2 },
+  chatButtons: {
+    marginTop: 8,
+    marginHorizontal: -10,
+    marginBottom: -6,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(11,20,26,0.08)',
+  },
+  chatButton: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 9,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(11,20,26,0.06)',
+  },
+  chatButtonText: { fontSize: 13, fontWeight: '700', color: '#0A7CFF' },
+  chatInputBar: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+  },
+  chatInputField: {
+    flex: 1,
+    height: 36,
+    borderRadius: 999,
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+  },
+  chatInputPlaceholder: { fontSize: 12.5, fontWeight: '600', color: '#8696A0', textAlign: 'right' },
+  chatSendBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 999,
+    backgroundColor: '#075E54',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
   fieldsBlock: { gap: 8, backgroundColor: ui.surfaceMuted, borderRadius: 14, padding: 12 },
   fieldsBlockTitle: { fontSize: 12.5, fontWeight: '900', color: ui.text, textAlign: 'right' },

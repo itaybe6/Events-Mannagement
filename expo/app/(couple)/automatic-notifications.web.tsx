@@ -491,6 +491,19 @@ export default function AutomaticNotificationsWebScreen() {
   const [waTemplates, setWaTemplates] = useState<WhatsAppTemplate[]>([]);
   const [waDailyQuota, setWaDailyQuota] = useState<number>(0);
   const [waSentToday, setWaSentToday] = useState<number>(0);
+
+  // Dynamic WhatsApp access token (encrypted at rest, uploaded by the manager).
+  const [waTokenStatus, setWaTokenStatus] = useState<{ hasToken: boolean; hint: string | null; updatedAt: Date | null }>({
+    hasToken: false,
+    hint: null,
+    updatedAt: null,
+  });
+  const [tokenModalOpen, setTokenModalOpen] = useState(false);
+  const [tokenInput, setTokenInput] = useState('');
+  const [tokenSaving, setTokenSaving] = useState(false);
+
+  // Event details reference panel (so the manager can fill template fields).
+  const [eventDetailsOpen, setEventDetailsOpen] = useState(true);
   const [waImageUploading, setWaImageUploading] = useState(false);
   const [dependsPickerOpen, setDependsPickerOpen] = useState(false);
   const [addWizardOpen, setAddWizardOpen] = useState(false);
@@ -810,6 +823,53 @@ export default function AutomaticNotificationsWebScreen() {
     return groomName || brideName || '';
   }, [brideName, groomName]);
 
+  // Full event details shown to the manager inside the editor, each copyable,
+  // so they can fill the message / WhatsApp template fields easily.
+  const eventDetailRows = useMemo(() => {
+    const ev: any = event || {};
+    const loc = String(ev?.location ?? '').trim();
+    const city = String(ev?.city ?? '').trim();
+    const rows: Array<{ key: string; label: string; value: string }> = [
+      { key: 'title', label: 'שם האירוע', value: subtitleFromEvent(event) },
+      { key: 'date', label: 'תאריך', value: formatHeDate(ev?.date) || '' },
+      { key: 'reception', label: 'קבלת פנים', value: String(ev?.receptionTime ?? ev?.reception_time ?? '').trim() },
+      { key: 'ceremony', label: 'חופה / טקס', value: String(ev?.ceremonyTime ?? ev?.ceremony_time ?? '').trim() },
+      { key: 'location', label: 'אולם / מקום', value: loc },
+      { key: 'city', label: 'עיר', value: city },
+      { key: 'venueFull', label: 'מקום מלא', value: buildEventLocationText(loc, city) || '' },
+      { key: 'groom', label: 'שם החתן', value: groomName },
+      { key: 'bride', label: 'שם הכלה', value: brideName },
+      { key: 'couple', label: 'שמות בני הזוג', value: coupleNames },
+      { key: 'groomParents', label: 'הורי החתן', value: String(ev?.groomParents ?? ev?.groom_parents ?? '').trim() },
+      { key: 'brideParents', label: 'הורי הכלה', value: String(ev?.brideParents ?? ev?.bride_parents ?? '').trim() },
+      { key: 'rsvp', label: 'קישור לאישור הגעה', value: String(ev?.rsvpLink ?? ev?.rsvp_link ?? '').trim() },
+    ];
+    return rows.filter((r) => r.value && r.value !== '—');
+  }, [event, groomName, brideName, coupleNames]);
+
+  const copyEventDetail = useCallback(
+    async (value: string, label: string) => {
+      const text = String(value ?? '').trim();
+      if (!text) return;
+      try {
+        if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(text);
+        } else if (typeof document !== 'undefined') {
+          const ta = document.createElement('textarea');
+          ta.value = text;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+        }
+        showToast(`הועתק: ${label}`);
+      } catch {
+        showToast('לא ניתן להעתיק');
+      }
+    },
+    [showToast]
+  );
+
   const previewVars = useMemo(() => {
     const eventTitle = subtitleFromEvent(event);
     const eventDateText = formatHeDate((event as any)?.date) || '—';
@@ -1107,15 +1167,17 @@ export default function AutomaticNotificationsWebScreen() {
 
         // Load WhatsApp template registry + daily quota usage (best-effort).
         try {
-          const [tpls, settings, today] = await Promise.all([
+          const [tpls, settings, today, tokenStatus] = await Promise.all([
             whatsappTemplateService.list().catch(() => []),
             whatsappTemplateService.getSettings().catch(() => ({ dailyQuota: 0 })),
             whatsappTemplateService.sentToday().catch(() => 0),
+            whatsappTemplateService.getTokenStatus().catch(() => ({ hasToken: false, hint: null, updatedAt: null })),
           ]);
           if (!cancelled) {
             setWaTemplates(tpls);
             setWaDailyQuota(settings.dailyQuota || 0);
             setWaSentToday(today);
+            setWaTokenStatus(tokenStatus);
           }
         } catch (e) {
           console.warn('Failed to load WhatsApp registry (couple web):', e);
@@ -2436,6 +2498,43 @@ export default function AutomaticNotificationsWebScreen() {
     }
   };
 
+  const openTokenModal = useCallback(() => {
+    setTokenInput('');
+    setTokenModalOpen(true);
+  }, []);
+
+  const saveWaToken = useCallback(
+    async (mode: 'save' | 'clear') => {
+      if (tokenSaving) return;
+      const value = mode === 'clear' ? '' : tokenInput.trim();
+      if (mode === 'save' && !value) {
+        showToast('הדבק טוקן תקין');
+        return;
+      }
+      setTokenSaving(true);
+      try {
+        const res = await whatsappTemplateService.setToken(value);
+        const status = await whatsappTemplateService.getTokenStatus().catch(() => ({ hasToken: !!value, hint: null, updatedAt: new Date() }));
+        setWaTokenStatus(status);
+        setTokenInput('');
+        setTokenModalOpen(false);
+        showToast(mode === 'clear' || (res as any)?.cleared ? 'הטוקן הוסר' : 'הטוקן נשמר בהצלחה');
+      } catch (e: any) {
+        let details = '';
+        try {
+          const ctx = e?.context;
+          if (ctx && typeof ctx.text === 'function') details = await ctx.text();
+        } catch {
+          // ignore
+        }
+        alert(`לא ניתן לשמור טוקן.\n\n${String(e?.message || e?.name || 'שגיאה')}${details ? `\n\nפרטים:\n${details}` : ''}`);
+      } finally {
+        setTokenSaving(false);
+      }
+    },
+    [tokenInput, tokenSaving, showToast]
+  );
+
   const scheduledSendDateTime = useMemo(() => {
     if (!event) return null;
     const dt = computeNotificationDateTime((event as any)?.date, Number(editDraft?.days ?? 0) || 0, String(editDraft?.timeHm || '11:00'));
@@ -2779,6 +2878,23 @@ export default function AutomaticNotificationsWebScreen() {
                       ))}
                     </View>
                     <View style={styles.headerSubtitleActions}>
+                      {userType === 'admin' ? (
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel="טוקן וואטסאפ"
+                          onPress={openTokenModal}
+                          style={({ hovered, pressed }: any) => [
+                            styles.headerSubtitleSecondaryBtn,
+                            Platform.OS === 'web' && hovered ? styles.headerSubtitleSecondaryBtnHover : null,
+                            pressed ? { opacity: 0.92 } : null,
+                          ]}
+                        >
+                          <Ionicons name={waTokenStatus.hasToken ? 'key' : 'key-outline'} size={16} color={waTokenStatus.hasToken ? '#0E7C46' : colors.primary} />
+                          <Text style={styles.headerSubtitleSecondaryBtnText}>
+                            {waTokenStatus.hasToken ? `טוקן וואטסאפ ${waTokenStatus.hint ?? ''}` : 'הוסף טוקן וואטסאפ'}
+                          </Text>
+                        </Pressable>
+                      ) : null}
                       {userType === 'admin' ? (
                         <Pressable
                           accessibilityRole="button"
@@ -3636,6 +3752,42 @@ export default function AutomaticNotificationsWebScreen() {
             ) : null}
 
             <ScrollView style={styles.editorBody} contentContainerStyle={styles.editorBodyContent} showsVerticalScrollIndicator={false}>
+              {eventDetailRows.length > 0 ? (
+                <View style={styles.eventDetailsCard}>
+                  <Pressable
+                    onPress={() => setEventDetailsOpen((v) => !v)}
+                    style={({ pressed }: any) => [styles.eventDetailsHeader, pressed ? { opacity: 0.92 } : null]}
+                  >
+                    <View style={styles.eventDetailsHeaderLeft}>
+                      <Ionicons name={eventDetailsOpen ? 'chevron-up' : 'chevron-down'} size={16} color="#4F46E5" />
+                    </View>
+                    <View style={styles.eventDetailsHeaderRight}>
+                      <Ionicons name="information-circle-outline" size={16} color="#4F46E5" />
+                      <Text style={styles.eventDetailsTitle}>פרטי האירוע</Text>
+                    </View>
+                  </Pressable>
+                  {eventDetailsOpen ? (
+                    <>
+                      <Text style={styles.eventDetailsHint}>לחץ על שורה כדי להעתיק, והדבק בשדות התוכן של ההודעה.</Text>
+                      <View style={styles.eventDetailsGrid}>
+                        {eventDetailRows.map((row) => (
+                          <Pressable
+                            key={row.key}
+                            onPress={() => void copyEventDetail(row.value, row.label)}
+                            style={({ pressed }: any) => [styles.eventDetailItem, pressed ? { opacity: 0.85 } : null]}
+                          >
+                            <View style={{ flex: 1, minWidth: 0 }}>
+                              <Text style={styles.eventDetailLabel} numberOfLines={1}>{row.label}</Text>
+                              <Text style={styles.eventDetailValue} numberOfLines={2}>{row.value}</Text>
+                            </View>
+                            <Ionicons name="copy-outline" size={15} color="#4F46E5" />
+                          </Pressable>
+                        ))}
+                      </View>
+                    </>
+                  ) : null}
+                </View>
+              ) : null}
               {editorKind === 'template' ? (
                 <View style={styles.editorWizardTop}>
                   {(() => {
@@ -5115,7 +5267,7 @@ export default function AutomaticNotificationsWebScreen() {
                 </View>
               ) : null}
 
-              {editorKind === 'flow' && String(editorRow.notification_type || '').startsWith('flow_step:') ? (
+              {editorKind === 'flow' && !editorIsWhatsapp && String(editorRow.notification_type || '').startsWith('flow_step:') ? (
                 <View style={styles.editorSection}>
                   <View style={styles.editorSectionHeader}>
                     <Ionicons name="people-outline" size={16} color="rgba(79,70,229,1)" />
@@ -6141,6 +6293,70 @@ export default function AutomaticNotificationsWebScreen() {
                 style={({ pressed }: any) => [styles.pickerBtnPrimary, pressed ? { opacity: 0.92 } : null]}
               >
                 <Text style={styles.pickerBtnPrimaryText}>שמירה</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      ) : null}
+
+      {tokenModalOpen ? (
+        <View style={styles.tokenOverlay}>
+          <Pressable style={styles.tokenBackdrop} onPress={() => (tokenSaving ? null : setTokenModalOpen(false))} />
+          <View style={styles.tokenCard}>
+            <View style={styles.tokenHeader}>
+              <Text style={styles.tokenTitle}>טוקן וואטסאפ זמני</Text>
+              <Pressable onPress={() => (tokenSaving ? null : setTokenModalOpen(false))} style={styles.tokenClose}>
+                <Ionicons name="close" size={20} color="#0F172A" />
+              </Pressable>
+            </View>
+
+            <Text style={styles.tokenHint}>
+              עד לאישור העסק ב‑Meta אפשר להעלות כאן טוקן גישה זמני. הטוקן נשמר מוצפן (AES‑256) ולא נחשף ללקוח.
+            </Text>
+
+            <View style={styles.tokenStatusRow}>
+              <Ionicons
+                name={waTokenStatus.hasToken ? 'checkmark-circle' : 'alert-circle-outline'}
+                size={16}
+                color={waTokenStatus.hasToken ? '#0E7C46' : '#B45309'}
+              />
+              <Text style={styles.tokenStatusText}>
+                {waTokenStatus.hasToken
+                  ? `קיים טוקן פעיל ${waTokenStatus.hint ?? ''}${waTokenStatus.updatedAt ? ` · עודכן ${formatHeDateTimeShort(waTokenStatus.updatedAt)}` : ''}`
+                  : 'אין כרגע טוקן שמור — תיעשה שימוש בטוקן ברירת המחדל של השרת (אם הוגדר).'}
+              </Text>
+            </View>
+
+            <TextInput
+              value={tokenInput}
+              onChangeText={setTokenInput}
+              style={styles.tokenInput}
+              placeholder="הדבק כאן את הטוקן (EAAB...)"
+              placeholderTextColor="rgba(100,116,139,0.7)"
+              autoCapitalize="none"
+              autoCorrect={false}
+              secureTextEntry
+              multiline
+            />
+
+            <View style={styles.tokenFooter}>
+              {waTokenStatus.hasToken ? (
+                <Pressable
+                  onPress={() => void saveWaToken('clear')}
+                  disabled={tokenSaving}
+                  style={({ pressed }: any) => [styles.tokenClearBtn, tokenSaving ? { opacity: 0.6 } : null, pressed ? { opacity: 0.9 } : null]}
+                >
+                  <Text style={styles.tokenClearBtnText}>הסר טוקן</Text>
+                </Pressable>
+              ) : (
+                <View style={{ flex: 1 }} />
+              )}
+              <Pressable
+                onPress={() => void saveWaToken('save')}
+                disabled={tokenSaving}
+                style={({ pressed }: any) => [styles.tokenSaveBtn, tokenSaving ? { opacity: 0.6 } : null, pressed ? { opacity: 0.9 } : null]}
+              >
+                {tokenSaving ? <ActivityIndicator color="#fff" /> : <Text style={styles.tokenSaveBtnText}>שמור טוקן</Text>}
               </Pressable>
             </View>
           </View>
@@ -7399,6 +7615,46 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? ({ boxShadow: '0 14px 30px rgba(2,6,23,0.22)' } as any) : null),
   },
   toastText: { color: '#fff', fontSize: 12, fontWeight: '900', textAlign: 'right' },
+
+  eventDetailsCard: { gap: 10, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(79,70,229,0.18)', backgroundColor: 'rgba(79,70,229,0.04)' },
+  eventDetailsHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
+  eventDetailsHeaderRight: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
+  eventDetailsHeaderLeft: { flexDirection: 'row-reverse', alignItems: 'center' },
+  eventDetailsTitle: { fontSize: 15, fontWeight: '900', color: '#1E1B4B', textAlign: 'right' },
+  eventDetailsHint: { fontSize: 12, fontWeight: '700', color: 'rgba(2,6,23,0.55)', textAlign: 'right' },
+  eventDetailsGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8 },
+  eventDetailItem: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    width: Platform.OS === 'web' ? ('calc(50% - 4px)' as any) : '100%',
+    minWidth: 180,
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(79,70,229,0.14)',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  eventDetailLabel: { fontSize: 11, fontWeight: '800', color: 'rgba(2,6,23,0.5)', textAlign: 'right' },
+  eventDetailValue: { fontSize: 13.5, fontWeight: '800', color: '#0F172A', textAlign: 'right' },
+
+  tokenOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(15,23,42,0.45)', alignItems: 'center', justifyContent: 'center', padding: 20, zIndex: 50 },
+  tokenBackdrop: { ...StyleSheet.absoluteFillObject },
+  tokenCard: { width: '100%', maxWidth: 520, backgroundColor: '#fff', borderRadius: 20, padding: 20, gap: 14, ...(Platform.OS === 'web' ? ({ boxShadow: '0 20px 60px rgba(2,6,23,0.35)' } as any) : null) },
+  tokenHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
+  tokenTitle: { fontSize: 18, fontWeight: '900', color: '#0F172A', textAlign: 'right' },
+  tokenClose: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F1F5F9' },
+  tokenHint: { fontSize: 12.5, fontWeight: '700', color: 'rgba(2,6,23,0.6)', textAlign: 'right', lineHeight: 18 },
+  tokenStatusRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, backgroundColor: '#F8FAFC', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: '#E2E8F0' },
+  tokenStatusText: { flex: 1, fontSize: 12.5, fontWeight: '800', color: '#0F172A', textAlign: 'right' },
+  tokenInput: { minHeight: 96, borderRadius: 12, borderWidth: 1, borderColor: '#CBD5E1', backgroundColor: '#F8FAFC', paddingHorizontal: 14, paddingVertical: 12, fontSize: 13, fontWeight: '600', color: '#0F172A', textAlign: 'left', textAlignVertical: 'top' },
+  tokenFooter: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12 },
+  tokenSaveBtn: { flex: 1, height: 48, borderRadius: 12, backgroundColor: '#1D4ED8', alignItems: 'center', justifyContent: 'center', ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
+  tokenSaveBtnText: { color: '#fff', fontSize: 15, fontWeight: '900' },
+  tokenClearBtn: { paddingHorizontal: 18, height: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(239,68,68,0.3)', backgroundColor: 'rgba(239,68,68,0.06)', ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
+  tokenClearBtnText: { color: '#EF4444', fontSize: 14, fontWeight: '900' },
   sendNowBtn: {
     flex: 1,
     height: 44,

@@ -266,6 +266,7 @@ export default function BrideGroomSeatingWebScreen() {
   const [tableName, setTableName] = useState('');
   const [seatedGuestsForTable, setSeatedGuestsForTable] = useState<GuestRow[]>([]);
   const [selectedGuestsToAdd, setSelectedGuestsToAdd] = useState<Set<string>>(new Set());
+  const [addingGuestsToTable, setAddingGuestsToTable] = useState(false);
   const [searchQueryTable, setSearchQueryTable] = useState('');
   const [categoryFilterTable, setCategoryFilterTable] = useState('הכל');
   const [categoriesForTable, setCategoriesForTable] = useState<string[]>([]);
@@ -645,6 +646,7 @@ export default function BrideGroomSeatingWebScreen() {
       setCategoriesForTable(cats);
       setCategoryFilterTable('הכל');
       setSelectedGuestsToAdd(new Set());
+      setAddingGuestsToTable(false);
 
       setTableModalOpen(true);
       setTabBarVisible(false);
@@ -892,10 +894,11 @@ export default function BrideGroomSeatingWebScreen() {
   }, [closeSeatConfirm, fetchGuests, fetchTables, guests, quickAddSelectedGuestIds, seatConfirmTable?.id]);
 
   const handleToggleGuestSelection = (guestId: string) => {
+    const id = String(guestId);
     setSelectedGuestsToAdd((prev) => {
       const next = new Set(prev);
-      if (next.has(guestId)) next.delete(guestId);
-      else next.add(guestId);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   };
@@ -930,34 +933,48 @@ export default function BrideGroomSeatingWebScreen() {
   }, [setTabBarVisible]);
 
   const handleAddGuestsToTable = useCallback(async () => {
-    if (selectedGuestsToAdd.size === 0) return;
+    if (selectedGuestsToAdd.size === 0 || addingGuestsToTable) return;
     const tableId = selectedTableForModal?.id;
     if (!tableId) return;
 
     const guestIds = Array.from(selectedGuestsToAdd);
-    const guestsToAdd = guests.filter((g) => guestIds.includes(g.id));
+    const guestsToAdd = guests.filter((g) => guestIds.includes(String(g.id)));
     const totalPeopleToAdd = guestsToAdd.reduce((sum, g) => sum + (Number(g.numberOfPeople) || 1), 0);
 
-    const { error: guestUpdateError } = await supabase.from('guests').update({ table_id: tableId }).in('id', guestIds);
-    if (guestUpdateError) {
-      console.error('Error updating guests:', guestUpdateError);
-      Alert.alert('שגיאה', 'לא ניתן להוסיף אורחים לשולחן.');
+    setAddingGuestsToTable(true);
+    try {
+      const { error: guestUpdateError } = await supabase.from('guests').update({ table_id: tableId }).in('id', guestIds);
+      if (guestUpdateError) {
+        console.error('Error updating guests:', guestUpdateError);
+        Alert.alert('שגיאה', 'לא ניתן להוסיף אורחים לשולחן.');
+        return;
+      }
+
+      const currentGuestsAtTable = guests.filter((g) => String(g.table_id || '') === String(tableId));
+      const currentTotalPeople = currentGuestsAtTable.reduce((sum, g) => sum + (Number(g.numberOfPeople) || 1), 0);
+      const newTotalPeople = currentTotalPeople + totalPeopleToAdd;
+
+      const { error: tableUpdateError } = await supabase.from('tables').update({ seated_guests: newTotalPeople }).eq('id', tableId);
+      if (tableUpdateError) {
+        console.error('Error updating table count:', tableUpdateError);
+      }
+
+      await Promise.all([fetchGuests(), fetchTables()]);
+      setSelectedGuestsToAdd(new Set());
+      await closeTableModal();
+    } finally {
+      setAddingGuestsToTable(false);
+    }
+  }, [addingGuestsToTable, closeTableModal, fetchGuests, fetchTables, guests, selectedGuestsToAdd, selectedTableForModal?.id]);
+
+  const handleSaveTableModal = useCallback(async () => {
+    if (addingGuestsToTable) return;
+    if (tableModalView === 'add' && selectedGuestsToAdd.size > 0) {
+      await handleAddGuestsToTable();
       return;
     }
-
-    const currentGuestsAtTable = guests.filter((g) => g.table_id === tableId);
-    const currentTotalPeople = currentGuestsAtTable.reduce((sum, g) => sum + (Number(g.numberOfPeople) || 1), 0);
-    const newTotalPeople = currentTotalPeople + totalPeopleToAdd;
-
-    const { error: tableUpdateError } = await supabase.from('tables').update({ seated_guests: newTotalPeople }).eq('id', tableId);
-    if (tableUpdateError) {
-      console.error('Error updating table count:', tableUpdateError);
-    }
-
-    await Promise.all([fetchGuests(), fetchTables()]);
-    setSelectedGuestsToAdd(new Set());
     await closeTableModal();
-  }, [closeTableModal, fetchGuests, fetchTables, guests, selectedGuestsToAdd, selectedTableForModal?.id]);
+  }, [addingGuestsToTable, closeTableModal, handleAddGuestsToTable, selectedGuestsToAdd.size, tableModalView]);
 
   const handleRemoveGuestFromTable = useCallback(
     async (guestId: string) => {
@@ -2490,7 +2507,7 @@ export default function BrideGroomSeatingWebScreen() {
                       </View>
                     ) : (
                       filteredGuestsForTableModal.map((item) => {
-                        const selected = selectedGuestsToAdd.has(item.id);
+                        const selected = selectedGuestsToAdd.has(String(item.id));
                         return (
                           <Pressable
                             key={String(item.id)}
@@ -2529,17 +2546,23 @@ export default function BrideGroomSeatingWebScreen() {
                     accessibilityRole="button"
                     accessibilityLabel="הוסף אורחים"
                     onPress={() => void handleAddGuestsToTable()}
-                    disabled={selectedGuestsToAdd.size === 0}
+                    disabled={selectedGuestsToAdd.size === 0 || addingGuestsToTable}
                     style={({ hovered, pressed }: any) => [
                       styles.primaryBtn,
-                      selectedGuestsToAdd.size === 0 ? styles.primaryBtnDisabled : null,
-                      Platform.OS === 'web' && hovered && selectedGuestsToAdd.size > 0 ? styles.primaryBtnHover : null,
+                      selectedGuestsToAdd.size === 0 || addingGuestsToTable ? styles.primaryBtnDisabled : null,
+                      Platform.OS === 'web' && hovered && selectedGuestsToAdd.size > 0 && !addingGuestsToTable
+                        ? styles.primaryBtnHover
+                        : null,
                       pressed ? styles.btnPressed : null,
                     ]}
                   >
                     <Ionicons name="person-add" size={18} color={colors.white} />
                     <Text style={styles.primaryBtnText}>
-                      {selectedGuestsToAdd.size > 0 ? `הוסף ${selectedGuestsToAdd.size} אורחים` : 'בחר אורחים להוספה'}
+                      {addingGuestsToTable
+                        ? 'מושיב...'
+                        : selectedGuestsToAdd.size > 0
+                          ? `הוסף ${selectedGuestsToAdd.size} אורחים`
+                          : 'בחר אורחים להוספה'}
                     </Text>
                   </Pressable>
                 </View>
@@ -2552,9 +2575,11 @@ export default function BrideGroomSeatingWebScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="ביטול"
                 onPress={closeTableModal}
+                disabled={addingGuestsToTable}
                 style={({ hovered, pressed }: any) => [
                   styles.footerBtn,
-                  Platform.OS === 'web' && hovered ? styles.footerBtnHover : null,
+                  addingGuestsToTable ? styles.primaryBtnDisabled : null,
+                  Platform.OS === 'web' && hovered && !addingGuestsToTable ? styles.footerBtnHover : null,
                   pressed ? styles.btnPressed : null,
                 ]}
               >
@@ -2563,17 +2588,22 @@ export default function BrideGroomSeatingWebScreen() {
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="שמור שינויים"
-                onPress={async () => {
-                  await handleSaveTableName();
-                  closeTableModal();
-                }}
+                onPress={() => void handleSaveTableModal()}
+                disabled={addingGuestsToTable}
                 style={({ hovered, pressed }: any) => [
                   styles.footerBtnPrimary,
-                  Platform.OS === 'web' && hovered ? styles.footerBtnPrimaryHover : null,
+                  addingGuestsToTable ? styles.primaryBtnDisabled : null,
+                  Platform.OS === 'web' && hovered && !addingGuestsToTable ? styles.footerBtnPrimaryHover : null,
                   pressed ? styles.btnPressed : null,
                 ]}
               >
-                <Text style={styles.footerBtnPrimaryText}>שמור שינויים</Text>
+                <Text style={styles.footerBtnPrimaryText}>
+                  {addingGuestsToTable
+                    ? 'שומר...'
+                    : tableModalView === 'add' && selectedGuestsToAdd.size > 0
+                      ? `שמור (${selectedGuestsToAdd.size} אורחים)`
+                      : 'שמור שינויים'}
+                </Text>
               </Pressable>
             </View>
           </Pressable>
