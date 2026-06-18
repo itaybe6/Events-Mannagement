@@ -579,13 +579,16 @@ const styles = StyleSheet.create({
   },
   rsvpIconCircleDark: { backgroundColor: 'rgba(255,255,255,0.14)' },
   rsvpBtnText: {
-    fontSize: 12,
-    fontWeight: '900',
+    fontSize: 11,
+    fontWeight: '700',
     color: 'rgba(2,6,23,0.78)',
     textAlign: 'center',
-    alignSelf: 'stretch',
-    width: '100%',
-    paddingHorizontal: 2,
+    // Rubik's bold Hebrew glyphs paint slightly past their advance width, so the
+    // trailing letter (e.g. the final ע) can get clipped on narrow buttons.
+    // Keep it on one line and give the ink horizontal breathing room.
+    includeFontPadding: false,
+    overflow: 'visible',
+    paddingHorizontal: 6,
   },
   rsvpBtnTextDark: { color: '#fff' },
 

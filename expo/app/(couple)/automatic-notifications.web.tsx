@@ -2375,7 +2375,7 @@ export default function AutomaticNotificationsWebScreen() {
           ? String(flowDraft?.recipientMode || '') === 'manual'
             ? 'manual'
             : 'groups'
-          : String((editorRow as any)?.recipient_mode || flowDraft?.recipientMode || 'manual')
+          : String(flowDraft?.recipientMode || (editorRow as any)?.recipient_mode || 'manual')
         : null;
       const shouldAutoPending = nt === 'reminder_2' || (isFlow && flowMode === 'pending');
 
@@ -2395,7 +2395,7 @@ export default function AutomaticNotificationsWebScreen() {
         : [];
       let ids =
         (editorKind === 'template' && (nt === 'reminder_1' || nt === 'reminder_2') && !isFlow) ||
-        (isFlow && editorIsWhatsapp && flowMode === 'manual')
+        (isFlow && flowMode === 'manual')
           ? Array.from(pickerSelectedIds)
           : rowIds;
       const isAutoAll =
