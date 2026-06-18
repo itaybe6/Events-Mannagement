@@ -564,6 +564,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.92)',
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 6,
     gap: 8,
   },
   rsvpBtnActiveDark: { backgroundColor: '#0B1020', borderColor: 'rgba(11,16,32,0.18)' },
@@ -577,7 +578,15 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(2,6,23,0.06)',
   },
   rsvpIconCircleDark: { backgroundColor: 'rgba(255,255,255,0.14)' },
-  rsvpBtnText: { fontSize: 12, fontWeight: '900', color: 'rgba(2,6,23,0.78)', textAlign: 'center' },
+  rsvpBtnText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: 'rgba(2,6,23,0.78)',
+    textAlign: 'center',
+    alignSelf: 'stretch',
+    width: '100%',
+    paddingHorizontal: 2,
+  },
   rsvpBtnTextDark: { color: '#fff' },
 
   countBox: {

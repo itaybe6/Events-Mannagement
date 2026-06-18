@@ -4,8 +4,10 @@ import { useWindowDimensions } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter, useSegments } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 
 import AdminWebPageHeader from '@/components/desktop/AdminWebPageHeader';
+import { pulseemBalanceService } from '@/lib/services/pulseemBalanceService';
 import { colors } from '@/constants/colors';
 import { buildDirectionsDetailsText, buildEventLocationText, normalizeBaseUrl } from '@/lib/navigationLinks';
 import { exportPendingGuestsToExcel } from '@/lib/exportPendingGuestsExcel';
@@ -463,6 +465,35 @@ export default function AutomaticNotificationsWebScreen() {
   >([]);
   const [sendingNow, setSendingNow] = useState(false);
   const [exportingPendingGuests, setExportingPendingGuests] = useState(false);
+  const [smsBalance, setSmsBalance] = useState<{ loading: boolean; credits: string | null; error: string | null }>({
+    loading: true,
+    credits: null,
+    error: null,
+  });
+
+  useEffect(() => {
+    if (userType !== 'admin') return;
+    let cancelled = false;
+    setSmsBalance({ loading: true, credits: null, error: null });
+
+    pulseemBalanceService
+      .fetchDirectSmsBalance()
+      .then((res) => {
+        if (cancelled) return;
+        if (res.ok && res.directSmsCredits != null) {
+          setSmsBalance({ loading: false, credits: String(res.directSmsCredits), error: null });
+        } else {
+          setSmsBalance({ loading: false, credits: null, error: res.message || 'לא ניתן לקרוא יתרת SMS API' });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setSmsBalance({ loading: false, credits: null, error: 'לא ניתן לקרוא יתרת SMS API' });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [userType]);
 
   // Recipient picking: required for message 1, optional for message 2 ("מאשרים").
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -510,6 +541,7 @@ export default function AutomaticNotificationsWebScreen() {
   const [addWizardStep, setAddWizardStep] = useState<1 | 2>(1);
   const [addWizardChannel, setAddWizardChannel] = useState<'SMS' | 'WHATSAPP'>('SMS');
   const [addWizardInsertAt, setAddWizardInsertAt] = useState<number>(1);
+  const [addWizardCreating, setAddWizardCreating] = useState(false);
   const [dateDialogOpen, setDateDialogOpen] = useState(false);
   const [timeDialogOpen, setTimeDialogOpen] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(() => new Date());
@@ -2135,7 +2167,11 @@ export default function AutomaticNotificationsWebScreen() {
             mode === 'prev_pending'
               ? { mode: 'prev_pending', dependsOn: payload.depends_on_setting_id }
               : { mode };
-          if (mode !== 'manual') payload.recipient_guest_ids = [];
+          if (mode === 'manual') {
+            payload.recipient_guest_ids = Array.from(pickerSelectedIds);
+          } else {
+            payload.recipient_guest_ids = [];
+          }
         }
       }
 
@@ -2550,13 +2586,25 @@ export default function AutomaticNotificationsWebScreen() {
     setAddWizardChannel('SMS');
     setAddWizardInsertAt(nextInsertAt);
     setAddWizardStep(1);
+    setAddWizardCreating(false);
     setAddWizardOpen(true);
   }, [canEdit, flowStepsSorted?.length, showToast]);
 
   const closeAddWizard = useCallback(() => {
+    if (addWizardCreating) return;
     setAddWizardOpen(false);
     setAddWizardStep(1);
-  }, []);
+  }, [addWizardCreating]);
+
+  // Step 1 -> pick a channel and immediately advance to the position step.
+  const pickAddWizardChannel = useCallback(
+    (channel: 'SMS' | 'WHATSAPP') => {
+      setAddWizardChannel(channel);
+      setAddWizardInsertAt((flowStepsSorted?.length || 0) + 1);
+      setAddWizardStep(2);
+    },
+    [flowStepsSorted?.length]
+  );
 
   const insertFlowStep = useCallback(async (args: { channel: 'SMS' | 'WHATSAPP'; insertAt: number }) => {
     if (!canEdit) {
@@ -2674,6 +2722,23 @@ export default function AutomaticNotificationsWebScreen() {
       alert('לא ניתן להוסיף כרטיסיה (בדוק שהרצת את המיגרציה החדשה).');
     }
   }, [canEdit, event, flowStepsSorted, combinedCards.length, showToast]);
+
+  // Step 2 -> pick a position and create the card right away (then close).
+  const chooseInsertAndCreate = useCallback(
+    async (insertAt: number) => {
+      if (addWizardCreating) return;
+      setAddWizardCreating(true);
+      setAddWizardInsertAt(insertAt);
+      try {
+        await insertFlowStep({ channel: addWizardChannel, insertAt });
+        setAddWizardOpen(false);
+        setAddWizardStep(1);
+      } finally {
+        setAddWizardCreating(false);
+      }
+    },
+    [addWizardCreating, addWizardChannel, insertFlowStep]
+  );
 
   const deleteFlowStep = useCallback(
     async (row: NotificationSettingRow) => {
@@ -2977,6 +3042,38 @@ export default function AutomaticNotificationsWebScreen() {
                   ) : null
                 }
               />
+
+              {userType === 'admin' ? (
+                <LinearGradient
+                  colors={['#0B3DA6', '#195de6', '#3B82F6']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.smsBalanceBanner}
+                >
+                  <View style={styles.smsBalanceBannerLeft}>
+                    <View style={styles.smsBalanceIconCircle}>
+                      <Ionicons name="chatbubbles" size={18} color="#FFFFFF" />
+                    </View>
+                    <View style={styles.smsBalanceBannerTextWrap}>
+                      <Text style={styles.smsBalanceBannerLabel}>יתרת הודעות SMS</Text>
+                      <Text style={styles.smsBalanceBannerSub}>חבילת SMS API · פולסים</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.smsBalanceBannerRight}>
+                    {smsBalance.loading ? (
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                    ) : smsBalance.credits != null ? (
+                      <>
+                        <Text style={styles.smsBalanceBannerValue}>{smsBalance.credits}</Text>
+                        <Text style={styles.smsBalanceBannerUnit}>הודעות נותרו</Text>
+                      </>
+                    ) : (
+                      <Text style={styles.smsBalanceBannerErr}>{smsBalance.error || 'לא זמין'}</Text>
+                    )}
+                  </View>
+                </LinearGradient>
+              ) : null}
             </View>
           ) : null}
 
@@ -3575,54 +3672,66 @@ export default function AutomaticNotificationsWebScreen() {
           <Pressable style={styles.pickerBackdrop} onPress={closeAddWizard} />
           <View style={styles.dialogCard}>
             <View style={styles.dialogHeader}>
-              <Text style={styles.dialogTitle}>{addWizardStep === 1 ? 'איזה הודעה תרצה לבחור?' : 'בחירת שלב'}</Text>
+              <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 10, flex: 1 }}>
+                {addWizardStep === 2 ? (
+                  <Pressable
+                    onPress={() => { if (!addWizardCreating) setAddWizardStep(1); }}
+                    style={styles.dialogClose}
+                    accessibilityLabel="חזרה"
+                  >
+                    <Ionicons name="arrow-forward" size={18} color="#111827" />
+                  </Pressable>
+                ) : null}
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.dialogTitle}>{addWizardStep === 1 ? 'הוספת הודעה חדשה' : 'איפה למקם את ההודעה?'}</Text>
+                  <Text style={styles.wizardStepCount}>שלב {addWizardStep} מתוך 2</Text>
+                </View>
+              </View>
               <Pressable onPress={closeAddWizard} style={styles.dialogClose}>
                 <Ionicons name="close" size={18} color="#111827" />
               </Pressable>
             </View>
 
+            <View style={styles.wizardProgressRow}>
+              <View style={[styles.wizardProgressSeg, styles.wizardProgressSegActive]} />
+              <View style={[styles.wizardProgressSeg, addWizardStep === 2 ? styles.wizardProgressSegActive : null]} />
+            </View>
+
             {addWizardStep === 1 ? (
               <View style={{ padding: 14, gap: 12 }}>
-                <Text style={styles.recipientsPreviewHint}>בחר סוג הודעה. לאחר מכן תבחר לאיזה שלב להכניס את הכרטיסיה.</Text>
+                <Text style={styles.recipientsPreviewHint}>בחר סוג הודעה — נמשיך אוטומטית לבחירת המיקום.</Text>
                 <View style={styles.wizardChoiceRow}>
                   <Pressable
-                    onPress={() => setAddWizardChannel('SMS')}
+                    onPress={() => pickAddWizardChannel('SMS')}
                     style={({ pressed }: any) => [
                       styles.wizardChoiceBtn,
-                      addWizardChannel === 'SMS' ? styles.wizardChoiceBtnActive : null,
-                      pressed ? { opacity: 0.92 } : null,
+                      pressed ? { opacity: 0.92, transform: [{ scale: 0.99 }] } : null,
                     ]}
                   >
-                    <Ionicons name="chatbubble-ellipses-outline" size={20} color={addWizardChannel === 'SMS' ? '#4F46E5' : '#111827'} />
-                    <Text style={[styles.wizardChoiceTitle, addWizardChannel === 'SMS' ? styles.wizardChoiceTitleActive : null]}>SMS</Text>
-                    <Text style={styles.wizardChoiceSub}>שליחה מתוזמנת בהתאם לרגע</Text>
+                    <View style={[styles.wizardChoiceIcon, { backgroundColor: 'rgba(79,70,229,0.10)' }]}>
+                      <Ionicons name="chatbubble-ellipses-outline" size={22} color="#4F46E5" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.wizardChoiceTitle}>SMS</Text>
+                      <Text style={styles.wizardChoiceSub}>הודעת טקסט מתוזמנת</Text>
+                    </View>
+                    <Ionicons name="chevron-back" size={18} color="rgba(100,116,139,1)" />
                   </Pressable>
                   <Pressable
-                    onPress={() => setAddWizardChannel('WHATSAPP')}
+                    onPress={() => pickAddWizardChannel('WHATSAPP')}
                     style={({ pressed }: any) => [
                       styles.wizardChoiceBtn,
-                      addWizardChannel === 'WHATSAPP' ? styles.wizardChoiceBtnActive : null,
-                      pressed ? { opacity: 0.92 } : null,
+                      pressed ? { opacity: 0.92, transform: [{ scale: 0.99 }] } : null,
                     ]}
                   >
-                    <Ionicons name="logo-whatsapp" size={20} color={addWizardChannel === 'WHATSAPP' ? '#25D366' : '#111827'} />
-                    <Text style={[styles.wizardChoiceTitle, addWizardChannel === 'WHATSAPP' ? styles.wizardChoiceTitleActive : null]}>WhatsApp</Text>
-                    <Text style={styles.wizardChoiceSub}>שליחה מתוזמנת עם תבנית וואטסאפ</Text>
-                  </Pressable>
-                </View>
-
-                <View style={styles.dialogActions}>
-                  <Pressable onPress={closeAddWizard} style={[styles.dialogBtn, styles.dialogBtnGhost]}>
-                    <Text style={styles.dialogBtnGhostText}>ביטול</Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => {
-                      setAddWizardInsertAt(flowStepsSorted.length + 1);
-                      setAddWizardStep(2);
-                    }}
-                    style={[styles.dialogBtn, styles.dialogBtnPrimary]}
-                  >
-                    <Text style={styles.dialogBtnPrimaryText}>המשך</Text>
+                    <View style={[styles.wizardChoiceIcon, { backgroundColor: 'rgba(37,211,102,0.12)' }]}>
+                      <Ionicons name="logo-whatsapp" size={22} color="#25D366" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.wizardChoiceTitle}>WhatsApp</Text>
+                      <Text style={styles.wizardChoiceSub}>הודעה מתוזמנת עם תבנית מאושרת</Text>
+                    </View>
+                    <Ionicons name="chevron-back" size={18} color="rgba(100,116,139,1)" />
                   </Pressable>
                 </View>
               </View>
@@ -3630,16 +3739,17 @@ export default function AutomaticNotificationsWebScreen() {
               <View style={{ padding: 14, gap: 12 }}>
                 <View style={styles.wizardChipRow}>
                   <View style={styles.wizardChip}>
-                    <Ionicons name={addWizardChannel === 'WHATSAPP' ? 'logo-whatsapp' : 'chatbubble-ellipses-outline'} size={14} color="#4F46E5" />
+                    <Ionicons name={addWizardChannel === 'WHATSAPP' ? 'logo-whatsapp' : 'chatbubble-ellipses-outline'} size={14} color={addWizardChannel === 'WHATSAPP' ? '#25D366' : '#4F46E5'} />
                     <Text style={styles.wizardChipText}>{addWizardChannel === 'WHATSAPP' ? 'WhatsApp' : 'SMS'}</Text>
                   </View>
-                  <Text style={styles.recipientsPreviewHint}>בחר לאיזה שלב להכניס. שלבים קיימים יזוזו אוטומטית קדימה.</Text>
+                  <Text style={styles.recipientsPreviewHint}>בחר מיקום — הכרטיסיה תיווצר מיד. שלבים קיימים יזוזו אוטומטית.</Text>
                 </View>
 
-                <ScrollView style={{ maxHeight: 440 }} contentContainerStyle={{ gap: 8, paddingBottom: 6 }}>
+                <ScrollView style={{ maxHeight: 420 }} contentContainerStyle={{ gap: 8, paddingBottom: 6 }}>
                   {(() => {
                     const cards = combinedCards;
-                    const options: Array<{ key: string; insertAt: number; title: string; sub: string }> = [];
+                    const endAt = cards.length + 1;
+                    const options: Array<{ key: string; insertAt: number; title: string; sub: string; recommended?: boolean }> = [];
 
                     if (cards.length === 0) {
                       options.push({
@@ -3647,78 +3757,75 @@ export default function AutomaticNotificationsWebScreen() {
                         insertAt: 1,
                         title: 'כרטיסיה ראשונה (שלב 1)',
                         sub: 'ייווצר שלב 1 חדש.',
+                        recommended: true,
                       });
                     } else {
+                      // Recommended: at the end of the list.
+                      options.push({
+                        key: 'end',
+                        insertAt: endAt,
+                        title: 'בסוף הרשימה',
+                        sub: `יתווסף אחרי ${String(cards[cards.length - 1]?.row?.title || `כרטיסיה ${cards.length}`)} (מיקום ${endAt})`,
+                        recommended: true,
+                      });
                       options.push({
                         key: 'before-first',
                         insertAt: 1,
                         title: 'לפני שלב 1',
                         sub: `הכרטיסיה "${String(cards[0]?.row?.title || 'כרטיסיה')}" תזוז למיקום הבא`,
                       });
+                      // Between existing cards (skip after-last, covered by "at end").
+                      for (let i = 0; i < cards.length - 1; i++) {
+                        const after = cards[i]?.row;
+                        const next = cards[i + 1]?.row;
+                        const insertAt = i + 2;
+                        options.push({
+                          key: `after-${String((after as any)?.id || (after as any)?.notification_type || i)}`,
+                          insertAt,
+                          title: `אחרי ${String((after as any)?.title || `כרטיסיה ${i + 1}`)}`,
+                          sub: `הכרטיסיה "${String((next as any)?.title || `כרטיסיה ${i + 2}`)}" תזוז למיקום הבא`,
+                        });
+                      }
                     }
 
-                    // Insert after each existing card i => insertAt i+2
-                    for (let i = 0; i < cards.length; i++) {
-                      const after = cards[i]?.row;
-                      const next = cards[i + 1]?.row;
-                      const insertAt = i + 2;
-                      options.push({
-                        key: `after-${String((after as any)?.id || (after as any)?.notification_type || i)}`,
-                        insertAt,
-                        title: `אחרי ${String((after as any)?.title || `כרטיסיה ${i + 1}`)}`,
-                        sub: next
-                          ? `הכרטיסיה הבאה "${String((next as any)?.title || `כרטיסיה ${i + 2}`)}" תזוז למיקום הבא`
-                          : `יוסף בסוף הרשימה (מיקום ${insertAt})`,
-                      });
-                    }
-
-                    return options.map((opt) => {
-                      const selected = addWizardInsertAt === opt.insertAt;
-                      return (
-                        <Pressable
-                          key={opt.key}
-                          onPress={() => setAddWizardInsertAt(opt.insertAt)}
-                          style={({ pressed }: any) => [
-                            styles.wizardInsertCard,
-                            selected ? styles.wizardInsertCardSelected : null,
-                            pressed ? { opacity: 0.92 } : null,
-                          ]}
-                        >
-                          <View style={styles.wizardInsertTopRow}>
+                    return options.map((opt) => (
+                      <Pressable
+                        key={opt.key}
+                        disabled={addWizardCreating}
+                        onPress={() => chooseInsertAndCreate(opt.insertAt)}
+                        style={({ pressed }: any) => [
+                          styles.wizardInsertCard,
+                          opt.recommended ? styles.wizardInsertCardSelected : null,
+                          pressed && !addWizardCreating ? { opacity: 0.92, transform: [{ scale: 0.99 }] } : null,
+                          addWizardCreating ? { opacity: 0.6 } : null,
+                        ]}
+                      >
+                        <View style={styles.wizardInsertTopRow}>
+                          <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8, flex: 1 }}>
                             <Text style={styles.wizardInsertTitle}>{opt.title}</Text>
-                            {selected ? (
+                            {opt.recommended ? (
                               <View style={styles.wizardInsertBadge}>
-                                <Ionicons name="checkmark" size={14} color="#16A34A" />
-                                <Text style={styles.wizardInsertBadgeText}>נבחר</Text>
+                                <Ionicons name="star" size={12} color="#16A34A" />
+                                <Text style={styles.wizardInsertBadgeText}>מומלץ</Text>
                               </View>
                             ) : null}
                           </View>
-                          <Text style={styles.wizardInsertSub}>{opt.sub}</Text>
-                        </Pressable>
-                      );
-                    });
+                          <Ionicons name="add-circle" size={20} color="#4F46E5" />
+                        </View>
+                        <Text style={styles.wizardInsertSub}>{opt.sub}</Text>
+                      </Pressable>
+                    ));
                   })()}
                 </ScrollView>
-
-                <View style={styles.dialogActions}>
-                  <Pressable
-                    onPress={() => setAddWizardStep(1)}
-                    style={[styles.dialogBtn, styles.dialogBtnGhost]}
-                  >
-                    <Text style={styles.dialogBtnGhostText}>חזרה</Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={async () => {
-                      await insertFlowStep({ channel: addWizardChannel, insertAt: addWizardInsertAt });
-                      closeAddWizard();
-                    }}
-                    style={[styles.dialogBtn, styles.dialogBtnPrimary]}
-                  >
-                    <Text style={styles.dialogBtnPrimaryText}>הוסף כרטיסיה</Text>
-                  </Pressable>
-                </View>
               </View>
             )}
+
+            {addWizardCreating ? (
+              <View style={styles.wizardCreatingOverlay}>
+                <ActivityIndicator size="large" color="#4F46E5" />
+                <Text style={styles.wizardCreatingText}>מוסיף כרטיסיה…</Text>
+              </View>
+            ) : null}
           </View>
         </View>
       ) : null}
@@ -3727,10 +3834,19 @@ export default function AutomaticNotificationsWebScreen() {
         <View style={styles.editorOverlay}>
           <Pressable style={styles.pickerBackdrop} onPress={closeEditor} />
           <View style={styles.editorCard}>
-            <View style={styles.pickerHeader}>
-              <Text style={styles.pickerTitle}>
-                {editorKind === 'flow' ? `עריכת ${String(flowDraft?.title || editorRow.title || 'שלב')}` : `עריכת ${getDisplayTitle(editorRow)}`}
-              </Text>
+            <View style={styles.editorHeader}>
+              <View style={styles.editorHeaderLeft}>
+                <View style={[styles.editorHeaderIcon, editorIsWhatsapp ? styles.editorHeaderIconWa : null]}>
+                  <Ionicons
+                    name={editorIsWhatsapp ? 'logo-whatsapp' : 'create-outline'}
+                    size={20}
+                    color={editorIsWhatsapp ? '#0E7C46' : '#4F46E5'}
+                  />
+                </View>
+                <Text style={styles.editorTitle} numberOfLines={1}>
+                  {editorKind === 'flow' ? `עריכת ${String(flowDraft?.title || editorRow.title || 'שלב')}` : `עריכת ${getDisplayTitle(editorRow)}`}
+                </Text>
+              </View>
               <Pressable onPress={closeEditor} style={({ pressed }: any) => [styles.pickerClose, pressed ? { opacity: 0.9 } : null]}>
                 <Ionicons name="close" size={18} color="#111827" />
               </Pressable>
@@ -3848,21 +3964,8 @@ export default function AutomaticNotificationsWebScreen() {
                     ) : (
                       <Ionicons name="albums-outline" size={16} color="rgba(79,70,229,1)" />
                     )}
-                    <Text style={styles.editorSectionTitle}>{editorIsWhatsapp ? 'בחירת נמענים' : 'כרטיסיה'}</Text>
+                    <Text style={styles.editorSectionTitle}>{editorIsWhatsapp ? 'בחירת נמענים' : 'נמענים'}</Text>
                   </View>
-
-                  {!editorIsWhatsapp ? (
-                    <View style={styles.fieldRow}>
-                      <Text style={styles.fieldLabel}>כותרת</Text>
-                      <TextInput
-                        value={flowDraft?.title ?? ''}
-                        onChangeText={(t) => setFlowDraft((d) => (d ? { ...d, title: String(t || '') } : d))}
-                        style={styles.fieldInput}
-                        placeholder="כותרת לשלב"
-                        placeholderTextColor="rgba(100,116,139,0.6)"
-                      />
-                    </View>
-                  ) : null}
 
                   {editorIsWhatsapp ? (
                     <View style={styles.fieldRow}>
@@ -4029,7 +4132,6 @@ export default function AutomaticNotificationsWebScreen() {
                     </View>
                   ) : (
                   <View style={styles.fieldRow}>
-                    <Text style={styles.fieldLabel}>נמענים</Text>
                     <View style={[styles.modeRow, { flexWrap: 'wrap' }]}>
                       {([
                         { key: 'manual', label: 'בחירה ידנית' },
@@ -4056,6 +4158,81 @@ export default function AutomaticNotificationsWebScreen() {
                         );
                       })}
                     </View>
+
+                    {flowDraft?.recipientMode === 'manual' ? (
+                      <View style={styles.waManualWrap}>
+                        <Text style={styles.editorSectionHint}>בחר מוזמנים ספציפיים מהרשימה. אפשר לחפש, לסנן לפי סטטוס ולבחור כמה שתרצה.</Text>
+                        <View style={styles.waManualSearchRow}>
+                          <Ionicons name="search" size={16} color="#94A3B8" />
+                          <TextInput
+                            value={pickerSearch}
+                            onChangeText={setPickerSearch}
+                            style={styles.waManualSearchInput}
+                            placeholder="חיפוש לפי שם או טלפון"
+                            placeholderTextColor="rgba(100,116,139,0.6)"
+                          />
+                        </View>
+                        <View style={[styles.modeRow, { flexWrap: 'wrap' }]}>
+                          {([
+                            { key: 'all', label: 'הכל' },
+                            { key: 'pending', label: 'ממתין' },
+                            { key: 'confirmed', label: 'מגיע' },
+                            { key: 'declined', label: 'לא מגיע' },
+                          ] as Array<{ key: 'all' | 'pending' | 'confirmed' | 'declined'; label: string }>).map((opt) => {
+                            const active = pickerFilter === opt.key;
+                            return (
+                              <Pressable
+                                key={opt.key}
+                                onPress={() => setPickerFilter(opt.key)}
+                                style={({ pressed }: any) => [styles.modePill, active ? styles.modePillActive : null, pressed ? { opacity: 0.92 } : null]}
+                              >
+                                <Text style={[styles.modePillText, active ? styles.modePillTextActive : null]}>{opt.label}</Text>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
+                        <View style={styles.waManualActionsRow}>
+                          <Pressable onPress={pickerSelectAllFiltered} style={({ pressed }: any) => [styles.waManualLinkBtn, pressed ? { opacity: 0.9 } : null]}>
+                            <Ionicons name="checkmark-done-outline" size={14} color="#4F46E5" />
+                            <Text style={styles.waManualLinkText}>בחר את כל המסוננים</Text>
+                          </Pressable>
+                          <Pressable onPress={pickerClear} style={({ pressed }: any) => [styles.waManualLinkBtn, pressed ? { opacity: 0.9 } : null]}>
+                            <Ionicons name="close-outline" size={14} color="#4F46E5" />
+                            <Text style={styles.waManualLinkText}>נקה בחירה</Text>
+                          </Pressable>
+                          <View style={styles.recipientsCountPill}>
+                            <Text style={styles.recipientsCountText}>{`${pickerSelectedIds.size} נבחרו`}</Text>
+                          </View>
+                        </View>
+                        <ScrollView style={styles.waManualList} nestedScrollEnabled contentContainerStyle={{ gap: 6, paddingVertical: 4 }}>
+                          {pickerFilteredGuests.length === 0 ? (
+                            <Text style={styles.editorSectionHint}>לא נמצאו מוזמנים תואמים.</Text>
+                          ) : (
+                            pickerFilteredGuests.map((g) => {
+                              const id = String(g.id);
+                              const checked = pickerSelectedIds.has(id);
+                              return (
+                                <Pressable
+                                  key={id}
+                                  onPress={() => pickerToggleGuest(id)}
+                                  style={({ pressed }: any) => [styles.waGuestRow, checked ? styles.waGuestRowChecked : null, pressed ? { opacity: 0.92 } : null]}
+                                >
+                                  <View style={[styles.waCheckbox, checked ? styles.waCheckboxChecked : null]}>
+                                    {checked ? <Ionicons name="checkmark" size={13} color="#fff" /> : null}
+                                  </View>
+                                  <View style={{ flex: 1, minWidth: 0 }}>
+                                    <Text style={styles.waGuestName} numberOfLines={1}>{String(g.name || 'ללא שם')}</Text>
+                                    <Text style={styles.waGuestMeta} numberOfLines={1}>
+                                      {`${String(g.phone || 'אין טלפון')}${g.status ? ` · ${String(g.status)}` : ''}`}
+                                    </Text>
+                                  </View>
+                                </Pressable>
+                              );
+                            })
+                          )}
+                        </ScrollView>
+                      </View>
+                    ) : null}
                   </View>
                   )}
 
@@ -5267,84 +5444,6 @@ export default function AutomaticNotificationsWebScreen() {
                 </View>
               ) : null}
 
-              {editorKind === 'flow' && !editorIsWhatsapp && String(editorRow.notification_type || '').startsWith('flow_step:') ? (
-                <View style={styles.editorSection}>
-                  <View style={styles.editorSectionHeader}>
-                    <Ionicons name="people-outline" size={16} color="rgba(79,70,229,1)" />
-                    <Text style={styles.editorSectionTitle}>מוזמנים</Text>
-                  </View>
-
-                  {(() => {
-                    const mode = String(flowDraft?.recipientMode || (editorRow as any)?.recipient_mode || 'manual');
-                    const ids = Array.isArray((editorRow as any).recipient_guest_ids)
-                      ? ((editorRow as any).recipient_guest_ids as any[]).map((x) => String(x))
-                      : [];
-
-                    if (mode === 'pending') {
-                      return (
-                        <View style={styles.recipientsCard}>
-                          <Text style={styles.recipientsHint}>
-                            מצב <Text style={styles.recipientsHintEm}>כל הממתינים</Text> — הרשימה מחושבת אוטומטית בזמן שליחה.
-                          </Text>
-                          <Pressable
-                            onPress={() => void openRecipientsPreview(editorRow)}
-                            style={({ pressed }: any) => [styles.recipientsEyeBtn, pressed ? { opacity: 0.92 } : null]}
-                          >
-                            <Ionicons name="eye-outline" size={16} color={ui.primary} />
-                            <Text style={styles.recipientsEyeText}>צפייה</Text>
-                          </Pressable>
-                        </View>
-                      );
-                    }
-
-                    if (mode === 'prev_pending') {
-                      return (
-                        <View style={styles.recipientsCard}>
-                          <Text style={styles.recipientsHint}>
-                            מצב <Text style={styles.recipientsHintEm}>ממתינים מהשלב הקודם</Text> — מחושב לפי שליחה אחרונה של שלב קודם + סטטוס ממתין.
-                          </Text>
-                          <Pressable
-                            onPress={() => void openRecipientsPreview(editorRow)}
-                            style={({ pressed }: any) => [styles.recipientsEyeBtn, pressed ? { opacity: 0.92 } : null]}
-                          >
-                            <Ionicons name="eye-outline" size={16} color={ui.primary} />
-                            <Text style={styles.recipientsEyeText}>צפייה</Text>
-                          </Pressable>
-                        </View>
-                      );
-                    }
-
-                    return (
-                      <View style={styles.recipientsCard}>
-                        <View style={styles.recipientsTopRow}>
-                          <View style={styles.recipientsMetaLeft}>
-                            <View style={styles.recipientsCountPill}>
-                              <Text style={styles.recipientsCountText}>{`${ids.length} נבחרו`}</Text>
-                            </View>
-
-                            <Pressable
-                              onPress={() => void openRecipientsPreview(editorRow)}
-                              style={({ pressed }: any) => [styles.recipientsEyeBtn, pressed ? { opacity: 0.92 } : null]}
-                            >
-                              <Ionicons name="eye-outline" size={16} color={ui.primary} />
-                              <Text style={styles.recipientsEyeText}>צפייה</Text>
-                            </Pressable>
-                          </View>
-
-                          <Pressable
-                            onPress={() => openRecipientsPicker(editorRow)}
-                            style={({ pressed }: any) => [styles.recipientsPrimaryBtn, pressed ? { opacity: 0.92 } : null]}
-                          >
-                            <Ionicons name="person-add-outline" size={16} color="#fff" />
-                            <Text style={styles.recipientsPrimaryBtnText}>בחר מוזמנים</Text>
-                          </Pressable>
-                        </View>
-                      </View>
-                    );
-                  })()}
-                </View>
-              ) : null}
-
               {editorKind !== 'template' ? (
                 <View style={styles.editorSection}>
                   <View style={styles.editorSectionHeader}>
@@ -6408,6 +6507,84 @@ const styles = StyleSheet.create({
     paddingTop: 18,
   },
   heroShell: { gap: 18 },
+  smsBalanceBanner: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    alignSelf: 'flex-start',
+    width: '100%',
+    maxWidth: 380,
+    gap: 18,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 16,
+    minHeight: 60,
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 8px 20px rgba(25,93,230,0.20)' } as any)
+      : {
+          shadowColor: '#195de6',
+          shadowOpacity: 0.2,
+          shadowRadius: 14,
+          shadowOffset: { width: 0, height: 8 },
+        }),
+  },
+  smsBalanceBannerLeft: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 11,
+    flexShrink: 1,
+  },
+  smsBalanceIconCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.30)',
+  },
+  smsBalanceBannerTextWrap: {
+    alignItems: 'flex-end',
+    gap: 2,
+  },
+  smsBalanceBannerLabel: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    textAlign: 'right',
+  },
+  smsBalanceBannerSub: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.80)',
+    textAlign: 'right',
+  },
+  smsBalanceBannerRight: {
+    flexDirection: 'row-reverse',
+    alignItems: 'baseline',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  smsBalanceBannerValue: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    textAlign: 'center',
+  },
+  smsBalanceBannerUnit: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.85)',
+    textAlign: 'center',
+  },
+  smsBalanceBannerErr: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    maxWidth: 200,
+  },
   backHeaderBtn: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
@@ -6568,29 +6745,30 @@ const styles = StyleSheet.create({
   labelCenter: { fontSize: 12, fontWeight: '900', color: '#374151', textAlign: 'center', textTransform: 'uppercase', letterSpacing: 0.5 },
 
   editorSection: {
-    borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderRadius: 16,
+    backgroundColor: '#fff',
     borderWidth: 1,
-    borderColor: 'rgba(2,6,23,0.08)',
-    padding: 10,
+    borderColor: 'rgba(2,6,23,0.07)',
+    padding: 14,
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: 10,
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 4px 16px rgba(15,23,42,0.05)' } as any) : null),
   },
   editorSectionHeader: { width: '100%', flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
-  editorSectionTitle: { fontSize: 13, fontWeight: '900', color: '#111827', textAlign: 'right' },
+  editorSectionTitle: { fontSize: 14, fontWeight: '900', color: '#0F172A', textAlign: 'right' },
   waStepCard: {
-    padding: 14,
-    borderRightWidth: 3,
-    borderRightColor: '#4F46E5',
+    padding: 16,
+    borderRightWidth: 4,
+    borderRightColor: '#25D366',
     backgroundColor: '#fff',
-    ...(Platform.OS === 'web' ? ({ boxShadow: '0 6px 18px rgba(79,70,229,0.06)' } as any) : null),
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 6px 20px rgba(37,211,102,0.08)' } as any) : null),
   },
   stepNumBadge: {
-    width: 24,
-    height: 24,
+    width: 26,
+    height: 26,
     borderRadius: 999,
-    backgroundColor: '#4F46E5',
+    backgroundColor: '#25D366',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -6803,38 +6981,39 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : null),
   },
 
-  chips: { flexDirection: 'row', flexWrap: 'nowrap', gap: 8 },
+  chips: { width: '100%', flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 10,
     backgroundColor: 'rgba(79,70,229,0.08)',
     borderWidth: 1,
-    borderColor: 'rgba(79,70,229,0.15)',
+    borderColor: 'rgba(79,70,229,0.18)',
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
-  chipText: { fontSize: 12, fontWeight: '800' },
+  chipText: { fontSize: 12.5, fontWeight: '800' },
   chipAdd: { backgroundColor: 'rgba(147,51,234,0.08)', borderColor: 'rgba(147,51,234,0.15)' },
   chipAddText: { fontSize: 12, fontWeight: '800', color: '#9333EA' },
 
   textareaWrap: { position: 'relative', width: '100%' },
   textarea: {
-    height: 200,
-    borderRadius: 8,
-    backgroundColor: '#F9FAFB',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    height: 210,
+    borderRadius: 14,
+    backgroundColor: '#fff',
+    borderWidth: 1.5,
+    borderColor: 'rgba(79,70,229,0.18)',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    paddingBottom: 32,
     fontSize: 15,
     fontWeight: '700',
     color: '#111827',
-    lineHeight: 22,
+    lineHeight: 23,
     textAlign: 'right',
     writingDirection: 'rtl',
-    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : null),
+    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none', boxShadow: 'inset 0 1px 3px rgba(15,23,42,0.04)' } as any) : null),
   },
-  charCount: { position: 'absolute', left: 12, bottom: 10, fontSize: 12, fontWeight: '800', color: '#9CA3AF' },
+  charCount: { position: 'absolute', left: 14, bottom: 12, fontSize: 12, fontWeight: '800', color: '#94A3B8' },
 
   step4TwoCol: { flexDirection: 'row-reverse', width: '100%', gap: 24 },
   step4PreviewCol: { flex: 1, minWidth: 0, maxWidth: 460, minHeight: 700, borderRadius: 20, borderWidth: 0, padding: 18, gap: 12, alignItems: 'center', backgroundColor: '#f2f2f2' },
@@ -6855,8 +7034,8 @@ const styles = StyleSheet.create({
   step4Instruction: { fontSize: 13, fontWeight: '700', textAlign: 'right', lineHeight: 20 },
   step4VarsLabel: { fontSize: 13, fontWeight: '900', textAlign: 'right' },
   step4VarsHint: { fontSize: 12, fontWeight: '700', textAlign: 'right', lineHeight: 18, marginTop: -2 },
-  step4VarsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  step4VarTag: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, borderWidth: 1 },
+  step4VarsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  step4VarTag: { flexDirection: 'row-reverse', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 999, borderWidth: 1, ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
   step4VarTagText: { fontSize: 12, fontWeight: '800', textAlign: 'right' },
   step4CharRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 10 },
   step4CharPill: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.86)', borderWidth: 1 },
@@ -7373,11 +7552,11 @@ const styles = StyleSheet.create({
   timeSep: { fontSize: 18, fontWeight: '900', color: 'rgba(2,6,23,0.70)' },
 
   dialogActions: { padding: 14, borderTopWidth: 1, borderTopColor: 'rgba(2,6,23,0.08)', backgroundColor: 'rgba(248,250,252,1)', flexDirection: 'row-reverse', gap: 10 },
-  dialogBtn: { flex: 1, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
-  dialogBtnPrimary: { backgroundColor: '#4F46E5' },
-  dialogBtnPrimaryText: { fontSize: 13, fontWeight: '900', color: '#fff', textAlign: 'right' },
-  dialogBtnGhost: { backgroundColor: '#fff', borderWidth: 1, borderColor: 'rgba(2,6,23,0.10)' },
-  dialogBtnGhostText: { fontSize: 13, fontWeight: '900', color: '#334155', textAlign: 'right' },
+  dialogBtn: { flex: 1, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
+  dialogBtnPrimary: { backgroundColor: '#4F46E5', ...(Platform.OS === 'web' ? ({ boxShadow: '0 12px 28px rgba(79,70,229,0.22)' } as any) : null) },
+  dialogBtnPrimaryText: { fontSize: 14, fontWeight: '900', color: '#fff', textAlign: 'right' },
+  dialogBtnGhost: { backgroundColor: '#fff', borderWidth: 1, borderColor: 'rgba(2,6,23,0.12)' },
+  dialogBtnGhostText: { fontSize: 14, fontWeight: '900', color: '#334155', textAlign: 'right' },
 
   pickerSearchRow: { margin: 14, paddingHorizontal: 12, height: 40, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(2,6,23,0.10)', backgroundColor: 'rgba(2,6,23,0.03)', flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
   pickerSearchInput: { flex: 1, height: 40, fontSize: 13, fontWeight: '800', color: '#111827', textAlign: 'right', writingDirection: 'rtl', ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : null) },
@@ -7495,44 +7674,72 @@ const styles = StyleSheet.create({
   editorOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 2100, alignItems: 'center', justifyContent: 'center', padding: 18 },
   editorCard: {
     width: '100%',
-    maxWidth: 820,
-    maxHeight: '88%',
+    maxWidth: 860,
+    maxHeight: '90%',
+    borderRadius: 22,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: 'rgba(2,6,23,0.08)',
+    overflow: 'hidden',
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 30px 80px rgba(15,23,42,0.32)' } as any) : null),
+    ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
+  },
+  editorHeader: {
+    paddingHorizontal: 18,
+    paddingVertical: 15,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(2,6,23,0.07)',
+  },
+  editorHeaderLeft: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 },
+  editorHeaderIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: 'rgba(79,70,229,0.10)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editorHeaderIconWa: { backgroundColor: 'rgba(37,211,102,0.14)' },
+  editorTitle: { flex: 1, minWidth: 0, fontSize: 16, fontWeight: '900', color: '#0F172A', textAlign: 'right' },
+  editorBody: { flex: 1, minHeight: 0, backgroundColor: '#F8FAFC' },
+  editorBodyContent: { padding: 16, paddingBottom: 16, gap: 14 },
+  editorWizardTop: {
+    paddingHorizontal: 4,
+    paddingTop: 12,
+    paddingBottom: 12,
     borderRadius: 16,
     backgroundColor: '#fff',
     borderWidth: 1,
-    borderColor: 'rgba(2,6,23,0.10)',
-    overflow: 'hidden',
-    ...(Platform.OS === 'web' ? ({ boxShadow: '0 24px 70px rgba(2,6,23,0.28)' } as any) : null),
-    ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
+    borderColor: 'rgba(79,70,229,0.14)',
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 8px 22px rgba(79,70,229,0.08)' } as any) : null),
   },
-  editorBody: { flex: 1, minHeight: 0 },
-  editorBodyContent: { padding: 12, paddingBottom: 12, gap: 10 },
-  editorWizardTop: {
-    paddingHorizontal: 2,
-    paddingTop: 6,
-    paddingBottom: 8,
-    borderRadius: 12,
-    backgroundColor: 'rgba(79,70,229,0.05)',
-    borderWidth: 1,
-    borderColor: 'rgba(79,70,229,0.10)',
-  },
-  wizardTopTitlesRow: { paddingHorizontal: 10, paddingTop: 8, paddingBottom: 6, flexDirection: 'row-reverse', alignItems: 'flex-start', gap: 10 },
-  wizardTopTitle: { fontSize: 16, fontWeight: '900', color: '#111827', textAlign: 'right' },
-  wizardTopSub: { marginTop: 2, fontSize: 12, fontWeight: '700', color: 'rgba(100,116,139,1)', textAlign: 'right' },
-  wizardProgressMetaRow: { paddingHorizontal: 10, paddingBottom: 8, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
-  wizardProgressPct: { fontSize: 12, fontWeight: '800', color: 'rgba(100,116,139,1)' },
+  wizardTopTitlesRow: { paddingHorizontal: 14, paddingTop: 2, paddingBottom: 10, flexDirection: 'row-reverse', alignItems: 'flex-start', gap: 10 },
+  wizardTopTitle: { fontSize: 17, fontWeight: '900', color: '#0F172A', textAlign: 'right' },
+  wizardTopSub: { marginTop: 3, fontSize: 12.5, fontWeight: '700', color: 'rgba(100,116,139,1)', textAlign: 'right' },
+  wizardProgressMetaRow: { paddingHorizontal: 14, paddingBottom: 8, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
+  wizardProgressPct: { fontSize: 12.5, fontWeight: '900', color: '#4F46E5' },
   wizardProgressLabel: { fontSize: 12, fontWeight: '800', color: 'rgba(100,116,139,1)' },
   wizardProgressTrack: {
-    marginHorizontal: 10,
-    height: 6,
+    marginHorizontal: 14,
+    height: 9,
     borderRadius: 999,
-    backgroundColor: 'rgba(148,163,184,0.25)',
+    backgroundColor: 'rgba(79,70,229,0.12)',
     overflow: 'hidden',
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'flex-start',
   },
-  wizardProgressFill: { height: 6, borderRadius: 999, backgroundColor: '#2563EB' },
+  wizardProgressFill: {
+    height: 9,
+    borderRadius: 999,
+    backgroundColor: '#4F46E5',
+    ...(Platform.OS === 'web' ? ({ backgroundImage: 'linear-gradient(90deg, #6366F1, #4F46E5)' } as any) : null),
+  },
   editorStepperRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   editorStepperItem: { flex: 1, minWidth: 0, alignItems: 'center', justifyContent: 'center', gap: 6 },
   editorStepDot: {
@@ -7571,26 +7778,28 @@ const styles = StyleSheet.create({
   scheduleSummaryValue: { fontSize: 18, fontWeight: '900', color: '#111827', textAlign: 'right', writingDirection: 'ltr' },
   scheduleCalendarCard: { flex: 1, minWidth: 360, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(2,6,23,0.08)', backgroundColor: '#fff', paddingTop: 10, overflow: 'hidden' },
   editorFooter: {
-    padding: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
-    backgroundColor: '#F9FAFB',
+    borderTopColor: 'rgba(2,6,23,0.07)',
+    backgroundColor: '#fff',
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 10,
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 -8px 24px rgba(15,23,42,0.05)' } as any) : null),
   },
   saveBtn: {
     flex: 1,
-    height: 44,
-    borderRadius: 10,
+    height: 48,
+    borderRadius: 14,
     backgroundColor: '#4F46E5',
     alignItems: 'center',
     justifyContent: 'center',
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer', boxShadow: '0 12px 28px rgba(79,70,229,0.18)' } as any) : null),
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer', boxShadow: '0 12px 28px rgba(79,70,229,0.22)' } as any) : null),
   },
   saveBtnHover: { backgroundColor: '#4338CA' },
   saveBtnDisabled: { opacity: 0.6, ...(Platform.OS === 'web' ? ({ cursor: 'default' } as any) : null) },
-  saveBtnText: { color: '#fff', fontSize: 13, fontWeight: '900' },
+  saveBtnText: { color: '#fff', fontSize: 14, fontWeight: '900' },
 
   toastWrap: {
     position: 'absolute',
@@ -7657,30 +7866,30 @@ const styles = StyleSheet.create({
   tokenClearBtnText: { color: '#EF4444', fontSize: 14, fontWeight: '900' },
   sendNowBtn: {
     flex: 1,
-    height: 44,
-    borderRadius: 10,
+    height: 48,
+    borderRadius: 14,
     backgroundColor: '#111827',
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row-reverse',
     gap: 8,
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer', boxShadow: '0 12px 28px rgba(2,6,23,0.16)' } as any) : null),
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer', boxShadow: '0 12px 28px rgba(2,6,23,0.18)' } as any) : null),
   },
   sendNowBtnBelowContent: {
     width: '100%',
-    height: 44,
+    height: 48,
     marginTop: 14,
-    borderRadius: 10,
+    borderRadius: 14,
     backgroundColor: '#111827',
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row-reverse',
     gap: 8,
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer', boxShadow: '0 12px 28px rgba(2,6,23,0.16)' } as any) : null),
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer', boxShadow: '0 12px 28px rgba(2,6,23,0.18)' } as any) : null),
   },
   sendNowBtnHover: { backgroundColor: '#0B1220' },
   sendNowBtnDisabled: { opacity: 0.6, ...(Platform.OS === 'web' ? ({ cursor: 'default' } as any) : null) },
-  sendNowBtnText: { color: '#fff', fontSize: 13, fontWeight: '900' },
+  sendNowBtnText: { color: '#fff', fontSize: 14, fontWeight: '900' },
   cancelBtn: {
     height: 44,
     paddingHorizontal: 14,
@@ -7915,28 +8124,28 @@ const styles = StyleSheet.create({
   },
   builderEditText: { fontSize: 12, fontWeight: '900', textAlign: 'right' },
 
-  fieldRow: { marginTop: 10, gap: 6 },
-  fieldLabel: { fontSize: 12, fontWeight: '900', color: 'rgba(2,6,23,0.75)', textAlign: 'right' },
+  fieldRow: { marginTop: 10, gap: 7, width: '100%' },
+  fieldLabel: { fontSize: 12.5, fontWeight: '900', color: 'rgba(2,6,23,0.78)', textAlign: 'right' },
   fieldInput: {
-    height: 40,
-    paddingHorizontal: 12,
+    height: 46,
+    paddingHorizontal: 14,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(2,6,23,0.10)',
+    borderColor: 'rgba(2,6,23,0.12)',
     backgroundColor: '#fff',
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '800',
     color: '#111827',
     textAlign: 'right',
     ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : null),
   },
-  modeRow: { flexDirection: 'row', flexWrap: 'nowrap', gap: 8 },
-  modePill: { flexDirection: 'row-reverse', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(2,6,23,0.10)', backgroundColor: '#fff', ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
-  modePillActive: { backgroundColor: 'rgba(79,70,229,0.10)', borderColor: 'rgba(79,70,229,0.26)' },
-  modePillText: { fontSize: 12, fontWeight: '900', color: 'rgba(2,6,23,0.70)', textAlign: 'right' },
-  waModeToggleRow: { flexDirection: 'row-reverse', gap: 8, marginBottom: 4 },
-  waModeToggleBtn: { flex: 1, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(148,163,184,0.4)', backgroundColor: '#fff' },
-  waModeToggleBtnActive: { borderColor: '#4F46E5', backgroundColor: 'rgba(79,70,229,0.08)' },
+  modeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  modePill: { flexDirection: 'row-reverse', alignItems: 'center', gap: 5, paddingHorizontal: 13, paddingVertical: 9, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(2,6,23,0.12)', backgroundColor: '#fff', ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
+  modePillActive: { backgroundColor: 'rgba(79,70,229,0.12)', borderColor: 'rgba(79,70,229,0.32)' },
+  modePillText: { fontSize: 12.5, fontWeight: '900', color: 'rgba(2,6,23,0.70)', textAlign: 'right' },
+  waModeToggleRow: { width: '100%', flexDirection: 'row-reverse', gap: 8, marginBottom: 4, padding: 4, borderRadius: 14, backgroundColor: 'rgba(15,23,42,0.04)' },
+  waModeToggleBtn: { flex: 1, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 11, borderRadius: 11, borderWidth: 1, borderColor: 'transparent', backgroundColor: 'transparent' },
+  waModeToggleBtnActive: { borderColor: 'rgba(79,70,229,0.30)', backgroundColor: '#fff', ...(Platform.OS === 'web' ? ({ boxShadow: '0 4px 12px rgba(79,70,229,0.12)' } as any) : null) },
   waModeToggleText: { fontSize: 13, fontWeight: '800', color: '#64748B', textAlign: 'right' },
   waModeToggleTextActive: { color: '#4F46E5' },
   waManualWrap: { gap: 10 },
@@ -8038,22 +8247,37 @@ const styles = StyleSheet.create({
   dependsOptionMetaRow: { marginTop: 8, flexDirection: 'row-reverse', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
   dependsOptionMetaText: { fontSize: 12, fontWeight: '800', color: 'rgba(100,116,139,1)', textAlign: 'right' },
 
-  wizardChoiceRow: { flexDirection: 'row-reverse', gap: 12, flexWrap: 'wrap' },
+  wizardStepCount: { marginTop: 2, fontSize: 11, fontWeight: '800', color: 'rgba(100,116,139,1)', textAlign: 'right' },
+  wizardProgressRow: { flexDirection: 'row-reverse', gap: 6, paddingHorizontal: 14, paddingTop: 12 },
+  wizardProgressSeg: { flex: 1, height: 5, borderRadius: 999, backgroundColor: 'rgba(2,6,23,0.08)' },
+  wizardProgressSegActive: { backgroundColor: '#4F46E5' },
+
+  wizardChoiceRow: { gap: 10 },
   wizardChoiceBtn: {
-    flex: 1,
-    minWidth: 220,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 12,
     padding: 14,
     borderRadius: 16,
     backgroundColor: '#fff',
-    borderWidth: 2,
+    borderWidth: 1.5,
     borderColor: 'rgba(2,6,23,0.08)',
-    gap: 6,
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
   wizardChoiceBtnActive: { borderColor: 'rgba(79,70,229,0.45)', backgroundColor: 'rgba(79,70,229,0.06)' },
-  wizardChoiceTitle: { fontSize: 14, fontWeight: '900', color: '#111827', textAlign: 'right' },
+  wizardChoiceIcon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  wizardChoiceTitle: { fontSize: 15, fontWeight: '900', color: '#111827', textAlign: 'right' },
   wizardChoiceTitleActive: { color: '#4F46E5' },
-  wizardChoiceSub: { fontSize: 12, fontWeight: '800', color: 'rgba(100,116,139,1)', textAlign: 'right' },
+  wizardChoiceSub: { marginTop: 2, fontSize: 12, fontWeight: '800', color: 'rgba(100,116,139,1)', textAlign: 'right' },
+
+  wizardCreatingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255,255,255,0.78)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  wizardCreatingText: { fontSize: 13, fontWeight: '900', color: '#4F46E5', textAlign: 'center' },
 
   wizardChipRow: { gap: 8 },
   wizardChip: { alignSelf: 'flex-start', flexDirection: 'row-reverse', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(79,70,229,0.10)', borderWidth: 1, borderColor: 'rgba(79,70,229,0.20)' },
