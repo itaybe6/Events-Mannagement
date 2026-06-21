@@ -22,6 +22,7 @@ import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import { eventService } from '@/lib/services/eventService';
 import {
   DUPLICATE_GUEST_ERROR,
+  GUEST_DELETE_FAILED_ERROR,
   guestService,
   UNAPPROVED_EVENT_GUEST_LIMIT,
   UNAPPROVED_EVENT_GUEST_LIMIT_ERROR,
@@ -278,9 +279,9 @@ export default function CoupleGuestsWebScreen() {
     }
   };
 
-  const handleDeleteGuest = async (guestId: string) => {
+  const handleDeleteGuest = (guestId: string) => {
     const g = guests.find((x) => x.id === guestId);
-    confirmDestructiveAction('מחיקת אורח', `האם למחוק את ${g?.name || 'האורח'}?`, async () => {
+    void confirmDestructiveAction('מחיקת אורח', `האם למחוק את ${g?.name || 'האורח'}?`, async () => {
       try {
         await guestService.deleteGuest(guestId);
         setGuests((prev) => prev.filter((x) => x.id !== guestId));
@@ -290,9 +291,9 @@ export default function CoupleGuestsWebScreen() {
           return next;
         });
         if (editingGuest?.id === guestId) closeEdit();
-      } catch (e) {
+      } catch (e: any) {
         console.error('Delete guest error:', e);
-        Alert.alert('שגיאה', 'לא ניתן למחוק את האורח.');
+        Alert.alert('שגיאה', e?.message === GUEST_DELETE_FAILED_ERROR ? GUEST_DELETE_FAILED_ERROR : 'לא ניתן למחוק את האורח.');
       }
     });
   };
@@ -313,23 +314,25 @@ export default function CoupleGuestsWebScreen() {
     setBulkDeleteConfirmOpen(false);
   };
 
-  const confirmDestructiveAction = (title: string, message: string, onConfirm: () => Promise<void>) => {
+  const confirmDestructiveAction = async (title: string, message: string, onConfirm: () => Promise<void>) => {
     if (Platform.OS === 'web') {
       const ok = typeof window !== 'undefined' ? window.confirm(`${title}\n\n${message}`) : true;
-      if (ok) void onConfirm();
+      if (ok) await onConfirm();
       return;
     }
 
-    Alert.alert(title, message, [
-      { text: 'ביטול', style: 'cancel' },
-      {
-        text: 'מחק',
-        style: 'destructive',
-        onPress: () => {
-          void onConfirm();
+    await new Promise<void>((resolve) => {
+      Alert.alert(title, message, [
+        { text: 'ביטול', style: 'cancel', onPress: () => resolve() },
+        {
+          text: 'מחק',
+          style: 'destructive',
+          onPress: () => {
+            void onConfirm().finally(resolve);
+          },
         },
-      },
-    ]);
+      ]);
+    });
   };
 
   const bulkDeleteSelected = () => {
@@ -348,9 +351,9 @@ export default function CoupleGuestsWebScreen() {
       setGuests((prev) => prev.filter((g) => !ids.includes(g.id)));
       clearSelection();
       setBulkDeleteConfirmOpen(false);
-    } catch (e) {
+    } catch (e: any) {
       console.error('Bulk delete error:', e);
-      Alert.alert('שגיאה', 'לא ניתן למחוק את האורחים שנבחרו.');
+      Alert.alert('שגיאה', e?.message === GUEST_DELETE_FAILED_ERROR ? GUEST_DELETE_FAILED_ERROR : 'לא ניתן למחוק את האורחים שנבחרו.');
     } finally {
       setBulkDeleteSubmitting(false);
     }

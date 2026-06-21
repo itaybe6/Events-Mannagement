@@ -17,6 +17,9 @@ export const UNAPPROVED_EVENT_GUEST_LIMIT_ERROR =
 export const DUPLICATE_GUEST_ERROR =
   'המוזמן כבר קיים באירוע לפי מספר טלפון.';
 
+export const GUEST_DELETE_FAILED_ERROR =
+  'לא ניתן למחוק את האורח. נסו לרענן את הדף ולנסות שוב.';
+
 export function normalizeGuestNameForDuplicate(name: string): string {
   return String(name || '')
     .normalize('NFKC')
@@ -516,12 +519,14 @@ export const guestService = {
   // Delete guest
   deleteGuest: async (guestId: string): Promise<void> => {
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('guests')
         .delete()
-        .eq('id', guestId);
+        .eq('id', guestId)
+        .select('id');
 
       if (error) throw error;
+      if (!data?.length) throw new Error(GUEST_DELETE_FAILED_ERROR);
     } catch (error) {
       console.error('Delete guest error:', error);
       throw error;
@@ -745,11 +750,13 @@ export const guestService = {
   },
 
   async deleteGuestCategory(categoryId: string) {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('guest_categories')
       .delete()
-      .eq('id', categoryId);
+      .eq('id', categoryId)
+      .select('id');
     if (error) throw error;
+    if (!data?.length) throw new Error(GUEST_DELETE_FAILED_ERROR);
   },
 
   async deleteGuestCategoryWithGuests(categoryId: string) {
@@ -759,10 +766,12 @@ export const guestService = {
       .eq('category_id', categoryId);
     if (guestsError) throw guestsError;
 
-    const { error: categoryError } = await supabase
+    const { data, error: categoryError } = await supabase
       .from('guest_categories')
       .delete()
-      .eq('id', categoryId);
+      .eq('id', categoryId)
+      .select('id');
     if (categoryError) throw categoryError;
+    if (!data?.length) throw new Error(GUEST_DELETE_FAILED_ERROR);
   },
 }; 

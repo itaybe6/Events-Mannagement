@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -139,6 +139,20 @@ export default function AdminInvitationLinksScreen() {
   const [guestSearch, setGuestSearch] = useState('');
   const [copiedGuestId, setCopiedGuestId] = useState<string | null>(null);
   const copyResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const notify = useCallback((message: string) => {
+    const text = String(message || '').trim();
+    if (!text) return;
+    if (Platform.OS === 'web') {
+      setToast(text);
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = setTimeout(() => setToast(null), 2600);
+      return;
+    }
+    Alert.alert('הזמנה', text);
+  }, []);
 
   useEffect(() => {
     setForm({
@@ -156,6 +170,7 @@ export default function AdminInvitationLinksScreen() {
   useEffect(() => {
     return () => {
       if (copyResetTimerRef.current) clearTimeout(copyResetTimerRef.current);
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     };
   }, []);
 
@@ -181,7 +196,7 @@ export default function AdminInvitationLinksScreen() {
 
   const openDemo = async () => {
     if (!event?.id || !demoUrl) {
-      Alert.alert('דמו', 'לא הוגדר עדיין דומיין חיצוני להזמנה. יש להגדיר `rsvp_link` או `EXPO_PUBLIC_SITE_BASE_URL`.');
+      notify('לא הוגדר עדיין דומיין חיצוני להזמנה. יש להגדיר rsvp_link או EXPO_PUBLIC_SITE_BASE_URL.');
       return;
     }
     try {
@@ -192,7 +207,7 @@ export default function AdminInvitationLinksScreen() {
       await Linking.openURL(demoUrl);
     } catch (e: any) {
       const msg = e?.message ? String(e.message) : 'לא ניתן לפתוח קישור';
-      Alert.alert('דמו', msg);
+      notify(msg);
     }
   };
 
@@ -235,7 +250,7 @@ export default function AdminInvitationLinksScreen() {
       // fallback below
     }
 
-    Alert.alert('העתקה', text);
+    notify(text);
     return false;
   };
 
@@ -284,10 +299,10 @@ export default function AdminInvitationLinksScreen() {
       });
 
       setForm((f) => ({ ...f, invitationImageUrl: url }));
-      Alert.alert('הועלה', 'תמונת ההזמנה עלתה. לחץ "שמור" כדי לעדכן באירוע.');
+      notify('התמונה עלתה. לחץ "שמור שינויים" כדי לעדכן באירוע.');
     } catch (e: any) {
       const message = e?.message ? String(e.message) : 'שגיאה לא ידועה';
-      Alert.alert('שגיאה', `לא ניתן להעלות תמונה.\n\n${message}`);
+      notify(`לא ניתן להעלות תמונה. ${message}`);
     } finally {
       setUploading(false);
     }
@@ -301,15 +316,11 @@ export default function AdminInvitationLinksScreen() {
     const nextInvitationTitle = (form.invitationTitle || '').trim();
     const nextGroom = (form.groomName || '').trim();
     const nextBride = (form.brideName || '').trim();
+    const nextCeremonyTime = (form.ceremonyTime || '').trim() || null;
 
     if (isWedding) {
       if (!nextGroom || !nextBride) {
-        Alert.alert('שגיאה', 'בחתונה חובה למלא שם חתן ושם כלה');
-        return;
-      }
-    } else {
-      if (!nextInvitationTitle) {
-        Alert.alert('שגיאה', 'יש למלא כותרת להזמנה');
+        notify('בחתונה חובה למלא שם חתן ושם כלה');
         return;
       }
     }
@@ -318,20 +329,21 @@ export default function AdminInvitationLinksScreen() {
     try {
       const updated = await eventService.updateEvent(event.id, {
         invitationImageUrl: nextInvitationImageUrl,
-        // Non-wedding: show a custom title. Wedding: title is redundant.
-        invitationTitle: isWedding ? null : nextInvitationTitle,
+        // Non-wedding: optional custom title (falls back to the event title). Wedding: title is redundant.
+        invitationTitle: isWedding ? null : (nextInvitationTitle || null),
         groomName: isWedding ? nextGroom : null,
         brideName: isWedding ? nextBride : null,
         receptionTime: isWedding ? (form.receptionTime || '').trim() || null : null,
-        ceremonyTime: isWedding ? (form.ceremonyTime || '').trim() || null : null,
+        // Ceremony/event time is supported for any event type (e.g. brit).
+        ceremonyTime: nextCeremonyTime,
         brideParents: isWedding ? (form.brideParents || '').trim() || null : null,
         groomParents: isWedding ? (form.groomParents || '').trim() || null : null,
       } as any);
       setEvent(updated as any);
-      Alert.alert('נשמר', 'ההזמנה עודכנה בהצלחה');
+      notify('ההזמנה נשמרה בהצלחה');
     } catch (e: any) {
       const message = e?.message ? String(e.message) : 'שגיאה לא ידועה';
-      Alert.alert('שגיאה', `לא ניתן לשמור.\n\n${message}`);
+      notify(`לא ניתן לשמור. ${message}`);
     } finally {
       setSaving(false);
     }
@@ -526,6 +538,14 @@ export default function AdminInvitationLinksScreen() {
                       {String(event.location ?? '')}
                     </Text>
                   </View>
+                  {(form.ceremonyTime || '').trim() ? (
+                    <View style={styles.previewMetaChip}>
+                      <Ionicons name="time-outline" size={13} color={colors.primary} />
+                      <Text style={styles.previewMetaChipText} numberOfLines={1}>
+                        {(form.ceremonyTime || '').trim()}
+                      </Text>
+                    </View>
+                  ) : null}
                 </View>
                 <Text style={styles.previewHint}>לחיצה על המצלמה תאפשר לבחור או להחליף את תמונת ההזמנה</Text>
               </View>
@@ -684,23 +704,43 @@ export default function AdminInvitationLinksScreen() {
                 </View>
               </>
             ) : (
-              <View
-                style={[
-                  styles.formSectionCard,
-                  isDesktopWide ? styles.formSectionCardDesktop : null,
-                ]}
-              >
-                <Text style={styles.sectionTitle}>כותרת</Text>
-                <Text style={styles.label}>כותרת להזמנה *</Text>
-                <TextInput
-                  value={form.invitationTitle}
-                  onChangeText={(t) => setForm((f) => ({ ...f, invitationTitle: t }))}
-                  placeholder="לדוגמה: בר המצווה של עומר"
-                  placeholderTextColor={'rgba(17,24,39,0.35)'}
-                  style={styles.input}
-                  textAlign="right"
-                />
-              </View>
+              <>
+                <View
+                  style={[
+                    styles.formSectionCard,
+                    isDesktopWide ? styles.formSectionCardDesktop : null,
+                  ]}
+                >
+                  <Text style={styles.sectionTitle}>כותרת</Text>
+                  <Text style={styles.label}>כותרת להזמנה</Text>
+                  <TextInput
+                    value={form.invitationTitle}
+                    onChangeText={(t) => setForm((f) => ({ ...f, invitationTitle: t }))}
+                    placeholder={`לדוגמה: ${getEventTypeLabel(String(event.title ?? '')) || 'האירוע'} של עומר`}
+                    placeholderTextColor={'rgba(17,24,39,0.35)'}
+                    style={styles.input}
+                    textAlign="right"
+                  />
+                </View>
+
+                <View
+                  style={[
+                    styles.formSectionCard,
+                    isDesktopWide ? styles.formSectionCardDesktop : null,
+                  ]}
+                >
+                  <Text style={styles.sectionTitle}>זמן (אופציונלי)</Text>
+                  <Text style={styles.label}>שעת האירוע</Text>
+                  <TextInput
+                    value={form.ceremonyTime}
+                    onChangeText={(t) => setForm((f) => ({ ...f, ceremonyTime: t }))}
+                    placeholder="לדוגמה: 18:30"
+                    placeholderTextColor={'rgba(17,24,39,0.35)'}
+                    style={styles.input}
+                    textAlign="right"
+                  />
+                </View>
+              </>
             )}
 
             <View style={[styles.formFooter, isDesktopWide ? styles.formFooterDesktop : null]}>
@@ -875,6 +915,15 @@ export default function AdminInvitationLinksScreen() {
         ) : null}
 
       </AppKeyboardAwareScrollView>
+
+      {toast ? (
+        <View pointerEvents="none" style={styles.toastWrap}>
+          <View style={styles.toast}>
+            <Ionicons name="checkmark-circle" size={18} color="#fff" />
+            <Text style={styles.toastText} numberOfLines={3}>{toast}</Text>
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -1520,6 +1569,28 @@ const styles = StyleSheet.create({
   smsSendBtn: { height: 42, paddingHorizontal: 14, borderRadius: 14, backgroundColor: colors.primary, flexDirection: ROW_DIR, alignItems: 'center', justifyContent: 'center', gap: 8 },
   smsSendText: { fontSize: 12, fontWeight: '900', color: '#fff', textAlign: 'right' },
   smsResult: { fontSize: 12, fontWeight: '800', color: 'rgba(2,6,23,0.70)', textAlign: 'right' },
+
+  toastWrap: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    paddingBottom: 28,
+    paddingHorizontal: 16,
+    zIndex: 9999,
+    ...(Platform.OS === 'web' ? ({ position: 'fixed' } as any) : null),
+  },
+  toast: {
+    maxWidth: 460,
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    backgroundColor: 'rgba(2,6,23,0.92)',
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 16px 36px rgba(2,6,23,0.30)' } as any) : null),
+  },
+  toastText: { flex: 1, color: '#fff', fontSize: 13, fontWeight: '800', textAlign: 'right' },
 
 });
 

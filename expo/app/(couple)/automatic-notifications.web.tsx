@@ -513,6 +513,8 @@ export default function AutomaticNotificationsWebScreen() {
     title: string;
     recipientMode: WaRecipientMode;
     recipientGroups: string[];
+    // SMS flow wizard: allow combining hand-picked guests with category groups.
+    recipientManual?: boolean;
     dependsOnSettingId: string | null;
     whatsappTemplateId: string | null;
     whatsappParams: WhatsAppStepParams;
@@ -538,10 +540,14 @@ export default function AutomaticNotificationsWebScreen() {
   const [waImageUploading, setWaImageUploading] = useState(false);
   const [dependsPickerOpen, setDependsPickerOpen] = useState(false);
   const [addWizardOpen, setAddWizardOpen] = useState(false);
-  const [addWizardStep, setAddWizardStep] = useState<1 | 2>(1);
+  const [addWizardStep, setAddWizardStep] = useState<1 | 2 | 3>(1);
   const [addWizardChannel, setAddWizardChannel] = useState<'SMS' | 'WHATSAPP'>('SMS');
+  const [addWizardSendMode, setAddWizardSendMode] = useState<'scheduled' | 'immediate'>('scheduled');
   const [addWizardInsertAt, setAddWizardInsertAt] = useState<number>(1);
   const [addWizardCreating, setAddWizardCreating] = useState(false);
+  // Editor send mode: 'scheduled' = full wizard (date → recipients → content → queue);
+  // 'immediate' = short wizard (recipients → content) that ends with a "send now" button.
+  const [flowSendMode, setFlowSendMode] = useState<'scheduled' | 'immediate'>('scheduled');
   const [dateDialogOpen, setDateDialogOpen] = useState(false);
   const [timeDialogOpen, setTimeDialogOpen] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(() => new Date());
@@ -1374,22 +1380,55 @@ export default function AutomaticNotificationsWebScreen() {
   const waQuotaRemaining = Math.max(0, Number(waDailyQuota || 0) - Number(waSentToday || 0));
   const waOverQuota = Number(waDailyQuota || 0) > 0 && waRecipientCount > waQuotaRemaining;
 
+  // ===== Flow wizard (date/time → recipients → content → queue) — SMS and WhatsApp =====
+  const flowIsWizard = editorKind === 'flow';
+  const flowIsSmsWizard = flowIsWizard && !editorIsWhatsapp;
+  const flowIsWaWizard = flowIsWizard && editorIsWhatsapp;
+  const flowIsImmediate = flowIsWizard && flowSendMode === 'immediate';
+  // Immediate send skips the schedule + queue steps and ends with a "send now" button.
+  type FlowWizardStepId = 'schedule' | 'recipients' | 'message' | 'queue';
+  const FLOW_WIZARD_STEPS: readonly FlowWizardStepId[] = flowIsImmediate
+    ? (['recipients', 'message'] as const)
+    : (['schedule', 'recipients', 'message', 'queue'] as const);
+  const flowWizardStepId: FlowWizardStepId =
+    FLOW_WIZARD_STEPS[Math.min(editorWizardStepIdx, FLOW_WIZARD_STEPS.length - 1)] ?? FLOW_WIZARD_STEPS[0];
+  const flowWizardIsLast = editorWizardStepIdx >= FLOW_WIZARD_STEPS.length - 1;
+
+  // SMS flow recipients are stored as a snapshot: union of selected category groups + hand-picked guests.
+  const flowSmsSelectedIds = useMemo(() => {
+    const set = new Set<string>();
+    if (!flowIsSmsWizard) return set;
+    if (flowDraft?.recipientManual) for (const id of pickerSelectedIds) set.add(String(id));
+    for (const g of flowDraft?.recipientGroups || []) for (const id of guestIdsForGroup(g)) set.add(id);
+    return set;
+  }, [flowIsSmsWizard, flowDraft?.recipientManual, flowDraft?.recipientGroups, pickerSelectedIds, guestIdsForGroup]);
+  const flowSmsRecipientCount = flowSmsSelectedIds.size;
+
   useEffect(() => {
     if (!editorOpen) return;
     setEditorWizardStepIdx(0);
   }, [editorKind, editorOpen, editorType]);
 
   useEffect(() => {
-    if (
-      editorOpen &&
+    if (!editorOpen || !editorRow?.id) return;
+    const isTemplateCatchup =
       editorKind === 'template' &&
       editorWizardStepId === 'catchup' &&
-      String(editorRow?.notification_type || '') === 'reminder_1' &&
-      editorRow?.id
-    ) {
+      String(editorRow?.notification_type || '') === 'reminder_1';
+    const isFlowQueue = flowIsWizard && flowWizardStepId === 'queue';
+    if (isTemplateCatchup || isFlowQueue) {
       void loadStepCatchupQueue();
     }
-  }, [editorOpen, editorKind, editorWizardStepId, editorRow?.id, editorRow?.notification_type, loadStepCatchupQueue]);
+  }, [
+    editorOpen,
+    editorKind,
+    editorWizardStepId,
+    flowIsWizard,
+    flowWizardStepId,
+    editorRow?.id,
+    editorRow?.notification_type,
+    loadStepCatchupQueue,
+  ]);
 
   const runCatchupBackfill = useCallback(async () => {
     if (!canEdit) {
@@ -1401,8 +1440,16 @@ export default function AutomaticNotificationsWebScreen() {
       return;
     }
     try {
-      const { error } = await supabase.rpc('backfill_first_message_catchup_queue', { p_event_id: resolvedEventId });
-      if (error) throw error;
+      const isFlowSetting = String(editorRow?.notification_type || '').startsWith('flow_step:');
+      if (isFlowSetting && editorRow?.id) {
+        const { error } = await supabase.rpc('backfill_catchup_queue_for_setting', {
+          p_setting_id: String(editorRow.id),
+        });
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.rpc('backfill_first_message_catchup_queue', { p_event_id: resolvedEventId });
+        if (error) throw error;
+      }
       showToast('התור עודכן');
       await loadStepCatchupQueue();
       const reminder1 = (notificationSettings || []).find((r) => r.notification_type === 'reminder_1' && r.id);
@@ -1424,7 +1471,7 @@ export default function AutomaticNotificationsWebScreen() {
       console.warn('Backfill catchup queue:', e);
       showToast('לא ניתן לעדכן את התור');
     }
-  }, [canEdit, resolvedEventId, loadStepCatchupQueue, notificationSettings, showToast]);
+  }, [canEdit, resolvedEventId, loadStepCatchupQueue, notificationSettings, showToast, editorRow?.id, editorRow?.notification_type]);
 
   const demoInvitation = useMemo(() => {
     const pickFrom = (list: any[]) => {
@@ -1558,8 +1605,9 @@ export default function AutomaticNotificationsWebScreen() {
     setEditorOpen(true);
   };
 
-  const openFlowEditor = (row: NotificationSettingRow) => {
+  const openFlowEditor = (row: NotificationSettingRow, opts?: { sendMode?: 'scheduled' | 'immediate' }) => {
     setEditorKind('flow');
+    setFlowSendMode(opts?.sendMode ?? 'scheduled');
     setSelectedType(row.notification_type);
     setEditorType(row.notification_type);
     const rawDt = (row as any)?.notification_date;
@@ -1595,14 +1643,50 @@ export default function AutomaticNotificationsWebScreen() {
     setPickerSelectedIds(new Set(savedIds));
     setPickerSearch('');
     setPickerFilter('all');
+
+    // SMS flow wizard: restore the saved snapshot selection (groups + manual flag) from recipient_rule.
+    const ruleMode = rawRule ? String(rawRule.mode || '') : '';
+    const smsManual =
+      !isWa &&
+      (ruleMode === 'snapshot'
+        ? Boolean(rawRule?.manual)
+        : rowMode === 'manual' && savedIds.length > 0);
+    const smsGroups =
+      ruleMode === 'snapshot' && Array.isArray(rawRule?.groups)
+        ? (rawRule.groups as any[]).map((x) => String(x)).filter(Boolean)
+        : statusGroupKeys.includes(rowMode)
+          ? [rowMode]
+          : rowMode === 'manual'
+            ? []
+            : ['all'];
+
     setFlowDraft({
       title: String(row.title ?? 'שלב'),
       recipientMode: isWa ? (waMode === 'manual' ? 'manual' : 'groups') : rowMode,
-      recipientGroups: initialGroups,
+      recipientGroups: isWa ? initialGroups : smsGroups,
+      recipientManual: smsManual,
       dependsOnSettingId: (row as any)?.depends_on_setting_id ? String((row as any).depends_on_setting_id) : null,
       whatsappTemplateId: (row as any)?.whatsapp_template_id ? String((row as any).whatsapp_template_id) : null,
       whatsappParams: ((row as any)?.whatsapp_params as WhatsAppStepParams) || {},
     });
+
+    // Initialize the "new guests queue" (catch-up) editor for flow steps (SMS + WhatsApp).
+    {
+      setCatchupEnabled(Boolean((row as any)?.late_catchup_enabled ?? false));
+      const tRaw = String((row as any)?.late_catchup_send_time ?? '12:00:00');
+      setCatchupTimeHm(tRaw.includes(':') ? tRaw.split(':').slice(0, 2).join(':') : '12:00');
+      const modeRaw = String((row as any)?.late_catchup_schedule_mode ?? 'weekdays').trim();
+      setCatchupScheduleMode(modeRaw === 'dates' ? 'dates' : 'weekdays');
+      const wd = Array.isArray((row as any)?.late_catchup_weekdays)
+        ? ((row as any).late_catchup_weekdays as any[]).map((x) => Number(x)).filter((n) => Number.isFinite(n))
+        : [0, 1, 2, 3, 4];
+      setCatchupWeekdays(new Set(wd.map((n) => Math.max(0, Math.min(6, Number(n) || 0)))));
+      const cdates = Array.isArray((row as any)?.late_catchup_dates)
+        ? ((row as any).late_catchup_dates as any[]).map((x) => String(x)).filter(Boolean)
+        : [];
+      setCatchupDates(new Set(cdates));
+    }
+
     setEditorWizardStepIdx(0);
     setEditorOpen(true);
   };
@@ -2159,18 +2243,37 @@ export default function AutomaticNotificationsWebScreen() {
             payload.recipient_rule = { mode: 'groups', groups };
             payload.recipient_guest_ids = [];
           }
-        } else {
-          const mode = String(flowDraft?.recipientMode || 'manual');
-          payload.recipient_mode = mode;
-          payload.depends_on_setting_id = flowDraft?.dependsOnSettingId ? String(flowDraft.dependsOnSettingId) : null;
-          payload.recipient_rule =
-            mode === 'prev_pending'
-              ? { mode: 'prev_pending', dependsOn: payload.depends_on_setting_id }
-              : { mode };
-          if (mode === 'manual') {
-            payload.recipient_guest_ids = Array.from(pickerSelectedIds);
+
+          // Step 4 — "new guests queue": persist catch-up scheduling for this WhatsApp step.
+          payload.late_catchup_enabled = Boolean(catchupEnabled);
+          const ttWa = normalizeTimeToDb(String(catchupTimeHm || '').trim());
+          if (ttWa) payload.late_catchup_send_time = ttWa;
+          payload.late_catchup_schedule_mode = catchupScheduleMode;
+          if (catchupScheduleMode === 'dates') {
+            payload.late_catchup_dates = Array.from(catchupDates).sort();
           } else {
-            payload.recipient_guest_ids = [];
+            payload.late_catchup_weekdays = Array.from(catchupWeekdays).sort((a, b) => a - b);
+          }
+        } else {
+          // SMS flow wizard: recipients are a snapshot (union of category groups + hand-picked guests),
+          // resolved at save time and stored as a concrete manual list so the existing scheduler sends them.
+          const groups = (flowDraft?.recipientGroups || []).filter(Boolean);
+          const manual = Boolean(flowDraft?.recipientManual);
+          const snapshotIds = Array.from(flowSmsSelectedIds);
+          payload.recipient_mode = 'manual';
+          payload.depends_on_setting_id = null;
+          payload.recipient_rule = { mode: 'snapshot', groups, manual };
+          payload.recipient_guest_ids = snapshotIds;
+
+          // Step 4 — "new guests queue": persist catch-up scheduling for this flow step.
+          payload.late_catchup_enabled = Boolean(catchupEnabled);
+          const tt = normalizeTimeToDb(String(catchupTimeHm || '').trim());
+          if (tt) payload.late_catchup_send_time = tt;
+          payload.late_catchup_schedule_mode = catchupScheduleMode;
+          if (catchupScheduleMode === 'dates') {
+            payload.late_catchup_dates = Array.from(catchupDates).sort();
+          } else {
+            payload.late_catchup_weekdays = Array.from(catchupWeekdays).sort((a, b) => a - b);
           }
         }
       }
@@ -2370,6 +2473,7 @@ export default function AutomaticNotificationsWebScreen() {
       const channel = sendChannel;
       const isWhatsapp = sendIsWhatsapp;
       const isFlow = nt.startsWith('flow_step:');
+      const isFlowSmsWizard = isFlow && !isWhatsapp;
       const flowMode = isFlow
         ? editorIsWhatsapp
           ? String(flowDraft?.recipientMode || '') === 'manual'
@@ -2398,26 +2502,36 @@ export default function AutomaticNotificationsWebScreen() {
         (isFlow && flowMode === 'manual')
           ? Array.from(pickerSelectedIds)
           : rowIds;
+
+      // SMS flow wizard: recipients are the snapshot union of selected category groups + hand-picked guests.
+      if (isFlowSmsWizard) {
+        ids = Array.from(flowSmsSelectedIds);
+        if (ids.length === 0) {
+          alert('בחר לפחות נמען אחד לשליחה (קטגוריה או בחירה ידנית).');
+          return;
+        }
+      }
+
       const isAutoAll =
         !isFlow &&
         nt === 'reminder_1' &&
         String((editorRow as any)?.recipient_mode ?? '').trim() !== 'manual' &&
         !recipientsWizardManual &&
         ids.length === 0;
-      const isRequiredList = (nt === 'reminder_1' && !isAutoAll) || (isFlow && flowMode === 'manual');
+      const isRequiredList = !isFlowSmsWizard && ((nt === 'reminder_1' && !isAutoAll) || (isFlow && flowMode === 'manual'));
 
       if (isRequiredList && ids.length === 0) {
         alert(isFlow ? 'במצב "בחירה ידנית" צריך לבחור מוזמנים.' : 'להודעה הראשונה צריך לבחור מוזמנים (לחץ "הוסף מוזמנים")');
         return;
       }
       // Flow (WhatsApp): multi-group audience -> union of selected groups.
-      if (isFlow && flowMode === 'groups') {
+      if (!isFlowSmsWizard && isFlow && flowMode === 'groups') {
         ids = Array.from(waSelectedRecipientIds);
         if (ids.length === 0) {
           alert('בחר לפחות קבוצת נמענים אחת לשליחה.');
           return;
         }
-      } else if (isFlow && flowMode && flowMode !== 'manual' && flowMode !== 'prev_pending') {
+      } else if (!isFlowSmsWizard && isFlow && flowMode && flowMode !== 'manual' && flowMode !== 'prev_pending') {
         // Flow: status-based audiences (all/pending/coming/not_coming/maybe) -> compute now.
         ids = statusIdsFor(flowMode);
         if (ids.length === 0) {
@@ -2426,7 +2540,7 @@ export default function AutomaticNotificationsWebScreen() {
         }
       }
       // Flow: prev_pending -> compute recipients from previous step's last run + current pending status
-      if (isFlow && flowMode === 'prev_pending') {
+      if (!isFlowSmsWizard && isFlow && flowMode === 'prev_pending') {
         const dependsOn = String((editorRow as any)?.depends_on_setting_id || flowDraft?.dependsOnSettingId || '').trim();
         if (!dependsOn) {
           alert('בחר שלב קודם כדי לחשב "ממתינים מהשלב הקודם".');
@@ -2584,6 +2698,7 @@ export default function AutomaticNotificationsWebScreen() {
     }
     const nextInsertAt = (flowStepsSorted?.length || 0) + 1;
     setAddWizardChannel('SMS');
+    setAddWizardSendMode('scheduled');
     setAddWizardInsertAt(nextInsertAt);
     setAddWizardStep(1);
     setAddWizardCreating(false);
@@ -2596,7 +2711,7 @@ export default function AutomaticNotificationsWebScreen() {
     setAddWizardStep(1);
   }, [addWizardCreating]);
 
-  // Step 1 -> pick a channel and immediately advance to the position step.
+  // Step 1 -> pick a channel and advance to the send-mode step.
   const pickAddWizardChannel = useCallback(
     (channel: 'SMS' | 'WHATSAPP') => {
       setAddWizardChannel(channel);
@@ -2606,13 +2721,14 @@ export default function AutomaticNotificationsWebScreen() {
     [flowStepsSorted?.length]
   );
 
-  const insertFlowStep = useCallback(async (args: { channel: 'SMS' | 'WHATSAPP'; insertAt: number }) => {
+  const insertFlowStep = useCallback(async (args: { channel: 'SMS' | 'WHATSAPP'; insertAt: number; sendMode?: 'scheduled' | 'immediate' }) => {
     if (!canEdit) {
       showToast('לצפייה בלבד');
       return;
     }
     if (!event?.id) return;
     const channel = args.channel;
+    const sendMode = args.sendMode ?? 'scheduled';
     const existing = flowStepsSorted;
     const combinedLen = combinedCards.length;
     const insertAt = Math.max(1, Math.min(combinedLen + 1, Math.floor(Number(args.insertAt) || 1)));
@@ -2651,8 +2767,10 @@ export default function AutomaticNotificationsWebScreen() {
     const insertPayload: any = {
       event_id: event.id,
       notification_type: nt,
-      title: `שלב ${insertAt}`,
-      enabled: false,
+      title: sendMode === 'immediate' ? 'שליחה מיידית' : `שלב ${insertAt}`,
+      // New scheduled messages start active by default. Immediate messages stay disabled
+      // so the background scheduler never auto-sends them (they're sent manually via "send now").
+      enabled: sendMode !== 'immediate',
       message_content: normalizeTemplateToSingleBraces(defaultMessageByType({ notificationType: 'reminder_2', kind: detectEventKind(event as any) })),
       days_from_wedding: defaultDays,
       channel,
@@ -2716,7 +2834,7 @@ export default function AutomaticNotificationsWebScreen() {
 
       const merged = [...updatedExisting, created].sort((a, b) => (Number((a as any).sort_order ?? 0) || 0) - (Number((b as any).sort_order ?? 0) || 0));
       setFlowSteps(merged);
-      openFlowEditor(created);
+      openFlowEditor(created, { sendMode });
     } catch (e) {
       console.error('Failed to add flow step:', e);
       alert('לא ניתן להוסיף כרטיסיה (בדוק שהרצת את המיגרציה החדשה).');
@@ -2730,7 +2848,7 @@ export default function AutomaticNotificationsWebScreen() {
       setAddWizardCreating(true);
       setAddWizardInsertAt(insertAt);
       try {
-        await insertFlowStep({ channel: addWizardChannel, insertAt });
+        await insertFlowStep({ channel: addWizardChannel, insertAt, sendMode: 'scheduled' });
         setAddWizardOpen(false);
         setAddWizardStep(1);
       } finally {
@@ -2738,6 +2856,28 @@ export default function AutomaticNotificationsWebScreen() {
       }
     },
     [addWizardCreating, addWizardChannel, insertFlowStep]
+  );
+
+  // Step 2 -> pick a send mode. Scheduled goes to placement; immediate creates a card now and opens it.
+  const pickAddWizardSendMode = useCallback(
+    async (mode: 'scheduled' | 'immediate') => {
+      setAddWizardSendMode(mode);
+      if (mode === 'scheduled') {
+        setAddWizardStep(3);
+        return;
+      }
+      if (addWizardCreating) return;
+      setAddWizardCreating(true);
+      try {
+        const endAt = (combinedCards?.length || 0) + 1;
+        await insertFlowStep({ channel: addWizardChannel, insertAt: endAt, sendMode: 'immediate' });
+        setAddWizardOpen(false);
+        setAddWizardStep(1);
+      } finally {
+        setAddWizardCreating(false);
+      }
+    },
+    [addWizardCreating, addWizardChannel, combinedCards?.length, insertFlowStep]
   );
 
   const deleteFlowStep = useCallback(
@@ -3673,9 +3813,9 @@ export default function AutomaticNotificationsWebScreen() {
           <View style={styles.dialogCard}>
             <View style={styles.dialogHeader}>
               <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 10, flex: 1 }}>
-                {addWizardStep === 2 ? (
+                {addWizardStep > 1 ? (
                   <Pressable
-                    onPress={() => { if (!addWizardCreating) setAddWizardStep(1); }}
+                    onPress={() => { if (!addWizardCreating) setAddWizardStep((s) => (s > 1 ? ((s - 1) as 1 | 2 | 3) : 1)); }}
                     style={styles.dialogClose}
                     accessibilityLabel="חזרה"
                   >
@@ -3683,8 +3823,10 @@ export default function AutomaticNotificationsWebScreen() {
                   </Pressable>
                 ) : null}
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.dialogTitle}>{addWizardStep === 1 ? 'הוספת הודעה חדשה' : 'איפה למקם את ההודעה?'}</Text>
-                  <Text style={styles.wizardStepCount}>שלב {addWizardStep} מתוך 2</Text>
+                  <Text style={styles.dialogTitle}>
+                    {addWizardStep === 1 ? 'הוספת הודעה חדשה' : addWizardStep === 2 ? 'סוג השליחה' : 'איפה למקם את ההודעה?'}
+                  </Text>
+                  <Text style={styles.wizardStepCount}>שלב {addWizardStep} מתוך 3</Text>
                 </View>
               </View>
               <Pressable onPress={closeAddWizard} style={styles.dialogClose}>
@@ -3694,12 +3836,13 @@ export default function AutomaticNotificationsWebScreen() {
 
             <View style={styles.wizardProgressRow}>
               <View style={[styles.wizardProgressSeg, styles.wizardProgressSegActive]} />
-              <View style={[styles.wizardProgressSeg, addWizardStep === 2 ? styles.wizardProgressSegActive : null]} />
+              <View style={[styles.wizardProgressSeg, addWizardStep >= 2 ? styles.wizardProgressSegActive : null]} />
+              <View style={[styles.wizardProgressSeg, addWizardStep >= 3 ? styles.wizardProgressSegActive : null]} />
             </View>
 
             {addWizardStep === 1 ? (
               <View style={{ padding: 14, gap: 12 }}>
-                <Text style={styles.recipientsPreviewHint}>בחר סוג הודעה — נמשיך אוטומטית לבחירת המיקום.</Text>
+                <Text style={styles.recipientsPreviewHint}>בחר ערוץ — נמשיך לבחירת סוג השליחה.</Text>
                 <View style={styles.wizardChoiceRow}>
                   <Pressable
                     onPress={() => pickAddWizardChannel('SMS')}
@@ -3713,7 +3856,7 @@ export default function AutomaticNotificationsWebScreen() {
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.wizardChoiceTitle}>SMS</Text>
-                      <Text style={styles.wizardChoiceSub}>הודעת טקסט מתוזמנת</Text>
+                      <Text style={styles.wizardChoiceSub}>הודעת טקסט חופשי</Text>
                     </View>
                     <Ionicons name="chevron-back" size={18} color="rgba(100,116,139,1)" />
                   </Pressable>
@@ -3729,7 +3872,53 @@ export default function AutomaticNotificationsWebScreen() {
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.wizardChoiceTitle}>WhatsApp</Text>
-                      <Text style={styles.wizardChoiceSub}>הודעה מתוזמנת עם תבנית מאושרת</Text>
+                      <Text style={styles.wizardChoiceSub}>הודעה עם תבנית מאושרת</Text>
+                    </View>
+                    <Ionicons name="chevron-back" size={18} color="rgba(100,116,139,1)" />
+                  </Pressable>
+                </View>
+              </View>
+            ) : addWizardStep === 2 ? (
+              <View style={{ padding: 14, gap: 12 }}>
+                <View style={styles.wizardChipRow}>
+                  <View style={styles.wizardChip}>
+                    <Ionicons name={addWizardChannel === 'WHATSAPP' ? 'logo-whatsapp' : 'chatbubble-ellipses-outline'} size={14} color={addWizardChannel === 'WHATSAPP' ? '#25D366' : '#4F46E5'} />
+                    <Text style={styles.wizardChipText}>{addWizardChannel === 'WHATSAPP' ? 'WhatsApp' : 'SMS'}</Text>
+                  </View>
+                  <Text style={styles.recipientsPreviewHint}>איך לשלוח את ההודעה?</Text>
+                </View>
+                <View style={styles.wizardChoiceRow}>
+                  <Pressable
+                    onPress={() => void pickAddWizardSendMode('scheduled')}
+                    disabled={addWizardCreating}
+                    style={({ pressed }: any) => [
+                      styles.wizardChoiceBtn,
+                      pressed ? { opacity: 0.92, transform: [{ scale: 0.99 }] } : null,
+                    ]}
+                  >
+                    <View style={[styles.wizardChoiceIcon, { backgroundColor: 'rgba(79,70,229,0.10)' }]}>
+                      <Ionicons name="time-outline" size={22} color="#4F46E5" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.wizardChoiceTitle}>הודעה מתוזמנת</Text>
+                      <Text style={styles.wizardChoiceSub}>בחירת תאריך ושעה, נמענים, תוכן ותור למצטרפים חדשים</Text>
+                    </View>
+                    <Ionicons name="chevron-back" size={18} color="rgba(100,116,139,1)" />
+                  </Pressable>
+                  <Pressable
+                    onPress={() => void pickAddWizardSendMode('immediate')}
+                    disabled={addWizardCreating}
+                    style={({ pressed }: any) => [
+                      styles.wizardChoiceBtn,
+                      pressed ? { opacity: 0.92, transform: [{ scale: 0.99 }] } : null,
+                    ]}
+                  >
+                    <View style={[styles.wizardChoiceIcon, { backgroundColor: 'rgba(16,185,129,0.12)' }]}>
+                      <Ionicons name="paper-plane-outline" size={22} color="#059669" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.wizardChoiceTitle}>שליחה מיידית</Text>
+                      <Text style={styles.wizardChoiceSub}>בחירת נמענים ותוכן בלבד — ושליחה עכשיו</Text>
                     </View>
                     <Ionicons name="chevron-back" size={18} color="rgba(100,116,139,1)" />
                   </Pressable>
@@ -3868,7 +4057,7 @@ export default function AutomaticNotificationsWebScreen() {
             ) : null}
 
             <ScrollView style={styles.editorBody} contentContainerStyle={styles.editorBodyContent} showsVerticalScrollIndicator={false}>
-              {eventDetailRows.length > 0 ? (
+              {eventDetailRows.length > 0 && (!flowIsWizard || flowWizardStepId === 'message') ? (
                 <View style={styles.eventDetailsCard}>
                   <Pressable
                     onPress={() => setEventDetailsOpen((v) => !v)}
@@ -3956,14 +4145,57 @@ export default function AutomaticNotificationsWebScreen() {
                   })()}
                 </View>
               ) : null}
-              {editorKind === 'flow' ? (
+              {flowIsWizard ? (
+                <View style={styles.editorWizardTop}>
+                  {(() => {
+                    const label =
+                      flowWizardStepId === 'schedule'
+                        ? 'תאריך ושעה'
+                        : flowWizardStepId === 'recipients'
+                          ? 'נמענים'
+                          : flowWizardStepId === 'message'
+                            ? 'תוכן ההודעה'
+                            : 'תזמון תור';
+                    const sub =
+                      flowWizardStepId === 'schedule'
+                        ? 'בחירת תאריך ושעה לשליחת ההודעה'
+                        : flowWizardStepId === 'recipients'
+                          ? 'בחירת קבוצות מוזמנים או בחירה ידנית'
+                          : flowWizardStepId === 'message'
+                            ? editorIsWhatsapp
+                              ? 'בחירת תבנית וואטסאפ ומילוי הפרטים שלה'
+                              : 'כתיבת תוכן ההודעה והוספת קישור אישי'
+                            : 'שליחה אוטומטית למוזמנים שיתווספו בהמשך';
+                    const pct = Math.round(((editorWizardStepIdx + 1) / FLOW_WIZARD_STEPS.length) * 100);
+                    return (
+                      <>
+                        <View style={styles.wizardTopTitlesRow}>
+                          <View style={{ flex: 1 }} />
+                          <View style={{ alignItems: 'flex-start', justifyContent: 'flex-start', minWidth: 0 }}>
+                            <Text style={styles.wizardTopTitle} numberOfLines={1}>
+                              {`שלב ${editorWizardStepIdx + 1} מתוך ${FLOW_WIZARD_STEPS.length}: ${label}`}
+                            </Text>
+                            <Text style={styles.wizardTopSub} numberOfLines={1}>
+                              {sub}
+                            </Text>
+                          </View>
+                        </View>
+                        <View style={styles.wizardProgressMetaRow}>
+                          <Text style={styles.wizardProgressPct}>{`${pct}%`}</Text>
+                          <Text style={styles.wizardProgressLabel}>{label}</Text>
+                        </View>
+                        <View style={styles.wizardProgressTrack}>
+                          <View style={[styles.wizardProgressFill, { width: `${pct}%` }]} />
+                        </View>
+                      </>
+                    );
+                  })()}
+                </View>
+              ) : null}
+              {editorKind === 'flow' && flowWizardStepId === 'recipients' ? (
                 <View style={[styles.editorSection, editorIsWhatsapp ? styles.waStepCard : null]}>
                   <View style={styles.editorSectionHeader}>
-                    {editorIsWhatsapp ? (
-                      <View style={styles.stepNumBadge}><Text style={styles.stepNumBadgeText}>1</Text></View>
-                    ) : (
-                      <Ionicons name="albums-outline" size={16} color="rgba(79,70,229,1)" />
-                    )}
+                    <Ionicons name="albums-outline" size={16} color="rgba(79,70,229,1)" />
                     <Text style={styles.editorSectionTitle}>{editorIsWhatsapp ? 'בחירת נמענים' : 'נמענים'}</Text>
                   </View>
 
@@ -4132,34 +4364,57 @@ export default function AutomaticNotificationsWebScreen() {
                     </View>
                   ) : (
                   <View style={styles.fieldRow}>
+                    <Text style={styles.editorSectionHint}>
+                      בחר קטגוריה אחת או יותר, או הוסף בחירה ידנית. ההודעה תישלח לאיחוד הבחירות (ללא כפילויות).
+                    </Text>
                     <View style={[styles.modeRow, { flexWrap: 'wrap' }]}>
                       {([
-                        { key: 'manual', label: 'בחירה ידנית' },
                         { key: 'all', label: 'כל המוזמנים' },
-                        { key: 'pending', label: 'ממתינים' },
-                        { key: 'coming', label: 'מגיעים' },
-                        { key: 'not_coming', label: 'לא מגיעים' },
-                        { key: 'maybe', label: 'אולי מגיעים' },
-                        { key: 'prev_pending', label: 'ממתינים מהשלב הקודם' },
-                      ] as Array<{ key: WaRecipientMode; label: string }>).map((opt) => {
-                        const active = (flowDraft?.recipientMode || 'manual') === opt.key;
+                        { key: 'pending', label: 'ממתין' },
+                        { key: 'coming', label: 'מגיע' },
+                        { key: 'not_coming', label: 'לא מגיע' },
+                      ] as Array<{ key: string; label: string }>).map((opt) => {
+                        const groups = flowDraft?.recipientGroups || [];
+                        const active = groups.includes(opt.key);
+                        const groupCount = guestIdsForGroup(opt.key).length;
                         return (
                           <Pressable
                             key={opt.key}
-                            onPress={() => setFlowDraft((d) => (d ? { ...d, recipientMode: opt.key } : d))}
+                            onPress={() =>
+                              setFlowDraft((d) => {
+                                if (!d) return d;
+                                const cur = d.recipientGroups || [];
+                                const next = cur.includes(opt.key) ? cur.filter((g) => g !== opt.key) : [...cur, opt.key];
+                                return { ...d, recipientGroups: next };
+                              })
+                            }
                             style={({ pressed }: any) => [
                               styles.modePill,
                               active ? styles.modePillActive : null,
                               pressed ? { opacity: 0.92 } : null,
                             ]}
                           >
-                            <Text style={[styles.modePillText, active ? styles.modePillTextActive : null]}>{opt.label}</Text>
+                            {active ? <Ionicons name="checkmark-circle" size={14} color="#4F46E5" /> : null}
+                            <Text style={[styles.modePillText, active ? styles.modePillTextActive : null]}>
+                              {`${opt.label} (${groupCount})`}
+                            </Text>
                           </Pressable>
                         );
                       })}
+                      <Pressable
+                        onPress={() => setFlowDraft((d) => (d ? { ...d, recipientManual: !d.recipientManual } : d))}
+                        style={({ pressed }: any) => [
+                          styles.modePill,
+                          flowDraft?.recipientManual ? styles.modePillActive : null,
+                          pressed ? { opacity: 0.92 } : null,
+                        ]}
+                      >
+                        {flowDraft?.recipientManual ? <Ionicons name="checkmark-circle" size={14} color="#4F46E5" /> : null}
+                        <Text style={[styles.modePillText, flowDraft?.recipientManual ? styles.modePillTextActive : null]}>בחירה ידנית</Text>
+                      </Pressable>
                     </View>
 
-                    {flowDraft?.recipientMode === 'manual' ? (
+                    {flowDraft?.recipientManual ? (
                       <View style={styles.waManualWrap}>
                         <Text style={styles.editorSectionHint}>בחר מוזמנים ספציפיים מהרשימה. אפשר לחפש, לסנן לפי סטטוס ולבחור כמה שתרצה.</Text>
                         <View style={styles.waManualSearchRow}>
@@ -4233,75 +4488,25 @@ export default function AutomaticNotificationsWebScreen() {
                         </ScrollView>
                       </View>
                     ) : null}
+
+                    <View style={styles.waCountCard}>
+                      <Ionicons name="people" size={18} color="#0E7C46" />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.waCountTitle}>{`ההודעה תישלח ל־${flowSmsRecipientCount} מוזמנים`}</Text>
+                        {flowSmsRecipientCount === 0 ? (
+                          <Text style={styles.waCountSubText}>בחר לפחות קטגוריה אחת או הוסף בחירה ידנית.</Text>
+                        ) : null}
+                      </View>
+                    </View>
                   </View>
                   )}
-
-                  {!editorIsWhatsapp && flowDraft?.recipientMode === 'prev_pending' ? (
-                    <View style={styles.fieldRow}>
-                      <Text style={styles.fieldLabel}>שלב קודם</Text>
-                      {(() => {
-                        const candidates = [...displayRows, ...flowStepsSorted].filter(
-                          (s) =>
-                            String((s as any)?.id || '').trim() &&
-                            String((s as any)?.id) !== String(editorRow.id || '') &&
-                            String((s as any)?.channel || 'SMS') === 'SMS'
-                        );
-                        const selected = flowDraft?.dependsOnSettingId
-                          ? candidates.find((s) => String((s as any).id) === String(flowDraft.dependsOnSettingId))
-                          : null;
-                        const selectedDt = selected?.notification_date ? new Date(String(selected.notification_date)) : null;
-                        const selectedWhen = selectedDt && Number.isFinite(selectedDt.getTime()) ? formatHeDateTimeShort(selectedDt) : '';
-                        const selectedRun = selected?.id ? lastSmsRunBySettingId[String(selected.id)] : undefined;
-                        const selectedRunLabel = selectedRun ? statusLabel(String(selectedRun.status)) : null;
-
-                        return (
-                          <View style={{ gap: 10 }}>
-                            <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                              <Pressable
-                                onPress={() => setDependsPickerOpen(true)}
-                                style={({ pressed }: any) => [styles.dependsSelectBtn, pressed ? { opacity: 0.92 } : null]}
-                              >
-                                <Ionicons name="git-branch-outline" size={16} color="#4F46E5" />
-                                <View style={{ flex: 1, minWidth: 0 }}>
-                                  <Text style={styles.dependsSelectTitle} numberOfLines={1}>
-                                    {selected ? String(selected.title || 'שלב') : 'בחר שלב קודם…'}
-                                  </Text>
-                                  <Text style={styles.dependsSelectSub} numberOfLines={1}>
-                                    {selected
-                                      ? `${selectedWhen ? `${selectedWhen} · ` : ''}${selectedRunLabel ? `שליחה אחרונה: ${selectedRunLabel.text}` : 'אין שליחה קודמת'}`
-                                      : 'נדרש כדי לחשב “ממתינים מהשלב הקודם”.'}
-                                  </Text>
-                                </View>
-                                <Ionicons name="chevron-back" size={18} color="rgba(100,116,139,1)" />
-                              </Pressable>
-
-                              <Pressable
-                                onPress={() => setFlowDraft((d) => (d ? { ...d, dependsOnSettingId: null } : d))}
-                                style={({ pressed }: any) => [
-                                  styles.dependsClearBtn,
-                                  pressed ? { opacity: 0.92 } : null,
-                                ]}
-                                accessibilityLabel="נקה בחירה"
-                              >
-                                <Ionicons name="close" size={16} color="rgba(100,116,139,1)" />
-                              </Pressable>
-                            </View>
-
-                            <Text style={styles.editorSectionHint}>
-                              הרשימה מחושבת לפי השליחה האחרונה של השלב שתבחר + סטטוס <Text style={styles.recipientsHintEm}>ממתין</Text>.
-                            </Text>
-                          </View>
-                        );
-                      })()}
-                    </View>
-                  ) : null}
                 </View>
               ) : null}
 
-              {editorKind === 'flow' && editorIsWhatsapp ? (
+              {editorKind === 'flow' && editorIsWhatsapp && flowWizardStepId === 'message' ? (
                 <View style={[styles.editorSection, styles.waStepCard]}>
                   <View style={styles.editorSectionHeader}>
-                    <View style={styles.stepNumBadge}><Text style={styles.stepNumBadgeText}>2</Text></View>
+                    <Ionicons name="logo-whatsapp" size={16} color="#25D366" />
                     <Text style={styles.editorSectionTitle}>תוכן ההודעה</Text>
                   </View>
 
@@ -4678,14 +4883,10 @@ export default function AutomaticNotificationsWebScreen() {
                     </View>
                   </View>
                 ) : null
-              ) : (
+              ) : (flowWizardStepId === 'schedule') ? (
                 <View style={[styles.editorSection, editorIsWhatsapp ? styles.waStepCard : null]}>
                   <View style={styles.editorSectionHeader}>
-                    {editorIsWhatsapp ? (
-                      <View style={styles.stepNumBadge}><Text style={styles.stepNumBadgeText}>3</Text></View>
-                    ) : (
-                      <Ionicons name="time-outline" size={16} color="rgba(79,70,229,1)" />
-                    )}
+                    <Ionicons name="time-outline" size={16} color="rgba(79,70,229,1)" />
                     <Text style={styles.editorSectionTitle}>תזמון שליחה</Text>
                   </View>
 
@@ -4733,9 +4934,9 @@ export default function AutomaticNotificationsWebScreen() {
                     </Pressable>
                   </View>
                 </View>
-              )}
+              ) : null}
 
-              {editorKind === 'template' && editorWizardStepId === 'message' ? null : (editorKind !== 'template' && !editorIsWhatsapp) ? (
+              {editorKind === 'template' && editorWizardStepId === 'message' ? null : (editorKind !== 'template' && !editorIsWhatsapp && (!flowIsSmsWizard || flowWizardStepId === 'message')) ? (
                 <View style={styles.editorSection}>
                   <View style={styles.editorSectionHeader}>
                     <Ionicons name="pricetag-outline" size={16} color="rgba(79,70,229,1)" />
@@ -4892,7 +5093,7 @@ export default function AutomaticNotificationsWebScreen() {
                     </Pressable>
                   </View>
                 </View>
-              ) : (editorKind === 'template' || editorIsWhatsapp) ? null : (
+              ) : (editorKind === 'template' || editorIsWhatsapp || (flowIsSmsWizard && flowWizardStepId !== 'message')) ? null : (
                 <View style={styles.editorSection}>
                   <View style={styles.editorSectionHeader}>
                     <Ionicons name="chatbox-ellipses-outline" size={16} color="rgba(79,70,229,1)" />
@@ -5197,7 +5398,8 @@ export default function AutomaticNotificationsWebScreen() {
                 </View>
               ) : null}
 
-              {editorKind === 'template' && editorWizardStepId === 'catchup' && String(editorRow.notification_type || '').trim() === 'reminder_1' ? (
+              {(editorKind === 'template' && editorWizardStepId === 'catchup' && String(editorRow.notification_type || '').trim() === 'reminder_1') ||
+              (flowIsWizard && flowWizardStepId === 'queue') ? (
                 <View style={styles.catchupStepWrap}>
                   <View style={styles.queueScheduleCard}>
                     {/* הפעלת תור אורחים חדשים — טוגל בצד אחד, אייקון+מלל בצד השני (אייקון לפני המלל) */}
@@ -5444,7 +5646,7 @@ export default function AutomaticNotificationsWebScreen() {
                 </View>
               ) : null}
 
-              {editorKind !== 'template' ? (
+              {flowIsSmsWizard && flowWizardStepId === 'message' ? (
                 <View style={styles.editorSection}>
                   <View style={styles.editorSectionHeader}>
                     <Ionicons name="phone-portrait-outline" size={16} color="rgba(79,70,229,1)" />
@@ -5571,6 +5773,64 @@ export default function AutomaticNotificationsWebScreen() {
                         styles.dialogBtn,
                         styles.dialogBtnPrimary,
                         (!editDraft || editorWizardSteps.length <= 1) ? { opacity: 0.6 } : null,
+                        pressed ? { opacity: 0.92 } : null,
+                      ]}
+                    >
+                      <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8 }}>
+                        <Ionicons name="arrow-back" size={16} color="#fff" />
+                        <Text style={styles.dialogBtnPrimaryText}>הבא</Text>
+                      </View>
+                    </Pressable>
+                  )}
+                </>
+              ) : flowIsWizard ? (
+                <>
+                  <Pressable
+                    onPress={() => {
+                      if (editorWizardStepIdx > 0) setEditorWizardStepIdx((i) => Math.max(0, i - 1));
+                      else closeEditor();
+                    }}
+                    style={({ pressed }: any) => [styles.dialogBtn, styles.dialogBtnGhost, pressed ? { opacity: 0.92 } : null]}
+                  >
+                    <Text style={styles.dialogBtnGhostText}>{editorWizardStepIdx > 0 ? 'הקודם' : 'סגור'}</Text>
+                  </Pressable>
+
+                  {flowWizardIsLast ? (
+                    <>
+                      {!flowIsImmediate ? (
+                        <Pressable
+                          onPress={() => void saveDraft({ closeOnSuccess: true, toastOnSuccess: true })}
+                          disabled={saving || !editDraft || !canEdit}
+                          style={({ pressed }: any) => [
+                            styles.saveBtn,
+                            saving || !editDraft || !canEdit ? styles.saveBtnDisabled : null,
+                            pressed ? { opacity: 0.92 } : null,
+                          ]}
+                        >
+                          <Text style={styles.saveBtnText}>{!canEdit ? 'לצפייה בלבד' : saving ? 'שומר...' : 'שמור שינויים'}</Text>
+                        </Pressable>
+                      ) : null}
+                      <Pressable
+                        onPress={() => void sendNow()}
+                        disabled={sendingNow || !editDraft || !canEdit}
+                        style={({ pressed }: any) => [
+                          styles.sendNowBtn,
+                          sendingNow || !editDraft || !canEdit ? styles.sendNowBtnDisabled : null,
+                          pressed ? { opacity: 0.92 } : null,
+                        ]}
+                      >
+                        <Ionicons name="paper-plane-outline" size={16} color="#fff" />
+                        <Text style={styles.sendNowBtnText}>{sendingNow ? 'שולח...' : 'שלח עכשיו'}</Text>
+                      </Pressable>
+                    </>
+                  ) : (
+                    <Pressable
+                      onPress={() => setEditorWizardStepIdx((i) => Math.min(FLOW_WIZARD_STEPS.length - 1, i + 1))}
+                      disabled={!editDraft}
+                      style={({ pressed }: any) => [
+                        styles.dialogBtn,
+                        styles.dialogBtnPrimary,
+                        !editDraft ? { opacity: 0.6 } : null,
                         pressed ? { opacity: 0.92 } : null,
                       ]}
                     >

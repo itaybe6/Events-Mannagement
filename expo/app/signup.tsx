@@ -21,7 +21,9 @@ import { useUserStore } from '@/store/userStore';
 import { supabase } from '@/lib/supabase';
 import { userService } from '@/lib/services/userService';
 import { eventService } from '@/lib/services/eventService';
+import { authService } from '@/lib/services/authService';
 import { googlePlacesService, type GooglePlacePrediction } from '@/lib/services/googlePlacesService';
+import { ALIGN_LEFT, ALIGN_RIGHT, ROW_DIR, ROW_REVERSE_DIR } from '@/lib/rtl';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
@@ -263,15 +265,28 @@ export default function SignupScreen() {
       }
 
       // 3. Create the event (unapproved by default) and link it to the new user.
-      const createdEvent = await eventService.createEventForCurrentUser({
-        title: eventTitle.trim(),
-        date: new Date(eventDate),
-        location: location.trim(),
-        city: city.trim(),
-        story: '',
-        guests: 0,
-        budget: 0,
-      });
+      //    The INSERT can commit even when the RLS read-back (`.select().single()`)
+      //    momentarily fails right after sign-in, which would otherwise surface as
+      //    a false "registration failed" while the row actually exists. If event
+      //    creation throws, recover by resolving the event the user now owns.
+      let eventId: string | undefined;
+      try {
+        const createdEvent = await eventService.createEventForCurrentUser({
+          title: eventTitle.trim(),
+          date: new Date(eventDate),
+          location: location.trim(),
+          city: city.trim(),
+          story: '',
+          guests: 0,
+          budget: 0,
+        });
+        eventId = createdEvent.id;
+      } catch (eventError) {
+        console.warn('Signup: event creation read-back failed, attempting recovery', eventError);
+        eventId = (await authService.getPrimaryEventId(createdUser.id)) ?? undefined;
+        // Only treat as a real failure if no event was actually created.
+        if (!eventId) throw eventError;
+      }
 
       // 4. Hydrate the user store so the couple tabs have the right context.
       login('event_owner', {
@@ -280,17 +295,26 @@ export default function SignupScreen() {
         name: createdUser.name,
         phone: createdUser.phone || undefined,
         avatar_url: createdUser.avatar_url || undefined,
-        event_id: createdEvent.id,
+        event_id: eventId,
         userType: 'event_owner',
       });
 
       router.replace('/(couple)');
     } catch (e: any) {
       console.error('Signup error:', e);
-      const msg: string = e?.message ?? '';
-      if (msg.toLowerCase().includes('already registered') || msg.toLowerCase().includes('duplicate')) {
+      const msg: string = (e?.message ?? '').toLowerCase();
+      const code: string = String(e?.code ?? '').toLowerCase();
+      const status = e?.status;
+      const isDuplicate =
+        code === 'email_exists' ||
+        status === 422 ||
+        (msg.includes('already') && msg.includes('registered')) ||
+        msg.includes('already exists') ||
+        msg.includes('duplicate') ||
+        msg.includes('user already');
+      if (isDuplicate) {
         setErrorMessage('כתובת האימייל כבר רשומה במערכת. נסה להתחבר במקום.');
-      } else if (msg.includes('Network request failed') || msg.includes('Failed to fetch')) {
+      } else if (msg.includes('network request failed') || msg.includes('failed to fetch')) {
         setErrorMessage('אין תקשורת לשרת. בדוק את החיבור לאינטרנט ונסה שוב.');
       } else {
         setErrorMessage('אירעה שגיאה במהלך ההרשמה. נסה שוב.');
@@ -771,8 +795,8 @@ const styles = StyleSheet.create({
     zIndex: 5,
   },
   backChip: {
-    alignSelf: 'flex-start',
-    flexDirection: 'row-reverse',
+    alignSelf: ALIGN_LEFT,
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -815,7 +839,7 @@ const styles = StyleSheet.create({
     maxWidth: 320,
   },
   progressRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 14,
@@ -845,7 +869,7 @@ const styles = StyleSheet.create({
   },
   stepHeader: {
     marginBottom: 14,
-    alignItems: 'flex-end',
+    alignItems: ALIGN_RIGHT,
   },
   stepTitle: {
     fontSize: 20,
@@ -915,13 +939,13 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   eventTypesRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     flexWrap: 'wrap',
     gap: 8,
     marginBottom: 14,
   },
   typeChip: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -958,7 +982,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   suggestionItem: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     paddingVertical: 10,
     paddingHorizontal: 12,
@@ -997,7 +1021,7 @@ const styles = StyleSheet.create({
   },
 
   stepActionsRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 10,
     marginTop: 4,
@@ -1009,7 +1033,7 @@ const styles = StyleSheet.create({
     height: 54,
     alignItems: 'center',
     justifyContent: 'center',
-    flexDirection: 'row',
+    flexDirection: ROW_REVERSE_DIR,
     paddingHorizontal: 18,
     shadowColor: colors.primary,
     shadowOpacity: 0.22,
@@ -1035,7 +1059,7 @@ const styles = StyleSheet.create({
     borderRadius: 9999,
     alignItems: 'center',
     justifyContent: 'center',
-    flexDirection: 'row',
+    flexDirection: ROW_REVERSE_DIR,
     backgroundColor: 'rgba(6,23,62,0.06)',
     borderWidth: 1,
     borderColor: 'rgba(6,23,62,0.10)',

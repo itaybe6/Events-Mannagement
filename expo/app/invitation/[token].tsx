@@ -271,11 +271,13 @@ export default function InvitationLandingScreen() {
                   <View style={styles.timesRow}>
                     {weddingDetails.ceremonyTime ? (
                       <View style={styles.timeChip}>
-                        <Ionicons name="heart" size={14} color={GOLD} />
-                        <Text style={styles.timeChipText}>חופה {weddingDetails.ceremonyTime}</Text>
+                        <Ionicons name={isWedding ? 'heart' : 'time-outline'} size={14} color={GOLD} />
+                        <Text style={styles.timeChipText}>
+                          {isWedding ? `חופה ${weddingDetails.ceremonyTime}` : `שעה ${weddingDetails.ceremonyTime}`}
+                        </Text>
                       </View>
                     ) : null}
-                    {weddingDetails.receptionTime ? (
+                    {isWedding && weddingDetails.receptionTime ? (
                       <View style={styles.timeChip}>
                         <Ionicons name="wine" size={14} color={GOLD} />
                         <Text style={styles.timeChipText}>קבלת פנים {weddingDetails.receptionTime}</Text>
