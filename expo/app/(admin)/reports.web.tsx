@@ -141,7 +141,11 @@ export default function AdminReportsWebScreen() {
   const filteredRows = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return rows;
-    return rows.filter((r) => r.eventTitle.toLowerCase().includes(q));
+    return rows.filter(
+      (r) =>
+        r.eventTitle.toLowerCase().includes(q) ||
+        String(r.eventOwnerName ?? '').toLowerCase().includes(q)
+    );
   }, [rows, query]);
 
   const totals = useMemo(() => {
@@ -225,7 +229,7 @@ export default function AdminReportsWebScreen() {
               <TextInput
                 value={query}
                 onChangeText={setQuery}
-                placeholder="חיפוש לפי שם אירוע..."
+                placeholder="חיפוש לפי שם אירוע או לקוח..."
                 placeholderTextColor={colors.gray[500]}
                 style={styles.searchInput}
                 textAlign="right"
@@ -327,9 +331,14 @@ export default function AdminReportsWebScreen() {
                       <View style={styles.eventIconBox}>
                         <Ionicons name="calendar-outline" size={16} color={colors.primary} />
                       </View>
-                      <Text style={styles.eventTitleText} numberOfLines={1}>
-                        {r.eventTitle}
-                      </Text>
+                      <View style={styles.eventTextWrap}>
+                        <Text style={styles.eventTitleText} numberOfLines={1}>
+                          {r.eventTitle}
+                        </Text>
+                        <Text style={styles.eventOwnerText} numberOfLines={1}>
+                          {r.eventOwnerName || 'ללא לקוח'}
+                        </Text>
+                      </View>
                     </View>
                   </View>
 
@@ -660,6 +669,11 @@ const styles = StyleSheet.create({
     gap: 10,
     minWidth: 0,
   },
+  eventTextWrap: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
   eventIconBox: {
     width: 36,
     height: 36,
@@ -670,11 +684,16 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   eventTitleText: {
-    flex: 1,
-    minWidth: 0,
     fontSize: 14,
     fontWeight: '800',
     color: colors.text,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  eventOwnerText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.gray[500],
     textAlign: 'right',
     writingDirection: 'rtl',
   },

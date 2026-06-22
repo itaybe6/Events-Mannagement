@@ -4,6 +4,7 @@ import { Message } from '@/types';
 export type MessageReportRow = {
   eventId: string;
   eventTitle: string;
+  eventOwnerName: string;
   sendDate: string; // YYYY-MM-DD (Asia/Jerusalem)
   messageType: string; // 'SMS' | 'וואטסאפ'
   sentCount: number;
@@ -11,6 +12,23 @@ export type MessageReportRow = {
   totalCount: number;
   lastSentAt: string | null; // ISO
 };
+
+function resolveEventDisplayName(event: {
+  title?: unknown;
+  groom_name?: unknown;
+  bride_name?: unknown;
+} | null): string {
+  const groom = String(event?.groom_name ?? '').trim();
+  const bride = String(event?.bride_name ?? '').trim();
+  if (groom && bride) return `${groom} & ${bride}`;
+  if (groom || bride) return groom || bride;
+
+  const rawTitle = String(event?.title ?? '').trim();
+  if (!rawTitle) return '';
+  const parts = rawTitle.split(/(?:\s*[–—-]\s*)/g).map((p) => p.trim()).filter(Boolean);
+  if (parts.length > 1) return parts.slice(1).join(' - ') || rawTitle;
+  return rawTitle;
+}
 
 const localDateKey = (iso: string) => {
   // Group by the Israeli calendar day to match the SQL aggregation.
@@ -57,7 +75,7 @@ export const messageService = {
            notification_type,
            setting:notification_setting_id ( channel, title )
          ),
-         event:event_id ( title )`
+         event:event_id ( title, groom_name, bride_name, user:users ( name ) )`
       )
       .order('created_at', { ascending: false })
       .limit(50000);
@@ -86,7 +104,8 @@ export const messageService = {
       const channelRaw = String(setting?.channel ?? 'SMS').toUpperCase();
       const messageType = channelRaw === 'WHATSAPP' ? 'וואטסאפ' : 'SMS';
       const eventTitle =
-        String(event?.title ?? '').trim() || String(setting?.title ?? '').trim() || 'ללא שם';
+        resolveEventDisplayName(event) || String(setting?.title ?? '').trim() || 'ללא שם';
+      const eventOwnerName = String(one(event?.user)?.name ?? '').trim();
 
       const key = `${eventId}|${day}|${messageType}`;
       const status = String(row?.status ?? '').trim();
@@ -96,6 +115,7 @@ export const messageService = {
         ({
           eventId,
           eventTitle,
+          eventOwnerName,
           sendDate: day,
           messageType,
           sentCount: 0,
