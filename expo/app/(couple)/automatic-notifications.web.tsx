@@ -550,6 +550,8 @@ export default function AutomaticNotificationsWebScreen() {
   const [catchupDates, setCatchupDates] = useState<Set<string>>(() => new Set());
   const [catchupDatesDialogOpen, setCatchupDatesDialogOpen] = useState(false);
   const [catchupCalendarMonth, setCatchupCalendarMonth] = useState(() => new Date());
+  const [catchupTimeDialogOpen, setCatchupTimeDialogOpen] = useState(false);
+  const [catchupTimeDraft, setCatchupTimeDraft] = useState<{ h: number; m: number }>({ h: 12, m: 0 });
 
   const [recipientsPreviewOpen, setRecipientsPreviewOpen] = useState(false);
   const [recipientsPreviewTitle, setRecipientsPreviewTitle] = useState('מוזמנים');
@@ -592,6 +594,18 @@ export default function AutomaticNotificationsWebScreen() {
   const [sendStatusRows, setSendStatusRows] = useState<
     Array<{ guestId: string; name: string; phone?: string; guestStatus?: string; sendStatus: 'sent' | 'failed' | 'skipped'; sentAt?: string | null; error?: string | null }>
   >([]);
+
+  // Event-level send report (all automatic / immediate / catch-up sends for this event).
+  const [eventReport, setEventReport] = useState<{
+    totalSent: number;
+    totalFailed: number;
+    smsSent: number;
+    waSent: number;
+    pendingQueue: number;
+    reach: number;
+    lastSentAt: string | null;
+  } | null>(null);
+  const [eventReportLoading, setEventReportLoading] = useState(false);
 
   const [toastText, setToastText] = useState<string | null>(null);
   const messageInputRef = useRef<TextInput | null>(null);
@@ -1067,6 +1081,22 @@ export default function AutomaticNotificationsWebScreen() {
           depends_on_setting_id: (r as any)?.depends_on_setting_id ? String((r as any).depends_on_setting_id) : null,
           recipient_mode: (r as any)?.recipient_mode ? String((r as any).recipient_mode) : null,
           recipient_rule: (r as any)?.recipient_rule ?? null,
+          // Catch-up queue config must round-trip so the "new guests queue" toggle/schedule
+          // re-opens with the saved values (otherwise it always shows as off after refresh).
+          late_catchup_enabled:
+            (r as any)?.late_catchup_enabled === null || (r as any)?.late_catchup_enabled === undefined
+              ? null
+              : Boolean((r as any).late_catchup_enabled),
+          late_catchup_send_time: (r as any)?.late_catchup_send_time ? String((r as any).late_catchup_send_time) : null,
+          late_catchup_weekdays: Array.isArray((r as any)?.late_catchup_weekdays)
+            ? ((r as any).late_catchup_weekdays as any[]).map((x) => Number(x)).filter((n) => Number.isFinite(n))
+            : null,
+          late_catchup_schedule_mode: (r as any)?.late_catchup_schedule_mode
+            ? (String((r as any).late_catchup_schedule_mode).trim() as any)
+            : null,
+          late_catchup_dates: Array.isArray((r as any)?.late_catchup_dates)
+            ? ((r as any).late_catchup_dates as any[]).map((x) => String(x)).filter(Boolean)
+            : null,
           ui_hidden: Boolean((r as any)?.ui_hidden),
         };
       })
@@ -1153,6 +1183,76 @@ export default function AutomaticNotificationsWebScreen() {
       setQueuedCatchupBySettingId({});
     }
   };
+
+  // Aggregate every send result for this event (SMS + WhatsApp, scheduled / immediate / catch-up).
+  // Sourced from the per-recipient ledger that the scheduler writes for each delivery, plus the
+  // count of guests still waiting in the catch-up queue.
+  const loadEventReport = useCallback(async () => {
+    if (!resolvedEventId) {
+      setEventReport(null);
+      return;
+    }
+    setEventReportLoading(true);
+    try {
+      const one = (v: any) => (Array.isArray(v) ? v[0] : v) ?? null;
+
+      const { data: recRows, error: recError } = await supabase
+        .from('scheduled_notification_sms_run_recipients')
+        .select('status, sent_at, guest_id, run:run_id ( setting:notification_setting_id ( channel ) )')
+        .eq('event_id', resolvedEventId)
+        .limit(50000);
+      if (recError) throw recError;
+
+      let totalSent = 0;
+      let totalFailed = 0;
+      let smsSent = 0;
+      let waSent = 0;
+      let lastSentAt: string | null = null;
+      const reached = new Set<string>();
+
+      for (const r of (recRows as any[]) || []) {
+        const status = String((r as any).status ?? '').trim();
+        const channel = String(one(one((r as any).run)?.setting)?.channel ?? 'SMS').toUpperCase();
+        if (status === 'sent') {
+          totalSent += 1;
+          if (channel === 'WHATSAPP') waSent += 1;
+          else smsSent += 1;
+          const gid = String((r as any).guest_id ?? '').trim();
+          if (gid) reached.add(gid);
+          const sa = (r as any).sent_at ? String((r as any).sent_at) : null;
+          if (sa && (!lastSentAt || new Date(sa).getTime() > new Date(lastSentAt).getTime())) {
+            lastSentAt = sa;
+          }
+        } else if (status === 'failed') {
+          totalFailed += 1;
+        }
+      }
+
+      let pendingQueue = 0;
+      try {
+        const { count, error: qErr } = await supabase
+          .from('notification_sms_catchup_queue')
+          .select('id', { count: 'exact', head: true })
+          .eq('event_id', resolvedEventId)
+          .eq('status', 'queued');
+        if (!qErr && typeof count === 'number') pendingQueue = count;
+      } catch {
+        // Older DB envs may not have the catch-up queue table yet — ignore.
+      }
+
+      setEventReport({ totalSent, totalFailed, smsSent, waSent, pendingQueue, reach: reached.size, lastSentAt });
+    } catch (e) {
+      console.warn('Failed to load event message report:', e);
+      setEventReport(null);
+    } finally {
+      setEventReportLoading(false);
+    }
+  }, [resolvedEventId]);
+
+  // Refresh the report on mount and whenever a send run finishes (run map changes).
+  useEffect(() => {
+    void loadEventReport();
+  }, [loadEventReport, lastSmsRunBySettingId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3138,6 +3238,108 @@ export default function AutomaticNotificationsWebScreen() {
                   ) : null
                 }
               />
+            </View>
+          ) : null}
+
+          {/* Event send report */}
+          {eventReportLoading || (eventReport && (eventReport.totalSent > 0 || eventReport.totalFailed > 0 || eventReport.pendingQueue > 0)) ? (
+            <View style={[styles.reportCard, showAdminChrome ? styles.reportCardAdmin : null]}>
+              <View style={styles.reportHeaderRow}>
+                <View style={styles.reportHeaderIconBox}>
+                  <Ionicons name="stats-chart" size={18} color={ui.primary} />
+                </View>
+                <View style={styles.reportHeaderTextWrap}>
+                  <Text style={styles.reportTitle}>סיכום שליחות באירוע</Text>
+                  <Text style={styles.reportSubtitle}>
+                    {eventReportLoading
+                      ? 'טוען נתוני שליחה...'
+                      : eventReport?.lastSentAt
+                        ? `כל ההודעות שיצאו לאירוע · שליחה אחרונה ${new Date(eventReport.lastSentAt).toLocaleString('he-IL', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}`
+                        : 'כל ההודעות שיצאו לאירוע — אוטומטיות, מיידיות ומתוך תור האורחים'}
+                  </Text>
+                </View>
+              </View>
+
+              {eventReportLoading && !eventReport ? (
+                <View style={styles.reportLoadingRow}>
+                  <ActivityIndicator size="small" color={ui.primary} />
+                  <Text style={styles.reportLoadingText}>טוען נתונים...</Text>
+                </View>
+              ) : eventReport ? (
+                <View style={styles.reportStatsRow}>
+                  {[
+                    {
+                      key: 'sent',
+                      label: 'נשלחו בהצלחה',
+                      value: eventReport.totalSent,
+                      icon: 'checkmark-circle' as const,
+                      color: '#16A34A',
+                      bg: 'rgba(22,163,74,0.10)',
+                      primary: true,
+                    },
+                    {
+                      key: 'reach',
+                      label: 'מוזמנים שקיבלו',
+                      value: eventReport.reach,
+                      icon: 'people' as const,
+                      color: '#4F46E5',
+                      bg: 'rgba(79,70,229,0.10)',
+                    },
+                    {
+                      key: 'sms',
+                      label: 'הודעות SMS',
+                      value: eventReport.smsSent,
+                      icon: 'chatbubble-ellipses' as const,
+                      color: '#2563EB',
+                      bg: 'rgba(37,99,235,0.10)',
+                    },
+                    {
+                      key: 'wa',
+                      label: 'הודעות WhatsApp',
+                      value: eventReport.waSent,
+                      icon: 'logo-whatsapp' as const,
+                      color: '#1FA855',
+                      bg: 'rgba(37,211,102,0.12)',
+                    },
+                    {
+                      key: 'queue',
+                      label: 'ממתינים בתור',
+                      value: eventReport.pendingQueue,
+                      icon: 'time' as const,
+                      color: '#D97706',
+                      bg: 'rgba(217,119,6,0.12)',
+                    },
+                    {
+                      key: 'failed',
+                      label: 'נכשלו',
+                      value: eventReport.totalFailed,
+                      icon: 'alert-circle' as const,
+                      color: '#DC2626',
+                      bg: 'rgba(220,38,38,0.10)',
+                    },
+                  ].map((stat) => (
+                    <View
+                      key={stat.key}
+                      style={[styles.reportStatCard, stat.primary ? styles.reportStatCardPrimary : null]}
+                    >
+                      <View style={[styles.reportStatIconBox, { backgroundColor: stat.bg }]}>
+                        <Ionicons name={stat.icon} size={16} color={stat.color} />
+                      </View>
+                      <Text style={styles.reportStatValue} numberOfLines={1}>
+                        {(Number(stat.value) || 0).toLocaleString('he-IL')}
+                      </Text>
+                      <Text style={styles.reportStatLabel} numberOfLines={1}>
+                        {stat.label}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
             </View>
           ) : null}
 
@@ -5416,16 +5618,29 @@ export default function AutomaticNotificationsWebScreen() {
                               <Ionicons name="time-outline" size={18} color="rgba(71,85,105,1)" />
                               <Text style={styles.queueCatchupDailyLabel}>תזמון שליחה יומי</Text>
                             </View>
-                            <View style={styles.queueCatchupTimeInputWrap}>
+                            <Pressable
+                              onPress={() => {
+                                if (!canEdit) return;
+                                const raw = String(catchupTimeHm || '12:00');
+                                const [hRaw, mRaw] = raw.split(':');
+                                const h = Math.max(0, Math.min(23, Number(hRaw) || 0));
+                                const m = Math.max(0, Math.min(59, Number(mRaw) || 0));
+                                setCatchupTimeDraft({ h, m });
+                                setCatchupTimeDialogOpen(true);
+                              }}
+                              disabled={!canEdit}
+                              style={({ pressed }: any) => [
+                                styles.queueCatchupTimeInputWrap,
+                                !canEdit ? { opacity: 0.6 } : null,
+                                pressed ? { opacity: 0.92 } : null,
+                              ]}
+                              accessibilityRole="button"
+                              accessibilityLabel="בחירת שעת שליחה לתור"
+                            >
                               <Ionicons name="time-outline" size={18} color="rgba(100,116,139,0.7)" />
-                              <TextInput
-                                value={catchupTimeHm}
-                                onChangeText={setCatchupTimeHm}
-                                placeholder="10:00"
-                                placeholderTextColor="rgba(100,116,139,0.6)"
-                                style={styles.queueCatchupTimeInput}
-                              />
-                            </View>
+                              <Text style={styles.queueCatchupTimeValue}>{catchupTimeHm || '12:00'}</Text>
+                              <Ionicons name="chevron-down" size={16} color="rgba(100,116,139,0.7)" />
+                            </Pressable>
                           </View>
 
                           {/* ימי פעילות (משמאל) */}
@@ -6136,6 +6351,79 @@ export default function AutomaticNotificationsWebScreen() {
                       const mm = String(timeDraft.m).padStart(2, '0');
                       setEditDraft((d) => (d ? { ...d, timeHm: `${hh}:${mm}` } : d));
                       setTimeDialogOpen(false);
+                    }}
+                    style={[styles.dialogBtn, styles.dialogBtnPrimary]}
+                  >
+                    <Text style={styles.dialogBtnPrimaryText}>בחר</Text>
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+          ) : null}
+
+          {catchupTimeDialogOpen ? (
+            <View style={styles.dialogOverlay}>
+              <Pressable style={styles.pickerBackdrop} onPress={() => setCatchupTimeDialogOpen(false)} />
+              <View style={styles.dialogCard}>
+                <View style={styles.dialogHeader}>
+                  <Text style={styles.dialogTitle}>בחירת שעת שליחה לתור</Text>
+                  <Pressable onPress={() => setCatchupTimeDialogOpen(false)} style={styles.dialogClose}>
+                    <Ionicons name="close" size={18} color="#111827" />
+                  </Pressable>
+                </View>
+
+                <View style={styles.timePickRow}>
+                  <View style={styles.wheelGroup}>
+                    <Text style={styles.wheelLabel}>דקות</Text>
+                    <ScrollView style={styles.wheelCol} contentContainerStyle={styles.wheelColContent} showsVerticalScrollIndicator={false}>
+                      {Array.from({ length: 60 }).map((_, m) => {
+                        const label = String(m).padStart(2, '0');
+                        const active = catchupTimeDraft.m === m;
+                        return (
+                          <Pressable
+                            key={m}
+                            onPress={() => setCatchupTimeDraft((p) => ({ ...p, m }))}
+                            style={({ pressed }: any) => [styles.wheelItem, active ? styles.wheelItemActive : null, pressed ? { opacity: 0.9 } : null]}
+                          >
+                            <Text style={[styles.wheelText, active ? styles.wheelTextActive : null]}>{label}</Text>
+                          </Pressable>
+                        );
+                      })}
+                    </ScrollView>
+                  </View>
+
+                  <Text style={styles.timeSep}>:</Text>
+
+                  <View style={styles.wheelGroup}>
+                    <Text style={styles.wheelLabel}>שעות</Text>
+                    <ScrollView style={styles.wheelCol} contentContainerStyle={styles.wheelColContent} showsVerticalScrollIndicator={false}>
+                      {Array.from({ length: 24 }).map((_, h) => {
+                        const label = String(h).padStart(2, '0');
+                        const active = catchupTimeDraft.h === h;
+                        return (
+                          <Pressable
+                            key={h}
+                            onPress={() => setCatchupTimeDraft((p) => ({ ...p, h }))}
+                            style={({ pressed }: any) => [styles.wheelItem, active ? styles.wheelItemActive : null, pressed ? { opacity: 0.9 } : null]}
+                          >
+                            <Text style={[styles.wheelText, active ? styles.wheelTextActive : null]}>{label}</Text>
+                          </Pressable>
+                        );
+                      })}
+                    </ScrollView>
+                  </View>
+                </View>
+
+                <View style={styles.dialogActions}>
+                  <Pressable onPress={() => setCatchupTimeDialogOpen(false)} style={[styles.dialogBtn, styles.dialogBtnGhost]}>
+                    <Text style={styles.dialogBtnGhostText}>ביטול</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => {
+                      const hh = String(catchupTimeDraft.h).padStart(2, '0');
+                      const mm = String(catchupTimeDraft.m).padStart(2, '0');
+                      setCatchupTimeHm(`${hh}:${mm}`);
+                      setCatchupTimeDialogOpen(false);
                     }}
                     style={[styles.dialogBtn, styles.dialogBtnPrimary]}
                   >
@@ -8052,6 +8340,107 @@ const styles = StyleSheet.create({
   mainColContent: { padding: 24, paddingBottom: 40, gap: 20 },
   mainColContentAdmin: { paddingHorizontal: 0, paddingTop: 0, paddingBottom: 40, gap: 18 },
 
+  reportCard: {
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    padding: 18,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    gap: 16,
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 4px 16px rgba(0,0,0,0.04)' } as any) : null),
+  },
+  reportCardAdmin: {
+    borderRadius: 24,
+    padding: 22,
+    borderColor: 'rgba(6,23,62,0.06)',
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 8px 24px rgba(11,28,65,0.04)' } as any) : null),
+  },
+  reportHeaderRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 12,
+  },
+  reportHeaderIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(79,70,229,0.10)',
+  },
+  reportHeaderTextWrap: {
+    flex: 1,
+    minWidth: 0,
+    gap: 3,
+  },
+  reportTitle: {
+    fontSize: 17,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'right',
+  },
+  reportSubtitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.gray[600],
+    textAlign: 'right',
+  },
+  reportLoadingRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 14,
+  },
+  reportLoadingText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.gray[600],
+  },
+  reportStatsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
+  },
+  reportStatCard: {
+    flexGrow: 1,
+    flexBasis: 130,
+    minWidth: 120,
+    backgroundColor: '#FBFCFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.06)',
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    gap: 8,
+    alignItems: 'flex-start',
+  },
+  reportStatCardPrimary: {
+    backgroundColor: 'rgba(22,163,74,0.06)',
+    borderColor: 'rgba(22,163,74,0.18)',
+  },
+  reportStatIconBox: {
+    width: 34,
+    height: 34,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reportStatValue: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  reportStatLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.gray[600],
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+
   timelineCard: {
     borderRadius: 12,
     backgroundColor: '#fff',
@@ -8646,10 +9035,11 @@ const styles = StyleSheet.create({
 
   queueCatchupScheduleRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 24, alignItems: 'flex-start' },
   queueCatchupDailyBlock: { gap: 8, minWidth: 0 },
-  queueCatchupTimeInputWrap: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, height: 40, paddingLeft: 12, paddingRight: 10, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(2,6,23,0.12)', backgroundColor: '#fff' },
+  queueCatchupTimeInputWrap: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, height: 40, paddingLeft: 12, paddingRight: 10, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(2,6,23,0.12)', backgroundColor: '#fff', ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
   queueCatchupDailyRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
   queueCatchupDailyLabel: { fontSize: 13, fontWeight: '800', color: 'rgba(71,85,105,1)', textAlign: 'right' },
   queueCatchupTimeInput: { flex: 1, minWidth: 56, height: 40, paddingVertical: 0, paddingHorizontal: 0, borderWidth: 0, backgroundColor: 'transparent', fontSize: 14, fontWeight: '800', color: '#111827', textAlign: 'right' },
+  queueCatchupTimeValue: { flex: 1, minWidth: 56, fontSize: 15, fontWeight: '800', color: '#111827', textAlign: 'right' },
   queueCatchupDaysBlock: { gap: 8, flex: 1, minWidth: 200 },
   queueCatchupDaysLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   queueCatchupTableSection: { marginTop: 16, backgroundColor: '#fff', borderWidth: 1, borderColor: 'rgba(15,23,42,0.08)', borderRadius: 16, overflow: 'hidden' },

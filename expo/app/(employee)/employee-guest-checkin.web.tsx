@@ -77,6 +77,30 @@ function initialsFromName(name: string) {
   return s ? s.toUpperCase() : '•';
 }
 
+function CheckinOverviewStat({
+  label,
+  value,
+  icon,
+  compact,
+}: {
+  label: string;
+  value: number;
+  icon: keyof typeof Ionicons.glyphMap;
+  compact?: boolean;
+}) {
+  return (
+    <View style={[styles.overviewStatCard, compact ? styles.overviewStatCardCompact : null]}>
+      <View style={styles.overviewStatTop}>
+        <View style={styles.overviewStatIconBox}>
+          <Ionicons name={icon} size={17} color={colors.primary} />
+        </View>
+        <Text style={styles.overviewStatLabel}>{label}</Text>
+      </View>
+      <Text style={styles.overviewStatValue}>{value}</Text>
+    </View>
+  );
+}
+
 function Switch({
   checked,
   disabled,
@@ -1046,11 +1070,11 @@ export default function EmployeeGuestCheckinWebScreen() {
                 <View style={styles.dashboardHeader}>
                   <View style={styles.dashboardHeaderLeft}>
                     <View style={styles.dashboardHeaderIcon}>
-                      <Ionicons name="sparkles" size={18} color="#fff" />
+                      <Ionicons name="pulse-outline" size={18} color="#fff" />
                     </View>
                     <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={styles.dashboardHeaderTitle}>מרכז שליטה לצ'ק אין</Text>
-                      <Text style={styles.dashboardHeaderSub}>תמונת מצב חיה של הגעות, סינון ושיבוץ לשולחנות</Text>
+                      <Text style={styles.dashboardHeaderTitle}>תמונת מצב בזמן אמת</Text>
+                      <Text style={styles.dashboardHeaderSub}>מוזמנים, שולחנות ויחס הגעה לאירוע</Text>
                     </View>
                   </View>
 
@@ -1058,57 +1082,35 @@ export default function EmployeeGuestCheckinWebScreen() {
                     <Text style={styles.dashboardHeaderBadgeValue}>{attendanceRate}%</Text>
                     <Text style={styles.dashboardHeaderBadgeText}>יחס הגעה</Text>
                   </View>
-
-                  <View style={[styles.dashboardHeaderGlow, { pointerEvents: 'none' } as any]} />
                 </View>
 
                 <View style={[styles.dashboardBody, isLg ? styles.dashboardBodyTop : null]}>
-                  <View style={styles.heroIntroRow}>
-                    <View style={styles.heroIntroCopy}>
-                      <Text style={styles.heroIntroEyebrow}>דשבורד הגעה</Text>
-                      <Text style={styles.heroIntroTitle}>כל מה שצריך למסך עבודה אחד</Text>
-                      <Text style={styles.heroIntroText}>
-                        חפש אורחים, סנן לפי סטטוס, עקוב אחר העומס בשולחנות והעבר אורחים במהירות מתוך ממשק אחד נוח וברור.
-                      </Text>
-                    </View>
-                  </View>
-
                   <View style={[styles.metricsGrid, isLg ? styles.metricsGridTop : null]}>
-                    <View style={[styles.metricTile, isLg ? styles.metricTileTop : null, styles.metricTileBlue]}>
-                      <Text style={[styles.metricTileValue, isLg ? styles.metricTileValueTop : null, styles.metricTileValueBlue]}>
-                        {eventOverview.invitedPeople}
-                      </Text>
-                      <Text style={[styles.metricTileLabel, isLg ? styles.metricTileLabelTop : null, styles.metricTileLabelBlue]}>
-                        סה"כ מוזמנים
-                      </Text>
-                    </View>
-
-                    <View style={[styles.metricTile, isLg ? styles.metricTileTop : null, styles.metricTileNeutral]}>
-                      <Text style={[styles.metricTileValue, isLg ? styles.metricTileValueTop : null, styles.metricTileValueMuted]}>
-                        {eventOverview.emptyTables}
-                      </Text>
-                      <Text style={[styles.metricTileLabel, isLg ? styles.metricTileLabelTop : null]}>שולחנות ריקים</Text>
-                    </View>
-
-                    <View style={[styles.metricTile, isLg ? styles.metricTileTop : null, styles.metricTileIndigo]}>
-                      <Text style={[styles.metricTileValue, isLg ? styles.metricTileValueTop : null, styles.metricTileValueIndigo]}>
-                        {eventOverview.fullTables}
-                      </Text>
-                      <Text style={[styles.metricTileLabel, isLg ? styles.metricTileLabelTop : null, styles.metricTileLabelIndigo]}>
-                        שולחנות מלאים
-                      </Text>
-                    </View>
-
-                    <View style={[styles.metricTile, isLg ? styles.metricTileTop : null, styles.metricTileYellow]}>
-                      <Text style={[styles.metricTileValue, isLg ? styles.metricTileValueTop : null, styles.metricTileValueYellow]}>
-                        {eventOverview.reserveTables}
-                      </Text>
-                      <Text style={[styles.metricTileLabel, isLg ? styles.metricTileLabelTop : null, styles.metricTileLabelYellow]}>
-                        שולחנות רזרבה
-                      </Text>
-                    </View>
+                    <CheckinOverviewStat
+                      compact={isLg}
+                      label='סה"כ מוזמנים'
+                      value={eventOverview.invitedPeople}
+                      icon="people-outline"
+                    />
+                    <CheckinOverviewStat
+                      compact={isLg}
+                      label="שולחנות ריקים"
+                      value={eventOverview.emptyTables}
+                      icon="grid-outline"
+                    />
+                    <CheckinOverviewStat
+                      compact={isLg}
+                      label="שולחנות מלאים"
+                      value={eventOverview.fullTables}
+                      icon="checkmark-circle-outline"
+                    />
+                    <CheckinOverviewStat
+                      compact={isLg}
+                      label="שולחנות רזרבה"
+                      value={eventOverview.reserveTables}
+                      icon="bookmark-outline"
+                    />
                   </View>
-
                 </View>
               </View>
             </View>
@@ -1735,41 +1737,13 @@ const styles = StyleSheet.create({
   },
   dashboardHeaderBadgeValue: { fontSize: 20, fontWeight: '900', color: '#fff', textAlign: 'center' },
   dashboardHeaderBadgeText: { marginTop: 2, fontSize: 15, fontWeight: '500', fontFamily: 'Rubik', color: 'rgba(229,231,235,0.95)', textAlign: 'center' },
-  dashboardHeaderGlow: {
-    position: 'absolute',
-    top: -24,
-    right: -24,
-    width: 120,
-    height: 120,
-    borderRadius: 999,
-    backgroundColor: 'rgba(99,102,241,0.22)',
-    ...(Platform.OS === 'web' ? ({ filter: 'blur(28px)' } as any) : null),
-  },
-  dashboardBody: { paddingHorizontal: 14, paddingBottom: 12, paddingTop: 10, gap: 10 },
-  dashboardBodyTop: { paddingHorizontal: 12, paddingBottom: 10, paddingTop: 8, gap: 8 },
+  dashboardBody: { paddingHorizontal: 14, paddingBottom: 14, paddingTop: 12, gap: 10 },
+  dashboardBodyTop: { paddingHorizontal: 14, paddingBottom: 14, paddingTop: 12, gap: 10 },
   heroMainCard: {
     backgroundColor: 'rgba(255,255,255,0.98)',
     borderColor: 'rgba(17,24,39,0.06)',
     ...(Platform.OS === 'web' ? ({ boxShadow: '0 12px 36px rgba(11,28,65,0.06)' } as any) : null),
   },
-  heroIntroRow: {
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    justifyContent: 'space-between',
-    gap: 12,
-    flexWrap: 'wrap',
-  },
-  heroIntroCopy: { flex: 1, minWidth: 280, gap: 6 },
-  heroIntroEyebrow: {
-    fontSize: 11,
-    fontWeight: '900',
-    color: colors.primary,
-    textAlign: 'right',
-    letterSpacing: 0.8,
-    textTransform: 'uppercase' as any,
-  },
-  heroIntroTitle: { fontSize: 24, fontWeight: '900', color: '#111827', textAlign: 'right' },
-  heroIntroText: { fontSize: 13, fontWeight: '700', lineHeight: 20, color: colors.gray[600], textAlign: 'right' },
   heroToolbar: { gap: 10 },
   heroFiltersRow: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 10 },
   heroFilterChip: {
@@ -1814,62 +1788,64 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(6,23,62,0.05)',
   },
   heroMetaChipText: { fontSize: 12, fontWeight: '800', color: colors.primary, textAlign: 'right' },
-  metricsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between' },
-  metricsGridTop: { gap: 10 },
-  metricTile: {
-    width: '31.5%',
-    minWidth: 86,
-    minHeight: 72,
-    borderRadius: 16,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+  metricsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  metricsGridTop: { gap: 12 },
+  overviewStatCard: {
+    flexGrow: 1,
+    flexBasis: '46%',
+    minWidth: 140,
+    minHeight: 104,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 18,
+    backgroundColor: '#F8FAFD',
     borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderColor: 'rgba(6,23,62,0.06)',
+    gap: 10,
     ...(Platform.OS === 'web'
       ? ({
-          boxShadow: '0 10px 24px rgba(15,23,42,0.05)',
-          transitionProperty: 'transform, box-shadow, background-color, border-color',
-          transitionDuration: '150ms',
+          boxShadow: '0 8px 24px rgba(11,28,65,0.04)',
         } as any)
       : null),
   },
-  metricTileTop: {
-    width: '24%',
+  overviewStatCardCompact: {
+    flexBasis: '22%',
     minWidth: 0,
-    minHeight: 82,
-    paddingVertical: 12,
-    paddingHorizontal: 10,
-    borderRadius: 18,
+    minHeight: 112,
+    borderRadius: 20,
   },
-  metricTileNeutral: { backgroundColor: 'rgba(248,250,252,1)', borderColor: 'rgba(15,23,42,0.06)' },
-  metricTileBlue: { backgroundColor: 'rgba(239,246,255,1)', borderColor: 'rgba(59,130,246,0.22)' },
-  metricTileSuccess: { backgroundColor: 'rgba(236,253,245,1)', borderColor: 'rgba(16,185,129,0.22)' },
-  metricTileWarn: { backgroundColor: 'rgba(255,247,237,1)', borderColor: 'rgba(245,158,11,0.24)' },
-  metricTileIndigo: { backgroundColor: 'rgba(238,242,255,1)', borderColor: 'rgba(99,102,241,0.22)' },
-  metricTileYellow: { backgroundColor: 'rgba(254,252,232,1)', borderColor: 'rgba(234,179,8,0.24)' },
-  metricTileValue: { fontSize: 22, fontWeight: '900', color: '#111827', textAlign: 'center' },
-  metricTileValueTop: { fontSize: 22 },
-  metricTileValueBlue: { color: '#2563EB' },
-  metricTileValueMuted: { color: 'rgba(55,65,81,0.95)' },
-  metricTileValueSuccess: { color: '#047857' },
-  metricTileValueWarn: { color: '#B45309' },
-  metricTileValueIndigo: { color: '#4338CA' },
-  metricTileValueYellow: { color: '#CA8A04' },
-  metricTileLabel: {
-    marginTop: 6,
-    fontSize: 11,
+  overviewStatTop: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    gap: 10,
+  },
+  overviewStatIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: 'rgba(6,23,62,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  overviewStatLabel: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: 12,
     fontWeight: '800',
-    color: 'rgba(107,114,128,1)',
-    textAlign: 'center',
-    letterSpacing: 0.2,
+    color: colors.gray[600],
+    textAlign: 'right',
+    lineHeight: 16,
   },
-  metricTileLabelTop: { marginTop: 6, fontSize: 11, letterSpacing: 0.2, lineHeight: 16 },
-  metricTileLabelBlue: { color: 'rgba(37,99,235,0.95)' },
-  metricTileLabelSuccess: { color: 'rgba(4,120,87,0.95)' },
-  metricTileLabelWarn: { color: 'rgba(180,83,9,0.95)' },
-  metricTileLabelIndigo: { color: 'rgba(67,56,202,0.95)' },
-  metricTileLabelYellow: { color: 'rgba(161,98,7,0.95)' },
+  overviewStatValue: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'right',
+  },
 
   arrivalCard: {
     borderRadius: 18,
