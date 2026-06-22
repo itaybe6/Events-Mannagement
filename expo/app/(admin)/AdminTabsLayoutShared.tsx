@@ -334,6 +334,7 @@ export default function AdminTabsLayoutShared() {
   screens.push(<Tabs.Screen key="admin-rsvp-approvals" name="admin-rsvp-approvals" options={{ href: null }} />);
   screens.push(<Tabs.Screen key="automatic-notifications" name="automatic-notifications" options={{ href: null }} />);
   screens.push(<Tabs.Screen key="whatsapp-templates" name="whatsapp-templates" options={{ href: null, headerShown: false }} />);
+  screens.push(<Tabs.Screen key="reports" name="reports" options={{ href: null, headerShown: false }} />);
   screens.push(<Tabs.Screen key="guests" name="guests" options={{ href: null }} />);
   screens.push(<Tabs.Screen key="TablesList" name="TablesList" options={{ href: null }} />);
   screens.push(<Tabs.Screen key="BrideGroomSeating" name="BrideGroomSeating" options={{ href: null }} />);

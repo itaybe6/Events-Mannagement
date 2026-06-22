@@ -3094,37 +3094,37 @@ export default function AdminEventsWebScreen() {
     <View style={dashboardStyles.page}>
       <ScrollView style={dashboardStyles.scroll} contentContainerStyle={dashboardStyles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={dashboardStyles.heroShell}>
-          <AdminWebPageHeader eyebrow="ניהול אירועים" title="דשבורד אירועים למנהל" />
-
-          <LinearGradient
-            colors={['#0B3DA6', '#195de6', '#3B82F6']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={dashboardStyles.smsBalanceBanner}
-          >
-            <View style={dashboardStyles.smsBalanceBannerLeft}>
-              <View style={dashboardStyles.smsBalanceIconCircle}>
-                <Ionicons name="chatbubbles" size={18} color="#FFFFFF" />
-              </View>
-              <View style={dashboardStyles.smsBalanceBannerTextWrap}>
-                <Text style={dashboardStyles.smsBalanceBannerLabel}>יתרת הודעות SMS</Text>
-                <Text style={dashboardStyles.smsBalanceBannerSub}>חבילת SMS API · פולסים</Text>
-              </View>
-            </View>
-
-            <View style={dashboardStyles.smsBalanceBannerRight}>
-              {smsBalance.loading ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : smsBalance.credits != null ? (
-                <>
-                  <Text style={dashboardStyles.smsBalanceBannerValue}>{smsBalance.credits}</Text>
-                  <Text style={dashboardStyles.smsBalanceBannerUnit}>הודעות נותרו</Text>
-                </>
-              ) : (
-                <Text style={dashboardStyles.smsBalanceBannerErr}>{smsBalance.error || 'לא זמין'}</Text>
-              )}
-            </View>
-          </LinearGradient>
+          <AdminWebPageHeader
+            eyebrow="ניהול אירועים"
+            title="דשבורד אירועים למנהל"
+            navTrailing={
+              <LinearGradient
+                colors={['#0B3DA6', '#195de6', '#3B82F6']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={dashboardStyles.smsPill}
+              >
+                <View style={dashboardStyles.smsPillIcon}>
+                  <Ionicons name="chatbubbles" size={15} color="#FFFFFF" />
+                </View>
+                <View style={dashboardStyles.smsPillTextWrap}>
+                  <Text style={dashboardStyles.smsPillLabel}>יתרת הודעות SMS</Text>
+                  {smsBalance.loading ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : smsBalance.credits != null ? (
+                    <Text style={dashboardStyles.smsPillValue} numberOfLines={1}>
+                      {smsBalance.credits}
+                      <Text style={dashboardStyles.smsPillUnit}> הודעות נותרו</Text>
+                    </Text>
+                  ) : (
+                    <Text style={dashboardStyles.smsPillErr} numberOfLines={1}>
+                      {smsBalance.error || 'לא זמין'}
+                    </Text>
+                  )}
+                </View>
+              </LinearGradient>
+            }
+          />
 
           <View style={dashboardStyles.heroCard}>
             <View style={dashboardStyles.heroChartCard}>
@@ -3173,67 +3173,86 @@ export default function AdminEventsWebScreen() {
                 </View>
               </View>
 
-              <View style={dashboardStyles.chartBarsWrap}>
-                {bars12.map((bar) => {
-                  const isCurrentMonth = isCurrentYear && bar.monthIndex === now.getMonth();
-                  const hasValue = bar.value > 0;
-                  const pct = bar.value === 0 ? 0 : Math.max(0.06, bar.value / maxBar);
-
-                  return (
-                    <Pressable
-                      key={`${selectedYear}-${bar.monthIndex}`}
-                      accessibilityRole="button"
-                      accessibilityLabel={`${bar.label}: ${bar.value}`}
-                      onPress={() => null}
-                      style={({ hovered, pressed }: any) => [
-                        dashboardStyles.chartBarCol,
-                        pressed ? { opacity: 0.96 } : null,
-                        Platform.OS === 'web' && hovered ? dashboardStyles.chartBarColHover : null,
+              <View style={dashboardStyles.chartPlot}>
+                <View pointerEvents="none" style={dashboardStyles.chartGrid}>
+                  {[0, 1, 2, 3, 4].map((line) => (
+                    <View
+                      key={`grid-${line}`}
+                      style={[
+                        dashboardStyles.chartGridLine,
+                        line === 4 ? dashboardStyles.chartGridBaseline : null,
                       ]}
-                    >
-                      {({ hovered }: any) => (
-                        <>
-                          <View
-                            style={[
-                              dashboardStyles.chartBarTrack,
-                              Platform.OS === 'web' && hovered ? dashboardStyles.chartBarTrackHover : null,
-                            ]}
-                          >
-                            <View style={dashboardStyles.chartBarBg} />
-                            <LinearGradient
-                              colors={
-                                hasValue
-                                  ? ['#1D4ED8', '#3B82F6']
-                                  : ['rgba(11,27,61,0.18)', 'rgba(59,130,246,0.10)']
-                              }
-                              start={{ x: 0.5, y: 1 }}
-                              end={{ x: 0.5, y: 0 }}
-                              style={[
-                                dashboardStyles.chartBarFill,
-                                { height: `${Math.round(pct * 100)}%` } as any,
-                                isCurrentMonth ? dashboardStyles.chartBarFillHot : null,
-                              ]}
-                            />
+                    />
+                  ))}
+                </View>
+
+                <View style={dashboardStyles.chartBarsRow}>
+                  {bars12.map((bar) => {
+                    const isCurrentMonth = isCurrentYear && bar.monthIndex === now.getMonth();
+                    const hasValue = bar.value > 0;
+                    const pct = hasValue ? Math.max(0.08, bar.value / maxBar) : 0;
+
+                    return (
+                      <Pressable
+                        key={`${selectedYear}-${bar.monthIndex}`}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${bar.label}: ${bar.value}`}
+                        onPress={() => null}
+                        style={({ pressed }: any) => [
+                          dashboardStyles.chartBarCol,
+                          pressed ? { opacity: 0.96 } : null,
+                        ]}
+                      >
+                        {({ hovered }: any) => (
+                          <View style={dashboardStyles.chartBarTrack}>
+                            {hasValue ? (
+                              <LinearGradient
+                                colors={isCurrentMonth ? ['#1D4ED8', '#3B82F6', '#60A5FA'] : ['#2E55C9', '#4C82F7']}
+                                start={{ x: 0.5, y: 1 }}
+                                end={{ x: 0.5, y: 0 }}
+                                style={[
+                                  dashboardStyles.chartBarFill,
+                                  { height: `${Math.round(pct * 100)}%` } as any,
+                                  isCurrentMonth ? dashboardStyles.chartBarFillHot : null,
+                                  Platform.OS === 'web' && hovered ? dashboardStyles.chartBarFillHover : null,
+                                ]}
+                              >
+                                <View style={dashboardStyles.chartBarCap} />
+                              </LinearGradient>
+                            ) : (
+                              <View style={dashboardStyles.chartBarEmpty} />
+                            )}
+
                             <View
                               style={[
                                 dashboardStyles.chartBarTooltip,
-                                Platform.OS === 'web' ? (hovered ? { opacity: 1 } : null) : ({ display: 'none' } as any),
+                                Platform.OS === 'web' && hovered ? { opacity: 1 } : ({ display: 'none' } as any),
                               ]}
                             >
                               <Text style={dashboardStyles.chartBarTooltipText}>{bar.value}</Text>
                             </View>
                           </View>
-                          <Text style={[dashboardStyles.chartBarLabel, isCurrentMonth ? dashboardStyles.chartBarLabelHot : null]}>
-                            {bar.label}
-                          </Text>
-                          <Text style={[dashboardStyles.chartBarValue, isCurrentMonth ? dashboardStyles.chartBarValueHot : null]}>
-                            {bar.value}
-                          </Text>
-                        </>
-                      )}
-                    </Pressable>
-                  );
-                })}
+                        )}
+                      </Pressable>
+                    );
+                  })}
+                </View>
+
+                <View style={dashboardStyles.chartLabelsRow}>
+                  {bars12.map((bar) => {
+                    const isCurrentMonth = isCurrentYear && bar.monthIndex === now.getMonth();
+                    return (
+                      <View key={`label-${selectedYear}-${bar.monthIndex}`} style={dashboardStyles.chartLabelCol}>
+                        <Text style={[dashboardStyles.chartBarLabel, isCurrentMonth ? dashboardStyles.chartBarLabelHot : null]}>
+                          {bar.label}
+                        </Text>
+                        <Text style={[dashboardStyles.chartBarValue, isCurrentMonth ? dashboardStyles.chartBarValueHot : null]}>
+                          {bar.value}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                </View>
               </View>
             </View>
           </View>
@@ -4579,6 +4598,60 @@ const dashboardStyles = StyleSheet.create({
     textAlign: 'center',
     maxWidth: 200,
   },
+  smsPill: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 6px 16px rgba(25,93,230,0.28)' } as any)
+      : {
+          shadowColor: '#195de6',
+          shadowOpacity: 0.24,
+          shadowRadius: 12,
+          shadowOffset: { width: 0, height: 6 },
+        }),
+  },
+  smsPillIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.30)',
+  },
+  smsPillTextWrap: {
+    alignItems: 'flex-end',
+    gap: 1,
+  },
+  smsPillLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.85)',
+    textAlign: 'right',
+  },
+  smsPillValue: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    textAlign: 'right',
+  },
+  smsPillUnit: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.85)',
+  },
+  smsPillErr: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    textAlign: 'right',
+    maxWidth: 160,
+  },
   inlineActionBtn: {
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -4729,57 +4802,100 @@ const dashboardStyles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: 'rgba(15,23,42,0.30)',
   },
-  chartBarsWrap: {
-    height: 260,
+  chartPlot: {
+    position: 'relative',
+    paddingTop: 6,
+  },
+  chartGrid: {
+    position: 'absolute',
+    top: 6,
+    left: 0,
+    right: 0,
+    height: 200,
+    justifyContent: 'space-between',
+  },
+  chartGridLine: {
+    height: 1,
+    width: '100%',
+    backgroundColor: 'rgba(15,23,42,0.05)',
+  },
+  chartGridBaseline: {
+    backgroundColor: 'rgba(15,23,42,0.12)',
+  },
+  chartBarsRow: {
+    height: 200,
     flexDirection: 'row',
     alignItems: 'flex-end',
     justifyContent: 'space-between',
     gap: 10,
-    paddingTop: 10,
+  },
+  chartLabelsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginTop: 12,
+  },
+  chartLabelCol: {
+    flex: 1,
+    minWidth: 42,
+    alignItems: 'center',
+    gap: 2,
   },
   chartBarCol: {
     flex: 1,
     minWidth: 42,
+    height: 200,
     alignItems: 'center',
-    gap: 10,
+    justifyContent: 'flex-end',
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
-  chartBarColHover: {},
   chartBarTrack: {
     width: '100%',
-    maxWidth: 56,
+    maxWidth: 46,
     height: 200,
-    borderRadius: 16,
-    backgroundColor: 'rgba(15,23,42,0.03)',
-    borderWidth: 1,
-    borderColor: 'rgba(15, 23, 42, 0.08)',
-    overflow: 'hidden',
     justifyContent: 'flex-end',
     position: 'relative',
   },
-  chartBarTrackHover: {
-    borderColor: 'rgba(59,130,246,0.22)',
-    backgroundColor: 'rgba(59,130,246,0.05)',
-  },
-  chartBarBg: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(11,27,61,0.03)',
-  },
   chartBarFill: {
     width: '100%',
-    borderRadius: 14,
+    minHeight: 10,
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+    borderBottomLeftRadius: 5,
+    borderBottomRightRadius: 5,
+    overflow: 'hidden',
+    ...(Platform.OS === 'web'
+      ? ({ transition: 'height 0.25s ease, opacity 0.2s ease' } as any)
+      : null),
+  },
+  chartBarCap: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 5,
+    backgroundColor: 'rgba(255,255,255,0.4)',
+  },
+  chartBarEmpty: {
+    width: '100%',
+    height: 6,
+    borderRadius: 4,
+    backgroundColor: 'rgba(15,23,42,0.08)',
+  },
+  chartBarFillHover: {
+    opacity: 0.92,
   },
   chartBarFillHot: {
     shadowColor: '#3B82F6',
-    shadowOpacity: 0.35,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.4,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 6 },
   },
   chartBarTooltip: {
     position: 'absolute',
-    top: 10,
-    left: 10,
-    right: 10,
+    top: -2,
+    left: 0,
+    right: 0,
     alignItems: 'center',
     opacity: 0,
     pointerEvents: 'none',

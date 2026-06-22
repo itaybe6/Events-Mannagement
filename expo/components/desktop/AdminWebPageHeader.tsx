@@ -18,6 +18,7 @@ type Props = {
   titleMeta?: React.ReactNode;
   leading?: React.ReactNode;
   actions?: React.ReactNode;
+  navTrailing?: React.ReactNode;
   showNav?: boolean;
   useDefaultActions?: boolean;
 };
@@ -31,6 +32,7 @@ export default function AdminWebPageHeader({
   titleMeta,
   leading,
   actions,
+  navTrailing,
   showNav = true,
   useDefaultActions = true,
 }: Props) {
@@ -88,8 +90,11 @@ export default function AdminWebPageHeader({
             <Text style={styles.navSectionLabel}>ניווט מהיר</Text>
           </View>
 
-          <View style={styles.navWrap}>
-            <AdminWebTopNav />
+          <View style={styles.navRow}>
+            <View style={styles.navWrap}>
+              <AdminWebTopNav />
+            </View>
+            {navTrailing ? <View style={styles.navTrailing}>{navTrailing}</View> : null}
           </View>
         </View>
       ) : null}
@@ -254,8 +259,19 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
     textAlign: 'right',
   },
+  navRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 16,
+    flexWrap: 'wrap',
+  },
   navWrap: {
     minHeight: 42,
     justifyContent: 'center',
+    flexShrink: 1,
+  },
+  navTrailing: {
+    flexShrink: 0,
   },
 });

@@ -195,6 +195,10 @@ function getDisplayTitle(row: Pick<NotificationSettingRow, 'notification_type' |
   return TITLE_OVERRIDES[row.notification_type] ?? row.title;
 }
 
+function isImmediateFlowStep(row: Pick<NotificationSettingRow, 'title'>) {
+  return String(row.title || '').trim() === 'שליחה מיידית';
+}
+
 function formatOffsetLabel(days: number) {
   if (!Number.isFinite(days)) return '—';
   if (days === 0) return 'ביום האירוע';
@@ -525,16 +529,6 @@ export default function AutomaticNotificationsWebScreen() {
   const [waDailyQuota, setWaDailyQuota] = useState<number>(0);
   const [waSentToday, setWaSentToday] = useState<number>(0);
 
-  // Dynamic WhatsApp access token (encrypted at rest, uploaded by the manager).
-  const [waTokenStatus, setWaTokenStatus] = useState<{ hasToken: boolean; hint: string | null; updatedAt: Date | null }>({
-    hasToken: false,
-    hint: null,
-    updatedAt: null,
-  });
-  const [tokenModalOpen, setTokenModalOpen] = useState(false);
-  const [tokenInput, setTokenInput] = useState('');
-  const [tokenSaving, setTokenSaving] = useState(false);
-
   // Event details reference panel (so the manager can fill template fields).
   const [eventDetailsOpen, setEventDetailsOpen] = useState(true);
   const [waImageUploading, setWaImageUploading] = useState(false);
@@ -659,12 +653,12 @@ export default function AutomaticNotificationsWebScreen() {
 
   const statusLabel = (s: string) => {
     const v = String(s || '').trim();
-    if (v === 'sent') return { text: 'נשלח', color: 'rgba(22,163,74,1)' };
-    if (v === 'failed') return { text: 'נכשל', color: 'rgba(239,68,68,1)' };
-    if (v === 'sending') return { text: 'בתהליך', color: 'rgba(245,158,11,1)' };
-    if (v === 'claimed') return { text: 'ממתין', color: 'rgba(245,158,11,1)' };
-    if (v === 'skipped') return { text: 'דולג', color: 'rgba(100,116,139,1)' };
-    return { text: '—', color: 'rgba(100,116,139,1)' };
+    if (v === 'sent') return { text: 'נשלח', color: 'rgba(22,163,74,1)', bg: 'rgba(220,252,231,1)', border: 'rgba(134,239,172,1)', icon: 'checkmark-circle' as const };
+    if (v === 'failed') return { text: 'נכשל', color: 'rgba(239,68,68,1)', bg: 'rgba(254,226,226,1)', border: 'rgba(252,165,165,1)', icon: 'close-circle' as const };
+    if (v === 'sending') return { text: 'בתהליך', color: 'rgba(245,158,11,1)', bg: 'rgba(254,243,199,1)', border: 'rgba(252,211,77,1)', icon: 'time' as const };
+    if (v === 'claimed') return { text: 'ממתין', color: 'rgba(245,158,11,1)', bg: 'rgba(254,243,199,1)', border: 'rgba(252,211,77,1)', icon: 'time' as const };
+    if (v === 'skipped') return { text: 'דולג', color: 'rgba(100,116,139,1)', bg: 'rgba(241,245,249,1)', border: 'rgba(203,213,225,1)', icon: 'remove-circle-outline' as const };
+    return { text: '—', color: 'rgba(100,116,139,1)', bg: 'rgba(241,245,249,1)', border: 'rgba(203,213,225,1)', icon: 'remove-circle-outline' as const };
   };
 
   const openSendStatus = async (row: NotificationSettingRow) => {
@@ -1117,7 +1111,7 @@ export default function AutomaticNotificationsWebScreen() {
     // Fetch last SMS runs (per setting) for status UI.
     try {
       const settingIds = [...merged, ...mappedFlow]
-        .filter((r) => r.id && (r.channel || 'SMS') === 'SMS')
+        .filter((r) => r.id)
         .map((r) => String(r.id));
       if (settingIds.length === 0) {
         setLastSmsRunBySettingId({});
@@ -1205,17 +1199,15 @@ export default function AutomaticNotificationsWebScreen() {
 
         // Load WhatsApp template registry + daily quota usage (best-effort).
         try {
-          const [tpls, settings, today, tokenStatus] = await Promise.all([
+          const [tpls, settings, today] = await Promise.all([
             whatsappTemplateService.list().catch(() => []),
             whatsappTemplateService.getSettings().catch(() => ({ dailyQuota: 0 })),
             whatsappTemplateService.sentToday().catch(() => 0),
-            whatsappTemplateService.getTokenStatus().catch(() => ({ hasToken: false, hint: null, updatedAt: null })),
           ]);
           if (!cancelled) {
             setWaTemplates(tpls);
             setWaDailyQuota(settings.dailyQuota || 0);
             setWaSentToday(today);
-            setWaTokenStatus(tokenStatus);
           }
         } catch (e) {
           console.warn('Failed to load WhatsApp registry (couple web):', e);
@@ -2473,6 +2465,7 @@ export default function AutomaticNotificationsWebScreen() {
       const channel = sendChannel;
       const isWhatsapp = sendIsWhatsapp;
       const isFlow = nt.startsWith('flow_step:');
+      const isImmediateStep = isFlow && isImmediateFlowStep(editorRow);
       const isFlowSmsWizard = isFlow && !isWhatsapp;
       const flowMode = isFlow
         ? editorIsWhatsapp
@@ -2590,6 +2583,27 @@ export default function AutomaticNotificationsWebScreen() {
       const baseUrl =
         origin && !origin.includes('localhost') && !origin.includes('127.0.0.1') ? normalizeBaseUrl(origin) : configuredBaseUrl || undefined;
 
+      const persistImmediateSendMeta = async (sentIds: string[]) => {
+        if (!isImmediateStep || !editorRow?.id) return;
+        const sentAt = new Date().toISOString();
+        const { error: persistErr } = await supabase
+          .from('notification_settings')
+          .update({
+            notification_date: sentAt,
+            recipient_guest_ids: sentIds,
+            updated_at: sentAt,
+          })
+          .eq('id', String(editorRow.id));
+        if (persistErr) console.warn('Failed to persist immediate send meta:', persistErr);
+        setFlowSteps((prev) =>
+          prev.map((s) =>
+            String(s.id) === String(editorRow.id)
+              ? ({ ...s, notification_date: sentAt, recipient_guest_ids: sentIds, updated_at: sentAt } as NotificationSettingRow)
+              : s
+          )
+        );
+      };
+
       // WhatsApp: send via approved template (Meta Cloud API).
       if (isWhatsapp) {
         const templateId = String(flowDraft?.whatsappTemplateId || (editorRow as any)?.whatsapp_template_id || '').trim();
@@ -2614,6 +2628,7 @@ export default function AutomaticNotificationsWebScreen() {
         const quotaNote = Number(result?.skippedQuota) > 0 ? ` · דולגו ${Number(result.skippedQuota)} (מכסה יומית)` : '';
         alert(`נשלחו ${Number(result?.sent) || 0} · נכשלו ${Number(result?.failed) || 0}${quotaNote}`);
         whatsappTemplateService.sentToday().then(setWaSentToday).catch(() => {});
+        await persistImmediateSendMeta(ids);
         return;
       }
 
@@ -2630,6 +2645,7 @@ export default function AutomaticNotificationsWebScreen() {
       if (error) throw error;
       const result = (data as any)?.result;
       alert(`נשלחו ${Number(result?.sent) || 0} · נכשלו ${Number(result?.failed) || 0}`);
+      await persistImmediateSendMeta(ids);
     } catch (e: any) {
       console.error('Send SMS now failed (couple web):', e);
       let details = '';
@@ -2647,43 +2663,6 @@ export default function AutomaticNotificationsWebScreen() {
       setSendingNow(false);
     }
   };
-
-  const openTokenModal = useCallback(() => {
-    setTokenInput('');
-    setTokenModalOpen(true);
-  }, []);
-
-  const saveWaToken = useCallback(
-    async (mode: 'save' | 'clear') => {
-      if (tokenSaving) return;
-      const value = mode === 'clear' ? '' : tokenInput.trim();
-      if (mode === 'save' && !value) {
-        showToast('הדבק טוקן תקין');
-        return;
-      }
-      setTokenSaving(true);
-      try {
-        const res = await whatsappTemplateService.setToken(value);
-        const status = await whatsappTemplateService.getTokenStatus().catch(() => ({ hasToken: !!value, hint: null, updatedAt: new Date() }));
-        setWaTokenStatus(status);
-        setTokenInput('');
-        setTokenModalOpen(false);
-        showToast(mode === 'clear' || (res as any)?.cleared ? 'הטוקן הוסר' : 'הטוקן נשמר בהצלחה');
-      } catch (e: any) {
-        let details = '';
-        try {
-          const ctx = e?.context;
-          if (ctx && typeof ctx.text === 'function') details = await ctx.text();
-        } catch {
-          // ignore
-        }
-        alert(`לא ניתן לשמור טוקן.\n\n${String(e?.message || e?.name || 'שגיאה')}${details ? `\n\nפרטים:\n${details}` : ''}`);
-      } finally {
-        setTokenSaving(false);
-      }
-    },
-    [tokenInput, tokenSaving, showToast]
-  );
 
   const scheduledSendDateTime = useMemo(() => {
     if (!event) return null;
@@ -2781,7 +2760,7 @@ export default function AutomaticNotificationsWebScreen() {
       recipient_rule: { mode: 'manual' },
       depends_on_setting_id: null,
     };
-    if (dt) insertPayload.notification_date = dt.toISOString();
+    if (dt && sendMode !== 'immediate') insertPayload.notification_date = dt.toISOString();
 
     try {
       let { data, error } = await supabase.from('notification_settings').insert(insertPayload).select().single();
@@ -3086,23 +3065,6 @@ export default function AutomaticNotificationsWebScreen() {
                       {userType === 'admin' ? (
                         <Pressable
                           accessibilityRole="button"
-                          accessibilityLabel="טוקן וואטסאפ"
-                          onPress={openTokenModal}
-                          style={({ hovered, pressed }: any) => [
-                            styles.headerSubtitleSecondaryBtn,
-                            Platform.OS === 'web' && hovered ? styles.headerSubtitleSecondaryBtnHover : null,
-                            pressed ? { opacity: 0.92 } : null,
-                          ]}
-                        >
-                          <Ionicons name={waTokenStatus.hasToken ? 'key' : 'key-outline'} size={16} color={waTokenStatus.hasToken ? '#0E7C46' : colors.primary} />
-                          <Text style={styles.headerSubtitleSecondaryBtnText}>
-                            {waTokenStatus.hasToken ? `טוקן וואטסאפ ${waTokenStatus.hint ?? ''}` : 'הוסף טוקן וואטסאפ'}
-                          </Text>
-                        </Pressable>
-                      ) : null}
-                      {userType === 'admin' ? (
-                        <Pressable
-                          accessibilityRole="button"
                           accessibilityLabel="ניהול תבניות וואטסאפ ומכסה יומית"
                           onPress={() => router.push('/(admin)/whatsapp-templates' as any)}
                           style={({ hovered, pressed }: any) => [
@@ -3390,8 +3352,7 @@ export default function AutomaticNotificationsWebScreen() {
                 const selected = row.notification_type === selectedType;
                 const number = String(idx + 1).padStart(2, '0');
                 const tone = getRowTone(row, item.kind === 'flow');
-                const lastRun =
-                  row.id && (row.channel || 'SMS') === 'SMS' ? lastSmsRunBySettingId[String(row.id)] : undefined;
+                const lastRun = row.id ? lastSmsRunBySettingId[String(row.id)] : undefined;
                 const lastRunLabel = lastRun ? statusLabel(String(lastRun.status)) : null;
                 const lastRunAt = lastRun?.claimed_at ? formatHeDateTimeShort(lastRun.claimed_at) : '';
                 const catchup = row.id ? queuedCatchupBySettingId[String(row.id)] : undefined;
@@ -3404,6 +3365,17 @@ export default function AutomaticNotificationsWebScreen() {
                   : '';
 
                 const isFlow = item.kind === 'flow';
+                const isImmediateFlow = isFlow && isImmediateFlowStep(row);
+                const immediateRecipientIds = isImmediateFlow
+                  ? (Array.isArray((row as any).recipient_guest_ids) ? (row as any).recipient_guest_ids : [])
+                  : [];
+                const immediateRecipientCount = immediateRecipientIds.length;
+                const immediateSentAtRaw = isImmediateFlow
+                  ? (lastRun?.claimed_at || (row as any).notification_date || (row as any).updated_at)
+                  : null;
+                const immediateWasSent = isImmediateFlow && immediateRecipientCount > 0;
+                const immediateSentAt =
+                  immediateWasSent && immediateSentAtRaw ? formatHeDateTimeShort(immediateSentAtRaw) : '';
                 const mode = isFlow ? String((row as any)?.recipient_mode || 'manual') : null;
                 const ids = Array.isArray((row as any).recipient_guest_ids) ? (row as any).recipient_guest_ids : [];
                 const recipientsLabel = !isFlow
@@ -3463,6 +3435,17 @@ export default function AutomaticNotificationsWebScreen() {
                           <View style={styles.cardChannelBadge}>
                             <Text style={styles.cardChannelBadgeText}>{cardChannelLabel}</Text>
                           </View>
+                          {isImmediateFlow && immediateWasSent ? (
+                            <View style={[styles.cardStatusBadge, { backgroundColor: 'rgba(220,252,231,1)', borderColor: 'rgba(134,239,172,1)' }]}>
+                              <Ionicons name="checkmark-circle" size={11} color="rgba(22,163,74,1)" />
+                              <Text style={[styles.cardStatusBadgeText, { color: 'rgba(22,163,74,1)' }]}>נשלח</Text>
+                            </View>
+                          ) : lastRunLabel && lastRunLabel.text !== '—' && lastRunLabel.text !== 'דולג' ? (
+                            <View style={[styles.cardStatusBadge, { backgroundColor: lastRunLabel.bg, borderColor: lastRunLabel.border }]}>
+                              <Ionicons name={lastRunLabel.icon as any} size={11} color={lastRunLabel.color} />
+                              <Text style={[styles.cardStatusBadgeText, { color: lastRunLabel.color }]}>{lastRunLabel.text}</Text>
+                            </View>
+                          ) : null}
                         </View>
                       ) : null}
                       <Text style={styles.cardNumber}>{number}</Text>
@@ -3485,21 +3468,53 @@ export default function AutomaticNotificationsWebScreen() {
                       {isFlow ? String((row as any).title || `שלב ${idx + 1}`) : getDisplayTitle(row)}
                     </Text>
 
-                    <View style={styles.cardMetaRow}>
-                      <Ionicons name="time-outline" size={14} color={tone.accent} />
-                      <Text style={styles.cardMetaText}>
-                        {formatOffsetLabel(Number((row as any).days_from_wedding ?? 0) || 0)}
-                      </Text>
-                      {!isFlow ? (
-                        <Ionicons
-                          name="information-circle-outline"
-                          size={14}
-                          color="#d1d5db"
-                          style={Platform.OS === 'web' ? ({ marginInlineStart: 'auto' } as any) : ({ marginRight: 'auto' } as any)}
-                        />
-                      ) : null}
-                    </View>
-                    {showAdminChrome ? (
+                    {!isImmediateFlow ? (
+                      <View style={styles.cardMetaRow}>
+                        <Ionicons name="time-outline" size={14} color={tone.accent} />
+                        <Text style={styles.cardMetaText}>
+                          {formatOffsetLabel(Number((row as any).days_from_wedding ?? 0) || 0)}
+                        </Text>
+                        {!isFlow ? (
+                          <Ionicons
+                            name="information-circle-outline"
+                            size={14}
+                            color="#d1d5db"
+                            style={Platform.OS === 'web' ? ({ marginInlineStart: 'auto' } as any) : ({ marginRight: 'auto' } as any)}
+                          />
+                        ) : null}
+                      </View>
+                    ) : null}
+                    {isImmediateFlow ? (
+                      <View style={styles.cardInsightsGrid}>
+                        <View style={[styles.cardInsightCard, styles.cardInsightCardStatic, { backgroundColor: tone.soft, borderColor: tone.border }]}>
+                          <View style={styles.cardInsightTopRow}>
+                            <View style={[styles.cardInsightIconWrap, { backgroundColor: tone.icon }]}>
+                              <Ionicons name="people-outline" size={15} color={tone.accent} />
+                            </View>
+                            <Text style={styles.cardInsightLabel}>נשלח ל</Text>
+                          </View>
+                          <Text style={[styles.cardInsightValue, { color: tone.accent }]} numberOfLines={1}>
+                            {immediateWasSent ? `${immediateRecipientCount} מוזמנים` : 'טרם נשלח'}
+                          </Text>
+                          <Text style={[styles.cardInsightMeta, { color: tone.accent }]}>
+                            {immediateWasSent ? 'מספר המוזמנים שקיבלו ההודעה' : 'ההודעה עדיין לא נשלחה'}
+                          </Text>
+                        </View>
+
+                        <View style={[styles.cardInsightCard, styles.cardInsightCardStatic, { backgroundColor: tone.soft, borderColor: tone.border }]}>
+                          <View style={styles.cardInsightTopRow}>
+                            <View style={[styles.cardInsightIconWrap, { backgroundColor: tone.icon }]}>
+                              <Ionicons name="time-outline" size={15} color={tone.accent} />
+                            </View>
+                            <Text style={styles.cardInsightLabel}>מועד שליחה</Text>
+                          </View>
+                          <Text style={[styles.cardInsightValue, { color: tone.accent }]} numberOfLines={1}>
+                            {immediateSentAt || '—'}
+                          </Text>
+                          <Text style={[styles.cardInsightMeta, { color: tone.accent }]}>שעת שליחה בפועל</Text>
+                        </View>
+                      </View>
+                    ) : showAdminChrome ? (
                       <View style={styles.cardInsightsGrid}>
                         <View style={[styles.cardInsightCard, styles.cardInsightCardStatic, { backgroundColor: tone.soft, borderColor: tone.border }]}>
                           <View style={styles.cardInsightTopRow}>
@@ -3566,7 +3581,7 @@ export default function AutomaticNotificationsWebScreen() {
                       </View>
                     ) : null}
 
-                    {recipientsLabel ? (
+                    {recipientsLabel && !isImmediateFlow ? (
                       <>
                         <View style={styles.cardInlineRow}>
                           <View style={styles.cardInlineMeta}>
@@ -3639,22 +3654,24 @@ export default function AutomaticNotificationsWebScreen() {
                       )}
 
                       <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8 }}>
-                        <Pressable
-                          onPress={(e: any) => {
-                            e?.stopPropagation?.();
-                            e?.preventDefault?.();
-                            if (!canEdit) {
-                              void openViewer(row);
-                              return;
-                            }
-                            if (isFlow) openFlowEditor(row);
-                            else openEditor(row);
-                          }}
-                          style={({ pressed }: any) => [styles.editBtn, pressed ? { opacity: 0.9 } : null]}
-                        >
-                          <Ionicons name={canEdit ? 'create-outline' : 'eye-outline'} size={16} color={ui.primary} />
-                          <Text style={[styles.editBtnText, { color: ui.primary }]}>{canEdit ? 'ערוך' : 'צפייה'}</Text>
-                        </Pressable>
+                        {!isImmediateFlow ? (
+                          <Pressable
+                            onPress={(e: any) => {
+                              e?.stopPropagation?.();
+                              e?.preventDefault?.();
+                              if (!canEdit) {
+                                void openViewer(row);
+                                return;
+                              }
+                              if (isFlow) openFlowEditor(row);
+                              else openEditor(row);
+                            }}
+                            style={({ pressed }: any) => [styles.editBtn, pressed ? { opacity: 0.9 } : null]}
+                          >
+                            <Ionicons name={canEdit ? 'create-outline' : 'eye-outline'} size={16} color={ui.primary} />
+                            <Text style={[styles.editBtnText, { color: ui.primary }]}>{canEdit ? 'ערוך' : 'צפייה'}</Text>
+                          </Pressable>
+                        ) : null}
 
                         {!isFlow && canEdit ? (
                           <Pressable
@@ -6658,70 +6675,6 @@ export default function AutomaticNotificationsWebScreen() {
         </View>
       ) : null}
 
-      {tokenModalOpen ? (
-        <View style={styles.tokenOverlay}>
-          <Pressable style={styles.tokenBackdrop} onPress={() => (tokenSaving ? null : setTokenModalOpen(false))} />
-          <View style={styles.tokenCard}>
-            <View style={styles.tokenHeader}>
-              <Text style={styles.tokenTitle}>טוקן וואטסאפ זמני</Text>
-              <Pressable onPress={() => (tokenSaving ? null : setTokenModalOpen(false))} style={styles.tokenClose}>
-                <Ionicons name="close" size={20} color="#0F172A" />
-              </Pressable>
-            </View>
-
-            <Text style={styles.tokenHint}>
-              עד לאישור העסק ב‑Meta אפשר להעלות כאן טוקן גישה זמני. הטוקן נשמר מוצפן (AES‑256) ולא נחשף ללקוח.
-            </Text>
-
-            <View style={styles.tokenStatusRow}>
-              <Ionicons
-                name={waTokenStatus.hasToken ? 'checkmark-circle' : 'alert-circle-outline'}
-                size={16}
-                color={waTokenStatus.hasToken ? '#0E7C46' : '#B45309'}
-              />
-              <Text style={styles.tokenStatusText}>
-                {waTokenStatus.hasToken
-                  ? `קיים טוקן פעיל ${waTokenStatus.hint ?? ''}${waTokenStatus.updatedAt ? ` · עודכן ${formatHeDateTimeShort(waTokenStatus.updatedAt)}` : ''}`
-                  : 'אין כרגע טוקן שמור — תיעשה שימוש בטוקן ברירת המחדל של השרת (אם הוגדר).'}
-              </Text>
-            </View>
-
-            <TextInput
-              value={tokenInput}
-              onChangeText={setTokenInput}
-              style={styles.tokenInput}
-              placeholder="הדבק כאן את הטוקן (EAAB...)"
-              placeholderTextColor="rgba(100,116,139,0.7)"
-              autoCapitalize="none"
-              autoCorrect={false}
-              secureTextEntry
-              multiline
-            />
-
-            <View style={styles.tokenFooter}>
-              {waTokenStatus.hasToken ? (
-                <Pressable
-                  onPress={() => void saveWaToken('clear')}
-                  disabled={tokenSaving}
-                  style={({ pressed }: any) => [styles.tokenClearBtn, tokenSaving ? { opacity: 0.6 } : null, pressed ? { opacity: 0.9 } : null]}
-                >
-                  <Text style={styles.tokenClearBtnText}>הסר טוקן</Text>
-                </Pressable>
-              ) : (
-                <View style={{ flex: 1 }} />
-              )}
-              <Pressable
-                onPress={() => void saveWaToken('save')}
-                disabled={tokenSaving}
-                style={({ pressed }: any) => [styles.tokenSaveBtn, tokenSaving ? { opacity: 0.6 } : null, pressed ? { opacity: 0.9 } : null]}
-              >
-                {tokenSaving ? <ActivityIndicator color="#fff" /> : <Text style={styles.tokenSaveBtnText}>שמור טוקן</Text>}
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      ) : null}
-
       {toastText ? (
         <View pointerEvents="none" style={styles.toastWrap}>
           <View style={styles.toastCard}>
@@ -8109,21 +8062,6 @@ const styles = StyleSheet.create({
   eventDetailLabel: { fontSize: 11, fontWeight: '800', color: 'rgba(2,6,23,0.5)', textAlign: 'right' },
   eventDetailValue: { fontSize: 13.5, fontWeight: '800', color: '#0F172A', textAlign: 'right' },
 
-  tokenOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(15,23,42,0.45)', alignItems: 'center', justifyContent: 'center', padding: 20, zIndex: 50 },
-  tokenBackdrop: { ...StyleSheet.absoluteFillObject },
-  tokenCard: { width: '100%', maxWidth: 520, backgroundColor: '#fff', borderRadius: 20, padding: 20, gap: 14, ...(Platform.OS === 'web' ? ({ boxShadow: '0 20px 60px rgba(2,6,23,0.35)' } as any) : null) },
-  tokenHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
-  tokenTitle: { fontSize: 18, fontWeight: '900', color: '#0F172A', textAlign: 'right' },
-  tokenClose: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F1F5F9' },
-  tokenHint: { fontSize: 12.5, fontWeight: '700', color: 'rgba(2,6,23,0.6)', textAlign: 'right', lineHeight: 18 },
-  tokenStatusRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, backgroundColor: '#F8FAFC', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: '#E2E8F0' },
-  tokenStatusText: { flex: 1, fontSize: 12.5, fontWeight: '800', color: '#0F172A', textAlign: 'right' },
-  tokenInput: { minHeight: 96, borderRadius: 12, borderWidth: 1, borderColor: '#CBD5E1', backgroundColor: '#F8FAFC', paddingHorizontal: 14, paddingVertical: 12, fontSize: 13, fontWeight: '600', color: '#0F172A', textAlign: 'left', textAlignVertical: 'top' },
-  tokenFooter: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12 },
-  tokenSaveBtn: { flex: 1, height: 48, borderRadius: 12, backgroundColor: '#1D4ED8', alignItems: 'center', justifyContent: 'center', ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
-  tokenSaveBtnText: { color: '#fff', fontSize: 15, fontWeight: '900' },
-  tokenClearBtn: { paddingHorizontal: 18, height: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(239,68,68,0.3)', backgroundColor: 'rgba(239,68,68,0.06)', ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
-  tokenClearBtnText: { color: '#EF4444', fontSize: 14, fontWeight: '900' },
   sendNowBtn: {
     flex: 1,
     height: 48,
@@ -8385,7 +8323,7 @@ const styles = StyleSheet.create({
   builderEditText: { fontSize: 12, fontWeight: '900', textAlign: 'right' },
 
   fieldRow: { marginTop: 10, gap: 7, width: '100%' },
-  fieldLabel: { fontSize: 12.5, fontWeight: '900', color: 'rgba(2,6,23,0.78)', textAlign: 'right' },
+  fieldLabel: { fontSize: 12.5, fontWeight: '900', color: 'rgba(2,6,23,0.78)', textAlign: 'right', alignSelf: 'stretch' },
   fieldInput: {
     height: 46,
     paddingHorizontal: 14,
@@ -8439,15 +8377,17 @@ const styles = StyleSheet.create({
   waManageBtnText: { color: '#fff', fontSize: 13, fontWeight: '900' },
   waPreview: { padding: 12, borderRadius: 10, backgroundColor: '#fff', borderWidth: 1, borderColor: 'rgba(2,6,23,0.08)' },
   waPreviewText: { fontSize: 13, fontWeight: '700', color: 'rgba(2,6,23,0.78)', textAlign: 'right', lineHeight: 19 },
-  waVarRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
-  waBtnRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
+  waVarRow: { flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'stretch' },
+  waBtnRow: { flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'stretch' },
   waVarBadge: { paddingHorizontal: 8, height: 34, borderRadius: 8, backgroundColor: 'rgba(37,211,102,0.14)', alignItems: 'center', justifyContent: 'center' },
   waVarBadgeText: { fontSize: 12, fontWeight: '900', color: '#0E7C46' },
-  waVarField: { gap: 6 },
-  waVarLabelRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
+  waVarField: { gap: 6, alignSelf: 'stretch' },
+  // RTL is already applied at the page level (`direction: rtl`).
+  // `row-reverse` here double-flips and pins labels to the left.
+  waVarLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'stretch' },
   waVarNumBadge: { minWidth: 22, height: 22, paddingHorizontal: 6, borderRadius: 999, backgroundColor: 'rgba(37,211,102,0.16)', borderWidth: 1, borderColor: 'rgba(14,124,70,0.25)', alignItems: 'center', justifyContent: 'center' },
   waVarNumBadgeText: { fontSize: 12, fontWeight: '900', color: '#0E7C46' },
-  waVarFieldLabel: { fontSize: 13, fontWeight: '900', color: '#0F172A', textAlign: 'right' },
+  waVarFieldLabel: { fontSize: 13, fontWeight: '900', color: '#0F172A', textAlign: 'right', alignSelf: 'stretch' },
   waImagePreviewWrap: { position: 'relative', borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(2,6,23,0.10)', backgroundColor: '#fff', alignSelf: 'stretch' },
   waImagePreview: { width: '100%', height: 180, backgroundColor: 'rgba(2,6,23,0.04)' },
   waImageDefaultBadge: { position: 'absolute', top: 8, right: 8, flexDirection: 'row-reverse', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, backgroundColor: 'rgba(15,23,42,0.72)' },
@@ -8635,6 +8575,20 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '800',
     color: 'rgba(71,85,105,1)',
+    textAlign: 'center',
+  },
+  cardStatusBadge: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  cardStatusBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
     textAlign: 'center',
   },
   cardNumber: { fontSize: 36, fontWeight: '900', color: '#EEF2FF' },

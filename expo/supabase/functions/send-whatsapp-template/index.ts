@@ -5,8 +5,8 @@ import {
   buildGuestVars,
   buildWaPayload,
   getEventDisplayTitle,
+  getWhatsappToken,
   normalizeWaPhone,
-  resolveWhatsappToken,
   sendWaMessage,
   type WaTemplate,
   type WaParams,
@@ -98,7 +98,7 @@ serve(async (req) => {
       return json({ error: "Missing Supabase environment variables" }, { status: 500 });
     }
 
-    const envWaToken = String(Deno.env.get("WHATSAPP_ACCESS_TOKEN") ?? "").trim();
+    const waToken = getWhatsappToken();
     const waPhoneId = String(Deno.env.get("WHATSAPP_PHONE_NUMBER_ID") ?? "").trim();
     if (!waPhoneId) {
       return json({ error: "Missing WhatsApp phone id (WHATSAPP_PHONE_NUMBER_ID)" }, { status: 500 });
@@ -169,8 +169,7 @@ serve(async (req) => {
       return json({ error: "Missing WhatsApp template" }, { status: 400 });
     }
 
-    // Resolve active token: encrypted DB token (manager-uploaded) or env secret.
-    const waToken = await resolveWhatsappToken(adminClient, envWaToken);
+    // Permanent WhatsApp token comes from the WHATSAPP_ACCESS_TOKEN Edge secret.
     if (!waToken) {
       return json({ error: "missing_whatsapp_token" }, { status: 500 });
     }

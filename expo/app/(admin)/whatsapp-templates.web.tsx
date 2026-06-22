@@ -72,15 +72,6 @@ export default function WhatsappTemplatesWebScreen() {
   const [sentToday, setSentToday] = useState<number>(0);
   const [savingQuota, setSavingQuota] = useState(false);
 
-  const [tokenStatus, setTokenStatus] = useState<{ hasToken: boolean; hint: string | null; updatedAt: Date | null }>({
-    hasToken: false,
-    hint: null,
-    updatedAt: null,
-  });
-  const [tokenInput, setTokenInput] = useState('');
-  const [savingToken, setSavingToken] = useState(false);
-  const [tokenSuccess, setTokenSuccess] = useState<string | null>(null);
-
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -89,16 +80,14 @@ export default function WhatsappTemplatesWebScreen() {
     setLoading(true);
     setError(null);
     try {
-      const [list, settings, today, tok] = await Promise.all([
+      const [list, settings, today] = await Promise.all([
         whatsappTemplateService.list({ includeInactive: true }),
         whatsappTemplateService.getSettings().catch(() => ({ dailyQuota: 0 })),
         whatsappTemplateService.sentToday().catch(() => 0),
-        whatsappTemplateService.getTokenStatus().catch(() => ({ hasToken: false, hint: null, updatedAt: null })),
       ]);
       setTemplates(list);
       setDailyQuota(String(settings.dailyQuota || 0));
       setSentToday(today);
-      setTokenStatus(tok);
     } catch (e: any) {
       setError(e?.message ? String(e.message) : 'שגיאה בטעינת הנתונים');
     } finally {
@@ -124,39 +113,6 @@ export default function WhatsappTemplatesWebScreen() {
       setSavingQuota(false);
     }
   }, [dailyQuota, savingQuota]);
-
-  const saveToken = useCallback(
-    async (mode: 'save' | 'clear') => {
-      if (savingToken) return;
-      const value = mode === 'clear' ? '' : tokenInput.trim();
-      if (mode === 'save' && !value) {
-        setError('הדבק טוקן תקין לפני שמירה');
-        return;
-      }
-      setSavingToken(true);
-      setError(null);
-      setTokenSuccess(null);
-      try {
-        await whatsappTemplateService.setToken(value);
-        const status = await whatsappTemplateService.getTokenStatus();
-        setTokenStatus(status);
-        setTokenInput('');
-        setTokenSuccess(mode === 'clear' ? 'הטוקן הוסר בהצלחה' : 'הטוקן נשמר בהצלחה (מוצפן)');
-      } catch (e: any) {
-        let details = '';
-        try {
-          const ctx = e?.context;
-          if (ctx && typeof ctx.text === 'function') details = await ctx.text();
-        } catch {
-          // ignore
-        }
-        setError(`${e?.message ? String(e.message) : 'שמירת הטוקן נכשלה'}${details ? `\n${details}` : ''}`);
-      } finally {
-        setSavingToken(false);
-      }
-    },
-    [tokenInput, savingToken]
-  );
 
   const openCreate = () => setEditor(emptyEditor());
   const openEdit = (t: WhatsAppTemplate) =>
@@ -286,82 +242,6 @@ export default function WhatsappTemplatesWebScreen() {
               disabled={savingQuota}
             >
               {savingQuota ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>שמור מכסה</Text>}
-            </Pressable>
-          </View>
-        </View>
-
-        {/* Dynamic WhatsApp access token */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Ionicons name="key-outline" size={20} color={tokenStatus.hasToken ? '#0E7C46' : ui.primary} />
-            <Text style={styles.cardTitle}>טוקן וואטסאפ זמני</Text>
-          </View>
-          <Text style={styles.helper}>
-            עד לאישור העסק ב‑Meta, העלה כאן טוקן גישה זמני. הטוקן נשמר מוצפן (AES‑256) ולא נחשף בדפדפן.
-          </Text>
-
-          <View style={[styles.tokenStatusRow, tokenStatus.hasToken ? styles.tokenStatusRowOk : styles.tokenStatusRowEmpty]}>
-            <Ionicons
-              name={tokenStatus.hasToken ? 'checkmark-circle' : 'alert-circle-outline'}
-              size={18}
-              color={tokenStatus.hasToken ? '#0E7C46' : '#B45309'}
-            />
-            <Text style={styles.tokenStatusText}>
-              {tokenStatus.hasToken
-                ? `טוקן פעיל ${tokenStatus.hint ?? ''}${
-                    tokenStatus.updatedAt
-                      ? ` · עודכן ${tokenStatus.updatedAt.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' })} ${tokenStatus.updatedAt.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}`
-                      : ''
-                  }`
-                : 'אין טוקן שמור — ייעשה שימוש בטוקן ברירת המחדל של השרת (אם הוגדר).'}
-            </Text>
-          </View>
-
-          {tokenSuccess ? (
-            <View style={styles.tokenSuccessBox}>
-              <Ionicons name="checkmark-circle" size={16} color="#0E7C46" />
-              <Text style={styles.tokenSuccessText}>{tokenSuccess}</Text>
-            </View>
-          ) : null}
-
-          <TextInput
-            value={tokenInput}
-            onChangeText={setTokenInput}
-            style={styles.tokenInput}
-            placeholder="הדבק כאן את הטוקן (EAAB...)"
-            placeholderTextColor={ui.sub}
-            autoCapitalize="none"
-            autoCorrect={false}
-            secureTextEntry
-            multiline
-          />
-
-          <View style={styles.tokenActionsRow}>
-            {tokenStatus.hasToken ? (
-              <Pressable
-                style={[styles.tokenClearBtn, savingToken ? { opacity: 0.6 } : null]}
-                onPress={() => void saveToken('clear')}
-                disabled={savingToken}
-              >
-                <Ionicons name="trash-outline" size={16} color={ui.danger} />
-                <Text style={styles.tokenClearBtnText}>הסר טוקן</Text>
-              </Pressable>
-            ) : (
-              <View style={{ flex: 1 }} />
-            )}
-            <Pressable
-              style={[styles.tokenSaveBtn, savingToken ? { opacity: 0.6 } : null]}
-              onPress={() => void saveToken('save')}
-              disabled={savingToken}
-            >
-              {savingToken ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <View style={styles.tokenSaveBtnInner}>
-                  <Ionicons name="save-outline" size={16} color="#fff" />
-                  <Text style={styles.primaryBtnText}>שמור טוקן</Text>
-                </View>
-              )}
             </Pressable>
           </View>
         </View>
@@ -778,19 +658,6 @@ const styles = StyleSheet.create({
   helper: { fontSize: 12.5, fontWeight: '600', color: ui.sub, textAlign: 'right', lineHeight: 18 },
   quotaRow: { flexDirection: ROW_DIR, alignItems: 'center', gap: 12 },
   quotaInput: { flex: 1, height: 48, borderRadius: 12, borderWidth: 1, borderColor: ui.border, backgroundColor: ui.surfaceMuted, paddingHorizontal: 14, fontSize: 16, fontWeight: '800', color: ui.text },
-
-  tokenStatusRow: { flexDirection: ROW_DIR, alignItems: 'center', gap: 10, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, borderWidth: 1 },
-  tokenStatusRowOk: { backgroundColor: 'rgba(37,211,102,0.08)', borderColor: 'rgba(37,211,102,0.25)' },
-  tokenStatusRowEmpty: { backgroundColor: 'rgba(245,158,11,0.08)', borderColor: 'rgba(245,158,11,0.25)' },
-  tokenStatusText: { flex: 1, fontSize: 13, fontWeight: '800', color: ui.text, textAlign: 'right', lineHeight: 19 },
-  tokenSuccessBox: { flexDirection: ROW_DIR, alignItems: 'center', gap: 8, backgroundColor: 'rgba(37,211,102,0.10)', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 },
-  tokenSuccessText: { flex: 1, fontSize: 13, fontWeight: '800', color: '#0E7C46', textAlign: 'right' },
-  tokenInput: { minHeight: 88, borderRadius: 12, borderWidth: 1, borderColor: ui.border, backgroundColor: ui.surfaceMuted, paddingHorizontal: 14, paddingVertical: 12, fontSize: 13, fontWeight: '600', color: ui.text, textAlign: 'left', textAlignVertical: 'top' },
-  tokenActionsRow: { flexDirection: ROW_DIR, alignItems: 'center', gap: 12 },
-  tokenSaveBtn: { flex: 1, maxWidth: 220, height: 48, borderRadius: 12, backgroundColor: ui.primary, alignItems: 'center', justifyContent: 'center', alignSelf: 'flex-end' },
-  tokenSaveBtnInner: { flexDirection: ROW_DIR, alignItems: 'center', gap: 8 },
-  tokenClearBtn: { flexDirection: ROW_DIR, alignItems: 'center', gap: 6, paddingHorizontal: 16, height: 48, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(239,68,68,0.28)', backgroundColor: 'rgba(239,68,68,0.06)' },
-  tokenClearBtnText: { fontSize: 14, fontWeight: '900', color: ui.danger },
 
   sectionHeaderRow: { flexDirection: ROW_DIR, alignItems: 'center', justifyContent: 'space-between' },
   sectionTitle: { fontSize: 18, fontWeight: '900', color: ui.text, textAlign: 'right' },
