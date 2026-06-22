@@ -4712,6 +4712,19 @@ export default function AutomaticNotificationsWebScreen() {
                       const buttonSuffixOf = (index: number) =>
                         String((Array.isArray(params.buttons) ? params.buttons : []).find((b) => Number(b.index) === Number(index))?.suffix ?? '');
 
+                      const composeWaPreviewBody = (tpl: WhatsAppTemplate): string => {
+                        const sortedVars = [...(tpl.variables || [])].sort((a, b) => Number(a.index) - Number(b.index));
+                        const bodyVals = Array.isArray(params.body) ? params.body : [];
+                        let text = String(tpl.bodyText || '');
+                        sortedVars.forEach((v, i) => {
+                          const filled = String(bodyVals[i] ?? '').trim();
+                          const fallback = String(v.sample ?? '').trim() || `[${String(v.label || `שדה ${i + 1}`)}]`;
+                          const value = filled || fallback;
+                          text = text.split(`{{${Number(v.index)}}}`).join(value);
+                        });
+                        return renderPreviewText(text).trim();
+                      };
+
                       const pickHeaderImage = async () => {
                         if (!canEdit) {
                           showToast('לצפייה בלבד');
@@ -4887,9 +4900,12 @@ export default function AutomaticNotificationsWebScreen() {
                                               <TextInput
                                                 value={String((Array.isArray(params.body) ? params.body : [])[i] ?? '')}
                                                 onChangeText={(t) => setBodyAt(i, t)}
-                                                style={styles.fieldInput}
+                                                style={[styles.fieldInput, styles.fieldInputMultiline]}
                                                 placeholder={v.sample ? `לדוגמה: ${v.sample}` : `הזן ${fieldTitle}`}
                                                 placeholderTextColor="rgba(100,116,139,0.6)"
+                                                multiline
+                                                numberOfLines={4}
+                                                textAlignVertical="top"
                                               />
                                             </View>
                                           );
@@ -4921,6 +4937,37 @@ export default function AutomaticNotificationsWebScreen() {
                                       ))}
                                     </View>
                                   ) : null}
+
+                                  <View style={styles.waMsgPreview}>
+                                    <View style={styles.waMsgPreviewHeader}>
+                                      <Ionicons name="eye-outline" size={15} color="#0E7C46" />
+                                      <Text style={styles.waMsgPreviewTitle}>תצוגה מקדימה — כך ההודעה תיראה אצל המוזמן</Text>
+                                    </View>
+                                    <View style={styles.waMsgPreviewBubble}>
+                                      {(() => {
+                                        const eventInvImg = String((event as any)?.invitation_image_url ?? '').trim();
+                                        const customImg = String(params.header_image_url ?? '').trim();
+                                        const headerImg = selectedTpl.headerType === 'image' ? (customImg || eventInvImg) : '';
+                                        if (!headerImg) return null;
+                                        return <Image source={{ uri: headerImg }} style={styles.waMsgPreviewImage} resizeMode="cover" />;
+                                      })()}
+                                      {selectedTpl.headerType === 'text' && String(params.header_text ?? '').trim() ? (
+                                        <Text style={styles.waMsgPreviewHeaderText}>{String(params.header_text).trim()}</Text>
+                                      ) : null}
+                                      <Text style={styles.waMsgPreviewBody}>{composeWaPreviewBody(selectedTpl)}</Text>
+                                      <Text style={styles.waMsgPreviewTime}>עכשיו ✓✓</Text>
+                                      {selectedTpl.buttons.length > 0 ? (
+                                        <View style={styles.waMsgPreviewBtns}>
+                                          {selectedTpl.buttons.map((b, i) => (
+                                            <View key={i} style={styles.waMsgPreviewBtn}>
+                                              <Ionicons name="open-outline" size={14} color="#1D9BF0" />
+                                              <Text style={styles.waMsgPreviewBtnText}>{b.label || `כפתור ${i + 1}`}</Text>
+                                            </View>
+                                          ))}
+                                        </View>
+                                      ) : null}
+                                    </View>
+                                  </View>
                                 </View>
                               ) : (
                                 <Text style={styles.editorSectionHint}>בחר תבנית כדי למלא את התוכן הדינמי שלה.</Text>
@@ -8670,6 +8717,7 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : null),
   },
+  fieldInputMultiline: { height: undefined, minHeight: 96, paddingTop: 12, paddingBottom: 12, lineHeight: 22, fontWeight: '600' },
   modeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   modePill: { flexDirection: 'row-reverse', alignItems: 'center', gap: 5, paddingHorizontal: 13, paddingVertical: 9, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(2,6,23,0.12)', backgroundColor: '#fff', ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
   modePillActive: { backgroundColor: 'rgba(79,70,229,0.12)', borderColor: 'rgba(79,70,229,0.32)' },
@@ -8710,6 +8758,17 @@ const styles = StyleSheet.create({
   waManageBtnText: { color: '#fff', fontSize: 13, fontWeight: '900' },
   waPreview: { padding: 12, borderRadius: 10, backgroundColor: '#fff', borderWidth: 1, borderColor: 'rgba(2,6,23,0.08)' },
   waPreviewText: { fontSize: 13, fontWeight: '700', color: 'rgba(2,6,23,0.78)', textAlign: 'right', lineHeight: 19 },
+  waMsgPreview: { gap: 8, alignSelf: 'stretch', marginTop: 4, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(14,124,70,0.25)', backgroundColor: '#E7F4EC' },
+  waMsgPreviewHeader: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, alignSelf: 'stretch' },
+  waMsgPreviewTitle: { fontSize: 12.5, fontWeight: '900', color: '#0E7C46', textAlign: 'right' },
+  waMsgPreviewBubble: { alignSelf: 'stretch', maxWidth: 420, padding: 10, borderRadius: 14, borderTopRightRadius: 4, backgroundColor: '#fff', borderWidth: 1, borderColor: 'rgba(2,6,23,0.06)', gap: 8, ...(Platform.OS === 'web' ? ({ boxShadow: '0 1px 2px rgba(2,6,23,0.08)' } as any) : null) },
+  waMsgPreviewImage: { width: '100%', height: 170, borderRadius: 10, backgroundColor: 'rgba(2,6,23,0.04)' },
+  waMsgPreviewHeaderText: { fontSize: 14, fontWeight: '900', color: '#0F172A', textAlign: 'right', lineHeight: 20 },
+  waMsgPreviewBody: { fontSize: 14, fontWeight: '600', color: '#111827', textAlign: 'right', lineHeight: 22 },
+  waMsgPreviewTime: { fontSize: 11, fontWeight: '700', color: 'rgba(2,6,23,0.4)', textAlign: 'left', alignSelf: 'stretch' },
+  waMsgPreviewBtns: { alignSelf: 'stretch', gap: 6, marginTop: 2, borderTopWidth: 1, borderTopColor: 'rgba(2,6,23,0.08)', paddingTop: 8 },
+  waMsgPreviewBtn: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 9, borderRadius: 8, backgroundColor: 'rgba(29,155,240,0.08)' },
+  waMsgPreviewBtnText: { fontSize: 13, fontWeight: '900', color: '#1D9BF0', textAlign: 'center' },
   waVarRow: { flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'stretch' },
   waBtnRow: { flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'stretch' },
   waVarBadge: { paddingHorizontal: 8, height: 34, borderRadius: 8, backgroundColor: 'rgba(37,211,102,0.14)', alignItems: 'center', justifyContent: 'center' },
