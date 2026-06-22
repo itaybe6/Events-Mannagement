@@ -4,13 +4,11 @@ import { useWindowDimensions } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter, useSegments } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 
 import AdminWebPageHeader from '@/components/desktop/AdminWebPageHeader';
 import { pulseemBalanceService } from '@/lib/services/pulseemBalanceService';
 import { colors } from '@/constants/colors';
 import { buildDirectionsDetailsText, buildEventLocationText, normalizeBaseUrl } from '@/lib/navigationLinks';
-import { exportPendingGuestsToExcel } from '@/lib/exportPendingGuestsExcel';
 import { supabase } from '@/lib/supabase';
 import { eventService } from '@/lib/services/eventService';
 import { useUserStore } from '@/store/userStore';
@@ -468,7 +466,6 @@ export default function AutomaticNotificationsWebScreen() {
     Array<{ id: string; name: string; phone?: string; status: string; invitationCode?: string; invitationToken?: string }>
   >([]);
   const [sendingNow, setSendingNow] = useState(false);
-  const [exportingPendingGuests, setExportingPendingGuests] = useState(false);
   const [smsBalance, setSmsBalance] = useState<{ loading: boolean; credits: string | null; error: string | null }>({
     loading: true,
     credits: null,
@@ -605,29 +602,6 @@ export default function AutomaticNotificationsWebScreen() {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     toastTimerRef.current = setTimeout(() => setToastText(null), 2200);
   }, []);
-
-  const handleExportPendingGuests = useCallback(() => {
-    if (exportingPendingGuests) return;
-    const pendingCount = allGuests.filter((guest) => String(guest.status || '').trim() === 'ממתין').length;
-    if (pendingCount === 0) {
-      showToast('אין מוזמנים בסטטוס ממתין לייצוא');
-      return;
-    }
-
-    setExportingPendingGuests(true);
-    try {
-      const result = exportPendingGuestsToExcel(allGuests, {
-        eventTitle: String((event as any)?.title || ownerTitle || 'אירוע'),
-        eventRsvpLink: String((event as any)?.rsvpLink || ''),
-      });
-      showToast(`יוצאו ${result.count} מוזמנים ממתינים לאקסל`);
-    } catch (error) {
-      console.warn('Failed to export pending guests:', error);
-      showToast('לא ניתן לייצא את רשימת הממתינים');
-    } finally {
-      setExportingPendingGuests(false);
-    }
-  }, [allGuests, event, exportingPendingGuests, ownerTitle, showToast]);
 
   const formatHeDateTimeShort = (value: unknown) => {
     const d = value instanceof Date ? value : new Date(String(value ?? ''));
@@ -2566,6 +2540,20 @@ export default function AutomaticNotificationsWebScreen() {
         }
       }
 
+      // SAFETY NET: never silently fall back to "send to ALL guests".
+      // The send Edge Function broadcasts to everyone when `guestIds` is empty and
+      // `filterStatus` is 'all'. So an empty recipient list (e.g. a selection that
+      // didn't register) would blast the whole event by mistake. The only legitimate
+      // implicit-audience sends are:
+      //   - reminder_1 in auto "all guests" mode (isAutoAll), and
+      //   - reminder_2 / pending auto mode (shouldAutoPending) which the server resolves to pending.
+      // Any other send with no explicit recipients must be blocked.
+      const allowsImplicitAudience = isAutoAll || shouldAutoPending;
+      if (ids.length === 0 && !allowsImplicitAudience) {
+        alert('לא נבחרו נמענים לשליחה. בחר מוזמנים (קטגוריה או בחירה ידנית) ושלח שוב — ההודעה לא תישלח לכולם.');
+        return;
+      }
+
       // Persist current editor draft before sending
       if (!isFlow && (nt === 'reminder_1' || nt === 'reminder_2')) {
         await saveDraft({ recipientGuestIds: ids });
@@ -3063,54 +3051,60 @@ export default function AutomaticNotificationsWebScreen() {
                     </View>
                     <View style={styles.headerSubtitleActions}>
                       {userType === 'admin' ? (
-                        <Pressable
-                          accessibilityRole="button"
-                          accessibilityLabel="ניהול תבניות וואטסאפ ומכסה יומית"
-                          onPress={() => router.push('/(admin)/whatsapp-templates' as any)}
-                          style={({ hovered, pressed }: any) => [
-                            styles.headerSubtitleSecondaryBtn,
-                            Platform.OS === 'web' && hovered ? styles.headerSubtitleSecondaryBtnHover : null,
-                            pressed ? { opacity: 0.92 } : null,
-                          ]}
-                        >
-                          <Ionicons name="logo-whatsapp" size={16} color="#25D366" />
-                          <Text style={styles.headerSubtitleSecondaryBtnText}>
-                            {`תבניות וואטסאפ${waDailyQuota > 0 ? ` · ${waSentToday}/${waDailyQuota} היום` : ''}`}
-                          </Text>
-                        </Pressable>
+                        <>
+                          <View style={[styles.headerToolbarBtn, styles.headerToolbarBtnStat]}>
+                            <View style={styles.headerToolbarIconWrap}>
+                              <Ionicons name="chatbubbles-outline" size={15} color={colors.primary} />
+                            </View>
+                            <Text style={styles.headerToolbarBtnText}>יתרת SMS</Text>
+                            <View style={styles.headerToolbarDivider} />
+                            {smsBalance.loading ? (
+                              <ActivityIndicator size="small" color={colors.primary} />
+                            ) : smsBalance.credits != null ? (
+                              <Text style={styles.headerToolbarBtnEmphasis}>{smsBalance.credits}</Text>
+                            ) : (
+                              <Text style={styles.headerToolbarBtnEmphasisMuted}>{smsBalance.error || '—'}</Text>
+                            )}
+                          </View>
+                          <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel="ניהול תבניות וואטסאפ ומכסה יומית"
+                            onPress={() => router.push('/(admin)/whatsapp-templates' as any)}
+                            style={({ hovered, pressed }: any) => [
+                              styles.headerToolbarBtn,
+                              Platform.OS === 'web' && hovered ? styles.headerToolbarBtnHover : null,
+                              pressed ? styles.headerToolbarBtnPressed : null,
+                            ]}
+                          >
+                            <View style={styles.headerToolbarIconWrap}>
+                              <Ionicons name="logo-whatsapp" size={15} color={colors.primary} />
+                            </View>
+                            <Text style={styles.headerToolbarBtnText}>תבניות וואטסאפ</Text>
+                            {waDailyQuota > 0 ? (
+                              <>
+                                <View style={styles.headerToolbarDivider} />
+                                <Text style={styles.headerToolbarBtnEmphasis}>{`${waSentToday}/${waDailyQuota}`}</Text>
+                                <Text style={styles.headerToolbarBtnMeta}>היום</Text>
+                              </>
+                            ) : null}
+                          </Pressable>
+                        </>
                       ) : null}
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel="ייצוא ממתינים לאקסל"
-                        disabled={exportingPendingGuests}
-                        onPress={handleExportPendingGuests}
-                        style={({ hovered, pressed }: any) => [
-                          styles.headerSubtitleSecondaryBtn,
-                          Platform.OS === 'web' && hovered ? styles.headerSubtitleSecondaryBtnHover : null,
-                          exportingPendingGuests ? styles.headerSubtitleSecondaryBtnDisabled : null,
-                          pressed ? { opacity: 0.92 } : null,
-                        ]}
-                      >
-                        {exportingPendingGuests ? (
-                          <ActivityIndicator size="small" color={colors.primary} />
-                        ) : (
-                          <Ionicons name="download-outline" size={16} color={colors.primary} />
-                        )}
-                        <Text style={styles.headerSubtitleSecondaryBtnText}>ייצוא ממתינים לאקסל</Text>
-                      </Pressable>
                       {canEdit ? (
                         <Pressable
                           accessibilityRole="button"
                           accessibilityLabel="הוסף הודעה חדשה"
                           onPress={openAddWizard}
                           style={({ hovered, pressed }: any) => [
-                            styles.headerSubtitleActionBtn,
-                            Platform.OS === 'web' && hovered ? styles.headerSubtitleActionBtnHover : null,
-                            pressed ? { opacity: 0.92 } : null,
+                            styles.headerToolbarBtn,
+                            Platform.OS === 'web' && hovered ? styles.headerToolbarBtnHover : null,
+                            pressed ? styles.headerToolbarBtnPressed : null,
                           ]}
                         >
-                          <Ionicons name="add" size={16} color={colors.white} />
-                          <Text style={styles.headerSubtitleActionBtnText}>הוסף הודעה חדשה</Text>
+                          <View style={styles.headerToolbarIconWrap}>
+                            <Ionicons name="add" size={17} color={colors.primary} />
+                          </View>
+                          <Text style={styles.headerToolbarBtnTextStrong}>הוסף הודעה חדשה</Text>
                         </Pressable>
                       ) : null}
                     </View>
@@ -3144,38 +3138,6 @@ export default function AutomaticNotificationsWebScreen() {
                   ) : null
                 }
               />
-
-              {userType === 'admin' ? (
-                <LinearGradient
-                  colors={['#0B3DA6', '#195de6', '#3B82F6']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.smsBalanceBanner}
-                >
-                  <View style={styles.smsBalanceBannerLeft}>
-                    <View style={styles.smsBalanceIconCircle}>
-                      <Ionicons name="chatbubbles" size={18} color="#FFFFFF" />
-                    </View>
-                    <View style={styles.smsBalanceBannerTextWrap}>
-                      <Text style={styles.smsBalanceBannerLabel}>יתרת הודעות SMS</Text>
-                      <Text style={styles.smsBalanceBannerSub}>חבילת SMS API · פולסים</Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.smsBalanceBannerRight}>
-                    {smsBalance.loading ? (
-                      <ActivityIndicator size="small" color="#FFFFFF" />
-                    ) : smsBalance.credits != null ? (
-                      <>
-                        <Text style={styles.smsBalanceBannerValue}>{smsBalance.credits}</Text>
-                        <Text style={styles.smsBalanceBannerUnit}>הודעות נותרו</Text>
-                      </>
-                    ) : (
-                      <Text style={styles.smsBalanceBannerErr}>{smsBalance.error || 'לא זמין'}</Text>
-                    )}
-                  </View>
-                </LinearGradient>
-              ) : null}
             </View>
           ) : null}
 
@@ -6720,84 +6682,6 @@ const styles = StyleSheet.create({
     paddingTop: 18,
   },
   heroShell: { gap: 18 },
-  smsBalanceBanner: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    alignSelf: 'flex-start',
-    width: '100%',
-    maxWidth: 380,
-    gap: 18,
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-    borderRadius: 16,
-    minHeight: 60,
-    ...(Platform.OS === 'web'
-      ? ({ boxShadow: '0 8px 20px rgba(25,93,230,0.20)' } as any)
-      : {
-          shadowColor: '#195de6',
-          shadowOpacity: 0.2,
-          shadowRadius: 14,
-          shadowOffset: { width: 0, height: 8 },
-        }),
-  },
-  smsBalanceBannerLeft: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: 11,
-    flexShrink: 1,
-  },
-  smsBalanceIconCircle: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.30)',
-  },
-  smsBalanceBannerTextWrap: {
-    alignItems: 'flex-end',
-    gap: 2,
-  },
-  smsBalanceBannerLabel: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    textAlign: 'right',
-  },
-  smsBalanceBannerSub: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: 'rgba(255,255,255,0.80)',
-    textAlign: 'right',
-  },
-  smsBalanceBannerRight: {
-    flexDirection: 'row-reverse',
-    alignItems: 'baseline',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  smsBalanceBannerValue: {
-    fontSize: 24,
-    fontWeight: '900',
-    color: '#FFFFFF',
-    textAlign: 'center',
-  },
-  smsBalanceBannerUnit: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: 'rgba(255,255,255,0.85)',
-    textAlign: 'center',
-  },
-  smsBalanceBannerErr: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    textAlign: 'center',
-    maxWidth: 200,
-  },
   backHeaderBtn: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
@@ -6860,32 +6744,102 @@ const styles = StyleSheet.create({
     color: colors.gray[600],
     textAlign: 'right',
   },
-  headerSubtitleActionBtn: {
+  headerSubtitleActions: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    minHeight: 38,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: colors.primary,
+    gap: 12,
+    flexShrink: 0,
+    flexWrap: 'wrap',
+  },
+  headerToolbarBtn: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 10,
+    minHeight: 42,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    borderRadius: 14,
+    backgroundColor: colors.white,
     borderWidth: 1,
-    borderColor: 'rgba(25,93,230,0.18)',
+    borderColor: 'rgba(6,23,62,0.12)',
     flexShrink: 0,
     ...(Platform.OS === 'web'
       ? ({
           cursor: 'pointer',
-          boxShadow: '0 10px 22px rgba(25,93,230,0.18)',
+          boxShadow: '0 4px 14px rgba(6,23,62,0.08)',
+          transition: 'transform 0.16s ease, box-shadow 0.16s ease, background-color 0.16s ease, border-color 0.16s ease',
+        } as any)
+      : {
+          shadowColor: '#06173e',
+          shadowOpacity: 0.08,
+          shadowRadius: 10,
+          shadowOffset: { width: 0, height: 4 },
+          elevation: 2,
+        }),
+  },
+  headerToolbarBtnStat: {
+    ...(Platform.OS === 'web' ? ({ cursor: 'default' } as any) : null),
+  },
+  headerToolbarBtnHover: {
+    backgroundColor: '#F8FAFF',
+    borderColor: 'rgba(6,23,62,0.20)',
+    ...(Platform.OS === 'web'
+      ? ({
+          transform: 'translateY(-1px)',
+          boxShadow: '0 8px 20px rgba(6,23,62,0.12)',
         } as any)
       : null),
   },
-  headerSubtitleActions: {
-    flexDirection: 'row-reverse',
+  headerToolbarBtnPressed: {
+    opacity: 0.94,
+    transform: [{ scale: 0.985 }],
+  },
+  headerToolbarIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 9,
     alignItems: 'center',
-    gap: 10,
-    flexShrink: 0,
-    flexWrap: 'wrap',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(6,23,62,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.08)',
+  },
+  headerToolbarDivider: {
+    width: 1,
+    alignSelf: 'stretch',
+    marginVertical: 2,
+    backgroundColor: 'rgba(6,23,62,0.12)',
+  },
+  headerToolbarBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primary,
+    textAlign: 'right',
+  },
+  headerToolbarBtnTextStrong: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: colors.primary,
+    textAlign: 'right',
+  },
+  headerToolbarBtnEmphasis: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: colors.primary,
+    textAlign: 'right',
+    letterSpacing: 0.2,
+  },
+  headerToolbarBtnEmphasisMuted: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: 'rgba(6,23,62,0.55)',
+    textAlign: 'right',
+  },
+  headerToolbarBtnMeta: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: 'rgba(6,23,62,0.55)',
+    textAlign: 'right',
   },
   headerSubtitleSecondaryBtn: {
     flexDirection: 'row-reverse',
@@ -6919,16 +6873,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '900',
     color: colors.primary,
-    textAlign: 'right',
-  },
-  headerSubtitleActionBtnHover: {
-    backgroundColor: '#134FC5',
-    ...(Platform.OS === 'web' ? ({ boxShadow: '0 12px 24px rgba(25,93,230,0.22)' } as any) : null),
-  },
-  headerSubtitleActionBtnText: {
-    fontSize: 12,
-    fontWeight: '900',
-    color: colors.white,
     textAlign: 'right',
   },
   headerOwnerBadge: {

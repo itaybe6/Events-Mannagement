@@ -16,6 +16,8 @@ const RANGE_OPTIONS: { key: RangeKey; label: string }[] = [
   { key: 'all', label: 'הכל' },
 ];
 
+const WEB_RTL = Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null;
+
 function computeRange(key: RangeKey): { from: Date | null; to: Date | null } {
   if (key === 'all') return { from: null, to: null };
   const now = new Date();
@@ -32,7 +34,6 @@ function formatCount(n: number) {
 }
 
 function formatReportDate(value: string) {
-  // value is YYYY-MM-DD
   const parts = String(value).split('-');
   if (parts.length === 3) {
     const [y, m, d] = parts;
@@ -45,7 +46,12 @@ function channelMeta(type: string): { label: string; icon: keyof typeof Ionicons
   if (type === 'וואטסאפ' || type === 'WHATSAPP') {
     return { label: 'WhatsApp', icon: 'logo-whatsapp', color: '#1FA855', bg: 'rgba(37,211,102,0.12)' };
   }
-  return { label: 'SMS', icon: 'chatbubble-ellipses-outline', color: colors.primary, bg: 'rgba(6,23,62,0.07)' };
+  return { label: 'SMS', icon: 'chatbubble-ellipses-outline', color: '#195DE6', bg: 'rgba(25,93,230,0.10)' };
+}
+
+function successRate(sent: number, total: number) {
+  if (!total) return 0;
+  return Math.round((sent / total) * 100);
 }
 
 function SummaryCard({
@@ -55,6 +61,7 @@ function SummaryCard({
   icon,
   iconColor,
   iconBg,
+  tone = 'default',
 }: {
   title: string;
   value: string;
@@ -62,19 +69,36 @@ function SummaryCard({
   icon: keyof typeof Ionicons.glyphMap;
   iconColor: string;
   iconBg: string;
+  tone?: 'default' | 'dark';
 }) {
+  const isDark = tone === 'dark';
   return (
-    <View style={styles.summaryCard}>
+    <View style={[styles.summaryCard, isDark ? styles.summaryCardDark : null]}>
       <View style={styles.summaryHeader}>
-        <View style={[styles.summaryIconBox, { backgroundColor: iconBg }]}>
-          <Ionicons name={icon} size={18} color={iconColor} />
+        <View style={[styles.summaryIconBox, { backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : iconBg }]}>
+          <Ionicons name={icon} size={18} color={isDark ? '#FFFFFF' : iconColor} />
         </View>
-        <Text style={styles.summaryTitle}>{title}</Text>
+        <Text style={[styles.summaryTitle, isDark ? styles.summaryTitleDark : null]}>{title}</Text>
       </View>
-      <Text style={styles.summaryValue} numberOfLines={1}>
+      <Text style={[styles.summaryValue, isDark ? styles.summaryValueDark : null]} numberOfLines={1}>
         {value}
       </Text>
-      <Text style={styles.summarySubtitle}>{subtitle}</Text>
+      <Text style={[styles.summarySubtitle, isDark ? styles.summarySubtitleDark : null]}>{subtitle}</Text>
+    </View>
+  );
+}
+
+function MetricCell({ value, tone }: { value: string; tone: 'sent' | 'failed' | 'total' | 'muted' }) {
+  const toneStyles = {
+    sent: { color: '#16A34A', bg: 'rgba(22,163,74,0.08)' },
+    failed: { color: colors.error, bg: 'rgba(220,38,38,0.08)' },
+    total: { color: colors.text, bg: 'rgba(6,23,62,0.05)' },
+    muted: { color: colors.gray[400], bg: 'rgba(6,23,62,0.03)' },
+  }[tone];
+
+  return (
+    <View style={[styles.metricCell, { backgroundColor: toneStyles.bg }]}>
+      <Text style={[styles.metricValue, { color: toneStyles.color }]}>{value}</Text>
     </View>
   );
 }
@@ -138,6 +162,8 @@ export default function AdminReportsWebScreen() {
     return { sent, failed, total, sms, whatsapp, events: events.size, batches: filteredRows.length };
   }, [filteredRows]);
 
+  const activeRangeLabel = RANGE_OPTIONS.find((o) => o.key === rangeKey)?.label ?? '';
+
   return (
     <ScrollView style={styles.page} contentContainerStyle={styles.pageContent} showsVerticalScrollIndicator={false}>
       <AdminWebPageHeader
@@ -154,6 +180,7 @@ export default function AdminReportsWebScreen() {
           icon="paper-plane-outline"
           iconColor={colors.primary}
           iconBg="rgba(6,23,62,0.07)"
+          tone="dark"
         />
         <SummaryCard
           title="אירועים פעילים"
@@ -181,48 +208,62 @@ export default function AdminReportsWebScreen() {
         />
       </View>
 
-      <View style={styles.toolbarCard}>
-        <View style={styles.searchWrap}>
-          <Ionicons name="search" size={18} color={colors.gray[500]} style={styles.searchIcon} />
-          <TextInput
-            value={query}
-            onChangeText={setQuery}
-            placeholder="חיפוש לפי שם אירוע..."
-            placeholderTextColor={colors.gray[500]}
-            style={styles.searchInput}
-            textAlign="right"
-          />
-          {query.trim() ? (
-            <Pressable onPress={() => setQuery('')} style={({ pressed }: any) => [styles.clearBtn, pressed ? { opacity: 0.7 } : null]}>
-              <Ionicons name="close" size={14} color={colors.gray[600]} />
-            </Pressable>
-          ) : null}
-        </View>
-
-        <View style={styles.rangeRow}>
-          {RANGE_OPTIONS.map((opt) => {
-            const active = opt.key === rangeKey;
-            return (
-              <Pressable
-                key={opt.key}
-                onPress={() => setRangeKey(opt.key)}
-                style={({ hovered, pressed }: any) => [
-                  styles.rangeChip,
-                  active ? styles.rangeChipActive : null,
-                  Platform.OS === 'web' && hovered && !active ? styles.rangeChipHover : null,
-                  pressed ? { opacity: 0.9 } : null,
-                ]}
-              >
-                <Text style={[styles.rangeChipText, active ? styles.rangeChipTextActive : null]}>{opt.label}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      </View>
-
       <View style={styles.tableCard}>
-        <View style={styles.tableHeaderRow}>
-          <View style={styles.colEventWrap}>
+        <View style={styles.tableTopBar}>
+          <View style={styles.tableTopTextWrap}>
+            <Text style={styles.tableTopTitle}>פירוט משלוחים</Text>
+            <Text style={styles.tableTopSubtitle}>
+              {loading
+                ? 'טוען נתונים...'
+                : `${formatCount(filteredRows.length)} משלוחים · טווח: ${activeRangeLabel}`}
+            </Text>
+          </View>
+
+          <View style={styles.tableTopActions}>
+            <View style={styles.searchWrap}>
+              <Ionicons name="search" size={17} color={colors.gray[500]} style={styles.searchIcon} />
+              <TextInput
+                value={query}
+                onChangeText={setQuery}
+                placeholder="חיפוש לפי שם אירוע..."
+                placeholderTextColor={colors.gray[500]}
+                style={styles.searchInput}
+                textAlign="right"
+              />
+              {query.trim() ? (
+                <Pressable
+                  onPress={() => setQuery('')}
+                  style={({ pressed }: any) => [styles.clearBtn, pressed ? { opacity: 0.7 } : null]}
+                >
+                  <Ionicons name="close" size={14} color={colors.gray[600]} />
+                </Pressable>
+              ) : null}
+            </View>
+
+            <View style={styles.rangeRow}>
+              {RANGE_OPTIONS.map((opt) => {
+                const active = opt.key === rangeKey;
+                return (
+                  <Pressable
+                    key={opt.key}
+                    onPress={() => setRangeKey(opt.key)}
+                    style={({ hovered, pressed }: any) => [
+                      styles.rangeChip,
+                      active ? styles.rangeChipActive : null,
+                      Platform.OS === 'web' && hovered && !active ? styles.rangeChipHover : null,
+                      pressed ? { opacity: 0.9 } : null,
+                    ]}
+                  >
+                    <Text style={[styles.rangeChipText, active ? styles.rangeChipTextActive : null]}>{opt.label}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        </View>
+
+        <View style={[styles.tableHeaderRow, WEB_RTL]}>
+          <View style={styles.colEvent}>
             <Text style={styles.headerCellText}>אירוע</Text>
           </View>
           <View style={styles.colDate}>
@@ -231,15 +272,19 @@ export default function AdminReportsWebScreen() {
           <View style={styles.colChannel}>
             <Text style={styles.headerCellText}>ערוץ</Text>
           </View>
-          <View style={styles.colNum}>
+          <View style={styles.colMetrics}>
             <Text style={styles.headerCellText}>נשלחו</Text>
           </View>
-          <View style={styles.colNum}>
+          <View style={styles.colMetrics}>
             <Text style={styles.headerCellText}>נכשלו</Text>
           </View>
-          <View style={styles.colNum}>
+          <View style={styles.colMetrics}>
             <Text style={styles.headerCellText}>סה״כ</Text>
           </View>
+          <View style={styles.colRate}>
+            <Text style={styles.headerCellText}>הצלחה</Text>
+          </View>
+          <View style={styles.colChevron} />
         </View>
 
         {loading ? (
@@ -260,52 +305,95 @@ export default function AdminReportsWebScreen() {
             <Text style={styles.centerStateText}>נסה לשנות את טווח התאריכים או את החיפוש.</Text>
           </View>
         ) : (
-          filteredRows.map((r, idx) => {
-            const ch = channelMeta(r.messageType);
-            return (
-              <Pressable
-                key={`${r.eventId}|${r.sendDate}|${r.messageType}`}
-                onPress={() => router.push({ pathname: '/(admin)/admin-event-details', params: { id: r.eventId } })}
-                style={({ hovered, pressed }: any) => [
-                  styles.tableRow,
-                  idx % 2 === 1 ? styles.tableRowAlt : null,
-                  Platform.OS === 'web' && hovered ? styles.tableRowHover : null,
-                  pressed ? { opacity: 0.95 } : null,
-                ]}
-              >
-                <View style={styles.colEventWrap}>
-                  <Text style={styles.eventTitleText} numberOfLines={1}>
-                    {r.eventTitle}
-                  </Text>
-                </View>
-                <View style={styles.colDate}>
-                  <Text style={styles.dateText}>{formatReportDate(r.sendDate)}</Text>
-                </View>
-                <View style={styles.colChannel}>
-                  <View style={[styles.channelPill, { backgroundColor: ch.bg }]}>
-                    <Ionicons name={ch.icon} size={13} color={ch.color} />
-                    <Text style={[styles.channelPillText, { color: ch.color }]}>{ch.label}</Text>
+          <View style={styles.rowsWrap}>
+            {filteredRows.map((r) => {
+              const ch = channelMeta(r.messageType);
+              const rate = successRate(r.sentCount, r.totalCount);
+              const rateColor = rate >= 90 ? '#16A34A' : rate >= 70 ? '#D97706' : colors.error;
+
+              return (
+                <Pressable
+                  key={`${r.eventId}|${r.sendDate}|${r.messageType}`}
+                  onPress={() => router.push({ pathname: '/(admin)/admin-event-details', params: { id: r.eventId } })}
+                  style={({ hovered, pressed }: any) => [
+                    styles.tableRow,
+                    WEB_RTL,
+                    Platform.OS === 'web' && hovered ? styles.tableRowHover : null,
+                    pressed ? { opacity: 0.95 } : null,
+                  ]}
+                >
+                  <View style={styles.colEvent}>
+                    <View style={styles.eventCell}>
+                      <View style={styles.eventIconBox}>
+                        <Ionicons name="calendar-outline" size={16} color={colors.primary} />
+                      </View>
+                      <Text style={styles.eventTitleText} numberOfLines={1}>
+                        {r.eventTitle}
+                      </Text>
+                    </View>
                   </View>
-                </View>
-                <View style={styles.colNum}>
-                  <Text style={[styles.numText, styles.numSent]}>{formatCount(r.sentCount)}</Text>
-                </View>
-                <View style={styles.colNum}>
-                  <Text style={[styles.numText, r.failedCount > 0 ? styles.numFailed : styles.numMuted]}>
-                    {formatCount(r.failedCount)}
-                  </Text>
-                </View>
-                <View style={styles.colNum}>
-                  <Text style={[styles.numText, styles.numTotal]}>{formatCount(r.totalCount)}</Text>
-                </View>
-              </Pressable>
-            );
-          })
+
+                  <View style={styles.colDate}>
+                    <Text style={styles.dateText}>{formatReportDate(r.sendDate)}</Text>
+                  </View>
+
+                  <View style={styles.colChannel}>
+                    <View style={[styles.channelPill, { backgroundColor: ch.bg }]}>
+                      <Ionicons name={ch.icon} size={13} color={ch.color} />
+                      <Text style={[styles.channelPillText, { color: ch.color }]}>{ch.label}</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.colMetrics}>
+                    <MetricCell value={formatCount(r.sentCount)} tone="sent" />
+                  </View>
+                  <View style={styles.colMetrics}>
+                    <MetricCell value={formatCount(r.failedCount)} tone={r.failedCount > 0 ? 'failed' : 'muted'} />
+                  </View>
+                  <View style={styles.colMetrics}>
+                    <MetricCell value={formatCount(r.totalCount)} tone="total" />
+                  </View>
+
+                  <View style={styles.colRate}>
+                    <View style={styles.rateWrap}>
+                      <View style={styles.rateBarTrack}>
+                        <View
+                          style={[
+                            styles.rateBarFill,
+                            { width: `${Math.max(rate, 4)}%` as any, backgroundColor: rateColor },
+                          ]}
+                        />
+                      </View>
+                      <Text style={[styles.rateText, { color: rateColor }]}>{rate}%</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.colChevron}>
+                    <Ionicons name="chevron-back" size={16} color={colors.gray[400]} />
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
         )}
 
         {!loading && !errorMsg && filteredRows.length > 0 ? (
           <View style={styles.tableFooter}>
-            <Text style={styles.tableFooterText}>מציג {formatCount(filteredRows.length)} משלוחים</Text>
+            <View style={styles.footerStats}>
+              <View style={styles.footerStat}>
+                <View style={[styles.footerDot, { backgroundColor: '#16A34A' }]} />
+                <Text style={styles.footerStatText}>{formatCount(totals.sent)} נשלחו</Text>
+              </View>
+              <View style={styles.footerStat}>
+                <View style={[styles.footerDot, { backgroundColor: colors.error }]} />
+                <Text style={styles.footerStatText}>{formatCount(totals.failed)} נכשלו</Text>
+              </View>
+              <View style={styles.footerStat}>
+                <View style={[styles.footerDot, { backgroundColor: colors.primary }]} />
+                <Text style={styles.footerStatText}>{formatCount(totals.total)} סה״כ</Text>
+              </View>
+            </View>
+            <Text style={styles.tableFooterText}>לחץ על שורה לצפייה באירוע</Text>
           </View>
         ) : null}
       </View>
@@ -329,12 +417,12 @@ const styles = StyleSheet.create({
     paddingTop: 24,
     paddingBottom: 32,
     gap: 20,
-    width: '100%',
   },
   summaryRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 14,
+    ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
   },
   summaryCard: {
     flexGrow: 1,
@@ -348,10 +436,13 @@ const styles = StyleSheet.create({
     gap: 10,
     ...(Platform.OS === 'web' ? ({ boxShadow: '0 4px 14px rgba(11,28,65,0.03)' } as any) : null),
   },
+  summaryCardDark: {
+    backgroundColor: colors.primary,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
   summaryHeader: {
-    flexDirection: 'row-reverse',
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-start',
     gap: 10,
   },
   summaryIconBox: {
@@ -367,41 +458,86 @@ const styles = StyleSheet.create({
     color: colors.gray[600],
     textAlign: 'right',
     flex: 1,
+    writingDirection: 'rtl',
+  },
+  summaryTitleDark: {
+    color: 'rgba(255,255,255,0.78)',
   },
   summaryValue: {
     fontSize: 28,
     fontWeight: '900',
     color: colors.text,
     textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  summaryValueDark: {
+    color: '#FFFFFF',
   },
   summarySubtitle: {
     fontSize: 12,
     fontWeight: '600',
     color: colors.gray[500],
     textAlign: 'right',
+    writingDirection: 'rtl',
   },
-  toolbarCard: {
+  summarySubtitleDark: {
+    color: 'rgba(255,255,255,0.65)',
+  },
+  tableCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 20,
+    borderRadius: 24,
     borderWidth: 1,
     borderColor: 'rgba(6,23,62,0.05)',
-    padding: 16,
-    gap: 14,
+    overflow: 'hidden',
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 8px 24px rgba(11,28,65,0.05)' } as any) : null),
+  },
+  tableTopBar: {
+    paddingHorizontal: 22,
+    paddingTop: 20,
+    paddingBottom: 16,
+    gap: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(6,23,62,0.06)',
+    backgroundColor: '#FCFDFF',
+  },
+  tableTopTextWrap: {
+    gap: 4,
+    alignItems: 'flex-end',
+  },
+  tableTopTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+    width: '100%',
+  },
+  tableTopSubtitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.gray[600],
+    textAlign: 'right',
+    writingDirection: 'rtl',
+    width: '100%',
+  },
+  tableTopActions: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'space-between',
-    ...(Platform.OS === 'web' ? ({ boxShadow: '0 4px 14px rgba(11,28,65,0.03)' } as any) : null),
+    gap: 12,
+    ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
   },
   searchWrap: {
-    flexDirection: 'row-reverse',
+    flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#F4F6FB',
     borderRadius: 14,
     paddingHorizontal: 14,
-    height: 46,
+    height: 44,
     flexGrow: 1,
-    flexBasis: 280,
+    flexBasis: 260,
+    maxWidth: 360,
     borderWidth: 1,
     borderColor: 'rgba(6,23,62,0.06)',
   },
@@ -413,6 +549,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: colors.text,
+    writingDirection: 'rtl',
     ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : null),
   },
   clearBtn: {
@@ -425,7 +562,7 @@ const styles = StyleSheet.create({
     marginRight: 6,
   },
   rangeRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     flexWrap: 'wrap',
@@ -456,100 +593,142 @@ const styles = StyleSheet.create({
   rangeChipTextActive: {
     color: '#FFFFFF',
   },
-  tableCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(6,23,62,0.05)',
-    overflow: 'hidden',
-    ...(Platform.OS === 'web' ? ({ boxShadow: '0 4px 14px rgba(11,28,65,0.03)' } as any) : null),
-  },
   tableHeaderRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 18,
-    paddingVertical: 14,
-    backgroundColor: '#F8FAFD',
+    gap: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    backgroundColor: '#FAFBFE',
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(6,23,62,0.06)',
+    borderBottomColor: 'rgba(6,23,62,0.05)',
   },
   headerCellText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '800',
-    color: colors.gray[600],
+    color: colors.gray[500],
     textAlign: 'right',
+    writingDirection: 'rtl',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  rowsWrap: {
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    gap: 8,
   },
   tableRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 18,
+    gap: 12,
+    paddingHorizontal: 12,
     paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(6,23,62,0.04)',
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
-  },
-  tableRowAlt: {
-    backgroundColor: 'rgba(244,246,251,0.5)',
+    borderRadius: 18,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.05)',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer', transition: 'background-color 0.15s ease, border-color 0.15s ease' } as any) : null),
   },
   tableRowHover: {
-    backgroundColor: 'rgba(25,93,230,0.04)',
+    backgroundColor: '#FBFDFF',
+    borderColor: 'rgba(25,93,230,0.14)',
   },
-  colEventWrap: {
-    flex: 1,
-    minWidth: 160,
-    paddingLeft: 8,
+  colEvent: {
+    flex: 1.6,
+    minWidth: 0,
   },
   colDate: {
-    width: 120,
+    width: 110,
   },
   colChannel: {
-    width: 130,
-    flexDirection: 'row-reverse',
+    width: 120,
   },
-  colNum: {
-    width: 80,
-    alignItems: 'flex-end',
+  colMetrics: {
+    width: 88,
+  },
+  colRate: {
+    width: 100,
+  },
+  colChevron: {
+    width: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  eventCell: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    minWidth: 0,
+  },
+  eventIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: 'rgba(25,93,230,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
   },
   eventTitleText: {
+    flex: 1,
+    minWidth: 0,
     fontSize: 14,
     fontWeight: '800',
     color: colors.text,
     textAlign: 'right',
+    writingDirection: 'rtl',
   },
   dateText: {
     fontSize: 13,
     fontWeight: '700',
     color: colors.gray[700],
     textAlign: 'right',
+    writingDirection: 'rtl',
   },
   channelPill: {
-    flexDirection: 'row-reverse',
+    flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
     paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingVertical: 6,
     borderRadius: 999,
+    alignSelf: 'flex-start',
   },
   channelPillText: {
     fontSize: 12,
     fontWeight: '800',
   },
-  numText: {
-    fontSize: 14,
+  metricCell: {
+    borderRadius: 12,
+    paddingVertical: 9,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  metricValue: {
+    fontSize: 15,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  rateWrap: {
+    gap: 5,
+    alignItems: 'stretch',
+  },
+  rateBarTrack: {
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: 'rgba(6,23,62,0.07)',
+    overflow: 'hidden',
+  },
+  rateBarFill: {
+    height: '100%',
+    borderRadius: 999,
+    ...(Platform.OS === 'web' ? ({ transition: 'width 0.3s ease' } as any) : null),
+  },
+  rateText: {
+    fontSize: 12,
     fontWeight: '800',
-    textAlign: 'left',
-  },
-  numSent: {
-    color: '#16A34A',
-  },
-  numFailed: {
-    color: colors.error,
-  },
-  numMuted: {
-    color: colors.gray[400],
-  },
-  numTotal: {
-    color: colors.text,
+    textAlign: 'center',
   },
   centerState: {
     alignItems: 'center',
@@ -571,14 +750,42 @@ const styles = StyleSheet.create({
     maxWidth: 420,
   },
   tableFooter: {
-    paddingHorizontal: 18,
-    paddingVertical: 14,
-    backgroundColor: '#F8FAFD',
-    alignItems: 'flex-end',
+    paddingHorizontal: 22,
+    paddingVertical: 16,
+    backgroundColor: '#FAFBFE',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(6,23,62,0.05)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    flexWrap: 'wrap',
+    ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
+  },
+  footerStats: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+    flexWrap: 'wrap',
+  },
+  footerStat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  footerDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  footerStatText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.gray[700],
   },
   tableFooterText: {
     fontSize: 12,
-    fontWeight: '700',
-    color: colors.gray[600],
+    fontWeight: '600',
+    color: colors.gray[500],
   },
 });

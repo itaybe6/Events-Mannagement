@@ -121,6 +121,21 @@ function daysLeftLabel(date: Date | string) {
   return diff >= 0 ? `עוד ${diff} ימים` : 'עבר';
 }
 
+type EventTimeFilter = 'future' | 'completed';
+
+function isPastEventDate(date: Date | string) {
+  const d = new Date(date);
+  if (!Number.isFinite(d.getTime())) return false;
+  const diff = Math.ceil((d.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+  return diff < 0;
+}
+
+function isFutureEventDate(date: Date | string) {
+  const d = new Date(date);
+  if (!Number.isFinite(d.getTime())) return true;
+  return !isPastEventDate(date);
+}
+
 function getEventSubtitle(e: Event) {
   const g = String(e.groomName ?? '').trim();
   const b = String(e.brideName ?? '').trim();
@@ -240,6 +255,7 @@ export function AdminEventsListWebScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [datePickerMode, setDatePickerMode] = useState<'exact' | 'start' | 'end'>('exact');
+  const [eventTimeFilter, setEventTimeFilter] = useState<EventTimeFilter>('future');
 
   const loadEventsFn = useMemo(() => async () => {
     const data = await eventService.getEvents();
@@ -264,6 +280,14 @@ export function AdminEventsListWebScreen() {
     refresh,
     filteredEvents,
   } = useEventsListModel(loadEventsFn, { errorTitle: 'שגיאה', errorMessage: 'לא ניתן לטעון אירועים כרגע' });
+
+  const displayEvents = useMemo(
+    () =>
+      filteredEvents.filter((e) =>
+        eventTimeFilter === 'future' ? isFutureEventDate(e.date) : isPastEventDate(e.date)
+      ),
+    [filteredEvents, eventTimeFilter]
+  );
 
   const [guestStatsByEventId, setGuestStatsByEventId] = useState<
     Record<string, { invitedPeople: number; comingPeople: number; seatedPeople: number }>
@@ -323,8 +347,8 @@ export function AdminEventsListWebScreen() {
   };
 
   const visibleEventIds = useMemo(
-    () => filteredEvents.map((e) => String(e.id)).filter(Boolean),
-    [filteredEvents]
+    () => displayEvents.map((e) => String(e.id)).filter(Boolean),
+    [displayEvents]
   );
 
   const visibleEventIdsKey = useMemo(() => visibleEventIds.join(','), [visibleEventIds]);
@@ -522,6 +546,51 @@ export function AdminEventsListWebScreen() {
                   <Ionicons name="close" size={14} color={colors.gray[600]} />
                 </Pressable>
               ) : null}
+            </View>
+
+            <View style={styles.eventTimeSegment}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ selected: eventTimeFilter === 'future' }}
+                accessibilityLabel="הצג אירועים עתידיים"
+                onPress={() => setEventTimeFilter('future')}
+                style={({ hovered, pressed }: any) => [
+                  styles.eventTimeSegmentBtn,
+                  eventTimeFilter === 'future' ? styles.eventTimeSegmentBtnActive : null,
+                  Platform.OS === 'web' && hovered && eventTimeFilter !== 'future' ? styles.eventTimeSegmentBtnHover : null,
+                  pressed ? { opacity: 0.92 } : null,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.eventTimeSegmentText,
+                    eventTimeFilter === 'future' ? styles.eventTimeSegmentTextActive : null,
+                  ]}
+                >
+                  אירועים עתידיים
+                </Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ selected: eventTimeFilter === 'completed' }}
+                accessibilityLabel="הצג אירועים שהושלמו"
+                onPress={() => setEventTimeFilter('completed')}
+                style={({ hovered, pressed }: any) => [
+                  styles.eventTimeSegmentBtn,
+                  eventTimeFilter === 'completed' ? styles.eventTimeSegmentBtnActive : null,
+                  Platform.OS === 'web' && hovered && eventTimeFilter !== 'completed' ? styles.eventTimeSegmentBtnHover : null,
+                  pressed ? { opacity: 0.92 } : null,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.eventTimeSegmentText,
+                    eventTimeFilter === 'completed' ? styles.eventTimeSegmentTextActive : null,
+                  ]}
+                >
+                  הושלמו
+                </Text>
+              </Pressable>
             </View>
 
             <Pressable
@@ -779,7 +848,7 @@ export function AdminEventsListWebScreen() {
             </View>
 
             <View style={styles.eventsGridPanelSummary}>
-              <Text style={styles.eventsGridPanelSummaryValue}>{formatCount(filteredEvents.length)}</Text>
+              <Text style={styles.eventsGridPanelSummaryValue}>{formatCount(displayEvents.length)}</Text>
               <Text style={styles.eventsGridPanelSummaryLabel}>אירועים מוצגים</Text>
             </View>
           </View>
@@ -790,11 +859,15 @@ export function AdminEventsListWebScreen() {
               <Text style={styles.centerStateTitle}>טוען אירועים...</Text>
               <Text style={styles.centerStateText}>אנחנו אוספים עבורך את כל האירועים במערכת.</Text>
             </View>
-          ) : filteredEvents.length === 0 ? (
+          ) : displayEvents.length === 0 ? (
             <View style={styles.centerState}>
               <Ionicons name="calendar-outline" size={42} color={colors.gray[500]} />
               <Text style={styles.centerStateTitle}>לא נמצאו אירועים</Text>
-              <Text style={styles.centerStateText}>נסה לשנות את החיפוש או הסינון, או ליצור אירוע חדש.</Text>
+              <Text style={styles.centerStateText}>
+                {eventTimeFilter === 'future'
+                  ? 'אין אירועים עתידיים שמתאימים לחיפוש או לסינון הנוכחי.'
+                  : 'אין אירועים שהושלמו שמתאימים לחיפוש או לסינון הנוכחי.'}
+              </Text>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="הוסף אירוע חדש"
@@ -812,7 +885,7 @@ export function AdminEventsListWebScreen() {
             </View>
           ) : (
             <View style={styles.eventsCardsGrid}>
-              {filteredEvents.map((e) => {
+              {displayEvents.map((e) => {
                 const ownerName = String((e as any).userName || e.userName || '').trim();
                 const invitationImageUrl = String((e as any).invitationImageUrl ?? e.invitationImageUrl ?? '').trim();
                 const subtitle = rtlText(getEventSubtitle(e));
@@ -1046,7 +1119,7 @@ export function AdminEventsListWebScreen() {
           )}
 
           <View style={styles.eventsGridPanelFooter}>
-            <Text style={styles.eventsGridPanelFooterText}>מציג {filteredEvents.length} אירועים</Text>
+            <Text style={styles.eventsGridPanelFooterText}>מציג {displayEvents.length} אירועים</Text>
             <Text style={styles.eventsGridPanelFooterAccent}>כרטיסיות דסקטופ למנהל</Text>
           </View>
         </View>
@@ -1471,6 +1544,42 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    flexWrap: 'wrap',
+  },
+  eventTimeSegment: {
+    flexDirection: 'row-reverse',
+    padding: 4,
+    borderRadius: 18,
+    backgroundColor: 'rgba(15,69,230,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(15,69,230,0.14)',
+    gap: 4,
+  },
+  eventTimeSegmentBtn: {
+    minHeight: 44,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  eventTimeSegmentBtnActive: {
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 8px 18px rgba(15,23,42,0.06)' } as any) : null),
+  },
+  eventTimeSegmentBtnHover: {
+    backgroundColor: 'rgba(15,69,230,0.06)',
+  },
+  eventTimeSegmentText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.gray[600],
+    textAlign: 'center',
+  },
+  eventTimeSegmentTextActive: {
+    color: colors.primary,
+    fontWeight: '900',
   },
   searchWrapHero: {
     flex: 1,
