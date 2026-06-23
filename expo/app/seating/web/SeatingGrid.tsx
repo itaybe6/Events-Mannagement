@@ -7,6 +7,7 @@ import {
   TABLE_LABELS,
   clamp,
   tableCellSize,
+  tableFillColor,
   type SeatingItemKind,
 } from './_types';
 import type { UseSeatingStateApi } from './_useSeatingState';
@@ -102,17 +103,41 @@ export function SeatingGrid({ api, fitToGrid = false }: { api: UseSeatingStateAp
   const [edit, setEdit] = useState<EditState>(null);
 
   const selected = api.selectedIds;
-  const fitScale = useMemo(() => {
+  const fitZoom = useMemo(() => {
     const vw = viewport?.w ?? 0;
     const vh = viewport?.h ?? 0;
     if (!vw || !vh) return 1;
     const sx = vw / Math.max(1, gridW);
     const sy = vh / Math.max(1, gridH);
-    return clamp(Math.min(sx, sy), 0.3, 2.8);
+    return clamp(Math.min(sx, sy), 0.25, 4);
   }, [gridH, gridW, viewport?.h, viewport?.w]);
-  const stageW = gridW * fitScale;
-  const stageH = gridH * fitScale;
-  const scaledCellSize = CELL_SIZE * fitScale;
+
+  const [zoom, setZoom] = useState(1);
+  const manualZoomRef = useRef(false);
+
+  useEffect(() => {
+    if (!viewport?.w || !viewport?.h) return;
+    if (manualZoomRef.current) return;
+    setZoom(fitZoom);
+  }, [fitZoom, viewport?.h, viewport?.w]);
+
+  const stageW = gridW * zoom;
+  const stageH = gridH * zoom;
+  const scaledCellSize = CELL_SIZE * zoom;
+
+  const ZOOM_MIN = 0.25;
+  const ZOOM_MAX = 6;
+  const ZOOM_STEP = 1.25;
+
+  const zoomIn = useCallback(() => {
+    manualZoomRef.current = true;
+    setZoom((z) => clamp(z * ZOOM_STEP, ZOOM_MIN, ZOOM_MAX));
+  }, []);
+
+  const zoomOut = useCallback(() => {
+    manualZoomRef.current = true;
+    setZoom((z) => clamp(z / ZOOM_STEP, ZOOM_MIN, ZOOM_MAX));
+  }, []);
 
   const getGridRect = useCallback(() => {
     const el = gridRef.current as any;
@@ -578,24 +603,25 @@ export function SeatingGrid({ api, fitToGrid = false }: { api: UseSeatingStateAp
 
   return (
     <View style={styles.root}>
-      <View
-        // focusable for Delete key
-        {...(isWeb ? ({ tabIndex: 0, onKeyDown } as any) : {})}
-        style={styles.workArea}
-        onLayout={(e) => {
-          const w = e?.nativeEvent?.layout?.width;
-          const h = e?.nativeEvent?.layout?.height;
-          if (typeof w === 'number' && typeof h === 'number' && w > 0 && h > 0) {
-            setViewport({ w, h });
-          }
-        }}
-      >
+      <View style={styles.mapShell}>
         <View
-          ref={gridRef}
-          style={[styles.gridWrap, { width: stageW, height: stageH }]}
-          {...(isWeb ? ({ onPointerDown: onBackgroundPointerDown } as any) : {})}
+          // focusable for Delete key
+          {...(isWeb ? ({ tabIndex: 0, onKeyDown } as any) : {})}
+          style={styles.workArea}
+          onLayout={(e) => {
+            const w = e?.nativeEvent?.layout?.width;
+            const h = e?.nativeEvent?.layout?.height;
+            if (typeof w === 'number' && typeof h === 'number' && w > 0 && h > 0) {
+              setViewport({ w, h });
+            }
+          }}
         >
-          <View style={[styles.gridInner, { width: gridW, height: gridH, transform: [{ scale: fitScale }] }]}>
+          <View
+            ref={gridRef}
+            style={[styles.gridWrap, { width: stageW, height: stageH }]}
+            {...(isWeb ? ({ onPointerDown: onBackgroundPointerDown } as any) : {})}
+          >
+            <View style={[styles.gridInner, { width: gridW, height: gridH, transform: [{ scale: zoom }] }]}>
             {/* Grid lines */}
             <Svg width={gridW} height={gridH} style={StyleSheet.absoluteFill as any}>
               <Defs>
@@ -696,8 +722,7 @@ export function SeatingGrid({ api, fitToGrid = false }: { api: UseSeatingStateAp
             {api.tables.map(t => {
               const sz = tableCellSize(t.type, t.seats, t.orientation);
               const isSelected = selected.has(t.id);
-              const tableFill = t.type === 'reserve' ? 'rgba(240,203,70,0.72)' : 'rgba(6,23,62,0.90)';
-              const tableBorder = t.type === 'reserve' ? '#F0CB46' : '#FFFFFF';
+              const { fill: tableFill, border: tableBorder } = tableFillColor(t.type, t.seats);
               return (
                 <View
                   key={t.id}
@@ -722,6 +747,7 @@ export function SeatingGrid({ api, fitToGrid = false }: { api: UseSeatingStateAp
                     : null)}
                 >
                   <Text style={[styles.tableNum, styles.tableTextOnDark]}>{t.number ?? ''}</Text>
+                  <Text style={[styles.tableSeats, styles.tableTextOnDark]}>{t.seats}</Text>
                   <Text style={[styles.tableType, styles.tableTextOnDark]}>{TABLE_LABELS[t.type]}</Text>
                 </View>
               );
@@ -778,6 +804,35 @@ export function SeatingGrid({ api, fitToGrid = false }: { api: UseSeatingStateAp
               ]}
             />
           ) : null}
+        </View>
+      </View>
+
+        <View style={styles.zoomControls} pointerEvents="box-none">
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="התקרבות למפה"
+            onPress={zoomIn}
+            style={({ hovered, pressed }: any) => [
+              styles.zoomBtn,
+              Platform.OS === 'web' && hovered ? styles.zoomBtnHover : null,
+              pressed ? styles.zoomBtnPressed : null,
+            ]}
+          >
+            <Ionicons name="add" size={22} color="#102A56" />
+          </Pressable>
+          <Text style={styles.zoomLabel}>{`${Math.round(zoom * 100)}%`}</Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="התרחקות מהמפה"
+            onPress={zoomOut}
+            style={({ hovered, pressed }: any) => [
+              styles.zoomBtn,
+              Platform.OS === 'web' && hovered ? styles.zoomBtnHover : null,
+              pressed ? styles.zoomBtnPressed : null,
+            ]}
+          >
+            <Ionicons name="remove" size={22} color="#102A56" />
+          </Pressable>
         </View>
       </View>
     </View>
@@ -851,14 +906,68 @@ function InlineEditor({
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: 'transparent' },
+  mapShell: {
+    flex: 1,
+    position: 'relative',
+  },
   workArea: {
     flex: 1,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: Platform.OS === 'web' ? 'flex-start' : 'center',
     padding: 0,
     ...(Platform.OS === 'web'
-      ? ({ overflow: 'hidden', userSelect: 'none', WebkitUserSelect: 'none' } as any)
+      ? ({ overflow: 'auto', userSelect: 'none', WebkitUserSelect: 'none' } as any)
       : null),
+  },
+  zoomControls: {
+    position: 'absolute',
+    left: 18,
+    bottom: 22,
+    zIndex: 40,
+    alignItems: 'center',
+    gap: 8,
+    ...(Platform.OS === 'web' ? ({ pointerEvents: 'auto' } as any) : null),
+  },
+  zoomBtn: {
+    width: 46,
+    height: 46,
+    borderRadius: 15,
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.10)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#0b1c41',
+    shadowOpacity: 0.12,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    ...(Platform.OS === 'web'
+      ? ({
+          cursor: 'pointer',
+          boxShadow: '0 10px 24px rgba(15,23,42,0.12)',
+          backdropFilter: 'blur(8px)',
+        } as any)
+      : null),
+  },
+  zoomBtnHover: {
+    backgroundColor: '#FFFFFF',
+    borderColor: 'rgba(43,140,238,0.35)',
+  },
+  zoomBtnPressed: {
+    opacity: 0.88,
+    transform: [{ scale: 0.96 }],
+  },
+  zoomLabel: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: 'rgba(17,24,39,0.55)',
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.06)',
   },
   gridWrap: {
     backgroundColor: '#F1F5F9',
@@ -896,6 +1005,13 @@ const styles = StyleSheet.create({
   tableNum: {
     fontSize: 16,
     fontWeight: '900',
+    ...(Platform.OS === 'web' ? ({ userSelect: 'none', WebkitUserSelect: 'none', pointerEvents: 'none' } as any) : null),
+  },
+  tableSeats: {
+    marginTop: 1,
+    fontSize: 10,
+    fontWeight: '800',
+    opacity: 0.85,
     ...(Platform.OS === 'web' ? ({ userSelect: 'none', WebkitUserSelect: 'none', pointerEvents: 'none' } as any) : null),
   },
   tableType: {

@@ -2,8 +2,16 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
-  FIXED_SEATS,
+  clampTableNumber,
+  clampTableSeats,
+  defaultSeatsForType,
+  MAX_TABLE_NUMBER,
+  MAX_TABLE_SEATS,
+  MIN_TABLE_NUMBER,
+  MIN_TABLE_SEATS,
+  SEAT_PRESETS,
   TABLE_LABELS,
+  type NumberingAnchor,
   type Orientation,
   type TableConfig,
   type TableType,
@@ -16,7 +24,7 @@ type Props = {
   onAddTable: (config: TableConfig) => void;
   onAddZone: (name: string, widthCells: number, heightCells: number) => void;
   onAddLabel: (text: string) => void;
-  onSave: () => void;
+  onSave: (pendingGrid?: { cols: number; rows: number }) => void | Promise<void>;
   onDeleteSelected: () => void;
   hasSelection: boolean;
   saving?: boolean;
@@ -25,6 +33,7 @@ type Props = {
   onSetGrid: (cols: number, rows: number) => void;
   compact?: boolean;
   hideHeader?: boolean;
+  nextTableNumber?: number;
 };
 
 export function TableSidebar({
@@ -41,18 +50,55 @@ export function TableSidebar({
   onSetGrid,
   compact = false,
   hideHeader = false,
+  nextTableNumber = 1,
 }: Props) {
   const [tab, setTab] = useState<TabKey>('tables');
 
   const [tableType, setTableType] = useState<TableType>('regular');
   const [orientation, setOrientation] = useState<Orientation>('row');
   const [quantity, setQuantity] = useState(1);
+  const [seatCount, setSeatCount] = useState(defaultSeatsForType('regular'));
+  const [startNumber, setStartNumber] = useState(nextTableNumber);
+  const [startNumberTouched, setStartNumberTouched] = useState(false);
+  const [numberingAnchor, setNumberingAnchor] = useState<NumberingAnchor>('start');
 
-  const seats = FIXED_SEATS[tableType];
+  useEffect(() => {
+    setSeatCount(defaultSeatsForType(tableType));
+  }, [tableType]);
+
+  useEffect(() => {
+    if (!startNumberTouched) {
+      setStartNumber(nextTableNumber);
+    }
+  }, [nextTableNumber, startNumberTouched]);
+
+  const seats = clampTableSeats(seatCount);
+  const tableStart = clampTableNumber(startNumber);
+  const tableEnd = tableStart + Math.max(0, quantity - 1);
+  const numberingRange =
+    quantity <= 1 ? `שולחן ${tableStart}` : `שולחנות ${tableStart}–${tableEnd}`;
+  const numberingPosition =
+    quantity <= 1
+      ? null
+      : orientation === 'column'
+        ? numberingAnchor === 'start'
+          ? `${tableStart} למעלה`
+          : `${tableStart} למטה`
+        : numberingAnchor === 'start'
+          ? `${tableStart} בהתחלה`
+          : `${tableStart} בסוף`;
+  const numberingPreview = numberingPosition ? `${numberingRange} · ${numberingPosition}` : numberingRange;
 
   const config: TableConfig = useMemo(
-    () => ({ type: tableType, seats, orientation, quantity }),
-    [orientation, quantity, seats, tableType]
+    () => ({
+      type: tableType,
+      seats,
+      orientation,
+      quantity,
+      startNumber: tableStart,
+      numberingAnchor,
+    }),
+    [numberingAnchor, orientation, quantity, seats, tableStart, tableType]
   );
 
   const [zoneName, setZoneName] = useState('');
@@ -157,13 +203,106 @@ export function TableSidebar({
                 />
               </View>
 
-              <View style={styles.seatsStat}>
-                <Text style={styles.seatsLabel}>מקומות בשולחן</Text>
-                <Text style={styles.seatsValue}>{seats}</Text>
+              <SectionTitle title="מקומות ישיבה" />
+              <View style={styles.presetRow}>
+                {SEAT_PRESETS.map((preset) => (
+                  <Pressable
+                    key={preset}
+                    onPress={() => setSeatCount(preset)}
+                    style={({ pressed }) => [
+                      styles.presetBtn,
+                      seats === preset ? styles.presetBtnActive : null,
+                      pressed && { opacity: 0.88 },
+                    ]}
+                  >
+                    <Text style={[styles.presetText, seats === preset ? styles.presetTextActive : null]}>{preset}</Text>
+                  </Pressable>
+                ))}
               </View>
+              <View style={styles.customSeatsRow}>
+                <Text style={styles.customSeatsLabel}>מותאם אישית</Text>
+                <TextInput
+                  value={String(seats)}
+                  onChangeText={(text) => {
+                    const digits = text.replace(/[^\d]/g, '');
+                    if (!digits) {
+                      setSeatCount(MIN_TABLE_SEATS);
+                      return;
+                    }
+                    setSeatCount(clampTableSeats(Number(digits)));
+                  }}
+                  keyboardType="number-pad"
+                  placeholder={`${MIN_TABLE_SEATS}-${MAX_TABLE_SEATS}`}
+                  placeholderTextColor="rgba(17,24,39,0.35)"
+                  style={styles.customSeatsInput}
+                  {...(Platform.OS === 'web'
+                    ? ({ inputMode: 'numeric', pattern: '[0-9]*' } as any)
+                    : null)}
+                />
+              </View>
+              <Stepper
+                value={seats}
+                onChange={setSeatCount}
+                min={MIN_TABLE_SEATS}
+                max={MAX_TABLE_SEATS}
+              />
 
               <SectionTitle title="כמות שולחנות" />
               <Stepper value={quantity} onChange={setQuantity} min={1} max={20} />
+
+              <SectionTitle title="מספור שולחנות" />
+              <View style={styles.customSeatsRow}>
+                <Text style={styles.customSeatsLabel}>שולחן ראשון</Text>
+                <TextInput
+                  value={String(tableStart)}
+                  onChangeText={(text) => {
+                    setStartNumberTouched(true);
+                    const digits = text.replace(/[^\d]/g, '');
+                    if (!digits) {
+                      setStartNumber(MIN_TABLE_NUMBER);
+                      return;
+                    }
+                    setStartNumber(clampTableNumber(Number(digits)));
+                  }}
+                  keyboardType="number-pad"
+                  placeholder={String(nextTableNumber)}
+                  placeholderTextColor="rgba(17,24,39,0.35)"
+                  style={styles.customSeatsInput}
+                  {...(Platform.OS === 'web'
+                    ? ({ inputMode: 'numeric', pattern: '[0-9]*' } as any)
+                    : null)}
+                />
+              </View>
+              <Stepper
+                value={tableStart}
+                onChange={(v) => {
+                  setStartNumberTouched(true);
+                  setStartNumber(v);
+                }}
+                min={MIN_TABLE_NUMBER}
+                max={MAX_TABLE_NUMBER}
+              />
+              <Text style={styles.numberingPreview}>{numberingPreview}</Text>
+
+              {quantity > 1 ? (
+                <>
+                  <SectionTitle title="כיוון מספור" />
+                  <View style={styles.segmentRow}>
+                    <SegmentButton
+                      label={orientation === 'column' ? '1 למעלה' : '1 בהתחלה'}
+                      icon="row"
+                      active={numberingAnchor === 'start'}
+                      onPress={() => setNumberingAnchor('start')}
+                    />
+                    <SegmentButton
+                      label={orientation === 'column' ? '1 למטה' : '1 בסוף'}
+                      icon="column"
+                      active={numberingAnchor === 'end'}
+                      onPress={() => setNumberingAnchor('end')}
+                    />
+                  </View>
+                </>
+              ) : null}
 
               <SectionTitle title="כיוון סידור" />
               <View style={styles.segmentRow}>
@@ -171,7 +310,13 @@ export function TableSidebar({
                 <SegmentButton label="טור" icon="column" active={orientation === 'column'} onPress={() => setOrientation('column')} />
               </View>
 
-              <PrimaryButton label="הוסף למפה" onPress={() => onAddTable(config)} />
+              <PrimaryButton
+                label="הוסף למפה"
+                onPress={() => {
+                  onAddTable(config);
+                  setStartNumberTouched(false);
+                }}
+              />
             </>
           ) : null}
 
@@ -223,7 +368,7 @@ export function TableSidebar({
 
         <View style={styles.footer}>
           <Pressable
-            onPress={onSave}
+            onPress={() => onSave({ cols: colsDraft, rows: rowsDraft })}
             disabled={!!saving}
             style={({ pressed }) => [
               styles.saveBtn,
@@ -574,21 +719,66 @@ const styles = StyleSheet.create({
   },
   typeText: { fontWeight: '900', color: 'rgba(17,24,39,0.70)' },
 
+  presetRow: {
+    flexDirection: 'row-reverse',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 6,
+  },
+  presetBtn: {
+    minWidth: 44,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  presetBtnActive: {
+    borderColor: 'rgba(43,140,238,0.45)',
+    backgroundColor: 'rgba(43,140,238,0.10)',
+  },
+  presetText: { fontWeight: '900', fontSize: 13, color: 'rgba(17,24,39,0.70)' },
+  presetTextActive: { color: '#2b8cee' },
+
+  customSeatsRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginTop: 4,
+  },
+  customSeatsLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: 'rgba(17,24,39,0.60)',
+  },
+  customSeatsInput: {
+    flex: 1,
+    height: 44,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.94)',
+    fontWeight: '900',
+    fontSize: 16,
+    color: '#102A56',
+    textAlign: 'center',
+  },
+  numberingPreview: {
+    marginTop: 4,
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#2b8cee',
+    textAlign: 'right',
+  },
+
   rowBetween: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 },
   label: { fontSize: 12, fontWeight: '800', color: 'rgba(17,24,39,0.60)' },
   value: { fontSize: 14, fontWeight: '900', color: '#102A56' },
-
-  seatsStat: {
-    marginTop: 10,
-    padding: 12,
-    borderRadius: 18,
-    backgroundColor: 'rgba(248,250,255,0.92)',
-    borderWidth: 1,
-    borderColor: 'rgba(25,93,230,0.08)',
-    alignItems: 'flex-start',
-  },
-  seatsLabel: { fontSize: 12, fontWeight: '800', color: 'rgba(17,24,39,0.60)', textAlign: 'left' },
-  seatsValue: { marginTop: 6, fontSize: 24, fontWeight: '900', color: '#102A56', textAlign: 'left' },
 
   stepper: {
     flexDirection: 'row-reverse',
