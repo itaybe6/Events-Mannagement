@@ -694,20 +694,53 @@ export default function AutomaticNotificationsWebScreen() {
     setSendStatusOpen(true);
     setSendStatusLoading(true);
     try {
+      // Aggregate recipients across ALL runs for this setting — the initial send AND
+      // every catch-up batch sent to guests who were added later (the queue). Without
+      // this, queue recipients (which live on separate runs) would be missing.
+      const { data: runRows, error: runsErr } = await supabase
+        .from('scheduled_notification_sms_runs')
+        .select('id')
+        .eq('notification_setting_id', sid);
+      if (runsErr) throw runsErr;
+      const runIds = ((runRows as any[]) || []).map((r) => String((r as any).id)).filter(Boolean);
+      if (runIds.length === 0) runIds.push(run.id);
+
       const { data: recRows, error: recError } = await supabase
         .from('scheduled_notification_sms_run_recipients')
-        .select('guest_id, status, phone, sent_at, error')
-        .eq('run_id', run.id)
+        .select('guest_id, status, phone, sent_at, error, created_at')
+        .in('run_id', runIds)
         .order('created_at', { ascending: true });
       if (recError) throw recError;
 
-      const recs = ((recRows as any[]) || []).map((r) => ({
-        guestId: String((r as any).guest_id),
-        sendStatus: String((r as any).status) as any,
-        phone: (r as any).phone ? String((r as any).phone) : undefined,
-        sentAt: (r as any).sent_at ? String((r as any).sent_at) : null,
-        error: (r as any).error ? String((r as any).error) : null,
-      }));
+      // A guest can appear in more than one run (e.g. failed then re-sent from the queue).
+      // Keep one row per guest, preferring a successful send, then the most recent attempt.
+      const statusRank = (s: string) => (s === 'sent' ? 3 : s === 'failed' ? 2 : s === 'skipped' ? 1 : 0);
+      const ts = (v: any) => {
+        const t = new Date(String(v ?? '')).getTime();
+        return Number.isFinite(t) ? t : 0;
+      };
+      const bestByGuest = new Map<string, any>();
+      for (const r of (recRows as any[]) || []) {
+        const gid = String((r as any).guest_id);
+        if (!gid) continue;
+        const cand = {
+          guestId: gid,
+          sendStatus: String((r as any).status) as any,
+          phone: (r as any).phone ? String((r as any).phone) : undefined,
+          sentAt: (r as any).sent_at ? String((r as any).sent_at) : null,
+          error: (r as any).error ? String((r as any).error) : null,
+          _at: ts((r as any).sent_at) || ts((r as any).created_at),
+        };
+        const cur = bestByGuest.get(gid);
+        if (
+          !cur ||
+          statusRank(cand.sendStatus) > statusRank(cur.sendStatus) ||
+          (statusRank(cand.sendStatus) === statusRank(cur.sendStatus) && cand._at >= cur._at)
+        ) {
+          bestByGuest.set(gid, cand);
+        }
+      }
+      const recs = Array.from(bestByGuest.values());
       const ids = recs.map((r) => r.guestId).filter(Boolean);
       const byId = new Map<string, { name: string; phone?: string; guestStatus?: string }>();
       if (ids.length > 0) {
@@ -1148,35 +1181,32 @@ export default function AutomaticNotificationsWebScreen() {
       console.warn('Failed to fetch last sms runs:', e);
     }
 
-    // Fetch queued catch-up counts for reminder_1 (best-effort; DB might not have the table yet).
+    // Fetch queued catch-up counts for every setting/stage (best-effort; DB might not have the table yet).
     try {
-      const reminder1 = merged.find((r) => r.notification_type === 'reminder_1' && r.id && (r.channel || 'SMS') === 'SMS');
-      if (!reminder1?.id) {
-        setQueuedCatchupBySettingId({});
-      } else {
-        const { data: qRows, error: qError } = await supabase
-          .from('notification_sms_catchup_queue')
-          .select('notification_setting_id, due_at')
-          .eq('event_id', evtId)
-          .eq('notification_setting_id', String(reminder1.id))
-          .eq('status', 'queued')
-          .order('due_at', { ascending: true });
-        if (qError) {
-          const msg = String((qError as any)?.message ?? '').toLowerCase();
-          if (msg.includes('does not exist') || msg.includes('notification_sms_catchup_queue')) {
-            setQueuedCatchupBySettingId({});
-          } else {
-            console.warn('Failed to load catch-up queue:', qError);
-            setQueuedCatchupBySettingId({});
-          }
+      const { data: qRows, error: qError } = await supabase
+        .from('notification_sms_catchup_queue')
+        .select('notification_setting_id, due_at')
+        .eq('event_id', evtId)
+        .eq('status', 'queued')
+        .order('due_at', { ascending: true });
+      if (qError) {
+        const msg = String((qError as any)?.message ?? '').toLowerCase();
+        if (msg.includes('does not exist') || msg.includes('notification_sms_catchup_queue')) {
+          setQueuedCatchupBySettingId({});
         } else {
-          const list = (qRows as any[]) || [];
-          const count = list.length;
-          const nextDueAt = count > 0 ? String((list[0] as any)?.due_at ?? '') : null;
-          setQueuedCatchupBySettingId({
-            [String(reminder1.id)]: { count, nextDueAt: nextDueAt || null },
-          });
+          console.warn('Failed to load catch-up queue:', qError);
+          setQueuedCatchupBySettingId({});
         }
+      } else {
+        // Rows arrive ordered by due_at ASC, so the first row per setting is the next due.
+        const out: Record<string, { count: number; nextDueAt?: string | null }> = {};
+        for (const r of (qRows as any[]) || []) {
+          const sid = String((r as any).notification_setting_id || '').trim();
+          if (!sid) continue;
+          if (!out[sid]) out[sid] = { count: 0, nextDueAt: String((r as any).due_at ?? '') || null };
+          out[sid].count += 1;
+        }
+        setQueuedCatchupBySettingId(out);
       }
     } catch (e) {
       console.warn('Failed to load catch-up queue (exception):', e);
@@ -3520,10 +3550,7 @@ export default function AutomaticNotificationsWebScreen() {
                 const lastRunLabel = lastRun ? statusLabel(String(lastRun.status)) : null;
                 const lastRunAt = lastRun?.claimed_at ? formatHeDateTimeShort(lastRun.claimed_at) : '';
                 const catchup = row.id ? queuedCatchupBySettingId[String(row.id)] : undefined;
-                const showCatchup =
-                  String(row.notification_type || '').trim() === 'reminder_1' &&
-                  (row.channel || 'SMS') === 'SMS' &&
-                  (catchup?.count || 0) > 0;
+                const showCatchup = (catchup?.count || 0) > 0;
                 const catchupText = showCatchup
                   ? `אורחים חדשים בתור: ${catchup?.count || 0}${catchup?.nextDueAt ? ` · הבא: ${formatHeDateTimeShort(catchup.nextDueAt)}` : ''}`
                   : '';
@@ -3693,7 +3720,7 @@ export default function AutomaticNotificationsWebScreen() {
                           <Text style={[styles.cardInsightMeta, { color: tone.accent }]}>התזמון שנקבע להודעה</Text>
                         </View>
 
-                        {(row.channel || 'SMS') === 'SMS' ? (
+                        {(row.channel || 'SMS') === 'SMS' || isFlow ? (
                           <>
                             <Pressable
                               onPress={(e: any) => {
@@ -3705,9 +3732,9 @@ export default function AutomaticNotificationsWebScreen() {
                             >
                               <View style={styles.cardInsightTopRow}>
                                 <View style={[styles.cardInsightIconWrap, { backgroundColor: 'rgba(15,23,42,0.05)' }]}>
-                                  <Ionicons name="checkmark-done-outline" size={15} color={lastRunLabel?.color || 'rgba(100,116,139,1)'} />
+                                  <Ionicons name="document-text-outline" size={15} color={lastRunLabel?.color || 'rgba(100,116,139,1)'} />
                                 </View>
-                                <Text style={styles.cardInsightLabel}>סטטוס שליחה</Text>
+                                <Text style={styles.cardInsightLabel}>דוח שליחה</Text>
                               </View>
                               <Text style={[styles.cardInsightValue, { color: lastRunLabel?.color || 'rgba(51,65,85,1)' }]} numberOfLines={1}>
                                 {sendStatusTitle}
@@ -6717,6 +6744,34 @@ export default function AutomaticNotificationsWebScreen() {
                 </Text>
               ) : null}
 
+              {!sendStatusLoading && sendStatusRows.length > 0 ? (
+                <View style={styles.sendReportSummaryRow}>
+                  {(() => {
+                    const sentCount = sendStatusRows.filter((g) => String(g.sendStatus) === 'sent').length;
+                    const failedCount = sendStatusRows.filter((g) => String(g.sendStatus) === 'failed').length;
+                    const skippedCount = sendStatusRows.filter((g) => String(g.sendStatus) === 'skipped').length;
+                    return (
+                      <>
+                        <View style={[styles.sendReportSummaryChip, { backgroundColor: 'rgba(220,252,231,1)', borderColor: 'rgba(134,239,172,1)' }]}>
+                          <Ionicons name="checkmark-circle" size={14} color="rgba(22,163,74,1)" />
+                          <Text style={[styles.sendReportSummaryText, { color: 'rgba(22,163,74,1)' }]}>{`נשלחו: ${sentCount}`}</Text>
+                        </View>
+                        <View style={[styles.sendReportSummaryChip, { backgroundColor: 'rgba(254,226,226,1)', borderColor: 'rgba(252,165,165,1)' }]}>
+                          <Ionicons name="close-circle" size={14} color="rgba(239,68,68,1)" />
+                          <Text style={[styles.sendReportSummaryText, { color: 'rgba(239,68,68,1)' }]}>{`נכשלו: ${failedCount}`}</Text>
+                        </View>
+                        {skippedCount > 0 ? (
+                          <View style={[styles.sendReportSummaryChip, { backgroundColor: 'rgba(241,245,249,1)', borderColor: 'rgba(203,213,225,1)' }]}>
+                            <Ionicons name="remove-circle-outline" size={14} color="rgba(100,116,139,1)" />
+                            <Text style={[styles.sendReportSummaryText, { color: 'rgba(100,116,139,1)' }]}>{`דולגו: ${skippedCount}`}</Text>
+                          </View>
+                        ) : null}
+                      </>
+                    );
+                  })()}
+                </View>
+              ) : null}
+
               <View style={styles.recipientsPreviewSearchRow}>
                 <Ionicons name="search-outline" size={16} color="#64748B" />
                 <TextInput
@@ -7915,6 +7970,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   sendStatusBadgeText: { fontSize: 12, fontWeight: '900', textAlign: 'center' },
+  sendReportSummaryRow: { flexDirection: 'row-reverse', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
+  sendReportSummaryChip: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  sendReportSummaryText: { fontSize: 12, fontWeight: '900', textAlign: 'center' },
 
   recipientsToolsRow: { marginTop: 6, flexDirection: 'row-reverse', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
   recipientsFiltersRow: { flexDirection: 'row', flexWrap: 'nowrap', gap: 8 },

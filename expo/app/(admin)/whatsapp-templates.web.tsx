@@ -5,7 +5,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   useWindowDimensions,
@@ -48,7 +47,6 @@ type EditorState = {
   bodyText: string;
   variables: WhatsAppTemplateVariable[];
   buttons: WhatsAppTemplateButton[];
-  isActive: boolean;
 };
 
 const emptyEditor = (): EditorState => ({
@@ -59,7 +57,6 @@ const emptyEditor = (): EditorState => ({
   bodyText: '',
   variables: [],
   buttons: [],
-  isActive: true,
 });
 
 export default function WhatsappTemplatesWebScreen() {
@@ -125,7 +122,6 @@ export default function WhatsappTemplatesWebScreen() {
       bodyText: t.bodyText,
       variables: t.variables.map((v) => ({ ...v })),
       buttons: t.buttons.map((b) => ({ ...b })),
-      isActive: t.isActive,
     });
 
   const saveTemplate = useCallback(async () => {
@@ -158,7 +154,7 @@ export default function WhatsappTemplatesWebScreen() {
         base_url: b.base_url || '',
         suffix: b.suffix || '',
       })),
-      isActive: editor.isActive,
+      isActive: true,
     };
     try {
       if (editor.id) await whatsappTemplateService.update(editor.id, payload);
@@ -587,11 +583,6 @@ function TemplateEditor(props: {
               ))
             )}
           </View>
-
-          <View style={styles.activeRow}>
-            <Text style={styles.fieldLabel}>תבנית פעילה</Text>
-            <Switch value={state.isActive} onValueChange={(v) => set({ isActive: v })} trackColor={{ true: ui.whatsapp }} />
-          </View>
         </ScrollView>
 
         <View style={styles.modalFooter}>
@@ -911,5 +902,4 @@ const styles = StyleSheet.create({
   indexBadge: { paddingHorizontal: 8, height: 30, borderRadius: 8, backgroundColor: 'rgba(29,78,216,0.10)', alignItems: 'center', justifyContent: 'center' },
   indexBadgeText: { fontSize: 12, fontWeight: '900', color: ui.primary },
   removeBtn: { width: 38, height: 38, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(239,68,68,0.08)' },
-  activeRow: { flexDirection: ROW_DIR, alignItems: 'center', justifyContent: 'space-between', alignSelf: 'stretch' },
 });

@@ -1042,13 +1042,23 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                     </TouchableOpacity>
 
                     {!isCollapsed ? (
-                      <View style={{ gap: 10, marginTop: 12 }}>
+                      <View style={{ gap: 12, marginTop: 14 }}>
                         {sec.data.map((g) => {
                           const checkedIn = Boolean(g.checkedIn);
                           const isSaving = savingId === g.id;
                           const people = Number(g.numberOfPeople) || 1;
+                          const arrivedCount =
+                            g.checkedInCount === null || g.checkedInCount === undefined
+                              ? people
+                              : Number(g.checkedInCount) || 0;
+                          const isSavingCount = savingCountId === g.id;
+                          const canCall = Boolean(phoneToTel(g.phone));
                           return (
                             <View key={g.id} style={[styles.guestRow, checkedIn && styles.guestRowChecked]}>
+                              {/* Accent bar on the right edge (RTL) */}
+                              <View style={[styles.guestAccentBar, checkedIn && styles.guestAccentBarOn]} />
+
+                              {/* RIGHT: guest info */}
                               <View style={styles.guestMain}>
                                 <Text style={styles.guestName} numberOfLines={1}>
                                   {g.name}
@@ -1068,34 +1078,80 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                                     <Text style={styles.statusText}>{g.status}</Text>
                                   </View>
 
-                                  <View style={styles.peoplePill}>
-                                    <Ionicons name="person" size={13} color={"rgba(17,24,39,0.65)"} />
-                                    <Text style={styles.peopleText}>{people}</Text>
-                                  </View>
+                                  {checkedIn ? (
+                                    <View style={styles.arrivedStepper}>
+                                      <Pressable
+                                        accessibilityRole="button"
+                                        accessibilityLabel={`הפחת כמות שהגיעה עבור ${g.name}`}
+                                        onPress={() => void setCheckedInCount(g, Math.max(0, arrivedCount - 1))}
+                                        disabled={isSavingCount || arrivedCount <= 0}
+                                        hitSlop={8}
+                                        style={({ pressed }) => [
+                                          styles.stepBtn,
+                                          (isSavingCount || arrivedCount <= 0) && styles.stepBtnDisabled,
+                                          pressed ? { opacity: 0.85 } : null,
+                                        ]}
+                                      >
+                                        <Ionicons name="remove" size={18} color={colors.primary} />
+                                      </Pressable>
+
+                                      <View style={styles.stepCountWrap}>
+                                        {isSavingCount ? (
+                                          <ActivityIndicator size={13} color={colors.primary} />
+                                        ) : (
+                                          <View style={styles.stepCountInner}>
+                                            <Text style={styles.stepCountText}>{arrivedCount}</Text>
+                                            <Text style={styles.stepCountDim}>{`/${people}`}</Text>
+                                          </View>
+                                        )}
+                                      </View>
+
+                                      <Pressable
+                                        accessibilityRole="button"
+                                        accessibilityLabel={`הגדל כמות שהגיעה עבור ${g.name}`}
+                                        onPress={() => void setCheckedInCount(g, arrivedCount + 1)}
+                                        disabled={isSavingCount}
+                                        hitSlop={8}
+                                        style={({ pressed }) => [
+                                          styles.stepBtn,
+                                          isSavingCount && styles.stepBtnDisabled,
+                                          pressed ? { opacity: 0.85 } : null,
+                                        ]}
+                                      >
+                                        <Ionicons name="add" size={18} color={colors.primary} />
+                                      </Pressable>
+                                    </View>
+                                  ) : (
+                                    <View style={styles.peoplePill}>
+                                      <Ionicons name="person" size={13} color={"rgba(17,24,39,0.65)"} />
+                                      <Text style={styles.peopleText}>{people}</Text>
+                                    </View>
+                                  )}
 
                                   <TouchableOpacity
                                     onPress={() => void callGuest(g.phone, g.name)}
-                                    disabled={!phoneToTel(g.phone)}
+                                    disabled={!canCall}
                                     activeOpacity={0.85}
-                                    style={[styles.phoneBtn, !phoneToTel(g.phone) && styles.phoneBtnDisabled]}
+                                    style={[styles.phoneBtn, !canCall && styles.phoneBtnDisabled]}
                                     accessibilityRole="button"
-                                    accessibilityLabel={phoneToTel(g.phone) ? `התקשר ל-${g.name}` : `אין מספר טלפון עבור ${g.name}`}
+                                    accessibilityLabel={canCall ? `התקשר ל-${g.name}` : `אין מספר טלפון עבור ${g.name}`}
                                   >
                                     <Ionicons
                                       name="call-outline"
                                       size={16}
-                                      color={phoneToTel(g.phone) ? colors.primary : "rgba(17,24,39,0.35)"}
+                                      color={canCall ? colors.primary : "rgba(17,24,39,0.35)"}
                                     />
                                   </TouchableOpacity>
                                 </View>
                               </View>
 
+                              {/* LEFT: check-in toggle */}
                               <Pressable
                                 onPress={() => toggleCheckIn(g)}
                                 style={({ pressed }) => [
                                   styles.guestCheckColumn,
                                   checkedIn ? styles.guestCheckColumnOn : styles.guestCheckColumnOff,
-                                  pressed ? { opacity: 0.92 } : null,
+                                  pressed ? { transform: [{ scale: 0.96 }] } : null,
                                   isSaving ? { opacity: 0.72 } : null,
                                 ]}
                                 disabled={isSaving}
@@ -1106,10 +1162,14 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                                   {isSaving ? (
                                     <ActivityIndicator size={16} color={checkedIn ? colors.white : colors.primary} />
                                   ) : checkedIn ? (
-                                    <Ionicons name="checkmark" size={18} color={colors.white} />
-                                  ) : null}
+                                    <Ionicons name="checkmark" size={20} color={colors.white} />
+                                  ) : (
+                                    <Ionicons name="checkmark" size={18} color={"rgba(6,23,62,0.28)"} />
+                                  )}
                                 </View>
-                                <Text style={[styles.guestCheckLabel, checkedIn && styles.guestCheckLabelOn]}>הגיע</Text>
+                                <Text style={[styles.guestCheckLabel, checkedIn && styles.guestCheckLabelOn]}>
+                                  {checkedIn ? "הגיע" : "סמן"}
+                                </Text>
                               </Pressable>
                             </View>
                           );
@@ -1488,27 +1548,39 @@ const styles = StyleSheet.create({
 
   /* shared guest primitives (still used by phone layout) */
   guestRow: {
+    position: "relative",
+    overflow: "hidden",
     backgroundColor: colors.white,
-    borderRadius: 26,
-    paddingVertical: 16,
-    paddingHorizontal: 16,
+    borderRadius: 22,
+    paddingVertical: 14,
+    paddingLeft: 12,
+    paddingRight: 18,
     borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.06)",
+    borderColor: "rgba(15,23,42,0.07)",
     flexDirection: ROW_DIR,
     direction: "rtl",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 14,
-    shadowColor: colors.black,
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
+    gap: 12,
+    shadowColor: colors.richBlack,
+    shadowOpacity: 0.06,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
     elevation: 2,
   },
   guestRowChecked: {
-    borderColor: "rgba(52, 199, 89, 0.22)",
-    backgroundColor: "rgba(52, 199, 89, 0.06)",
+    borderColor: "rgba(76, 175, 80, 0.30)",
+    backgroundColor: "rgba(76, 175, 80, 0.055)",
   },
+  guestAccentBar: {
+    position: "absolute",
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: 5,
+    backgroundColor: "rgba(148,163,184,0.45)",
+  },
+  guestAccentBarOn: { backgroundColor: colors.success },
   guestMain: { flex: 1, minWidth: 0, alignItems: ALIGN_RIGHT, justifyContent: "center", gap: 12 },
   guestName: {
     alignSelf: "stretch",
@@ -1534,6 +1606,38 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   peopleText: { fontSize: 12, fontWeight: "900", color: "rgba(17,24,39,0.70)", writingDirection: "rtl" },
+
+  /* Clickable arrived-count stepper (phone) */
+  arrivedStepper: {
+    flexDirection: ROW_DIR,
+    alignItems: "center",
+    height: 36,
+    borderRadius: 999,
+    paddingHorizontal: 4,
+    gap: 2,
+    backgroundColor: "rgba(76,175,80,0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(76,175,80,0.26)",
+  },
+  stepBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 999,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: "rgba(76,175,80,0.30)",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: colors.richBlack,
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
+  },
+  stepCountWrap: { minWidth: 44, height: 30, alignItems: "center", justifyContent: "center" },
+  stepCountInner: { flexDirection: ROW_DIR, alignItems: "baseline", gap: 1 },
+  stepCountText: { fontSize: 15, fontWeight: "900", color: "#1B5E20", textAlign: "center" },
+  stepCountDim: { fontSize: 11, fontWeight: "800", color: "rgba(27,94,32,0.55)" },
 
   phoneBtn: {
     width: 38,
@@ -1564,33 +1668,33 @@ const styles = StyleSheet.create({
   statusPending: { backgroundColor: "rgba(255, 193, 7, 0.14)", borderColor: "rgba(255, 193, 7, 0.26)" },
   statusNot: { backgroundColor: "rgba(255, 59, 48, 0.08)", borderColor: "rgba(255, 59, 48, 0.22)" },
   guestCheckColumn: {
-    width: 64,
-    minHeight: 70,
-    borderRadius: 20,
-    paddingVertical: 8,
+    width: 62,
+    minHeight: 72,
+    borderRadius: 18,
+    paddingVertical: 10,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
+    gap: 7,
   },
   guestCheckColumnOn: {
-    backgroundColor: "rgba(16,185,129,0.08)",
-    borderColor: "rgba(16,185,129,0.18)",
+    backgroundColor: "rgba(76,175,80,0.12)",
+    borderColor: "rgba(76,175,80,0.28)",
   },
   guestCheckColumnOff: {
-    backgroundColor: "rgba(255,255,255,0.92)",
+    backgroundColor: "rgba(6,23,62,0.035)",
     borderColor: "rgba(15,23,42,0.08)",
   },
   guestCheckCircle: {
-    width: 36,
-    height: 36,
+    width: 38,
+    height: 38,
     borderRadius: 999,
     borderWidth: 2,
-    borderColor: colors.primary,
-    backgroundColor: "rgba(255,255,255,0.96)",
+    borderColor: "rgba(6,23,62,0.18)",
+    backgroundColor: colors.white,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: colors.black,
+    shadowColor: colors.richBlack,
     shadowOpacity: 0.08,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
@@ -1599,16 +1703,21 @@ const styles = StyleSheet.create({
   guestCheckCircleOn: {
     backgroundColor: colors.success,
     borderColor: colors.success,
+    shadowColor: colors.success,
+    shadowOpacity: 0.32,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 4,
   },
   guestCheckLabel: {
     fontSize: 12,
     fontWeight: "900",
     textAlign: "center",
-    color: "rgba(17,24,39,0.58)",
+    color: "rgba(6,23,62,0.50)",
     writingDirection: "rtl",
   },
   guestCheckLabelOn: {
-    color: "#047857",
+    color: "#2E7D32",
   },
 
   arrivalSlot: { width: 118, alignItems: "center", justifyContent: "center" },
