@@ -219,56 +219,103 @@ serve(async (req) => {
     let failed = 0;
     let skippedQuota = 0;
 
+    // 1) Partition guests up front (cheap, synchronous) so the slow WhatsApp
+    //    calls only run for recipients with a valid phone number.
+    type SendJob = { guest: any; phone: string };
+    const jobs: SendJob[] = [];
     for (const g of guests) {
       const rawPhone = g.phone;
-      const n = normalizeWaPhone(rawPhone);
       if (!String(rawPhone ?? "").trim()) {
         failures.push({ guestId: String(g.id), phone: null, reason: "missing_phone" });
         continue;
       }
+      const n = normalizeWaPhone(rawPhone);
       if (!n.ok) {
         failures.push({ guestId: String(g.id), phone: rawPhone ?? null, reason: "invalid_phone" });
         continue;
       }
-      if (remainingQuota <= 0) {
-        skippedQuota += 1;
-        failures.push({ guestId: String(g.id), phone: n.value, reason: "daily_quota_reached" });
-        continue;
-      }
-
-      const vars = buildGuestVars({
-        guest: g,
-        baseUrl,
-        eventTitle,
-        eventDateText,
-        eventLocationText,
-        groomName,
-        brideName,
-        coupleNames,
-      });
-      const invitationCode = String(g.invitation_code ?? g.invitation_token ?? "").trim();
-      const payload = buildWaPayload({ to: n.value, template, params: resolvedParams, vars, invitationCode });
-
-      const res = await sendWaMessage({ phoneNumberId: waPhoneId, accessToken: waToken, payload });
-      if (res.ok) {
-        sent += 1;
-        remainingQuota -= 1;
-      } else {
-        failed += 1;
-        failures.push({ guestId: String(g.id), phone: n.value, reason: `whatsapp:${res.error || res.status}${res.body ? `:${res.body}` : ""}` });
-      }
-
-      await adminClient.from("messages").insert({
-        event_id: eventId,
-        type: "וואטסאפ",
-        recipient: String(g.name ?? "").trim() || "מוזמן",
-        phone: n.value,
-        status: res.ok ? `נשלח${res.messageId ? ` (${res.messageId})` : ""}` : `נכשל (${res.error || res.status})`,
-        sent_date: new Date().toISOString(),
-      }).then(({ error }) => {
-        if (error) console.warn("messages insert failed", error);
-      });
+      jobs.push({ guest: g, phone: n.value });
     }
+
+    // 2) Reserve the daily quota before sending so we never exceed it.
+    let sendableJobs = jobs;
+    if (Number.isFinite(remainingQuota)) {
+      const allow = Math.max(0, Math.floor(remainingQuota));
+      if (jobs.length > allow) {
+        sendableJobs = jobs.slice(0, allow);
+        for (const j of jobs.slice(allow)) {
+          skippedQuota += 1;
+          failures.push({ guestId: String(j.guest.id), phone: j.phone, reason: "daily_quota_reached" });
+        }
+      }
+    }
+
+    // 3) Send in parallel batches. Sequential sending of hundreds of guests
+    //    exceeds the Edge Function 150s idle timeout; concurrency keeps the
+    //    whole run well under it. A soft time budget returns partial results
+    //    instead of letting the platform hard-kill the request (losing all info).
+    const CONCURRENCY = 20;
+    const TIME_BUDGET_MS = 120_000;
+    const startedAt = Date.now();
+    const messageRows: any[] = [];
+
+    for (let i = 0; i < sendableJobs.length; i += CONCURRENCY) {
+      if (Date.now() - startedAt > TIME_BUDGET_MS) {
+        for (const j of sendableJobs.slice(i)) {
+          failed += 1;
+          failures.push({ guestId: String(j.guest.id), phone: j.phone, reason: "skipped_time_budget" });
+        }
+        break;
+      }
+
+      const batch = sendableJobs.slice(i, i + CONCURRENCY);
+      const results = await Promise.all(
+        batch.map(async (j) => {
+          const g = j.guest;
+          const vars = buildGuestVars({
+            guest: g,
+            baseUrl,
+            eventTitle,
+            eventDateText,
+            eventLocationText,
+            groomName,
+            brideName,
+            coupleNames,
+          });
+          const invitationCode = String(g.invitation_code ?? g.invitation_token ?? "").trim();
+          const payload = buildWaPayload({ to: j.phone, template, params: resolvedParams, vars, invitationCode });
+          const res = await sendWaMessage({ phoneNumberId: waPhoneId, accessToken: waToken, payload });
+          return { job: j, res };
+        }),
+      );
+
+      for (const { job, res } of results) {
+        const g = job.guest;
+        if (res.ok) {
+          sent += 1;
+        } else {
+          failed += 1;
+          failures.push({ guestId: String(g.id), phone: job.phone, reason: `whatsapp:${res.error || res.status}${res.body ? `:${res.body}` : ""}` });
+        }
+        messageRows.push({
+          event_id: eventId,
+          type: "וואטסאפ",
+          recipient: String(g.name ?? "").trim() || "מוזמן",
+          phone: job.phone,
+          status: res.ok ? `נשלח${res.messageId ? ` (${res.messageId})` : ""}` : `נכשל (${res.error || res.status})`,
+          sent_date: new Date().toISOString(),
+        });
+      }
+    }
+
+    // 4) Bulk-insert the message log rows (chunked). Logging failures must not
+    //    fail the whole send, so they are only warned about.
+    for (const rows of chunk(messageRows, 200)) {
+      const { error } = await adminClient.from("messages").insert(rows);
+      if (error) console.warn("messages bulk insert failed", error);
+    }
+
+    const finalRemaining = Number.isFinite(remainingQuota) ? Math.max(0, remainingQuota - sent) : null;
 
     return json({
       ok: failed === 0,
@@ -277,7 +324,7 @@ serve(async (req) => {
         sent,
         failed,
         skippedQuota,
-        remainingQuota: Number.isFinite(remainingQuota) ? remainingQuota : null,
+        remainingQuota: finalRemaining,
         failures: failures.slice(0, 50),
         failuresCount: failures.length,
       },
