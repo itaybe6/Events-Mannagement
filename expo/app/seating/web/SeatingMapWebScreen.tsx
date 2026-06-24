@@ -57,7 +57,6 @@ export default function SeatingMapWebScreen() {
   const [saving, setSaving] = useState(false);
   const [existingRow, setExistingRow] = useState<SeatingMapsRow | null>(null);
   const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
-  const [fitToGridPreview, setFitToGridPreview] = useState(false);
 
   type Snap = {
     gridCols: number;
@@ -286,17 +285,24 @@ export default function SeatingMapWebScreen() {
     api.removeSelected();
   }, [api]);
 
-  const saveMap = useCallback(async () => {
+  const saveMap = useCallback(async (pendingGrid?: { cols: number; rows: number }) => {
     if (!eventId) {
       Alert.alert('שגיאה', 'חסר eventId');
       return false;
     }
     setSaving(true);
     try {
+      const cols = pendingGrid ? Math.round(pendingGrid.cols) : api.gridCols;
+      const rows = pendingGrid ? Math.round(pendingGrid.rows) : api.gridRows;
+
+      if (cols !== api.gridCols || rows !== api.gridRows) {
+        api.setGrid(cols, rows);
+      }
+
       const webV2 = {
         type: 'web_v2',
         version: 2,
-        grid: { cols: api.gridCols, rows: api.gridRows, cellSize: CELL_SIZE },
+        grid: { cols, rows, cellSize: CELL_SIZE },
         tables: api.tables,
         zones: api.zones,
         labels: api.labels,
@@ -335,8 +341,8 @@ export default function SeatingMapWebScreen() {
             num_tables: legacyTables.length,
             tables: legacyTables,
             annotations: nextAnnotations,
-            map_cols: 10,
-            map_rows: 10,
+            map_cols: cols,
+            map_rows: rows,
             updated_at: new Date().toISOString(),
           },
           { onConflict: 'event_id' }
@@ -366,7 +372,16 @@ export default function SeatingMapWebScreen() {
       }
 
       Alert.alert('נשמר', 'מפת ההושבה נשמרה בהצלחה');
-      setSavedSnapshot(currentSnapshot);
+      setSavedSnapshot(
+        toSnapshot({
+          gridCols: cols,
+          gridRows: rows,
+          tableCounter: api.tableCounter,
+          tables: api.tables,
+          zones: api.zones,
+          labels: api.labels,
+        })
+      );
       return true;
     } catch (e) {
       console.error('SeatingMapWeb save error:', e);
@@ -375,11 +390,14 @@ export default function SeatingMapWebScreen() {
     } finally {
       setSaving(false);
     }
-  }, [api.gridCols, api.gridRows, api.labels, api.tableCounter, api.tables, api.zones, currentSnapshot, eventId, existingRow?.annotations]);
+  }, [api, eventId, existingRow?.annotations, toSnapshot]);
 
-  const onSave = useCallback(async () => {
-    await saveMap();
-  }, [saveMap]);
+  const onSave = useCallback(
+    async (pendingGrid?: { cols: number; rows: number }) => {
+      await saveMap(pendingGrid);
+    },
+    [saveMap]
+  );
 
   const goBackToEvent = useCallback(() => {
     if (eventId) {
@@ -536,8 +554,8 @@ export default function SeatingMapWebScreen() {
           saving={saving}
           gridCols={api.gridCols}
           gridRows={api.gridRows}
+          nextTableNumber={api.tableCounter}
           onSetGrid={(cols, rows) => {
-            setFitToGridPreview(true);
             api.setGrid(cols, rows);
           }}
           compact={isLaptopCompact}
@@ -560,7 +578,7 @@ export default function SeatingMapWebScreen() {
           </View>
 
           <View style={styles.canvas}>
-            <SeatingGrid api={api} fitToGrid={fitToGridPreview} />
+            <SeatingGrid api={api} fitToGrid />
           </View>
         </View>
       </View>

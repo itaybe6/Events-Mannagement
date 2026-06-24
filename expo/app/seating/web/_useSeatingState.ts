@@ -130,6 +130,7 @@ function reducer(state: State, action: Action): State {
       const orientation = action.config.orientation ?? 'row';
       const qty = clamp(Math.floor(action.config.quantity || 1), 1, 20);
       const gap = 1;
+      const startNum = clamp(Math.round(action.config.startNumber ?? state.tableCounter), 1, 999);
 
       const { w, h } = tableCellSize(type, seats, orientation);
 
@@ -140,10 +141,11 @@ function reducer(state: State, action: Action): State {
       const start = clampRectToGrid(state.gridCols, state.gridRows, action.gridX, action.gridY, groupW, groupH);
 
       const nextTables: PlacedTable[] = [];
-      let counter = state.tableCounter;
+      const anchorEnd = action.config.numberingAnchor === 'end';
 
       for (let i = 0; i < qty; i++) {
         const p = clampRectToGrid(state.gridCols, state.gridRows, start.x + i * stepX, start.y + i * stepY, w, h);
+        const number = anchorEnd ? startNum + (qty - 1 - i) : startNum + i;
         nextTables.push({
           id: makeId('table'),
           type,
@@ -151,15 +153,19 @@ function reducer(state: State, action: Action): State {
           orientation,
           gridX: p.x,
           gridY: p.y,
-          number: counter,
+          number,
         });
-        counter += 1;
       }
+
+      const maxNumber = [...state.tables, ...nextTables].reduce(
+        (m, t) => Math.max(m, typeof t.number === 'number' ? t.number : 0),
+        0
+      );
 
       return {
         ...state,
         tables: [...state.tables, ...nextTables],
-        tableCounter: counter,
+        tableCounter: maxNumber + 1,
         selectedIds: new Set(nextTables.map(t => t.id)),
       };
     }
