@@ -135,6 +135,7 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
   const {
     loading,
     guests,
+    filteredGuests,
     query,
     setQuery,
     filter,
@@ -270,6 +271,34 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
     });
     return m;
   }, [guests]);
+
+  // Phone (mobile) view groups guests by table instead of by category.
+  const tableSections = useMemo(() => {
+    const groups = new Map<string, { key: string; name: string; sort: number; data: Guest[] }>();
+    filteredGuests.forEach((g) => {
+      const tid = String(g.tableId ?? "").trim();
+      const t = tid ? tableById.get(tid) : null;
+      let key = "__no_table__";
+      let name = "ללא שולחן";
+      let sort = 2_000_000;
+      if (t) {
+        const n = typeof t.number === "number" ? t.number : null;
+        key = `t:${tid}`;
+        name = n !== null ? `שולחן ${n}` : t.name ? `שולחן ${t.name}` : "שולחן";
+        sort = n !== null ? n : 1_000_000;
+      }
+      const cur = groups.get(key) || { key, name, sort, data: [] as Guest[] };
+      cur.data.push(g);
+      groups.set(key, cur);
+    });
+    return Array.from(groups.values())
+      .sort((a, b) => (a.sort !== b.sort ? a.sort - b.sort : a.name.localeCompare(b.name, "he")))
+      .map((sec) => ({
+        ...sec,
+        checkedIn: sec.data.filter((g) => Boolean(g.checkedIn)).length,
+        total: sec.data.length,
+      }));
+  }, [filteredGuests, tableById]);
 
   const visibleSections = useMemo(() => {
     const tid = tableFilterId ? String(tableFilterId).trim() : null;
@@ -936,37 +965,6 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
             showsVerticalScrollIndicator={false}
             contentContainerStyle={[styles.content, isAdminStyledMobile ? styles.contentAdminMobile : null, { paddingBottom: contentBottomPadding }]}
           >
-            {isAdminStyledMobile ? (
-              <View style={styles.adminMobileIntroCard}>
-                <View style={styles.adminMobileIntroHeader}>
-                  <View style={styles.adminMobileIntroIcon}>
-                    <Ionicons name="checkbox-outline" size={18} color={colors.primary} />
-                  </View>
-                  <View style={styles.adminMobileIntroText}>
-                    <Text style={styles.adminMobileIntroTitle}>צ׳ק-אין אורחים</Text>
-                    <View style={styles.adminMobileIntroStats}>
-                      <View style={styles.adminMobileIntroStatRow}>
-                        <Text style={styles.adminMobileIntroStatValue}>{`${counts.checkedIn}/${counts.total}`}</Text>
-                        <Text style={styles.adminMobileIntroSubtitle}>קבוצות</Text>
-                      </View>
-                      <View style={styles.adminMobileIntroStatRow}>
-                        <Text style={styles.adminMobileIntroStatValue}>{`${arrivedPeople}/${invitedPeople}`}</Text>
-                        <Text style={styles.adminMobileIntroSubtitle}>אנשים</Text>
-                      </View>
-                    </View>
-                  </View>
-                  <TouchableOpacity
-                    onPress={onRefreshAll}
-                    style={styles.adminMobileRefreshBtn}
-                    activeOpacity={0.86}
-                    accessibilityRole="button"
-                    accessibilityLabel="רענון"
-                  >
-                    <Ionicons name="refresh" size={18} color={colors.primary} />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ) : null}
             {/* Search */}
             <View style={styles.searchCard}>
               <Text>
@@ -1269,8 +1267,11 @@ const styles = StyleSheet.create({
   topTitle: { fontSize: 16, fontWeight: "900", color: colors.text, writingDirection: "rtl" },
   topSubtitle: { marginTop: 2, fontSize: 12, fontWeight: "800", color: colors.gray[600], textAlign: "center", writingDirection: "rtl" },
 
-  // Force RTL layout on web / non-RTL system locales (keeps Hebrew UI consistent)
-  content: { padding: 16, paddingTop: 6, direction: "rtl" },
+  // RTL visual layout is handled via ROW_DIR / ALIGN_RIGHT helpers. Do NOT also set
+  // `direction: "rtl"` here: it inherits to all descendants and, combined with
+  // ROW_DIR (which is `row-reverse` when the runtime isn't RTL), double-mirrors the
+  // whole page back to LTR.
+  content: { padding: 16, paddingTop: 6 },
   contentAdminMobile: { paddingTop: 8 },
   bottomContentSpacer: { height: 56 },
   adminMobileIntroCard: {
@@ -1558,7 +1559,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(15,23,42,0.07)",
     flexDirection: ROW_DIR,
-    direction: "rtl",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
@@ -1591,7 +1591,7 @@ const styles = StyleSheet.create({
     writingDirection: "rtl",
   },
   guestPhone: { fontSize: 13, fontWeight: "700", color: colors.gray[600], textAlign: "right" },
-  guestMetaRow: { width: "100%", flexDirection: ROW_DIR, alignItems: "center", justifyContent: "flex-start", gap: 10, flexWrap: "wrap", direction: "rtl" },
+  guestMetaRow: { width: "100%", flexDirection: ROW_DIR, alignItems: "center", justifyContent: "flex-start", gap: 10, flexWrap: "wrap" },
   peoplePill: {
     flexDirection: ROW_DIR,
     alignItems: "center",
