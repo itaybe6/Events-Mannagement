@@ -572,6 +572,8 @@ export default function AutomaticNotificationsWebScreen() {
   const [viewerRecipientsSearch, setViewerRecipientsSearch] = useState('');
 
   const [lastSmsRunBySettingId, setLastSmsRunBySettingId] = useState<Record<string, SmsRunSummary | undefined>>({});
+  // Unique guests who were successfully sent this message (initial send + catch-up batches).
+  const [deliveredGuestCountBySettingId, setDeliveredGuestCountBySettingId] = useState<Record<string, number>>({});
   const [queuedCatchupBySettingId, setQueuedCatchupBySettingId] = useState<
     Record<string, { count: number; nextDueAt?: string | null }>
   >({});
@@ -1228,7 +1230,7 @@ export default function AutomaticNotificationsWebScreen() {
 
       const { data: recRows, error: recError } = await supabase
         .from('scheduled_notification_sms_run_recipients')
-        .select('status, sent_at, guest_id, run:run_id ( setting:notification_setting_id ( channel ) )')
+        .select('status, sent_at, guest_id, run:run_id ( notification_setting_id, setting:notification_setting_id ( channel ) )')
         .eq('event_id', resolvedEventId)
         .limit(50000);
       if (recError) throw recError;
@@ -1239,16 +1241,26 @@ export default function AutomaticNotificationsWebScreen() {
       let waSent = 0;
       let lastSentAt: string | null = null;
       const reached = new Set<string>();
+      const deliveredBySetting = new Map<string, Set<string>>();
 
       for (const r of (recRows as any[]) || []) {
         const status = String((r as any).status ?? '').trim();
-        const channel = String(one(one((r as any).run)?.setting)?.channel ?? 'SMS').toUpperCase();
+        const runRow = one((r as any).run);
+        const settingRow = one(runRow?.setting);
+        const sid = String(runRow?.notification_setting_id ?? settingRow?.id ?? '').trim();
+        const channel = String(settingRow?.channel ?? 'SMS').toUpperCase();
         if (status === 'sent') {
           totalSent += 1;
           if (channel === 'WHATSAPP') waSent += 1;
           else smsSent += 1;
           const gid = String((r as any).guest_id ?? '').trim();
-          if (gid) reached.add(gid);
+          if (gid) {
+            reached.add(gid);
+            if (sid) {
+              if (!deliveredBySetting.has(sid)) deliveredBySetting.set(sid, new Set());
+              deliveredBySetting.get(sid)!.add(gid);
+            }
+          }
           const sa = (r as any).sent_at ? String((r as any).sent_at) : null;
           if (sa && (!lastSentAt || new Date(sa).getTime() > new Date(lastSentAt).getTime())) {
             lastSentAt = sa;
@@ -1258,14 +1270,33 @@ export default function AutomaticNotificationsWebScreen() {
         }
       }
 
+      const deliveredCounts: Record<string, number> = {};
+      for (const [sid, guests] of deliveredBySetting.entries()) {
+        deliveredCounts[sid] = guests.size;
+      }
+      setDeliveredGuestCountBySettingId(deliveredCounts);
+
       let pendingQueue = 0;
       try {
-        const { count, error: qErr } = await supabase
+        const { data: qRows, error: qErr } = await supabase
           .from('notification_sms_catchup_queue')
-          .select('id', { count: 'exact', head: true })
+          .select('notification_setting_id, due_at')
           .eq('event_id', resolvedEventId)
-          .eq('status', 'queued');
-        if (!qErr && typeof count === 'number') pendingQueue = count;
+          .eq('status', 'queued')
+          .order('due_at', { ascending: true });
+        if (!qErr) {
+          pendingQueue = ((qRows as any[]) || []).length;
+          const queueBySetting: Record<string, { count: number; nextDueAt?: string | null }> = {};
+          for (const qr of (qRows as any[]) || []) {
+            const qSid = String((qr as any).notification_setting_id || '').trim();
+            if (!qSid) continue;
+            if (!queueBySetting[qSid]) {
+              queueBySetting[qSid] = { count: 0, nextDueAt: String((qr as any).due_at ?? '') || null };
+            }
+            queueBySetting[qSid].count += 1;
+          }
+          setQueuedCatchupBySettingId(queueBySetting);
+        }
       } catch {
         // Older DB envs may not have the catch-up queue table yet — ignore.
       }
@@ -3557,31 +3588,46 @@ export default function AutomaticNotificationsWebScreen() {
 
                 const isFlow = item.kind === 'flow';
                 const isImmediateFlow = isFlow && isImmediateFlowStep(row);
+                const settingId = row.id ? String(row.id) : '';
+                const deliveredCount = settingId ? (deliveredGuestCountBySettingId[settingId] ?? 0) : 0;
+                const queueCount = catchup?.count ?? 0;
                 const immediateRecipientIds = isImmediateFlow
                   ? (Array.isArray((row as any).recipient_guest_ids) ? (row as any).recipient_guest_ids : [])
                   : [];
-                const immediateRecipientCount = immediateRecipientIds.length;
+                const immediateRecipientCount = deliveredCount > 0 ? deliveredCount : immediateRecipientIds.length;
                 const immediateSentAtRaw = isImmediateFlow
                   ? (lastRun?.claimed_at || (row as any).notification_date || (row as any).updated_at)
                   : null;
-                const immediateWasSent = isImmediateFlow && immediateRecipientCount > 0;
+                const immediateWasSent = isImmediateFlow && (deliveredCount > 0 || immediateRecipientCount > 0);
                 const immediateSentAt =
                   immediateWasSent && immediateSentAtRaw ? formatHeDateTimeShort(immediateSentAtRaw) : '';
                 const mode = isFlow ? String((row as any)?.recipient_mode || 'manual') : null;
                 const ids = Array.isArray((row as any).recipient_guest_ids) ? (row as any).recipient_guest_ids : [];
+                const hasDelivered = deliveredCount > 0;
                 const recipientsLabel = !isFlow
                   ? (() => {
                       const nt = String(row.notification_type || '').trim();
-                      if (nt === 'reminder_1' && String((row as any)?.recipient_mode || '').trim() === 'all') return 'כל האורחים';
-                      if (nt === 'reminder_2' && ids.length === 0) return 'כל הממתינים';
-                      if (nt === 'reminder_1' || nt === 'reminder_2') return `${ids.length} מוזמנים${nt === 'reminder_1' ? '' : ' (אופציונלי)'}`;
+                      if (nt === 'reminder_1' && String((row as any)?.recipient_mode || '').trim() === 'all') {
+                        return hasDelivered ? `${deliveredCount} מוזמנים` : 'כל האורחים';
+                      }
+                      if (nt === 'reminder_2' && ids.length === 0) {
+                        return hasDelivered ? `${deliveredCount} מוזמנים` : 'כל הממתינים';
+                      }
+                      if (nt === 'reminder_1' || nt === 'reminder_2') {
+                        return hasDelivered
+                          ? `${deliveredCount} מוזמנים`
+                          : `${ids.length} מוזמנים${nt === 'reminder_1' ? '' : ' (אופציונלי)'}`;
+                      }
                       return '';
                     })()
                   : mode === 'pending'
-                    ? 'כל הממתינים'
+                    ? hasDelivered ? `${deliveredCount} מוזמנים` : 'כל הממתינים'
                     : mode === 'prev_pending'
-                      ? 'ממתינים מהשלב הקודם'
-                      : `${ids.length} מוזמנים`;
+                      ? hasDelivered ? `${deliveredCount} מוזמנים` : 'ממתינים מהשלב הקודם'
+                      : hasDelivered
+                        ? `${deliveredCount} מוזמנים`
+                        : `${ids.length} מוזמנים`;
+                const queueCountLabel = queueCount > 0 ? `${queueCount} ממתינים בתור` : '';
                 const isAutoAllRecipients =
                   !isFlow && String(row.notification_type || '').trim() === 'reminder_1' && String((row as any)?.recipient_mode || '').trim() === 'all';
                 const autoAllCountText = isAutoAllRecipients ? `סה״כ אורחים: ${allGuests.length}` : '';
@@ -3688,7 +3734,11 @@ export default function AutomaticNotificationsWebScreen() {
                             {immediateWasSent ? `${immediateRecipientCount} מוזמנים` : 'טרם נשלח'}
                           </Text>
                           <Text style={[styles.cardInsightMeta, { color: tone.accent }]}>
-                            {immediateWasSent ? 'מספר המוזמנים שקיבלו ההודעה' : 'ההודעה עדיין לא נשלחה'}
+                            {immediateWasSent
+                              ? deliveredCount > 0
+                                ? 'מספר המוזמנים שקיבלו ההודעה (כולל מתור)'
+                                : 'מספר המוזמנים שקיבלו ההודעה'
+                              : 'ההודעה עדיין לא נשלחה'}
                           </Text>
                         </View>
 
@@ -3778,6 +3828,11 @@ export default function AutomaticNotificationsWebScreen() {
                           <View style={styles.cardInlineMeta}>
                             <Ionicons name="people-outline" size={14} color="rgba(2,6,23,0.55)" />
                             <Text style={styles.cardInlineMetaText}>{recipientsLabel}</Text>
+                            {queueCountLabel ? (
+                              <Text style={[styles.cardInlineMetaText, { color: 'rgba(37,99,235,1)' }]}>
+                                {` · ${queueCountLabel}`}
+                              </Text>
+                            ) : null}
                           </View>
 
                           {isFlow ? (

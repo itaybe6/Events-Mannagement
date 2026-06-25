@@ -20,6 +20,7 @@ import { colors } from '@/constants/colors';
 import { useUserStore } from '@/store/userStore';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import { eventService } from '@/lib/services/eventService';
+import { tableService } from '@/lib/services/tableService';
 import {
   DUPLICATE_GUEST_ERROR,
   GUEST_DELETE_FAILED_ERROR,
@@ -41,9 +42,11 @@ type GuestRow = {
   phone: string;
   status: GuestStatus;
   category_id?: string | null;
+  tableId?: string | null;
   numberOfPeople?: number | null;
 };
 type GuestCategoryRow = { id: string; name: string; side?: 'groom' | 'bride' };
+type TableRow = { id: string; name?: string | null; number?: number | null; capacity?: number | null; area?: string | null };
 
 export default function CoupleGuestsWebScreen() {
   const router = useRouter();
@@ -85,6 +88,7 @@ export default function CoupleGuestsWebScreen() {
 
   const [categories, setCategories] = useState<GuestCategoryRow[]>([]);
   const [guests, setGuests] = useState<GuestRow[]>([]);
+  const [tables, setTables] = useState<TableRow[]>([]);
   const [sentGuestIds, setSentGuestIds] = useState<Set<string>>(new Set());
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -133,6 +137,7 @@ export default function CoupleGuestsWebScreen() {
     if (!resolvedEventId) {
       setCategories([]);
       setGuests([]);
+      setTables([]);
       setSentGuestIds(new Set());
       return;
     }
@@ -140,10 +145,14 @@ export default function CoupleGuestsWebScreen() {
     if (userData?.id) setActiveEvent(userData.id, resolvedEventId);
     setLoading(true);
     try {
-      const [evt, cats, g] = await Promise.all([
+      const [evt, cats, g, tbls] = await Promise.all([
         eventService.getEvent(resolvedEventId),
         guestService.getGuestCategories(resolvedEventId),
         guestService.getGuests(resolvedEventId),
+        tableService.getTables(resolvedEventId).catch((tableErr) => {
+          console.warn('Guests web tables load error:', tableErr);
+          return [] as any[];
+        }),
       ]);
       setEventTitle(String((evt as any)?.title || '').trim());
       setEventDate((evt as any)?.date instanceof Date ? (evt as any).date : ((evt as any)?.date ? new Date((evt as any).date) : null));
@@ -155,6 +164,15 @@ export default function CoupleGuestsWebScreen() {
       setIsEventApproved((evt as any)?.isApproved !== false);
       setCategories(cats as any);
       setGuests(g as any);
+      setTables(
+        (tbls as any[]).map((t) => ({
+          id: String(t.id),
+          name: t.name ?? null,
+          number: t.number ?? null,
+          capacity: t.capacity ?? null,
+          area: t.area ?? null,
+        }))
+      );
       setExpandedByCategoryId((prev) => {
         const next = { ...prev };
         for (const c of cats as any) if (next[c.id] === undefined) next[c.id] = true;
@@ -388,6 +406,7 @@ export default function CoupleGuestsWebScreen() {
         eventLocation,
         categories,
         guests,
+        tables,
       });
     } catch (e) {
       console.error('Export PDF error:', e);
