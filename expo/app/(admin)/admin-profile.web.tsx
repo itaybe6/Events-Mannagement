@@ -82,9 +82,16 @@ export function DesktopAccountProfileWeb({ mode = 'admin' }: DesktopAccountProfi
   const avatarUri = useMemo(() => {
     const direct = String(userData?.avatar_url ?? '').trim();
     if (direct) return direct;
-    const seed = encodeURIComponent(userData?.email ?? mode);
-    return `https://i.pravatar.cc/256?u=${seed}`;
-  }, [mode, userData?.avatar_url, userData?.email]);
+    return null;
+  }, [userData?.avatar_url]);
+
+  const avatarInitials = useMemo(() => {
+    const name = String(userData?.name ?? '').trim();
+    if (!name) return mode === 'employee' ? 'E' : 'M';
+    const parts = name.split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+    return name.slice(0, 2).toUpperCase();
+  }, [userData?.name, mode]);
 
   const handleSave = async (section: 'details' | 'security') => {
     if (!userData) return;
@@ -230,7 +237,13 @@ export function DesktopAccountProfileWeb({ mode = 'admin' }: DesktopAccountProfi
                 <View style={[styles.heroAvatarCol, isHeroStack ? styles.heroAvatarColStack : null]}>
                   <View style={styles.heroAvatarBlock}>
                     <View style={styles.heroAvatarRing}>
-                      <Image source={{ uri: avatarUri }} style={styles.heroAvatar} contentFit="cover" transition={0} />
+                      {avatarUri ? (
+                        <Image source={{ uri: avatarUri }} style={styles.heroAvatar} contentFit="cover" transition={0} />
+                      ) : (
+                        <View style={styles.heroAvatarFallback}>
+                          <Text style={styles.heroAvatarInitials}>{avatarInitials}</Text>
+                        </View>
+                      )}
                     </View>
                     <View style={styles.heroStatusDot} />
                   </View>
@@ -283,7 +296,13 @@ export function DesktopAccountProfileWeb({ mode = 'admin' }: DesktopAccountProfi
                         avatarUploading ? { opacity: 0.75 } : null,
                       ]}
                     >
-                      <Image source={{ uri: avatarUri }} style={styles.avatarEditImg} contentFit="cover" transition={0} />
+                      {avatarUri ? (
+                        <Image source={{ uri: avatarUri }} style={styles.avatarEditImg} contentFit="cover" transition={0} />
+                      ) : (
+                        <View style={styles.avatarEditFallback}>
+                          <Text style={styles.avatarEditInitials}>{avatarInitials}</Text>
+                        </View>
+                      )}
                       <View style={styles.avatarEditBadge}>
                         {avatarUploading ? <ActivityIndicator color="#fff" /> : <Ionicons name="camera" size={16} color="#fff" />}
                       </View>
@@ -619,6 +638,20 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   heroAvatar: { width: '100%', height: '100%', borderRadius: 999 },
+  heroAvatarFallback: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 999,
+    backgroundColor: ui.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroAvatarInitials: {
+    fontSize: 34,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: 1,
+  },
   heroStatusDot: {
     position: 'absolute',
     bottom: 10,
@@ -1008,6 +1041,19 @@ const styles = StyleSheet.create({
   },
   avatarEditBtnHover: { borderColor: 'rgba(59,130,246,0.40)', transform: [{ scale: 1.03 }] as any },
   avatarEditImg: { width: '100%', height: '100%' },
+  avatarEditFallback: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: ui.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarEditInitials: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
+  },
   avatarEditBadge: {
     position: 'absolute',
     bottom: 6,
