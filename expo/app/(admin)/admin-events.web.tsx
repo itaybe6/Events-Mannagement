@@ -21,6 +21,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 import { colors } from '@/constants/colors';
 import { eventService } from '@/lib/services/eventService';
+import { guestService } from '@/lib/services/guestService';
 import { supabase } from '@/lib/supabase';
 import { Event } from '@/types';
 import { inferEventType, MONTHS } from '@/features/events/eventsConstants';
@@ -363,34 +364,8 @@ export function AdminEventsListWebScreen() {
     setGuestStatsLoading(true);
 
     (async () => {
-      const { data, error } = await supabase
-        .from('guests')
-        .select('event_id,status,number_of_people,table_id')
-        .in('event_id', visibleEventIds);
-
+      const next = await guestService.getGuestPeopleStatsByEventIds(visibleEventIds);
       if (cancelled) return;
-
-      if (error || !Array.isArray(data)) {
-        console.error('Failed to load guests aggregates for events:', error);
-        setGuestStatsByEventId({});
-        return;
-      }
-
-      const next: Record<string, { invitedPeople: number; comingPeople: number; seatedPeople: number }> = {};
-      for (const row of data as any[]) {
-        const eventId = String(row?.event_id ?? '').trim();
-        if (!eventId) continue;
-        const people = Number(row?.number_of_people) || 1;
-        const status = String(row?.status ?? '').trim();
-        const hasTable = Boolean(row?.table_id);
-
-        const prev = next[eventId] || { invitedPeople: 0, comingPeople: 0, seatedPeople: 0 };
-        prev.invitedPeople += people;
-        if (status === 'מגיע') prev.comingPeople += people;
-        if (hasTable) prev.seatedPeople += people;
-        next[eventId] = prev;
-      }
-
       setGuestStatsByEventId(next);
     })()
       .catch((e) => {
@@ -2882,37 +2857,8 @@ export default function AdminEventsWebScreen() {
     setGuestStatsLoading(true);
 
     (async () => {
-      const { data, error } = await supabase
-        .from('guests')
-        .select('event_id,status,number_of_people,table_id')
-        .in('event_id', visibleEventIds);
-
+      const next = await guestService.getGuestPeopleStatsByEventIds(visibleEventIds);
       if (cancelled) return;
-
-      if (error || !Array.isArray(data)) {
-        console.error('Failed to load guests aggregates for events:', error);
-        setGuestStatsByEventId({});
-        return;
-      }
-
-      const next: Record<string, { invitedPeople: number; comingPeople: number; seatedPeople: number }> = {};
-
-      for (const row of data as any[]) {
-        const eventId = String(row?.event_id ?? '').trim();
-        if (!eventId) continue;
-
-        const people = Number(row?.number_of_people) || 1;
-        const status = String(row?.status ?? '').trim();
-        const hasTable = Boolean(row?.table_id);
-        const prev = next[eventId] || { invitedPeople: 0, comingPeople: 0, seatedPeople: 0 };
-
-        prev.invitedPeople += people;
-        if (status === 'מגיע') prev.comingPeople += people;
-        if (hasTable) prev.seatedPeople += people;
-
-        next[eventId] = prev;
-      }
-
       setGuestStatsByEventId(next);
     })()
       .catch((error) => {

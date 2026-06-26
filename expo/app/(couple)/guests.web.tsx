@@ -20,6 +20,7 @@ import { colors } from '@/constants/colors';
 import { useUserStore } from '@/store/userStore';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import { eventService } from '@/lib/services/eventService';
+import { tableService } from '@/lib/services/tableService';
 import {
   DUPLICATE_GUEST_ERROR,
   GUEST_DELETE_FAILED_ERROR,
@@ -32,6 +33,7 @@ import {
   pickAndParseGuestsFile,
   type ParsedGuestRow,
 } from '@/lib/importGuestsExcel';
+import { exportGuestsToPdf } from '@/lib/exportGuestsPdf';
 
 type GuestStatus = 'ממתין' | 'אולי מגיע' | 'מגיע' | 'לא מגיע';
 type GuestRow = {
@@ -40,9 +42,11 @@ type GuestRow = {
   phone: string;
   status: GuestStatus;
   category_id?: string | null;
+  tableId?: string | null;
   numberOfPeople?: number | null;
 };
 type GuestCategoryRow = { id: string; name: string; side?: 'groom' | 'bride' };
+type TableRow = { id: string; name?: string | null; number?: number | null; capacity?: number | null; area?: string | null };
 
 export default function CoupleGuestsWebScreen() {
   const router = useRouter();
@@ -78,10 +82,13 @@ export default function CoupleGuestsWebScreen() {
 
   const [loading, setLoading] = useState(false);
   const [eventTitle, setEventTitle] = useState('');
+  const [eventDate, setEventDate] = useState<Date | null>(null);
+  const [eventLocation, setEventLocation] = useState('');
   const [isEventApproved, setIsEventApproved] = useState<boolean>(true);
 
   const [categories, setCategories] = useState<GuestCategoryRow[]>([]);
   const [guests, setGuests] = useState<GuestRow[]>([]);
+  const [tables, setTables] = useState<TableRow[]>([]);
   const [sentGuestIds, setSentGuestIds] = useState<Set<string>>(new Set());
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -130,6 +137,7 @@ export default function CoupleGuestsWebScreen() {
     if (!resolvedEventId) {
       setCategories([]);
       setGuests([]);
+      setTables([]);
       setSentGuestIds(new Set());
       return;
     }
@@ -137,15 +145,34 @@ export default function CoupleGuestsWebScreen() {
     if (userData?.id) setActiveEvent(userData.id, resolvedEventId);
     setLoading(true);
     try {
-      const [evt, cats, g] = await Promise.all([
+      const [evt, cats, g, tbls] = await Promise.all([
         eventService.getEvent(resolvedEventId),
         guestService.getGuestCategories(resolvedEventId),
         guestService.getGuests(resolvedEventId),
+        tableService.getTables(resolvedEventId).catch((tableErr) => {
+          console.warn('Guests web tables load error:', tableErr);
+          return [] as any[];
+        }),
       ]);
       setEventTitle(String((evt as any)?.title || '').trim());
+      setEventDate((evt as any)?.date instanceof Date ? (evt as any).date : ((evt as any)?.date ? new Date((evt as any).date) : null));
+      setEventLocation(
+        [String((evt as any)?.location || '').trim(), String((evt as any)?.city || '').trim()]
+          .filter(Boolean)
+          .join(', ')
+      );
       setIsEventApproved((evt as any)?.isApproved !== false);
       setCategories(cats as any);
       setGuests(g as any);
+      setTables(
+        (tbls as any[]).map((t) => ({
+          id: String(t.id),
+          name: t.name ?? null,
+          number: t.number ?? null,
+          capacity: t.capacity ?? null,
+          area: t.area ?? null,
+        }))
+      );
       setExpandedByCategoryId((prev) => {
         const next = { ...prev };
         for (const c of cats as any) if (next[c.id] === undefined) next[c.id] = true;
@@ -362,6 +389,31 @@ export default function CoupleGuestsWebScreen() {
   const importContacts = async () => {
     if (!resolvedEventId) return;
     router.push({ pathname: '/(couple)/select-category', params: { eventId: resolvedEventId } });
+  };
+
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const handleExportPdf = async () => {
+    if (exportingPdf) return;
+    if (!guests.length) {
+      Alert.alert('אין מוזמנים', 'הוסיפו מוזמנים לפני ייצוא הרשימה.');
+      return;
+    }
+    setExportingPdf(true);
+    try {
+      await exportGuestsToPdf({
+        eventTitle,
+        eventDate,
+        eventLocation,
+        categories,
+        guests,
+        tables,
+      });
+    } catch (e) {
+      console.error('Export PDF error:', e);
+      Alert.alert('שגיאה', 'אירעה תקלה בהפקת ה-PDF. נסו שוב.');
+    } finally {
+      setExportingPdf(false);
+    }
   };
 
   const openAdd = () => {
@@ -735,6 +787,26 @@ export default function CoupleGuestsWebScreen() {
                   <View style={styles.adminHeaderActionsRow}>
                     <Pressable
                       accessibilityRole="button"
+                      accessibilityLabel="ייצוא PDF"
+                      onPress={handleExportPdf}
+                      disabled={exportingPdf}
+                      style={({ hovered, pressed }: any) => [
+                        styles.adminHeaderImportBtn,
+                        Platform.OS === 'web' && hovered ? styles.adminHeaderImportBtnHover : null,
+                        pressed ? styles.btnPressed : null,
+                        exportingPdf ? styles.btnDisabled : null,
+                      ]}
+                    >
+                      {exportingPdf ? (
+                        <ActivityIndicator size="small" color={colors.primary} />
+                      ) : (
+                        <Ionicons name="document-text-outline" size={16} color={colors.primary} />
+                      )}
+                      <Text style={styles.adminHeaderImportBtnText}>{exportingPdf ? 'מפיק PDF…' : 'ייצוא PDF'}</Text>
+                    </Pressable>
+
+                    <Pressable
+                      accessibilityRole="button"
                       accessibilityLabel="ייבוא מאקסל"
                       onPress={openImport}
                       style={({ hovered, pressed }: any) => [
@@ -868,6 +940,27 @@ export default function CoupleGuestsWebScreen() {
               </Pressable>
             ) : (
               <View style={[styles.heroActionsRow, isNarrow ? styles.heroActionsRowNarrow : null]}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="ייצוא PDF"
+                  onPress={handleExportPdf}
+                  disabled={exportingPdf}
+                  style={({ hovered, pressed }: any) => [
+                    styles.importGuestsBtn,
+                    isNarrow ? styles.importGuestsBtnNarrow : null,
+                    Platform.OS === 'web' && hovered ? styles.importGuestsBtnHover : null,
+                    pressed ? styles.btnPressed : null,
+                    exportingPdf ? styles.btnDisabled : null,
+                  ]}
+                >
+                  {exportingPdf ? (
+                    <ActivityIndicator size="small" color={colors.primary} />
+                  ) : (
+                    <Ionicons name="document-text-outline" size={18} color={colors.primary} />
+                  )}
+                  <Text style={styles.importGuestsBtnText}>{exportingPdf ? 'מפיק PDF…' : 'ייצוא PDF'}</Text>
+                </Pressable>
+
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="ייבוא מאקסל"
@@ -2976,6 +3069,7 @@ const styles = StyleSheet.create({
   iconBtnDangerHover: { borderColor: 'rgba(244,63,94,0.22)', backgroundColor: 'rgba(244,63,94,0.06)' },
 
   btnPressed: { opacity: 0.92, transform: [{ scale: 0.99 }] },
+  btnDisabled: { opacity: 0.6 },
 
   modalOverlay: {
     flex: 1,

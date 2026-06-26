@@ -131,7 +131,55 @@ async function ensureUnapprovedEventGuestLimit(eventId: string): Promise<void> {
   }
 }
 
+export type EventGuestPeopleStats = {
+  invitedPeople: number;
+  comingPeople: number;
+  seatedPeople: number;
+};
+
 export const guestService = {
+  /**
+   * People-based guest aggregates for one or more events.
+   * Paginates through all guest rows (Supabase defaults to 1000 rows per request).
+   */
+  getGuestPeopleStatsByEventIds: async (eventIds: string[]): Promise<Record<string, EventGuestPeopleStats>> => {
+    const cleanIds = [...new Set(eventIds.map((id) => String(id || '').trim()).filter(Boolean))];
+    if (!cleanIds.length) return {};
+
+    const next: Record<string, EventGuestPeopleStats> = {};
+    const pageSize = 1000;
+
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await supabase
+        .from('guests')
+        .select('event_id,status,number_of_people,table_id')
+        .in('event_id', cleanIds)
+        .range(from, from + pageSize - 1);
+
+      if (error) throw error;
+
+      const rows = data || [];
+      for (const row of rows) {
+        const eventId = String((row as any)?.event_id ?? '').trim();
+        if (!eventId) continue;
+
+        const people = Number((row as any)?.number_of_people) || 1;
+        const status = String((row as any)?.status ?? '').trim();
+        const hasTable = Boolean((row as any)?.table_id);
+
+        const prev = next[eventId] || { invitedPeople: 0, comingPeople: 0, seatedPeople: 0 };
+        prev.invitedPeople += people;
+        if (status === 'מגיע') prev.comingPeople += people;
+        if (hasTable) prev.seatedPeople += people;
+        next[eventId] = prev;
+      }
+
+      if (rows.length < pageSize) break;
+    }
+
+    return next;
+  },
+
   // Get all guests for an event
   getGuests: async (eventId: string): Promise<Guest[]> => {
     try {

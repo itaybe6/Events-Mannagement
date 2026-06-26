@@ -135,6 +135,7 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
   const {
     loading,
     guests,
+    filteredGuests,
     query,
     setQuery,
     filter,
@@ -270,6 +271,34 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
     });
     return m;
   }, [guests]);
+
+  // Phone (mobile) view groups guests by table instead of by category.
+  const tableSections = useMemo(() => {
+    const groups = new Map<string, { key: string; name: string; sort: number; data: Guest[] }>();
+    filteredGuests.forEach((g) => {
+      const tid = String(g.tableId ?? "").trim();
+      const t = tid ? tableById.get(tid) : null;
+      let key = "__no_table__";
+      let name = "ללא שולחן";
+      let sort = 2_000_000;
+      if (t) {
+        const n = typeof t.number === "number" ? t.number : null;
+        key = `t:${tid}`;
+        name = n !== null ? `שולחן ${n}` : t.name ? `שולחן ${t.name}` : "שולחן";
+        sort = n !== null ? n : 1_000_000;
+      }
+      const cur = groups.get(key) || { key, name, sort, data: [] as Guest[] };
+      cur.data.push(g);
+      groups.set(key, cur);
+    });
+    return Array.from(groups.values())
+      .sort((a, b) => (a.sort !== b.sort ? a.sort - b.sort : a.name.localeCompare(b.name, "he")))
+      .map((sec) => ({
+        ...sec,
+        checkedIn: sec.data.filter((g) => Boolean(g.checkedIn)).length,
+        total: sec.data.length,
+      }));
+  }, [filteredGuests, tableById]);
 
   const visibleSections = useMemo(() => {
     const tid = tableFilterId ? String(tableFilterId).trim() : null;
@@ -936,37 +965,6 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
             showsVerticalScrollIndicator={false}
             contentContainerStyle={[styles.content, isAdminStyledMobile ? styles.contentAdminMobile : null, { paddingBottom: contentBottomPadding }]}
           >
-            {isAdminStyledMobile ? (
-              <View style={styles.adminMobileIntroCard}>
-                <View style={styles.adminMobileIntroHeader}>
-                  <View style={styles.adminMobileIntroIcon}>
-                    <Ionicons name="checkbox-outline" size={18} color={colors.primary} />
-                  </View>
-                  <View style={styles.adminMobileIntroText}>
-                    <Text style={styles.adminMobileIntroTitle}>צ׳ק-אין אורחים</Text>
-                    <View style={styles.adminMobileIntroStats}>
-                      <View style={styles.adminMobileIntroStatRow}>
-                        <Text style={styles.adminMobileIntroStatValue}>{`${counts.checkedIn}/${counts.total}`}</Text>
-                        <Text style={styles.adminMobileIntroSubtitle}>קבוצות</Text>
-                      </View>
-                      <View style={styles.adminMobileIntroStatRow}>
-                        <Text style={styles.adminMobileIntroStatValue}>{`${arrivedPeople}/${invitedPeople}`}</Text>
-                        <Text style={styles.adminMobileIntroSubtitle}>אנשים</Text>
-                      </View>
-                    </View>
-                  </View>
-                  <TouchableOpacity
-                    onPress={onRefreshAll}
-                    style={styles.adminMobileRefreshBtn}
-                    activeOpacity={0.86}
-                    accessibilityRole="button"
-                    accessibilityLabel="רענון"
-                  >
-                    <Ionicons name="refresh" size={18} color={colors.primary} />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ) : null}
             {/* Search */}
             <View style={styles.searchCard}>
               <Text>
@@ -1006,9 +1004,9 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
               })}
             </View>
 
-            {/* Categories */}
+            {/* Grouped by table */}
             <View style={{ gap: 12, marginTop: 12 }}>
-              {sections.map((sec) => {
+              {tableSections.map((sec) => {
                 const isCollapsed = collapsed.has(sec.key);
                 const pct = sec.total ? Math.round((sec.checkedIn / sec.total) * 100) : 0;
                 return (
@@ -1018,7 +1016,7 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                       onPress={() => toggleCollapsed(sec.key)}
                       activeOpacity={0.9}
                       accessibilityRole="button"
-                      accessibilityLabel={`קטגוריה ${sec.name}`}
+                      accessibilityLabel={sec.name}
                     >
                       <View style={styles.categoryHeaderRight}>
                         <Ionicons
@@ -1026,6 +1024,9 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                           size={20}
                           color={"rgba(17,24,39,0.55)"}
                         />
+                        <View style={styles.tableHeaderIcon}>
+                          <Ionicons name="restaurant" size={14} color={colors.primary} />
+                        </View>
                         <Text style={styles.categoryTitle} numberOfLines={1}>
                           {sec.name}
                         </Text>
@@ -1042,7 +1043,7 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                     </TouchableOpacity>
 
                     {!isCollapsed ? (
-                      <View style={{ gap: 12, marginTop: 14 }}>
+                      <View style={{ gap: 8, marginTop: 10 }}>
                         {sec.data.map((g) => {
                           const checkedIn = Boolean(g.checkedIn);
                           const isSaving = savingId === g.id;
@@ -1054,103 +1055,103 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                           const isSavingCount = savingCountId === g.id;
                           const canCall = Boolean(phoneToTel(g.phone));
                           return (
-                            <View key={g.id} style={[styles.guestRow, checkedIn && styles.guestRowChecked]}>
+                            <View key={g.id} style={[styles.cGuestRow, checkedIn && styles.cGuestRowOn]}>
                               {/* Accent bar on the right edge (RTL) */}
-                              <View style={[styles.guestAccentBar, checkedIn && styles.guestAccentBarOn]} />
+                              <View style={[styles.cAccent, checkedIn && styles.cAccentOn]} />
 
-                              {/* RIGHT: guest info */}
-                              <View style={styles.guestMain}>
-                                <Text style={styles.guestName} numberOfLines={1}>
+                              {/* RIGHT: name + status */}
+                              <View style={styles.cInfo}>
+                                <Text style={styles.cName} numberOfLines={1}>
                                   {g.name}
                                 </Text>
-
-                                <View style={styles.guestMetaRow}>
-                                  <View
-                                    style={[
-                                      styles.statusPill,
-                                      g.status === "מגיע"
-                                        ? styles.statusComing
-                                        : g.status === "לא מגיע"
-                                        ? styles.statusNot
-                                        : styles.statusPending,
-                                    ]}
-                                  >
-                                    <Text style={styles.statusText}>{g.status}</Text>
-                                  </View>
-
-                                  {checkedIn ? (
-                                    <View style={styles.arrivedStepper}>
-                                      <Pressable
-                                        accessibilityRole="button"
-                                        accessibilityLabel={`הפחת כמות שהגיעה עבור ${g.name}`}
-                                        onPress={() => void setCheckedInCount(g, Math.max(0, arrivedCount - 1))}
-                                        disabled={isSavingCount || arrivedCount <= 0}
-                                        hitSlop={8}
-                                        style={({ pressed }) => [
-                                          styles.stepBtn,
-                                          (isSavingCount || arrivedCount <= 0) && styles.stepBtnDisabled,
-                                          pressed ? { opacity: 0.85 } : null,
-                                        ]}
-                                      >
-                                        <Ionicons name="remove" size={18} color={colors.primary} />
-                                      </Pressable>
-
-                                      <View style={styles.stepCountWrap}>
-                                        {isSavingCount ? (
-                                          <ActivityIndicator size={13} color={colors.primary} />
-                                        ) : (
-                                          <View style={styles.stepCountInner}>
-                                            <Text style={styles.stepCountText}>{arrivedCount}</Text>
-                                            <Text style={styles.stepCountDim}>{`/${people}`}</Text>
-                                          </View>
-                                        )}
-                                      </View>
-
-                                      <Pressable
-                                        accessibilityRole="button"
-                                        accessibilityLabel={`הגדל כמות שהגיעה עבור ${g.name}`}
-                                        onPress={() => void setCheckedInCount(g, arrivedCount + 1)}
-                                        disabled={isSavingCount}
-                                        hitSlop={8}
-                                        style={({ pressed }) => [
-                                          styles.stepBtn,
-                                          isSavingCount && styles.stepBtnDisabled,
-                                          pressed ? { opacity: 0.85 } : null,
-                                        ]}
-                                      >
-                                        <Ionicons name="add" size={18} color={colors.primary} />
-                                      </Pressable>
-                                    </View>
-                                  ) : (
-                                    <View style={styles.peoplePill}>
-                                      <Ionicons name="person" size={13} color={"rgba(17,24,39,0.65)"} />
-                                      <Text style={styles.peopleText}>{people}</Text>
-                                    </View>
-                                  )}
-
-                                  <TouchableOpacity
-                                    onPress={() => void callGuest(g.phone, g.name)}
-                                    disabled={!canCall}
-                                    activeOpacity={0.85}
-                                    style={[styles.phoneBtn, !canCall && styles.phoneBtnDisabled]}
-                                    accessibilityRole="button"
-                                    accessibilityLabel={canCall ? `התקשר ל-${g.name}` : `אין מספר טלפון עבור ${g.name}`}
-                                  >
-                                    <Ionicons
-                                      name="call-outline"
-                                      size={16}
-                                      color={canCall ? colors.primary : "rgba(17,24,39,0.35)"}
-                                    />
-                                  </TouchableOpacity>
+                                <View
+                                  style={[
+                                    styles.cStatusPill,
+                                    g.status === "מגיע"
+                                      ? styles.statusComing
+                                      : g.status === "לא מגיע"
+                                      ? styles.statusNot
+                                      : styles.statusPending,
+                                  ]}
+                                >
+                                  <Text style={styles.cStatusText}>{g.status}</Text>
                                 </View>
+                              </View>
+
+                              {/* MIDDLE: arrived count + phone */}
+                              <View style={styles.cControls}>
+                                {checkedIn ? (
+                                  <View style={styles.cStepper}>
+                                    <Pressable
+                                      accessibilityRole="button"
+                                      accessibilityLabel={`הפחת כמות שהגיעה עבור ${g.name}`}
+                                      onPress={() => void setCheckedInCount(g, Math.max(0, arrivedCount - 1))}
+                                      disabled={isSavingCount || arrivedCount <= 0}
+                                      hitSlop={6}
+                                      style={({ pressed }) => [
+                                        styles.cStepBtn,
+                                        (isSavingCount || arrivedCount <= 0) && styles.stepBtnDisabled,
+                                        pressed ? { opacity: 0.85 } : null,
+                                      ]}
+                                    >
+                                      <Ionicons name="remove" size={16} color={colors.primary} />
+                                    </Pressable>
+
+                                    <View style={styles.cStepCountWrap}>
+                                      {isSavingCount ? (
+                                        <ActivityIndicator size={12} color={colors.primary} />
+                                      ) : (
+                                        <View style={styles.cStepCountInner}>
+                                          <Text style={styles.cStepCountText}>{arrivedCount}</Text>
+                                          <Text style={styles.cStepCountDim}>{`/${people}`}</Text>
+                                        </View>
+                                      )}
+                                    </View>
+
+                                    <Pressable
+                                      accessibilityRole="button"
+                                      accessibilityLabel={`הגדל כמות שהגיעה עבור ${g.name}`}
+                                      onPress={() => void setCheckedInCount(g, arrivedCount + 1)}
+                                      disabled={isSavingCount}
+                                      hitSlop={6}
+                                      style={({ pressed }) => [
+                                        styles.cStepBtn,
+                                        isSavingCount && styles.stepBtnDisabled,
+                                        pressed ? { opacity: 0.85 } : null,
+                                      ]}
+                                    >
+                                      <Ionicons name="add" size={16} color={colors.primary} />
+                                    </Pressable>
+                                  </View>
+                                ) : (
+                                  <View style={styles.cPeople}>
+                                    <Ionicons name="person" size={12} color={"rgba(17,24,39,0.65)"} />
+                                    <Text style={styles.cPeopleText}>{people}</Text>
+                                  </View>
+                                )}
+
+                                <TouchableOpacity
+                                  onPress={() => void callGuest(g.phone, g.name)}
+                                  disabled={!canCall}
+                                  activeOpacity={0.85}
+                                  style={[styles.cPhone, !canCall && styles.cPhoneDisabled]}
+                                  accessibilityRole="button"
+                                  accessibilityLabel={canCall ? `התקשר ל-${g.name}` : `אין מספר טלפון עבור ${g.name}`}
+                                >
+                                  <Ionicons
+                                    name="call-outline"
+                                    size={15}
+                                    color={canCall ? colors.primary : "rgba(17,24,39,0.35)"}
+                                  />
+                                </TouchableOpacity>
                               </View>
 
                               {/* LEFT: check-in toggle */}
                               <Pressable
                                 onPress={() => toggleCheckIn(g)}
                                 style={({ pressed }) => [
-                                  styles.guestCheckColumn,
-                                  checkedIn ? styles.guestCheckColumnOn : styles.guestCheckColumnOff,
+                                  styles.cCheck,
+                                  checkedIn ? styles.cCheckOn : styles.cCheckOff,
                                   pressed ? { transform: [{ scale: 0.96 }] } : null,
                                   isSaving ? { opacity: 0.72 } : null,
                                 ]}
@@ -1158,18 +1159,15 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                                 accessibilityRole="button"
                                 accessibilityLabel={checkedIn ? `סמן שלא הגיע: ${g.name}` : `סמן שהגיע: ${g.name}`}
                               >
-                                <View style={[styles.guestCheckCircle, checkedIn && styles.guestCheckCircleOn]}>
-                                  {isSaving ? (
-                                    <ActivityIndicator size={16} color={checkedIn ? colors.white : colors.primary} />
-                                  ) : checkedIn ? (
-                                    <Ionicons name="checkmark" size={20} color={colors.white} />
-                                  ) : (
-                                    <Ionicons name="checkmark" size={18} color={"rgba(6,23,62,0.28)"} />
-                                  )}
-                                </View>
-                                <Text style={[styles.guestCheckLabel, checkedIn && styles.guestCheckLabelOn]}>
-                                  {checkedIn ? "הגיע" : "סמן"}
-                                </Text>
+                                {isSaving ? (
+                                  <ActivityIndicator size={16} color={checkedIn ? colors.white : colors.primary} />
+                                ) : (
+                                  <Ionicons
+                                    name="checkmark"
+                                    size={20}
+                                    color={checkedIn ? colors.white : "rgba(6,23,62,0.28)"}
+                                  />
+                                )}
                               </Pressable>
                             </View>
                           );
@@ -1180,7 +1178,7 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                 );
               })}
 
-              {sections.length === 0 ? (
+              {tableSections.length === 0 ? (
                 <View style={styles.emptyCard}>
                   <Ionicons name="people-outline" size={42} color={colors.gray[500]} />
                   <Text style={styles.emptyTitle}>לא נמצאו אורחים</Text>
@@ -1269,8 +1267,11 @@ const styles = StyleSheet.create({
   topTitle: { fontSize: 16, fontWeight: "900", color: colors.text, writingDirection: "rtl" },
   topSubtitle: { marginTop: 2, fontSize: 12, fontWeight: "800", color: colors.gray[600], textAlign: "center", writingDirection: "rtl" },
 
-  // Force RTL layout on web / non-RTL system locales (keeps Hebrew UI consistent)
-  content: { padding: 16, paddingTop: 6, direction: "rtl" },
+  // RTL visual layout is handled via ROW_DIR / ALIGN_RIGHT helpers. Do NOT also set
+  // `direction: "rtl"` here: it inherits to all descendants and, combined with
+  // ROW_DIR (which is `row-reverse` when the runtime isn't RTL), double-mirrors the
+  // whole page back to LTR.
+  content: { padding: 16, paddingTop: 6 },
   contentAdminMobile: { paddingTop: 8 },
   bottomContentSpacer: { height: 56 },
   adminMobileIntroCard: {
@@ -1546,6 +1547,117 @@ const styles = StyleSheet.create({
   },
   tabletArrivedLabelOn: { color: "#10B981" },
 
+  tableHeaderIcon: {
+    width: 26,
+    height: 26,
+    borderRadius: 8,
+    backgroundColor: "rgba(15,69,230,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(15,69,230,0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  /* ── Compact guest row (phone) ── */
+  cGuestRow: {
+    position: "relative",
+    overflow: "hidden",
+    backgroundColor: colors.white,
+    borderRadius: 16,
+    paddingVertical: 8,
+    paddingLeft: 8,
+    paddingRight: 14,
+    borderWidth: 1,
+    borderColor: "rgba(15,23,42,0.07)",
+    flexDirection: ROW_DIR,
+    alignItems: "center",
+    gap: 8,
+  },
+  cGuestRowOn: { borderColor: "rgba(76,175,80,0.30)", backgroundColor: "rgba(76,175,80,0.05)" },
+  cAccent: { position: "absolute", right: 0, top: 0, bottom: 0, width: 4, backgroundColor: "rgba(148,163,184,0.45)" },
+  cAccentOn: { backgroundColor: colors.success },
+  cInfo: { flex: 1, minWidth: 0, alignItems: ALIGN_RIGHT, gap: 5 },
+  cName: { fontSize: 15, fontWeight: "900", color: colors.text, textAlign: "right", writingDirection: "rtl" },
+  cStatusPill: {
+    alignSelf: ALIGN_RIGHT,
+    height: 24,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cStatusText: { fontSize: 11, fontWeight: "900", color: colors.text, writingDirection: "rtl" },
+  cControls: { flexDirection: ROW_DIR, alignItems: "center", gap: 6 },
+  cStepper: {
+    flexDirection: ROW_DIR,
+    alignItems: "center",
+    height: 30,
+    borderRadius: 999,
+    paddingHorizontal: 3,
+    gap: 2,
+    backgroundColor: "rgba(76,175,80,0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(76,175,80,0.26)",
+  },
+  cStepBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: 999,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: "rgba(76,175,80,0.30)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cStepCountWrap: { minWidth: 38, height: 26, alignItems: "center", justifyContent: "center" },
+  cStepCountInner: { flexDirection: ROW_DIR, alignItems: "baseline", gap: 1 },
+  cStepCountText: { fontSize: 13, fontWeight: "900", color: "#1B5E20", textAlign: "center" },
+  cStepCountDim: { fontSize: 10, fontWeight: "800", color: "rgba(27,94,32,0.55)" },
+  cPeople: {
+    flexDirection: ROW_DIR,
+    alignItems: "center",
+    gap: 4,
+    minWidth: 42,
+    height: 30,
+    paddingHorizontal: 8,
+    borderRadius: 999,
+    backgroundColor: "rgba(15,23,42,0.05)",
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.06)",
+    justifyContent: "center",
+  },
+  cPeopleText: { fontSize: 12, fontWeight: "900", color: "rgba(17,24,39,0.70)" },
+  cPhone: {
+    width: 32,
+    height: 32,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(232,238,255,0.96)",
+    borderWidth: 1,
+    borderColor: "rgba(17, 82, 212, 0.16)",
+  },
+  cPhoneDisabled: { backgroundColor: "rgba(0,0,0,0.04)", borderColor: "rgba(0,0,0,0.06)" },
+  cCheck: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cCheckOn: {
+    backgroundColor: colors.success,
+    borderColor: colors.success,
+    shadowColor: colors.success,
+    shadowOpacity: 0.28,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  cCheckOff: { backgroundColor: "rgba(6,23,62,0.035)", borderColor: "rgba(15,23,42,0.08)" },
+
   /* shared guest primitives (still used by phone layout) */
   guestRow: {
     position: "relative",
@@ -1558,7 +1670,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(15,23,42,0.07)",
     flexDirection: ROW_DIR,
-    direction: "rtl",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
@@ -1591,7 +1702,7 @@ const styles = StyleSheet.create({
     writingDirection: "rtl",
   },
   guestPhone: { fontSize: 13, fontWeight: "700", color: colors.gray[600], textAlign: "right" },
-  guestMetaRow: { width: "100%", flexDirection: ROW_DIR, alignItems: "center", justifyContent: "flex-start", gap: 10, flexWrap: "wrap", direction: "rtl" },
+  guestMetaRow: { width: "100%", flexDirection: ROW_DIR, alignItems: "center", justifyContent: "flex-start", gap: 10, flexWrap: "wrap" },
   peoplePill: {
     flexDirection: ROW_DIR,
     alignItems: "center",

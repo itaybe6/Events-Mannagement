@@ -34,9 +34,8 @@ export default function AdminProfileShortcutBadge() {
   const adminAvatarUri = useMemo(() => {
     const direct = String(userData?.avatar_url ?? '').trim();
     if (direct) return direct;
-    const seed = encodeURIComponent(userData?.email ?? 'admin');
-    return `https://i.pravatar.cc/256?u=${seed}`;
-  }, [userData?.avatar_url, userData?.email]);
+    return null;
+  }, [userData?.avatar_url]);
 
   useEffect(() => {
     if (Platform.OS !== 'web' || !menuOpen) return;

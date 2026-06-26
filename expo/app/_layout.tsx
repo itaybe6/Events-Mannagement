@@ -1,7 +1,7 @@
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { Ionicons } from "@expo/vector-icons";
 import { useFonts } from "expo-font";
-import { Stack, useRouter, useSegments } from "expo-router";
+import { Stack, useRootNavigationState, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, I18nManager, Platform, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -346,6 +346,8 @@ function RootLayoutNav() {
   const { isLoggedIn, loading, initializeAuth, resetAuth } = useUserStore();
   const segments = useSegments();
   const router = useRouter();
+  const rootNavigationState = useRootNavigationState();
+  const isNavigationReady = Boolean(rootNavigationState?.key);
   const [initializing, setInitializing] = useState(true);
   const [initTimedOut, setInitTimedOut] = useState(false);
   const initTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -425,9 +427,7 @@ function RootLayoutNav() {
         if (event === 'SIGNED_OUT') {
           // User signed out or token is invalid
           resetAuth();
-          if (isMountedRef.current) {
-            router.replace('/onboarding');
-          }
+          // Navigation is deferred to the routing effect once the Stack is ready.
         } else if (event === 'TOKEN_REFRESHED') {
           // Token was refreshed successfully, reinitialize (with timeout guard)
           try {
@@ -435,9 +435,7 @@ function RootLayoutNav() {
           } catch (error) {
             console.error('Error during token refresh:', error);
             resetAuth();
-            if (isMountedRef.current) {
-              router.replace('/login');
-            }
+            // Navigation is deferred to the routing effect once the Stack is ready.
           }
         }
       }
@@ -456,6 +454,8 @@ function RootLayoutNav() {
   }, []);
 
   useEffect(() => {
+    // Expo Router requires the Stack to be mounted before any navigation call.
+    if (!isNavigationReady) return;
     // Wait for the local persisted state to hydrate before routing.
     if (!hydrated) return;
     // For users without a (persisted) session, wait for the initial auth check
@@ -486,44 +486,13 @@ function RootLayoutNav() {
       if (isOnboarding || isLogin || isSignup) return;
       router.replace('/onboarding');
     }
-  }, [isLoggedIn, segments, initializing, loading, hydrated]);
+  }, [isLoggedIn, segments, initializing, loading, hydrated, isNavigationReady]);
 
-  if (initTimedOut && !isLoggedIn) {
-    return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', padding: 24 }}>
-        <Text style={{ fontSize: 18, fontWeight: '600', marginBottom: 8 }}>לא ניתן להתחבר כרגע</Text>
-        <Text style={{ fontSize: 14, color: colors.gray[600], textAlign: 'center', marginBottom: 20 }}>
-          בדוק חיבור לאינטרנט או נסה שוב בעוד רגע.
-        </Text>
-        <TouchableOpacity
-          onPress={startAuthInit}
-          style={{ backgroundColor: colors.primary, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 10, marginBottom: 10 }}
-        >
-          <Text style={{ color: colors.white, fontSize: 16 }}>נסה שוב</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => {
-            resetAuth();
-            router.replace('/login');
-          }}
-          style={{ paddingVertical: 8, paddingHorizontal: 24 }}
-        >
-          <Text style={{ color: colors.yaleBlue, fontSize: 16 }}>חזרה להתחברות</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
-  // Show loading screen only until local state hydrates, and (for users
-  // without a persisted session) until the first auth check completes.
-  // An already logged-in user skips this and goes straight into the app.
-  if (!hydrated || (!isLoggedIn && (initializing || loading))) {
-    return (
-      <AppLoaderScreen variant="default" title="מתחבר" subtitle="מכין את האפליקציה..." />
-    );
-  }
+  const showAuthLoader = !hydrated || (!isLoggedIn && (initializing || loading));
+  const showInitTimeout = initTimedOut && !isLoggedIn;
 
   return (
+    <>
     <Stack
       screenOptions={{
         headerBackTitle: "חזרה",
@@ -548,5 +517,33 @@ function RootLayoutNav() {
       <Stack.Screen name="seating/templates" options={{ headerShown: false }} />
        
     </Stack>
+    {showInitTimeout ? (
+      <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', padding: 24 }}>
+        <Text style={{ fontSize: 18, fontWeight: '600', marginBottom: 8 }}>לא ניתן להתחבר כרגע</Text>
+        <Text style={{ fontSize: 14, color: colors.gray[600], textAlign: 'center', marginBottom: 20 }}>
+          בדוק חיבור לאינטרנט או נסה שוב בעוד רגע.
+        </Text>
+        <TouchableOpacity
+          onPress={startAuthInit}
+          style={{ backgroundColor: colors.primary, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 10, marginBottom: 10 }}
+        >
+          <Text style={{ color: colors.white, fontSize: 16 }}>נסה שוב</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => {
+            resetAuth();
+            if (isNavigationReady) router.replace('/login');
+          }}
+          style={{ paddingVertical: 8, paddingHorizontal: 24 }}
+        >
+          <Text style={{ color: colors.yaleBlue, fontSize: 16 }}>חזרה להתחברות</Text>
+        </TouchableOpacity>
+      </View>
+    ) : showAuthLoader ? (
+      <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
+        <AppLoaderScreen variant="default" title="מתחבר" subtitle="מכין את האפליקציה..." />
+      </View>
+    ) : null}
+    </>
   );
 }
