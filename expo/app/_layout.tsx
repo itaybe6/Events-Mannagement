@@ -314,6 +314,30 @@ export default function RootLayout() {
     } catch {
       // ignore
     }
+
+    // Mobile browsers report `100vh` as the *largest* viewport (the height when
+    // the address/toolbar is hidden), so full-height screens get clipped behind
+    // the browser chrome — content looks "cut off" at the top and bottom. Pin the
+    // app root to the *dynamic* viewport height (`100dvh`) so it always matches
+    // the currently-visible area. Falls back to `100%` where `dvh` is unsupported.
+    try {
+      const STYLE_ID = 'app-dvh-fix';
+      if (!document.getElementById(STYLE_ID)) {
+        const style = document.createElement('style');
+        style.id = STYLE_ID;
+        style.textContent = [
+          'html, body { height: 100%; }',
+          '#root { display: flex; flex-direction: column; height: 100%; }',
+          '@supports (height: 100dvh) {',
+          '  html, body { height: 100dvh; }',
+          '  #root { height: 100dvh; }',
+          '}',
+        ].join('\n');
+        document.head.appendChild(style);
+      }
+    } catch {
+      // ignore
+    }
   }, []);
 
   useEffect(() => {

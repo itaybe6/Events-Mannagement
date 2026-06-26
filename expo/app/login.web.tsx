@@ -39,7 +39,7 @@ export default function LoginWebScreen() {
   const isCompact = width < 480;
   // Full-bleed on web so the hero can reach the viewport edge (no outer padding).
   const pagePadding = Platform.OS === 'web' ? 0 : isCompact ? 12 : isLg ? 0 : 16;
-  const shellHeightWeb = isLg ? '100vh' : undefined;
+  const shellHeightWeb = isLg ? '100dvh' : undefined;
   const formSidePadding = isCompact ? 20 : isLg ? (isWide ? 56 : 40) : 24;
   // Reduce hero padding on "regular" desktops so the form column doesn't get squeezed.
   const heroPadding = isCompact ? 24 : isLg ? (isWide ? 80 : 48) : 32;
@@ -485,7 +485,7 @@ const styles = StyleSheet.create({
   page: {
     flex: 1,
     padding: 24,
-    ...(Platform.OS === 'web' ? ({ minHeight: '100vh' } as any) : null),
+    ...(Platform.OS === 'web' ? ({ minHeight: '100dvh' } as any) : null),
     ...(Platform.OS === 'web'
       ? ({
           alignItems: 'stretch',
@@ -501,7 +501,7 @@ const styles = StyleSheet.create({
   },
   mobileScroll: {
     flex: 1,
-    ...(Platform.OS === 'web' ? ({ minHeight: '100vh' } as any) : null),
+    ...(Platform.OS === 'web' ? ({ minHeight: '100dvh' } as any) : null),
   },
   mobileScrollContent: {
     flexGrow: 1,
