@@ -315,25 +315,59 @@ export default function RootLayout() {
       // ignore
     }
 
-    // Mobile browsers report `100vh` as the *largest* viewport (the height when
-    // the address/toolbar is hidden), so full-height screens get clipped behind
-    // the browser chrome — content looks "cut off" at the top and bottom. Pin the
-    // app root to the *dynamic* viewport height (`100dvh`) so it always matches
-    // the currently-visible area. Falls back to `100%` where `dvh` is unsupported.
+    // Mobile browsers report `100vh` / `height: 100%` as the *largest* viewport
+    // (the height when the address/toolbar is hidden), so full-height screens get
+    // clipped behind the browser chrome — content looks "cut off" at the top and
+    // bottom. Pin the app root to the *dynamic* viewport height so it always
+    // matches the currently-visible area.
+    //
+    // Expo's default web template injects `html, body, #root { height: 100% }`
+    // via a stylesheet, so we (1) override it with a later stylesheet rule and
+    // (2) also set inline styles directly on the elements (inline styles beat
+    // stylesheet rules), guaranteeing the override regardless of CSS ordering.
     try {
       const STYLE_ID = 'app-dvh-fix';
       if (!document.getElementById(STYLE_ID)) {
         const style = document.createElement('style');
         style.id = STYLE_ID;
         style.textContent = [
-          'html, body { height: 100%; }',
-          '#root { display: flex; flex-direction: column; height: 100%; }',
+          'html, body { height: 100%; min-height: 100%; }',
+          '#root { display: flex; flex-direction: column; height: 100%; min-height: 100%; }',
           '@supports (height: 100dvh) {',
-          '  html, body { height: 100dvh; }',
-          '  #root { height: 100dvh; }',
+          '  html, body { height: 100dvh; min-height: 100dvh; }',
+          '  #root { height: 100dvh; min-height: 100dvh; }',
           '}',
         ].join('\n');
         document.head.appendChild(style);
+      }
+
+      const applyDynamicHeight = () => {
+        const root =
+          (document.getElementById('root') as HTMLElement | null) ||
+          (document.querySelector('[data-reactroot]') as HTMLElement | null) ||
+          (document.body?.firstElementChild as HTMLElement | null);
+        // Prefer the dynamic viewport unit; fall back to the live innerHeight
+        // (px) for browsers that don't understand `dvh` (older iOS Safari).
+        const supportsDvh =
+          typeof CSS !== 'undefined' && typeof CSS.supports === 'function' && CSS.supports('height', '100dvh');
+        const value = supportsDvh ? '100dvh' : `${window.innerHeight}px`;
+        for (const el of [document.documentElement, document.body, root]) {
+          if (!el) continue;
+          el.style.height = value;
+          el.style.minHeight = value;
+        }
+      };
+
+      applyDynamicHeight();
+      // Re-apply when the visible viewport changes (toolbar show/hide, rotation).
+      const flag = globalThis as typeof globalThis & { __appDvhListenersAttached?: boolean };
+      if (!flag.__appDvhListenersAttached) {
+        window.addEventListener('resize', applyDynamicHeight);
+        window.addEventListener('orientationchange', applyDynamicHeight);
+        if ((window as any).visualViewport) {
+          (window as any).visualViewport.addEventListener('resize', applyDynamicHeight);
+        }
+        flag.__appDvhListenersAttached = true;
       }
     } catch {
       // ignore
