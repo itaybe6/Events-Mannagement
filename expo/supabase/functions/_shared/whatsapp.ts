@@ -42,6 +42,18 @@ export function stripMarks(s: unknown): string {
   return String(s ?? "").replace(/[\u200E\u200F\u202A-\u202E]/g, "").trim();
 }
 
+// WhatsApp Cloud API rejects template *parameter* values that contain
+// new-line/tab characters or more than 4 consecutive spaces with error
+// (#132018) "There's an issue with the parameters in your template".
+// Approved template bodies may contain line breaks, but the dynamic values we
+// substitute into {{n}} placeholders may NOT — so collapse all whitespace runs
+// (including newlines/tabs) into single spaces before sending.
+export function sanitizeWaParamText(s: unknown): string {
+  return String(s ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 // Fill {key} / {{key}} placeholders with the provided variables.
 export function fillTemplate(template: string, vars: Record<string, string>): string {
   let out = String(template ?? "");
@@ -97,7 +109,7 @@ export function buildWaPayload(args: {
       components.push({ type: "header", parameters: [{ type: "image", image: { link } }] });
     }
   } else if (headerType === "text") {
-    const txt = fillTemplate(String(params?.header_text ?? ""), vars).trim();
+    const txt = sanitizeWaParamText(fillTemplate(String(params?.header_text ?? ""), vars));
     if (txt) {
       components.push({ type: "header", parameters: [{ type: "text", text: txt }] });
     }
@@ -109,7 +121,7 @@ export function buildWaPayload(args: {
     const ordered = [...variables].sort((a, b) => Number(a.index) - Number(b.index));
     const parameters = ordered.map((v, i) => {
       const raw = bodyValues[i] ?? v.sample ?? "";
-      const text = fillTemplate(String(raw), vars);
+      const text = sanitizeWaParamText(fillTemplate(String(raw), vars));
       return { type: "text", text: text || " " };
     });
     components.push({ type: "body", parameters });
@@ -131,7 +143,7 @@ export function buildWaPayload(args: {
       type: "button",
       sub_type: "url",
       index: String(btn.index),
-      parameters: [{ type: "text", text: suffix }],
+      parameters: [{ type: "text", text: sanitizeWaParamText(suffix) }],
     });
   }
 
