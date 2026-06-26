@@ -285,6 +285,17 @@ export default function RootLayout() {
         meta.content = desiredViewport;
         head.appendChild(meta);
       }
+
+      // Ensure a `theme-color` meta tag exists so mobile browsers tint their
+      // system bars (status bar / address bar) to match the app instead of
+      // showing a default light/dark band that looks like the page is "cut off".
+      // The actual color is kept in sync with the current screen elsewhere.
+      if (!document.querySelector('meta[name="theme-color"]')) {
+        const meta = document.createElement('meta');
+        meta.name = 'theme-color';
+        meta.setAttribute('content', '#F7FAFF');
+        head.appendChild(meta);
+      }
     } catch {
       // ignore
     }
@@ -416,6 +427,32 @@ export default function RootLayout() {
 
 function normalizePath(path: string): string {
   return String(path || '').replace(/\/+$/, '') || '/';
+}
+
+// Background color of the *current* screen, used to tint the browser system
+// bars (`theme-color`) and the html/body background (so overscroll past the
+// edges blends in instead of showing a contrasting band that looks like a cut).
+function getScreenBackground(segments: string[], pathname: string): string {
+  const first = segments[0];
+  const path = normalizePath(pathname);
+  // Onboarding is the only dark, full-bleed screen.
+  if (first === 'onboarding' || path === '/onboarding' || path === '/') return '#010c21';
+  if (first === 'login' || first === 'signup' || path === '/login' || path === '/signup') return '#F0F4F8';
+  // Couple / admin / employee app shells and everything else are light.
+  return '#F7FAFF';
+}
+
+function applyScreenChrome(bgColor: string) {
+  if (typeof document === 'undefined') return;
+  try {
+    const meta = document.querySelector('meta[name="theme-color"]') as HTMLMetaElement | null;
+    if (meta) meta.setAttribute('content', bgColor);
+    // Match the document background so overscroll / safe-area gutters blend in.
+    document.documentElement.style.backgroundColor = bgColor;
+    if (document.body) document.body.style.backgroundColor = bgColor;
+  } catch {
+    // ignore
+  }
 }
 
 function isPublicAuthRoute(segments: string[], pathname: string): boolean {
@@ -584,6 +621,14 @@ function RootLayoutNav() {
 
     return () => clearTimeout(timer);
   }, [isLoggedIn, segments, pathname, initializing, loading, hydrated, isNavigationReady, router]);
+
+  // Keep the browser system bars + document background in sync with the current
+  // screen so the page never looks "cut off" by a contrasting band at the top
+  // (status bar) / bottom (address bar) or when overscrolling past the edges.
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    applyScreenChrome(getScreenBackground(segments, pathname));
+  }, [segments, pathname]);
 
   const showAuthLoader = !hydrated || (!isLoggedIn && (initializing || loading));
   const showInitTimeout = initTimedOut && !isLoggedIn;
