@@ -64,6 +64,7 @@ export default function CoupleGuestsWebScreen() {
   const PageContentComponent: any = useEmbeddedWebShell ? View : ScrollView;
   const contentWidth = Math.max(0, windowWidth);
   const isNarrow = contentWidth < 720;
+  const isMobile = contentWidth < 768;
 
   const resolvedEventId =
     String(
@@ -708,7 +709,7 @@ export default function CoupleGuestsWebScreen() {
     ];
 
   const cardWidth = useMemo(() => {
-    if (contentWidth < 640) return '100%';
+    if (contentWidth < 360) return '100%';
     if (contentWidth < 980) return '48%';
     if (contentWidth < 1180) return '31.8%';
     return '19.2%';
@@ -784,40 +785,44 @@ export default function CoupleGuestsWebScreen() {
                     ))}
                   </View>
 
-                  <View style={styles.adminHeaderActionsRow}>
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="ייצוא PDF"
-                      onPress={handleExportPdf}
-                      disabled={exportingPdf}
-                      style={({ hovered, pressed }: any) => [
-                        styles.adminHeaderImportBtn,
-                        Platform.OS === 'web' && hovered ? styles.adminHeaderImportBtnHover : null,
-                        pressed ? styles.btnPressed : null,
-                        exportingPdf ? styles.btnDisabled : null,
-                      ]}
-                    >
-                      {exportingPdf ? (
-                        <ActivityIndicator size="small" color={colors.primary} />
-                      ) : (
-                        <Ionicons name="document-text-outline" size={16} color={colors.primary} />
-                      )}
-                      <Text style={styles.adminHeaderImportBtnText}>{exportingPdf ? 'מפיק PDF…' : 'ייצוא PDF'}</Text>
-                    </Pressable>
+                  <View style={[styles.adminHeaderActionsRow, isMobile ? styles.adminHeaderActionsRowMobile : null]}>
+                    {!isMobile ? (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="ייצוא PDF"
+                        onPress={handleExportPdf}
+                        disabled={exportingPdf}
+                        style={({ hovered, pressed }: any) => [
+                          styles.adminHeaderImportBtn,
+                          Platform.OS === 'web' && hovered ? styles.adminHeaderImportBtnHover : null,
+                          pressed ? styles.btnPressed : null,
+                          exportingPdf ? styles.btnDisabled : null,
+                        ]}
+                      >
+                        {exportingPdf ? (
+                          <ActivityIndicator size="small" color={colors.primary} />
+                        ) : (
+                          <Ionicons name="document-text-outline" size={16} color={colors.primary} />
+                        )}
+                        <Text style={styles.adminHeaderImportBtnText}>{exportingPdf ? 'מפיק PDF…' : 'ייצוא PDF'}</Text>
+                      </Pressable>
+                    ) : null}
 
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="ייבוא מאקסל"
-                      onPress={openImport}
-                      style={({ hovered, pressed }: any) => [
-                        styles.adminHeaderImportBtn,
-                        Platform.OS === 'web' && hovered ? styles.adminHeaderImportBtnHover : null,
-                        pressed ? styles.btnPressed : null,
-                      ]}
-                    >
-                      <Ionicons name="cloud-upload-outline" size={16} color={colors.primary} />
-                      <Text style={styles.adminHeaderImportBtnText}>ייבוא מאקסל</Text>
-                    </Pressable>
+                    {!isMobile ? (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="ייבוא מאקסל"
+                        onPress={openImport}
+                        style={({ hovered, pressed }: any) => [
+                          styles.adminHeaderImportBtn,
+                          Platform.OS === 'web' && hovered ? styles.adminHeaderImportBtnHover : null,
+                          pressed ? styles.btnPressed : null,
+                        ]}
+                      >
+                        <Ionicons name="cloud-upload-outline" size={16} color={colors.primary} />
+                        <Text style={styles.adminHeaderImportBtnText}>ייבוא מאקסל</Text>
+                      </Pressable>
+                    ) : null}
 
                     <Pressable
                       accessibilityRole="button"
@@ -825,6 +830,7 @@ export default function CoupleGuestsWebScreen() {
                       onPress={openAdd}
                       style={({ hovered, pressed }: any) => [
                         styles.adminHeaderActionBtn,
+                        isMobile ? styles.adminHeaderActionBtnMobile : null,
                         Platform.OS === 'web' && hovered ? styles.adminHeaderActionBtnHover : null,
                         pressed ? styles.btnPressed : null,
                       ]}
@@ -940,41 +946,45 @@ export default function CoupleGuestsWebScreen() {
               </Pressable>
             ) : (
               <View style={[styles.heroActionsRow, isNarrow ? styles.heroActionsRowNarrow : null]}>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="ייצוא PDF"
-                  onPress={handleExportPdf}
-                  disabled={exportingPdf}
-                  style={({ hovered, pressed }: any) => [
-                    styles.importGuestsBtn,
-                    isNarrow ? styles.importGuestsBtnNarrow : null,
-                    Platform.OS === 'web' && hovered ? styles.importGuestsBtnHover : null,
-                    pressed ? styles.btnPressed : null,
-                    exportingPdf ? styles.btnDisabled : null,
-                  ]}
-                >
-                  {exportingPdf ? (
-                    <ActivityIndicator size="small" color={colors.primary} />
-                  ) : (
-                    <Ionicons name="document-text-outline" size={18} color={colors.primary} />
-                  )}
-                  <Text style={styles.importGuestsBtnText}>{exportingPdf ? 'מפיק PDF…' : 'ייצוא PDF'}</Text>
-                </Pressable>
+                {!isMobile ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="ייצוא PDF"
+                    onPress={handleExportPdf}
+                    disabled={exportingPdf}
+                    style={({ hovered, pressed }: any) => [
+                      styles.importGuestsBtn,
+                      isNarrow ? styles.importGuestsBtnNarrow : null,
+                      Platform.OS === 'web' && hovered ? styles.importGuestsBtnHover : null,
+                      pressed ? styles.btnPressed : null,
+                      exportingPdf ? styles.btnDisabled : null,
+                    ]}
+                  >
+                    {exportingPdf ? (
+                      <ActivityIndicator size="small" color={colors.primary} />
+                    ) : (
+                      <Ionicons name="document-text-outline" size={18} color={colors.primary} />
+                    )}
+                    <Text style={styles.importGuestsBtnText}>{exportingPdf ? 'מפיק PDF…' : 'ייצוא PDF'}</Text>
+                  </Pressable>
+                ) : null}
 
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="ייבוא מאקסל"
-                  onPress={openImport}
-                  style={({ hovered, pressed }: any) => [
-                    styles.importGuestsBtn,
-                    isNarrow ? styles.importGuestsBtnNarrow : null,
-                    Platform.OS === 'web' && hovered ? styles.importGuestsBtnHover : null,
-                    pressed ? styles.btnPressed : null,
-                  ]}
-                >
-                  <Ionicons name="cloud-upload-outline" size={18} color={colors.primary} />
-                  <Text style={styles.importGuestsBtnText}>ייבוא מאקסל</Text>
-                </Pressable>
+                {!isMobile ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="ייבוא מאקסל"
+                    onPress={openImport}
+                    style={({ hovered, pressed }: any) => [
+                      styles.importGuestsBtn,
+                      isNarrow ? styles.importGuestsBtnNarrow : null,
+                      Platform.OS === 'web' && hovered ? styles.importGuestsBtnHover : null,
+                      pressed ? styles.btnPressed : null,
+                    ]}
+                  >
+                    <Ionicons name="cloud-upload-outline" size={18} color={colors.primary} />
+                    <Text style={styles.importGuestsBtnText}>ייבוא מאקסל</Text>
+                  </Pressable>
+                ) : null}
 
                 <Pressable
                   accessibilityRole="button"
@@ -2227,6 +2237,11 @@ const styles = StyleSheet.create({
     // @ts-expect-error - react-native-web supports boxShadow
     boxShadow: '0 10px 22px rgba(6,23,62,0.16)',
   },
+  adminHeaderActionBtnMobile: {
+    flex: 1,
+    justifyContent: 'center',
+    minHeight: 44,
+  },
   adminHeaderActionBtnHover: {
     opacity: 0.97,
   },
@@ -2241,6 +2256,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     flexWrap: 'wrap',
+  },
+  adminHeaderActionsRowMobile: {
+    width: '100%',
   },
   adminHeaderImportBtn: {
     minHeight: 40,

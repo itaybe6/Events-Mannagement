@@ -1,6 +1,6 @@
 import React from 'react';
 import { Image } from 'expo-image';
-import { Platform, StyleSheet, Text, View } from 'react-native';
+import { Platform, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 import { colors } from '@/constants/colors';
 
@@ -36,8 +36,10 @@ export default function AdminWebPageHeader({
   showNav = true,
   useDefaultActions = true,
 }: Props) {
+  const { width } = useWindowDimensions();
+  const isMobile = width < 768;
   const leadingContent = leading ?? (
-    <View style={styles.logoWrap}>
+    <View style={[styles.logoWrap, isMobile ? styles.logoWrapMobile : null]}>
       <Image source={APP_LOGO} style={styles.logoImg} contentFit="contain" transition={0} />
     </View>
   );
@@ -47,6 +49,59 @@ export default function AdminWebPageHeader({
     .map((part) => part.trim())
     .filter(Boolean);
   const useSubtitleChips = subtitleParts.length > 1;
+
+  if (isMobile) {
+    return (
+      <View style={[styles.card, styles.cardMobile]}>
+        <View style={styles.mobileTopRow}>
+          <View style={styles.leadingWrap}>{leadingContent}</View>
+          {actionsContent ? <View style={styles.mobileActions}>{actionsContent}</View> : null}
+        </View>
+
+        <View style={styles.mobileTextWrap}>
+          {eyebrow ? <Text style={styles.eyebrow}>{eyebrow}</Text> : null}
+          <Text style={[styles.title, styles.titleMobile]} numberOfLines={2}>
+            {title}
+          </Text>
+          {titleMeta ? <View style={[styles.titleMetaWrap, styles.titleMetaWrapMobile]}>{titleMeta}</View> : null}
+        </View>
+
+        {subtitle || subtitleContent ? (
+          <View style={styles.subtitleSection}>
+            {!hideSubtitleDivider ? <View style={styles.subtitleDivider} /> : null}
+            {subtitleContent ? (
+              subtitleContent
+            ) : useSubtitleChips ? (
+              <View style={styles.subtitleMetaRow}>
+                {subtitleParts.map((part) => (
+                  <View key={part} style={styles.subtitleMetaChip}>
+                    <Text style={styles.subtitleMetaText}>{part}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <Text style={styles.subtitle}>{subtitle}</Text>
+            )}
+          </View>
+        ) : null}
+
+        {showNav ? (
+          <View style={styles.navSection}>
+            <View style={styles.navSectionHeader}>
+              <View style={styles.navSectionDivider} />
+              <Text style={styles.navSectionLabel}>ניווט מהיר</Text>
+            </View>
+            <View style={styles.navRow}>
+              <View style={styles.navWrap}>
+                <AdminWebTopNav />
+              </View>
+              {navTrailing ? <View style={styles.navTrailing}>{navTrailing}</View> : null}
+            </View>
+          </View>
+        ) : null}
+      </View>
+    );
+  }
 
   return (
     <View style={styles.card}>
@@ -126,6 +181,13 @@ const styles = StyleSheet.create({
           shadowOffset: { width: 0, height: 4 },
         }),
   },
+  cardMobile: {
+    minHeight: 0,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    borderRadius: 20,
+    gap: 14,
+  },
   topRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -136,6 +198,24 @@ const styles = StyleSheet.create({
     gap: 18,
     minHeight: 50,
     flexWrap: 'wrap',
+  },
+  mobileTopRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    zIndex: 22,
+  },
+  mobileActions: {
+    flexShrink: 0,
+    position: 'relative',
+    overflow: 'visible',
+    zIndex: 23,
+  },
+  mobileTextWrap: {
+    width: '100%',
+    alignItems: 'stretch',
+    gap: 4,
   },
   identity: {
     flex: 1,
@@ -161,6 +241,11 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 6 },
   },
+  logoWrapMobile: {
+    width: 54,
+    height: 54,
+    borderRadius: 16,
+  },
   logoImg: {
     width: '88%',
     height: '88%',
@@ -176,6 +261,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'flex-start',
     alignItems: 'flex-end',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  titleMetaWrapMobile: {
+    marginTop: 8,
   },
   eyebrow: {
     fontSize: 12,
@@ -188,6 +278,9 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: colors.text,
     textAlign: 'right',
+  },
+  titleMobile: {
+    fontSize: 20,
   },
   actions: {
     flexDirection: 'row',

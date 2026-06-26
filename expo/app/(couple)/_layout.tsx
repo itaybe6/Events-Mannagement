@@ -1,6 +1,6 @@
 import React, { useEffect } from "react";
 import { StatusBar } from "expo-status-bar";
-import { Tabs, useRouter } from "expo-router";
+import { Tabs, useRootNavigationState, useRouter } from "expo-router";
 import { colors } from "@/constants/colors";
 import { Ionicons } from "@expo/vector-icons";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
@@ -14,6 +14,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function CoupleTabsLayout() {
   const router = useRouter();
+  const rootNavigationState = useRootNavigationState();
+  const isNavigationReady = Boolean(rootNavigationState?.key);
   const { isTabBarVisible, setTabBarVisible } = useLayoutStore();
   const { userType, isLoggedIn, loading } = useUserStore();
   const insets = useSafeAreaInsets();
@@ -25,20 +27,25 @@ export default function CoupleTabsLayout() {
   }, [setTabBarVisible]);
 
   useEffect(() => {
-    if (loading) return;
+    if (!isNavigationReady || loading) return;
+
+    let targetHref: string | null = null;
     if (!isLoggedIn) {
-      // Keep consistent with root auth-guard (logged-out default is onboarding).
-      router.replace('/onboarding');
-      return;
+      targetHref = '/login';
+    } else if (userType === 'admin') {
+      targetHref = '/(admin)/admin-events';
+    } else if (userType === 'employee') {
+      targetHref = '/(employee)/employee-events';
     }
-    if (userType === 'admin') {
-      router.replace('/(admin)/admin-events');
-      return;
-    }
-    if (userType === 'employee') {
-      router.replace('/(employee)/employee-events');
-    }
-  }, [isLoggedIn, userType, loading, router]);
+
+    if (!targetHref) return;
+
+    const timer = setTimeout(() => {
+      router.replace(targetHref as any);
+    }, 0);
+
+    return () => clearTimeout(timer);
+  }, [isLoggedIn, userType, loading, isNavigationReady, router]);
 
   return (
     <>

@@ -1,7 +1,7 @@
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { Ionicons } from "@expo/vector-icons";
 import { useFonts } from "expo-font";
-import { Stack, useRootNavigationState, useRouter, useSegments } from "expo-router";
+import { Stack, usePathname, useRootNavigationState, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, I18nManager, Platform, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -300,6 +300,20 @@ export default function RootLayout() {
       document.body.style.fontFamily =
         'Rubik, system-ui, -apple-system, "Segoe UI", Arial, "Noto Sans Hebrew", "Noto Sans", sans-serif';
     }
+
+    // Prevent the whole page from scrolling/shifting horizontally (common in RTL
+    // when decorative/off-screen elements bleed past the viewport edge). Inner
+    // horizontal ScrollViews keep their own overflow, so this is safe.
+    try {
+      document.documentElement.style.overflowX = 'hidden';
+      document.documentElement.style.maxWidth = '100%';
+      if (document.body) {
+        document.body.style.overflowX = 'hidden';
+        document.body.style.maxWidth = '100%';
+      }
+    } catch {
+      // ignore
+    }
   }, []);
 
   useEffect(() => {
@@ -342,9 +356,28 @@ export default function RootLayout() {
   );
 }
 
+function normalizePath(path: string): string {
+  return String(path || '').replace(/\/+$/, '') || '/';
+}
+
+function isPublicAuthRoute(segments: string[], pathname: string): boolean {
+  const first = segments[0];
+  if (first === 'onboarding' || first === 'login' || first === 'signup') return true;
+  const path = normalizePath(pathname);
+  return path === '/onboarding' || path === '/login' || path === '/signup';
+}
+
+function isPublicInvitationRoute(segments: string[], pathname: string): boolean {
+  const first = segments[0];
+  if (first === 'invitation' || first === 'i' || first === 'w') return true;
+  const path = normalizePath(pathname);
+  return path.startsWith('/invitation/') || path.startsWith('/i/') || path.startsWith('/w/');
+}
+
 function RootLayoutNav() {
   const { isLoggedIn, loading, initializeAuth, resetAuth } = useUserStore();
   const segments = useSegments();
+  const pathname = usePathname();
   const router = useRouter();
   const rootNavigationState = useRootNavigationState();
   const isNavigationReady = Boolean(rootNavigationState?.key);
@@ -463,30 +496,36 @@ function RootLayoutNav() {
     // from persisted state while the background refresh runs.
     if (!isLoggedIn && (initializing || loading)) return;
 
-    const isPublicInvitation = segments[0] === 'invitation' || segments[0] === 'i' || segments[0] === 'w';
-    const isOnboarding = segments[0] === 'onboarding';
-    const isLogin = segments[0] === 'login';
-    const isSignup = segments[0] === 'signup';
-    const isIndex = segments[0] === 'index';
+    const isPublicAuth = isPublicAuthRoute(segments, pathname);
+    const isIndex = segments[0] === 'index' || normalizePath(pathname) === '/';
+
+    let targetHref: string | null = null;
 
     // אם המשתמש מחובר והוא בעמוד public (index/login/onboarding/signup) - העבר לקבוצת הטאבים לפי תפקיד
-    if (isLoggedIn && (isLogin || isIndex || isOnboarding || isSignup)) {
+    if (isLoggedIn && (isPublicAuth || isIndex)) {
       const { userType } = useUserStore.getState();
       if (userType === 'admin') {
-        router.replace('/(admin)/admin-events');
+        targetHref = '/(admin)/admin-events';
       } else if (userType === 'employee') {
-        router.replace('/(employee)/employee-events');
+        targetHref = '/(employee)/employee-events';
       } else {
-        router.replace('/(couple)');
+        targetHref = '/(couple)';
+      }
+    } else if (!isLoggedIn && !isPublicInvitationRoute(segments, pathname)) {
+      // גישה ישירה לעמוד מוגן בלי התחברות -> login (onboarding נשאר דרך index בלבד).
+      if (!isPublicAuth) {
+        targetHref = '/login';
       }
     }
-    // אם המשתמש לא מחובר - ברירת מחדל היא onboarding (גם אחרי התנתקות).
-    // את login נציג רק אם המשתמש כבר נמצא שם (למשל אחרי לחיצה על הכפתור ב-onboarding).
-    else if (!isLoggedIn && !isPublicInvitation) {
-      if (isOnboarding || isLogin || isSignup) return;
-      router.replace('/onboarding');
-    }
-  }, [isLoggedIn, segments, initializing, loading, hydrated, isNavigationReady]);
+
+    if (!targetHref || normalizePath(pathname) === normalizePath(targetHref)) return;
+
+    const timer = setTimeout(() => {
+      router.replace(targetHref as any);
+    }, 0);
+
+    return () => clearTimeout(timer);
+  }, [isLoggedIn, segments, pathname, initializing, loading, hydrated, isNavigationReady, router]);
 
   const showAuthLoader = !hydrated || (!isLoggedIn && (initializing || loading));
   const showInitTimeout = initTimedOut && !isLoggedIn;
