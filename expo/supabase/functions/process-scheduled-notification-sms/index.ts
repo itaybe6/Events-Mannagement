@@ -434,56 +434,120 @@ serve(async (req) => {
         let waFailed = 0;
         let waSkippedQuota = 0;
 
+        // 1) Partition recipients up front (cheap, synchronous) so the slow Meta
+        //    Cloud API calls only run for guests with a usable phone number.
+        type WaJob = { guest: any; phone: string };
+        const waJobs: WaJob[] = [];
+        const preSkipRows: RecipientRunRow[] = [];
         for (const g of list) {
-          const nowIso = new Date().toISOString();
-          const n = normalizeWaPhone(g.phone);
-          if (!String(g.phone ?? "").trim()) {
+          const rawPhone = g.phone;
+          if (!String(rawPhone ?? "").trim()) {
             failures.push({ guestId: String(g.id), phone: null, reason: "missing_phone" });
-            await upsertRecipientRunRows(adminClient, [{ run_id: runId, event_id: eventId, guest_id: String(g.id), status: "skipped", phone: null, sent_at: null, error: "missing_phone" }]);
+            preSkipRows.push({ run_id: runId, event_id: eventId, guest_id: String(g.id), status: "skipped", phone: null, sent_at: null, error: "missing_phone" });
             continue;
           }
+          const n = normalizeWaPhone(rawPhone);
           if (!n.ok) {
-            failures.push({ guestId: String(g.id), phone: g.phone, reason: "invalid_phone" });
-            await upsertRecipientRunRows(adminClient, [{ run_id: runId, event_id: eventId, guest_id: String(g.id), status: "skipped", phone: n.value, sent_at: null, error: "invalid_phone" }]);
+            failures.push({ guestId: String(g.id), phone: rawPhone, reason: "invalid_phone" });
+            preSkipRows.push({ run_id: runId, event_id: eventId, guest_id: String(g.id), status: "skipped", phone: n.value, sent_at: null, error: "invalid_phone" });
             continue;
           }
-          if (waRemainingQuota <= 0) {
-            waSkippedQuota += 1;
-            failures.push({ guestId: String(g.id), phone: n.value, reason: "daily_quota_reached" });
-            await upsertRecipientRunRows(adminClient, [{ run_id: runId, event_id: eventId, guest_id: String(g.id), status: "skipped", phone: n.value, sent_at: null, error: "daily_quota_reached" }]);
-            continue;
+          waJobs.push({ guest: g, phone: n.value });
+        }
+
+        // 2) Reserve the daily quota before sending so we never exceed it.
+        let waSendable = waJobs;
+        if (Number.isFinite(waRemainingQuota)) {
+          const allow = Math.max(0, Math.floor(waRemainingQuota));
+          if (waJobs.length > allow) {
+            waSendable = waJobs.slice(0, allow);
+            for (const j of waJobs.slice(allow)) {
+              waSkippedQuota += 1;
+              failures.push({ guestId: String(j.guest.id), phone: j.phone, reason: "daily_quota_reached" });
+              preSkipRows.push({ run_id: runId, event_id: eventId, guest_id: String(j.guest.id), status: "skipped", phone: j.phone, sent_at: null, error: "daily_quota_reached" });
+            }
+          }
+        }
+
+        if (preSkipRows.length > 0) {
+          await upsertRecipientRunRows(adminClient, preSkipRows);
+        }
+
+        // 3) Send in parallel batches. Sequential sending of hundreds of guests
+        //    exceeds the Edge Function idle timeout (~150s) and there is no retry
+        //    once a run is claimed, so concurrency is required for large lists.
+        //    A soft time budget records remaining recipients instead of letting
+        //    the platform hard-kill the request and silently lose progress.
+        const WA_CONCURRENCY = 20;
+        const WA_TIME_BUDGET_MS = 120_000;
+        const waStartedAt = Date.now();
+
+        for (let i = 0; i < waSendable.length; i += WA_CONCURRENCY) {
+          if (Date.now() - waStartedAt > WA_TIME_BUDGET_MS) {
+            const nowIso = new Date().toISOString();
+            const timedOut = waSendable.slice(i);
+            for (const j of timedOut) {
+              waFailed += 1;
+              failures.push({ guestId: String(j.guest.id), phone: j.phone, reason: "skipped_time_budget" });
+            }
+            await upsertRecipientRunRows(
+              adminClient,
+              timedOut.map((j) => ({ run_id: runId, event_id: eventId, guest_id: String(j.guest.id), status: "failed", phone: j.phone, sent_at: nowIso, error: "skipped_time_budget" })),
+            );
+            break;
           }
 
-          const vars = buildGuestVars({ guest: g, baseUrl, eventTitle, eventDateText, eventLocationText, groomName, brideName, coupleNames });
-          const invitationCode = String(g.invitation_code ?? g.invitation_token ?? "").trim();
-          const payload = buildWaPayload({ to: n.value, template, params: waParams, vars, invitationCode });
-          const res = await sendWaMessage({ phoneNumberId: waPhoneId, accessToken: waToken, payload });
+          const batch = waSendable.slice(i, i + WA_CONCURRENCY);
+          const results = await Promise.all(
+            batch.map(async (j) => {
+              const g = j.guest;
+              const vars = buildGuestVars({ guest: g, baseUrl, eventTitle, eventDateText, eventLocationText, groomName, brideName, coupleNames });
+              const invitationCode = String(g.invitation_code ?? g.invitation_token ?? "").trim();
+              const payload = buildWaPayload({ to: j.phone, template, params: waParams, vars, invitationCode });
+              const res = await sendWaMessage({ phoneNumberId: waPhoneId, accessToken: waToken, payload });
+              return { job: j, res };
+            }),
+          );
 
-          if (res.ok) {
-            waSent += 1;
-            waRemainingQuota -= 1;
-          } else {
-            waFailed += 1;
-            failures.push({ guestId: String(g.id), phone: n.value, reason: `whatsapp:${res.error || res.status}` });
+          const nowIso = new Date().toISOString();
+          const recipientRows: RecipientRunRow[] = [];
+          const messageRows: any[] = [];
+          for (const { job, res } of results) {
+            const g = job.guest;
+            if (res.ok) {
+              waSent += 1;
+            } else {
+              waFailed += 1;
+              failures.push({ guestId: String(g.id), phone: job.phone, reason: `whatsapp:${res.error || res.status}` });
+            }
+            recipientRows.push({
+              run_id: runId,
+              event_id: eventId,
+              guest_id: String(g.id),
+              status: res.ok ? "sent" : "failed",
+              phone: job.phone,
+              sent_at: nowIso,
+              error: res.ok ? null : `whatsapp:${res.error || res.status}`,
+            });
+            messageRows.push({
+              event_id: eventId,
+              type: "וואטסאפ",
+              recipient: String(g.name ?? "").trim() || "מוזמן",
+              phone: job.phone,
+              status: res.ok ? `נשלח${res.messageId ? ` (${res.messageId})` : ""}` : `נכשל (${res.error || res.status})`,
+              sent_date: nowIso,
+            });
           }
-          await upsertRecipientRunRows(adminClient, [{
-            run_id: runId,
-            event_id: eventId,
-            guest_id: String(g.id),
-            status: res.ok ? "sent" : "failed",
-            phone: n.value,
-            sent_at: nowIso,
-            error: res.ok ? null : `whatsapp:${res.error || res.status}`,
-          }]);
-          const { error: logError } = await adminClient.from("messages").insert({
-            event_id: eventId,
-            type: "וואטסאפ",
-            recipient: String(g.name ?? "").trim() || "מוזמן",
-            phone: n.value,
-            status: res.ok ? `נשלח${res.messageId ? ` (${res.messageId})` : ""}` : `נכשל (${res.error || res.status})`,
-            sent_date: nowIso,
-          });
+
+          await upsertRecipientRunRows(adminClient, recipientRows);
+          const { error: logError } = await adminClient.from("messages").insert(messageRows);
           if (logError) console.warn("Failed to insert WhatsApp messages log:", logError);
+        }
+
+        // Reduce the shared daily quota by what this job actually sent so later
+        // jobs in the same invocation still respect the global quota.
+        if (Number.isFinite(waRemainingQuota)) {
+          waRemainingQuota = Math.max(0, waRemainingQuota - waSent);
         }
 
         totalSent += waSent;

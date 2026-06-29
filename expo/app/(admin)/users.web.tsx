@@ -110,6 +110,9 @@ export default function UsersWebScreen() {
     confirmPassword: string;
   }>({ name: '', email: '', phone: '', userType: 'event_owner', password: '', confirmPassword: '' });
   const [passwordForm, setPasswordForm] = useState({ password: '', confirmPassword: '' });
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteSaving, setDeleteSaving] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     void refreshUsers();
@@ -142,7 +145,7 @@ export default function UsersWebScreen() {
       try {
         setEventsLoading(true);
         setEventsError(null);
-        const data = await eventService.getEventsForUser(selectedUser.id);
+        const data = await eventService.getEventsForUser(selectedUser.id, { asAdmin: true });
         if (!cancelled) {
           setLinkedEvents(data);
         }
@@ -182,22 +185,26 @@ export default function UsersWebScreen() {
   const userModalMaxHeight = Math.max(height - 56, 560);
   const canManagePasswords = currentUserType === 'admin';
 
-  const confirmDelete = (u: UserWithMetadata) => {
-    Alert.alert('מחיקת משתמש', `האם אתה בטוח שברצונך למחוק את "${u.name}"?`, [
-      { text: 'ביטול', style: 'cancel' },
-      {
-        text: 'מחק',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await deleteUserNow(u);
-          } catch (e) {
-            const msg = e instanceof Error ? e.message : 'שגיאה לא ידועה';
-            Alert.alert('שגיאה', `לא ניתן למחוק.\n\n${msg}`);
-          }
-        },
-      },
-    ]);
+  const openDeleteConfirm = () => {
+    if (!selectedUser) return;
+    setDeleteError(null);
+    setDeleteConfirmOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!selectedUser || deleteSaving) return;
+    setDeleteSaving(true);
+    setDeleteError(null);
+    try {
+      await deleteUserNow(selectedUser);
+      setDeleteConfirmOpen(false);
+      setShowUserModal(false);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'שגיאה לא ידועה';
+      setDeleteError(msg);
+    } finally {
+      setDeleteSaving(false);
+    }
   };
 
   const openEdit = useCallback(() => {
@@ -796,10 +803,7 @@ export default function UsersWebScreen() {
                             <Pressable
                               accessibilityRole="button"
                               accessibilityLabel="מחיקת משתמש"
-                              onPress={() => {
-                                setShowUserModal(false);
-                                confirmDelete(selectedUser);
-                              }}
+                              onPress={openDeleteConfirm}
                               style={({ hovered, pressed }: any) => [
                                 styles.userModalActionBtn,
                                 styles.userModalActionBtnDanger,
@@ -1168,6 +1172,107 @@ export default function UsersWebScreen() {
               </View>
             </Pressable>
           </KeyboardAvoidingView>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        transparent
+        visible={deleteConfirmOpen}
+        animationType="fade"
+        onRequestClose={() => {
+          if (!deleteSaving) setDeleteConfirmOpen(false);
+        }}
+      >
+        <Pressable
+          style={styles.deleteOverlay}
+          onPress={() => {
+            if (!deleteSaving) setDeleteConfirmOpen(false);
+          }}
+        >
+          <Pressable style={styles.deleteCard} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.deleteHeaderRow}>
+              <View style={styles.deleteIconCircle}>
+                <Ionicons name="trash-outline" size={18} color={colors.error} />
+              </View>
+              <View style={styles.deleteHeaderText}>
+                <Text style={styles.deleteTitle}>מחיקת משתמש</Text>
+                <Text style={styles.deleteSubtitle} numberOfLines={2}>
+                  פעולה זו בלתי הפיכה
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.deleteDivider} />
+
+            <View style={styles.deleteBody}>
+              <Text style={styles.deleteBodyText}>
+                {`האם אתה בטוח שברצונך למחוק את "${selectedUser?.name ?? 'המשתמש'}"?`}
+              </Text>
+
+              {selectedUser?.userType === 'event_owner' ? (
+                <View style={styles.deleteList}>
+                  {[
+                    'כל האירועים של בעל האירוע',
+                    'מוזמנים, שולחנות ומפת הושבה',
+                    'משימות, הודעות והתראות',
+                  ].map((t) => (
+                    <View key={t} style={styles.deleteListRow}>
+                      <View style={styles.deleteBullet} />
+                      <Text style={styles.deleteListText}>{t}</Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+
+              {deleteError ? (
+                <View style={styles.deleteHintBox}>
+                  <Ionicons name="alert-circle-outline" size={16} color={'rgba(255, 59, 48, 0.9)'} />
+                  <Text style={styles.deleteHintText}>{deleteError}</Text>
+                </View>
+              ) : (
+                <View style={styles.deleteHintBox}>
+                  <Ionicons name="alert-circle-outline" size={16} color={'rgba(255, 59, 48, 0.9)'} />
+                  <Text style={styles.deleteHintText}>לא ניתן לשחזר משתמש שנמחק.</Text>
+                </View>
+              )}
+            </View>
+
+            <View style={styles.deleteFooter}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="ביטול מחיקה"
+                onPress={() => setDeleteConfirmOpen(false)}
+                disabled={deleteSaving}
+                style={({ hovered, pressed }: any) => [
+                  styles.deleteBtnSecondary,
+                  Platform.OS === 'web' && hovered ? styles.deleteBtnSecondaryHover : null,
+                  pressed ? { opacity: 0.92 } : null,
+                  deleteSaving ? { opacity: 0.88 } : null,
+                ]}
+              >
+                <Text style={styles.deleteBtnSecondaryText}>ביטול</Text>
+              </Pressable>
+
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="אישור מחיקת משתמש"
+                onPress={() => void handleConfirmDelete()}
+                disabled={deleteSaving}
+                style={({ hovered, pressed }: any) => [
+                  styles.deleteBtnDanger,
+                  Platform.OS === 'web' && hovered ? styles.deleteBtnDangerHover : null,
+                  pressed ? { opacity: 0.92 } : null,
+                  deleteSaving ? { opacity: 0.8 } : null,
+                ]}
+              >
+                {deleteSaving ? (
+                  <ActivityIndicator color={colors.white} />
+                ) : (
+                  <Text style={styles.deleteBtnDangerText}>מחק משתמש</Text>
+                )}
+              </Pressable>
+            </View>
+          </Pressable>
         </Pressable>
       </Modal>
     </>
@@ -1793,6 +1898,94 @@ const styles = StyleSheet.create({
   },
   sideDangerBtnHover: { opacity: 0.96 },
   sideDangerText: { fontSize: 12, fontWeight: '900', color: colors.white, textAlign: 'right' },
+
+  deleteOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 18,
+  },
+  deleteCard: {
+    width: '100%',
+    maxWidth: 520,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.98)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.72)',
+    overflow: 'hidden',
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 24px 70px rgba(0,0,0,0.22)' } as any) : null),
+  },
+  deleteHeaderRow: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 12,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 12,
+  },
+  deleteIconCircle: {
+    width: 42,
+    height: 42,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 59, 48, 0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 59, 48, 0.18)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deleteHeaderText: { flex: 1, alignItems: 'flex-end' },
+  deleteTitle: { fontSize: 18, fontWeight: '900', color: '#111827', textAlign: 'right' },
+  deleteSubtitle: { marginTop: 4, fontSize: 12, fontWeight: '800', color: 'rgba(17,24,39,0.55)', textAlign: 'right' },
+  deleteDivider: { height: 1, backgroundColor: 'rgba(17,24,39,0.08)', marginHorizontal: 16 },
+  deleteBody: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10, gap: 12 },
+  deleteBodyText: { fontSize: 13, fontWeight: '800', color: 'rgba(17,24,39,0.78)', textAlign: 'right', lineHeight: 20 },
+  deleteList: { gap: 10, paddingTop: 4 },
+  deleteListRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
+  deleteBullet: { width: 8, height: 8, borderRadius: 999, backgroundColor: 'rgba(255, 59, 48, 0.85)' },
+  deleteListText: { flex: 1, fontSize: 13, fontWeight: '900', color: '#111827', textAlign: 'right' },
+  deleteHintBox: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255, 59, 48, 0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 59, 48, 0.14)',
+  },
+  deleteHintText: { flex: 1, fontSize: 12, fontWeight: '800', color: 'rgba(17,24,39,0.70)', textAlign: 'right', lineHeight: 18 },
+  deleteFooter: {
+    padding: 14,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(17,24,39,0.08)',
+    flexDirection: 'row-reverse',
+    gap: 10,
+    backgroundColor: 'rgba(255,255,255,0.98)',
+  },
+  deleteBtnSecondary: {
+    flex: 1,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: 'rgba(17,24,39,0.06)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  deleteBtnSecondaryHover: { backgroundColor: 'rgba(17,24,39,0.08)' },
+  deleteBtnSecondaryText: { fontSize: 13, fontWeight: '900', color: '#111827' },
+  deleteBtnDanger: {
+    flex: 2,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: colors.error,
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  deleteBtnDangerHover: { opacity: 0.94 },
+  deleteBtnDangerText: { fontSize: 13, fontWeight: '900', color: colors.white },
 
   demoNoteRow: { flexDirection: 'row-reverse', alignItems: 'flex-start', gap: 8, marginTop: 2 },
   demoNote: { flex: 1, fontSize: 12, fontWeight: '700', textAlign: 'right', color: colors.gray[600] },

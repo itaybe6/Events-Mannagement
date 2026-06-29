@@ -21,7 +21,6 @@ import Svg, { Circle } from 'react-native-svg';
 import { colors } from '@/constants/colors';
 import AdminWebPageHeader from '@/components/desktop/AdminWebPageHeader';
 import { useAdminEventDetailsModel } from '@/features/events/useAdminEventDetailsModel';
-import { creditTerminalService } from '@/lib/services/creditTerminalService';
 import { eventService } from '@/lib/services/eventService';
 import { supabase } from '@/lib/supabase';
 import { useUserStore } from '@/store/userStore';
@@ -128,7 +127,6 @@ export default function AdminEventDetailsWebScreen() {
   const [editSaving, setEditSaving] = useState(false);
   const [deleteSaving, setDeleteSaving] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
-  const [creditTerminalSending, setCreditTerminalSending] = useState(false);
   const [editDatePickerOpen, setEditDatePickerOpen] = useState(false);
   const [webCalendarOpen, setWebCalendarOpen] = useState(false);
   const [now, setNow] = useState(() => new Date());
@@ -336,25 +334,6 @@ export default function AdminEventDetailsWebScreen() {
     router.push(`/(admin)/BrideGroomSeating?eventId=${event.id}`);
   };
 
-  const handleRegisterCreditTerminal = async () => {
-    if (!event?.id || creditTerminalSending) return;
-
-    setCreditTerminalSending(true);
-    try {
-      const result = await creditTerminalService.registerTerminal(event.id);
-      if (result.ok) {
-        Alert.alert('נשלח', 'בקשת פתיחת מסוף למתנות באשראי נשלחה לספק.');
-        return;
-      }
-      Alert.alert('שגיאה', result.error || 'לא ניתן לשלוח את הבקשה כרגע');
-    } catch (e) {
-      console.error('Register credit terminal error:', e);
-      Alert.alert('שגיאה', 'לא ניתן לשלוח את הבקשה כרגע');
-    } finally {
-      setCreditTerminalSending(false);
-    }
-  };
-
   const dateObj = new Date(event?.date ?? '');
   const dateLabel = Number.isFinite(dateObj.getTime())
     ? dateObj.toLocaleDateString('he-IL', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })
@@ -497,19 +476,6 @@ export default function AdminEventDetailsWebScreen() {
       tint: 'rgba(17,24,39,0.10)',
       onPress: handleSeatingMap,
     },
-    {
-      key: 'credit-terminal',
-      step: 'מתנות',
-      title: 'פתיחת מסוף אשראי',
-      subtitle: 'שליחת בקשה לספק לפתיחת מסוף למתנות באשראי לאירוע.',
-      meta: creditTerminalSending ? 'שולח...' : 'Moon events',
-      icon: 'card-outline' as const,
-      accent: '#7C3AED',
-      tint: 'rgba(124,58,237,0.14)',
-      disabledForEmployee: true,
-      loading: creditTerminalSending,
-      onPress: handleRegisterCreditTerminal,
-    },
   ] as const;
   const seatedPeople = guests.filter((g) => Boolean(g.tableId)).reduce((sum, guest) => sum + (Number(guest.numberOfPeople) || 1), 0);
   const unassignedConfirmedPeople = Math.max(stats.confirmedPeople - seatedPeople, 0);
@@ -526,11 +492,11 @@ export default function AdminEventDetailsWebScreen() {
         [workflowSteps[0], workflowSteps[1]],
         [workflowSteps[2], workflowSteps[3]],
         [workflowSteps[4], workflowSteps[5]],
-        [workflowSteps[6], workflowSteps[7]],
+        [workflowSteps[6]],
       ]
     : [
         [workflowSteps[0], workflowSteps[1], workflowSteps[2], workflowSteps[3]],
-        [workflowSteps[4], workflowSteps[5], workflowSteps[6], workflowSteps[7]],
+        [workflowSteps[4], workflowSteps[5], workflowSteps[6]],
       ];
   const sentGuestList = guests.filter((g) => sentGuestIds.has(String(g.id)));
   const notSentGuestList = guests.filter((g) => !sentGuestIds.has(String(g.id)));

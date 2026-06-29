@@ -1,4 +1,4 @@
-import { supabase } from '../supabase';
+import { supabase, supabaseAdmin } from '../supabase';
 import { Event, Task } from '@/types';
 
 export const eventService = {
@@ -54,10 +54,11 @@ export const eventService = {
   // Get all events for a specific user (event owner)
   getEventsForUser: async (
     userId: string,
-    opts?: { limit?: number }
+    opts?: { limit?: number; asAdmin?: boolean }
   ): Promise<Array<Pick<Event, 'id' | 'title' | 'date' | 'location' | 'city'>>> => {
     try {
-      const query = supabase
+      const client = opts?.asAdmin ? supabaseAdmin : supabase;
+      const query = client
         .from('events')
         .select('id,title,date,location,city')
         .eq('user_id', userId)
