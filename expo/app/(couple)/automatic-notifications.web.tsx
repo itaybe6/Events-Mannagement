@@ -3184,12 +3184,13 @@ export default function AutomaticNotificationsWebScreen() {
   const mainColumnContentStyle = [styles.mainColContent, showAdminChrome ? styles.mainColContentAdmin : null];
   const isViewerCompactLayout = viewportWidth < 1240;
   const isViewerDesktopReducedLayout = !isViewerCompactLayout && (viewportWidth < 1500 || viewportHeight < 1100);
+  const isMobileLayout = viewportWidth < 768;
 
   return (
     <View style={[styles.page, isAdminRouteContext ? styles.pageAdmin : null]}>
       <View style={[styles.bg, { backgroundColor: showAdminChrome ? (isAdminRouteContext ? '#E8F1FF' : 'transparent') : ui.bgLight }]} />
 
-      <View style={[styles.body, showAdminChrome ? styles.bodyAdmin : null]}>
+      <View style={[styles.body, showAdminChrome ? styles.bodyAdmin : null, isMobileLayout ? styles.bodyMobile : null]}>
         {/* תוכן מרכזי */}
         <MainColumnComponent
           style={useEmbeddedWebShell ? [mainColumnStyle, mainColumnContentStyle] : mainColumnStyle}
@@ -7126,6 +7127,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 18,
   },
+  bodyMobile: {
+    paddingHorizontal: 12,
+    paddingTop: 12,
+  },
   heroShell: { gap: 18 },
   backHeaderBtn: {
     flexDirection: 'row-reverse',
@@ -7975,7 +7980,7 @@ const styles = StyleSheet.create({
     maxWidth: '100%',
     minHeight: 0,
   },
-  viewerInfoColumn: { flex: 1, minWidth: 320, minHeight: 0, gap: 16 },
+  viewerInfoColumn: { flex: 1, minWidth: 0, minHeight: 0, gap: 16 },
   viewerInfoCard: {
     borderRadius: 20,
     padding: 18,

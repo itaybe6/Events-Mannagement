@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Slot, useGlobalSearchParams, usePathname, useRouter } from 'expo-router';
-import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Slot, useGlobalSearchParams, usePathname, useRootNavigationState, useRouter } from 'expo-router';
+import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useUserStore } from '@/store/userStore';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import { colors } from '@/constants/colors';
@@ -32,6 +32,10 @@ function isWebSelfScrollingCoupleRoute(pathname: string) {
 export default function CoupleWebLayout() {
   const router = useRouter();
   const pathname = usePathname();
+  const rootNavigationState = useRootNavigationState();
+  const isNavigationReady = Boolean(rootNavigationState?.key);
+  const { width: windowWidth } = useWindowDimensions();
+  const isMobile = windowWidth < 768;
   const globalParams = useGlobalSearchParams<{ eventId?: string | string[] }>();
   const { userType, isLoggedIn, loading, userData } = useUserStore();
   const activeUserId = useEventSelectionStore((s) => s.activeUserId);
@@ -40,19 +44,25 @@ export default function CoupleWebLayout() {
   const [eventMeta, setEventMeta] = useState<any>(null);
 
   useEffect(() => {
-    if (loading) return;
+    if (!isNavigationReady || loading) return;
+
+    let targetHref: string | null = null;
     if (!isLoggedIn) {
-      router.replace('/login');
-      return;
+      targetHref = '/login';
+    } else if (userType === 'admin') {
+      targetHref = '/(admin)/admin-events';
+    } else if (userType === 'employee') {
+      targetHref = '/(employee)/employee-events';
     }
-    if (userType === 'admin') {
-      router.replace('/(admin)/admin-events');
-      return;
-    }
-    if (userType === 'employee') {
-      router.replace('/(employee)/employee-events');
-    }
-  }, [isLoggedIn, userType, loading, router]);
+
+    if (!targetHref) return;
+
+    const timer = setTimeout(() => {
+      router.replace(targetHref as any);
+    }, 0);
+
+    return () => clearTimeout(timer);
+  }, [isLoggedIn, userType, loading, isNavigationReady, router]);
 
   const queryEventId = Array.isArray(globalParams.eventId) ? globalParams.eventId[0] : globalParams.eventId;
   const resolvedEventId = useMemo(() => {
@@ -153,7 +163,7 @@ export default function CoupleWebLayout() {
   const usePageScrollShell =
     isCoupleHomePath(normalizedPathname) || !isWebSelfScrollingCoupleRoute(normalizedPathname);
 
-  if (loading) {
+  if (loading || !isLoggedIn) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color={colors.primary} />
@@ -176,7 +186,7 @@ export default function CoupleWebLayout() {
             contentContainerStyle={styles.pageScrollContent}
             showsVerticalScrollIndicator={false}
           >
-            <View style={styles.headerWrap}>
+            <View style={[styles.headerWrap, isMobile ? styles.headerWrapMobile : null]}>
               <AdminWebPageHeader
                 eyebrow="אזור בעל האירוע"
                 title={headerTitle}
@@ -229,7 +239,7 @@ export default function CoupleWebLayout() {
           </ScrollView>
         ) : (
           <>
-            <View style={styles.headerWrap}>
+            <View style={[styles.headerWrap, isMobile ? styles.headerWrapMobile : null]}>
               <AdminWebPageHeader
                 eyebrow="אזור בעל האירוע"
                 title={headerTitle}
@@ -298,6 +308,8 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web'
       ? ({
           minHeight: '100vh',
+          overflowX: 'hidden',
+          maxWidth: '100%',
           backgroundImage:
             'radial-gradient(circle at top right, rgba(25,93,230,0.14), rgba(25,93,230,0) 40%), radial-gradient(circle at top left, rgba(232,241,255,0.95), rgba(232,241,255,0) 34%), radial-gradient(circle at bottom left, rgba(242,224,186,0.34), rgba(242,224,186,0) 32%), radial-gradient(circle at bottom center, rgba(240,203,70,0.12), rgba(240,203,70,0) 26%)',
           backgroundAttachment: 'fixed',
@@ -308,6 +320,7 @@ const styles = StyleSheet.create({
   bgOrbs: {
     ...StyleSheet.absoluteFillObject,
     pointerEvents: 'none',
+    overflow: 'hidden',
   },
   bgOrbTopRight: {
     position: 'absolute',
@@ -357,6 +370,11 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     position: 'relative',
     zIndex: 50,
+  },
+  headerWrapMobile: {
+    paddingHorizontal: 12,
+    paddingTop: 12,
+    paddingBottom: 6,
   },
   headerContent: {
     gap: 16,

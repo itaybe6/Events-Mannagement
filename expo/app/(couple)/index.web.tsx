@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRootNavigationState, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle, Line, Path } from 'react-native-svg';
 
@@ -13,9 +13,12 @@ import type { Guest } from '@/types';
 
 export default function CoupleHomeWebScreen() {
   const router = useRouter();
+  const rootNavigationState = useRootNavigationState();
+  const isNavigationReady = Boolean(rootNavigationState?.key);
   const { eventId: queryEventId } = useLocalSearchParams<{ eventId?: string }>();
   const { width: windowWidth } = useWindowDimensions();
   const isCompactDesktop = windowWidth < 1280;
+  const isMobile = windowWidth < 600;
 
   const { isLoggedIn, userData, initializeAuth } = useUserStore();
   const activeUserId = useEventSelectionStore((s) => s.activeUserId);
@@ -37,7 +40,7 @@ export default function CoupleHomeWebScreen() {
 
   useEffect(() => {
     if (!isLoggedIn) {
-      router.replace('/login');
+      if (isNavigationReady) router.replace('/login');
       return;
     }
 
@@ -71,7 +74,7 @@ export default function CoupleHomeWebScreen() {
     };
 
     loadData();
-  }, [initializeAuth, isLoggedIn, resolvedEventId, router, setActiveEvent, userData?.id]);
+  }, [initializeAuth, isLoggedIn, isNavigationReady, resolvedEventId, router, setActiveEvent, userData?.id]);
 
   const stats = useMemo(() => {
     const confirmed = guests.filter((g) => g.status === 'מגיע').length;
@@ -307,7 +310,7 @@ export default function CoupleHomeWebScreen() {
         ) : null}
 
         <View style={[styles.heroSection, isCompactDesktop ? styles.heroSectionStack : null]}>
-          <Surface style={styles.heroMainCard} hoverStyle={styles.surfaceHoverSoft}>
+          <Surface style={[styles.heroMainCard, isMobile ? styles.cardPadMobile : null]} hoverStyle={styles.surfaceHoverSoft}>
             <View pointerEvents="none" style={styles.heroMainGlowTop} />
             <View pointerEvents="none" style={styles.heroMainGlowBottom} />
             <View style={styles.heroTopBar}>
@@ -323,7 +326,7 @@ export default function CoupleHomeWebScreen() {
               </View>
             </View>
 
-            <Text style={styles.heroTitle}>{coupleOrTitle || 'האירוע שלכם'}</Text>
+            <Text style={[styles.heroTitle, isMobile ? styles.heroTitleMobile : null]}>{coupleOrTitle || 'האירוע שלכם'}</Text>
             <Text style={styles.heroSubtitle}>
               דשבורד נקי ומדויק לניהול האירוע: אישורי הגעה, הושבה, תמונת מצב ולחץ תפעולי במקום אחד.
             </Text>
@@ -333,7 +336,7 @@ export default function CoupleHomeWebScreen() {
               <QuickFactChip icon="location-outline" tone="purple" label="מיקום" value={eventLocation} />
             </View>
 
-            <View style={styles.heroMetricsRow}>
+            <View style={[styles.heroMetricsRow, isMobile ? styles.heroMetricsRowMobile : null]}>
               {dashboardHighlights.map((item) => {
                 const tone = toneColors(item.tone);
                 return (
@@ -359,7 +362,7 @@ export default function CoupleHomeWebScreen() {
               })}
             </View>
 
-            <View style={styles.heroCountdownCard}>
+            <View style={[styles.heroCountdownCard, isMobile ? styles.heroCountdownCardMobile : null]}>
               <View style={styles.heroCountdownHeader}>
                 <View style={styles.heroCountdownIcon}>
                   <Ionicons name="timer-outline" size={18} color={stylesVars.accentBlue} />
@@ -374,7 +377,7 @@ export default function CoupleHomeWebScreen() {
                 </View>
               </View>
 
-              <View style={styles.heroCountdownGrid}>
+              <View style={[styles.heroCountdownGrid, isMobile ? styles.heroCountdownGridMobile : null]}>
                 {[
                   { key: 'days', label: 'ימים', value: countdown?.days ?? 0 },
                   { key: 'hours', label: 'שעות', value: countdown?.hours ?? 0 },
@@ -382,15 +385,17 @@ export default function CoupleHomeWebScreen() {
                   { key: 'seconds', label: 'שניות', value: countdown?.seconds ?? 0 },
                 ].map((unit, index, arr) => (
                   <React.Fragment key={unit.key}>
-                    <CountdownUnit label={unit.label} value={unit.value} />
-                    {index < arr.length - 1 ? <Text style={styles.countdownSeparator}>:</Text> : null}
+                    <CountdownUnit label={unit.label} value={unit.value} compact={isMobile} />
+                    {index < arr.length - 1 ? (
+                      <Text style={[styles.countdownSeparator, isMobile ? styles.countdownSeparatorMobile : null]}>:</Text>
+                    ) : null}
                   </React.Fragment>
                 ))}
               </View>
             </View>
           </Surface>
 
-          <Surface style={styles.heroSideCard} hoverStyle={styles.surfaceHoverSoft}>
+          <Surface style={[styles.heroSideCard, isMobile ? styles.cardPadMobile : null]} hoverStyle={styles.surfaceHoverSoft}>
             <View pointerEvents="none" style={styles.heroSideGlow} />
             <View style={styles.sideCardHeaderRow}>
               <View style={styles.sideCardHeader}>
@@ -441,7 +446,7 @@ export default function CoupleHomeWebScreen() {
 
         <View style={styles.analyticsSection}>
           <View style={[styles.analyticsGrid, isCompactDesktop ? styles.analyticsGridStack : null]}>
-            <Surface style={styles.analyticsMainCard} hoverStyle={styles.surfaceHoverSoft}>
+            <Surface style={[styles.analyticsMainCard, isMobile ? styles.cardPadMobile : null]} hoverStyle={styles.surfaceHoverSoft}>
               <View style={styles.analyticsCardHeader}>
                 <View style={styles.analyticsCardIcon}>
                   <Ionicons name="pulse-outline" size={18} color={stylesVars.accentGreen} />
@@ -452,7 +457,7 @@ export default function CoupleHomeWebScreen() {
                 </View>
               </View>
 
-              <View style={styles.readinessHero}>
+              <View style={[styles.readinessHero, isMobile ? styles.readinessHeroMobile : null]}>
                 <View style={styles.readinessHeroGaugeWrap}>
                   <GaugeMeter value={readinessScore} total={100} color={stylesVars.accentBlue} trackColor={'rgba(59,130,246,0.14)'} />
                 </View>
@@ -465,7 +470,7 @@ export default function CoupleHomeWebScreen() {
                 </View>
               </View>
 
-              <View style={styles.gaugeStatsList}>
+              <View style={[styles.gaugeStatsList, isMobile ? styles.gaugeStatsListMobile : null]}>
                 {eventGaugeItems.map((item) => (
                   <View key={item.key} style={[styles.gaugeStatCard, { borderColor: item.tint }]}>
                     <View style={styles.gaugeStatTop}>
@@ -493,8 +498,8 @@ export default function CoupleHomeWebScreen() {
               </View>
             </Surface>
 
-            <View style={styles.analyticsSideColumn}>
-              <Surface style={styles.analyticsInsightCard} hoverStyle={styles.surfaceHoverSoft}>
+            <View style={[styles.analyticsSideColumn, isMobile ? styles.analyticsSideColumnMobile : null]}>
+              <Surface style={[styles.analyticsInsightCard, isMobile ? styles.cardPadMobile : null]} hoverStyle={styles.surfaceHoverSoft}>
                 <View style={styles.analyticsCardHeader}>
                   <View style={styles.analyticsCardIcon}>
                     <Ionicons name="sparkles-outline" size={18} color={stylesVars.accentPurple} />
@@ -513,7 +518,7 @@ export default function CoupleHomeWebScreen() {
                 </View>
               </Surface>
 
-              <Surface style={styles.analyticsInsightCard} hoverStyle={styles.surfaceHoverSoft}>
+              <Surface style={[styles.analyticsInsightCard, isMobile ? styles.cardPadMobile : null]} hoverStyle={styles.surfaceHoverSoft}>
                 <View style={styles.analyticsCardHeader}>
                   <View style={styles.analyticsCardIcon}>
                     <Ionicons name="bar-chart-outline" size={18} color={stylesVars.accentBlue} />
@@ -656,13 +661,17 @@ function heroMetricIcon(tone: 'blue' | 'green' | 'gold') {
 function CountdownUnit({
   label,
   value,
+  compact = false,
 }: {
   label: string;
   value: number;
+  compact?: boolean;
 }) {
   return (
-    <View style={styles.countdownUnit}>
-      <Text style={styles.countdownValue}>{String(value).padStart(2, '0')}</Text>
+    <View style={[styles.countdownUnit, compact ? styles.countdownUnitMobile : null]}>
+      <Text style={[styles.countdownValue, compact ? styles.countdownValueMobile : null]}>
+        {String(value).padStart(2, '0')}
+      </Text>
       <Text style={styles.countdownLabel}>{label}</Text>
     </View>
   );
@@ -1007,6 +1016,38 @@ const styles = StyleSheet.create({
   heroSectionStack: {
     flexDirection: 'column',
   },
+  cardPadMobile: {
+    padding: 16,
+    borderRadius: 22,
+  },
+  heroTitleMobile: {
+    fontSize: 24,
+    lineHeight: 30,
+    marginTop: 14,
+  },
+  heroMetricsRowMobile: {
+    flexWrap: 'wrap',
+  },
+  heroCountdownCardMobile: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: 14,
+    padding: 14,
+  },
+  heroCountdownGridMobile: {
+    gap: 6,
+    justifyContent: 'space-between',
+  },
+  readinessHeroMobile: {
+    flexDirection: 'column',
+    alignItems: 'center',
+  },
+  gaugeStatsListMobile: {
+    flexDirection: 'column',
+  },
+  analyticsSideColumnMobile: {
+    minWidth: 0,
+  },
   heroMainCard: {
     flex: 1.35,
     padding: 28,
@@ -1316,12 +1357,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 4,
   },
+  countdownUnitMobile: {
+    minWidth: 0,
+    flex: 1,
+  },
   countdownValue: {
     fontSize: 40,
     fontWeight: '900',
     color: stylesVars.primary,
     textAlign: 'center',
     lineHeight: 44,
+  },
+  countdownValueMobile: {
+    fontSize: 28,
+    lineHeight: 32,
   },
   countdownLabel: {
     fontSize: 12,
@@ -1336,6 +1385,10 @@ const styles = StyleSheet.create({
     color: 'rgba(15,69,230,0.40)',
     textAlign: 'center',
     marginTop: 2,
+  },
+  countdownSeparatorMobile: {
+    fontSize: 22,
+    lineHeight: 32,
   },
   heroSideGlow: {
     position: 'absolute',

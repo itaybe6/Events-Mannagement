@@ -64,6 +64,7 @@ export default function CoupleGuestsWebScreen() {
   const PageContentComponent: any = useEmbeddedWebShell ? View : ScrollView;
   const contentWidth = Math.max(0, windowWidth);
   const isNarrow = contentWidth < 720;
+  const isMobile = contentWidth < 768;
 
   const resolvedEventId =
     String(
@@ -386,8 +387,127 @@ export default function CoupleGuestsWebScreen() {
     }
   };
 
+  const [importingContacts, setImportingContacts] = useState(false);
+
+  const isContactPickerSupported = () =>
+    Platform.OS === 'web' &&
+    typeof navigator !== 'undefined' &&
+    typeof (navigator as any).contacts?.select === 'function' &&
+    typeof (globalThis as any).ContactsManager !== 'undefined';
+
+  const importContactsFromDeviceWeb = async (targetCategoryId: string | null) => {
+    if (!resolvedEventId || importingContacts) return;
+
+    let picked: Array<{ name?: string[]; tel?: string[] }> = [];
+    try {
+      picked = await (navigator as any).contacts.select(['name', 'tel'], { multiple: true });
+    } catch (e) {
+      // User cancelled or the picker failed — stay silent on cancel.
+      console.warn('Contact picker cancelled/failed:', e);
+      return;
+    }
+
+    if (!Array.isArray(picked) || picked.length === 0) return;
+
+    const cleaned = picked
+      .map((c) => {
+        const name = String(c?.name?.[0] || '').trim();
+        const phone = String(c?.tel?.[0] || '').trim();
+        return { name, phone };
+      })
+      .filter((c) => c.name && c.phone);
+
+    if (cleaned.length === 0) {
+      Alert.alert('לא נבחרו אנשי קשר', 'לא נמצאו אנשי קשר עם שם ומספר טלפון.');
+      return;
+    }
+
+    if (!isEventApproved) {
+      const remaining = Math.max(0, UNAPPROVED_EVENT_GUEST_LIMIT - guests.length);
+      if (cleaned.length > remaining) {
+        Alert.alert('הגבלת מוזמנים', UNAPPROVED_EVENT_GUEST_LIMIT_ERROR);
+        return;
+      }
+    }
+
+    setImportingContacts(true);
+    try {
+      const guestsToAdd = cleaned.map((c) => ({
+        name: c.name,
+        phone: c.phone,
+        status: 'ממתין' as GuestStatus,
+        tableId: null,
+        gift: 0,
+        message: '',
+        category_id: targetCategoryId,
+        numberOfPeople: 1,
+      }));
+
+      const { added, duplicateSkipped, duplicateNames } = await guestService.addGuestsBatch(
+        resolvedEventId,
+        guestsToAdd as any
+      );
+
+      if (added.length) {
+        setGuests((prev) => {
+          const next: GuestRow[] = [
+            ...prev,
+            ...added.map((g) => ({
+              id: String(g.id),
+              name: String(g.name || ''),
+              phone: String(g.phone || ''),
+              status: (g.status || 'ממתין') as GuestStatus,
+              category_id: (g as any).category_id ?? null,
+              numberOfPeople: (g as any).numberOfPeople ?? 1,
+            })),
+          ];
+          next.sort((a, b) =>
+            String(a.name || '').localeCompare(String(b.name || ''), 'he', { sensitivity: 'base' })
+          );
+          return next;
+        });
+      }
+
+      const parts: string[] = [];
+      parts.push(added.length > 0 ? `נוספו ${added.length} מוזמנים.` : 'לא נוספו מוזמנים חדשים.');
+      if (duplicateSkipped > 0) {
+        const names = (duplicateNames || []).slice(0, 5).join(', ');
+        parts.push(`${duplicateSkipped} כבר היו קיימים${names ? `: ${names}` : ''}.`);
+      }
+      Alert.alert('ייבוא מאנשי קשר', parts.join('\n'));
+    } catch (e: any) {
+      console.error('Import contacts (web) error:', e);
+      Alert.alert('שגיאה', e?.message === UNAPPROVED_EVENT_GUEST_LIMIT_ERROR ? UNAPPROVED_EVENT_GUEST_LIMIT_ERROR : 'אירעה תקלה בייבוא אנשי הקשר. נסו שוב.');
+    } finally {
+      setImportingContacts(false);
+    }
+  };
+
   const importContacts = async () => {
     if (!resolvedEventId) return;
+
+    // Capture the category chosen in the Add modal (falls back to none).
+    const targetCategoryId =
+      addSelectedCategoryId === '__uncategorized__' ? null : String(addSelectedCategoryId || '').trim() || null;
+
+    // Web (mobile browsers that support the Contact Picker API): import directly
+    // from the device contacts without leaving the page.
+    if (Platform.OS === 'web') {
+      if (isContactPickerSupported()) {
+        closeAdd();
+        await importContactsFromDeviceWeb(targetCategoryId);
+        return;
+      }
+      // Desktop browsers / iOS Safari don't support the Contact Picker API.
+      Alert.alert(
+        'ייבוא מאנשי קשר',
+        'ייבוא ישיר מאנשי הקשר נתמך בדפדפן הנייד (כגון Chrome באנדרואיד). במחשב או באייפון ניתן להשתמש בייבוא מקובץ אקסל, או להוסיף מוזמנים ידנית.'
+      );
+      return;
+    }
+
+    // Native apps: use the dedicated contacts flow.
+    closeAdd();
     router.push({ pathname: '/(couple)/select-category', params: { eventId: resolvedEventId } });
   };
 
@@ -708,7 +828,7 @@ export default function CoupleGuestsWebScreen() {
     ];
 
   const cardWidth = useMemo(() => {
-    if (contentWidth < 640) return '100%';
+    if (contentWidth < 360) return '100%';
     if (contentWidth < 980) return '48%';
     if (contentWidth < 1180) return '31.8%';
     return '19.2%';
@@ -784,40 +904,44 @@ export default function CoupleGuestsWebScreen() {
                     ))}
                   </View>
 
-                  <View style={styles.adminHeaderActionsRow}>
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="ייצוא PDF"
-                      onPress={handleExportPdf}
-                      disabled={exportingPdf}
-                      style={({ hovered, pressed }: any) => [
-                        styles.adminHeaderImportBtn,
-                        Platform.OS === 'web' && hovered ? styles.adminHeaderImportBtnHover : null,
-                        pressed ? styles.btnPressed : null,
-                        exportingPdf ? styles.btnDisabled : null,
-                      ]}
-                    >
-                      {exportingPdf ? (
-                        <ActivityIndicator size="small" color={colors.primary} />
-                      ) : (
-                        <Ionicons name="document-text-outline" size={16} color={colors.primary} />
-                      )}
-                      <Text style={styles.adminHeaderImportBtnText}>{exportingPdf ? 'מפיק PDF…' : 'ייצוא PDF'}</Text>
-                    </Pressable>
+                  <View style={[styles.adminHeaderActionsRow, isMobile ? styles.adminHeaderActionsRowMobile : null]}>
+                    {!isMobile ? (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="ייצוא PDF"
+                        onPress={handleExportPdf}
+                        disabled={exportingPdf}
+                        style={({ hovered, pressed }: any) => [
+                          styles.adminHeaderImportBtn,
+                          Platform.OS === 'web' && hovered ? styles.adminHeaderImportBtnHover : null,
+                          pressed ? styles.btnPressed : null,
+                          exportingPdf ? styles.btnDisabled : null,
+                        ]}
+                      >
+                        {exportingPdf ? (
+                          <ActivityIndicator size="small" color={colors.primary} />
+                        ) : (
+                          <Ionicons name="document-text-outline" size={16} color={colors.primary} />
+                        )}
+                        <Text style={styles.adminHeaderImportBtnText}>{exportingPdf ? 'מפיק PDF…' : 'ייצוא PDF'}</Text>
+                      </Pressable>
+                    ) : null}
 
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="ייבוא מאקסל"
-                      onPress={openImport}
-                      style={({ hovered, pressed }: any) => [
-                        styles.adminHeaderImportBtn,
-                        Platform.OS === 'web' && hovered ? styles.adminHeaderImportBtnHover : null,
-                        pressed ? styles.btnPressed : null,
-                      ]}
-                    >
-                      <Ionicons name="cloud-upload-outline" size={16} color={colors.primary} />
-                      <Text style={styles.adminHeaderImportBtnText}>ייבוא מאקסל</Text>
-                    </Pressable>
+                    {!isMobile ? (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="ייבוא מאקסל"
+                        onPress={openImport}
+                        style={({ hovered, pressed }: any) => [
+                          styles.adminHeaderImportBtn,
+                          Platform.OS === 'web' && hovered ? styles.adminHeaderImportBtnHover : null,
+                          pressed ? styles.btnPressed : null,
+                        ]}
+                      >
+                        <Ionicons name="cloud-upload-outline" size={16} color={colors.primary} />
+                        <Text style={styles.adminHeaderImportBtnText}>ייבוא מאקסל</Text>
+                      </Pressable>
+                    ) : null}
 
                     <Pressable
                       accessibilityRole="button"
@@ -825,6 +949,7 @@ export default function CoupleGuestsWebScreen() {
                       onPress={openAdd}
                       style={({ hovered, pressed }: any) => [
                         styles.adminHeaderActionBtn,
+                        isMobile ? styles.adminHeaderActionBtnMobile : null,
                         Platform.OS === 'web' && hovered ? styles.adminHeaderActionBtnHover : null,
                         pressed ? styles.btnPressed : null,
                       ]}
@@ -940,41 +1065,45 @@ export default function CoupleGuestsWebScreen() {
               </Pressable>
             ) : (
               <View style={[styles.heroActionsRow, isNarrow ? styles.heroActionsRowNarrow : null]}>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="ייצוא PDF"
-                  onPress={handleExportPdf}
-                  disabled={exportingPdf}
-                  style={({ hovered, pressed }: any) => [
-                    styles.importGuestsBtn,
-                    isNarrow ? styles.importGuestsBtnNarrow : null,
-                    Platform.OS === 'web' && hovered ? styles.importGuestsBtnHover : null,
-                    pressed ? styles.btnPressed : null,
-                    exportingPdf ? styles.btnDisabled : null,
-                  ]}
-                >
-                  {exportingPdf ? (
-                    <ActivityIndicator size="small" color={colors.primary} />
-                  ) : (
-                    <Ionicons name="document-text-outline" size={18} color={colors.primary} />
-                  )}
-                  <Text style={styles.importGuestsBtnText}>{exportingPdf ? 'מפיק PDF…' : 'ייצוא PDF'}</Text>
-                </Pressable>
+                {!isMobile ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="ייצוא PDF"
+                    onPress={handleExportPdf}
+                    disabled={exportingPdf}
+                    style={({ hovered, pressed }: any) => [
+                      styles.importGuestsBtn,
+                      isNarrow ? styles.importGuestsBtnNarrow : null,
+                      Platform.OS === 'web' && hovered ? styles.importGuestsBtnHover : null,
+                      pressed ? styles.btnPressed : null,
+                      exportingPdf ? styles.btnDisabled : null,
+                    ]}
+                  >
+                    {exportingPdf ? (
+                      <ActivityIndicator size="small" color={colors.primary} />
+                    ) : (
+                      <Ionicons name="document-text-outline" size={18} color={colors.primary} />
+                    )}
+                    <Text style={styles.importGuestsBtnText}>{exportingPdf ? 'מפיק PDF…' : 'ייצוא PDF'}</Text>
+                  </Pressable>
+                ) : null}
 
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="ייבוא מאקסל"
-                  onPress={openImport}
-                  style={({ hovered, pressed }: any) => [
-                    styles.importGuestsBtn,
-                    isNarrow ? styles.importGuestsBtnNarrow : null,
-                    Platform.OS === 'web' && hovered ? styles.importGuestsBtnHover : null,
-                    pressed ? styles.btnPressed : null,
-                  ]}
-                >
-                  <Ionicons name="cloud-upload-outline" size={18} color={colors.primary} />
-                  <Text style={styles.importGuestsBtnText}>ייבוא מאקסל</Text>
-                </Pressable>
+                {!isMobile ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="ייבוא מאקסל"
+                    onPress={openImport}
+                    style={({ hovered, pressed }: any) => [
+                      styles.importGuestsBtn,
+                      isNarrow ? styles.importGuestsBtnNarrow : null,
+                      Platform.OS === 'web' && hovered ? styles.importGuestsBtnHover : null,
+                      pressed ? styles.btnPressed : null,
+                    ]}
+                  >
+                    <Ionicons name="cloud-upload-outline" size={18} color={colors.primary} />
+                    <Text style={styles.importGuestsBtnText}>ייבוא מאקסל</Text>
+                  </Pressable>
+                ) : null}
 
                 <Pressable
                   accessibilityRole="button"
@@ -1467,8 +1596,7 @@ export default function CoupleGuestsWebScreen() {
                   accessibilityRole="button"
                   accessibilityLabel="ייבוא מאנשי קשר"
                   onPress={() => {
-                    closeAdd();
-                    importContacts();
+                    void importContacts();
                   }}
                   style={({ hovered, pressed }: any) => [
                     styles.modalSecondaryBtn,
@@ -2227,6 +2355,11 @@ const styles = StyleSheet.create({
     // @ts-expect-error - react-native-web supports boxShadow
     boxShadow: '0 10px 22px rgba(6,23,62,0.16)',
   },
+  adminHeaderActionBtnMobile: {
+    flex: 1,
+    justifyContent: 'center',
+    minHeight: 44,
+  },
   adminHeaderActionBtnHover: {
     opacity: 0.97,
   },
@@ -2241,6 +2374,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     flexWrap: 'wrap',
+  },
+  adminHeaderActionsRowMobile: {
+    width: '100%',
   },
   adminHeaderImportBtn: {
     minHeight: 40,

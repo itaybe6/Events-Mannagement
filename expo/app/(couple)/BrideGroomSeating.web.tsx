@@ -2665,7 +2665,7 @@ const styles = StyleSheet.create({
   topBtnText: { fontSize: 12, fontWeight: '900', color: '#0d1c2b', textAlign: 'right' },
   btnPressed: { opacity: 0.92, transform: [{ scale: 0.99 }] },
 
-  statsRow: { marginTop: 14, flexDirection: 'row', flexWrap: 'nowrap', gap: 12, alignItems: 'stretch' },
+  statsRow: { marginTop: 14, flexDirection: 'row', flexWrap: 'wrap', gap: 12, alignItems: 'stretch' },
   adminHeroShell: { gap: 18, marginBottom: 14 },
   adminBackBtn: {
     flexDirection: 'row-reverse',
@@ -2820,10 +2820,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderRadius: 22,
     borderWidth: 1,
-    minWidth: 160,
-    minHeight: 146,
+    minWidth: 140,
+    minHeight: 130,
     flexGrow: 1,
-    flexBasis: 200,
+    flexBasis: 150,
     overflow: 'hidden',
     ...(Platform.OS === 'web' ? ({ boxShadow: '0 0 0 1px rgba(11,48,65,0.02), 0 12px 28px rgba(16,24,40,0.08)' } as any) : null),
   },

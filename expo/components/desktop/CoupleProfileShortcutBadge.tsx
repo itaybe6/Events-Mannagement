@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { usePathname, useRouter } from 'expo-router';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 import { EventSwitcher } from '@/components/EventSwitcher';
 import { colors } from '@/constants/colors';
@@ -28,6 +28,8 @@ type Props = {
 export default function CoupleProfileShortcutBadge({ userId, selectedEventId, onSelectEventId }: Props) {
   const router = useRouter();
   const pathname = usePathname();
+  const { width } = useWindowDimensions();
+  const isMobile = width < 768;
   const userData = useUserStore((state) => state.userData);
   const logout = useUserStore((state) => state.logout);
   const wrapperRef = useRef<any>(null);
@@ -98,12 +100,13 @@ export default function CoupleProfileShortcutBadge({ userId, selectedEventId, on
         onPress={() => setMenuOpen((prev) => !prev)}
         style={({ hovered, pressed }: any) => [
           styles.profileBadge,
+          isMobile ? styles.profileBadgeMobile : null,
           menuOpen ? styles.profileBadgeActive : null,
           Platform.OS === 'web' && hovered ? styles.profileBadgeHover : null,
           pressed ? styles.actionPressed : null,
         ]}
       >
-        <View style={styles.profileBadgeAvatar}>
+        <View style={[styles.profileBadgeAvatar, isMobile ? styles.profileBadgeAvatarMobile : null]}>
           {avatarUri ? (
             <Image source={{ uri: avatarUri }} style={styles.profileBadgeImage} contentFit="cover" transition={0} />
           ) : (
@@ -111,9 +114,11 @@ export default function CoupleProfileShortcutBadge({ userId, selectedEventId, on
           )}
         </View>
 
-        <Text style={styles.profileBadgeName} numberOfLines={1}>
-          {userName}
-        </Text>
+        {!isMobile ? (
+          <Text style={styles.profileBadgeName} numberOfLines={1}>
+            {userName}
+          </Text>
+        ) : null}
 
         <Ionicons
           name={menuOpen ? 'chevron-up' : 'chevron-down'}
@@ -124,7 +129,7 @@ export default function CoupleProfileShortcutBadge({ userId, selectedEventId, on
       </Pressable>
 
       {menuOpen ? (
-        <View style={styles.menuLayer}>
+        <View style={[styles.menuLayer, isMobile ? styles.menuLayerMobile : null]}>
           <View style={styles.menu}>
             <Pressable
               accessibilityRole="button"
@@ -220,6 +225,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     minWidth: 0,
+    maxWidth: '100%',
     paddingHorizontal: 10,
     paddingVertical: 8,
     borderRadius: 999,
@@ -227,6 +233,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(6,23,62,0.08)',
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  profileBadgeMobile: {
+    gap: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    alignSelf: 'flex-end',
   },
   profileBadgeActive: {
     backgroundColor: '#FFFFFF',
@@ -261,6 +273,11 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     flexShrink: 0,
   },
+  profileBadgeAvatarMobile: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+  },
   profileBadgeImage: {
     width: '100%',
     height: '100%',
@@ -285,6 +302,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     transform: [{ translateX: -110 }],
     zIndex: 1100,
+  },
+  menuLayerMobile: {
+    left: 'auto',
+    right: 0,
+    transform: [{ translateX: 0 }],
+    paddingHorizontal: 0,
+    alignItems: 'flex-end',
   },
   menu: {
     minWidth: 220,

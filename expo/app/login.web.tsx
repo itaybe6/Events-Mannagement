@@ -5,6 +5,7 @@ import {
   Image,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -38,7 +39,7 @@ export default function LoginWebScreen() {
   const isCompact = width < 480;
   // Full-bleed on web so the hero can reach the viewport edge (no outer padding).
   const pagePadding = Platform.OS === 'web' ? 0 : isCompact ? 12 : isLg ? 0 : 16;
-  const shellHeightWeb = isLg ? '100vh' : undefined;
+  const shellHeightWeb = isLg ? '100dvh' : undefined;
   const formSidePadding = isCompact ? 20 : isLg ? (isWide ? 56 : 40) : 24;
   // Reduce hero padding on "regular" desktops so the form column doesn't get squeezed.
   const heroPadding = isCompact ? 24 : isLg ? (isWide ? 80 : 48) : 32;
@@ -404,6 +405,32 @@ export default function LoginWebScreen() {
     </View>
   );
 
+  // On phones/tablets (stacked layout) the content can exceed the viewport
+  // height, so render inside a ScrollView to avoid clipping the form.
+  if (!isLg) {
+    return (
+      <ScrollView
+        style={[styles.mobileScroll, { backgroundColor: theme.bgLight }]}
+        contentContainerStyle={[styles.mobileScrollContent, { padding: pagePadding }]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View
+          style={[
+            styles.shell,
+            {
+              flexDirection: 'column',
+              width: '100%',
+              alignSelf: 'stretch',
+            },
+          ]}
+        >
+          {FormPanel}
+        </View>
+      </ScrollView>
+    );
+  }
+
   return (
     <View style={[styles.page, { backgroundColor: theme.bgLight, padding: pagePadding }]}>
       <View
@@ -411,7 +438,7 @@ export default function LoginWebScreen() {
           styles.shell,
           {
             // RTL desktop layout: hero on the right, form on the left.
-            flexDirection: isLg ? 'row-reverse' : 'column',
+            flexDirection: 'row-reverse',
             width: '100%',
             alignSelf: 'stretch',
             // @ts-ignore - react-native-web supports height: '100vh'
@@ -421,17 +448,8 @@ export default function LoginWebScreen() {
         ]}
       >
         {/* Keep JSX order stable; desktop uses row-reverse for sides */}
-        {isLg ? (
-          <>
-            {FormPanel}
-            {HeroPanel}
-          </>
-        ) : (
-          <>
-            {HeroPanel}
-            {FormPanel}
-          </>
-        )}
+        {FormPanel}
+        {HeroPanel}
       </View>
     </View>
   );
@@ -467,7 +485,7 @@ const styles = StyleSheet.create({
   page: {
     flex: 1,
     padding: 24,
-    ...(Platform.OS === 'web' ? ({ minHeight: '100vh' } as any) : null),
+    ...(Platform.OS === 'web' ? ({ minHeight: '100dvh' } as any) : null),
     ...(Platform.OS === 'web'
       ? ({
           alignItems: 'stretch',
@@ -480,6 +498,14 @@ const styles = StyleSheet.create({
     width: '100%',
     alignSelf: 'stretch',
     backgroundColor: 'transparent',
+  },
+  mobileScroll: {
+    flex: 1,
+    ...(Platform.OS === 'web' ? ({ minHeight: '100dvh' } as any) : null),
+  },
+  mobileScrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
   },
 
   // Hero (left)

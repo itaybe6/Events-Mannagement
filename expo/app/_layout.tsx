@@ -1,7 +1,7 @@
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { Ionicons } from "@expo/vector-icons";
 import { useFonts } from "expo-font";
-import { Stack, useRootNavigationState, useRouter, useSegments } from "expo-router";
+import { Stack, usePathname, useRootNavigationState, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, I18nManager, Platform, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -285,6 +285,17 @@ export default function RootLayout() {
         meta.content = desiredViewport;
         head.appendChild(meta);
       }
+
+      // Ensure a `theme-color` meta tag exists so mobile browsers tint their
+      // system bars (status bar / address bar) to match the app instead of
+      // showing a default light/dark band that looks like the page is "cut off".
+      // The actual color is kept in sync with the current screen elsewhere.
+      if (!document.querySelector('meta[name="theme-color"]')) {
+        const meta = document.createElement('meta');
+        meta.name = 'theme-color';
+        meta.setAttribute('content', '#F7FAFF');
+        head.appendChild(meta);
+      }
     } catch {
       // ignore
     }
@@ -299,6 +310,78 @@ export default function RootLayout() {
       // Prefer Rubik on web (falls back safely if font not loaded yet)
       document.body.style.fontFamily =
         'Rubik, system-ui, -apple-system, "Segoe UI", Arial, "Noto Sans Hebrew", "Noto Sans", sans-serif';
+    }
+
+    // Prevent the whole page from scrolling/shifting horizontally (common in RTL
+    // when decorative/off-screen elements bleed past the viewport edge). Inner
+    // horizontal ScrollViews keep their own overflow, so this is safe.
+    try {
+      document.documentElement.style.overflowX = 'hidden';
+      document.documentElement.style.maxWidth = '100%';
+      if (document.body) {
+        document.body.style.overflowX = 'hidden';
+        document.body.style.maxWidth = '100%';
+      }
+    } catch {
+      // ignore
+    }
+
+    // Mobile browsers report `100vh` / `height: 100%` as the *largest* viewport
+    // (the height when the address/toolbar is hidden), so full-height screens get
+    // clipped behind the browser chrome — content looks "cut off" at the top and
+    // bottom. Pin the app root to the *dynamic* viewport height so it always
+    // matches the currently-visible area.
+    //
+    // Expo's default web template injects `html, body, #root { height: 100% }`
+    // via a stylesheet, so we (1) override it with a later stylesheet rule and
+    // (2) also set inline styles directly on the elements (inline styles beat
+    // stylesheet rules), guaranteeing the override regardless of CSS ordering.
+    try {
+      const STYLE_ID = 'app-dvh-fix';
+      if (!document.getElementById(STYLE_ID)) {
+        const style = document.createElement('style');
+        style.id = STYLE_ID;
+        style.textContent = [
+          'html, body { height: 100%; min-height: 100%; }',
+          '#root { display: flex; flex-direction: column; height: 100%; min-height: 100%; }',
+          '@supports (height: 100dvh) {',
+          '  html, body { height: 100dvh; min-height: 100dvh; }',
+          '  #root { height: 100dvh; min-height: 100dvh; }',
+          '}',
+        ].join('\n');
+        document.head.appendChild(style);
+      }
+
+      const applyDynamicHeight = () => {
+        const root =
+          (document.getElementById('root') as HTMLElement | null) ||
+          (document.querySelector('[data-reactroot]') as HTMLElement | null) ||
+          (document.body?.firstElementChild as HTMLElement | null);
+        // Prefer the dynamic viewport unit; fall back to the live innerHeight
+        // (px) for browsers that don't understand `dvh` (older iOS Safari).
+        const supportsDvh =
+          typeof CSS !== 'undefined' && typeof CSS.supports === 'function' && CSS.supports('height', '100dvh');
+        const value = supportsDvh ? '100dvh' : `${window.innerHeight}px`;
+        for (const el of [document.documentElement, document.body, root]) {
+          if (!el) continue;
+          el.style.height = value;
+          el.style.minHeight = value;
+        }
+      };
+
+      applyDynamicHeight();
+      // Re-apply when the visible viewport changes (toolbar show/hide, rotation).
+      const flag = globalThis as typeof globalThis & { __appDvhListenersAttached?: boolean };
+      if (!flag.__appDvhListenersAttached) {
+        window.addEventListener('resize', applyDynamicHeight);
+        window.addEventListener('orientationchange', applyDynamicHeight);
+        if ((window as any).visualViewport) {
+          (window as any).visualViewport.addEventListener('resize', applyDynamicHeight);
+        }
+        flag.__appDvhListenersAttached = true;
+      }
+    } catch {
+      // ignore
     }
   }, []);
 
@@ -342,9 +425,54 @@ export default function RootLayout() {
   );
 }
 
+function normalizePath(path: string): string {
+  return String(path || '').replace(/\/+$/, '') || '/';
+}
+
+// Background color of the *current* screen, used to tint the browser system
+// bars (`theme-color`) and the html/body background (so overscroll past the
+// edges blends in instead of showing a contrasting band that looks like a cut).
+function getScreenBackground(segments: string[], pathname: string): string {
+  const first = segments[0];
+  const path = normalizePath(pathname);
+  // Onboarding is the only dark, full-bleed screen.
+  if (first === 'onboarding' || path === '/onboarding' || path === '/') return '#010c21';
+  if (first === 'login' || first === 'signup' || path === '/login' || path === '/signup') return '#F0F4F8';
+  // Couple / admin / employee app shells and everything else are light.
+  return '#F7FAFF';
+}
+
+function applyScreenChrome(bgColor: string) {
+  if (typeof document === 'undefined') return;
+  try {
+    const meta = document.querySelector('meta[name="theme-color"]') as HTMLMetaElement | null;
+    if (meta) meta.setAttribute('content', bgColor);
+    // Match the document background so overscroll / safe-area gutters blend in.
+    document.documentElement.style.backgroundColor = bgColor;
+    if (document.body) document.body.style.backgroundColor = bgColor;
+  } catch {
+    // ignore
+  }
+}
+
+function isPublicAuthRoute(segments: string[], pathname: string): boolean {
+  const first = segments[0];
+  if (first === 'onboarding' || first === 'login' || first === 'signup') return true;
+  const path = normalizePath(pathname);
+  return path === '/onboarding' || path === '/login' || path === '/signup';
+}
+
+function isPublicInvitationRoute(segments: string[], pathname: string): boolean {
+  const first = segments[0];
+  if (first === 'invitation' || first === 'i' || first === 'w') return true;
+  const path = normalizePath(pathname);
+  return path.startsWith('/invitation/') || path.startsWith('/i/') || path.startsWith('/w/');
+}
+
 function RootLayoutNav() {
   const { isLoggedIn, loading, initializeAuth, resetAuth } = useUserStore();
   const segments = useSegments();
+  const pathname = usePathname();
   const router = useRouter();
   const rootNavigationState = useRootNavigationState();
   const isNavigationReady = Boolean(rootNavigationState?.key);
@@ -463,30 +591,44 @@ function RootLayoutNav() {
     // from persisted state while the background refresh runs.
     if (!isLoggedIn && (initializing || loading)) return;
 
-    const isPublicInvitation = segments[0] === 'invitation' || segments[0] === 'i' || segments[0] === 'w';
-    const isOnboarding = segments[0] === 'onboarding';
-    const isLogin = segments[0] === 'login';
-    const isSignup = segments[0] === 'signup';
-    const isIndex = segments[0] === 'index';
+    const isPublicAuth = isPublicAuthRoute(segments, pathname);
+    const isIndex = segments[0] === 'index' || normalizePath(pathname) === '/';
+
+    let targetHref: string | null = null;
 
     // אם המשתמש מחובר והוא בעמוד public (index/login/onboarding/signup) - העבר לקבוצת הטאבים לפי תפקיד
-    if (isLoggedIn && (isLogin || isIndex || isOnboarding || isSignup)) {
+    if (isLoggedIn && (isPublicAuth || isIndex)) {
       const { userType } = useUserStore.getState();
       if (userType === 'admin') {
-        router.replace('/(admin)/admin-events');
+        targetHref = '/(admin)/admin-events';
       } else if (userType === 'employee') {
-        router.replace('/(employee)/employee-events');
+        targetHref = '/(employee)/employee-events';
       } else {
-        router.replace('/(couple)');
+        targetHref = '/(couple)';
+      }
+    } else if (!isLoggedIn && !isPublicInvitationRoute(segments, pathname)) {
+      // גישה ישירה לעמוד מוגן בלי התחברות -> login (onboarding נשאר דרך index בלבד).
+      if (!isPublicAuth) {
+        targetHref = '/login';
       }
     }
-    // אם המשתמש לא מחובר - ברירת מחדל היא onboarding (גם אחרי התנתקות).
-    // את login נציג רק אם המשתמש כבר נמצא שם (למשל אחרי לחיצה על הכפתור ב-onboarding).
-    else if (!isLoggedIn && !isPublicInvitation) {
-      if (isOnboarding || isLogin || isSignup) return;
-      router.replace('/onboarding');
-    }
-  }, [isLoggedIn, segments, initializing, loading, hydrated, isNavigationReady]);
+
+    if (!targetHref || normalizePath(pathname) === normalizePath(targetHref)) return;
+
+    const timer = setTimeout(() => {
+      router.replace(targetHref as any);
+    }, 0);
+
+    return () => clearTimeout(timer);
+  }, [isLoggedIn, segments, pathname, initializing, loading, hydrated, isNavigationReady, router]);
+
+  // Keep the browser system bars + document background in sync with the current
+  // screen so the page never looks "cut off" by a contrasting band at the top
+  // (status bar) / bottom (address bar) or when overscrolling past the edges.
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    applyScreenChrome(getScreenBackground(segments, pathname));
+  }, [segments, pathname]);
 
   const showAuthLoader = !hydrated || (!isLoggedIn && (initializing || loading));
   const showInitTimeout = initTimedOut && !isLoggedIn;
