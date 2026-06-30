@@ -40,7 +40,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     ...(Platform.OS === 'web'
       ? ({
-          minHeight: '100vh',
+          minHeight: '100dvh',
         } as any)
       : null),
   },

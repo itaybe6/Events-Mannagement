@@ -246,10 +246,19 @@ function getStatusMeta(date: Date | string) {
 export function AdminEventsListWebScreen() {
   const { width } = useWindowDimensions();
 
+  // Below 900px we render the native screen. Keep this gate in a thin wrapper so
+  // all the heavy hooks live in the inner component — otherwise resizing across
+  // the breakpoint changes the hook count and React throws
+  // "Rendered fewer hooks than expected".
   if (width < 900) {
     return <AdminEventsScreen />;
   }
 
+  return <AdminEventsListWebInner />;
+}
+
+function AdminEventsListWebInner() {
+  const { width } = useWindowDimensions();
   const router = useRouter();
   const userType = useUserStore((state) => state.userType);
   const isEmployeeWebUser = Platform.OS === 'web' && userType === 'employee';
@@ -2713,10 +2722,18 @@ const styles = StyleSheet.create({
 export default function AdminEventsWebScreen() {
   const { width } = useWindowDimensions();
 
+  // Thin wrapper: keep all heavy hooks in the inner component so that crossing
+  // the 900px breakpoint mounts/unmounts a whole component instead of changing
+  // the hook count (which causes "Rendered fewer hooks than expected").
   if (width < 900) {
     return <AdminEventsScreen />;
   }
 
+  return <AdminEventsWebScreenInner />;
+}
+
+function AdminEventsWebScreenInner() {
+  const { width } = useWindowDimensions();
   const isCompactDesktop = width < 1360;
 
   const router = useRouter();

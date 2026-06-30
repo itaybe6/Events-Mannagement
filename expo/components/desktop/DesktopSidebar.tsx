@@ -184,9 +184,9 @@ const styles = StyleSheet.create({
       ? ({
           position: 'sticky',
           top: 0,
-          height: '100vh',
-          maxHeight: '100vh',
-          minHeight: '100vh',
+          height: '100dvh',
+          maxHeight: '100dvh',
+          minHeight: '100dvh',
           alignSelf: 'flex-start',
           zIndex: 20,
           overflow: 'hidden',

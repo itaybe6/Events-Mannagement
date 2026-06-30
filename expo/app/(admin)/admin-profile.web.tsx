@@ -45,13 +45,21 @@ type DesktopAccountProfileWebProps = {
 };
 
 export function DesktopAccountProfileWeb({ mode = 'admin' }: DesktopAccountProfileWebProps) {
-  const router = useRouter();
   const { width } = useWindowDimensions();
 
+  // Thin gate wrapper — keeps all hooks in the inner component so resizing
+  // across 900px doesn't change the hook count (avoids the React
+  // "Rendered fewer hooks than expected" crash).
   if (width < 900 && mode === 'admin') {
     return <AdminProfileScreen />;
   }
 
+  return <DesktopAccountProfileWebInner mode={mode} />;
+}
+
+function DesktopAccountProfileWebInner({ mode = 'admin' }: DesktopAccountProfileWebProps) {
+  const router = useRouter();
+  const { width } = useWindowDimensions();
   const [heroWidth, setHeroWidth] = useState(0);
   const isHeroStack = heroWidth > 0 ? heroWidth < 520 : width < 520;
 

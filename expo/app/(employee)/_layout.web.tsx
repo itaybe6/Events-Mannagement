@@ -25,15 +25,9 @@ export default function EmployeeWebLayout() {
     }
   }, [isLoggedIn, userType, loading, router]);
 
-  if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={styles.centerText}>טוען...</Text>
-      </View>
-    );
-  }
-
+  // IMPORTANT: keep all hooks above any early return so the hook count stays
+  // constant between renders (otherwise React throws
+  // "Rendered more hooks than during the previous render").
   const topNav = useMemo(() => {
     const seg = Array.isArray(segments) ? segments.map((s) => String(s)) : [];
     const segStr = seg.join('/');
@@ -44,6 +38,15 @@ export default function EmployeeWebLayout() {
     // Be tolerant: route path can differ on web (groups may be omitted).
     return hay.includes('employee-guest-checkin') || hay.includes('guest-checkin');
   }, [pathname, segments]);
+
+  if (loading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={styles.centerText}>טוען...</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, topNav ? styles.containerTopNav : null]}>
@@ -60,7 +63,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: '#f8fafc',
     height: '100%',
-    ...(Platform.OS === 'web' ? ({ minHeight: '100vh' } as any) : null),
+    ...(Platform.OS === 'web' ? ({ minHeight: '100dvh' } as any) : null),
   },
   containerTopNav: {
     flexDirection: 'column',

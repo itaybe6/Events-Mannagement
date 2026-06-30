@@ -66,10 +66,23 @@ export default function LoginWebScreen() {
       setErrorMessage(null);
       setLoading(true);
 
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: username.trim(),
-        password: password.trim(),
-      });
+      // Never let the login spinner hang forever if the network / Supabase is
+      // slow or unreachable — bound each request and surface a clear message.
+      const withTimeout = <T,>(promise: PromiseLike<T>, ms: number): Promise<T> =>
+        Promise.race([
+          Promise.resolve(promise),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('login-timeout')), ms)
+          ),
+        ]);
+
+      const { data, error } = await withTimeout(
+        supabase.auth.signInWithPassword({
+          email: username.trim(),
+          password: password.trim(),
+        }),
+        20000
+      );
 
       if (error || !data.user) {
         const msg = error?.message ?? '';
@@ -86,11 +99,14 @@ export default function LoginWebScreen() {
       const authedUser = data.user;
       const authedUserId = authedUser.id;
 
-      let { data: userRow, error: userError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', authedUserId)
-        .maybeSingle();
+      let { data: userRow, error: userError } = await withTimeout(
+        supabase
+          .from('users')
+          .select('*')
+          .eq('id', authedUserId)
+          .maybeSingle(),
+        20000
+      );
 
       if (userError || !userRow) {
         const meta = (authedUser.user_metadata ?? {}) as Record<string, any>;
@@ -159,8 +175,12 @@ export default function LoginWebScreen() {
       } else {
         router.replace('/(couple)');
       }
-    } catch (e) {
-      setErrorMessage('אירעה שגיאה במהלך ההתחברות. נסה שוב.');
+    } catch (e: any) {
+      if (e?.message === 'login-timeout') {
+        setErrorMessage('ההתחברות נמשכת זמן רב מהרגיל. בדקו את החיבור לאינטרנט ונסו שוב.');
+      } else {
+        setErrorMessage('אירעה שגיאה במהלך ההתחברות. נסה שוב.');
+      }
     } finally {
       setLoading(false);
     }

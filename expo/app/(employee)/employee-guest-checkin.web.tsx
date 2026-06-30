@@ -145,6 +145,7 @@ export default function EmployeeGuestCheckinWebScreen() {
   const { width, height } = useWindowDimensions();
   const isLg = width >= 1024;
   const isNarrow = width < 520;
+  const isMobile = width < 768;
   const isAdminRoute = String(pathname || '').toLowerCase().includes('admin-guest-checkin');
   const fallbackToDetails = useMemo(
     () =>
@@ -851,7 +852,7 @@ export default function EmployeeGuestCheckinWebScreen() {
                     g.checkedInCount === null || g.checkedInCount === undefined ? people : Number(g.checkedInCount) || 0;
 
                   return (
-                    <View key={g.id} style={[styles.guestRowCompact, checkedIn ? styles.guestRowCompactOn : null]}>
+                    <View key={g.id} style={[styles.guestRowCompact, checkedIn ? styles.guestRowCompactOn : null, isMobile ? styles.guestRowCompactSm : null]}>
                       <Pressable
                         accessibilityRole="button"
                         accessibilityLabel={`בחירת אורח ${g.name}`}
@@ -861,6 +862,7 @@ export default function EmployeeGuestCheckinWebScreen() {
                         }}
                         style={({ hovered, pressed }: any) => [
                           styles.guestRowMain,
+                          isMobile ? styles.guestRowMainSm : null,
                           Platform.OS === 'web' && hovered ? ({ backgroundColor: 'rgba(6,23,62,0.03)', borderRadius: 12 } as any) : null,
                           pressed ? { opacity: 0.96 } : null,
                         ]}
@@ -878,7 +880,7 @@ export default function EmployeeGuestCheckinWebScreen() {
                         </View>
                       </Pressable>
 
-                      <View style={styles.guestRowRight}>
+                      <View style={[styles.guestRowRight, isMobile ? styles.guestRowRightSm : null]}>
                         <View style={styles.arrivalSlot}>
                           {checkedIn ? (
                             <View style={styles.compactStepper}>
@@ -1233,7 +1235,7 @@ export default function EmployeeGuestCheckinWebScreen() {
               </View>
             </View>
 
-            <View style={styles.main}>
+            <View style={[styles.main, !isLg ? styles.mainSm : null]}>
               <View
                 style={[
                   styles.card,
@@ -1393,7 +1395,7 @@ export default function EmployeeGuestCheckinWebScreen() {
             style={styles.modalBackdropPressable}
           />
 
-          <View style={[styles.modalCard, isNarrow ? styles.modalCardNarrow : null]}>
+          <View style={[styles.modalCard, (isNarrow || isMobile) ? styles.modalCardNarrow : null]}>
             <View style={styles.modalHeader}>
               <Pressable
                 accessibilityRole="button"
@@ -1582,7 +1584,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#E8F1FF',
     ...(Platform.OS === 'web'
       ? ({
-          minHeight: '100vh',
+          minHeight: '100dvh',
           direction: 'rtl',
           backgroundColor: '#F7FAFF',
           backgroundImage:
@@ -1615,8 +1617,13 @@ const styles = StyleSheet.create({
   // Keep side columns tighter to prioritize the map width.
   guestsCol: { width: 500, flexShrink: 1, minWidth: 400 },
   // On stacked layout (no map), keep the guests panel compact and centered.
-  colSm: { width: '100%', maxWidth: 520, alignSelf: 'center' },
+  // minWidth: 0 prevents the 400px base minWidth from forcing horizontal
+  // overflow on phones.
+  colSm: { width: '100%', maxWidth: 520, minWidth: 0, alignSelf: 'center' },
   main: { flex: 1, minWidth: 460, flexShrink: 0 },
+  // When stacked (phone/tablet portrait) the map column must be allowed to
+  // shrink to the viewport width instead of forcing a 460px horizontal scroll.
+  mainSm: { width: '100%', minWidth: 0, flexShrink: 1 },
 
   card: {
     backgroundColor: 'rgba(255,255,255,0.96)',
@@ -2002,7 +2009,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(15,23,42,0.06)',
   },
   panelMetaPillText: { fontSize: 12, fontWeight: '800', color: colors.gray[700], textAlign: 'right' },
-  panelFilterChipsRow: { marginTop: 12, flexDirection: 'row', flexWrap: 'nowrap', gap: 10 },
+  panelFilterChipsRow: { marginTop: 12, flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   panelFilterChip: {
     minHeight: 42,
     flexDirection: 'row-reverse',
@@ -2184,7 +2191,7 @@ const styles = StyleSheet.create({
   mapEmptyTitle: { fontSize: 22, fontWeight: '900', color: colors.text, textAlign: 'center' },
   mapEmptyText: { maxWidth: 360, fontSize: 14, fontWeight: '700', lineHeight: 22, color: colors.gray[600], textAlign: 'center' },
 
-  mapLegendRow: { marginTop: 10, flexDirection: 'row', flexWrap: 'nowrap', gap: 12, alignItems: 'center' },
+  mapLegendRow: { marginTop: 10, flexDirection: 'row', flexWrap: 'wrap', gap: 12, alignItems: 'center' },
   mapLegendItem: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
   mapLegendDot: { width: 10, height: 10, borderRadius: 999 },
   mapLegendText: { fontSize: 12, fontWeight: '900', color: colors.gray[700], textAlign: 'right' },
@@ -2228,6 +2235,11 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? ({ direction: 'ltr' } as any) : null),
   },
   guestRowCompactOn: { backgroundColor: 'rgba(34,197,94,0.06)', borderColor: 'rgba(34,197,94,0.14)' },
+  // On phones the name + controls (~196px) cannot fit on one line, so wrap the
+  // controls onto a second row beneath the name.
+  guestRowCompactSm: { flexWrap: 'wrap', alignItems: 'flex-start', minHeight: 0, paddingVertical: 12 },
+  guestRowMainSm: { flexBasis: '100%', flexGrow: 1, flexShrink: 1 },
+  guestRowRightSm: { width: '100%', justifyContent: 'flex-end', marginTop: 10 },
   guestRowAccent: {
     width: 4,
     height: 28,
@@ -2441,7 +2453,7 @@ const styles = StyleSheet.create({
     shadowRadius: 24,
     shadowOffset: { width: 0, height: 10 },
     elevation: 3,
-    ...(Platform.OS === 'web' ? ({ maxHeight: 'calc(100vh - 32px)' } as any) : null),
+    ...(Platform.OS === 'web' ? ({ maxHeight: 'calc(100dvh - 32px)' } as any) : null),
   },
   modalCardNarrow: {
     left: 0,

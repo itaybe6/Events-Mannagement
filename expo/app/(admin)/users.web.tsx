@@ -62,12 +62,20 @@ function formatHebrewDate(value?: string | Date) {
 }
 
 export default function UsersWebScreen() {
-  const { width, height } = useWindowDimensions();
+  const { width } = useWindowDimensions();
 
+  // Thin gate wrapper — keeps all hooks in the inner component so resizing
+  // across 900px doesn't change the hook count (avoids the React
+  // "Rendered fewer hooks than expected" crash).
   if (width < 900) {
     return <UsersScreen />;
   }
 
+  return <UsersWebScreenInner />;
+}
+
+function UsersWebScreenInner() {
+  const { width, height } = useWindowDimensions();
   const router = useRouter();
   const demoUsers = useDemoUsersStore((s) => s.users);
   const currentUserType = useUserStore((s) => s.userType);

@@ -150,6 +150,7 @@ export default function AdminEventDetailsWebScreen() {
   const ownerDisplayName = String(userName ?? '').trim();
   const contentWidth = width;
   const isNarrow = contentWidth < 920;
+  const isMobile = contentWidth < 768;
   const getWorkflowActionWidth = (itemsInRow: number) => {
     if (isNarrow) return '48.5%';
     if (itemsInRow === 4) return '24.1%';
@@ -666,8 +667,8 @@ export default function AdminEventDetailsWebScreen() {
                       </View>
                     </View>
 
-                    <View style={styles.countdownGridShell}>
-                      <View style={styles.countdownGrid}>
+                    <View style={[styles.countdownGridShell, isMobile ? styles.countdownGridShellSm : null]}>
+                      <View style={[styles.countdownGrid, isMobile ? styles.countdownGridSm : null]}>
                       {[
                         { key: 'days', label: 'ימים', value: countdown?.days ?? 0 },
                         { key: 'hours', label: 'שעות', value: countdown?.hours ?? 0 },
@@ -675,11 +676,11 @@ export default function AdminEventDetailsWebScreen() {
                         { key: 'seconds', label: 'שניות', value: countdown?.seconds ?? 0 },
                       ].map((unit, index, arr) => (
                         <React.Fragment key={unit.key}>
-                          <View style={styles.countdownUnit}>
-                            <Text style={styles.countdownUnitValue}>{String(unit.value).padStart(2, '0')}</Text>
+                          <View style={[styles.countdownUnit, isMobile ? styles.countdownUnitSm : null]}>
+                            <Text style={[styles.countdownUnitValue, isMobile ? styles.countdownUnitValueSm : null]}>{String(unit.value).padStart(2, '0')}</Text>
                             <Text style={styles.countdownUnitLabel}>{unit.label}</Text>
                           </View>
-                          {index < arr.length - 1 ? <Text style={styles.countdownSeparator}>:</Text> : null}
+                          {index < arr.length - 1 ? <Text style={[styles.countdownSeparator, isMobile ? styles.countdownSeparatorSm : null]}>:</Text> : null}
                         </React.Fragment>
                       ))}
                       </View>
@@ -1758,7 +1759,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-start',
     gap: 10,
-    flexWrap: 'nowrap',
+    flexWrap: 'wrap',
     flex: 1,
   },
   headerSubtitleMetaChip: {
@@ -2822,11 +2823,25 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: 12,
   },
+  countdownGridShellSm: {
+    paddingHorizontal: 10,
+    paddingVertical: 12,
+  },
+  countdownGridSm: {
+    gap: 4,
+    alignItems: 'stretch',
+  },
   countdownUnit: {
     minWidth: 70,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 5,
+  },
+  // On phones let the four units share the row evenly and shrink instead of
+  // overflowing past the viewport edge.
+  countdownUnitSm: {
+    minWidth: 0,
+    flex: 1,
   },
   countdownUnitValue: {
     fontSize: 46,
@@ -2834,6 +2849,10 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: '#0E2B57',
     textAlign: 'center',
+  },
+  countdownUnitValueSm: {
+    fontSize: 30,
+    lineHeight: 34,
   },
   countdownUnitLabel: {
     fontSize: 12,
@@ -2848,6 +2867,10 @@ const styles = StyleSheet.create({
     color: 'rgba(15,69,230,0.42)',
     textAlign: 'center',
     marginTop: 1,
+  },
+  countdownSeparatorSm: {
+    fontSize: 20,
+    lineHeight: 34,
   },
   countdownFooter: {
     flexDirection: 'row-reverse',

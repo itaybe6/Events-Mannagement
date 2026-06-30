@@ -352,16 +352,21 @@ export default function RootLayout() {
         document.head.appendChild(style);
       }
 
-      const applyDynamicHeight = () => {
+      const supportsDvh =
+        typeof CSS !== 'undefined' && typeof CSS.supports === 'function' && CSS.supports('height', '100dvh');
+      let lastAppliedHeight = '';
+      const writeDynamicHeight = () => {
         const root =
           (document.getElementById('root') as HTMLElement | null) ||
           (document.querySelector('[data-reactroot]') as HTMLElement | null) ||
           (document.body?.firstElementChild as HTMLElement | null);
         // Prefer the dynamic viewport unit; fall back to the live innerHeight
         // (px) for browsers that don't understand `dvh` (older iOS Safari).
-        const supportsDvh =
-          typeof CSS !== 'undefined' && typeof CSS.supports === 'function' && CSS.supports('height', '100dvh');
         const value = supportsDvh ? '100dvh' : `${window.innerHeight}px`;
+        // Skip redundant writes (avoids layout thrash when the keyboard / toolbar
+        // fires a burst of resize/visualViewport events on mobile).
+        if (value === lastAppliedHeight) return;
+        lastAppliedHeight = value;
         for (const el of [document.documentElement, document.body, root]) {
           if (!el) continue;
           el.style.height = value;
@@ -369,14 +374,26 @@ export default function RootLayout() {
         }
       };
 
-      applyDynamicHeight();
+      // Coalesce bursty resize/visualViewport events into a single write per frame
+      // so focusing inputs / showing the keyboard on mobile doesn't cause the
+      // main thread to thrash on synchronous layout during sign-in.
+      let rafId = 0;
+      const applyDynamicHeight = () => {
+        if (rafId) return;
+        rafId = requestAnimationFrame(() => {
+          rafId = 0;
+          writeDynamicHeight();
+        });
+      };
+
+      writeDynamicHeight();
       // Re-apply when the visible viewport changes (toolbar show/hide, rotation).
       const flag = globalThis as typeof globalThis & { __appDvhListenersAttached?: boolean };
       if (!flag.__appDvhListenersAttached) {
-        window.addEventListener('resize', applyDynamicHeight);
-        window.addEventListener('orientationchange', applyDynamicHeight);
+        window.addEventListener('resize', applyDynamicHeight, { passive: true });
+        window.addEventListener('orientationchange', applyDynamicHeight, { passive: true });
         if ((window as any).visualViewport) {
-          (window as any).visualViewport.addEventListener('resize', applyDynamicHeight);
+          (window as any).visualViewport.addEventListener('resize', applyDynamicHeight, { passive: true });
         }
         flag.__appDvhListenersAttached = true;
       }
