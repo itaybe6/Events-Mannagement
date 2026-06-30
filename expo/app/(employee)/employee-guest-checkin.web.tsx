@@ -21,6 +21,7 @@ import { SeatingGridReadonly } from '../seating/web/SeatingGridReadonly';
 import { DEFAULT_GRID_COLS, DEFAULT_GRID_ROWS, tableCellSize, type Orientation, type TableType } from '../seating/web/_types';
 import type { Guest, Table } from '@/types';
 import AdminWebPageHeader from '@/components/desktop/AdminWebPageHeader';
+import EmployeeGuestCheckInScreen from './employee-guest-checkin';
 
 const NO_TABLE_KEY = '__no_table__' as const;
 
@@ -137,7 +138,7 @@ function Switch({
   );
 }
 
-export default function EmployeeGuestCheckinWebScreen() {
+function EmployeeGuestCheckinWebDesktopScreen() {
   const router = useRouter();
   const pathname = usePathname();
   const { eventId, returnTo } = useLocalSearchParams<{ eventId?: string; returnTo?: string }>();
@@ -146,6 +147,7 @@ export default function EmployeeGuestCheckinWebScreen() {
   const isLg = width >= 1024;
   const isNarrow = width < 520;
   const isMobile = width < 768;
+  const metricsInOneRow = Platform.OS === 'web' && !isMobile;
   const isAdminRoute = String(pathname || '').toLowerCase().includes('admin-guest-checkin');
   const fallbackToDetails = useMemo(
     () =>
@@ -543,15 +545,15 @@ export default function EmployeeGuestCheckinWebScreen() {
     return Math.max(0, Math.min(100, Math.round((eventOverview.arrivedPeople / eventOverview.invitedPeople) * 100)));
   }, [eventOverview.arrivedPeople, eventOverview.invitedPeople]);
 
-  const pendingGuestsCount = useMemo(() => Math.max(0, counts.total - counts.checkedIn), [counts.checkedIn, counts.total]);
+  const pendingPeopleCount = useMemo(() => Math.max(0, counts.total - counts.checkedIn), [counts.checkedIn, counts.total]);
 
   const filterOptions = useMemo(
     () => [
-      { key: 'all' as const, label: 'כל האורחים', count: counts.total },
+      { key: 'all' as const, label: 'כל המוזמנים', count: counts.total },
       { key: 'checked_in' as const, label: 'הגיעו', count: counts.checkedIn },
-      { key: 'not_checked_in' as const, label: 'טרם הגיעו', count: pendingGuestsCount },
+      { key: 'not_checked_in' as const, label: 'טרם הגיעו', count: pendingPeopleCount },
     ],
-    [counts.checkedIn, counts.total, pendingGuestsCount]
+    [counts.checkedIn, counts.total, pendingPeopleCount]
   );
 
   const visibleGuests = useMemo(() => {
@@ -1028,7 +1030,7 @@ export default function EmployeeGuestCheckinWebScreen() {
             <AdminWebPageHeader
               eyebrow={isAdminRoute ? 'ניהול אורחים' : 'צ׳ק אין'}
               title="צ'ק אין אורחים"
-              subtitle={`${counts.total} אורחים • ${counts.checkedIn} הגיעו`}
+              subtitle={`${counts.checkedIn} מתוך ${counts.total} מוזמנים באולם`}
               showNav={false}
               useDefaultActions={false}
               leading={
@@ -1087,27 +1089,33 @@ export default function EmployeeGuestCheckinWebScreen() {
                 </View>
 
                 <View style={[styles.dashboardBody, isLg ? styles.dashboardBodyTop : null]}>
-                  <View style={[styles.metricsGrid, isLg ? styles.metricsGridTop : null]}>
+                  <View style={[styles.metricsGrid, metricsInOneRow ? styles.metricsGridTop : null]}>
                     <CheckinOverviewStat
-                      compact={isLg}
+                      compact={metricsInOneRow}
                       label='סה"כ מוזמנים'
                       value={eventOverview.invitedPeople}
                       icon="people-outline"
                     />
                     <CheckinOverviewStat
-                      compact={isLg}
+                      compact={metricsInOneRow}
+                      label="הגיעו לאולם"
+                      value={counts.checkedIn}
+                      icon="walk-outline"
+                    />
+                    <CheckinOverviewStat
+                      compact={metricsInOneRow}
                       label="שולחנות ריקים"
                       value={eventOverview.emptyTables}
                       icon="grid-outline"
                     />
                     <CheckinOverviewStat
-                      compact={isLg}
+                      compact={metricsInOneRow}
                       label="שולחנות מלאים"
                       value={eventOverview.fullTables}
                       icon="checkmark-circle-outline"
                     />
                     <CheckinOverviewStat
-                      compact={isLg}
+                      compact={metricsInOneRow}
                       label="שולחנות רזרבה"
                       value={eventOverview.reserveTables}
                       icon="bookmark-outline"
@@ -1796,7 +1804,7 @@ const styles = StyleSheet.create({
   },
   heroMetaChipText: { fontSize: 12, fontWeight: '800', color: colors.primary, textAlign: 'right' },
   metricsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  metricsGridTop: { gap: 12 },
+  metricsGridTop: { flexWrap: 'nowrap', gap: 10 },
   overviewStatCard: {
     flexGrow: 1,
     flexBasis: '46%',
@@ -1816,7 +1824,8 @@ const styles = StyleSheet.create({
       : null),
   },
   overviewStatCardCompact: {
-    flexBasis: '22%',
+    flex: 1,
+    flexBasis: 0,
     minWidth: 0,
     minHeight: 112,
     borderRadius: 20,
@@ -2645,4 +2654,17 @@ const ui = StyleSheet.create({
   },
   switchThumbOn: { right: 22 - 2, backgroundColor: colors.white, borderColor: 'rgba(15,23,42,0.12)' },
 });
+
+export default function EmployeeGuestCheckinWebScreen() {
+  const pathname = usePathname();
+  const { width } = useWindowDimensions();
+  const isMobileWeb = Platform.OS === 'web' && width < 768;
+  const isAdminRoute = String(pathname || '').toLowerCase().includes('admin-guest-checkin');
+
+  if (isMobileWeb) {
+    return <EmployeeGuestCheckInScreen hideTopBar={isAdminRoute} />;
+  }
+
+  return <EmployeeGuestCheckinWebDesktopScreen />;
+}
 

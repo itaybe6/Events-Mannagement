@@ -27,7 +27,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "@/constants/colors";
 import BackSwipe from "@/components/BackSwipe";
 import AppHeader from "@/components/AppHeader";
-import { useGuestCheckInModel } from "@/features/guests/useGuestCheckInModel";
+import { guestArrivedPeople, guestInvitedPeople, useGuestCheckInModel } from "@/features/guests/useGuestCheckInModel";
 import { useSeatingMapModel } from "@/features/seating/useSeatingMapModel";
 import { supabase } from "@/lib/supabase";
 import { ALIGN_RIGHT, ROW_DIR, ROW_REVERSE_DIR } from "@/lib/rtl";
@@ -83,7 +83,7 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const segments = useSegments();
-  const { eventId } = useLocalSearchParams<{ eventId?: string }>();
+  const { eventId, returnTo } = useLocalSearchParams<{ eventId?: string; returnTo?: string }>();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
 
   const resolvedEventId = useMemo(() => String(eventId || "").trim(), [eventId]);
@@ -103,9 +103,14 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
     [isAdminContext, resolvedEventId]
   );
 
+  const backHref = useMemo(() => {
+    const raw = String(returnTo || "").trim();
+    return raw || fallbackToDetails;
+  }, [fallbackToDetails, returnTo]);
+
   const handleBack = useCallback(() => {
-    router.replace(fallbackToDetails as any);
-  }, [fallbackToDetails, router]);
+    router.replace(backHref as any);
+  }, [backHref, router]);
 
   useFocusEffect(
     useCallback(() => {
@@ -220,20 +225,6 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
   const bottomReserve = TAB_BAR_HEIGHT + TAB_BAR_BOTTOM_GAP + 18;
   const contentBottomPadding = bottomReserve + (isAdminStyledMobile ? 42 : insets.bottom);
 
-  const invitedPeople = useMemo(() => {
-    return guests.reduce((sum, g) => sum + (Number(g.numberOfPeople) || 1), 0);
-  }, [guests]);
-
-  const arrivedPeople = useMemo(() => {
-    return guests.reduce((sum, g) => {
-      if (!g.checkedIn) return sum;
-      const people = Number(g.numberOfPeople) || 1;
-      const actual = g.checkedInCount === null || g.checkedInCount === undefined ? null : Number(g.checkedInCount);
-      const n = actual !== null && Number.isFinite(actual) ? actual : people;
-      return sum + Math.max(0, n);
-    }, 0);
-  }, [guests]);
-
   const [tableFilterId, setTableFilterId] = useState<string | null>(null);
   const [tableModalOpen, setTableModalOpen] = useState(false);
   const [activeTableId, setActiveTableId] = useState<string | null>(null);
@@ -295,8 +286,8 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
       .sort((a, b) => (a.sort !== b.sort ? a.sort - b.sort : a.name.localeCompare(b.name, "he")))
       .map((sec) => ({
         ...sec,
-        checkedIn: sec.data.filter((g) => Boolean(g.checkedIn)).length,
-        total: sec.data.length,
+        checkedIn: sec.data.reduce((sum, g) => sum + guestArrivedPeople(g), 0),
+        total: sec.data.reduce((sum, g) => sum + guestInvitedPeople(g), 0),
       }));
   }, [filteredGuests, tableById]);
 
@@ -306,8 +297,9 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
     return sections
       .map((sec) => {
         const data = sec.data.filter((g) => String(g.tableId ?? "").trim() === tid);
-        const checkedIn = data.filter((g) => Boolean(g.checkedIn)).length;
-        return { ...sec, data, checkedIn, total: data.length };
+        const checkedIn = data.reduce((sum, g) => sum + guestArrivedPeople(g), 0);
+        const total = data.reduce((sum, g) => sum + guestInvitedPeople(g), 0);
+        return { ...sec, data, checkedIn, total };
       })
       .filter((sec) => sec.total > 0);
   }, [sections, tableFilterId]);
@@ -343,7 +335,7 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
 
   if (loading) {
     return (
-      <BackSwipe fallbackHref={fallbackToDetails} onBack={handleBack}>
+      <BackSwipe fallbackHref={backHref} onBack={handleBack}>
         <Stack.Screen
           options={isAdminStyledMobile ? { headerShown: false } : { header: () => <AppHeader canGoBack onPressBack={handleBack} /> }}
         />
@@ -417,7 +409,7 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
   }
 
   return (
-    <BackSwipe fallbackHref={fallbackToDetails} onBack={handleBack}>
+    <BackSwipe fallbackHref={backHref} onBack={handleBack}>
       <Stack.Screen
         options={isAdminStyledMobile ? { headerShown: false } : { header: () => <AppHeader canGoBack onPressBack={handleBack} /> }}
       />
@@ -468,10 +460,10 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
 
             <View style={styles.topCenter}>
               <Text style={styles.topTitle} numberOfLines={1}>
-                הזנת מוזמנים
+                צ׳ק-אין אורחים
               </Text>
               <Text style={styles.topSubtitle} numberOfLines={1}>
-                {`${counts.checkedIn}/${counts.total} הגיעו • ${arrivedPeople}/${invitedPeople} אנשים`}
+                {`${counts.checkedIn}/${counts.total} מוזמנים באולם`}
               </Text>
             </View>
 

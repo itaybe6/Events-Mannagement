@@ -137,6 +137,28 @@ export type EventGuestPeopleStats = {
   seatedPeople: number;
 };
 
+export function mapGuestRowFromDb(guest: Record<string, unknown>): Guest {
+  return {
+    id: String(guest.id),
+    name: String(guest.name ?? ''),
+    phone: String(guest.phone ?? '') || '',
+    status: guest.status as Guest['status'],
+    tableId: (guest.table_id as string | null) ?? null,
+    gift: Number(guest.gift_amount) || 0,
+    message: String(guest.message ?? '') || '',
+    category_id: guest.category_id as string | undefined,
+    numberOfPeople: Number(guest.number_of_people) || 1,
+    invitationToken: guest.invitation_token ? String(guest.invitation_token) : undefined,
+    invitationCode: guest.invitation_code ? String(guest.invitation_code) : undefined,
+    checkedIn: Boolean(guest.checked_in),
+    checkedInAt: guest.checked_in_at ? new Date(String(guest.checked_in_at)) : null,
+    checkedInCount:
+      guest.checked_in_count === null || guest.checked_in_count === undefined
+        ? null
+        : Number(guest.checked_in_count) || 0,
+  };
+}
+
 export const guestService = {
   /**
    * People-based guest aggregates for one or more events.
@@ -191,25 +213,7 @@ export const guestService = {
 
       if (error) throw error;
 
-      return data.map(guest => ({
-        id: guest.id,
-        name: guest.name,
-        phone: guest.phone || '',
-        status: guest.status as Guest['status'],
-        tableId: guest.table_id,
-        gift: Number(guest.gift_amount) || 0,
-        message: guest.message || '',
-        category_id: guest.category_id,
-        numberOfPeople: guest.number_of_people || 1,
-        invitationToken: (guest as any).invitation_token ? String((guest as any).invitation_token) : undefined,
-        invitationCode: (guest as any).invitation_code ? String((guest as any).invitation_code) : undefined,
-        checkedIn: Boolean((guest as any).checked_in),
-        checkedInAt: (guest as any).checked_in_at ? new Date((guest as any).checked_in_at) : null,
-        checkedInCount:
-          (guest as any).checked_in_count === null || (guest as any).checked_in_count === undefined
-            ? null
-            : Number((guest as any).checked_in_count) || 0,
-      }));
+      return data.map((guest) => mapGuestRowFromDb(guest as Record<string, unknown>));
     } catch (error) {
       console.error('Get guests error:', error);
       throw error;

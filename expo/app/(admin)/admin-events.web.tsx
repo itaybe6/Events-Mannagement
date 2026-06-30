@@ -9,9 +9,9 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  useWindowDimensions,
   View,
 } from 'react-native';
+import { useMobileWebLayout } from '@/lib/useMobileWebLayout';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
@@ -244,13 +244,13 @@ function getStatusMeta(date: Date | string) {
 }
 
 export function AdminEventsListWebScreen() {
-  const { width } = useWindowDimensions();
+  const { preferNativeMobileLayout } = useMobileWebLayout();
 
   // Below 900px we render the native screen. Keep this gate in a thin wrapper so
   // all the heavy hooks live in the inner component — otherwise resizing across
   // the breakpoint changes the hook count and React throws
   // "Rendered fewer hooks than expected".
-  if (width < 900) {
+  if (preferNativeMobileLayout) {
     return <AdminEventsScreen />;
   }
 
@@ -2720,12 +2720,12 @@ const styles = StyleSheet.create({
 });
 
 export default function AdminEventsWebScreen() {
-  const { width } = useWindowDimensions();
+  const { preferNativeMobileLayout } = useMobileWebLayout();
 
   // Thin wrapper: keep all heavy hooks in the inner component so that crossing
   // the 900px breakpoint mounts/unmounts a whole component instead of changing
   // the hook count (which causes "Rendered fewer hooks than expected").
-  if (width < 900) {
+  if (preferNativeMobileLayout) {
     return <AdminEventsScreen />;
   }
 

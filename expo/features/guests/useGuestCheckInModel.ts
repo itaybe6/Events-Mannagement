@@ -1,7 +1,7 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert } from 'react-native';
 import { supabase } from '@/lib/supabase';
-import { guestService } from '@/lib/services/guestService';
+import { guestService, mapGuestRowFromDb } from '@/lib/services/guestService';
 import type { Guest, GuestCategory } from '@/types';
 
 export type GuestCheckInFilter = 'all' | 'checked_in' | 'not_checked_in';
@@ -11,11 +11,27 @@ export type GuestCheckInSection = {
   key: GuestCheckInCategoryKey;
   name: string;
   data: Guest[];
+  /** People who arrived in this category (sum of checked_in_count). */
   checkedIn: number;
+  /** Total invited people in this category (sum of number_of_people). */
   total: number;
 };
 
 const UNCATEGORIZED_KEY = '__uncategorized__' as const;
+
+function guestInvitedPeople(g: Guest): number {
+  return Math.max(1, Number(g.numberOfPeople) || 1);
+}
+
+function guestArrivedPeople(g: Guest): number {
+  if (!g.checkedIn) return 0;
+  const invited = guestInvitedPeople(g);
+  const actual = g.checkedInCount === null || g.checkedInCount === undefined ? null : Number(g.checkedInCount);
+  const n = actual !== null && Number.isFinite(actual) ? actual : invited;
+  return Math.max(0, n);
+}
+
+export { guestInvitedPeople, guestArrivedPeople };
 
 function normalizeCategoryId(raw: unknown) {
   const s = String(raw ?? '').trim();
@@ -26,10 +42,18 @@ export function useGuestCheckInModel(params: {
   eventId: string | null;
   errorTitle?: string;
   errorMessage?: string;
+  /** Subscribe to live guest updates (check-in, count, table moves). Defaults to true. */
+  enableRealtime?: boolean;
   /** Called after a guest is successfully marked as checked-in (toggle ON). Use to e.g. send table SMS. */
   onCheckInSuccess?: (guest: Guest) => void;
 }) {
-  const { eventId, errorTitle = 'שגיאה', errorMessage = 'לא ניתן לטעון את רשימת האורחים', onCheckInSuccess } = params;
+  const {
+    eventId,
+    errorTitle = 'שגיאה',
+    errorMessage = 'לא ניתן לטעון את רשימת האורחים',
+    enableRealtime = true,
+    onCheckInSuccess,
+  } = params;
 
   const [loading, setLoading] = useState(true);
   const [guests, setGuests] = useState<Guest[]>([]);
@@ -140,6 +164,58 @@ export function useGuestCheckInModel(params: {
     }
   }, [errorMessage, errorTitle, eventId]);
 
+  useEffect(() => {
+    if (!eventId || !enableRealtime) return;
+
+    const channel = supabase
+      .channel(`guest-checkin:${eventId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'guests',
+          filter: `event_id=eq.${eventId}`,
+        },
+        (payload) => {
+          if (payload.eventType === 'INSERT') {
+            const row = payload.new as Record<string, unknown>;
+            if (!row?.id) return;
+            const newGuest = mapGuestRowFromDb(row);
+            setGuests((prev) => {
+              if (prev.some((g) => g.id === newGuest.id)) return prev;
+              return [...prev, newGuest].sort((a, b) => a.name.localeCompare(b.name, 'he'));
+            });
+            return;
+          }
+
+          if (payload.eventType === 'UPDATE') {
+            const row = payload.new as Record<string, unknown>;
+            if (!row?.id) return;
+            const updated = mapGuestRowFromDb(row);
+            setGuests((prev) => prev.map((g) => (g.id === updated.id ? { ...g, ...updated } : g)));
+            return;
+          }
+
+          if (payload.eventType === 'DELETE') {
+            const old = payload.old as Record<string, unknown>;
+            const id = String(old?.id ?? '').trim();
+            if (!id) return;
+            setGuests((prev) => prev.filter((g) => g.id !== id));
+          }
+        }
+      )
+      .subscribe((status, err) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.warn('Guest check-in realtime subscription error:', status, err);
+        }
+      });
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [enableRealtime, eventId]);
+
   const filteredGuests = useMemo(() => {
     const q = query.trim().toLowerCase();
     const base = guests.filter((g) => {
@@ -152,10 +228,15 @@ export function useGuestCheckInModel(params: {
   }, [guests, query, filter]);
 
   const counts = useMemo(() => {
-    const checkedInCount = guests.filter((g) => Boolean(g.checkedIn)).length;
+    let totalPeople = 0;
+    let arrivedPeople = 0;
+    for (const g of guests) {
+      totalPeople += guestInvitedPeople(g);
+      arrivedPeople += guestArrivedPeople(g);
+    }
     return {
-      total: guests.length,
-      checkedIn: checkedInCount,
+      total: totalPeople,
+      checkedIn: arrivedPeople,
     };
   }, [guests]);
 
@@ -190,8 +271,9 @@ export function useGuestCheckInModel(params: {
 
     return keys.map((key) => {
       const data = grouped.get(key) || [];
-      const checkedInCount = data.filter((g) => Boolean(g.checkedIn)).length;
-      return { key, name: labelForKey(key), data, checkedIn: checkedInCount, total: data.length };
+      const totalPeople = data.reduce((sum, g) => sum + guestInvitedPeople(g), 0);
+      const checkedInPeople = data.reduce((sum, g) => sum + guestArrivedPeople(g), 0);
+      return { key, name: labelForKey(key), data, checkedIn: checkedInPeople, total: totalPeople };
     });
   }, [categories, categoryNameById, filteredGuests]);
 
