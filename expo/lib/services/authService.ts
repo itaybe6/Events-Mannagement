@@ -336,10 +336,62 @@ export const authService = {
     }
   },
 
-  // Delete user (admin only)
+  // Delete user (admin only). For event owners, owned events and their related
+  // rows are removed via ON DELETE CASCADE when the users row is deleted.
   deleteUser: async (userId: string): Promise<void> => {
     try {
-      // First delete from our users table
+      let userType: string | null = null;
+      let ownedEventIds: string[] = [];
+
+      try {
+        const { data: profile, error: profileLookupError } = await supabaseAdmin
+          .from('users')
+          .select('user_type')
+          .eq('id', userId)
+          .maybeSingle();
+
+        if (profileLookupError) {
+          console.warn('Delete user: profile lookup warning', profileLookupError);
+        } else if (profile) {
+          userType = String((profile as any).user_type || '') || null;
+        }
+      } catch (profileException) {
+        console.warn('Delete user: profile lookup exception', profileException);
+      }
+
+      if (userType === 'event_owner') {
+        try {
+          const { data: events, error: eventsError } = await supabaseAdmin
+            .from('events')
+            .select('id')
+            .eq('user_id', userId);
+
+          if (eventsError) {
+            console.warn('Delete user: events lookup warning', eventsError);
+          } else if (Array.isArray(events)) {
+            ownedEventIds = events
+              .map((row: any) => String(row?.id ?? ''))
+              .filter((id) => id.length > 0);
+          }
+        } catch (eventsException) {
+          console.warn('Delete user: events lookup exception', eventsException);
+        }
+
+        for (const eventId of ownedEventIds) {
+          try {
+            await supabaseAdmin.from('notifications').delete().eq('event_id', eventId);
+          } catch (notificationsException) {
+            console.warn(
+              `Delete user: notifications cleanup warning for ${eventId}`,
+              notificationsException
+            );
+          }
+          await safeRemoveStorageFolder('event-images', `invitations/${eventId}`);
+        }
+      }
+
+      await safeRemoveStorageFolder('avatars', `users/${userId}`);
+
       const { error: profileError } = await supabaseAdmin
         .from('users')
         .delete()
@@ -350,9 +402,8 @@ export const authService = {
         throw profileError;
       }
 
-      // Then delete auth user
       const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(userId);
-      
+
       if (authError) {
         console.error('❌ Auth deletion error:', authError);
         throw authError;
