@@ -105,6 +105,92 @@ function DonutChart({
   );
 }
 
+function LiveEventCountdown({
+  eventDate,
+  dateLabel,
+  isMobile,
+}: {
+  eventDate: Date | string | null | undefined;
+  dateLabel: string;
+  isMobile: boolean;
+}) {
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const countdown = useMemo(() => {
+    const target = eventDate ? new Date(eventDate).getTime() : NaN;
+    const diffMs = target - now.getTime();
+    if (!Number.isFinite(diffMs)) return null;
+
+    const safeDiff = Math.max(0, diffMs);
+    const totalSeconds = Math.floor(safeDiff / 1000);
+
+    return {
+      days: Math.floor(totalSeconds / 86400),
+      hours: Math.floor((totalSeconds % 86400) / 3600),
+      minutes: Math.floor((totalSeconds % 3600) / 60),
+      seconds: totalSeconds % 60,
+    };
+  }, [eventDate, now]);
+
+  return (
+    <View style={styles.countdownCard}>
+      <View style={styles.countdownGlowPrimary} />
+      <View style={styles.countdownGlowSecondary} />
+      <View pointerEvents="none" style={styles.countdownDashedFrame} />
+
+      <View style={styles.countdownHeader}>
+        <View style={styles.countdownHeaderMeta}>
+          <View style={styles.countdownLiveBadge}>
+            <View style={styles.countdownLiveDot} />
+            <Text style={styles.countdownLiveBadgeText}>מתעדכן</Text>
+          </View>
+          <View style={styles.countdownHeaderIcon}>
+            <Ionicons name="time-outline" size={18} color={colors.primary} />
+          </View>
+        </View>
+        <View style={styles.countdownHeaderText}>
+          <Text style={styles.countdownTitle}>הספירה לאחור החלה</Text>
+          <Text style={styles.countdownSubtitle}>
+            {dateLabel ? `טיימר חי עד מועד האירוע ב־${dateLabel}.` : 'טיימר חי עד מועד האירוע.'}
+          </Text>
+        </View>
+      </View>
+
+      <View style={[styles.countdownGridShell, isMobile ? styles.countdownGridShellSm : null]}>
+        <View style={[styles.countdownGrid, isMobile ? styles.countdownGridSm : null]}>
+        {[
+          { key: 'days', label: 'ימים', value: countdown?.days ?? 0 },
+          { key: 'hours', label: 'שעות', value: countdown?.hours ?? 0 },
+          { key: 'minutes', label: 'דקות', value: countdown?.minutes ?? 0 },
+          { key: 'seconds', label: 'שניות', value: countdown?.seconds ?? 0 },
+        ].map((unit, index, arr) => (
+          <React.Fragment key={unit.key}>
+            <View style={[styles.countdownUnit, isMobile ? styles.countdownUnitSm : null]}>
+              <Text style={[styles.countdownUnitValue, isMobile ? styles.countdownUnitValueSm : null]}>{String(unit.value).padStart(2, '0')}</Text>
+              <Text style={styles.countdownUnitLabel}>{unit.label}</Text>
+            </View>
+            {index < arr.length - 1 ? <Text style={[styles.countdownSeparator, isMobile ? styles.countdownSeparatorSm : null]}>:</Text> : null}
+          </React.Fragment>
+        ))}
+        </View>
+      </View>
+
+      <View style={styles.countdownFooter}>
+        <View style={styles.countdownDatePill}>
+          <Ionicons name="calendar-outline" size={14} color={colors.primary} />
+          <Text style={styles.countdownDatePillText}>{dateLabel || 'תאריך האירוע טרם הוגדר'}</Text>
+        </View>
+        <Text style={styles.countdownFooterHint}>ימים, שעות, דקות ושניות עד תחילת האירוע</Text>
+      </View>
+    </View>
+  );
+}
+
 export default function AdminEventDetailsWebScreen() {
   const { id, eventId } = useLocalSearchParams();
   const router = useRouter();
@@ -129,7 +215,6 @@ export default function AdminEventDetailsWebScreen() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [editDatePickerOpen, setEditDatePickerOpen] = useState(false);
   const [webCalendarOpen, setWebCalendarOpen] = useState(false);
-  const [now, setNow] = useState(() => new Date());
   const [webCalendarMonth, setWebCalendarMonth] = useState(() => {
     const d = new Date();
     return new Date(d.getFullYear(), d.getMonth(), 1);
@@ -172,11 +257,6 @@ export default function AdminEventDetailsWebScreen() {
       return `${webCalendarMonth.getMonth() + 1}/${webCalendarMonth.getFullYear()}`;
     }
   }, [webCalendarMonth]);
-
-  useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
 
   const calendarDays = useMemo(() => {
     // Week starts Sunday (Israel). Build 6 weeks grid (42 days).
@@ -339,22 +419,6 @@ export default function AdminEventDetailsWebScreen() {
   const dateLabel = Number.isFinite(dateObj.getTime())
     ? dateObj.toLocaleDateString('he-IL', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })
     : '';
-  const countdown = useMemo(() => {
-    const target = event?.date ? new Date(event.date).getTime() : NaN;
-    const diffMs = target - now.getTime();
-    if (!Number.isFinite(diffMs)) return null;
-
-    const safeDiff = Math.max(0, diffMs);
-    const totalSeconds = Math.floor(safeDiff / 1000);
-
-    return {
-      days: Math.floor(totalSeconds / 86400),
-      hours: Math.floor((totalSeconds % 86400) / 3600),
-      minutes: Math.floor((totalSeconds % 3600) / 60),
-      seconds: totalSeconds % 60,
-    };
-  }, [event?.date, now]);
-
   if (loading) {
     return (
       <View style={styles.center}>
@@ -610,56 +674,7 @@ export default function AdminEventDetailsWebScreen() {
 
               <View style={[styles.dashboardBody, isNarrow ? styles.dashboardBodyNarrow : null]}>
                 <View style={styles.dashboardMain}>
-                  <View style={styles.countdownCard}>
-                    <View style={styles.countdownGlowPrimary} />
-                    <View style={styles.countdownGlowSecondary} />
-                    <View pointerEvents="none" style={styles.countdownDashedFrame} />
-
-                    <View style={styles.countdownHeader}>
-                      <View style={styles.countdownHeaderMeta}>
-                        <View style={styles.countdownLiveBadge}>
-                          <View style={styles.countdownLiveDot} />
-                          <Text style={styles.countdownLiveBadgeText}>מתעדכן</Text>
-                        </View>
-                        <View style={styles.countdownHeaderIcon}>
-                          <Ionicons name="time-outline" size={18} color={colors.primary} />
-                        </View>
-                      </View>
-                      <View style={styles.countdownHeaderText}>
-                        <Text style={styles.countdownTitle}>הספירה לאחור החלה</Text>
-                        <Text style={styles.countdownSubtitle}>
-                          {dateLabel ? `טיימר חי עד מועד האירוע ב־${dateLabel}.` : 'טיימר חי עד מועד האירוע.'}
-                        </Text>
-                      </View>
-                    </View>
-
-                    <View style={[styles.countdownGridShell, isMobile ? styles.countdownGridShellSm : null]}>
-                      <View style={[styles.countdownGrid, isMobile ? styles.countdownGridSm : null]}>
-                      {[
-                        { key: 'days', label: 'ימים', value: countdown?.days ?? 0 },
-                        { key: 'hours', label: 'שעות', value: countdown?.hours ?? 0 },
-                        { key: 'minutes', label: 'דקות', value: countdown?.minutes ?? 0 },
-                        { key: 'seconds', label: 'שניות', value: countdown?.seconds ?? 0 },
-                      ].map((unit, index, arr) => (
-                        <React.Fragment key={unit.key}>
-                          <View style={[styles.countdownUnit, isMobile ? styles.countdownUnitSm : null]}>
-                            <Text style={[styles.countdownUnitValue, isMobile ? styles.countdownUnitValueSm : null]}>{String(unit.value).padStart(2, '0')}</Text>
-                            <Text style={styles.countdownUnitLabel}>{unit.label}</Text>
-                          </View>
-                          {index < arr.length - 1 ? <Text style={[styles.countdownSeparator, isMobile ? styles.countdownSeparatorSm : null]}>:</Text> : null}
-                        </React.Fragment>
-                      ))}
-                      </View>
-                    </View>
-
-                    <View style={styles.countdownFooter}>
-                      <View style={styles.countdownDatePill}>
-                        <Ionicons name="calendar-outline" size={14} color={colors.primary} />
-                        <Text style={styles.countdownDatePillText}>{dateLabel || 'תאריך האירוע טרם הוגדר'}</Text>
-                      </View>
-                      <Text style={styles.countdownFooterHint}>ימים, שעות, דקות ושניות עד תחילת האירוע</Text>
-                    </View>
-                  </View>
+                  <LiveEventCountdown eventDate={event.date} dateLabel={dateLabel} isMobile={isMobile} />
 
                   <View style={styles.workflowActionsCard}>
                     <View style={styles.workflowActionsHeader}>
