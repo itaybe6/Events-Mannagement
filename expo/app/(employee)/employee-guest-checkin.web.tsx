@@ -641,7 +641,7 @@ function EmployeeGuestCheckinWebDesktopScreen() {
 
   const guestListMaxHeight = useMemo(() => {
     if (!height || !isLg) return undefined;
-    return Math.max(420, Math.round(height - 320));
+    return Math.max(420, Math.round(height - 360));
   }, [height, isLg]);
 
   const guestsListEstimatedHeight = useMemo(() => {
@@ -669,9 +669,10 @@ function EmployeeGuestCheckinWebDesktopScreen() {
   }, [groupedVisibleGuests, collapsedTableGroups]);
 
   const shouldScrollGuests = useMemo(() => {
+    if (isLg) return true;
     if (!guestListMaxHeight) return false;
     return guestsListEstimatedHeight > guestListMaxHeight;
-  }, [guestListMaxHeight, guestsListEstimatedHeight]);
+  }, [guestListMaxHeight, guestsListEstimatedHeight, isLg]);
 
   const guestsColWidth = useMemo(() => {
     if (!isLg) return undefined as number | undefined;
@@ -1126,17 +1127,23 @@ function EmployeeGuestCheckinWebDesktopScreen() {
             </View>
           </View>
 
-          <View style={[styles.content, !isLg ? styles.contentSm : null]}>
+          <View style={[styles.content, !isLg ? styles.contentSm : styles.contentLg]}>
 
             <View
               style={[
                 styles.guestsCol,
-                !isLg ? styles.colSm : null,
+                !isLg ? styles.colSm : styles.guestsColLg,
                 isLg && guestsColWidth ? ({ width: guestsColWidth } as any) : null,
               ]}
             >
-              <View style={Platform.OS === 'web' && isLg ? ({ position: 'sticky', top: stickyTop } as any) : null}>
-                <View style={styles.card}>
+              <View
+                style={
+                  Platform.OS === 'web' && isLg
+                    ? ({ position: 'sticky', top: stickyTop, alignSelf: 'stretch', flex: 1 } as any)
+                    : null
+                }
+              >
+                <View style={[styles.card, styles.guestListCard, isLg ? ({ minHeight: mapCardHeight } as any) : null]}>
                   <View style={styles.cardHeaderRow}>
                     <View style={styles.panelHeaderCopy}>
                       <Text style={styles.panelEyebrow}>אורחים</Text>
@@ -1213,7 +1220,7 @@ function EmployeeGuestCheckinWebDesktopScreen() {
                     />
                   </View>
 
-                  <View style={[styles.listWrap, { marginTop: 12 }]}>
+                  <View style={[styles.listWrap, isLg ? styles.listWrapFill : null, { marginTop: 12 }]}>
                     {loading ? (
                       <View style={styles.loadingRow}>
                         <ActivityIndicator size="large" color={colors.primary} />
@@ -1225,18 +1232,23 @@ function EmployeeGuestCheckinWebDesktopScreen() {
                         <Text style={styles.emptyTitle}>לא נמצאו אורחים</Text>
                         <Text style={styles.emptyText}>נסה לשנות חיפוש / פילטר / שולחן.</Text>
                       </View>
+                    ) : shouldScrollGuests ? (
+                      <ScrollView
+                        style={
+                          isLg
+                            ? ({ flex: 1, minHeight: guestListMaxHeight, maxHeight: guestListMaxHeight } as any)
+                            : guestListMaxHeight
+                              ? ({ maxHeight: guestListMaxHeight } as any)
+                              : undefined
+                        }
+                        contentContainerStyle={isLg ? ({ flexGrow: 1 } as any) : undefined}
+                        showsVerticalScrollIndicator={false}
+                        nestedScrollEnabled
+                      >
+                        {guestsListContent}
+                      </ScrollView>
                     ) : (
-                      shouldScrollGuests ? (
-                        <ScrollView
-                          style={guestListMaxHeight ? ({ maxHeight: guestListMaxHeight } as any) : undefined}
-                          showsVerticalScrollIndicator={false}
-                          nestedScrollEnabled
-                        >
-                          {guestsListContent}
-                        </ScrollView>
-                      ) : (
-                        guestsListContent
-                      )
+                      guestsListContent
                     )}
                   </View>
                 </View>
@@ -1621,9 +1633,17 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: 10,
   },
+  contentLg: {
+    alignItems: 'stretch',
+    ...(Platform.OS === 'web' ? ({ minHeight: 'calc(100dvh - 280px)' } as any) : null),
+  },
   contentSm: { flexDirection: 'column', gap: 10 },
   // Keep side columns tighter to prioritize the map width.
   guestsCol: { width: 500, flexShrink: 1, minWidth: 400 },
+  guestsColLg: {
+    alignSelf: 'stretch',
+    ...(Platform.OS === 'web' ? ({ display: 'flex', flexDirection: 'column' } as any) : null),
+  },
   // On stacked layout (no map), keep the guests panel compact and centered.
   // minWidth: 0 prevents the 400px base minWidth from forcing horizontal
   // overflow on phones.
@@ -1644,6 +1664,10 @@ const styles = StyleSheet.create({
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 8 },
     elevation: 1,
+  },
+  guestListCard: {
+    flex: 1,
+    ...(Platform.OS === 'web' ? ({ display: 'flex', flexDirection: 'column' } as any) : null),
   },
   dashboardCard: {
     padding: 0,
@@ -2091,6 +2115,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.06)',
     padding: 14,
+  },
+  listWrapFill: {
+    flex: 1,
+    minHeight: 0,
+    ...(Platform.OS === 'web' ? ({ display: 'flex', flexDirection: 'column' } as any) : null),
   },
   tableGroupsWrap: { gap: 10 },
   tableGroupCard: {
