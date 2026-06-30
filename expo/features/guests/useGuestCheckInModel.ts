@@ -44,6 +44,8 @@ export function useGuestCheckInModel(params: {
   errorMessage?: string;
   /** Subscribe to live guest updates (check-in, count, table moves). Defaults to true. */
   enableRealtime?: boolean;
+  /** Background sync interval (ms) so multiple usher stations stay in sync. Defaults to 4s. */
+  syncIntervalMs?: number;
   /** Called after a guest is successfully marked as checked-in (toggle ON). Use to e.g. send table SMS. */
   onCheckInSuccess?: (guest: Guest) => void;
 }) {
@@ -52,6 +54,7 @@ export function useGuestCheckInModel(params: {
     errorTitle = 'שגיאה',
     errorMessage = 'לא ניתן לטעון את רשימת האורחים',
     enableRealtime = true,
+    syncIntervalMs = 4000,
     onCheckInSuccess,
   } = params;
 
@@ -75,7 +78,8 @@ export function useGuestCheckInModel(params: {
     return m;
   }, [categories]);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (options?: { silent?: boolean }) => {
+    const silent = Boolean(options?.silent);
     if (!eventId) {
       setGuests([]);
       setCategories([]);
@@ -83,7 +87,7 @@ export function useGuestCheckInModel(params: {
       return;
     }
 
-    setLoading(true);
+    if (!silent) setLoading(true);
     try {
       const [data, cats] = await Promise.all([
         guestService.getGuests(eventId),
@@ -156,19 +160,49 @@ export function useGuestCheckInModel(params: {
       setCategories(nextCats);
     } catch (e) {
       console.error('Guest check-in load error:', e);
-      Alert.alert(errorTitle, errorMessage);
-      setGuests([]);
-      setCategories([]);
+      if (!silent) {
+        Alert.alert(errorTitle, errorMessage);
+        setGuests([]);
+        setCategories([]);
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [errorMessage, errorTitle, eventId]);
+
+  useEffect(() => {
+    if (!eventId || syncIntervalMs <= 0) return;
+
+    const poll = () => {
+      void refresh({ silent: true });
+    };
+
+    const intervalId = setInterval(poll, syncIntervalMs);
+
+    const onVisibilityChange = () => {
+      if (typeof document === 'undefined') return;
+      if (!document.hidden) poll();
+    };
+
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', onVisibilityChange);
+    }
+
+    return () => {
+      clearInterval(intervalId);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', onVisibilityChange);
+      }
+    };
+  }, [eventId, refresh, syncIntervalMs]);
 
   useEffect(() => {
     if (!eventId || !enableRealtime) return;
 
     const channel = supabase
-      .channel(`guest-checkin:${eventId}`)
+      .channel(`guest-checkin:${eventId}`, {
+        config: { broadcast: { self: false } },
+      })
       .on(
         'postgres_changes',
         {
@@ -206,8 +240,8 @@ export function useGuestCheckInModel(params: {
         }
       )
       .subscribe((status, err) => {
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          console.warn('Guest check-in realtime subscription error:', status, err);
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          console.warn('Guest check-in realtime subscription issue:', status, err);
         }
       });
 

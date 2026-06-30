@@ -180,7 +180,14 @@ export default function AdminEventsScreen() {
     extrapolate: 'clamp',
   });
   const baseHeaderSpacerHeight = insets.top + 10 + headerContentHeight;
-  const chipsSpacerHeight = Animated.add(chipsMaxHeight, chipsBottomGap);
+  const chipsExpandedSpacerHeight =
+    HEADER_CHIPS_TOP_GAP + HEADER_CHIPS_ROW_HEIGHT + HEADER_CHIPS_INNER_BOTTOM_GAP + HEADER_CHIPS_BOTTOM_GAP;
+  const chipsSpacerHeight =
+    Platform.OS === 'web'
+      ? isStickyHeaderActive
+        ? 0
+        : chipsExpandedSpacerHeight
+      : Animated.add(chipsMaxHeight, chipsBottomGap);
 
   // UI
   const today = new Date();
@@ -353,207 +360,11 @@ export default function AdminEventsScreen() {
         }}
       >
         <View style={{ height: baseHeaderSpacerHeight }} />
-        <Animated.View style={{ height: chipsSpacerHeight }} />
-
-        <Modal
-          visible={showFilterDialog}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setShowFilterDialog(false)}
-        >
-          <View style={styles.filterDialogOverlay}>
-            <TouchableOpacity
-              style={styles.modalBackdrop}
-              activeOpacity={1}
-              onPress={() => setShowFilterDialog(false)}
-            />
-
-            <View style={styles.filterDialogCard}>
-              <LinearGradient
-                colors={['rgba(255,255,255,0.98)', 'rgba(246, 243, 237, 0.98)']}
-                style={styles.filterDialogGradient}
-              />
-
-              <View style={styles.filterDialogHeader}>
-                <View style={styles.filterDialogTitleWrap}>
-                  <Text style={[styles.filterDialogTitle, filterSheetTextDir]}>בחר סוג סינון</Text>
-                  <Text style={[styles.filterDialogSubtitle, filterSheetTextDir]}>
-                    {rtlText(currentFilterLabel)}
-                  </Text>
-                </View>
-
-                <TouchableOpacity
-                  style={styles.filterDialogCloseBtn}
-                  onPress={() => setShowFilterDialog(false)}
-                  activeOpacity={0.85}
-                >
-                  <Ionicons name="close" size={18} color={colors.text} />
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.filterOptionsList}>
-                <TouchableOpacity
-                  style={styles.filterOptionCard}
-                  onPress={() => {
-                    setShowFilterDialog(false);
-                    setShowDatePicker(true);
-                  }}
-                  activeOpacity={0.9}
-                >
-                  <View style={styles.filterOptionTextWrap}>
-                    <Text style={[styles.filterOptionTitle, filterSheetTextDir]}>בחירת תאריך מדויק</Text>
-                    <Text style={[styles.filterOptionText, filterSheetTextDir]}>
-                      לבחור יום מסוים להצגת האירועים
-                    </Text>
-                  </View>
-                  <View style={styles.filterOptionIconWrap}>
-                    <Ionicons name="calendar-outline" size={18} color={colors.primary} />
-                  </View>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.filterOptionCard}
-                  onPress={() => {
-                    setShowFilterDialog(false);
-                    setShowMonthPicker(true);
-                  }}
-                  activeOpacity={0.9}
-                >
-                  <View style={styles.filterOptionTextWrap}>
-                    <Text style={[styles.filterOptionTitle, filterSheetTextDir]}>בחירת חודש</Text>
-                    <Text style={[styles.filterOptionText, filterSheetTextDir]}>
-                      לסנן את הרשימה לפי חודש של האירוע
-                    </Text>
-                  </View>
-                  <View style={styles.filterOptionIconWrap}>
-                    <Ionicons name="calendar-number-outline" size={18} color={colors.primary} />
-                  </View>
-                </TouchableOpacity>
-              </View>
-
-              {hasActiveFilter ? (
-                <TouchableOpacity
-                  style={styles.clearFilterBtn}
-                  onPress={() => {
-                    setFilterDate(null);
-                    setFilterMonth('');
-                    setShowFilterDialog(false);
-                  }}
-                  activeOpacity={0.88}
-                >
-                  <Text style={[styles.clearFilterBtnText, filterSheetTextDir]}>נקה סינון</Text>
-                  <Ionicons name="refresh-outline" size={16} color={colors.primary} />
-                </TouchableOpacity>
-              ) : null}
-            </View>
-          </View>
-        </Modal>
-
-        {/* Month Picker Modal */}
-        <Modal
-          visible={showMonthPicker}
-          transparent
-          animationType="slide"
-          onRequestClose={() => setShowMonthPicker(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <TouchableOpacity
-              style={styles.modalBackdrop}
-              activeOpacity={1}
-              onPress={() => setShowMonthPicker(false)}
-            />
-
-            <View style={styles.monthPickerSheet}>
-              <LinearGradient
-                colors={['rgba(255,255,255,0.98)', 'rgba(244, 247, 255, 0.94)']}
-                style={styles.monthPickerSheetGradient}
-              />
-
-              <View style={styles.sheetHandle} />
-
-              <View style={styles.monthPickerHeaderRow}>
-                <View style={styles.monthPickerHeaderSide} />
-
-                <View style={styles.monthPickerHeaderCenter}>
-                  <Text style={styles.monthPickerTitle}>בחר חודש</Text>
-                  <Text style={styles.monthPickerSubtitle}>
-                    {selectedMonthLabel ? `מסנן: ${selectedMonthLabel}` : 'מציג: הכל'}
-                  </Text>
-                </View>
-
-                <TouchableOpacity
-                  style={styles.monthPickerCloseBtn}
-                  onPress={() => setShowMonthPicker(false)}
-                  activeOpacity={0.85}
-                >
-                  <Ionicons name="close" size={18} color={colors.text} />
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.monthGrid}>
-                <TouchableOpacity
-                  style={[styles.monthChipV2, filterMonth === '' && !filterDate && styles.monthChipV2Active]}
-                  onPress={() => {
-                    setFilterMonth('');
-                    setFilterDate(null);
-                    setShowMonthPicker(false);
-                  }}
-                  activeOpacity={0.9}
-                >
-                  {filterMonth === '' && !filterDate ? (
-                    <Ionicons name="checkmark" size={16} color={colors.white} />
-                  ) : null}
-                  <Text
-                    style={[
-                      styles.monthChipV2Text,
-                      filterMonth === '' && !filterDate && styles.monthChipV2TextActive,
-                    ]}
-                  >
-                    הכל
-                  </Text>
-                </TouchableOpacity>
-
-                {MONTHS.map((m, i) => (
-                  <TouchableOpacity
-                    key={i}
-                    style={[styles.monthChipV2, filterMonth === String(i) && styles.monthChipV2Active]}
-                    onPress={() => {
-                      setFilterMonth(String(i));
-                      setFilterDate(null);
-                      setShowMonthPicker(false);
-                    }}
-                    activeOpacity={0.9}
-                  >
-                    {filterMonth === String(i) ? (
-                      <Ionicons name="checkmark" size={16} color={colors.white} />
-                    ) : null}
-                    <Text
-                      style={[
-                        styles.monthChipV2Text,
-                        filterMonth === String(i) && styles.monthChipV2TextActive,
-                      ]}
-                    >
-                      {m}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-          </View>
-        </Modal>
-
-        <DateTimePickerModal
-          isVisible={showDatePicker}
-          mode="date"
-          onConfirm={date => {
-            setShowDatePicker(false);
-            setFilterDate(date as Date);
-            setFilterMonth('');
-          }}
-          onCancel={() => setShowDatePicker(false)}
-          minimumDate={new Date()}
-          locale="he-IL"
-        />
+        {Platform.OS === 'web' ? (
+          <View style={{ height: chipsSpacerHeight as number }} />
+        ) : (
+          <Animated.View style={{ height: chipsSpacerHeight }} />
+        )}
 
         {/* Events */}
         <View style={styles.timelineWrap}>
@@ -705,6 +516,205 @@ export default function AdminEventsScreen() {
           )}
         </View>
       </AppKeyboardAwareScrollView>
+
+      <Modal
+        visible={showFilterDialog}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowFilterDialog(false)}
+      >
+        <View style={styles.filterDialogOverlay}>
+          <TouchableOpacity
+            style={styles.modalBackdrop}
+            activeOpacity={1}
+            onPress={() => setShowFilterDialog(false)}
+          />
+
+          <View style={styles.filterDialogCard}>
+            <LinearGradient
+              colors={['rgba(255,255,255,0.98)', 'rgba(246, 243, 237, 0.98)']}
+              style={styles.filterDialogGradient}
+            />
+
+            <View style={styles.filterDialogHeader}>
+              <View style={styles.filterDialogTitleWrap}>
+                <Text style={[styles.filterDialogTitle, filterSheetTextDir]}>בחר סוג סינון</Text>
+                <Text style={[styles.filterDialogSubtitle, filterSheetTextDir]}>
+                  {rtlText(currentFilterLabel)}
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                style={styles.filterDialogCloseBtn}
+                onPress={() => setShowFilterDialog(false)}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="close" size={18} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.filterOptionsList}>
+              <TouchableOpacity
+                style={styles.filterOptionCard}
+                onPress={() => {
+                  setShowFilterDialog(false);
+                  setShowDatePicker(true);
+                }}
+                activeOpacity={0.9}
+              >
+                <View style={styles.filterOptionTextWrap}>
+                  <Text style={[styles.filterOptionTitle, filterSheetTextDir]}>בחירת תאריך מדויק</Text>
+                  <Text style={[styles.filterOptionText, filterSheetTextDir]}>
+                    לבחור יום מסוים להצגת האירועים
+                  </Text>
+                </View>
+                <View style={styles.filterOptionIconWrap}>
+                  <Ionicons name="calendar-outline" size={18} color={colors.primary} />
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.filterOptionCard}
+                onPress={() => {
+                  setShowFilterDialog(false);
+                  setShowMonthPicker(true);
+                }}
+                activeOpacity={0.9}
+              >
+                <View style={styles.filterOptionTextWrap}>
+                  <Text style={[styles.filterOptionTitle, filterSheetTextDir]}>בחירת חודש</Text>
+                  <Text style={[styles.filterOptionText, filterSheetTextDir]}>
+                    לסנן את הרשימה לפי חודש של האירוע
+                  </Text>
+                </View>
+                <View style={styles.filterOptionIconWrap}>
+                  <Ionicons name="calendar-number-outline" size={18} color={colors.primary} />
+                </View>
+              </TouchableOpacity>
+            </View>
+
+            {hasActiveFilter ? (
+              <TouchableOpacity
+                style={styles.clearFilterBtn}
+                onPress={() => {
+                  setFilterDate(null);
+                  setFilterMonth('');
+                  setShowFilterDialog(false);
+                }}
+                activeOpacity={0.88}
+              >
+                <Text style={[styles.clearFilterBtnText, filterSheetTextDir]}>נקה סינון</Text>
+                <Ionicons name="refresh-outline" size={16} color={colors.primary} />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showMonthPicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowMonthPicker(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={styles.modalBackdrop}
+            activeOpacity={1}
+            onPress={() => setShowMonthPicker(false)}
+          />
+
+          <View style={styles.monthPickerSheet}>
+            <LinearGradient
+              colors={['rgba(255,255,255,0.98)', 'rgba(244, 247, 255, 0.94)']}
+              style={styles.monthPickerSheetGradient}
+            />
+
+            <View style={styles.sheetHandle} />
+
+            <View style={styles.monthPickerHeaderRow}>
+              <View style={styles.monthPickerHeaderSide} />
+
+              <View style={styles.monthPickerHeaderCenter}>
+                <Text style={styles.monthPickerTitle}>בחר חודש</Text>
+                <Text style={styles.monthPickerSubtitle}>
+                  {selectedMonthLabel ? `מסנן: ${selectedMonthLabel}` : 'מציג: הכל'}
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                style={styles.monthPickerCloseBtn}
+                onPress={() => setShowMonthPicker(false)}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="close" size={18} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.monthGrid}>
+              <TouchableOpacity
+                style={[styles.monthChipV2, filterMonth === '' && !filterDate && styles.monthChipV2Active]}
+                onPress={() => {
+                  setFilterMonth('');
+                  setFilterDate(null);
+                  setShowMonthPicker(false);
+                }}
+                activeOpacity={0.9}
+              >
+                {filterMonth === '' && !filterDate ? (
+                  <Ionicons name="checkmark" size={16} color={colors.white} />
+                ) : null}
+                <Text
+                  style={[
+                    styles.monthChipV2Text,
+                    filterMonth === '' && !filterDate && styles.monthChipV2TextActive,
+                  ]}
+                >
+                  הכל
+                </Text>
+              </TouchableOpacity>
+
+              {MONTHS.map((m, i) => (
+                <TouchableOpacity
+                  key={i}
+                  style={[styles.monthChipV2, filterMonth === String(i) && styles.monthChipV2Active]}
+                  onPress={() => {
+                    setFilterMonth(String(i));
+                    setFilterDate(null);
+                    setShowMonthPicker(false);
+                  }}
+                  activeOpacity={0.9}
+                >
+                  {filterMonth === String(i) ? (
+                    <Ionicons name="checkmark" size={16} color={colors.white} />
+                  ) : null}
+                  <Text
+                    style={[
+                      styles.monthChipV2Text,
+                      filterMonth === String(i) && styles.monthChipV2TextActive,
+                    ]}
+                  >
+                    {m}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <DateTimePickerModal
+        isVisible={showDatePicker}
+        mode="date"
+        onConfirm={date => {
+          setShowDatePicker(false);
+          setFilterDate(date as Date);
+          setFilterMonth('');
+        }}
+        onCancel={() => setShowDatePicker(false)}
+        minimumDate={new Date()}
+        locale="he-IL"
+      />
 
     </View>
   );
