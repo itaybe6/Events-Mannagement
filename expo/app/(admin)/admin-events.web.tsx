@@ -1,9 +1,7 @@
 import React, { Suspense } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 
-import AdminEventsScreen from './admin-events';
 import { colors } from '@/constants/colors';
-import { useMobileWebLayout } from '@/lib/useMobileWebLayout';
 
 const AdminEventsDesktop = React.lazy(() => import('@/features/admin/admin-events-desktop.web'));
 const AdminEventsListDesktop = React.lazy(() =>
@@ -21,16 +19,6 @@ function WebScreenLoader() {
 }
 
 export function AdminEventsListWebScreen() {
-  const { preferNativeMobileLayout } = useMobileWebLayout();
-
-<<<<<<< HEAD
-=======
-  // Keep mobile-web in this file to avoid native/web route cycles.
->>>>>>> ccb73d27959e6160f8ef3d9d3cc1278550247d8d
-  if (preferNativeMobileLayout) {
-    return <AdminEventsListWebInner />;
-  }
-
   return (
     <Suspense fallback={<WebScreenLoader />}>
       <AdminEventsListDesktop />
@@ -39,16 +27,6 @@ export function AdminEventsListWebScreen() {
 }
 
 export default function AdminEventsWebScreen() {
-  const { preferNativeMobileLayout } = useMobileWebLayout();
-
-<<<<<<< HEAD
-=======
-  // Keep mobile-web in this file to avoid native/web route cycles.
->>>>>>> ccb73d27959e6160f8ef3d9d3cc1278550247d8d
-  if (preferNativeMobileLayout) {
-    return <AdminEventsListWebInner />;
-  }
-
   return (
     <Suspense fallback={<WebScreenLoader />}>
       <AdminEventsDesktop />
