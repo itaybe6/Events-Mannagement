@@ -16,6 +16,7 @@ import { AdminTabBar } from "@/components/animations/shopifytabs/admin-tab-bar";
 import { EmployeeTabBar } from "@/components/animations/shopifytabs/employee-tab-bar";
 import { AdminSharedHeader } from "@/components/animations/shopifytabs/admin-shared-header";
 import { isAdminMainTabRoute } from "@/components/animations/shopifytabs/lib/constants/admin-tabs";
+import { useMobileWebLayout } from "@/lib/useMobileWebLayout";
 
 export default function AdminTabsLayoutShared() {
   const router = useRouter();
@@ -24,11 +25,13 @@ export default function AdminTabsLayoutShared() {
   const { isTabBarVisible, isAdminHeaderVisible, setTabBarVisible, setAdminHeaderVisible } =
     useLayoutStore();
   const { userType, isLoggedIn, loading } = useUserStore();
+  const { preferNativeMobileLayout } = useMobileWebLayout();
+  const isWebDesktopShell = Platform.OS === "web" && !preferNativeMobileLayout;
   const insets = useSafeAreaInsets();
   const headerTotalHeight = getAppHeaderTotalHeight(insets.top, APP_HEADER_HEIGHT_COMPACT);
   const adminHeaderHeight = isAdminHeaderVisible ? insets.top + 64 : 0;
   const isAdminShopifyShell = userType === "admin";
-  const isEmployeeWebShell = userType === "employee" && Platform.OS === "web";
+  const isEmployeeWebShell = userType === "employee" && isWebDesktopShell;
   const currentAdminRoute = String(segments?.[1] ?? "");
   const isGuestCheckinRoute = currentAdminRoute === "admin-guest-checkin";
   const hideBackOnThisRoute =
@@ -83,7 +86,7 @@ export default function AdminTabsLayoutShared() {
   }, [isLoggedIn, userType, loading, router]);
 
   useEffect(() => {
-    if (Platform.OS !== "web" || userType !== "employee") return;
+    if (!isWebDesktopShell || userType !== "employee") return;
 
     if (currentAdminRoute === "admin-events" || currentAdminRoute === "users") {
       router.replace("/(admin)/admin-events-list");
@@ -101,7 +104,7 @@ export default function AdminTabsLayoutShared() {
         name="employee-profile-tab"
         options={{
           title: "פרופיל",
-          ...(Platform.OS !== "web"
+          ...( !isWebDesktopShell
             ? {
                 headerShown: false,
               }
@@ -133,7 +136,7 @@ export default function AdminTabsLayoutShared() {
         name="admin-profile"
         options={{
           title: "פרופיל",
-          ...(Platform.OS !== "web"
+          ...( !isWebDesktopShell
             ? {
                 headerShown: false,
               }
@@ -179,8 +182,8 @@ export default function AdminTabsLayoutShared() {
       key="admin-events"
       name="admin-events"
       options={{
-        title: userType === "employee" && Platform.OS === "web" ? "אירועים" : "לוח בקרה",
-        ...(userType === "employee" && Platform.OS !== "web"
+        title: userType === "employee" && isWebDesktopShell ? "אירועים" : "לוח בקרה",
+        ...(userType === "employee" && !isWebDesktopShell
           ? {
               headerShown: false,
             }
@@ -227,7 +230,7 @@ export default function AdminTabsLayoutShared() {
       options={{
         title: "אירועים",
         href: null,
-        ...(Platform.OS !== "web"
+        ...( !isWebDesktopShell
           ? {
               headerShown: false,
             }
@@ -289,7 +292,7 @@ export default function AdminTabsLayoutShared() {
       name="admin-invitation-links"
       options={{
         href: null,
-        ...(Platform.OS !== "web"
+        ...( !isWebDesktopShell
           ? {
               headerShown: false,
             }
@@ -303,7 +306,7 @@ export default function AdminTabsLayoutShared() {
       name="admin-events-create"
       options={{
         href: null,
-        ...(Platform.OS !== "web"
+        ...( !isWebDesktopShell
           ? {
               headerShown: false,
             }
@@ -317,7 +320,7 @@ export default function AdminTabsLayoutShared() {
       name="admin-event-details"
       options={{
         href: null,
-        ...(Platform.OS === "web"
+        ...(isWebDesktopShell
           ? {
               headerStyle: {
                 height: headerTotalHeight,
@@ -344,7 +347,7 @@ export default function AdminTabsLayoutShared() {
   return (
     <Tabs
       tabBar={
-        Platform.OS === "web"
+        isWebDesktopShell
           ? () => {
               if (!isTabBarVisible) return null;
               if (isGuestCheckinRoute) return null;
@@ -367,9 +370,9 @@ export default function AdminTabsLayoutShared() {
       screenOptions={({ route, navigation }) => ({
         tabBarActiveTintColor: colors.white,
         tabBarInactiveTintColor: colors.gray[500],
-        tabBarPosition: Platform.OS === "web" ? "left" : "bottom",
+        tabBarPosition: isWebDesktopShell ? "left" : "bottom",
         headerShown: isAdminShopifyShell
-          ? Platform.OS !== "web" &&
+          ? !isWebDesktopShell &&
             !(route.name === "admin-events" || route.name === "admin-search")
           : isEmployeeWebShell
           ? false
@@ -377,14 +380,14 @@ export default function AdminTabsLayoutShared() {
         headerStyle: {
           height: isAdminShopifyShell ? adminHeaderHeight : headerTotalHeight,
           backgroundColor:
-            isAdminShopifyShell && Platform.OS !== "web" && route.name === "admin-search"
+            isAdminShopifyShell && !isWebDesktopShell && route.name === "admin-search"
               ? "transparent"
               : "#FFFFFF",
         },
         headerShadowVisible: false,
         header: () => {
           if (isAdminShopifyShell) {
-            return <AdminSharedHeader transparentBackground={Platform.OS !== "web" && route.name === "admin-search"} />;
+            return <AdminSharedHeader transparentBackground={!isWebDesktopShell && route.name === "admin-search"} />;
           }
           if (isEmployeeWebShell) {
             return null;
@@ -436,7 +439,7 @@ export default function AdminTabsLayoutShared() {
                 </View>
               ),
         tabBarStyle:
-          Platform.OS === "web"
+          isWebDesktopShell
             ? {
                 width: 270,
                 backgroundColor: colors.white,

@@ -10,6 +10,21 @@ function readWebViewportWidth(): number | null {
   return Math.round(window.innerWidth);
 }
 
+function isLikelyMobileWebBrowser(): boolean {
+  if (typeof window === 'undefined') return false;
+
+  const viewportWidth = readWebViewportWidth();
+  if (viewportWidth != null && viewportWidth < MOBILE_WEB_LAYOUT_MAX_WIDTH) {
+    return true;
+  }
+
+  const coarsePointer = window.matchMedia?.('(pointer: coarse)')?.matches ?? false;
+  const mobileUa = /Android|iPhone|iPod|Mobile/i.test(navigator.userAgent);
+  const tabletUa = /iPad|Tablet/i.test(navigator.userAgent);
+
+  return mobileUa && coarsePointer && !tabletUa;
+}
+
 /**
  * Prefer the native mobile screen on web when the visible viewport is narrow.
  * Uses visualViewport when available so DevTools device mode and mobile browsers
@@ -39,8 +54,11 @@ export function useMobileWebLayout() {
   }
 
   const width = viewportWidth ?? rnWidth;
+  const preferNativeMobileLayout =
+    width < MOBILE_WEB_LAYOUT_MAX_WIDTH || (viewportWidth == null && isLikelyMobileWebBrowser());
+
   return {
     width,
-    preferNativeMobileLayout: width < MOBILE_WEB_LAYOUT_MAX_WIDTH,
+    preferNativeMobileLayout,
   };
 }
