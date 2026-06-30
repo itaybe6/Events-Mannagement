@@ -9,6 +9,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { useMobileWebLayout } from '@/lib/useMobileWebLayout';
@@ -26,7 +27,6 @@ import { supabase } from '@/lib/supabase';
 import { Event } from '@/types';
 import { inferEventType, MONTHS } from '@/features/events/eventsConstants';
 import { useEventsListModel } from '@/features/events/useEventsListModel';
-import AdminEventsScreen from './admin-events';
 import AdminWebPageHeader from '@/components/desktop/AdminWebPageHeader';
 import { userService, type UserWithMetadata } from '@/lib/services/userService';
 import { pulseemBalanceService } from '@/lib/services/pulseemBalanceService';
@@ -246,12 +246,9 @@ function getStatusMeta(date: Date | string) {
 export function AdminEventsListWebScreen() {
   const { preferNativeMobileLayout } = useMobileWebLayout();
 
-  // Below 900px we render the native screen. Keep this gate in a thin wrapper so
-  // all the heavy hooks live in the inner component — otherwise resizing across
-  // the breakpoint changes the hook count and React throws
-  // "Rendered fewer hooks than expected".
+  // Keep mobile-web in this file to avoid native/web route cycles.
   if (preferNativeMobileLayout) {
-    return <AdminEventsScreen />;
+    return <AdminEventsListWebInner />;
   }
 
   return <AdminEventsListWebInner />;
@@ -2722,11 +2719,9 @@ const styles = StyleSheet.create({
 export default function AdminEventsWebScreen() {
   const { preferNativeMobileLayout } = useMobileWebLayout();
 
-  // Thin wrapper: keep all heavy hooks in the inner component so that crossing
-  // the 900px breakpoint mounts/unmounts a whole component instead of changing
-  // the hook count (which causes "Rendered fewer hooks than expected").
+  // Keep mobile-web in this file to avoid native/web route cycles.
   if (preferNativeMobileLayout) {
-    return <AdminEventsScreen />;
+    return <AdminEventsListWebInner />;
   }
 
   return <AdminEventsWebScreenInner />;

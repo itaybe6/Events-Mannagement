@@ -13,3 +13,6 @@ BEGIN
     ALTER PUBLICATION supabase_realtime ADD TABLE public.guests;
   END IF;
 END $$;
+
+-- Ensure UPDATE payloads include all columns for client-side merge.
+ALTER TABLE public.guests REPLICA IDENTITY FULL;
