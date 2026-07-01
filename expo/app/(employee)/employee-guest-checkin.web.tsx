@@ -21,7 +21,6 @@ import { SeatingGridReadonly } from '../seating/web/SeatingGridReadonly';
 import { DEFAULT_GRID_COLS, DEFAULT_GRID_ROWS, tableCellSize, type Orientation, type TableType } from '../seating/web/_types';
 import type { Guest, Table } from '@/types';
 import AdminWebPageHeader from '@/components/desktop/AdminWebPageHeader';
-import EmployeeGuestCheckInScreen from './employee-guest-checkin';
 
 const NO_TABLE_KEY = '__no_table__' as const;
 
@@ -2685,15 +2684,10 @@ const ui = StyleSheet.create({
 });
 
 export default function EmployeeGuestCheckinWebScreen() {
-  const pathname = usePathname();
-  const { width } = useWindowDimensions();
-  const isMobileWeb = Platform.OS === 'web' && width < 768;
-  const isAdminRoute = String(pathname || '').toLowerCase().includes('admin-guest-checkin');
-
-  if (isMobileWeb) {
-    return <EmployeeGuestCheckInScreen hideTopBar={isAdminRoute} />;
-  }
-
+  // On web (including narrow mobile-web viewports) always render the web screen.
+  // The native mobile screen relies on native-only APIs (Stack.Screen, BackHandler,
+  // SafeAreaView) and crashes when rendered in a browser. The web screen below is
+  // already responsive down to phone widths (see isMobile/contentSm/colSm handling).
   return <EmployeeGuestCheckinWebDesktopScreen />;
 }
 
