@@ -174,20 +174,6 @@ function EmployeeGuestCheckinWebDesktopScreen() {
   const [mapLoading, setMapLoading] = useState(false);
   const [selectedTableNumber, setSelectedTableNumber] = useState<number | null>(null);
 
-  const sendCheckInTableSms = useCallback(
-    async (guest: Guest) => {
-      if (!resolvedEventId || !guest?.id) return;
-      try {
-        await supabase.functions.invoke('send-checkin-table-sms', {
-          body: { eventId: resolvedEventId, guestId: guest.id },
-        });
-      } catch (e) {
-        console.warn('Check-in table SMS send failed:', e);
-      }
-    },
-    [resolvedEventId]
-  );
-
   const sendTableUpdateSms = useCallback(
     async (guestId: string) => {
       if (!resolvedEventId || !guestId) return;
@@ -212,7 +198,7 @@ function EmployeeGuestCheckinWebDesktopScreen() {
     filter,
     setFilter,
     refresh,
-    toggleCheckIn: toggleCheckInRaw,
+    toggleCheckIn,
     savingId,
     setCheckedInCount,
     savingCountId,
@@ -223,17 +209,6 @@ function EmployeeGuestCheckinWebDesktopScreen() {
     errorTitle: 'שגיאה',
     errorMessage: 'לא ניתן לטעון את רשימת האורחים',
   });
-
-  const toggleCheckIn = useCallback(
-    async (guest: Guest) => {
-      const wasCheckedIn = Boolean((guest as any)?.checkedIn);
-      await toggleCheckInRaw(guest);
-      if (!wasCheckedIn) {
-        await sendCheckInTableSms(guest);
-      }
-    },
-    [sendCheckInTableSms, toggleCheckInRaw]
-  );
 
   const [moveGuest, setMoveGuest] = useState<Guest | null>(null);
   const [moveTableQuery, setMoveTableQuery] = useState('');

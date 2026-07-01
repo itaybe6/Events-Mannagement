@@ -123,20 +123,6 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
     }, [handleBack])
   );
 
-  const sendCheckInTableSms = useCallback(
-    async (guest: Guest) => {
-      if (!resolvedEventId || !guest?.id) return;
-      try {
-        await supabase.functions.invoke("send-checkin-table-sms", {
-          body: { eventId: resolvedEventId, guestId: guest.id },
-        });
-      } catch (e) {
-        console.warn("Check-in table SMS send failed:", e);
-      }
-    },
-    [resolvedEventId]
-  );
-
   const {
     loading,
     guests,
@@ -158,7 +144,6 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
     eventId: resolvedEventId ? resolvedEventId : null,
     errorTitle: "שגיאה",
     errorMessage: "לא ניתן לטעון את רשימת האורחים",
-    onCheckInSuccess: sendCheckInTableSms,
   });
 
   const {
