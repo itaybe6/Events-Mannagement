@@ -177,6 +177,31 @@ const toRtlButtons = (buttons?: Parameters<typeof Alert.alert>[2]) =>
     return { ...button, text: toRtlAlertText(button.text) ?? button.text };
   });
 
+// react-native-web ships Alert as a no-op stub, so every Alert.alert on web is
+// silently dropped (e.g. the contact-import fallback message on the guests
+// page). Back it with the native browser dialogs instead.
+const patchWebAlertImplementation = () => {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+  const alertWithFlag = Alert as typeof Alert & { __webImplPatched?: boolean };
+  if (alertWithFlag.__webImplPatched) return;
+
+  Alert.alert = ((title, message, buttons) => {
+    const text = [title, message].filter(Boolean).join('\n\n');
+    const pressable = (buttons ?? []).filter(Boolean);
+    if (pressable.length <= 1) {
+      window.alert(text);
+      pressable[0]?.onPress?.();
+      return;
+    }
+    const cancelButton = pressable.find((b) => b.style === 'cancel');
+    const confirmButton = [...pressable].reverse().find((b) => b !== cancelButton);
+    if (window.confirm(text)) confirmButton?.onPress?.();
+    else cancelButton?.onPress?.();
+  }) as typeof Alert.alert;
+
+  alertWithFlag.__webImplPatched = true;
+};
+
 const patchAlertsForRTL = () => {
   const alertWithFlag = Alert as typeof Alert & { __rtlPatched?: boolean };
   if (alertWithFlag.__rtlPatched) return;
@@ -219,6 +244,7 @@ const patchGlobalAlertForRTL = () => {
   globalWithAlert.__rtlGlobalAlertPatched = true;
 };
 
+patchWebAlertImplementation();
 patchAlertsForRTL();
 patchGlobalAlertForRTL();
 
