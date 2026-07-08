@@ -12,10 +12,7 @@ import { useUserStore } from '@/store/userStore';
 import { supabase } from '@/lib/supabase';
 import { colors } from '@/constants/colors';
 
-if (Platform.OS === 'web') {
-  // Load Tailwind styles on web only to avoid platform resolution cycles.
-  require('../global.css');
-}
+import "../global.css";
 
 // We load Rubik via `expo-font` on all platforms (see `lib/fonts.*.ts`).
 // `global.css` still sets a sensible CSS fallback stack for the DOM.
