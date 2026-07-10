@@ -5033,7 +5033,7 @@ export default function AutomaticNotificationsWebScreen() {
                               </View>
 
                               {selectedTpl ? (
-                                <View style={{ gap: 12 }}>
+                                <View style={styles.waTemplateFields}>
                                   {selectedTpl.bodyText ? (
                                     <View style={styles.waPreview}>
                                       <Text style={styles.waPreviewText}>{selectedTpl.bodyText}</Text>
@@ -5041,30 +5041,11 @@ export default function AutomaticNotificationsWebScreen() {
                                   ) : null}
 
                                   {selectedTpl.headerType === 'image' ? (
-                                    <View style={styles.fieldRow}>
+                                    <View style={styles.waHeaderImageSection}>
                                       <Text style={styles.fieldLabel}>תמונת כותרת</Text>
                                       <Text style={styles.editorSectionHint}>
                                         העלה תמונה שתופיע בראש הודעת הוואטסאפ. אם לא תעלה תמונה, תישלח תמונת ההזמנה של האירוע כברירת מחדל.
                                       </Text>
-
-                                      {(() => {
-                                        const eventInvImg = String((event as any)?.invitation_image_url ?? '').trim();
-                                        const customImg = String(params.header_image_url ?? '').trim();
-                                        const previewUri = customImg || eventInvImg;
-                                        const isDefault = !customImg && !!eventInvImg;
-                                        if (!previewUri) return null;
-                                        return (
-                                          <View style={styles.waImagePreviewWrap}>
-                                            <Image source={{ uri: previewUri }} style={styles.waImagePreview} resizeMode="cover" />
-                                            {isDefault ? (
-                                              <View style={styles.waImageDefaultBadge}>
-                                                <Ionicons name="image-outline" size={12} color="#fff" />
-                                                <Text style={styles.waImageDefaultBadgeText}>תמונת ברירת מחדל (הזמנת האירוע)</Text>
-                                              </View>
-                                            ) : null}
-                                          </View>
-                                        );
-                                      })()}
 
                                       <View style={styles.waImageActionsRow}>
                                         <Pressable
@@ -5097,6 +5078,41 @@ export default function AutomaticNotificationsWebScreen() {
                                           </Pressable>
                                         ) : null}
                                       </View>
+
+                                      {(() => {
+                                        const eventInvImg = String((event as any)?.invitation_image_url ?? '').trim();
+                                        const customImg = String(params.header_image_url ?? '').trim();
+                                        const previewUri = customImg || eventInvImg;
+                                        const isDefault = !customImg && !!eventInvImg;
+                                        if (!previewUri) {
+                                          return (
+                                            <Pressable
+                                              onPress={pickHeaderImage}
+                                              disabled={waImageUploading || !canEdit}
+                                              style={({ pressed }: any) => [
+                                                styles.waImageDropzone,
+                                                (waImageUploading || !canEdit) ? { opacity: 0.6 } : null,
+                                                pressed ? { opacity: 0.92 } : null,
+                                              ]}
+                                            >
+                                              <Ionicons name="cloud-upload-outline" size={28} color="#0E7C46" />
+                                              <Text style={styles.waImageDropzoneTitle}>לחץ כאן להעלאת תמונה</Text>
+                                              <Text style={styles.waImageDropzoneSub}>JPG, PNG · עד 5MB</Text>
+                                            </Pressable>
+                                          );
+                                        }
+                                        return (
+                                          <View style={styles.waImagePreviewWrap}>
+                                            <Image source={{ uri: previewUri }} style={styles.waImagePreview} resizeMode="cover" />
+                                            {isDefault ? (
+                                              <View style={styles.waImageDefaultBadge}>
+                                                <Ionicons name="image-outline" size={12} color="#fff" />
+                                                <Text style={styles.waImageDefaultBadgeText}>תמונת ברירת מחדל (הזמנת האירוע)</Text>
+                                              </View>
+                                            ) : null}
+                                          </View>
+                                        );
+                                      })()}
                                     </View>
                                   ) : null}
 
@@ -8413,7 +8429,16 @@ const styles = StyleSheet.create({
   datePill: { alignSelf: 'center', marginTop: 14, backgroundColor: '#DCF8C6', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 7 },
   datePillText: { fontSize: 10, fontWeight: '900', color: '#475569' },
 
-  editorOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 2100, alignItems: 'center', justifyContent: 'center', padding: 18 },
+  editorOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 2100,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 18,
+    ...(Platform.OS === 'web'
+      ? ({ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 } as any)
+      : null),
+  },
   editorCard: {
     width: '100%',
     maxWidth: 860,
@@ -9012,7 +9037,8 @@ const styles = StyleSheet.create({
   waQuotaBadgeText: { fontSize: 11, fontWeight: '900', color: '#B45309' },
   modePillTextActive: { color: '#4F46E5' },
 
-  waBlock: { gap: 12, marginTop: 6, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(37,211,102,0.25)', backgroundColor: 'rgba(37,211,102,0.05)' },
+  waBlock: { gap: 12, marginTop: 6, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(37,211,102,0.25)', backgroundColor: 'rgba(37,211,102,0.05)', width: '100%', alignSelf: 'stretch' },
+  waTemplateFields: { gap: 12, width: '100%', alignSelf: 'stretch' },
   waEmpty: { gap: 10, alignItems: 'flex-end' },
   waManageBtn: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, backgroundColor: '#25D366', paddingHorizontal: 14, height: 40, borderRadius: 10, justifyContent: 'center', ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
   waManageBtnText: { color: '#fff', fontSize: 13, fontWeight: '900' },
@@ -9040,12 +9066,51 @@ const styles = StyleSheet.create({
   waVarNumBadge: { minWidth: 22, height: 22, paddingHorizontal: 6, borderRadius: 999, backgroundColor: 'rgba(37,211,102,0.16)', borderWidth: 1, borderColor: 'rgba(14,124,70,0.25)', alignItems: 'center', justifyContent: 'center' },
   waVarNumBadgeText: { fontSize: 12, fontWeight: '900', color: '#0E7C46' },
   waVarFieldLabel: { fontSize: 13, fontWeight: '900', color: '#0F172A', textAlign: 'right', alignSelf: 'stretch' },
-  waImagePreviewWrap: { position: 'relative', borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(2,6,23,0.10)', backgroundColor: '#fff', alignSelf: 'stretch' },
-  waImagePreview: { width: '100%', height: 180, backgroundColor: 'rgba(2,6,23,0.04)' },
+  waHeaderImageSection: {
+    gap: 10,
+    width: '100%',
+    alignSelf: 'stretch',
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(14,124,70,0.22)',
+    backgroundColor: '#fff',
+  },
+  waImageDropzone: {
+    width: '100%',
+    minHeight: 128,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    borderColor: 'rgba(37,211,102,0.50)',
+    backgroundColor: 'rgba(37,211,102,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 18,
+    paddingHorizontal: 14,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  waImageDropzoneTitle: { fontSize: 14, fontWeight: '900', color: '#0E7C46', textAlign: 'center' },
+  waImageDropzoneSub: { fontSize: 12, fontWeight: '700', color: 'rgba(2,6,23,0.45)', textAlign: 'center' },
+  waImagePreviewWrap: { position: 'relative', borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(2,6,23,0.10)', backgroundColor: '#fff', alignSelf: 'stretch', width: '100%' },
+  waImagePreview: { width: '100%', height: 160, backgroundColor: 'rgba(2,6,23,0.04)' },
   waImageDefaultBadge: { position: 'absolute', top: 8, right: 8, flexDirection: 'row-reverse', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, backgroundColor: 'rgba(15,23,42,0.72)' },
   waImageDefaultBadgeText: { fontSize: 11, fontWeight: '800', color: '#fff', textAlign: 'right' },
-  waImageActionsRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
-  waUploadBtn: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, backgroundColor: '#25D366', paddingHorizontal: 14, height: 40, borderRadius: 10, justifyContent: 'center', ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
+  waImageActionsRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, flexWrap: 'wrap', width: '100%', alignSelf: 'stretch' },
+  waUploadBtn: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#25D366',
+    paddingHorizontal: 16,
+    minHeight: 42,
+    height: 42,
+    borderRadius: 10,
+    justifyContent: 'center',
+    flexShrink: 0,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer', position: 'relative', zIndex: 2 } as any) : null),
+  },
   waUploadBtnText: { color: '#fff', fontSize: 13, fontWeight: '900' },
   waImageRemoveBtn: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, paddingHorizontal: 12, height: 40, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(220,38,38,0.30)', backgroundColor: 'rgba(220,38,38,0.06)', justifyContent: 'center', ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
   waImageRemoveBtnText: { color: '#DC2626', fontSize: 13, fontWeight: '900' },
