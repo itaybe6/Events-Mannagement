@@ -33,6 +33,7 @@ import {
   pickAndParseGuestsFile,
   type ParsedGuestRow,
 } from '@/lib/importGuestsExcel';
+import { exportGuestsToExcel } from '@/lib/exportGuestsExcel';
 import { exportGuestsToPdf } from '@/lib/exportGuestsPdf';
 
 type GuestStatus = 'ממתין' | 'אולי מגיע' | 'מגיע' | 'לא מגיע';
@@ -536,6 +537,24 @@ export default function CoupleGuestsWebScreen() {
     }
   };
 
+  const [exportingExcel, setExportingExcel] = useState(false);
+  const handleExportExcel = () => {
+    if (exportingExcel) return;
+    if (!guests.length) {
+      Alert.alert('אין מוזמנים', 'הוסיפו מוזמנים לפני ייצוא הרשימה.');
+      return;
+    }
+    setExportingExcel(true);
+    try {
+      exportGuestsToExcel(guests, { eventTitle, categories });
+    } catch (e) {
+      console.error('Export Excel error:', e);
+      Alert.alert('שגיאה', 'אירעה תקלה בייצוא לאקסל. נסו שוב.');
+    } finally {
+      setExportingExcel(false);
+    }
+  };
+
   const openAdd = () => {
     if (!resolvedEventId) {
       Alert.alert('שגיאה', 'לא נמצא אירוע פעיל.');
@@ -930,6 +949,28 @@ export default function CoupleGuestsWebScreen() {
                     {!isMobile ? (
                       <Pressable
                         accessibilityRole="button"
+                        accessibilityLabel="ייצוא אקסל"
+                        onPress={handleExportExcel}
+                        disabled={exportingExcel}
+                        style={({ hovered, pressed }: any) => [
+                          styles.adminHeaderImportBtn,
+                          Platform.OS === 'web' && hovered ? styles.adminHeaderImportBtnHover : null,
+                          pressed ? styles.btnPressed : null,
+                          exportingExcel ? styles.btnDisabled : null,
+                        ]}
+                      >
+                        {exportingExcel ? (
+                          <ActivityIndicator size="small" color={colors.primary} />
+                        ) : (
+                          <Ionicons name="download-outline" size={16} color={colors.primary} />
+                        )}
+                        <Text style={styles.adminHeaderImportBtnText}>{exportingExcel ? 'מייצא…' : 'ייצוא אקסל'}</Text>
+                      </Pressable>
+                    ) : null}
+
+                    {!isMobile ? (
+                      <Pressable
+                        accessibilityRole="button"
                         accessibilityLabel="ייבוא מאקסל"
                         onPress={openImport}
                         style={({ hovered, pressed }: any) => [
@@ -1085,6 +1126,29 @@ export default function CoupleGuestsWebScreen() {
                       <Ionicons name="document-text-outline" size={18} color={colors.primary} />
                     )}
                     <Text style={styles.importGuestsBtnText}>{exportingPdf ? 'מפיק PDF…' : 'ייצוא PDF'}</Text>
+                  </Pressable>
+                ) : null}
+
+                {!isMobile ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="ייצוא אקסל"
+                    onPress={handleExportExcel}
+                    disabled={exportingExcel}
+                    style={({ hovered, pressed }: any) => [
+                      styles.importGuestsBtn,
+                      isNarrow ? styles.importGuestsBtnNarrow : null,
+                      Platform.OS === 'web' && hovered ? styles.importGuestsBtnHover : null,
+                      pressed ? styles.btnPressed : null,
+                      exportingExcel ? styles.btnDisabled : null,
+                    ]}
+                  >
+                    {exportingExcel ? (
+                      <ActivityIndicator size="small" color={colors.primary} />
+                    ) : (
+                      <Ionicons name="download-outline" size={18} color={colors.primary} />
+                    )}
+                    <Text style={styles.importGuestsBtnText}>{exportingExcel ? 'מייצא…' : 'ייצוא אקסל'}</Text>
                   </Pressable>
                 ) : null}
 
