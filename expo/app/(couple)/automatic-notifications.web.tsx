@@ -399,6 +399,33 @@ async function runWithMissingColumnRetries<TData>(
   return { data: lastData ?? null, error: new Error('Too many missing-column retries'), payload };
 }
 
+type PickerGuest = {
+  id: string;
+  name: string;
+  phone?: string;
+  status: string;
+  category_id?: string | null;
+  invitationCode?: string;
+  invitationToken?: string;
+};
+
+type GuestCategoryRow = { id: string; name: string };
+
+function guestPickerDisplayStatus(status: string) {
+  const s = String(status || '').trim();
+  if (s === 'אישר') return 'מגיע';
+  if (s === 'לא מגיעים') return 'לא מגיע';
+  return s || 'ממתין';
+}
+
+function guestPickerStatusStyle(status: string) {
+  const s = guestPickerDisplayStatus(status);
+  if (s === 'מגיע') return { bg: 'rgba(220,252,231,1)', border: 'rgba(134,239,172,1)', color: 'rgba(22,163,74,1)', dot: 'rgba(22,163,74,1)' };
+  if (s === 'לא מגיע') return { bg: 'rgba(254,226,226,1)', border: 'rgba(252,165,165,1)', color: 'rgba(239,68,68,1)', dot: 'rgba(239,68,68,1)' };
+  if (s === 'אולי מגיע') return { bg: 'rgba(224,231,255,1)', border: 'rgba(165,180,252,1)', color: 'rgba(79,70,229,1)', dot: 'rgba(79,70,229,1)' };
+  return { bg: 'rgba(254,243,199,1)', border: 'rgba(252,211,77,1)', color: 'rgba(180,83,9,1)', dot: 'rgba(245,158,11,1)' };
+}
+
 export default function AutomaticNotificationsWebScreen() {
   const router = useRouter();
   const segments = useSegments();
@@ -462,9 +489,8 @@ export default function AutomaticNotificationsWebScreen() {
   const [editDraft, setEditDraft] = useState<{ message: string; days: number; timeHm: string } | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const [allGuests, setAllGuests] = useState<
-    Array<{ id: string; name: string; phone?: string; status: string; invitationCode?: string; invitationToken?: string }>
-  >([]);
+  const [allGuests, setAllGuests] = useState<PickerGuest[]>([]);
+  const [guestCategories, setGuestCategories] = useState<GuestCategoryRow[]>([]);
   const [sendingNow, setSendingNow] = useState(false);
   const [smsBalance, setSmsBalance] = useState<{ loading: boolean; credits: string | null; error: string | null }>({
     loading: true,
@@ -1348,11 +1374,15 @@ export default function AutomaticNotificationsWebScreen() {
           console.warn('Failed to load WhatsApp registry (couple web):', e);
         }
 
-        const { data: guestRows, error: guestError } = await supabase
-          .from('guests')
-          .select('id, name, phone, status, invitation_code, invitation_token')
-          .eq('event_id', (eventData as any).id)
-          .order('name', { ascending: true });
+        const eventId = String((eventData as any).id);
+        const [{ data: guestRows, error: guestError }, { data: categoryRows, error: categoryError }] = await Promise.all([
+          supabase
+            .from('guests')
+            .select('id, name, phone, status, category_id, invitation_code, invitation_token')
+            .eq('event_id', eventId)
+            .order('name', { ascending: true }),
+          supabase.from('guest_categories').select('id, name').eq('event_id', eventId).order('created_at', { ascending: true }),
+        ]);
         if (!cancelled) {
           if (guestError) {
             console.warn('Failed to load guests (couple web):', guestError);
@@ -1364,8 +1394,20 @@ export default function AutomaticNotificationsWebScreen() {
                 name: String(g.name ?? ''),
                 phone: g.phone ? String(g.phone) : undefined,
                 status: (g.status as any) || 'ממתין',
+                category_id: g.category_id ? String(g.category_id) : null,
                 invitationCode: g.invitation_code ? String(g.invitation_code) : undefined,
                 invitationToken: g.invitation_token ? String(g.invitation_token) : undefined,
+              }))
+            );
+          }
+          if (categoryError) {
+            console.warn('Failed to load guest categories (couple web):', categoryError);
+            setGuestCategories([]);
+          } else {
+            setGuestCategories(
+              ((categoryRows as any[]) || []).map((c) => ({
+                id: String(c.id),
+                name: String(c.name ?? ''),
               }))
             );
           }
@@ -2270,6 +2312,40 @@ export default function AutomaticNotificationsWebScreen() {
     return out;
   }, [allGuests, pickerFilter, pickerSearch]);
 
+  const pickerGroupedGuests = useMemo(() => {
+    const catIds = new Set(guestCategories.map((c) => String(c.id)));
+    const byCategory: Record<string, PickerGuest[]> = {};
+    const uncategorized: PickerGuest[] = [];
+
+    for (const g of pickerFilteredGuests) {
+      const cid = String(g.category_id || '').trim();
+      if (!cid || !catIds.has(cid)) {
+        uncategorized.push(g);
+        continue;
+      }
+      if (!byCategory[cid]) byCategory[cid] = [];
+      byCategory[cid].push(g);
+    }
+
+    const groups: Array<{ id: string; name: string; guests: PickerGuest[] }> = [];
+    if (uncategorized.length) groups.push({ id: '__uncategorized__', name: 'ללא קטגוריה', guests: uncategorized });
+    for (const c of guestCategories) {
+      const list = byCategory[String(c.id)] || [];
+      if (list.length) groups.push({ id: String(c.id), name: c.name, guests: list });
+    }
+    return groups;
+  }, [guestCategories, pickerFilteredGuests]);
+
+  const pickerCategoryCheckState = (guestIds: string[]) => {
+    const ids = guestIds.map((id) => String(id)).filter(Boolean);
+    if (!ids.length) return 'none' as const;
+    let selected = 0;
+    for (const id of ids) if (pickerSelectedIds.has(id)) selected += 1;
+    if (selected === 0) return 'none' as const;
+    if (selected === ids.length) return 'all' as const;
+    return 'some' as const;
+  };
+
   const pickerToggleGuest = (guestId: string) => {
     const id = String(guestId || '').trim();
     if (!id) return;
@@ -2289,7 +2365,127 @@ export default function AutomaticNotificationsWebScreen() {
     });
   };
 
+  const pickerToggleCategory = (guestIds: string[]) => {
+    const ids = guestIds.map((id) => String(id)).filter(Boolean);
+    if (!ids.length) return;
+    setPickerSelectedIds((prev) => {
+      const next = new Set(prev);
+      const allSelected = ids.every((id) => next.has(id));
+      if (allSelected) {
+        for (const id of ids) next.delete(id);
+      } else {
+        for (const id of ids) next.add(id);
+      }
+      return next;
+    });
+  };
+
   const pickerClear = () => setPickerSelectedIds(new Set());
+
+  const renderGroupedManualGuestList = (variant: 'wa' | 'picker') => {
+    if (pickerGroupedGuests.length === 0) {
+      return <Text style={styles.editorSectionHint}>לא נמצאו מוזמנים תואמים.</Text>;
+    }
+
+    const renderGuestStatusBadge = (status: string) => {
+      const label = guestPickerDisplayStatus(status);
+      const sc = guestPickerStatusStyle(status);
+      return (
+        <View style={[styles.waGuestStatusBadge, { backgroundColor: sc.bg, borderColor: sc.border }]}>
+          <View style={[styles.waGuestStatusDot, { backgroundColor: sc.dot }]} />
+          <Text style={[styles.waGuestStatusText, { color: sc.color }]}>{label}</Text>
+        </View>
+      );
+    };
+
+    const renderGuestRow = (g: PickerGuest) => {
+      const id = String(g.id);
+      const checked = pickerSelectedIds.has(id);
+      if (variant === 'picker') {
+        return (
+          <Pressable
+            key={id}
+            onPress={() => pickerToggleGuest(id)}
+            style={({ pressed }: any) => [
+              styles.recipientRow,
+              checked ? styles.recipientRowActive : null,
+              pressed ? { opacity: 0.95 } : null,
+            ]}
+          >
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.recipientName} numberOfLines={1}>
+                {String(g.name || 'ללא שם')}
+              </Text>
+              <Text style={styles.recipientMeta} numberOfLines={1}>
+                {g.phone || 'אין טלפון'}
+              </Text>
+            </View>
+            {renderGuestStatusBadge(g.status)}
+            <Ionicons name={checked ? 'checkmark-circle' : 'ellipse-outline'} size={18} color={checked ? ui.primary : '#94A3B8'} />
+          </Pressable>
+        );
+      }
+
+      return (
+        <Pressable
+          key={id}
+          onPress={() => pickerToggleGuest(id)}
+          style={({ pressed }: any) => [styles.waGuestRow, checked ? styles.waGuestRowChecked : null, pressed ? { opacity: 0.92 } : null]}
+        >
+          <View style={[styles.waCheckbox, checked ? styles.waCheckboxChecked : null]}>
+            {checked ? <Ionicons name="checkmark" size={13} color="#fff" /> : null}
+          </View>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.waGuestName} numberOfLines={1}>
+              {String(g.name || 'ללא שם')}
+            </Text>
+            <Text style={styles.waGuestMeta} numberOfLines={1}>
+              {String(g.phone || 'אין טלפון')}
+            </Text>
+          </View>
+          {renderGuestStatusBadge(g.status)}
+        </Pressable>
+      );
+    };
+
+    return pickerGroupedGuests.map((cat) => {
+      const catGuestIds = cat.guests.map((g) => String(g.id));
+      const catState = pickerCategoryCheckState(catGuestIds);
+      const catChecked = catState === 'all';
+      const catIndeterminate = catState === 'some';
+      return (
+        <View key={cat.id} style={styles.waCategoryGroup}>
+          <Pressable
+            onPress={() => pickerToggleCategory(catGuestIds)}
+            style={({ pressed }: any) => [styles.waCategoryHeader, pressed ? { opacity: 0.92 } : null]}
+          >
+            <View
+              style={[
+                styles.waCheckbox,
+                catChecked ? styles.waCheckboxChecked : null,
+                catIndeterminate ? styles.waCheckboxIndeterminate : null,
+              ]}
+            >
+              {catChecked ? <Ionicons name="checkmark" size={13} color="#fff" /> : null}
+              {catIndeterminate ? <View style={styles.waCheckboxDash} /> : null}
+            </View>
+            <Ionicons
+              name={cat.id === '__uncategorized__' ? 'albums-outline' : 'folder-open-outline'}
+              size={15}
+              color="#4F46E5"
+            />
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.waCategoryTitle} numberOfLines={1}>
+                {cat.name}
+              </Text>
+              <Text style={styles.waCategoryMeta}>{`${cat.guests.length} מוזמנים`}</Text>
+            </View>
+          </Pressable>
+          <View style={styles.waCategoryBody}>{cat.guests.map((g) => renderGuestRow(g))}</View>
+        </View>
+      );
+    });
+  };
 
   const saveDraft = async (opts?: { recipientGuestIds?: string[]; closeOnSuccess?: boolean; toastOnSuccess?: boolean }) => {
     if (!canEdit) {
@@ -4494,7 +4690,7 @@ export default function AutomaticNotificationsWebScreen() {
 
                       {waManualMode ? (
                         <View style={styles.waManualWrap}>
-                          <Text style={styles.editorSectionHint}>בחר מוזמנים ספציפיים מהרשימה. אפשר לחפש ולסנן לפי סטטוס.</Text>
+                          <Text style={styles.editorSectionHint}>בחר מוזמנים לפי קטגוריה או באופן ידני. אפשר לסמן קטגוריה שלמה או לסנן לפי סטטוס.</Text>
                           <View style={styles.waManualSearchRow}>
                             <Ionicons name="search" size={16} color="#94A3B8" />
                             <TextInput
@@ -4534,32 +4730,8 @@ export default function AutomaticNotificationsWebScreen() {
                               <Text style={styles.waManualLinkText}>נקה בחירה</Text>
                             </Pressable>
                           </View>
-                          <ScrollView style={styles.waManualList} nestedScrollEnabled contentContainerStyle={{ gap: 6, paddingVertical: 4 }}>
-                            {pickerFilteredGuests.length === 0 ? (
-                              <Text style={styles.editorSectionHint}>לא נמצאו מוזמנים תואמים.</Text>
-                            ) : (
-                              pickerFilteredGuests.map((g) => {
-                                const id = String(g.id);
-                                const checked = pickerSelectedIds.has(id);
-                                return (
-                                  <Pressable
-                                    key={id}
-                                    onPress={() => pickerToggleGuest(id)}
-                                    style={({ pressed }: any) => [styles.waGuestRow, checked ? styles.waGuestRowChecked : null, pressed ? { opacity: 0.92 } : null]}
-                                  >
-                                    <View style={[styles.waCheckbox, checked ? styles.waCheckboxChecked : null]}>
-                                      {checked ? <Ionicons name="checkmark" size={13} color="#fff" /> : null}
-                                    </View>
-                                    <View style={{ flex: 1, minWidth: 0 }}>
-                                      <Text style={styles.waGuestName} numberOfLines={1}>{String(g.name || 'ללא שם')}</Text>
-                                      <Text style={styles.waGuestMeta} numberOfLines={1}>
-                                        {`${String(g.phone || 'אין טלפון')}${g.status ? ` · ${String(g.status)}` : ''}`}
-                                      </Text>
-                                    </View>
-                                  </Pressable>
-                                );
-                              })
-                            )}
+                          <ScrollView style={styles.waManualList} nestedScrollEnabled contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
+                            {renderGroupedManualGuestList('wa')}
                           </ScrollView>
                         </View>
                       ) : (
@@ -4680,7 +4852,7 @@ export default function AutomaticNotificationsWebScreen() {
 
                     {flowDraft?.recipientManual ? (
                       <View style={styles.waManualWrap}>
-                        <Text style={styles.editorSectionHint}>בחר מוזמנים ספציפיים מהרשימה. אפשר לחפש, לסנן לפי סטטוס ולבחור כמה שתרצה.</Text>
+                        <Text style={styles.editorSectionHint}>בחר מוזמנים לפי קטגוריה או באופן ידני. אפשר לסמן קטגוריה שלמה או לסנן לפי סטטוס.</Text>
                         <View style={styles.waManualSearchRow}>
                           <Ionicons name="search" size={16} color="#94A3B8" />
                           <TextInput
@@ -4723,32 +4895,8 @@ export default function AutomaticNotificationsWebScreen() {
                             <Text style={styles.recipientsCountText}>{`${pickerSelectedIds.size} נבחרו`}</Text>
                           </View>
                         </View>
-                        <ScrollView style={styles.waManualList} nestedScrollEnabled contentContainerStyle={{ gap: 6, paddingVertical: 4 }}>
-                          {pickerFilteredGuests.length === 0 ? (
-                            <Text style={styles.editorSectionHint}>לא נמצאו מוזמנים תואמים.</Text>
-                          ) : (
-                            pickerFilteredGuests.map((g) => {
-                              const id = String(g.id);
-                              const checked = pickerSelectedIds.has(id);
-                              return (
-                                <Pressable
-                                  key={id}
-                                  onPress={() => pickerToggleGuest(id)}
-                                  style={({ pressed }: any) => [styles.waGuestRow, checked ? styles.waGuestRowChecked : null, pressed ? { opacity: 0.92 } : null]}
-                                >
-                                  <View style={[styles.waCheckbox, checked ? styles.waCheckboxChecked : null]}>
-                                    {checked ? <Ionicons name="checkmark" size={13} color="#fff" /> : null}
-                                  </View>
-                                  <View style={{ flex: 1, minWidth: 0 }}>
-                                    <Text style={styles.waGuestName} numberOfLines={1}>{String(g.name || 'ללא שם')}</Text>
-                                    <Text style={styles.waGuestMeta} numberOfLines={1}>
-                                      {`${String(g.phone || 'אין טלפון')}${g.status ? ` · ${String(g.status)}` : ''}`}
-                                    </Text>
-                                  </View>
-                                </Pressable>
-                              );
-                            })
-                          )}
+                        <ScrollView style={styles.waManualList} nestedScrollEnabled contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
+                          {renderGroupedManualGuestList('wa')}
                         </ScrollView>
                       </View>
                     ) : null}
@@ -4885,7 +5033,7 @@ export default function AutomaticNotificationsWebScreen() {
                               </View>
 
                               {selectedTpl ? (
-                                <View style={{ gap: 12 }}>
+                                <View style={styles.waTemplateFields}>
                                   {selectedTpl.bodyText ? (
                                     <View style={styles.waPreview}>
                                       <Text style={styles.waPreviewText}>{selectedTpl.bodyText}</Text>
@@ -4893,30 +5041,11 @@ export default function AutomaticNotificationsWebScreen() {
                                   ) : null}
 
                                   {selectedTpl.headerType === 'image' ? (
-                                    <View style={styles.fieldRow}>
+                                    <View style={styles.waHeaderImageSection}>
                                       <Text style={styles.fieldLabel}>תמונת כותרת</Text>
                                       <Text style={styles.editorSectionHint}>
                                         העלה תמונה שתופיע בראש הודעת הוואטסאפ. אם לא תעלה תמונה, תישלח תמונת ההזמנה של האירוע כברירת מחדל.
                                       </Text>
-
-                                      {(() => {
-                                        const eventInvImg = String((event as any)?.invitation_image_url ?? '').trim();
-                                        const customImg = String(params.header_image_url ?? '').trim();
-                                        const previewUri = customImg || eventInvImg;
-                                        const isDefault = !customImg && !!eventInvImg;
-                                        if (!previewUri) return null;
-                                        return (
-                                          <View style={styles.waImagePreviewWrap}>
-                                            <Image source={{ uri: previewUri }} style={styles.waImagePreview} resizeMode="cover" />
-                                            {isDefault ? (
-                                              <View style={styles.waImageDefaultBadge}>
-                                                <Ionicons name="image-outline" size={12} color="#fff" />
-                                                <Text style={styles.waImageDefaultBadgeText}>תמונת ברירת מחדל (הזמנת האירוע)</Text>
-                                              </View>
-                                            ) : null}
-                                          </View>
-                                        );
-                                      })()}
 
                                       <View style={styles.waImageActionsRow}>
                                         <Pressable
@@ -4949,6 +5078,41 @@ export default function AutomaticNotificationsWebScreen() {
                                           </Pressable>
                                         ) : null}
                                       </View>
+
+                                      {(() => {
+                                        const eventInvImg = String((event as any)?.invitation_image_url ?? '').trim();
+                                        const customImg = String(params.header_image_url ?? '').trim();
+                                        const previewUri = customImg || eventInvImg;
+                                        const isDefault = !customImg && !!eventInvImg;
+                                        if (!previewUri) {
+                                          return (
+                                            <Pressable
+                                              onPress={pickHeaderImage}
+                                              disabled={waImageUploading || !canEdit}
+                                              style={({ pressed }: any) => [
+                                                styles.waImageDropzone,
+                                                (waImageUploading || !canEdit) ? { opacity: 0.6 } : null,
+                                                pressed ? { opacity: 0.92 } : null,
+                                              ]}
+                                            >
+                                              <Ionicons name="cloud-upload-outline" size={28} color="#0E7C46" />
+                                              <Text style={styles.waImageDropzoneTitle}>לחץ כאן להעלאת תמונה</Text>
+                                              <Text style={styles.waImageDropzoneSub}>JPG, PNG · עד 5MB</Text>
+                                            </Pressable>
+                                          );
+                                        }
+                                        return (
+                                          <View style={styles.waImagePreviewWrap}>
+                                            <Image source={{ uri: previewUri }} style={styles.waImagePreview} resizeMode="cover" />
+                                            {isDefault ? (
+                                              <View style={styles.waImageDefaultBadge}>
+                                                <Ionicons name="image-outline" size={12} color="#fff" />
+                                                <Text style={styles.waImageDefaultBadgeText}>תמונת ברירת מחדל (הזמנת האירוע)</Text>
+                                              </View>
+                                            ) : null}
+                                          </View>
+                                        );
+                                      })()}
                                     </View>
                                   ) : null}
 
@@ -7029,31 +7193,7 @@ export default function AutomaticNotificationsWebScreen() {
             </View>
 
             <ScrollView style={styles.pickerList} contentContainerStyle={styles.pickerListContent} showsVerticalScrollIndicator={false}>
-              {pickerFilteredGuests.map((g) => {
-                const checked = pickerSelectedIds.has(String(g.id));
-                return (
-                  <Pressable
-                    key={g.id}
-                    onPress={() => pickerToggleGuest(g.id)}
-                    style={({ pressed }: any) => [
-                      styles.recipientRow,
-                      checked ? styles.recipientRowActive : null,
-                      pressed ? { opacity: 0.95 } : null,
-                    ]}
-                  >
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={styles.recipientName} numberOfLines={1}>
-                        {g.name}
-                      </Text>
-                      <Text style={styles.recipientMeta} numberOfLines={1}>
-                        {g.status}
-                        {g.phone ? ` · ${g.phone}` : ' · אין טלפון'}
-                      </Text>
-                    </View>
-                    <Ionicons name={checked ? 'checkmark-circle' : 'ellipse-outline'} size={18} color={checked ? ui.primary : '#94A3B8'} />
-                  </Pressable>
-                );
-              })}
+              {renderGroupedManualGuestList('picker')}
             </ScrollView>
 
             <View style={styles.pickerFooter}>
@@ -8289,7 +8429,16 @@ const styles = StyleSheet.create({
   datePill: { alignSelf: 'center', marginTop: 14, backgroundColor: '#DCF8C6', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 7 },
   datePillText: { fontSize: 10, fontWeight: '900', color: '#475569' },
 
-  editorOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 2100, alignItems: 'center', justifyContent: 'center', padding: 18 },
+  editorOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 2100,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 18,
+    ...(Platform.OS === 'web'
+      ? ({ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 } as any)
+      : null),
+  },
   editorCard: {
     width: '100%',
     maxWidth: 860,
@@ -8860,12 +9009,22 @@ const styles = StyleSheet.create({
   waManualLinkBtn: { flexDirection: 'row-reverse', alignItems: 'center', gap: 4 },
   waManualLinkText: { fontSize: 13, fontWeight: '800', color: '#4F46E5', textAlign: 'right' },
   waManualList: { maxHeight: 280, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(148,163,184,0.3)', backgroundColor: 'rgba(248,250,252,0.6)', paddingHorizontal: 8 },
+  waCategoryGroup: { borderRadius: 10, borderWidth: 1, borderColor: 'rgba(148,163,184,0.28)', backgroundColor: '#fff', overflow: 'hidden' },
+  waCategoryHeader: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, paddingVertical: 10, paddingHorizontal: 10, backgroundColor: 'rgba(79,70,229,0.05)', borderBottomWidth: 1, borderBottomColor: 'rgba(148,163,184,0.18)' },
+  waCategoryTitle: { fontSize: 13, fontWeight: '900', color: '#0F172A', textAlign: 'right' },
+  waCategoryMeta: { marginTop: 1, fontSize: 11, fontWeight: '700', color: 'rgba(100,116,139,1)', textAlign: 'right' },
+  waCategoryBody: { gap: 6, padding: 6 },
   waGuestRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, paddingVertical: 9, paddingHorizontal: 10, borderRadius: 10, borderWidth: 1, borderColor: 'transparent', backgroundColor: '#fff' },
   waGuestRowChecked: { borderColor: 'rgba(79,70,229,0.4)', backgroundColor: 'rgba(79,70,229,0.06)' },
   waCheckbox: { width: 20, height: 20, borderRadius: 6, borderWidth: 1.5, borderColor: 'rgba(148,163,184,0.7)', alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff' },
   waCheckboxChecked: { borderColor: '#4F46E5', backgroundColor: '#4F46E5' },
+  waCheckboxIndeterminate: { borderColor: '#4F46E5', backgroundColor: 'rgba(79,70,229,0.18)' },
+  waCheckboxDash: { width: 10, height: 2, borderRadius: 999, backgroundColor: '#4F46E5' },
   waGuestName: { fontSize: 13, fontWeight: '800', color: '#0F172A', textAlign: 'right' },
   waGuestMeta: { fontSize: 11, fontWeight: '600', color: 'rgba(100,116,139,1)', textAlign: 'right', marginTop: 1 },
+  waGuestStatusBadge: { flexDirection: 'row-reverse', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, borderWidth: 1 },
+  waGuestStatusDot: { width: 6, height: 6, borderRadius: 999 },
+  waGuestStatusText: { fontSize: 11, fontWeight: '900', textAlign: 'right' },
   waCountCard: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, marginTop: 4, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(14,124,70,0.25)', backgroundColor: 'rgba(37,211,102,0.08)' },
   waCountCardWarn: { borderColor: 'rgba(180,83,9,0.35)', backgroundColor: 'rgba(245,158,11,0.10)' },
   waCountTitle: { fontSize: 13, fontWeight: '900', color: '#0F172A', textAlign: 'right' },
@@ -8878,7 +9037,8 @@ const styles = StyleSheet.create({
   waQuotaBadgeText: { fontSize: 11, fontWeight: '900', color: '#B45309' },
   modePillTextActive: { color: '#4F46E5' },
 
-  waBlock: { gap: 12, marginTop: 6, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(37,211,102,0.25)', backgroundColor: 'rgba(37,211,102,0.05)' },
+  waBlock: { gap: 12, marginTop: 6, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(37,211,102,0.25)', backgroundColor: 'rgba(37,211,102,0.05)', width: '100%', alignSelf: 'stretch' },
+  waTemplateFields: { gap: 12, width: '100%', alignSelf: 'stretch' },
   waEmpty: { gap: 10, alignItems: 'flex-end' },
   waManageBtn: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, backgroundColor: '#25D366', paddingHorizontal: 14, height: 40, borderRadius: 10, justifyContent: 'center', ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
   waManageBtnText: { color: '#fff', fontSize: 13, fontWeight: '900' },
@@ -8906,12 +9066,51 @@ const styles = StyleSheet.create({
   waVarNumBadge: { minWidth: 22, height: 22, paddingHorizontal: 6, borderRadius: 999, backgroundColor: 'rgba(37,211,102,0.16)', borderWidth: 1, borderColor: 'rgba(14,124,70,0.25)', alignItems: 'center', justifyContent: 'center' },
   waVarNumBadgeText: { fontSize: 12, fontWeight: '900', color: '#0E7C46' },
   waVarFieldLabel: { fontSize: 13, fontWeight: '900', color: '#0F172A', textAlign: 'right', alignSelf: 'stretch' },
-  waImagePreviewWrap: { position: 'relative', borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(2,6,23,0.10)', backgroundColor: '#fff', alignSelf: 'stretch' },
-  waImagePreview: { width: '100%', height: 180, backgroundColor: 'rgba(2,6,23,0.04)' },
+  waHeaderImageSection: {
+    gap: 10,
+    width: '100%',
+    alignSelf: 'stretch',
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(14,124,70,0.22)',
+    backgroundColor: '#fff',
+  },
+  waImageDropzone: {
+    width: '100%',
+    minHeight: 128,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    borderColor: 'rgba(37,211,102,0.50)',
+    backgroundColor: 'rgba(37,211,102,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 18,
+    paddingHorizontal: 14,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  waImageDropzoneTitle: { fontSize: 14, fontWeight: '900', color: '#0E7C46', textAlign: 'center' },
+  waImageDropzoneSub: { fontSize: 12, fontWeight: '700', color: 'rgba(2,6,23,0.45)', textAlign: 'center' },
+  waImagePreviewWrap: { position: 'relative', borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(2,6,23,0.10)', backgroundColor: '#fff', alignSelf: 'stretch', width: '100%' },
+  waImagePreview: { width: '100%', height: 160, backgroundColor: 'rgba(2,6,23,0.04)' },
   waImageDefaultBadge: { position: 'absolute', top: 8, right: 8, flexDirection: 'row-reverse', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, backgroundColor: 'rgba(15,23,42,0.72)' },
   waImageDefaultBadgeText: { fontSize: 11, fontWeight: '800', color: '#fff', textAlign: 'right' },
-  waImageActionsRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
-  waUploadBtn: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, backgroundColor: '#25D366', paddingHorizontal: 14, height: 40, borderRadius: 10, justifyContent: 'center', ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
+  waImageActionsRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, flexWrap: 'wrap', width: '100%', alignSelf: 'stretch' },
+  waUploadBtn: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#25D366',
+    paddingHorizontal: 16,
+    minHeight: 42,
+    height: 42,
+    borderRadius: 10,
+    justifyContent: 'center',
+    flexShrink: 0,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer', position: 'relative', zIndex: 2 } as any) : null),
+  },
   waUploadBtnText: { color: '#fff', fontSize: 13, fontWeight: '900' },
   waImageRemoveBtn: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, paddingHorizontal: 12, height: 40, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(220,38,38,0.30)', backgroundColor: 'rgba(220,38,38,0.06)', justifyContent: 'center', ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null) },
   waImageRemoveBtnText: { color: '#DC2626', fontSize: 13, fontWeight: '900' },
