@@ -4,6 +4,7 @@ export type ExportGuestRow = {
   id: string;
   name: string;
   phone: string;
+  status?: 'ממתין' | 'אולי מגיע' | 'מגיע' | 'לא מגיע';
   category_id?: string | null;
   numberOfPeople?: number | null;
 };
@@ -66,13 +67,18 @@ export function exportGuestsToExcel(
   }
 
   const categoryLookup = buildCategoryLookup(opts?.categories ?? []);
-  const sortedGuests = [...guests].sort((a, b) => {
+  const confirmedGuests = guests.filter((guest) => String(guest.status ?? '').trim() === 'מגיע');
+  const sortedGuests = [...confirmedGuests].sort((a, b) => {
     const catA = a.category_id ? categoryLookup.get(String(a.category_id))?.name ?? '' : '';
     const catB = b.category_id ? categoryLookup.get(String(b.category_id))?.name ?? '' : '';
     const byCategory = catA.localeCompare(catB, 'he');
     if (byCategory !== 0) return byCategory;
     return String(a.name ?? '').localeCompare(String(b.name ?? ''), 'he');
   });
+
+  if (!sortedGuests.length) {
+    throw new Error('אין מוזמנים שאישרו הגעה לייצוא');
+  }
 
   const dataRows = sortedGuests.map((guest) => guestToRow(guest, categoryLookup));
   const worksheet = XLSX.utils.aoa_to_sheet([GROUP_HEADER_ROW, COLUMN_HEADERS, ...dataRows]);

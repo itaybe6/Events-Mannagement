@@ -540,8 +540,9 @@ export default function CoupleGuestsWebScreen() {
   const [exportingExcel, setExportingExcel] = useState(false);
   const handleExportExcel = () => {
     if (exportingExcel) return;
-    if (!guests.length) {
-      Alert.alert('אין מוזמנים', 'הוסיפו מוזמנים לפני ייצוא הרשימה.');
+    const confirmedGuests = guests.filter((g) => g.status === 'מגיע');
+    if (!confirmedGuests.length) {
+      Alert.alert('אין מוזמנים לייצוא', 'בייצוא לאקסל נכללים רק מוזמנים שאישרו הגעה.');
       return;
     }
     setExportingExcel(true);
@@ -549,7 +550,11 @@ export default function CoupleGuestsWebScreen() {
       exportGuestsToExcel(guests, { eventTitle, categories });
     } catch (e) {
       console.error('Export Excel error:', e);
-      Alert.alert('שגיאה', 'אירעה תקלה בייצוא לאקסל. נסו שוב.');
+      const message =
+        e instanceof Error && e.message === 'אין מוזמנים שאישרו הגעה לייצוא'
+          ? 'בייצוא לאקסל נכללים רק מוזמנים שאישרו הגעה.'
+          : 'אירעה תקלה בייצוא לאקסל. נסו שוב.';
+      Alert.alert('שגיאה', message);
     } finally {
       setExportingExcel(false);
     }
