@@ -22,7 +22,7 @@ async function getAuthHeaders() {
   }
   return { Authorization: `Bearer ${accessToken}` };
 }
-
+///asd
 export const googlePlacesService = {
   async autocomplete(input: string): Promise<GooglePlacePrediction[]> {
     const query = String(input || '').trim();
