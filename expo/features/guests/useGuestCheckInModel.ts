@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { guestService, mapGuestRowFromDb } from '@/lib/services/guestService';
+import { guestMatchesSearch } from '@/lib/guestPhone';
 import type { Guest, GuestCategory } from '@/types';
 
 export type GuestCheckInFilter = 'all' | 'checked_in' | 'not_checked_in';
@@ -18,6 +19,19 @@ export type GuestCheckInSection = {
 };
 
 const UNCATEGORIZED_KEY = '__uncategorized__' as const;
+
+/** A guest who showed up at the venue without being on the invitation list. */
+export type WalkInGuestInput = {
+  name: string;
+  phone?: string;
+  numberOfPeople?: number;
+  tableId?: string | null;
+  categoryId?: string | null;
+  /** Mark the guest as arrived right away. Defaults to true (they are standing at the entrance). */
+  checkInImmediately?: boolean;
+};
+
+export type WalkInGuestResult = { ok: true; guest: Guest } | { ok: false; error: string };
 
 function guestInvitedPeople(g: Guest): number {
   return Math.max(1, Number(g.numberOfPeople) || 1);
@@ -38,13 +52,32 @@ function normalizeCategoryId(raw: unknown) {
   return s ? s.toLowerCase() : null;
 }
 
+/** Fields the check-in screen renders, compared to skip no-op state updates. */
+function checkInFieldsEqual(a: Guest, b: Guest): boolean {
+  return (
+    a.name === b.name &&
+    a.phone === b.phone &&
+    a.status === b.status &&
+    a.tableId === b.tableId &&
+    a.numberOfPeople === b.numberOfPeople &&
+    a.category_id === b.category_id &&
+    Boolean(a.checkedIn) === Boolean(b.checkedIn) &&
+    a.checkedInCount === b.checkedInCount &&
+    Number(a.checkedInAt ?? 0) === Number(b.checkedInAt ?? 0)
+  );
+}
+
 export function useGuestCheckInModel(params: {
   eventId: string | null;
   errorTitle?: string;
   errorMessage?: string;
   /** Subscribe to live guest updates (check-in, count, table moves). Defaults to true. */
   enableRealtime?: boolean;
-  /** Background sync interval (ms) so multiple usher stations stay in sync. Defaults to 4s. */
+  /**
+   * Safety-net sync interval (ms) behind the realtime subscription, so usher
+   * stations recover if a realtime message is missed. Each tick only asks for
+   * guests changed since the previous one.
+   */
   syncIntervalMs?: number;
   /** Called after a guest is successfully marked as checked-in (toggle ON). Use to e.g. send table SMS. */
   onCheckInSuccess?: (guest: Guest) => void;
@@ -54,7 +87,7 @@ export function useGuestCheckInModel(params: {
     errorTitle = 'שגיאה',
     errorMessage = 'לא ניתן לטעון את רשימת האורחים',
     enableRealtime = true,
-    syncIntervalMs = 4000,
+    syncIntervalMs = 15000,
     onCheckInSuccess,
   } = params;
 
@@ -65,8 +98,23 @@ export function useGuestCheckInModel(params: {
   const [savingId, setSavingId] = useState<string | null>(null);
   const [savingCountId, setSavingCountId] = useState<string | null>(null);
   const [savingMoveId, setSavingMoveId] = useState<string | null>(null);
+  const [addingWalkIn, setAddingWalkIn] = useState(false);
   const [filter, setFilter] = useState<GuestCheckInFilter>('all');
   const [collapsed, setCollapsed] = useState<Set<GuestCheckInCategoryKey>>(new Set());
+
+  /** Newest `updated_at` already applied locally; the incremental sync watermark. */
+  const syncedUpToRef = useRef<string | null>(null);
+  const syncInFlightRef = useRef(false);
+  const knownCategoryIdsRef = useRef<Set<string>>(new Set());
+  // Lets the sync read the current list without re-subscribing its interval on
+  // every check-in.
+  const guestsRef = useRef<Guest[]>(guests);
+  guestsRef.current = guests;
+
+  useEffect(() => {
+    syncedUpToRef.current = null;
+    knownCategoryIdsRef.current = new Set();
+  }, [eventId]);
 
   const categoryNameById = useMemo(() => {
     const m = new Map<string, string>();
@@ -90,11 +138,12 @@ export function useGuestCheckInModel(params: {
     if (!silent) setLoading(true);
     try {
       const [data, cats] = await Promise.all([
-        guestService.getGuests(eventId),
+        guestService.getGuestsForCheckIn(eventId),
         guestService.getGuestCategories(eventId),
       ]);
 
-      const nextGuests = Array.isArray(data) ? (data as Guest[]) : [];
+      const nextGuests = Array.isArray(data?.guests) ? data.guests : [];
+      syncedUpToRef.current = data?.latestUpdatedAt ?? syncedUpToRef.current;
       let nextCats = Array.isArray(cats) ? (cats as GuestCategory[]) : [];
 
       // Fallback: if the category list comes back empty (or isn't visible to this user),
@@ -156,6 +205,9 @@ export function useGuestCheckInModel(params: {
         }
       }
 
+      knownCategoryIdsRef.current = new Set(
+        nextCats.map((c) => normalizeCategoryId(c?.id)).filter(Boolean) as string[]
+      );
       setGuests(nextGuests);
       setCategories(nextCats);
     } catch (e) {
@@ -170,18 +222,86 @@ export function useGuestCheckInModel(params: {
     }
   }, [errorMessage, errorTitle, eventId]);
 
+  /**
+   * Pulls only the guests changed since the last sync and merges them.
+   *
+   * This screen used to re-download the whole guest list every 4 seconds — for a
+   * 750-guest event that is ~520KB per tick, on top of the realtime channel that
+   * already delivers the same changes. A delta keyed on `updated_at` sends a few
+   * rows instead, and the row count catches inserts/deletes that arrive while
+   * the realtime socket is down.
+   */
+  const syncIncremental = useCallback(async () => {
+    if (!eventId || syncInFlightRef.current) return;
+
+    const since = syncedUpToRef.current;
+    if (!since) {
+      await refresh({ silent: true });
+      return;
+    }
+
+    syncInFlightRef.current = true;
+    try {
+      const [delta, serverCount] = await Promise.all([
+        guestService.getGuestsUpdatedSince(eventId, since),
+        guestService.getGuestCount(eventId),
+      ]);
+
+      if (delta.latestUpdatedAt) syncedUpToRef.current = delta.latestUpdatedAt;
+
+      let localCount = guestsRef.current.length;
+
+      if (delta.guests.length) {
+        const byId = new Map(guestsRef.current.map((g) => [g.id, g]));
+        // The watermark bound is inclusive, so an unchanged boundary row comes
+        // back every tick. Only swap state when something really moved,
+        // otherwise we would re-render the whole list on every sync.
+        let changed = false;
+        for (const guest of delta.guests) {
+          const existing = byId.get(guest.id);
+          if (existing && checkInFieldsEqual(existing, guest)) continue;
+          changed = true;
+          byId.set(guest.id, existing ? { ...existing, ...guest } : guest);
+        }
+
+        if (changed) {
+          const next = Array.from(byId.values());
+          if (next.length !== guestsRef.current.length) {
+            next.sort((a, b) => a.name.localeCompare(b.name, 'he'));
+          }
+          localCount = next.length;
+          setGuests(next);
+        }
+
+        const hasUnknownCategory = delta.guests.some((g) => {
+          const norm = normalizeCategoryId((g as any)?.category_id);
+          return norm ? !knownCategoryIdsRef.current.has(norm) : false;
+        });
+        if (hasUnknownCategory) {
+          await refresh({ silent: true });
+          return;
+        }
+      }
+
+      // Totals disagreeing means a row was deleted, or added while we were offline.
+      if (serverCount !== localCount) await refresh({ silent: true });
+    } catch (e) {
+      console.warn('Guest check-in incremental sync failed:', e);
+    } finally {
+      syncInFlightRef.current = false;
+    }
+  }, [eventId, refresh]);
+
   useEffect(() => {
     if (!eventId || syncIntervalMs <= 0) return;
 
-    const poll = () => {
-      void refresh({ silent: true });
-    };
-
-    const intervalId = setInterval(poll, syncIntervalMs);
+    const intervalId = setInterval(() => {
+      void syncIncremental();
+    }, syncIntervalMs);
 
     const onVisibilityChange = () => {
       if (typeof document === 'undefined') return;
-      if (!document.hidden) poll();
+      if (!document.hidden) void syncIncremental();
     };
 
     if (typeof document !== 'undefined') {
@@ -194,7 +314,7 @@ export function useGuestCheckInModel(params: {
         document.removeEventListener('visibilitychange', onVisibilityChange);
       }
     };
-  }, [eventId, refresh, syncIntervalMs]);
+  }, [eventId, syncIncremental, syncIntervalMs]);
 
   useEffect(() => {
     if (!eventId || !enableRealtime) return;
@@ -212,9 +332,20 @@ export function useGuestCheckInModel(params: {
           filter: `event_id=eq.${eventId}`,
         },
         (payload) => {
+          // Keep the delta watermark in step with realtime, otherwise every
+          // safety-net tick would re-download all the changes realtime already
+          // applied — which by the end of an event is the whole guest list.
+          const advanceWatermark = (row: Record<string, unknown> | undefined) => {
+            const updatedAt = String(row?.updated_at ?? '');
+            if (updatedAt && (!syncedUpToRef.current || updatedAt > syncedUpToRef.current)) {
+              syncedUpToRef.current = updatedAt;
+            }
+          };
+
           if (payload.eventType === 'INSERT') {
             const row = payload.new as Record<string, unknown>;
             if (!row?.id) return;
+            advanceWatermark(row);
             const newGuest = mapGuestRowFromDb(row);
             setGuests((prev) => {
               if (prev.some((g) => g.id === newGuest.id)) return prev;
@@ -226,6 +357,7 @@ export function useGuestCheckInModel(params: {
           if (payload.eventType === 'UPDATE') {
             const row = payload.new as Record<string, unknown>;
             if (!row?.id) return;
+            advanceWatermark(row);
             const updated = mapGuestRowFromDb(row);
             setGuests((prev) => prev.map((g) => (g.id === updated.id ? { ...g, ...updated } : g)));
             return;
@@ -250,16 +382,21 @@ export function useGuestCheckInModel(params: {
     };
   }, [enableRealtime, eventId]);
 
+  // Re-rendering hundreds of guest rows on every keystroke makes the search box
+  // feel laggy. Deferring the term keeps typing on the high-priority render and
+  // lets React interrupt the list work.
+  const deferredQuery = useDeferredValue(query);
+
   const filteredGuests = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = deferredQuery.trim().toLowerCase();
     const base = guests.filter((g) => {
       if (filter === 'checked_in') return Boolean(g.checkedIn);
       if (filter === 'not_checked_in') return !Boolean(g.checkedIn);
       return true;
     });
     if (!q) return base;
-    return base.filter((g) => `${g.name} ${g.phone} ${g.status}`.toLowerCase().includes(q));
-  }, [guests, query, filter]);
+    return base.filter((g) => guestMatchesSearch(g, q) || String(g.status || '').toLowerCase().includes(q));
+  }, [guests, deferredQuery, filter]);
 
   const counts = useMemo(() => {
     let totalPeople = 0;
@@ -369,6 +506,52 @@ export function useGuestCheckInModel(params: {
     }
   }, []);
 
+  const addWalkInGuest = useCallback(async (input: WalkInGuestInput): Promise<WalkInGuestResult> => {
+    if (!eventId) return { ok: false, error: 'חסר מזהה אירוע' };
+
+    const name = String(input?.name ?? '').trim();
+    if (!name) return { ok: false, error: 'יש להזין שם מוזמן' };
+
+    const phone = String(input?.phone ?? '').trim();
+    const phoneDigits = phone.replace(/\D/g, '');
+    if (phone && phoneDigits.length < 9) return { ok: false, error: 'מספר הטלפון אינו תקין' };
+
+    const people = Math.max(1, Math.floor(Number(input?.numberOfPeople) || 1));
+    const tableId = input?.tableId ? String(input.tableId).trim() || null : null;
+    const shouldCheckIn = input?.checkInImmediately !== false;
+
+    setAddingWalkIn(true);
+    try {
+      const created = await guestService.addGuest(eventId, {
+        name,
+        phone,
+        status: 'מגיע',
+        tableId,
+        gift: 0,
+        message: '',
+        category_id: (input?.categoryId ?? null) as Guest['category_id'],
+        numberOfPeople: people,
+      });
+
+      const guest = shouldCheckIn
+        ? { ...created, ...(await guestService.setGuestCheckedIn(created.id, true, { checkedInCount: people })) }
+        : created;
+
+      setGuests((prev) => {
+        if (prev.some((g) => g.id === guest.id)) return prev.map((g) => (g.id === guest.id ? { ...g, ...guest } : g));
+        return [...prev, guest].sort((a, b) => a.name.localeCompare(b.name, 'he'));
+      });
+
+      return { ok: true, guest };
+    } catch (e) {
+      console.error('Add walk-in guest error:', e);
+      const message = e instanceof Error ? String(e.message || '').trim() : '';
+      return { ok: false, error: message || 'לא ניתן להוסיף את המוזמן. נסו שוב.' };
+    } finally {
+      setAddingWalkIn(false);
+    }
+  }, [eventId]);
+
   return {
     // data
     loading,
@@ -394,6 +577,8 @@ export function useGuestCheckInModel(params: {
     savingCountId,
     assignGuestToTable,
     savingMoveId,
+    addWalkInGuest,
+    addingWalkIn,
   };
 }
 

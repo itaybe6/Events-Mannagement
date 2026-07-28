@@ -35,6 +35,7 @@ import {
 } from '@/lib/importGuestsExcel';
 import { exportGuestsToExcel } from '@/lib/exportGuestsExcel';
 import { exportGuestsToPdf } from '@/lib/exportGuestsPdf';
+import { guestMatchesSearch, normalizeGuestPhone } from '@/lib/guestPhone';
 
 type GuestStatus = 'ממתין' | 'אולי מגיע' | 'מגיע' | 'לא מגיע';
 type GuestRow = {
@@ -225,10 +226,9 @@ export default function CoupleGuestsWebScreen() {
   }, [guests]);
 
   const filteredGuests = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
+    const q = searchQuery.trim();
     return guests.filter((g) => {
-      const matchesSearch =
-        !q || g.name.toLowerCase().includes(q) || String(g.phone || '').replace(/\s+/g, '').includes(q.replace(/\s+/g, ''));
+      const matchesSearch = !q || guestMatchesSearch(g, q);
       const matchesStatus = statusFilter ? g.status === statusFilter : true;
       return matchesSearch && matchesStatus;
     });
@@ -245,6 +245,8 @@ export default function CoupleGuestsWebScreen() {
     return by;
   }, [filteredGuests]);
 
+  const hasActiveGuestFilter = Boolean(searchQuery.trim() || statusFilter);
+
   const groupItems = useMemo(() => {
     const catIds = new Set(categories.map((c) => String(c.id)));
     const uncategorized = filteredGuests.filter((g) => {
@@ -255,8 +257,9 @@ export default function CoupleGuestsWebScreen() {
     const items: Array<{ id: string; name: string; list: GuestRow[] }> = [];
     if (uncategorized.length) items.push({ id: '__uncategorized__', name: 'ללא קטגוריה', list: uncategorized });
     for (const c of categories) items.push({ id: String(c.id), name: c.name, list: guestsByCategory[String(c.id)] || [] });
+    if (hasActiveGuestFilter) return items.filter((item) => item.list.length > 0);
     return items;
-  }, [categories, filteredGuests, guestsByCategory]);
+  }, [categories, filteredGuests, guestsByCategory, hasActiveGuestFilter]);
 
   const categoryNameById = useMemo(() => {
     const m = new Map<string, string>();
@@ -287,17 +290,18 @@ export default function CoupleGuestsWebScreen() {
     const name = editName.trim();
     if (!name) return;
     const peopleCount = Math.max(1, Number.parseInt(editPeopleCount || '1', 10) || 1);
+    const phone = normalizeGuestPhone(editPhone);
     try {
       await guestService.updateGuest(editingGuest.id, {
         name,
-        phone: editPhone.trim(),
+        phone,
         status: editStatus,
         numberOfPeople: peopleCount,
       } as any);
       setGuests((prev) =>
         prev.map((g) =>
           g.id === editingGuest.id
-            ? { ...g, name, phone: editPhone.trim(), status: editStatus, numberOfPeople: peopleCount }
+            ? { ...g, name, phone, status: editStatus, numberOfPeople: peopleCount }
             : g
         )
       );

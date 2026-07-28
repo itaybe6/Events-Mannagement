@@ -1,9 +1,25 @@
 import { supabase, supabaseAdmin } from '../supabase';
+import { cachedQuery, invalidateCache, peekCached } from '../queryCache';
 import { Event, Task } from '@/types';
 
+const EVENTS_LIST_KEY = 'events:all';
+
+/** Called by every write path so the next read doesn't serve a stale list. */
+function invalidateEventsCache(): void {
+  invalidateCache(EVENTS_LIST_KEY);
+}
+
 export const eventService = {
+  /** Last loaded events list, if any, so a screen can paint before revalidating. */
+  peekEvents: (): Event[] | undefined => peekCached<Event[]>(EVENTS_LIST_KEY),
+
+  invalidateEventsCache,
+
   // Get all events for current user
-  getEvents: async (): Promise<Event[]> => {
+  getEvents: async (opts?: { force?: boolean }): Promise<Event[]> =>
+    cachedQuery(EVENTS_LIST_KEY, () => eventService.fetchEvents(), { force: opts?.force }),
+
+  fetchEvents: async (): Promise<Event[]> => {
     try {
       const { data, error } = await supabase
         .from('events')
@@ -221,6 +237,7 @@ export const eventService = {
         .single();
 
       if (error) throw error;
+      invalidateEventsCache();
 
       return {
         id: data.id,
@@ -281,6 +298,7 @@ export const eventService = {
         .single();
 
       if (error) throw error;
+      invalidateEventsCache();
 
       // עדכן את המשתמש עם ה-event_id החדש
       await supabase
@@ -341,6 +359,7 @@ export const eventService = {
         .single();
 
       if (error) throw error;
+      invalidateEventsCache();
 
       // Link the user's primary event to the newly-created one.
       await supabase
@@ -374,6 +393,7 @@ export const eventService = {
         .update({ is_approved: approved })
         .eq('id', eventId);
       if (error) throw error;
+      invalidateEventsCache();
     } catch (error) {
       console.error('Set event approval error:', error);
       throw error;
@@ -414,6 +434,7 @@ export const eventService = {
         .single();
 
       if (error) throw error;
+      invalidateEventsCache();
 
       return {
         id: data.id,
@@ -456,6 +477,7 @@ export const eventService = {
         .eq('id', eventId);
 
       if (error) throw error;
+      invalidateEventsCache();
     } catch (error) {
       console.error('Delete event error:', error);
       throw error;

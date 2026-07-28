@@ -26,6 +26,7 @@ import DateTimePickerModal from 'react-native-modal-datetime-picker';
 
 import { colors } from '@/constants/colors';
 import { buildDirectionsDetailsText, buildEventLocationText, normalizeBaseUrl } from '@/lib/navigationLinks';
+import { fetchEventHasSeating, TABLE_NUMBER_PREVIEW, TABLE_NUMBER_TOKEN } from '@/lib/messageVariables';
 import { supabase } from '@/lib/supabase';
 import { useLayoutStore } from '@/store/layoutStore';
 import { ALIGN_RIGHT, IS_RTL, ROW_DIR, ROW_REVERSE_DIR } from '@/lib/rtl';
@@ -275,6 +276,7 @@ export function AdminNotificationEditorScreen({ viewerMode = 'admin' }: { viewer
   const [allGuests, setAllGuests] = useState<
     Array<{ id: string; name: string; phone?: string; status: 'מגיע' | 'אולי מגיע' | 'לא מגיע' | 'ממתין' }>
   >([]);
+  const [hasSeatingMap, setHasSeatingMap] = useState(false);
   const [selectedGuestIds, setSelectedGuestIds] = useState<Set<string>>(() => new Set());
   const [sendingNow, setSendingNow] = useState(false);
   const [importingPrev, setImportingPrev] = useState(false);
@@ -385,6 +387,7 @@ export function AdminNotificationEditorScreen({ viewerMode = 'admin' }: { viewer
         const d = new Date((eventData as any)?.date);
         setEventMeta(eventData as any);
         setEventDate(d);
+        setHasSeatingMap(await fetchEventHasSeating(supabase, resolvedEventId));
 
         const { data: guestRows, error: guestError } = await supabase
           .from('guests')
@@ -835,12 +838,16 @@ export function AdminNotificationEditorScreen({ viewerMode = 'admin' }: { viewer
       '{מיקום}': eventLocationText,
       '{פרטי הגעה}': previewDirectionsText,
       '{פרטי_הגעה}': previewDirectionsText,
+      '{מספר_שולחן}': TABLE_NUMBER_PREVIEW,
+      '{table}': TABLE_NUMBER_PREVIEW,
       '{{שם_פרטי}}': 'אורח/ת',
       '{{שם_אירוע}}': eventTitle,
       '{{תאריך}}': eventDateText,
       '{{מיקום}}': eventLocationText,
       '{{פרטי הגעה}}': previewDirectionsText,
       '{{פרטי_הגעה}}': previewDirectionsText,
+      '{{מספר_שולחן}}': TABLE_NUMBER_PREVIEW,
+      '{{table}}': TABLE_NUMBER_PREVIEW,
     };
     if (groomName) {
       vars['{שם_חתן}'] = groomName;
@@ -1342,8 +1349,24 @@ export function AdminNotificationEditorScreen({ viewerMode = 'admin' }: { viewer
                     >
                       <Ionicons name="navigate-outline" size={18} color={ui.sub} />
                     </TouchableOpacity>
+                    {hasSeatingMap ? (
+                      <TouchableOpacity
+                        style={[styles.toolBtn, styles.seatingToolBtn]}
+                        activeOpacity={0.92}
+                        onPress={() => setEditedMessage((prev) => `${prev}${prev ? ' ' : ''}${TABLE_NUMBER_TOKEN}`)}
+                        accessibilityRole="button"
+                        accessibilityLabel="הוסף מספר שולחן"
+                      >
+                        <Ionicons name="grid-outline" size={18} color="#0E7C46" />
+                      </TouchableOpacity>
+                    ) : null}
                   </View>
                 </View>
+                {hasSeatingMap ? (
+                  <Text style={[styles.helperText, { color: ui.sub, marginBottom: 8 }]}>
+                    יש מפת הושבה — לחץ על כפתור «מספר שולחן» כדי להוסיף {TABLE_NUMBER_TOKEN} להודעה.
+                  </Text>
+                ) : null}
 
                 <View style={styles.textareaWrap}>
                   <TextInput
@@ -1389,6 +1412,12 @@ export function AdminNotificationEditorScreen({ viewerMode = 'admin' }: { viewer
                   <Text style={[styles.helperText, { color: ui.sub }]}>
                     משתנים שימושיים: <Text style={styles.mono}>{'{name}'}</Text> · <Text style={styles.mono}>{'{link}'}</Text> ·{' '}
                     <Text style={styles.mono}>{'{פרטי הגעה}'}</Text>
+                    {hasSeatingMap ? (
+                      <>
+                        {' '}
+                        · <Text style={styles.mono}>{TABLE_NUMBER_TOKEN}</Text>
+                      </>
+                    ) : null}
                   </Text>
 
                   <View style={styles.filtersRow}>
@@ -2091,6 +2120,7 @@ const styles = StyleSheet.create({
   messageHeaderRow: { flexDirection: ROW_DIR, alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   messageTools: { flexDirection: ROW_DIR, gap: 8, flexWrap: 'wrap' },
   toolBtn: { width: 36, height: 36, borderRadius: 14, borderWidth: 1, justifyContent: 'center', alignItems: 'center' },
+  seatingToolBtn: { backgroundColor: 'rgba(37,211,102,0.10)', borderColor: 'rgba(14,124,70,0.22)' },
   textareaWrap: { position: 'relative' },
   textarea: { borderRadius: 20, paddingHorizontal: 18, paddingVertical: 16, fontSize: 16, fontWeight: '700', minHeight: 280, lineHeight: 24, writingDirection: 'rtl', borderWidth: 1 },
   charCountPill: { position: 'absolute', left: 12, bottom: 12, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.86)', borderWidth: 1 },

@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx';
+import { normalizeGuestPhone } from './guestPhone';
 
 export type ParsedGuestRow = {
   name: string;
@@ -57,17 +58,13 @@ function matchColumn(header: string): 'name' | 'phone' | 'category' | null {
 }
 
 function cleanPhone(value: unknown): string {
-  let raw = String(value ?? '').trim();
-  if (!raw) return '';
+  if (value === null || value === undefined || value === '') return '';
+  let raw = String(value).trim();
   // Excel sometimes stores phones as numbers (e.g. 5.0e8) or strips leading zeros.
   if (typeof value === 'number') {
     raw = String(value);
   }
-  // Keep digits and a single leading +.
-  const hasPlus = raw.trim().startsWith('+');
-  const digits = raw.replace(/\D/g, '');
-  if (!digits) return '';
-  return hasPlus ? `+${digits}` : digits;
+  return normalizeGuestPhone(raw);
 }
 
 /**

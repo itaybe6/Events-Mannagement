@@ -204,6 +204,8 @@ function EmployeeGuestCheckinWebDesktopScreen() {
     savingCountId,
     assignGuestToTable,
     savingMoveId,
+    addWalkInGuest,
+    addingWalkIn,
   } = useGuestCheckInModel({
     eventId: resolvedEventId ? resolvedEventId : null,
     errorTitle: 'שגיאה',
@@ -358,6 +360,80 @@ function EmployeeGuestCheckinWebDesktopScreen() {
     });
     return m;
   }, [guests]);
+
+  const handlePressMapTableNumber = useCallback(
+    (num: number | null | undefined) => {
+      if (!num) return;
+      const id = tableIdByNumber.get(Number(num));
+      if (!id) return;
+      setSelectedTableNumber((prev) => (prev === num ? null : num));
+      setTableFilter((prev) => (prev === id ? null : id));
+    },
+    [tableIdByNumber]
+  );
+
+  const checkinSeatingMap = useMemo(() => {
+    if (!webSketch) return null;
+    return (
+      <SeatingGridReadonly
+        gridCols={webSketch.gridCols}
+        gridRows={webSketch.gridRows}
+        tables={webSketch.tables}
+        zones={webSketch.zones}
+        labels={webSketch.labels}
+        hideTableType
+        useBaseColorAsWebBackground
+        showTableBorder={false}
+        getTableBaseColor={(t: any) => {
+          const selected = Boolean(selectedTableNumber) && Number(t?.number) === Number(selectedTableNumber);
+          if (selected) return '#10B981';
+          const num = t?.number;
+          const seated = num ? (seatedByNumber.get(Number(num)) ?? 0) : 0;
+          const cap = Number(t?.seats ?? 0) || 0;
+          const isFullOrOver = cap > 0 && seated >= cap;
+          if (isFullOrOver) return colors.primary;
+          return t?.type === 'reserve' ? colors.warning : colors.primary;
+        }}
+        getTableBackgroundAlpha={(t: any) => {
+          const selected = Boolean(selectedTableNumber) && Number(t?.number) === Number(selectedTableNumber);
+          if (selected) return 0.28;
+          const num = t?.number;
+          const seated = num ? (seatedByNumber.get(Number(num)) ?? 0) : 0;
+          const cap = Number(t?.seats ?? 0) || 0;
+          const isFullOrOver = cap > 0 && seated >= cap;
+          if (isFullOrOver) return 0.9;
+          return t?.type === 'reserve' ? 0.72 : 0.9;
+        }}
+        getTableBorderColor={(t: any) => {
+          const selected = Boolean(selectedTableNumber) && Number(t?.number) === Number(selectedTableNumber);
+          if (selected) return '#10B981';
+          const num = t?.number;
+          const seated = num ? (seatedByNumber.get(Number(num)) ?? 0) : 0;
+          const cap = Number(t?.seats ?? 0) || 0;
+          const isFullOrOver = cap > 0 && seated >= cap;
+          if (isFullOrOver) return '#10B981';
+          return t?.type === 'reserve' ? colors.warning : '#FFFFFF';
+        }}
+        selectedRingColor="#10B981"
+        isTableSelected={(t: any) => Boolean(selectedTableNumber) && Number(t?.number) === Number(selectedTableNumber)}
+        getTableSubLabel={(t: any) => {
+          const num = t?.number;
+          if (!num) return null;
+          const seated = seatedByNumber.get(Number(num)) ?? 0;
+          const cap = Number(t?.seats ?? 0) || 0;
+          return cap ? `${seated}/${cap}` : String(seated);
+        }}
+        getTableTooltip={(t: any) => {
+          const num = t?.number;
+          if (!num) return null;
+          const seated = seatedByNumber.get(Number(num)) ?? 0;
+          const cap = Number(t?.seats ?? 0) || 0;
+          return cap ? `יושבים בשולחן: ${seated}/${cap}` : `יושבים בשולחן: ${seated}`;
+        }}
+        onPressTableNumber={handlePressMapTableNumber}
+      />
+    );
+  }, [handlePressMapTableNumber, seatedByNumber, selectedTableNumber, webSketch]);
 
   const buildSketchFromCurrentTables = useCallback((currentTables: Table[]): WebSketch | null => {
     const placed = (currentTables || [])
@@ -702,9 +778,8 @@ function EmployeeGuestCheckinWebDesktopScreen() {
     setMovePrevSelectedTableNumber(null);
   }, [movePrevSelectedTableNumber]);
 
-  const moveOptions = useMemo(() => {
-    const q = moveTableQuery.trim().toLowerCase();
-    const base = tablesSorted.map((t) => {
+  const tableOptions = useMemo(() => {
+    return tablesSorted.map((t) => {
       const id = String((t as any).id ?? t.id);
       const label = tableLabelById.get(id) || 'שולחן';
       const capacity = Number((t as any).capacity) || 0;
@@ -712,9 +787,13 @@ function EmployeeGuestCheckinWebDesktopScreen() {
       const shape = ((t as any).shape ?? null) as any;
       return { id, label, capacity, seated, shape };
     });
-    if (!q) return base;
-    return base.filter((x) => x.label.toLowerCase().includes(q));
-  }, [moveTableQuery, seatedByTableId, tableLabelById, tablesSorted]);
+  }, [seatedByTableId, tableLabelById, tablesSorted]);
+
+  const moveOptions = useMemo(() => {
+    const q = moveTableQuery.trim().toLowerCase();
+    if (!q) return tableOptions;
+    return tableOptions.filter((x) => x.label.toLowerCase().includes(q));
+  }, [moveTableQuery, tableOptions]);
 
   const moveGuestPeople = useMemo(() => {
     if (!moveGuest) return 0;
@@ -760,6 +839,83 @@ function EmployeeGuestCheckinWebDesktopScreen() {
     },
     [previewSeatedForOption]
   );
+
+  const [addOpen, setAddOpen] = useState(false);
+  const [addName, setAddName] = useState('');
+  const [addPhone, setAddPhone] = useState('');
+  const [addPeople, setAddPeople] = useState(1);
+  const [addTableQuery, setAddTableQuery] = useState('');
+  const [addTableId, setAddTableId] = useState<string | null>(null);
+  const [addError, setAddError] = useState<string | null>(null);
+
+  const openAddModal = useCallback(() => {
+    setAddName('');
+    setAddPhone('');
+    setAddPeople(1);
+    setAddTableQuery('');
+    setAddError(null);
+    // Pre-select the table the usher is already focused on.
+    const focused =
+      tableFilter && tableFilter !== NO_TABLE_KEY
+        ? tableFilter
+        : selectedTableNumber
+          ? tableIdByNumber.get(Number(selectedTableNumber)) ?? null
+          : null;
+    setAddTableId(focused ?? null);
+    setAddOpen(true);
+  }, [selectedTableNumber, tableFilter, tableIdByNumber]);
+
+  const closeAddModal = useCallback(() => {
+    setAddOpen(false);
+    setAddError(null);
+    setAddTableQuery('');
+  }, []);
+
+  const addOptions = useMemo(() => {
+    const q = addTableQuery.trim().toLowerCase();
+    if (!q) return tableOptions;
+    return tableOptions.filter((x) => x.label.toLowerCase().includes(q));
+  }, [addTableQuery, tableOptions]);
+
+  const previewSeatedForAddOption = useCallback(
+    (optId: string, optSeated: number) => {
+      const seated = Number(optSeated) || 0;
+      return addTableId === optId ? seated + addPeople : seated;
+    },
+    [addPeople, addTableId]
+  );
+
+  const previewOverflowForAddOption = useCallback(
+    (optId: string, optSeated: number, capacity: number, shape: any) => {
+      if (shape === 'reserve') return 0;
+      const cap = Number(capacity) || 0;
+      if (cap <= 0) return 0;
+      return Math.max(0, previewSeatedForAddOption(optId, optSeated) - cap);
+    },
+    [previewSeatedForAddOption]
+  );
+
+  const confirmAddGuest = useCallback(async () => {
+    setAddError(null);
+    const result = await addWalkInGuest({
+      name: addName,
+      phone: addPhone,
+      numberOfPeople: addPeople,
+      tableId: addTableId,
+    });
+
+    if (!result.ok) {
+      setAddError(result.error);
+      return;
+    }
+
+    // Make sure the freshly added guest is visible, and focus the table they were seated at.
+    setFilter('all');
+    const seatedNumber = tableNumberForId(addTableId);
+    setSelectedTableNumber(seatedNumber);
+    if (seatedNumber !== null) setTableFilter(addTableId);
+    closeAddModal();
+  }, [addName, addPeople, addPhone, addTableId, addWalkInGuest, closeAddModal, setFilter, tableNumberForId]);
 
   const isMoveSaving = Boolean(moveGuest && savingMoveId === moveGuest.id);
 
@@ -1124,6 +1280,19 @@ function EmployeeGuestCheckinWebDesktopScreen() {
                       <Text style={styles.panelTitle}>רשימת צ'ק אין</Text>
                       <Text style={styles.panelSubtitle}>נהל את האורחים לפי חיפוש, סטטוס ושולחן בלחיצה אחת.</Text>
                     </View>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="הוספת מוזמן שלא נמצא ברשימה"
+                      onPress={openAddModal}
+                      style={({ hovered, pressed }: any) => [
+                        styles.addGuestBtn,
+                        Platform.OS === 'web' && hovered ? styles.addGuestBtnHover : null,
+                        pressed ? { opacity: 0.92 } : null,
+                      ]}
+                    >
+                      <Ionicons name="person-add" size={16} color={colors.white} />
+                      {!isNarrow ? <Text style={styles.addGuestBtnText}>הוסף מוזמן</Text> : null}
+                    </Pressable>
                     {tableFilter ? (
                       <Pressable
                         accessibilityRole="button"
@@ -1204,7 +1373,20 @@ function EmployeeGuestCheckinWebDesktopScreen() {
                       <View style={styles.emptyRow}>
                         <Ionicons name="people-outline" size={42} color={colors.gray[500]} />
                         <Text style={styles.emptyTitle}>לא נמצאו אורחים</Text>
-                        <Text style={styles.emptyText}>נסה לשנות חיפוש / פילטר / שולחן.</Text>
+                        <Text style={styles.emptyText}>נסה לשנות חיפוש / פילטר / שולחן, או להוסיף מוזמן חדש.</Text>
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel="הוספת מוזמן שלא נמצא ברשימה"
+                          onPress={openAddModal}
+                          style={({ hovered, pressed }: any) => [
+                            styles.addGuestEmptyBtn,
+                            Platform.OS === 'web' && hovered ? styles.addGuestEmptyBtnHover : null,
+                            pressed ? { opacity: 0.92 } : null,
+                          ]}
+                        >
+                          <Ionicons name="person-add" size={16} color={colors.primary} />
+                          <Text style={styles.addGuestEmptyBtnText}>הוסף מוזמן חדש</Text>
+                        </Pressable>
                       </View>
                     ) : shouldScrollGuests ? (
                       <ScrollView
@@ -1302,68 +1484,7 @@ function EmployeeGuestCheckinWebDesktopScreen() {
                       <Text style={styles.loadingText}>טוען מפה…</Text>
                     </View>
                   ) : webSketch ? (
-                    <SeatingGridReadonly
-                      gridCols={webSketch.gridCols}
-                      gridRows={webSketch.gridRows}
-                      tables={webSketch.tables}
-                      zones={webSketch.zones}
-                      labels={webSketch.labels}
-                      hideTableType
-                      useBaseColorAsWebBackground
-                      showTableBorder={false}
-                      getTableBaseColor={(t: any) => {
-                        const selected = Boolean(selectedTableNumber) && Number(t?.number) === Number(selectedTableNumber);
-                        if (selected) return '#10B981';
-                        const num = t?.number;
-                        const seated = num ? (seatedByNumber.get(Number(num)) ?? 0) : 0;
-                        const cap = Number(t?.seats ?? 0) || 0;
-                        const isFullOrOver = cap > 0 && seated >= cap;
-                        if (isFullOrOver) return colors.primary;
-                        return t?.type === 'reserve' ? colors.warning : colors.primary;
-                      }}
-                      getTableBackgroundAlpha={(t: any) => {
-                        const selected = Boolean(selectedTableNumber) && Number(t?.number) === Number(selectedTableNumber);
-                        if (selected) return 0.28;
-                        const num = t?.number;
-                        const seated = num ? (seatedByNumber.get(Number(num)) ?? 0) : 0;
-                        const cap = Number(t?.seats ?? 0) || 0;
-                        const isFullOrOver = cap > 0 && seated >= cap;
-                        if (isFullOrOver) return 0.9;
-                        return t?.type === 'reserve' ? 0.72 : 0.9;
-                      }}
-                      getTableBorderColor={(t: any) => {
-                        const selected = Boolean(selectedTableNumber) && Number(t?.number) === Number(selectedTableNumber);
-                        if (selected) return '#10B981';
-                        const num = t?.number;
-                        const seated = num ? (seatedByNumber.get(Number(num)) ?? 0) : 0;
-                        const cap = Number(t?.seats ?? 0) || 0;
-                        const isFullOrOver = cap > 0 && seated >= cap;
-                        if (isFullOrOver) return '#10B981';
-                        return t?.type === 'reserve' ? colors.warning : '#FFFFFF';
-                      }}
-                      selectedRingColor="#10B981"
-                      isTableSelected={(t: any) => Boolean(selectedTableNumber) && Number(t?.number) === Number(selectedTableNumber)}
-                      getTableSubLabel={(t: any) => {
-                        const num = t?.number;
-                        if (!num) return null;
-                        const seated = seatedByNumber.get(Number(num)) ?? 0;
-                        const cap = Number(t?.seats ?? 0) || 0;
-                        return cap ? `${seated}/${cap}` : String(seated);
-                      }}
-                      getTableTooltip={(t: any) => {
-                        const num = t?.number;
-                        if (!num) return null;
-                        const seated = seatedByNumber.get(Number(num)) ?? 0;
-                        const cap = Number(t?.seats ?? 0) || 0;
-                        return cap ? `יושבים בשולחן: ${seated}/${cap}` : `יושבים בשולחן: ${seated}`;
-                      }}
-                      onPressTableNumber={(num) => {
-                        if (!num) return;
-                        const id = tableIdByNumber.get(Number(num));
-                        if (!id) return;
-                        setTableFilter((prev) => (prev === id ? null : id));
-                      }}
-                    />
+                    checkinSeatingMap
                   ) : (
                     <View style={styles.mapEmptyState}>
                       <View style={styles.mapEmptyIconWrap}>
@@ -1558,6 +1679,282 @@ function EmployeeGuestCheckinWebDesktopScreen() {
                 style={({ hovered, pressed }: any) => [
                   styles.modalSecondaryBtn,
                   isMoveSaving ? styles.modalBtnDisabled : null,
+                  Platform.OS === 'web' && hovered ? styles.modalSecondaryBtnHover : null,
+                  pressed ? { opacity: 0.92 } : null,
+                ]}
+              >
+                <Text style={styles.modalSecondaryBtnText}>ביטול</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      ) : null}
+
+      {addOpen ? (
+        <View style={styles.modalBackdrop}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="סגור הוספת מוזמן"
+            onPress={closeAddModal}
+            style={styles.modalBackdropPressable}
+          />
+
+          <View style={[styles.modalCard, (isNarrow || isMobile) ? styles.modalCardNarrow : null]}>
+            <View style={styles.modalHeader}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="סגור"
+                onPress={closeAddModal}
+                style={({ hovered, pressed }: any) => [
+                  styles.modalCloseBtn,
+                  Platform.OS === 'web' && hovered ? styles.modalCloseBtnHover : null,
+                  pressed ? { opacity: 0.9 } : null,
+                ]}
+              >
+                <Ionicons name="close" size={18} color={colors.gray[700]} />
+              </Pressable>
+              <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-end' }}>
+                <Text style={styles.modalKicker}>מוזמן חדש בכניסה</Text>
+              </View>
+            </View>
+
+            <View style={styles.modalGuestRow}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.modalSubTitle} numberOfLines={1}>
+                  הוספת מוזמן
+                </Text>
+                <View style={styles.modalGuestMetaRow}>
+                  <Ionicons name="information-circle" size={14} color={colors.primary} />
+                  <Text style={styles.modalGuestMetaText}>מוזמן שלא נמצא ברשימה – יסומן מיד כהגיע</Text>
+                </View>
+              </View>
+              <View style={styles.modalAvatar}>
+                <Ionicons name="person-add" size={20} color={colors.primary} />
+              </View>
+            </View>
+
+            <ScrollView
+              style={styles.addFormScroll}
+              contentContainerStyle={{ paddingBottom: 4 }}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>שם המוזמן</Text>
+                <TextInput
+                  style={[styles.formInput, Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : null]}
+                  value={addName}
+                  onChangeText={(text) => {
+                    setAddName(text);
+                    if (addError) setAddError(null);
+                  }}
+                  placeholder="לדוגמה: ישראל ישראלי"
+                  placeholderTextColor="rgba(107,114,128,0.75)"
+                  textAlign="right"
+                  autoFocus
+                  returnKeyType="next"
+                />
+              </View>
+
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>מספר טלפון (לא חובה)</Text>
+                <TextInput
+                  style={[styles.formInput, Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : null]}
+                  value={addPhone}
+                  onChangeText={(text) => {
+                    setAddPhone(text);
+                    if (addError) setAddError(null);
+                  }}
+                  placeholder="050-0000000"
+                  placeholderTextColor="rgba(107,114,128,0.75)"
+                  textAlign="right"
+                  keyboardType="phone-pad"
+                  {...(Platform.OS === 'web' ? ({ inputMode: 'tel' } as any) : null)}
+                />
+              </View>
+
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>מספר אנשים</Text>
+                <View style={styles.formStepper}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="הפחת מספר אנשים"
+                    onPress={() => setAddPeople((prev) => Math.max(1, prev - 1))}
+                    disabled={addPeople <= 1}
+                    style={({ hovered, pressed }: any) => [
+                      styles.formStepBtn,
+                      addPeople <= 1 ? styles.formStepBtnDisabled : null,
+                      Platform.OS === 'web' && hovered && addPeople > 1 ? styles.formStepBtnHover : null,
+                      pressed ? { opacity: 0.92 } : null,
+                    ]}
+                  >
+                    <Ionicons name="remove" size={18} color={colors.primary} />
+                  </Pressable>
+
+                  <View style={styles.formStepValueWrap}>
+                    <Text style={styles.formStepValue}>{addPeople}</Text>
+                    <Text style={styles.formStepValueHint}>{addPeople === 1 ? 'אורח' : 'אורחים'}</Text>
+                  </View>
+
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="הגדל מספר אנשים"
+                    onPress={() => setAddPeople((prev) => Math.min(50, prev + 1))}
+                    style={({ hovered, pressed }: any) => [
+                      styles.formStepBtn,
+                      Platform.OS === 'web' && hovered ? styles.formStepBtnHover : null,
+                      pressed ? { opacity: 0.92 } : null,
+                    ]}
+                  >
+                    <Ionicons name="add" size={18} color={colors.primary} />
+                  </Pressable>
+                </View>
+              </View>
+
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>הושבה בשולחן</Text>
+                <Text style={styles.formHint}>אפשר להושיב את המוזמן בכל שולחן, גם אם לא הוקצה לו מקום במפה.</Text>
+
+                <View style={[styles.modalSearchWrap, { marginTop: 10 }]}>
+                  <View style={styles.modalSearchIcon}>
+                    <Ionicons name="search" size={18} color={colors.primary} />
+                  </View>
+                  <TextInput
+                    style={[styles.modalSearchInput, Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : null]}
+                    placeholder="חיפוש שולחן..."
+                    placeholderTextColor="rgba(107,114,128,0.75)"
+                    value={addTableQuery}
+                    onChangeText={setAddTableQuery}
+                    textAlign="right"
+                    autoCapitalize="none"
+                  />
+                </View>
+
+                <View style={{ marginTop: 12 }}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="בחר ללא שולחן"
+                    onPress={() => setAddTableId(null)}
+                    style={({ hovered, pressed }: any) => [
+                      styles.modalOptionRow,
+                      addTableId === null ? styles.modalOptionRowSelected : null,
+                      Platform.OS === 'web' && hovered ? styles.modalOptionRowHover : null,
+                      pressed ? { opacity: 0.94 } : null,
+                    ]}
+                  >
+                    <Text style={styles.modalOptionText}>ללא שולחן</Text>
+                    <Ionicons
+                      name={addTableId === null ? 'checkmark-circle' : 'ellipse-outline'}
+                      size={20}
+                      color={addTableId === null ? colors.primary : 'rgba(156,163,175,0.9)'}
+                    />
+                  </Pressable>
+
+                  {addOptions.length === 0 ? (
+                    <Text style={styles.formHint}>לא נמצאו שולחנות מתאימים לחיפוש.</Text>
+                  ) : null}
+
+                  {addOptions.map((opt) => (
+                    <Pressable
+                      key={opt.id}
+                      accessibilityRole="button"
+                      accessibilityLabel={`הושב ב${opt.label}`}
+                      onPress={() => setAddTableId(opt.id)}
+                      style={({ hovered, pressed }: any) => [
+                        styles.modalOptionRow,
+                        addTableId === opt.id ? styles.modalOptionRowSelected : null,
+                        Platform.OS === 'web' && hovered ? styles.modalOptionRowHover : null,
+                        pressed ? { opacity: 0.94 } : null,
+                      ]}
+                    >
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={styles.modalOptionText} numberOfLines={1}>
+                          {opt.label}
+                        </Text>
+                        {opt.capacity > 0 ? (
+                          <View style={styles.modalOptionMetaRow}>
+                            <Ionicons name="person" size={14} color="rgba(107,114,128,0.9)" />
+                            <Text style={styles.modalOptionMeta} numberOfLines={1}>
+                              יושבים: {previewSeatedForAddOption(opt.id, opt.seated)} מתוך {opt.capacity}
+                            </Text>
+                          </View>
+                        ) : null}
+                      </View>
+                      <View style={styles.modalOptionRight}>
+                        {opt.capacity > 0
+                          ? (() => {
+                              if (opt.shape === 'reserve') {
+                                return (
+                                  <View style={styles.modalBadgeReserve}>
+                                    <Text style={styles.modalBadgeReserveText}>רזרבה</Text>
+                                  </View>
+                                );
+                              }
+                              const overflow = previewOverflowForAddOption(opt.id, opt.seated, opt.capacity, opt.shape);
+                              if (overflow > 0) {
+                                return (
+                                  <View style={styles.modalBadgeOverflow}>
+                                    <Text style={styles.modalBadgeOverflowText}>חריגה {overflow}</Text>
+                                  </View>
+                                );
+                              }
+                              return (
+                                <View style={styles.modalBadgeOk}>
+                                  <Text style={styles.modalBadgeOkText}>פנוי</Text>
+                                </View>
+                              );
+                            })()
+                          : null}
+                        <Ionicons
+                          name={addTableId === opt.id ? 'checkmark-circle' : 'ellipse-outline'}
+                          size={20}
+                          color={addTableId === opt.id ? colors.primary : 'rgba(156,163,175,0.9)'}
+                        />
+                      </View>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            </ScrollView>
+
+            {addError ? (
+              <View style={styles.formErrorBox}>
+                <Ionicons name="alert-circle" size={16} color="#DC2626" />
+                <Text style={styles.formErrorText}>{addError}</Text>
+              </View>
+            ) : null}
+
+            <View style={styles.modalFooter}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="הוסף מוזמן וסמן כהגיע"
+                onPress={() => void confirmAddGuest()}
+                disabled={addingWalkIn || !addName.trim()}
+                style={({ hovered, pressed }: any) => [
+                  styles.modalPrimaryBtn,
+                  addingWalkIn || !addName.trim() ? styles.modalBtnDisabled : null,
+                  Platform.OS === 'web' && hovered ? styles.modalPrimaryBtnHover : null,
+                  pressed ? { opacity: 0.92 } : null,
+                ]}
+              >
+                {addingWalkIn ? (
+                  <ActivityIndicator size={16} color={colors.white} />
+                ) : (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Text style={styles.modalPrimaryBtnText}>הוסף וסמן כהגיע</Text>
+                    <Ionicons name="checkmark-circle" size={16} color={colors.white} />
+                  </View>
+                )}
+              </Pressable>
+
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="ביטול"
+                onPress={closeAddModal}
+                disabled={addingWalkIn}
+                style={({ hovered, pressed }: any) => [
+                  styles.modalSecondaryBtn,
+                  addingWalkIn ? styles.modalBtnDisabled : null,
                   Platform.OS === 'web' && hovered ? styles.modalSecondaryBtnHover : null,
                   pressed ? { opacity: 0.92 } : null,
                 ]}
@@ -2588,6 +2985,98 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(6,23,62,0.16)',
   },
   modalBadgeReserveText: { fontSize: 12, fontWeight: '900', color: colors.primary, textAlign: 'center' },
+  addGuestBtn: {
+    flexShrink: 0,
+    minHeight: 40,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    backgroundColor: colors.primary,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+    shadowColor: colors.primary,
+    shadowOpacity: 0.22,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 2,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  addGuestBtnHover: { opacity: 0.94 },
+  addGuestBtnText: { fontSize: 13, fontWeight: '900', color: colors.white, textAlign: 'right' },
+  addGuestEmptyBtn: {
+    marginTop: 6,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 14,
+    backgroundColor: 'rgba(6,23,62,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.12)',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  addGuestEmptyBtnHover: { backgroundColor: 'rgba(6,23,62,0.10)' },
+  addGuestEmptyBtnText: { fontSize: 13, fontWeight: '900', color: colors.primary, textAlign: 'right' },
+
+  addFormScroll: { marginTop: 14, flex: 1, minHeight: 0 },
+  formField: { marginBottom: 14 },
+  formLabel: { fontSize: 13, fontWeight: '900', color: '#111827', textAlign: 'right', marginBottom: 8 },
+  formHint: { marginTop: 6, fontSize: 12, fontWeight: '700', color: '#6B7280', textAlign: 'right', lineHeight: 17 },
+  formInput: {
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.10)',
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#111827',
+  },
+  formStepper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    padding: 8,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.10)',
+  },
+  formStepBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(6,23,62,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.12)',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  formStepBtnHover: { backgroundColor: 'rgba(6,23,62,0.10)' },
+  formStepBtnDisabled: { opacity: 0.45 },
+  formStepValueWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  formStepValue: { fontSize: 20, fontWeight: '900', color: '#111827', textAlign: 'center' },
+  formStepValueHint: { fontSize: 11, fontWeight: '800', color: '#6B7280', textAlign: 'center' },
+  formErrorBox: {
+    marginTop: 10,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: 'rgba(239,68,68,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(239,68,68,0.20)',
+  },
+  formErrorText: { flex: 1, minWidth: 0, fontSize: 12, fontWeight: '900', color: '#DC2626', textAlign: 'right' },
+
   modalFooter: { marginTop: 10, flexDirection: 'column', gap: 10 },
   modalSecondaryBtn: {
     width: '100%',

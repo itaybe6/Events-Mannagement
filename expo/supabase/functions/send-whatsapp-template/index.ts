@@ -6,7 +6,9 @@ import {
   buildWaPayload,
   getEventDisplayTitle,
   getWhatsappToken,
+  loadTableNumberMap,
   normalizeWaPhone,
+  resolveGuestTableNumberText,
   sendWaMessage,
   type WaTemplate,
   type WaParams,
@@ -59,7 +61,7 @@ function chunk<T>(arr: T[], size: number) {
   return out;
 }
 
-const GUESTS_SELECT = "id, name, phone, status, invitation_code, invitation_token";
+const GUESTS_SELECT = "id, name, phone, status, invitation_code, invitation_token, table_id";
 
 async function fetchAllGuests(adminClient: any, eventId: string, guestIds: string[], statusList: string[] | null) {
   const all: any[] = [];
@@ -207,6 +209,8 @@ serve(async (req) => {
     const brideName = String((eventRow as any)?.bride_name ?? "").trim();
     const coupleNames = groomName && brideName ? `${groomName} ו${brideName}` : groomName || brideName || "";
 
+    const tableNumberById = await loadTableNumberMap(adminClient, eventId);
+
     // Default header image: explicit param > event invitation image.
     const resolvedParams: WaParams = { ...whatsappParams };
     if (String(template.header_type ?? "none") === "image" && !String(resolvedParams.header_image_url ?? "").trim()) {
@@ -281,6 +285,7 @@ serve(async (req) => {
             groomName,
             brideName,
             coupleNames,
+            tableNumberText: resolveGuestTableNumberText(g, tableNumberById),
           });
           const invitationCode = String(g.invitation_code ?? g.invitation_token ?? "").trim();
           const payload = buildWaPayload({ to: j.phone, template, params: resolvedParams, vars, invitationCode });

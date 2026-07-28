@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Platform, Alert, Image, Modal, Animated, Easing, Switch } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Platform, Alert, Image, Modal, Animated, Switch, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { colors } from '@/constants/colors';
@@ -9,7 +9,7 @@ import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import { Event } from '@/types';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { inferEventType, MONTHS, type EventType } from '@/features/events/eventsConstants';
+import { inferEventType, isFutureEventDate, isPastEventDate, MONTHS, type EventTimeFilter, type EventType } from '@/features/events/eventsConstants';
 import { useEventsListModel } from '@/features/events/useEventsListModel';
 import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
 import { ALIGN_RIGHT, IS_RTL, ROW_DIR, rtlText } from '@/lib/rtl';
@@ -29,12 +29,6 @@ const EVENT_IMAGE_BY_TYPE: Record<EventType, number> = {
   ברית: require('../../assets/images/baby.jpg'),
   'אירוע חברה': require('../../assets/images/wedding.jpg'),
 };
-const HEADER_EVENT_TYPES = ['all', 'חתונה', 'בר מצווה', 'בת מצווה', 'אירוע חברה'] as const;
-type HeaderEventType = (typeof HEADER_EVENT_TYPES)[number];
-const HEADER_CHIPS_TOP_GAP = 16;
-const HEADER_CHIPS_ROW_HEIGHT = 42;
-const HEADER_CHIPS_INNER_BOTTOM_GAP = 8;
-const HEADER_CHIPS_BOTTOM_GAP = 12;
 
 function getEventDisplayTitle(rawTitle: string) {
   const title = String(rawTitle || '').trim();
@@ -47,7 +41,6 @@ function getEventDisplayTitle(rawTitle: string) {
 
 export default function AdminEventsScreen() {
   const router = useRouter();
-  const typeChipsScrollRef = useRef<ScrollView | null>(null);
   const insets = useSafeAreaInsets();
   const userType = useUserStore((state) => state.userType);
   const isEmployeeAppUser = userType === 'employee' && Platform.OS !== 'web';
@@ -56,20 +49,25 @@ export default function AdminEventsScreen() {
   const [showFilterDialog, setShowFilterDialog] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showMonthPicker, setShowMonthPicker] = useState(false);
-  const [selectedEventType, setSelectedEventType] = useState<HeaderEventType>('all');
+  const [eventTimeFilter, setEventTimeFilter] = useState<EventTimeFilter>('future');
   const [isStickyHeaderActive, setIsStickyHeaderActive] = useState(false);
   const [headerContentHeight, setHeaderContentHeight] = useState(52);
   const lastScrollYRef = useRef(0);
   const scrollY = useRef(new Animated.Value(0)).current;
-  const chipsVisualProgress = useRef(new Animated.Value(0)).current;
-  const chipsLayoutProgress = useRef(new Animated.Value(0)).current;
-  const loadEventsFn = useMemo(() => async () => {
-    const data = await eventService.getEvents();
-    return Array.isArray(data) ? (data as Event[]) : [];
-  }, []);
+  const loadEventsFn = useMemo(
+    () => async (options?: { force?: boolean }) => {
+      const data = await eventService.getEvents(options);
+      return Array.isArray(data) ? (data as Event[]) : [];
+    },
+    []
+  );
+
+  const initialEvents = useMemo(() => eventService.peekEvents(), []);
 
   const {
     loading,
+    query,
+    setQuery,
     filterDate,
     setFilterDate,
     filterMonth,
@@ -78,7 +76,11 @@ export default function AdminEventsScreen() {
     setSortOrder,
     refresh,
     filteredEvents,
-  } = useEventsListModel(loadEventsFn, { errorTitle: 'שגיאה', errorMessage: 'לא ניתן לטעון אירועים כרגע' });
+  } = useEventsListModel(loadEventsFn, {
+    errorTitle: 'שגיאה',
+    errorMessage: 'לא ניתן לטעון אירועים כרגע',
+    initialEvents,
+  });
 
   const handleToggleApproval = async (event: Event, nextValue: boolean) => {
     if (approvingEventId) return;
@@ -118,52 +120,25 @@ export default function AdminEventsScreen() {
       : 'ללא סינון פעיל';
   const visibleEvents = useMemo(
     () =>
-      filteredEvents.filter((event) => {
-        if (selectedEventType === 'all') return true;
-        return (inferEventType(event.title) || 'חתונה') === selectedEventType;
-      }),
-    [filteredEvents, selectedEventType]
+      filteredEvents.filter((event) =>
+        eventTimeFilter === 'future'
+          ? isFutureEventDate(event.date)
+          : isPastEventDate(event.date)
+      ),
+    [filteredEvents, eventTimeFilter]
   );
-  const emptyMessage =
-    selectedEventType === 'all'
-      ? 'לא נמצאו אירועים'
-      : `אין כרגע אירועים מסוג ${selectedEventType}`;
+  const trimmedQuery = query.trim();
+  const emptyMessage = useMemo(() => {
+    if (trimmedQuery) {
+      return `לא נמצאו תוצאות עבור "${trimmedQuery}"`;
+    }
+    return eventTimeFilter === 'future' ? 'אין אירועים עתידיים' : 'אין אירועים שהושלמו';
+  }, [eventTimeFilter, trimmedQuery]);
 
   useEffect(() => {
-    const toValue = isStickyHeaderActive ? 1 : 0;
+    setSortOrder(eventTimeFilter === 'future' ? 'asc' : 'desc');
+  }, [eventTimeFilter, setSortOrder]);
 
-    Animated.parallel([
-      Animated.timing(chipsVisualProgress, {
-        toValue,
-        duration: 180,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }),
-      Animated.timing(chipsLayoutProgress, {
-        toValue,
-        duration: 220,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: false,
-      }),
-    ]).start();
-  }, [chipsLayoutProgress, chipsVisualProgress, isStickyHeaderActive]);
-
-  const chipsOpacity = chipsVisualProgress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [1, 0],
-  });
-  const chipsTranslateY = chipsVisualProgress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, -14],
-  });
-  const chipsMaxHeight = chipsLayoutProgress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [HEADER_CHIPS_TOP_GAP + HEADER_CHIPS_ROW_HEIGHT + HEADER_CHIPS_INNER_BOTTOM_GAP, 0],
-  });
-  const chipsBottomGap = chipsLayoutProgress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [HEADER_CHIPS_BOTTOM_GAP, 0],
-  });
   const headerBackdropColor = scrollY.interpolate({
     inputRange: [0, 14],
     outputRange: ['rgba(255,255,255,0)', 'rgba(255,255,255,0.98)'],
@@ -180,14 +155,6 @@ export default function AdminEventsScreen() {
     extrapolate: 'clamp',
   });
   const baseHeaderSpacerHeight = insets.top + 10 + headerContentHeight;
-  const chipsExpandedSpacerHeight =
-    HEADER_CHIPS_TOP_GAP + HEADER_CHIPS_ROW_HEIGHT + HEADER_CHIPS_INNER_BOTTOM_GAP + HEADER_CHIPS_BOTTOM_GAP;
-  const chipsSpacerHeight =
-    Platform.OS === 'web'
-      ? isStickyHeaderActive
-        ? 0
-        : chipsExpandedSpacerHeight
-      : Animated.add(chipsMaxHeight, chipsBottomGap);
 
   // UI
   const today = new Date();
@@ -279,54 +246,95 @@ export default function AdminEventsScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
 
-        <Animated.View
-          style={[
-            styles.typeChipsAnimatedWrap,
-            {
-              height: chipsMaxHeight,
-            },
-          ]}
-        >
-          <View style={styles.typeChipsMeasureWrap}>
-            <Animated.View
-              style={[
-                styles.typeChipsInnerWrap,
-                {
-                  opacity: chipsOpacity,
-                  transform: [{ translateY: chipsTranslateY }],
-                },
-              ]}
-            >
-              <ScrollView
-                ref={typeChipsScrollRef}
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={styles.typeChipsScroll}
-                contentContainerStyle={styles.typeChipsRow}
-                onContentSizeChange={() => typeChipsScrollRef.current?.scrollToEnd({ animated: false })}
+          <View style={styles.eventTimeToggleWrap}>
+            <View style={styles.eventTimeToggle}>
+              <TouchableOpacity
+                style={[
+                  styles.eventTimeToggleBtn,
+                  eventTimeFilter === 'future' && styles.eventTimeToggleBtnActive,
+                ]}
+                onPress={() => setEventTimeFilter('future')}
+                activeOpacity={0.88}
+                accessibilityRole="button"
+                accessibilityState={{ selected: eventTimeFilter === 'future' }}
               >
-                {HEADER_EVENT_TYPES.map((eventTypeKey) => {
-                  const active = selectedEventType === eventTypeKey;
-                  const label = eventTypeKey === 'all' ? 'הכל' : eventTypeKey;
-                  return (
-                    <TouchableOpacity
-                      key={eventTypeKey}
-                      style={[styles.typeChipHeader, active && styles.typeChipHeaderActive]}
-                      onPress={() => setSelectedEventType(eventTypeKey)}
-                      activeOpacity={0.88}
-                    >
-                      <Text style={[styles.typeChipHeaderText, active && styles.typeChipHeaderTextActive]}>
-                        {label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-            </Animated.View>
+                <Ionicons
+                  name="calendar-outline"
+                  size={16}
+                  color={eventTimeFilter === 'future' ? colors.white : colors.primary}
+                />
+                <Text
+                  style={[
+                    styles.eventTimeToggleText,
+                    eventTimeFilter === 'future' && styles.eventTimeToggleTextActive,
+                  ]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.85}
+                >
+                  עתידיים
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.eventTimeToggleBtn,
+                  eventTimeFilter === 'completed' && styles.eventTimeToggleBtnActive,
+                ]}
+                onPress={() => setEventTimeFilter('completed')}
+                activeOpacity={0.88}
+                accessibilityRole="button"
+                accessibilityState={{ selected: eventTimeFilter === 'completed' }}
+              >
+                <Ionicons
+                  name="checkmark-done-outline"
+                  size={16}
+                  color={eventTimeFilter === 'completed' ? colors.white : colors.primary}
+                />
+                <Text
+                  style={[
+                    styles.eventTimeToggleText,
+                    eventTimeFilter === 'completed' && styles.eventTimeToggleTextActive,
+                  ]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.85}
+                >
+                  הושלמו
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </Animated.View>
+
+          <View style={styles.searchRowWrap}>
+            <View style={styles.searchWrap}>
+              <Ionicons name="search" size={18} color={colors.gray[500]} style={styles.searchIcon} />
+              <TextInput
+                value={query}
+                onChangeText={setQuery}
+                placeholder="חיפוש לפי שם, לקוח, אולם, עיר או תאריך..."
+                placeholderTextColor={colors.gray[500]}
+                style={styles.searchInput}
+                textAlign={IS_RTL ? 'right' : 'left'}
+                returnKeyType="search"
+                autoCorrect={false}
+                autoCapitalize="none"
+              />
+              {trimmedQuery ? (
+                <TouchableOpacity
+                  style={styles.searchClearBtn}
+                  onPress={() => setQuery('')}
+                  activeOpacity={0.85}
+                  accessibilityRole="button"
+                  accessibilityLabel="נקה חיפוש"
+                >
+                  <Ionicons name="close" size={14} color={colors.gray[600]} />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </View>
+        </View>
       </Animated.View>
 
       <AppKeyboardAwareScrollView
@@ -360,11 +368,6 @@ export default function AdminEventsScreen() {
         }}
       >
         <View style={{ height: baseHeaderSpacerHeight }} />
-        {Platform.OS === 'web' ? (
-          <View style={{ height: chipsSpacerHeight as number }} />
-        ) : (
-          <Animated.View style={{ height: chipsSpacerHeight }} />
-        )}
 
         {/* Events */}
         <View style={styles.timelineWrap}>
@@ -376,8 +379,12 @@ export default function AdminEventsScreen() {
             <View style={styles.emptyStateCard}>
               <Ionicons name="calendar-outline" size={44} color={colors.gray[500]} />
               <Text style={styles.emptyStateText}>{emptyMessage}</Text>
-              {selectedEventType !== 'all' ? (
-                <Text style={styles.emptyStateSubtext}>נסה לבחור תגית אחרת או להוסיף אירוע חדש.</Text>
+              {trimmedQuery || eventTimeFilter === 'completed' ? (
+                <Text style={styles.emptyStateSubtext}>
+                  {trimmedQuery
+                    ? 'נסה מילות חיפוש אחרות, או נקה את החיפוש כדי לראות את כל האירועים.'
+                    : 'נסה לעבור לטאב "עתידיים" כדי לראות אירועים קרובים.'}
+                </Text>
               ) : null}
             </View>
           ) : (
@@ -824,48 +831,96 @@ const styles = StyleSheet.create({
     shadowColor: colors.black,
     shadowOpacity: 0.06,
   },
-  typeChipsAnimatedWrap: {
-    overflow: 'hidden',
-  },
-  typeChipsMeasureWrap: {
-    paddingTop: HEADER_CHIPS_TOP_GAP,
-    paddingBottom: HEADER_CHIPS_INNER_BOTTOM_GAP,
-  },
-  typeChipsInnerWrap: {
-    overflow: 'hidden',
-  },
-  typeChipsScroll: {
-    marginTop: 0,
-  },
-  typeChipsRow: {
-    flexDirection: ROW_DIR,
-    justifyContent: 'flex-end',
+  eventTimeToggleWrap: {
     paddingHorizontal: 18,
-    paddingBottom: 0,
-    gap: 8,
+    paddingTop: 12,
+    paddingBottom: 2,
   },
-  typeChipHeader: {
-    minHeight: 42,
-    paddingHorizontal: 16,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.92)',
+  eventTimeToggle: {
+    flexDirection: ROW_DIR,
+    padding: 4,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.88)',
     borderWidth: 1,
-    borderColor: 'rgba(6,23,62,0.06)',
-    justifyContent: 'center',
+    borderColor: 'rgba(6,23,62,0.08)',
+    shadowColor: colors.black,
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+    gap: 4,
+  },
+  eventTimeToggleBtn: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 16,
+    flexDirection: ROW_DIR,
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
   },
-  typeChipHeaderActive: {
+  eventTimeToggleBtnActive: {
     backgroundColor: colors.primary,
-    borderColor: colors.primary,
+    shadowColor: colors.primary,
+    shadowOpacity: 0.22,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 3,
   },
-  typeChipHeaderText: {
+  eventTimeToggleText: {
     fontSize: 13,
-    fontWeight: '900',
-    color: colors.primary,
+    fontWeight: '800',
+    color: colors.gray[700],
     textAlign: 'center',
   },
-  typeChipHeaderTextActive: {
+  eventTimeToggleTextActive: {
     color: colors.white,
+    fontWeight: '900',
+  },
+  searchRowWrap: {
+    paddingHorizontal: 18,
+    paddingTop: 10,
+    paddingBottom: 12,
+  },
+  searchWrap: {
+    minHeight: 46,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.08)',
+    justifyContent: 'center',
+    shadowColor: colors.black,
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+  searchIcon: {
+    position: 'absolute',
+    end: 14,
+    top: 14,
+    zIndex: 1,
+  },
+  searchInput: {
+    minHeight: 46,
+    paddingEnd: 42,
+    paddingStart: 42,
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
+    writingDirection: 'rtl',
+  },
+  searchClearBtn: {
+    position: 'absolute',
+    start: 10,
+    top: 9,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(6,23,62,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   filterDialogOverlay: {
     flex: 1,

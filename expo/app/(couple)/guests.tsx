@@ -22,6 +22,7 @@ import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
 import { AppLoader, AppLoaderScreen } from '@/components/AppLoader';
 import { ALIGN_RIGHT, ROW_DIR, ROW_REVERSE_DIR, rtlText } from '@/lib/rtl';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { guestMatchesSearch, normalizeGuestPhone } from '@/lib/guestPhone';
 
 // On web, icons are ultimately rendered as text glyphs. Wrapping them in <Text>
 // prevents "Text strings must be rendered within a <Text> component" errors.
@@ -229,13 +230,7 @@ export default function GuestsScreen() {
   // אורחים מסוננים לפי כל הפילטרים (סינון לפי צד רק בחתונות)
   const effectiveSideFilter = isWeddingEvent ? sideFilter : null;
   const filteredGuests = guests.filter(guest => {
-    const normalizedQuery = String(searchQuery || '').trim().toLowerCase();
-    const guestName = String(guest?.name || '').toLowerCase();
-    const guestPhone = String(guest?.phone || '');
-    const matchesSearch =
-      normalizedQuery.length === 0 ||
-      guestName.includes(normalizedQuery) ||
-      guestPhone.includes(normalizedQuery);
+    const matchesSearch = guestMatchesSearch(guest, searchQuery);
     const matchesStatus = statusFilter ? guest.status === statusFilter : true;
     
     // סינון לפי צד – רק באירוע חתונה
@@ -265,7 +260,8 @@ export default function GuestsScreen() {
     pending: guests.filter(g => g.status === 'ממתין').reduce((sum, guest) => sum + (guest.numberOfPeople || 1), 0),
   };
 
-  const hasFilters = Boolean(statusFilter || effectiveSideFilter);
+  const hasActiveGuestFilter = Boolean(String(searchQuery || '').trim() || statusFilter || effectiveSideFilter);
+  const hasFilters = hasActiveGuestFilter;
   const importContacts = async () => {
     try {
       if (!resolvedEventId) return;
@@ -374,13 +370,14 @@ export default function GuestsScreen() {
         numberOfPeople: peopleCount,
       });
       
+      const savedPhone = normalizeGuestPhone(editGuestPhone);
       // עדכן את הרשימה המקומית
       setGuests(prev => prev.map(g => 
         g.id === selectedGuest.id 
           ? { 
               ...g, 
               name: editGuestName.trim(), 
-              phone: editGuestPhone.trim(),
+              phone: savedPhone,
               status: editGuestStatus,
               numberOfPeople: peopleCount
             }
@@ -868,6 +865,10 @@ export default function GuestsScreen() {
           <View style={styles.categoryList}>
           {categories
             .filter(cat => !effectiveSideFilter || cat.side === effectiveSideFilter) // סינון קטגוריות לפי צד (רק בחתונה)
+            .filter(cat => {
+              if (!hasActiveGuestFilter) return true;
+              return filteredGuests.some(g => g.category_id === cat.id);
+            })
             .map(cat => {
             const guestsInCat = filteredGuests.filter(g => g.category_id === cat.id);
             return (

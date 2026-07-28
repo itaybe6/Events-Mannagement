@@ -21,6 +21,7 @@ import {
   UNAPPROVED_EVENT_GUEST_LIMIT,
   UNAPPROVED_EVENT_GUEST_LIMIT_ERROR,
 } from '@/lib/services/guestService';
+import { guestMatchesSearch } from '@/lib/guestPhone';
 import { eventService } from '@/lib/services/eventService';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
@@ -347,7 +348,7 @@ export default function ContactsListScreen() {
       // הצג רק אנשי קשר שלא קיימים כבר כאורחים באירוע, לפי מספר או שם.
       if (phoneExists || (normalizedName && existingGuestNames.has(normalizedName))) return false;
       if (!q) return !!name;
-      return name.toLowerCase().includes(q) || phone.includes(search.trim());
+      return guestMatchesSearch({ name, phone }, search);
     });
 
     return filtered.sort((a, b) => {

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -24,7 +24,13 @@ import { eventService } from '@/lib/services/eventService';
 import { guestService } from '@/lib/services/guestService';
 import { supabase } from '@/lib/supabase';
 import { Event } from '@/types';
-import { inferEventType, MONTHS } from '@/features/events/eventsConstants';
+import {
+  inferEventType,
+  isFutureEventDate,
+  isPastEventDate,
+  MONTHS,
+  type EventTimeFilter,
+} from '@/features/events/eventsConstants';
 import { useEventsListModel } from '@/features/events/useEventsListModel';
 import AdminWebPageHeader from '@/components/desktop/AdminWebPageHeader';
 import { userService, type UserWithMetadata } from '@/lib/services/userService';
@@ -119,21 +125,6 @@ function daysLeftLabel(date: Date | string) {
   const d = new Date(date);
   const diff = Math.ceil((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
   return diff >= 0 ? `עוד ${diff} ימים` : 'עבר';
-}
-
-type EventTimeFilter = 'future' | 'completed';
-
-function isPastEventDate(date: Date | string) {
-  const d = new Date(date);
-  if (!Number.isFinite(d.getTime())) return false;
-  const diff = Math.ceil((d.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
-  return diff < 0;
-}
-
-function isFutureEventDate(date: Date | string) {
-  const d = new Date(date);
-  if (!Number.isFinite(d.getTime())) return true;
-  return !isPastEventDate(date);
 }
 
 function getEventSubtitle(e: Event) {
@@ -252,10 +243,15 @@ export function AdminEventsListWebScreen() {
   const [datePickerMode, setDatePickerMode] = useState<'exact' | 'start' | 'end'>('exact');
   const [eventTimeFilter, setEventTimeFilter] = useState<EventTimeFilter>('future');
 
-  const loadEventsFn = useMemo(() => async () => {
-    const data = await eventService.getEvents();
-    return Array.isArray(data) ? (data as Event[]) : [];
-  }, []);
+  const loadEventsFn = useMemo(
+    () => async (options?: { force?: boolean }) => {
+      const data = await eventService.getEvents(options);
+      return Array.isArray(data) ? (data as Event[]) : [];
+    },
+    []
+  );
+
+  const initialEvents = useMemo(() => eventService.peekEvents(), []);
 
   const {
     events,
@@ -274,7 +270,11 @@ export function AdminEventsListWebScreen() {
     setSortOrder,
     refresh,
     filteredEvents,
-  } = useEventsListModel(loadEventsFn, { errorTitle: 'שגיאה', errorMessage: 'לא ניתן לטעון אירועים כרגע' });
+  } = useEventsListModel(loadEventsFn, {
+    errorTitle: 'שגיאה',
+    errorMessage: 'לא ניתן לטעון אירועים כרגע',
+    initialEvents,
+  });
 
   const displayEvents = useMemo(
     () =>
@@ -341,41 +341,25 @@ export function AdminEventsListWebScreen() {
     }
   };
 
-  const visibleEventIds = useMemo(
-    () => displayEvents.map((e) => String(e.id)).filter(Boolean),
-    [displayEvents]
-  );
-
-  const visibleEventIdsKey = useMemo(() => visibleEventIds.join(','), [visibleEventIds]);
+  // Aggregates are loaded once for every event the user can see, in parallel
+  // with the event list itself. Keying this off the *filtered* list meant a
+  // fresh multi-second scan of the guests table on every search keystroke and
+  // filter toggle, and it could not start until the events had arrived.
+  const reloadGuestStats = useCallback(async () => {
+    setGuestStatsLoading(true);
+    try {
+      setGuestStatsByEventId(await guestService.getGuestPeopleStatsForAllEvents());
+    } catch (e) {
+      console.error('Guests aggregates error:', e);
+      setGuestStatsByEventId({});
+    } finally {
+      setGuestStatsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    if (visibleEventIds.length === 0) {
-      setGuestStatsByEventId({});
-      return;
-    }
-
-    let cancelled = false;
-    setGuestStatsLoading(true);
-
-    (async () => {
-      const next = await guestService.getGuestPeopleStatsByEventIds(visibleEventIds);
-      if (cancelled) return;
-      setGuestStatsByEventId(next);
-    })()
-      .catch((e) => {
-        if (!cancelled) {
-          console.error('Guests aggregates error:', e);
-          setGuestStatsByEventId({});
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setGuestStatsLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [visibleEventIdsKey]); // eslint-disable-line react-hooks/exhaustive-deps
+    void reloadGuestStats();
+  }, [reloadGuestStats]);
 
   const formatCount = (n: number) => (Number(n) || 0).toLocaleString('he-IL');
   const closeDeleteDialog = () => {
@@ -401,8 +385,10 @@ export function AdminEventsListWebScreen() {
       if (fnError) throw fnError;
       if (data?.ok !== true) throw new Error(String(data?.error ?? 'Failed to delete event'));
 
+      // The edge function deletes server-side, so the cached list is stale.
+      eventService.invalidateEventsCache();
       setDeleteConfirmEvent(null);
-      await refresh();
+      await Promise.all([refresh(), reloadGuestStats()]);
       return;
     } catch (e) {
       try {
@@ -412,7 +398,7 @@ export function AdminEventsListWebScreen() {
       try {
         await eventService.deleteEvent(eventId);
         setDeleteConfirmEvent(null);
-        await refresh();
+        await Promise.all([refresh(), reloadGuestStats()]);
         return;
       } catch (fallbackError) {
         console.error('Delete event error:', fallbackError);
@@ -2716,10 +2702,15 @@ export default function AdminEventsWebScreen() {
   const [eventTypeFilter, setEventTypeFilter] = useState<string>('all');
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
 
-  const loadEventsFn = useMemo(() => async () => {
-    const data = await eventService.getEvents();
-    return Array.isArray(data) ? (data as Event[]) : [];
-  }, []);
+  const loadEventsFn = useMemo(
+    () => async (options?: { force?: boolean }) => {
+      const data = await eventService.getEvents(options);
+      return Array.isArray(data) ? (data as Event[]) : [];
+    },
+    []
+  );
+
+  const initialEvents = useMemo(() => eventService.peekEvents(), []);
 
   const {
     events,
@@ -2738,7 +2729,11 @@ export default function AdminEventsWebScreen() {
     setSortOrder,
     refresh,
     filteredEvents,
-  } = useEventsListModel(loadEventsFn, { errorTitle: 'שגיאה', errorMessage: 'לא ניתן לטעון אירועים כרגע' });
+  } = useEventsListModel(loadEventsFn, {
+    errorTitle: 'שגיאה',
+    errorMessage: 'לא ניתן לטעון אירועים כרגע',
+    initialEvents,
+  });
 
   const [guestStatsByEventId, setGuestStatsByEventId] = useState<
     Record<string, { invitedPeople: number; comingPeople: number; seatedPeople: number }>
@@ -2829,41 +2824,23 @@ export default function AdminEventsWebScreen() {
     [eventTypeFilter, filteredEvents, statusFilter]
   );
 
-  const visibleEventIds = useMemo(
-    () => eventsForDashboard.map((event) => String(event.id)).filter(Boolean),
-    [eventsForDashboard]
-  );
-
-  const visibleEventIdsKey = useMemo(() => visibleEventIds.join(','), [visibleEventIds]);
+  // See the events-list screen: aggregates cover every visible event and load
+  // once, rather than rescanning the guests table whenever a filter changes.
+  const reloadGuestStats = useCallback(async () => {
+    setGuestStatsLoading(true);
+    try {
+      setGuestStatsByEventId(await guestService.getGuestPeopleStatsForAllEvents());
+    } catch (error) {
+      console.error('Guests aggregates error:', error);
+      setGuestStatsByEventId({});
+    } finally {
+      setGuestStatsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    if (visibleEventIds.length === 0) {
-      setGuestStatsByEventId({});
-      return;
-    }
-
-    let cancelled = false;
-    setGuestStatsLoading(true);
-
-    (async () => {
-      const next = await guestService.getGuestPeopleStatsByEventIds(visibleEventIds);
-      if (cancelled) return;
-      setGuestStatsByEventId(next);
-    })()
-      .catch((error) => {
-        if (!cancelled) {
-          console.error('Guests aggregates error:', error);
-          setGuestStatsByEventId({});
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setGuestStatsLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [visibleEventIdsKey]); // eslint-disable-line react-hooks/exhaustive-deps
+    void reloadGuestStats();
+  }, [reloadGuestStats]);
 
   const formatCount = (value: number) => (Number(value) || 0).toLocaleString('he-IL');
 
@@ -2890,8 +2867,10 @@ export default function AdminEventsWebScreen() {
       if (fnError) throw fnError;
       if (data?.ok !== true) throw new Error(String(data?.error ?? 'Failed to delete event'));
 
+      // The edge function deletes server-side, so the cached list is stale.
+      eventService.invalidateEventsCache();
       setDeleteConfirmEvent(null);
-      await refresh();
+      await Promise.all([refresh(), reloadGuestStats()]);
       return;
     } catch (error) {
       try {
@@ -2901,7 +2880,7 @@ export default function AdminEventsWebScreen() {
       try {
         await eventService.deleteEvent(eventId);
         setDeleteConfirmEvent(null);
-        await refresh();
+        await Promise.all([refresh(), reloadGuestStats()]);
         return;
       } catch (fallbackError) {
         console.error('Delete event error:', fallbackError);

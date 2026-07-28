@@ -140,6 +140,8 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
     savingId,
     setCheckedInCount,
     savingCountId,
+    addWalkInGuest,
+    addingWalkIn,
   } = useGuestCheckInModel({
     eventId: resolvedEventId ? resolvedEventId : null,
     errorTitle: "שגיאה",
@@ -212,6 +214,7 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
 
   const [tableFilterId, setTableFilterId] = useState<string | null>(null);
   const [tableModalOpen, setTableModalOpen] = useState(false);
+  const [mapZoom, setMapZoom] = useState(1);
   const [activeTableId, setActiveTableId] = useState<string | null>(null);
 
   const tableById = useMemo(() => {
@@ -306,6 +309,234 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
     setTableModalOpen(false);
     setActiveTableId(null);
   }, []);
+
+  const [addOpen, setAddOpen] = useState(false);
+  const [addName, setAddName] = useState("");
+  const [addPhone, setAddPhone] = useState("");
+  const [addPeople, setAddPeople] = useState(1);
+  const [addTableQuery, setAddTableQuery] = useState("");
+  const [addTableId, setAddTableId] = useState<string | null>(null);
+  const [addError, setAddError] = useState<string | null>(null);
+
+  const tableOptions = useMemo(() => {
+    const sorted = [...mapTables].sort((a, b) => {
+      const an = typeof a.number === "number" ? a.number : Number.POSITIVE_INFINITY;
+      const bn = typeof b.number === "number" ? b.number : Number.POSITIVE_INFINITY;
+      if (an !== bn) return an - bn;
+      return String(a.name || "").localeCompare(String(b.name || ""), "he");
+    });
+    return sorted.map((t) => {
+      const id = String(t.id);
+      const n = typeof t.number === "number" ? t.number : null;
+      return {
+        id,
+        label: n !== null ? `שולחן ${n}` : t.name ? `שולחן ${t.name}` : "שולחן",
+        capacity: Number(t.capacity) || 0,
+        seated: arrivedPeopleByTableId.get(id) || 0,
+        isReserve: t.shape === "reserve",
+      };
+    });
+  }, [arrivedPeopleByTableId, mapTables]);
+
+  const addTableOptions = useMemo(() => {
+    const q = addTableQuery.trim().toLowerCase();
+    if (!q) return tableOptions;
+    return tableOptions.filter((opt) => opt.label.toLowerCase().includes(q));
+  }, [addTableQuery, tableOptions]);
+
+  const openAddSheet = useCallback(() => {
+    setAddName("");
+    setAddPhone("");
+    setAddPeople(1);
+    setAddTableQuery("");
+    setAddError(null);
+    setAddTableId(tableFilterId ? String(tableFilterId).trim() || null : null);
+    setAddOpen(true);
+  }, [tableFilterId]);
+
+  const closeAddSheet = useCallback(() => {
+    setAddOpen(false);
+    setAddError(null);
+    setAddTableQuery("");
+  }, []);
+
+  const confirmAddGuest = useCallback(async () => {
+    setAddError(null);
+    const result = await addWalkInGuest({
+      name: addName,
+      phone: addPhone,
+      numberOfPeople: addPeople,
+      tableId: addTableId,
+    });
+
+    if (!result.ok) {
+      setAddError(result.error);
+      return;
+    }
+
+    // Make sure the freshly added guest is visible in the list.
+    setFilter("all");
+    closeAddSheet();
+  }, [addName, addPeople, addPhone, addTableId, addWalkInGuest, closeAddSheet, setFilter]);
+
+  const hasMapData = mapTables.length > 0 || mapAnnotations.length > 0;
+
+  const MAP_ZOOM_MIN = 0.5;
+  const MAP_ZOOM_MAX = 3;
+  const MAP_ZOOM_STEP = 1.2;
+
+  const zoomInMap = useCallback(() => {
+    setMapZoom((z) => Math.min(MAP_ZOOM_MAX, Number((z * MAP_ZOOM_STEP).toFixed(3))));
+  }, []);
+
+  const zoomOutMap = useCallback(() => {
+    setMapZoom((z) => Math.max(MAP_ZOOM_MIN, Number((z / MAP_ZOOM_STEP).toFixed(3))));
+  }, []);
+
+  const resetMapZoom = useCallback(() => {
+    setMapZoom(1);
+  }, []);
+
+  const renderNativeMapCanvas = useCallback(
+    (opts?: { viewportWidth?: number; minCanvasHeight?: number; scrollStyle?: object }) => {
+      if (!hasMapData) return null;
+
+      const { width: screenW, height: screenH } = Dimensions.get("window");
+      const minX =
+        mapTables.length > 0
+          ? Math.min(...mapTables.map((t) => (typeof t.x === "number" ? t.x : 0)))
+          : 0;
+      const maxX =
+        mapTables.length > 0
+          ? Math.max(...mapTables.map((t) => (typeof t.x === "number" ? t.x : screenW)))
+          : screenW;
+      const minY =
+        mapTables.length > 0
+          ? Math.min(...mapTables.map((t) => (typeof t.y === "number" ? t.y : 0)))
+          : 0;
+      const maxY =
+        mapTables.length > 0
+          ? Math.max(...mapTables.map((t) => (typeof t.y === "number" ? t.y : screenH)))
+          : screenH;
+
+      const padding = 120;
+      const viewportWidth = opts?.viewportWidth ?? mapViewportWidth;
+      const minCanvasHeight = opts?.minCanvasHeight ?? Math.round(windowHeight * 0.78);
+      const canvasWidth = Math.max(viewportWidth, maxX - minX + padding * 2);
+      const canvasHeight = Math.max(minCanvasHeight, maxY - minY + padding * 2, 900);
+
+      return (
+        <ScrollView
+          style={[styles.canvasScroll, opts?.scrollStyle]}
+          contentContainerStyle={{ width: canvasWidth * mapZoom, height: canvasHeight * mapZoom }}
+          maximumZoomScale={3}
+          minimumZoomScale={0.5}
+          bounces={false}
+          bouncesZoom={false}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          showsVerticalScrollIndicator={false}
+        >
+          <View
+            style={[
+              styles.canvas,
+              {
+                width: canvasWidth,
+                height: canvasHeight,
+                transform: [{ scale: mapZoom }],
+              },
+            ]}
+          >
+            {[...Array(Math.ceil(canvasHeight / 60))].map((_, i) => (
+              <View key={`h-${i}`} style={[styles.gridLine, { top: i * 60 }]} />
+            ))}
+            {[...Array(Math.ceil(canvasWidth / 90))].map((_, i) => (
+              <View key={`v-${i}`} style={[styles.gridLineV, { left: i * 90 }]} />
+            ))}
+
+            {mapTables.map((t) => {
+              const id = String(t.id);
+              const x = (typeof t.x === "number" ? t.x : 40) - minX + padding;
+              const y = (typeof t.y === "number" ? t.y : 60) - minY + padding;
+              const cap = Number(t.capacity) || 0;
+              const arrived = arrivedPeopleByTableId.get(id) || 0;
+              const invited = invitedPeopleByTableId.get(id) || 0;
+              const isReserve = t.shape === "reserve";
+              const isFull = !isReserve && cap > 0 && arrived >= cap;
+              const selected = Boolean(tableFilterId) && String(tableFilterId) === id;
+
+              return (
+                <TouchableOpacity
+                  key={id}
+                  style={[
+                    styles.table,
+                    t.shape === "rectangle" ? styles.tableRect : styles.tableSquare,
+                    isFull && styles.tableFullStyle,
+                    isReserve && styles.reserveTableStyle,
+                    selected && styles.tableSelectedStyle,
+                    { left: x, top: y },
+                  ]}
+                  activeOpacity={0.9}
+                  onPress={() => setTableFilterId((prev) => (prev === id ? null : id))}
+                  onLongPress={() => openTableDetails(id)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`שולחן ${t.number ?? ""}`}
+                >
+                  <Text
+                    style={[
+                      styles.tableNumber,
+                      isFull && styles.tableFullText,
+                      isReserve && styles.reserveTableText,
+                      selected && styles.tableSelectedText,
+                    ]}
+                  >
+                    {t.number ?? "?"}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.tableCap,
+                      isFull && styles.tableFullCapText,
+                      isReserve && styles.reserveTableCapText,
+                      selected && styles.tableSelectedCapText,
+                    ]}
+                  >
+                    {cap > 0 ? `${arrived} / ${cap}` : `${arrived}${invited ? ` / ${invited}` : ""}`}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+
+            {mapAnnotations.map((a, idx) => (
+              <View
+                key={String(a.id || idx)}
+                style={[
+                  styles.textArea,
+                  {
+                    left: (typeof a.x === "number" ? a.x : 200) - minX + padding,
+                    top: (typeof a.y === "number" ? a.y : 200 + idx * 40) - minY + padding,
+                  },
+                ]}
+              >
+                <Text style={styles.textAreaText}>{String(a.text || "").trim()}</Text>
+              </View>
+            ))}
+          </View>
+        </ScrollView>
+      );
+    },
+    [
+      arrivedPeopleByTableId,
+      hasMapData,
+      invitedPeopleByTableId,
+      mapAnnotations,
+      mapTables,
+      mapViewportWidth,
+      mapZoom,
+      openTableDetails,
+      tableFilterId,
+      windowHeight,
+    ]
+  );
 
   const guestsForActiveTable = useMemo(() => {
     if (!activeTableId) return [];
@@ -540,6 +771,17 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                   })}
                 </View>
 
+                <TouchableOpacity
+                  onPress={openAddSheet}
+                  style={styles.addGuestBtn}
+                  activeOpacity={0.9}
+                  accessibilityRole="button"
+                  accessibilityLabel="הוספת מוזמן שלא נמצא ברשימה"
+                >
+                  <Ionicons name="person-add" size={18} color={colors.white} />
+                  <Text style={styles.addGuestBtnText}>הוסף מוזמן שלא ברשימה</Text>
+                </TouchableOpacity>
+
                 {/* Categories */}
                 <View style={{ gap: 12, marginTop: 12 }}>
                   {visibleSections.map((sec) => {
@@ -717,10 +959,12 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
             <View style={styles.mapPane}>
               <View style={styles.mapCard}>
                 <View style={styles.mapHeaderRow}>
-                  <Text style={styles.mapTitle}>מפת ישיבה</Text>
-                  <Text style={styles.mapHint} numberOfLines={1}>
-                    לחץ על שולחן לסינון
-                  </Text>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.mapTitle}>מפת ישיבה</Text>
+                    <Text style={styles.mapHint} numberOfLines={1}>
+                      לחץ על שולחן לסינון
+                    </Text>
+                  </View>
                 </View>
 
                 {mapLoading ? (
@@ -728,129 +972,27 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                     <ActivityIndicator size="large" color={colors.primary} />
                     <Text style={styles.loadingText}>טוען מפה...</Text>
                   </View>
-                ) : mapTables.length === 0 && mapAnnotations.length === 0 ? (
+                ) : !hasMapData ? (
                   <View style={styles.mapEmptyWrap}>
                     <Ionicons name="map-outline" size={42} color={colors.gray[500]} />
                     <Text style={styles.emptyTitle}>אין מפה עדיין</Text>
                     <Text style={styles.emptyText}>כשתהיה סקיצה לאירוע, היא תופיע כאן.</Text>
                   </View>
                 ) : (
-                  (() => {
-                    const { width: screenW, height: screenH } = Dimensions.get("window");
-                    const minX =
-                      mapTables.length > 0
-                        ? Math.min(...mapTables.map((t) => (typeof t.x === "number" ? t.x : 0)))
-                        : 0;
-                    const maxX =
-                      mapTables.length > 0
-                        ? Math.max(...mapTables.map((t) => (typeof t.x === "number" ? t.x : screenW)))
-                        : screenW;
-                    const minY =
-                      mapTables.length > 0
-                        ? Math.min(...mapTables.map((t) => (typeof t.y === "number" ? t.y : 0)))
-                        : 0;
-                    const maxY =
-                      mapTables.length > 0
-                        ? Math.max(...mapTables.map((t) => (typeof t.y === "number" ? t.y : screenH)))
-                        : screenH;
-
-                    const padding = 120;
-                    const canvasWidth = Math.max(mapViewportWidth, maxX - minX + padding * 2);
-                    const canvasHeight = Math.max(Math.round(windowHeight * 0.78), maxY - minY + padding * 2, 900);
-
-                    return (
-                      <ScrollView
-                        style={styles.canvasScroll}
-                        contentContainerStyle={{ width: canvasWidth, height: canvasHeight }}
-                        maximumZoomScale={3}
-                        minimumZoomScale={0.5}
-                        bounces={false}
-                        bouncesZoom={false}
-                        horizontal
-                        showsHorizontalScrollIndicator={false}
-                        showsVerticalScrollIndicator={false}
-                      >
-                        <View style={[styles.canvas, { width: canvasWidth, height: canvasHeight }]}>
-                          {/* Grid */}
-                          {[...Array(Math.ceil(canvasHeight / 60))].map((_, i) => (
-                            <View key={`h-${i}`} style={[styles.gridLine, { top: i * 60 }]} />
-                          ))}
-                          {[...Array(Math.ceil(canvasWidth / 90))].map((_, i) => (
-                            <View key={`v-${i}`} style={[styles.gridLineV, { left: i * 90 }]} />
-                          ))}
-
-                          {/* Tables */}
-                          {mapTables.map((t) => {
-                            const id = String(t.id);
-                            const x = (typeof t.x === "number" ? t.x : 40) - minX + padding;
-                            const y = (typeof t.y === "number" ? t.y : 60) - minY + padding;
-                            const cap = Number(t.capacity) || 0;
-                            const arrived = arrivedPeopleByTableId.get(id) || 0;
-                            const invited = invitedPeopleByTableId.get(id) || 0;
-                            const isReserve = t.shape === "reserve";
-                            const isFull = !isReserve && cap > 0 && arrived >= cap;
-                            const selected = Boolean(tableFilterId) && String(tableFilterId) === id;
-
-                            return (
-                              <TouchableOpacity
-                                key={id}
-                                style={[
-                                  styles.table,
-                                  t.shape === "rectangle" ? styles.tableRect : styles.tableSquare,
-                                  isFull && styles.tableFullStyle,
-                                  isReserve && styles.reserveTableStyle,
-                                  selected && styles.tableSelectedStyle,
-                                  { left: x, top: y },
-                                ]}
-                                activeOpacity={0.9}
-                                onPress={() => setTableFilterId((prev) => (prev === id ? null : id))}
-                                onLongPress={() => openTableDetails(id)}
-                                accessibilityRole="button"
-                                accessibilityLabel={`שולחן ${t.number ?? ""}`}
-                              >
-                                <Text
-                                  style={[
-                                    styles.tableNumber,
-                                    isFull && styles.tableFullText,
-                                    isReserve && styles.reserveTableText,
-                                    selected && styles.tableSelectedText,
-                                  ]}
-                                >
-                                  {t.number ?? "?"}
-                                </Text>
-                                <Text
-                                  style={[
-                                    styles.tableCap,
-                                    isFull && styles.tableFullCapText,
-                                    isReserve && styles.reserveTableCapText,
-                                    selected && styles.tableSelectedCapText,
-                                  ]}
-                                >
-                                  {cap > 0 ? `${arrived} / ${cap}` : `${arrived}${invited ? ` / ${invited}` : ""}`}
-                                </Text>
-                              </TouchableOpacity>
-                            );
-                          })}
-
-                          {/* Annotations */}
-                          {mapAnnotations.map((a, idx) => (
-                            <View
-                              key={String(a.id || idx)}
-                              style={[
-                                styles.textArea,
-                                {
-                                  left: (typeof a.x === "number" ? a.x : 200) - minX + padding,
-                                  top: (typeof a.y === "number" ? a.y : 200 + idx * 40) - minY + padding,
-                                },
-                              ]}
-                            >
-                              <Text style={styles.textAreaText}>{String(a.text || "").trim()}</Text>
-                            </View>
-                          ))}
-                        </View>
-                      </ScrollView>
-                    );
-                  })()
+                  <View style={styles.mapViewport}>
+                    {renderNativeMapCanvas()}
+                    <View style={styles.mapZoomControls} pointerEvents="box-none">
+                      <TouchableOpacity onPress={zoomInMap} style={styles.mapZoomBtn} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="התקרבות למפה">
+                        <Ionicons name="add" size={22} color="#102A56" />
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={resetMapZoom} style={styles.mapZoomFitBtn} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="התאמת מפה">
+                        <Text style={styles.mapZoomLabel}>{`${Math.round(mapZoom * 100)}%`}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={zoomOutMap} style={styles.mapZoomBtn} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="התרחקות מהמפה">
+                        <Ionicons name="remove" size={22} color="#102A56" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
                 )}
               </View>
             </View>
@@ -980,6 +1122,41 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                 );
               })}
             </View>
+
+            <TouchableOpacity
+              onPress={openAddSheet}
+              style={styles.addGuestBtn}
+              activeOpacity={0.9}
+              accessibilityRole="button"
+              accessibilityLabel="הוספת מוזמן שלא נמצא ברשימה"
+            >
+              <Ionicons name="person-add" size={18} color={colors.white} />
+              <Text style={styles.addGuestBtnText}>הוסף מוזמן שלא ברשימה</Text>
+            </TouchableOpacity>
+
+            {!isTablet && hasMapData ? (
+              <View style={styles.phoneMapCard}>
+                <Text style={styles.mapTitle}>מפת ישיבה</Text>
+                <View style={styles.mapViewport}>
+                  {renderNativeMapCanvas({
+                    viewportWidth: Math.max(280, windowWidth - 56),
+                    minCanvasHeight: 320,
+                    scrollStyle: { height: 320 },
+                  })}
+                  <View style={styles.mapZoomControls} pointerEvents="box-none">
+                    <TouchableOpacity onPress={zoomInMap} style={styles.mapZoomBtn} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="התקרבות למפה">
+                      <Ionicons name="add" size={22} color="#102A56" />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={resetMapZoom} style={styles.mapZoomFitBtn} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="התאמת מפה">
+                      <Text style={styles.mapZoomLabel}>{`${Math.round(mapZoom * 100)}%`}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={zoomOutMap} style={styles.mapZoomBtn} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="התרחקות מהמפה">
+                      <Ionicons name="remove" size={22} color="#102A56" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+            ) : null}
 
             {/* Grouped by table */}
             <View style={{ gap: 12, marginTop: 12 }}>
@@ -1168,6 +1345,247 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
         )}
       </View>
       </View>
+
+      <Modal visible={addOpen} transparent animationType="fade" onRequestClose={closeAddSheet}>
+        <Pressable style={styles.modalOverlay} onPress={closeAddSheet}>
+          <Pressable style={styles.modalCard} onPress={() => null}>
+            <View style={styles.modalHeader}>
+              <TouchableOpacity
+                onPress={closeAddSheet}
+                style={styles.modalCloseBtn}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel="סגירה"
+              >
+                <Ionicons name="close" size={18} color={"rgba(17,24,39,0.70)"} />
+              </TouchableOpacity>
+
+              <View style={{ flex: 1, alignItems: "center" }}>
+                <Text style={styles.modalTitle} numberOfLines={1}>
+                  הוספת מוזמן
+                </Text>
+                <Text style={styles.modalSubtitle} numberOfLines={1}>
+                  מוזמן שלא נמצא ברשימה – יסומן מיד כהגיע
+                </Text>
+              </View>
+
+              <View style={{ width: 40 }} />
+            </View>
+
+            <View style={styles.modalDivider} />
+
+            <AppKeyboardAwareScrollView
+              style={styles.addSheetScroll}
+              contentContainerStyle={styles.modalBody}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>שם המוזמן</Text>
+                <TextInput
+                  value={addName}
+                  onChangeText={(text) => {
+                    setAddName(text);
+                    if (addError) setAddError(null);
+                  }}
+                  placeholder="לדוגמה: ישראל ישראלי"
+                  placeholderTextColor={colors.gray[500]}
+                  style={styles.formInput}
+                  textAlign="right"
+                  returnKeyType="next"
+                />
+              </View>
+
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>מספר טלפון (לא חובה)</Text>
+                <TextInput
+                  value={addPhone}
+                  onChangeText={(text) => {
+                    setAddPhone(text);
+                    if (addError) setAddError(null);
+                  }}
+                  placeholder="050-0000000"
+                  placeholderTextColor={colors.gray[500]}
+                  style={styles.formInput}
+                  textAlign="right"
+                  keyboardType="phone-pad"
+                />
+              </View>
+
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>מספר אנשים</Text>
+                <View style={styles.formStepper}>
+                  <Pressable
+                    onPress={() => setAddPeople((prev) => Math.max(1, prev - 1))}
+                    disabled={addPeople <= 1}
+                    hitSlop={6}
+                    style={({ pressed }) => [
+                      styles.formStepBtn,
+                      addPeople <= 1 ? styles.formStepBtnDisabled : null,
+                      pressed ? { opacity: 0.85 } : null,
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel="הפחת מספר אנשים"
+                  >
+                    <Ionicons name="remove" size={18} color={colors.primary} />
+                  </Pressable>
+
+                  <View style={styles.formStepValueWrap}>
+                    <Text style={styles.formStepValue}>{addPeople}</Text>
+                    <Text style={styles.formStepValueHint}>{addPeople === 1 ? "אורח" : "אורחים"}</Text>
+                  </View>
+
+                  <Pressable
+                    onPress={() => setAddPeople((prev) => Math.min(50, prev + 1))}
+                    hitSlop={6}
+                    style={({ pressed }) => [styles.formStepBtn, pressed ? { opacity: 0.85 } : null]}
+                    accessibilityRole="button"
+                    accessibilityLabel="הגדל מספר אנשים"
+                  >
+                    <Ionicons name="add" size={18} color={colors.primary} />
+                  </Pressable>
+                </View>
+              </View>
+
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>הושבה בשולחן</Text>
+                <Text style={styles.formHint}>אפשר להושיב בכל שולחן, גם אם המוזמן לא הוקצה במפת ההושבה.</Text>
+
+                {tableOptions.length > 3 ? (
+                  <View style={[styles.searchCard, { marginTop: 0, height: 48 }]}>
+                    <Text>
+                      <Ionicons name="search" size={18} color={colors.gray[500]} />
+                    </Text>
+                    <TextInput
+                      value={addTableQuery}
+                      onChangeText={setAddTableQuery}
+                      placeholder="חיפוש שולחן..."
+                      placeholderTextColor={colors.gray[500]}
+                      style={styles.searchInput}
+                      textAlign="right"
+                      autoCapitalize="none"
+                    />
+                  </View>
+                ) : null}
+
+                <View style={{ gap: 8 }}>
+                  <Pressable
+                    onPress={() => setAddTableId(null)}
+                    style={({ pressed }) => [
+                      styles.tableOptionRow,
+                      addTableId === null ? styles.tableOptionRowSelected : null,
+                      pressed ? { opacity: 0.9 } : null,
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel="בחר ללא שולחן"
+                  >
+                    <Ionicons
+                      name={addTableId === null ? "checkmark-circle" : "ellipse-outline"}
+                      size={22}
+                      color={addTableId === null ? colors.primary : "rgba(156,163,175,0.9)"}
+                    />
+                    <Text style={styles.tableOptionText}>ללא שולחן</Text>
+                  </Pressable>
+
+                  {addTableOptions.map((opt) => {
+                    const selected = addTableId === opt.id;
+                    const wouldSeat = selected ? opt.seated + addPeople : opt.seated;
+                    const overflow = opt.isReserve || opt.capacity <= 0 ? 0 : Math.max(0, wouldSeat - opt.capacity);
+                    return (
+                      <Pressable
+                        key={opt.id}
+                        onPress={() => setAddTableId(opt.id)}
+                        style={({ pressed }) => [
+                          styles.tableOptionRow,
+                          selected ? styles.tableOptionRowSelected : null,
+                          pressed ? { opacity: 0.9 } : null,
+                        ]}
+                        accessibilityRole="button"
+                        accessibilityLabel={`הושב ב${opt.label}`}
+                      >
+                        <Ionicons
+                          name={selected ? "checkmark-circle" : "ellipse-outline"}
+                          size={22}
+                          color={selected ? colors.primary : "rgba(156,163,175,0.9)"}
+                        />
+
+                        <View style={styles.tableOptionInfo}>
+                          <Text style={styles.tableOptionText} numberOfLines={1}>
+                            {opt.label}
+                          </Text>
+                          {opt.capacity > 0 ? (
+                            <Text style={styles.tableOptionMeta} numberOfLines={1}>
+                              {`יושבים: ${wouldSeat} מתוך ${opt.capacity}`}
+                            </Text>
+                          ) : null}
+                        </View>
+
+                        {opt.isReserve ? (
+                          <View style={styles.tableOptionBadgeReserve}>
+                            <Text style={styles.tableOptionBadgeReserveText}>רזרבה</Text>
+                          </View>
+                        ) : overflow > 0 ? (
+                          <View style={styles.tableOptionBadgeOverflow}>
+                            <Text style={styles.tableOptionBadgeOverflowText}>{`חריגה ${overflow}`}</Text>
+                          </View>
+                        ) : opt.capacity > 0 ? (
+                          <View style={styles.tableOptionBadgeOk}>
+                            <Text style={styles.tableOptionBadgeOkText}>פנוי</Text>
+                          </View>
+                        ) : null}
+                      </Pressable>
+                    );
+                  })}
+
+                  {addTableOptions.length === 0 ? (
+                    <Text style={styles.formHint}>
+                      {tableOptions.length === 0 ? "לא הוגדרו שולחנות לאירוע." : "לא נמצאו שולחנות מתאימים לחיפוש."}
+                    </Text>
+                  ) : null}
+                </View>
+              </View>
+            </AppKeyboardAwareScrollView>
+
+            {addError ? (
+              <View style={styles.formErrorBox}>
+                <Ionicons name="alert-circle" size={16} color="#DC2626" />
+                <Text style={styles.formErrorText}>{addError}</Text>
+              </View>
+            ) : null}
+
+            <View style={styles.addSheetFooter}>
+              <TouchableOpacity
+                onPress={() => void confirmAddGuest()}
+                disabled={addingWalkIn || !addName.trim()}
+                style={[styles.addPrimaryBtn, addingWalkIn || !addName.trim() ? styles.addBtnDisabled : null]}
+                activeOpacity={0.9}
+                accessibilityRole="button"
+                accessibilityLabel="הוסף מוזמן וסמן כהגיע"
+              >
+                {addingWalkIn ? (
+                  <ActivityIndicator size={16} color={colors.white} />
+                ) : (
+                  <>
+                    <Ionicons name="checkmark-circle" size={18} color={colors.white} />
+                    <Text style={styles.addPrimaryBtnText}>הוסף וסמן כהגיע</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={closeAddSheet}
+                disabled={addingWalkIn}
+                style={[styles.addSecondaryBtn, addingWalkIn ? styles.addBtnDisabled : null]}
+                activeOpacity={0.9}
+                accessibilityRole="button"
+                accessibilityLabel="ביטול"
+              >
+                <Text style={styles.addSecondaryBtnText}>ביטול</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </BackSwipe>
   );
 }
@@ -1894,7 +2312,53 @@ const styles = StyleSheet.create({
   },
   mapHeaderRow: { flexDirection: ROW_DIR, alignItems: "center", justifyContent: "space-between", gap: 12 },
   mapTitle: { fontSize: 16, fontWeight: "900", color: colors.text, textAlign: "right" },
-  mapHint: { fontSize: 12, fontWeight: "800", color: colors.gray[600], textAlign: "left" },
+  mapHint: { fontSize: 12, fontWeight: "800", color: colors.gray[600], textAlign: "right" },
+  mapViewport: { flex: 1, position: "relative" },
+  phoneMapCard: {
+    marginTop: 12,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(15,23,42,0.08)",
+    backgroundColor: colors.white,
+    padding: 12,
+    gap: 10,
+    overflow: "hidden",
+  },
+  mapZoomControls: {
+    position: "absolute",
+    left: 12,
+    bottom: 14,
+    zIndex: 20,
+    alignItems: "center",
+    gap: 8,
+  },
+  mapZoomBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: "rgba(255,255,255,0.98)",
+    borderWidth: 1,
+    borderColor: "rgba(17,24,39,0.10)",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: colors.black,
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+  mapZoomFitBtn: {
+    minWidth: 56,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.98)",
+    borderWidth: 1,
+    borderColor: "rgba(17,24,39,0.10)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  mapZoomLabel: { fontSize: 11, fontWeight: "900", color: "rgba(17,24,39,0.62)" },
   mapLoadingWrap: { flex: 1, alignItems: "center", justifyContent: "center", gap: 10 },
   mapEmptyWrap: { flex: 1, alignItems: "center", justifyContent: "center", gap: 8, padding: 18 },
 
@@ -2037,5 +2501,155 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
   },
+
+  addGuestBtn: {
+    marginTop: 12,
+    minHeight: 50,
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    flexDirection: ROW_DIR,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    backgroundColor: colors.primary,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+    shadowColor: colors.primary,
+    shadowOpacity: 0.22,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
+  },
+  addGuestBtnText: { fontSize: 14, fontWeight: "900", color: colors.white, textAlign: "center" },
+
+  addSheetScroll: { flexGrow: 0, flexShrink: 1 },
+  formField: { gap: 8 },
+  formLabel: { fontSize: 13, fontWeight: "900", color: colors.text, textAlign: "right" },
+  formHint: { fontSize: 12, fontWeight: "700", color: colors.gray[600], textAlign: "right", lineHeight: 17 },
+  formInput: {
+    minHeight: 52,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.08)",
+    fontSize: 15,
+    fontWeight: "700",
+    color: colors.text,
+  },
+  formStepper: {
+    flexDirection: ROW_DIR,
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    padding: 8,
+    borderRadius: 16,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.08)",
+  },
+  formStepBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(17, 82, 212, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(17, 82, 212, 0.18)",
+  },
+  formStepBtnDisabled: { opacity: 0.45 },
+  formStepValueWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
+  formStepValue: { fontSize: 20, fontWeight: "900", color: colors.text, textAlign: "center" },
+  formStepValueHint: { fontSize: 11, fontWeight: "800", color: colors.gray[600], textAlign: "center" },
+
+  tableOptionRow: {
+    flexDirection: ROW_DIR,
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderRadius: 16,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.08)",
+  },
+  tableOptionRowSelected: {
+    backgroundColor: "rgba(17, 82, 212, 0.07)",
+    borderColor: "rgba(17, 82, 212, 0.45)",
+    borderWidth: 2,
+  },
+  tableOptionInfo: { flex: 1, minWidth: 0, alignItems: ALIGN_RIGHT, gap: 2 },
+  tableOptionText: { fontSize: 15, fontWeight: "900", color: colors.text, textAlign: "right" },
+  tableOptionMeta: { fontSize: 12, fontWeight: "800", color: colors.gray[600], textAlign: "right" },
+  tableOptionBadgeOk: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    backgroundColor: "rgba(34,197,94,0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(34,197,94,0.18)",
+  },
+  tableOptionBadgeOkText: { fontSize: 11, fontWeight: "900", color: "#16A34A", textAlign: "center" },
+  tableOptionBadgeOverflow: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    backgroundColor: "rgba(239,68,68,0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(239,68,68,0.20)",
+  },
+  tableOptionBadgeOverflowText: { fontSize: 11, fontWeight: "900", color: "#DC2626", textAlign: "center" },
+  tableOptionBadgeReserve: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    backgroundColor: "rgba(6,23,62,0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(6,23,62,0.16)",
+  },
+  tableOptionBadgeReserveText: { fontSize: 11, fontWeight: "900", color: colors.primary, textAlign: "center" },
+
+  formErrorBox: {
+    marginHorizontal: 16,
+    marginBottom: 4,
+    flexDirection: ROW_DIR,
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: "rgba(239,68,68,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(239,68,68,0.20)",
+  },
+  formErrorText: { flex: 1, minWidth: 0, fontSize: 12, fontWeight: "900", color: "#DC2626", textAlign: "right" },
+
+  addSheetFooter: {
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 16,
+    gap: 8,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(17,24,39,0.06)",
+  },
+  addPrimaryBtn: {
+    minHeight: 52,
+    borderRadius: 16,
+    flexDirection: ROW_DIR,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    backgroundColor: colors.primary,
+  },
+  addPrimaryBtnText: { fontSize: 14, fontWeight: "900", color: colors.white, textAlign: "center" },
+  addSecondaryBtn: {
+    minHeight: 44,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  addSecondaryBtnText: { fontSize: 13, fontWeight: "900", color: colors.primary, textAlign: "center" },
+  addBtnDisabled: { opacity: 0.55 },
 });
 

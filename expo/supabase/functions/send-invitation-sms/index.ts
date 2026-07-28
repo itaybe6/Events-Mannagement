@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.52.0";
+import { loadTableNumberMap, resolveGuestTableNumberText } from "../_shared/whatsapp.ts";
 
 // Support legacy / UI variations across environments.
 type GuestStatus =
@@ -236,7 +237,7 @@ async function withRetry<T>(label: string, fn: () => Promise<T>, attempts = 4): 
 // When explicit guestIds are given we chunk the `in(...)` filter (a long id list in
 // the query string overflows URL limits and fails with "error sending request").
 // Otherwise we page through the result set so no single response is too large.
-const GUESTS_SELECT = "id, name, phone, status, invitation_code, invitation_token";
+const GUESTS_SELECT = "id, name, phone, status, invitation_code, invitation_token, table_id";
 
 async function fetchAllGuests(
   adminClient: any,
@@ -414,6 +415,8 @@ serve(async (req) => {
     const brideName = String((eventRow as any)?.bride_name ?? "").trim();
     const coupleNames = groomName && brideName ? `${groomName} ו${brideName}` : groomName || brideName || "";
 
+    const tableNumberById = await loadTableNumberMap(adminClient, eventId);
+
     const failures: SendInvitationSmsResult["failures"] = [];
     const prepared = (guests ?? []).map((g: any) => {
       const token = String(g.invitation_code ?? g.invitation_token ?? "").trim();
@@ -426,10 +429,12 @@ serve(async (req) => {
       const hasToken = Boolean(token);
       const fullName = String(g.name ?? "").trim();
       const firstName = fullName ? fullName.split(/\s+/)[0] : "";
+      const tableNumberText = resolveGuestTableNumberText(g, tableNumberById);
       const text = fillTemplate(messageTemplate, {
         // Common tokens used in UI
         name: fullName,
         link,
+        table: tableNumberText,
         event: eventTitle,
         event_date: eventDateText,
         date: eventDateText,
@@ -440,6 +445,7 @@ serve(async (req) => {
         "מיקום": eventLocationText,
         "פרטי הגעה": directionsDetails,
         "פרטי_הגעה": directionsDetails,
+        "מספר_שולחן": tableNumberText,
         "שם_חתן": groomName,
         "שם_כלה": brideName,
         "שמות_חתן_כלה": coupleNames,

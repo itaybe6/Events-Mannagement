@@ -1082,6 +1082,101 @@ export default function BrideGroomSeatingWebScreen() {
   );
   const useAdminMapPresentation = showManagerChrome;
 
+  const activeWebSketch = useMemo(
+    () => (useAdminMapPresentation ? webSketch : webSketchWithNames) ?? webSketch,
+    [useAdminMapPresentation, webSketch, webSketchWithNames]
+  );
+
+  const seatingMapNode = useMemo(() => {
+    if (!webSketch) return null;
+    const sketch = activeWebSketch ?? webSketch;
+    return (
+      <SeatingGridReadonly
+        gridCols={sketch.gridCols ?? webSketch.gridCols}
+        gridRows={sketch.gridRows ?? webSketch.gridRows}
+        tables={sketch.tables ?? webSketch.tables}
+        zones={sketch.zones ?? webSketch.zones}
+        labels={sketch.labels ?? webSketch.labels}
+        hideTableType
+        autoFitZoomMultiplier={useAdminMapPresentation ? undefined : isNarrow ? 1.06 : 1.08}
+        useBaseColorAsWebBackground
+        showTableBorder={false}
+        getTableBaseColor={(t: any) => {
+          const selected = Number.isFinite(selectedMapTableNumber as any) && Number(t?.number) === Number(selectedMapTableNumber);
+          if (selected) return useAdminMapPresentation ? '#10B981' : '#047857';
+          const num = Number(t?.number);
+          const cap = Number(t?.seats ?? 0) || 0;
+          const seated = Number.isFinite(num) ? (seatedByNumber.get(num) ?? 0) : 0;
+          const full = cap > 0 && seated >= cap;
+          const over = cap > 0 && seated > cap;
+          if (over) return colors.primary;
+          if (full) return colors.primary;
+          return t?.type === 'reserve' ? colors.warning : colors.primary;
+        }}
+        getTableBackgroundAlpha={(t: any) => {
+          const selected = Number.isFinite(selectedMapTableNumber as any) && Number(t?.number) === Number(selectedMapTableNumber);
+          if (selected) return useAdminMapPresentation ? 0.28 : 0.52;
+          const num = Number(t?.number);
+          const cap = Number(t?.seats ?? 0) || 0;
+          const seated = Number.isFinite(num) ? (seatedByNumber.get(num) ?? 0) : 0;
+          const full = cap > 0 && seated >= cap;
+          const over = cap > 0 && seated > cap;
+          if (over) return useAdminMapPresentation ? 0.9 : 0.62;
+          if (full) return useAdminMapPresentation ? 0.9 : 0.62;
+          return t?.type === 'reserve' ? (useAdminMapPresentation ? 0.72 : 0.34) : (useAdminMapPresentation ? 0.9 : 0.62);
+        }}
+        getTableBorderColor={(t: any) => {
+          const selected = Number.isFinite(selectedMapTableNumber as any) && Number(t?.number) === Number(selectedMapTableNumber);
+          if (selected) return useAdminMapPresentation ? '#10B981' : '#047857';
+          const num = Number(t?.number);
+          const cap = Number(t?.seats ?? 0) || 0;
+          const seated = Number.isFinite(num) ? (seatedByNumber.get(num) ?? 0) : 0;
+          const full = cap > 0 && seated >= cap;
+          const over = cap > 0 && seated > cap;
+          if (over || full) return useAdminMapPresentation ? '#10B981' : '#047857';
+          return t?.type === 'reserve' ? colors.warning : '#FFFFFF';
+        }}
+        selectedRingColor={useAdminMapPresentation ? '#10B981' : '#047857'}
+        isTableSelected={(t: any) => Boolean(selectedMapTableNumber) && Number(t?.number) === Number(selectedMapTableNumber)}
+        getTableSubLabel={(t: any) => {
+          const num = t?.number;
+          if (!num) return null;
+          const seated = seatedByNumber.get(Number(num)) ?? 0;
+          const cap = Number(t?.seats ?? 0) || 0;
+          return cap ? `${seated}/${cap}` : String(seated);
+        }}
+        getTableTooltip={(t: any) => {
+          const num = t?.number;
+          if (!num) return null;
+          const seated = seatedByNumber.get(Number(num)) ?? 0;
+          const cap = Number(t?.seats ?? 0) || 0;
+          return cap ? `יושבים בשולחן: ${seated}/${cap}` : `יושבים בשולחן: ${seated}`;
+        }}
+        onPressTableNumber={(num) => {
+          if (!num) return;
+          const t = tables.find((x: any) => Number(x.number) === Number(num));
+          if (!t) return;
+          if (quickAddSelectedGuestIds.size > 0) {
+            openSeatConfirm(t);
+            return;
+          }
+          openTableModal(t);
+        }}
+      />
+    );
+  }, [
+    activeWebSketch,
+    isNarrow,
+    openSeatConfirm,
+    openTableModal,
+    quickAddSelectedGuestIds,
+    seatedByNumber,
+    selectedMapTableNumber,
+    tables,
+    useAdminMapPresentation,
+    webSketch,
+  ]);
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -1690,80 +1785,7 @@ export default function BrideGroomSeatingWebScreen() {
 
               <View style={styles.mapBody}>
                 {webSketch ? (
-                  <SeatingGridReadonly
-                    gridCols={(useAdminMapPresentation ? webSketch : webSketchWithNames)?.gridCols ?? webSketch.gridCols}
-                    gridRows={(useAdminMapPresentation ? webSketch : webSketchWithNames)?.gridRows ?? webSketch.gridRows}
-                    tables={(useAdminMapPresentation ? webSketch : webSketchWithNames)?.tables ?? webSketch.tables}
-                    zones={(useAdminMapPresentation ? webSketch : webSketchWithNames)?.zones ?? webSketch.zones}
-                    labels={(useAdminMapPresentation ? webSketch : webSketchWithNames)?.labels ?? webSketch.labels}
-                    hideTableType
-                    autoFitZoomMultiplier={useAdminMapPresentation ? undefined : isNarrow ? 1.06 : 1.08}
-                    useBaseColorAsWebBackground
-                    showTableBorder={false}
-                    getTableBaseColor={(t: any) => {
-                      const selected = Number.isFinite(selectedMapTableNumber as any) && Number(t?.number) === Number(selectedMapTableNumber);
-                      if (selected) return useAdminMapPresentation ? '#10B981' : '#047857';
-                      const num = Number(t?.number);
-                      const cap = Number(t?.seats ?? 0) || 0;
-                      const seated = Number.isFinite(num) ? (seatedByNumber.get(num) ?? 0) : 0;
-                      const full = cap > 0 && seated >= cap;
-                      const over = cap > 0 && seated > cap;
-                      if (over) return colors.primary;
-                      if (full) return colors.primary;
-                      return t?.type === 'reserve' ? colors.warning : colors.primary;
-                    }}
-                    getTableBackgroundAlpha={(t: any) => {
-                      const selected = Number.isFinite(selectedMapTableNumber as any) && Number(t?.number) === Number(selectedMapTableNumber);
-                      if (selected) return useAdminMapPresentation ? 0.28 : 0.52;
-                      const num = Number(t?.number);
-                      const cap = Number(t?.seats ?? 0) || 0;
-                      const seated = Number.isFinite(num) ? (seatedByNumber.get(num) ?? 0) : 0;
-                      const full = cap > 0 && seated >= cap;
-                      const over = cap > 0 && seated > cap;
-                      if (over) return useAdminMapPresentation ? 0.9 : 0.62;
-                      if (full) return useAdminMapPresentation ? 0.9 : 0.62;
-                      return t?.type === 'reserve' ? (useAdminMapPresentation ? 0.72 : 0.34) : (useAdminMapPresentation ? 0.9 : 0.62);
-                    }}
-                    getTableBorderColor={(t: any) => {
-                      const selected = Number.isFinite(selectedMapTableNumber as any) && Number(t?.number) === Number(selectedMapTableNumber);
-                      if (selected) return useAdminMapPresentation ? '#10B981' : '#047857';
-                      const num = Number(t?.number);
-                      const cap = Number(t?.seats ?? 0) || 0;
-                      const seated = Number.isFinite(num) ? (seatedByNumber.get(num) ?? 0) : 0;
-                      const full = cap > 0 && seated >= cap;
-                      const over = cap > 0 && seated > cap;
-                      if (over || full) return useAdminMapPresentation ? '#10B981' : '#047857';
-                      return t?.type === 'reserve' ? colors.warning : '#FFFFFF';
-                    }}
-                    selectedRingColor={useAdminMapPresentation ? '#10B981' : '#047857'}
-                    isTableSelected={(t: any) => {
-                      return Boolean(selectedMapTableNumber) && Number(t?.number) === Number(selectedMapTableNumber);
-                    }}
-                    getTableSubLabel={(t: any) => {
-                      const num = t?.number;
-                      if (!num) return null;
-                      const seated = seatedByNumber.get(Number(num)) ?? 0;
-                      const cap = Number(t?.seats ?? 0) || 0;
-                      return cap ? `${seated}/${cap}` : String(seated);
-                    }}
-                    getTableTooltip={(t: any) => {
-                      const num = t?.number;
-                      if (!num) return null;
-                      const seated = seatedByNumber.get(Number(num)) ?? 0;
-                      const cap = Number(t?.seats ?? 0) || 0;
-                      return cap ? `יושבים בשולחן: ${seated}/${cap}` : `יושבים בשולחן: ${seated}`;
-                    }}
-                    onPressTableNumber={(num) => {
-                      if (!num) return;
-                      const t = tables.find((x: any) => Number(x.number) === Number(num));
-                      if (!t) return;
-                      if (quickAddSelectedGuestIds.size > 0) {
-                        openSeatConfirm(t);
-                        return;
-                      }
-                      openTableModal(t);
-                    }}
-                  />
+                  seatingMapNode
                 ) : (
                   <View style={styles.emptyMap}>
                     <Ionicons name="map-outline" size={42} color={colors.gray[500]} />

@@ -21,6 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import { buildDirectionsDetailsText, normalizeBaseUrl } from '@/lib/navigationLinks';
+import { fetchEventHasSeating, TABLE_NUMBER_PREVIEW, TABLE_NUMBER_TOKEN } from '@/lib/messageVariables';
 import { supabase } from '@/lib/supabase';
 import { useUserStore } from '@/store/userStore';
 import { useLayoutStore } from '@/store/layoutStore';
@@ -217,6 +218,7 @@ export default function NotificationEditorScreen() {
   const [allGuests, setAllGuests] = useState<
     Array<{ id: string; name: string; phone?: string; status: 'מגיע' | 'אולי מגיע' | 'לא מגיע' | 'ממתין' }>
   >([]);
+  const [hasSeatingMap, setHasSeatingMap] = useState(false);
   const [selectedGuestIds, setSelectedGuestIds] = useState<Set<string>>(() => new Set());
   const [sendingNow, setSendingNow] = useState(false);
   const [importingPrev, setImportingPrev] = useState(false);
@@ -422,6 +424,7 @@ export default function NotificationEditorScreen() {
         if (eventError) throw eventError;
         const d = new Date((eventData as any)?.date);
         setEventDate(d);
+        setHasSeatingMap(await fetchEventHasSeating(supabase, resolvedEventId));
 
         const { data: guestRows, error: guestError } = await supabase
           .from('guests')
@@ -582,7 +585,9 @@ export default function NotificationEditorScreen() {
       .replaceAll('{תאריך}', sampleDate)
       .replaceAll('{שם_פרטי}', sampleFirstName)
       .replaceAll('{שעה}', sampleTime)
-      .replaceAll('{מיקום}', sampleLocation);
+      .replaceAll('{מיקום}', sampleLocation)
+      .replaceAll(TABLE_NUMBER_TOKEN, TABLE_NUMBER_PREVIEW)
+      .replaceAll('{table}', TABLE_NUMBER_PREVIEW);
   }, [allGuests, editedMessage, eventDate, editedTimeHm]);
 
   const save = async (opts?: { recipientGuestIds?: string[]; navigateBack?: boolean }) => {
@@ -1347,7 +1352,24 @@ export default function NotificationEditorScreen() {
                             <Text style={[styles.step4VarTagText, { color: ui.text }]}>({v.label})</Text>
                           </TouchableOpacity>
                         ))}
+                        {hasSeatingMap ? (
+                          <TouchableOpacity
+                            style={[styles.step4VarTag, styles.seatingVarTag]}
+                            activeOpacity={0.92}
+                            onPress={() => setEditedMessage((prev) => `${prev}${prev ? ' ' : ''}${TABLE_NUMBER_TOKEN}`)}
+                            accessibilityRole="button"
+                            accessibilityLabel="הוסף מספר שולחן"
+                          >
+                            <Ionicons name="grid-outline" size={14} color="#0E7C46" />
+                            <Text style={[styles.step4VarTagText, { color: '#0E7C46' }]}>(מספר_שולחן)</Text>
+                          </TouchableOpacity>
+                        ) : null}
                       </View>
+                      {hasSeatingMap ? (
+                        <Text style={[styles.step4Instruction, { color: ui.sub, marginTop: 6 }]}>
+                          יש מפת הושבה — הוסף «מספר שולחן» והוא יוחלף אוטומטית לכל מוזמן.
+                        </Text>
+                      ) : null}
 
                       <Text style={[styles.sectionTitle, { color: ui.text, marginTop: 16 }]}>תוכן ההודעה</Text>
                       <View style={styles.textareaWrap}>
@@ -1630,6 +1652,17 @@ export default function NotificationEditorScreen() {
                     >
                       <Ionicons name="person-add-outline" size={18} color={ui.sub} />
                     </TouchableOpacity>
+                    {hasSeatingMap ? (
+                      <TouchableOpacity
+                        style={[styles.toolBtn, styles.seatingToolBtn]}
+                        activeOpacity={0.92}
+                        onPress={() => setEditedMessage((prev) => `${prev}${prev ? ' ' : ''}${TABLE_NUMBER_TOKEN}`)}
+                        accessibilityRole="button"
+                        accessibilityLabel="הוסף מספר שולחן"
+                      >
+                        <Ionicons name="grid-outline" size={18} color="#0E7C46" />
+                      </TouchableOpacity>
+                    ) : null}
                   </View>
                 </View>
 
@@ -1848,6 +1881,12 @@ export default function NotificationEditorScreen() {
                   <Text style={[styles.helperText, { color: ui.sub }]}>
                     משתנים שימושיים: <Text style={styles.mono}>{'{name}'}</Text> · <Text style={styles.mono}>{'{link}'}</Text> ·{' '}
                     <Text style={styles.mono}>{'{פרטי הגעה}'}</Text>
+                    {hasSeatingMap ? (
+                      <>
+                        {' '}
+                        · <Text style={styles.mono}>{TABLE_NUMBER_TOKEN}</Text>
+                      </>
+                    ) : null}
                   </Text>
 
                   {isFirstMessage && autoAllRecipients ? (
@@ -2298,6 +2337,8 @@ const styles = StyleSheet.create({
   step4VarsLabel: { fontSize: 13, fontWeight: '900', textAlign: 'right' },
   step4VarsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   step4VarTag: { flexDirection: ROW_DIR, alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, borderWidth: 1 },
+  seatingVarTag: { backgroundColor: 'rgba(37,211,102,0.10)', borderColor: 'rgba(14,124,70,0.22)' },
+  seatingToolBtn: { backgroundColor: 'rgba(37,211,102,0.10)', borderColor: 'rgba(14,124,70,0.22)' },
   step4VarTagText: { fontSize: 12, fontWeight: '800', textAlign: 'right' },
   step4Textarea: { minHeight: 280 },
   step4CharRow: { flexDirection: ROW_DIR, alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 10, paddingHorizontal: 2 },

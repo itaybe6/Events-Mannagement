@@ -17,6 +17,7 @@ import { Event } from '@/types';
 import type { WhatsAppStepParams, WhatsAppTemplate } from '@/types';
 import { whatsappTemplateService } from '@/lib/services/whatsappTemplateService';
 import { invitationAssetService } from '@/lib/services/invitationAssetService';
+import { fetchEventHasSeating, TABLE_NUMBER_PREVIEW, TABLE_NUMBER_TOKEN } from '@/lib/messageVariables';
 import IPhoneMockup from '@/components/ui/iphone-mockup';
 
 type WaRecipientMode = 'manual' | 'all' | 'pending' | 'coming' | 'not_coming' | 'maybe' | 'prev_pending' | 'groups';
@@ -491,6 +492,8 @@ export default function AutomaticNotificationsWebScreen() {
 
   const [allGuests, setAllGuests] = useState<PickerGuest[]>([]);
   const [guestCategories, setGuestCategories] = useState<GuestCategoryRow[]>([]);
+  const [hasSeatingMap, setHasSeatingMap] = useState(false);
+  const [waBodyFocusIndex, setWaBodyFocusIndex] = useState(0);
   const [sendingNow, setSendingNow] = useState(false);
   const [smsBalance, setSmsBalance] = useState<{ loading: boolean; credits: string | null; error: string | null }>({
     loading: true,
@@ -970,6 +973,8 @@ export default function AutomaticNotificationsWebScreen() {
       '{מיקום}': eventLocationText,
       '{פרטי הגעה}': previewDirectionsText,
       '{פרטי_הגעה}': previewDirectionsText,
+      '{מספר_שולחן}': TABLE_NUMBER_PREVIEW,
+      '{table}': TABLE_NUMBER_PREVIEW,
 
       // Backward-compatible (older saved templates may still contain double-braces)
       '{{שם_פרטי}}': 'אורח/ת',
@@ -978,6 +983,8 @@ export default function AutomaticNotificationsWebScreen() {
       '{{מיקום}}': eventLocationText,
       '{{פרטי הגעה}}': previewDirectionsText,
       '{{פרטי_הגעה}}': previewDirectionsText,
+      '{{מספר_שולחן}}': TABLE_NUMBER_PREVIEW,
+      '{{table}}': TABLE_NUMBER_PREVIEW,
     };
     if (groomName) {
       vars['{שם_חתן}'] = groomName;
@@ -1375,15 +1382,17 @@ export default function AutomaticNotificationsWebScreen() {
         }
 
         const eventId = String((eventData as any).id);
-        const [{ data: guestRows, error: guestError }, { data: categoryRows, error: categoryError }] = await Promise.all([
+        const [{ data: guestRows, error: guestError }, { data: categoryRows, error: categoryError }, seatingReady] = await Promise.all([
           supabase
             .from('guests')
             .select('id, name, phone, status, category_id, invitation_code, invitation_token')
             .eq('event_id', eventId)
             .order('name', { ascending: true }),
           supabase.from('guest_categories').select('id, name').eq('event_id', eventId).order('created_at', { ascending: true }),
+          fetchEventHasSeating(supabase, eventId),
         ]);
         if (!cancelled) {
+          setHasSeatingMap(seatingReady);
           if (guestError) {
             console.warn('Failed to load guests (couple web):', guestError);
             setAllGuests([]);
@@ -2224,6 +2233,19 @@ export default function AutomaticNotificationsWebScreen() {
     setMessageSelection(nextSelection);
     focusMessageInput(nextSelection);
   };
+
+  const insertWaBodyVariable = useCallback(
+    (token: string) => {
+      if (!canEdit || !flowDraft) return;
+      const params = flowDraft.whatsappParams || {};
+      const body = Array.isArray(params.body) ? [...params.body] : [];
+      const i = Math.max(0, waBodyFocusIndex);
+      const current = String(body[i] ?? '');
+      body[i] = current ? `${current} ${token}` : token;
+      setFlowDraft((d) => (d ? { ...d, whatsappParams: { ...(d.whatsappParams || {}), body } } : d));
+    },
+    [canEdit, flowDraft, waBodyFocusIndex]
+  );
 
   const openRecipientsPicker = (row: NotificationSettingRow) => {
     if (!canEdit) {
@@ -5131,6 +5153,38 @@ export default function AutomaticNotificationsWebScreen() {
 
                                   {selectedTpl.variables.length > 0 ? (
                                     <View style={{ gap: 12 }}>
+                                      <View style={styles.waVarInsertSection}>
+                                        <Text style={styles.fieldLabel}>משתנים דינמיים</Text>
+                                        <Text style={styles.editorSectionHint}>
+                                          לחץ על משתנה כדי להוסיף אותו לשדה הפעיל (מסומן בירוק).
+                                        </Text>
+                                        <View style={styles.waDynamicVarsRow}>
+                                          {[
+                                            { label: 'שם פרטי', token: '{שם_פרטי}' },
+                                            { label: 'שם מלא', token: '{name}' },
+                                            { label: 'תאריך', token: '{תאריך}' },
+                                            { label: 'מיקום', token: '{מיקום}' },
+                                          ].map((v) => (
+                                            <Pressable
+                                              key={v.token}
+                                              onPress={() => insertWaBodyVariable(v.token)}
+                                              style={({ pressed }: any) => [styles.waDynamicVarChip, pressed ? { opacity: 0.88 } : null]}
+                                            >
+                                              <Ionicons name="add-circle-outline" size={14} color="#4F46E5" />
+                                              <Text style={styles.waDynamicVarChipText}>{v.label}</Text>
+                                            </Pressable>
+                                          ))}
+                                          {hasSeatingMap ? (
+                                            <Pressable
+                                              onPress={() => insertWaBodyVariable(TABLE_NUMBER_TOKEN)}
+                                              style={({ pressed }: any) => [styles.waDynamicVarChip, styles.waSeatingVarChip, pressed ? { opacity: 0.88 } : null]}
+                                            >
+                                              <Ionicons name="grid-outline" size={14} color="#0E7C46" />
+                                              <Text style={[styles.waDynamicVarChipText, { color: '#0E7C46' }]}>מספר שולחן</Text>
+                                            </Pressable>
+                                          ) : null}
+                                        </View>
+                                      </View>
                                       {[...selectedTpl.variables]
                                         .sort((a, b) => Number(a.index) - Number(b.index))
                                         .map((v, i) => {
@@ -5147,7 +5201,12 @@ export default function AutomaticNotificationsWebScreen() {
                                               <TextInput
                                                 value={String((Array.isArray(params.body) ? params.body : [])[i] ?? '')}
                                                 onChangeText={(t) => setBodyAt(i, t)}
-                                                style={[styles.fieldInput, styles.fieldInputMultiline]}
+                                                onFocus={() => setWaBodyFocusIndex(i)}
+                                                style={[
+                                                  styles.fieldInput,
+                                                  styles.fieldInputMultiline,
+                                                  waBodyFocusIndex === i ? styles.waBodyFieldFocused : null,
+                                                ]}
                                                 placeholder={v.sample ? `לדוגמה: ${v.sample}` : `הזן ${fieldTitle}`}
                                                 placeholderTextColor="rgba(100,116,139,0.6)"
                                                 multiline
@@ -5456,7 +5515,19 @@ export default function AutomaticNotificationsWebScreen() {
                       <Pressable onPress={() => insertVariable('{link}')} style={({ pressed }: any) => [styles.chip, pressed ? { opacity: 0.85 } : null]}>
                         <Text style={[styles.chipText, { color: ui.primary }]}>{'{link}'}</Text>
                       </Pressable>
+                      {hasSeatingMap ? (
+                        <Pressable
+                          onPress={() => insertVariable(TABLE_NUMBER_TOKEN)}
+                          style={({ pressed }: any) => [styles.chip, styles.seatingChip, pressed ? { opacity: 0.85 } : null]}
+                        >
+                          <Ionicons name="grid-outline" size={13} color="#0E7C46" />
+                          <Text style={[styles.chipText, { color: '#0E7C46' }]}>{TABLE_NUMBER_TOKEN}</Text>
+                        </Pressable>
+                      ) : null}
                   </View>
+                  {hasSeatingMap ? (
+                    <Text style={styles.seatingVarHint}>מספר השולחן יוחלף אוטומטית לפי ההושבה של כל מוזמן.</Text>
+                  ) : null}
                 </View>
               ) : null}
 
@@ -5531,7 +5602,21 @@ export default function AutomaticNotificationsWebScreen() {
                         <Ionicons name="add" size={14} color={ui.primary} />
                         <Text style={[styles.step4VarTagText, { color: ui.text }]}>(link)</Text>
                       </Pressable>
+                      {hasSeatingMap ? (
+                        <Pressable
+                          onPress={() => insertVariable(TABLE_NUMBER_TOKEN)}
+                          style={({ pressed }: any) => [styles.step4VarTag, styles.seatingVarTag, pressed ? { opacity: 0.92 } : null]}
+                        >
+                          <Ionicons name="grid-outline" size={14} color="#0E7C46" />
+                          <Text style={[styles.step4VarTagText, { color: '#0E7C46' }]}>(מספר_שולחן)</Text>
+                        </Pressable>
+                      ) : null}
                     </View>
+                    {hasSeatingMap ? (
+                      <Text style={[styles.step4VarsHint, { color: ui.sub, marginTop: 6 }]}>
+                        יש מפת הושבה — לחץ על «מספר שולחן» כדי להוסיף אותו להודעה.
+                      </Text>
+                    ) : null}
                     <Text style={[styles.editorSectionTitle, { color: ui.text, marginTop: 16 }]}>תוכן ההודעה</Text>
                     <View style={styles.textareaWrap}>
                       <TextInput
@@ -9066,6 +9151,15 @@ const styles = StyleSheet.create({
   waVarNumBadge: { minWidth: 22, height: 22, paddingHorizontal: 6, borderRadius: 999, backgroundColor: 'rgba(37,211,102,0.16)', borderWidth: 1, borderColor: 'rgba(14,124,70,0.25)', alignItems: 'center', justifyContent: 'center' },
   waVarNumBadgeText: { fontSize: 12, fontWeight: '900', color: '#0E7C46' },
   waVarFieldLabel: { fontSize: 13, fontWeight: '900', color: '#0F172A', textAlign: 'right', alignSelf: 'stretch' },
+  waVarInsertSection: { gap: 8, alignSelf: 'stretch', padding: 12, borderRadius: 12, backgroundColor: 'rgba(248,250,252,1)', borderWidth: 1, borderColor: 'rgba(226,232,240,1)' },
+  waDynamicVarsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignSelf: 'stretch', justifyContent: 'flex-end' },
+  waDynamicVarChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999, backgroundColor: 'rgba(79,70,229,0.08)', borderWidth: 1, borderColor: 'rgba(79,70,229,0.18)' },
+  waDynamicVarChipText: { fontSize: 12, fontWeight: '800', color: '#4F46E5' },
+  waSeatingVarChip: { backgroundColor: 'rgba(37,211,102,0.10)', borderColor: 'rgba(14,124,70,0.22)' },
+  waBodyFieldFocused: { borderColor: 'rgba(14,124,70,0.55)', backgroundColor: 'rgba(240,253,244,0.65)' },
+  seatingChip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(37,211,102,0.10)', borderWidth: 1, borderColor: 'rgba(14,124,70,0.22)' },
+  seatingVarHint: { marginTop: 8, fontSize: 12, fontWeight: '600', color: 'rgba(14,124,70,0.95)', textAlign: 'right', alignSelf: 'stretch' },
+  seatingVarTag: { backgroundColor: 'rgba(37,211,102,0.10)', borderColor: 'rgba(14,124,70,0.22)' },
   waHeaderImageSection: {
     gap: 10,
     width: '100%',

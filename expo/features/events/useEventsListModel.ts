@@ -1,6 +1,7 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 import { Event } from '@/types';
+import { matchesEventSearch } from '@/features/events/eventsConstants';
 
 export type SortOrder = 'asc' | 'desc';
 
@@ -19,13 +20,19 @@ export type EventsListModel = {
   setFilterMonth: (m: string) => void;
   sortOrder: SortOrder;
   setSortOrder: (s: SortOrder) => void;
-  refresh: () => Promise<void>;
+  refresh: (options?: { force?: boolean }) => Promise<void>;
   filteredEvents: Event[];
 };
 
-export function useEventsListModel(loadEvents: () => Promise<Event[]>, opts?: { errorTitle?: string; errorMessage?: string }) {
-  const [events, setEvents] = useState<Event[]>([]);
-  const [loading, setLoading] = useState(true);
+export function useEventsListModel(
+  loadEvents: (options?: { force?: boolean }) => Promise<Event[]>,
+  opts?: { errorTitle?: string; errorMessage?: string; initialEvents?: Event[] }
+) {
+  const initialEvents = opts?.initialEvents;
+  const [events, setEvents] = useState<Event[]>(initialEvents ?? []);
+  // With a cached list to show we revalidate in the background rather than
+  // replacing the screen with a spinner the user has already waited through.
+  const [loading, setLoading] = useState(!initialEvents?.length);
   const [filterDate, setFilterDate] = useState<Date | null>(null);
   const [filterStartDate, setFilterStartDate] = useState<Date | null>(null);
   const [filterEndDate, setFilterEndDate] = useState<Date | null>(null);
@@ -33,19 +40,27 @@ export function useEventsListModel(loadEvents: () => Promise<Event[]>, opts?: { 
   const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
   const [query, setQuery] = useState('');
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await loadEvents();
-      setEvents(Array.isArray(data) ? data : []);
-    } catch (e) {
-      console.error('Events list refresh error:', e);
-      Alert.alert(opts?.errorTitle ?? 'שגיאה', opts?.errorMessage ?? 'לא ניתן לטעון אירועים כרגע');
-      setEvents([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [loadEvents, opts?.errorMessage, opts?.errorTitle]);
+  const hasEventsRef = useRef((initialEvents?.length ?? 0) > 0);
+
+  const refresh = useCallback(
+    async (options?: { force?: boolean }) => {
+      if (!hasEventsRef.current) setLoading(true);
+      try {
+        const data = await loadEvents(options);
+        const next = Array.isArray(data) ? data : [];
+        hasEventsRef.current = next.length > 0;
+        setEvents(next);
+      } catch (e) {
+        console.error('Events list refresh error:', e);
+        Alert.alert(opts?.errorTitle ?? 'שגיאה', opts?.errorMessage ?? 'לא ניתן לטעון אירועים כרגע');
+        hasEventsRef.current = false;
+        setEvents([]);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [loadEvents, opts?.errorMessage, opts?.errorTitle]
+  );
 
   const filteredEvents = useMemo(() => {
     // Filtering
@@ -79,14 +94,7 @@ export function useEventsListModel(loadEvents: () => Promise<Event[]>, opts?: { 
     }
 
     if (query.trim()) {
-      const q = query.trim().toLowerCase();
-      out = out.filter((e) => {
-        const hay = [e.title, e.location, e.city, (e as any).userName || '']
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase();
-        return hay.includes(q);
-      });
+      out = out.filter((e) => matchesEventSearch(e, query));
     }
 
     out.sort((a, b) => {

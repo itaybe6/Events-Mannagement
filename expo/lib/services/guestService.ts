@@ -1,5 +1,6 @@
 import { supabase } from '../supabase';
 import { Guest } from '@/types';
+import { normalizeGuestPhone } from '../guestPhone';
 
 /**
  * Maximum number of guests allowed on an event that has NOT been approved yet.
@@ -30,7 +31,7 @@ export function normalizeGuestNameForDuplicate(name: string): string {
 }
 
 export function getPhoneDuplicateKeys(phone: string): string[] {
-  const digits = String(phone || '').replace(/\D/g, '');
+  const digits = normalizeGuestPhone(phone);
   if (!digits) return [];
 
   const keys = new Set<string>([digits]);
@@ -57,6 +58,11 @@ function hasSharedPhoneKey(a: string, b: string): boolean {
   return getPhoneDuplicateKeys(b).some((key) => aKeys.has(key));
 }
 
+function withNormalizedPhone<T extends { phone?: string | null }>(guest: T): T {
+  if (guest.phone === undefined) return guest;
+  return { ...guest, phone: normalizeGuestPhone(guest.phone) };
+}
+
 type ExistingGuestRow = { id?: string; name?: string | null; phone?: string | null };
 
 function isDuplicateGuestCandidate(
@@ -64,7 +70,7 @@ function isDuplicateGuestCandidate(
   existingRows: ExistingGuestRow[],
   excludeGuestId?: string
 ): boolean {
-  const nextPhone = String(guest.phone || '').trim();
+  const nextPhone = normalizeGuestPhone(guest.phone);
   // Only check by phone. If there's no phone we can't determine a duplicate.
   if (getPhoneDuplicateKeys(nextPhone).length === 0) return false;
 
@@ -137,6 +143,50 @@ export type EventGuestPeopleStats = {
   seatedPeople: number;
 };
 
+/** PostgREST caps a single response at 1000 rows. */
+const PAGE_SIZE = 1000;
+
+/**
+ * Columns the check-in screen actually renders. Selecting these instead of `*`
+ * cuts the payload for a 750-guest event from ~520KB to ~200KB, which matters a
+ * lot on venue wifi.
+ */
+const CHECK_IN_COLUMNS =
+  'id,event_id,name,phone,status,table_id,number_of_people,category_id,checked_in,checked_in_at,checked_in_count,updated_at';
+
+/**
+ * Reads every row matching a query, fetching the pages after the first one in
+ * parallel. Round-trip latency to Supabase is ~450ms, so paging sequentially
+ * costs a full extra half-second per page; the exact count from the first
+ * response tells us how many pages to request at once.
+ *
+ * It also fixes silent truncation: an unpaginated read stops at 1000 rows, so
+ * events larger than that were losing guests.
+ */
+async function fetchAllRows<T>(
+  buildQuery: () => { range: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown; count?: number | null }> }
+): Promise<T[]> {
+  const first = await buildQuery().range(0, PAGE_SIZE - 1);
+  if (first.error) throw first.error;
+
+  const firstRows = (first.data || []) as T[];
+  const total = typeof first.count === 'number' ? first.count : firstRows.length;
+  if (total <= PAGE_SIZE || firstRows.length < PAGE_SIZE) return firstRows;
+
+  const offsets: number[] = [];
+  for (let from = PAGE_SIZE; from < total; from += PAGE_SIZE) offsets.push(from);
+
+  const pages = await Promise.all(
+    offsets.map(async (from) => {
+      const res = await buildQuery().range(from, from + PAGE_SIZE - 1);
+      if (res.error) throw res.error;
+      return (res.data || []) as T[];
+    })
+  );
+
+  return firstRows.concat(...pages);
+}
+
 export function mapGuestRowFromDb(guest: Record<string, unknown>): Guest {
   return {
     id: String(guest.id),
@@ -162,41 +212,102 @@ export function mapGuestRowFromDb(guest: Record<string, unknown>): Guest {
 export const guestService = {
   /**
    * People-based guest aggregates for one or more events.
-   * Paginates through all guest rows (Supabase defaults to 1000 rows per request).
+   *
+   * Prefers the `get_events_guest_people_stats` RPC, which sums in the database
+   * and returns one row per event. Downloading the raw guest rows to add them up
+   * on the client meant ~4k rows / ~540KB spread over several sequential
+   * requests just to render a handful of numbers on the events list.
+   *
+   * Falls back to the client-side reduction when the RPC is missing, so the app
+   * keeps working on databases where the migration hasn't been applied yet.
    */
   getGuestPeopleStatsByEventIds: async (eventIds: string[]): Promise<Record<string, EventGuestPeopleStats>> => {
     const cleanIds = [...new Set(eventIds.map((id) => String(id || '').trim()).filter(Boolean))];
     if (!cleanIds.length) return {};
 
     const next: Record<string, EventGuestPeopleStats> = {};
-    const pageSize = 1000;
 
-    for (let from = 0; ; from += pageSize) {
-      const { data, error } = await supabase
-        .from('guests')
-        .select('event_id,status,number_of_people,table_id')
-        .in('event_id', cleanIds)
-        .range(from, from + pageSize - 1);
+    const { data: rpcRows, error: rpcError } = await supabase.rpc('get_events_guest_people_stats', {
+      p_event_ids: cleanIds,
+    });
 
-      if (error) throw error;
-
-      const rows = data || [];
-      for (const row of rows) {
-        const eventId = String((row as any)?.event_id ?? '').trim();
+    if (!rpcError && Array.isArray(rpcRows)) {
+      for (const row of rpcRows as any[]) {
+        const eventId = String(row?.event_id ?? '').trim();
         if (!eventId) continue;
-
-        const people = Number((row as any)?.number_of_people) || 1;
-        const status = String((row as any)?.status ?? '').trim();
-        const hasTable = Boolean((row as any)?.table_id);
-
-        const prev = next[eventId] || { invitedPeople: 0, comingPeople: 0, seatedPeople: 0 };
-        prev.invitedPeople += people;
-        if (status === 'מגיע') prev.comingPeople += people;
-        if (hasTable) prev.seatedPeople += people;
-        next[eventId] = prev;
+        next[eventId] = {
+          invitedPeople: Number(row?.invited_people) || 0,
+          comingPeople: Number(row?.coming_people) || 0,
+          seatedPeople: Number(row?.seated_people) || 0,
+        };
       }
+      return next;
+    }
 
-      if (rows.length < pageSize) break;
+    const rows = await fetchAllRows<Record<string, unknown>>(() =>
+      supabase
+        .from('guests')
+        .select('event_id,status,number_of_people,table_id', { count: 'exact' })
+        .in('event_id', cleanIds)
+    );
+
+    for (const row of rows) {
+      const eventId = String(row?.event_id ?? '').trim();
+      if (!eventId) continue;
+
+      const people = Number(row?.number_of_people) || 1;
+      const status = String(row?.status ?? '').trim();
+      const hasTable = Boolean(row?.table_id);
+
+      const prev = next[eventId] || { invitedPeople: 0, comingPeople: 0, seatedPeople: 0 };
+      prev.invitedPeople += people;
+      if (status === 'מגיע') prev.comingPeople += people;
+      if (hasTable) prev.seatedPeople += people;
+      next[eventId] = prev;
+    }
+
+    return next;
+  },
+
+  /**
+   * Same aggregates as `getGuestPeopleStatsByEventIds`, for every event the
+   * caller can see. Lets the events list start this request on mount instead of
+   * waiting for the event list to arrive first, which saves a full round trip.
+   */
+  getGuestPeopleStatsForAllEvents: async (): Promise<Record<string, EventGuestPeopleStats>> => {
+    const next: Record<string, EventGuestPeopleStats> = {};
+
+    const { data: rpcRows, error: rpcError } = await supabase.rpc('get_events_guest_people_stats', {
+      p_event_ids: null,
+    });
+
+    if (!rpcError && Array.isArray(rpcRows)) {
+      for (const row of rpcRows as any[]) {
+        const eventId = String(row?.event_id ?? '').trim();
+        if (!eventId) continue;
+        next[eventId] = {
+          invitedPeople: Number(row?.invited_people) || 0,
+          comingPeople: Number(row?.coming_people) || 0,
+          seatedPeople: Number(row?.seated_people) || 0,
+        };
+      }
+      return next;
+    }
+
+    const rows = await fetchAllRows<Record<string, unknown>>(() =>
+      supabase.from('guests').select('event_id,status,number_of_people,table_id', { count: 'exact' })
+    );
+
+    for (const row of rows) {
+      const eventId = String(row?.event_id ?? '').trim();
+      if (!eventId) continue;
+
+      const people = Number(row?.number_of_people) || 1;
+      const prev = next[eventId] || { invitedPeople: 0, comingPeople: 0, seatedPeople: 0 };
+      prev.invitedPeople += people;
+      if (String(row?.status ?? '').trim() === 'מגיע') prev.comingPeople += people;
+      if (row?.table_id) prev.seatedPeople += people;
+      next[eventId] = prev;
     }
 
     return next;
@@ -205,19 +316,76 @@ export const guestService = {
   // Get all guests for an event
   getGuests: async (eventId: string): Promise<Guest[]> => {
     try {
-      const { data, error } = await supabase
-        .from('guests')
-        .select('*')
-        .eq('event_id', eventId)
-        .order('name');
+      const rows = await fetchAllRows<Record<string, unknown>>(() =>
+        supabase.from('guests').select('*', { count: 'exact' }).eq('event_id', eventId).order('name')
+      );
 
-      if (error) throw error;
-
-      return data.map((guest) => mapGuestRowFromDb(guest as Record<string, unknown>));
+      return rows.map((guest) => mapGuestRowFromDb(guest));
     } catch (error) {
       console.error('Get guests error:', error);
       throw error;
     }
+  },
+
+  /**
+   * Guest list trimmed to the columns the check-in screen renders.
+   * See CHECK_IN_COLUMNS for why this exists separately from `getGuests`.
+   * `latestUpdatedAt` seeds the incremental sync watermark.
+   */
+  getGuestsForCheckIn: async (
+    eventId: string
+  ): Promise<{ guests: Guest[]; latestUpdatedAt: string | null }> => {
+    const rows = await fetchAllRows<Record<string, unknown>>(() =>
+      supabase.from('guests').select(CHECK_IN_COLUMNS, { count: 'exact' }).eq('event_id', eventId).order('name')
+    );
+
+    let latestUpdatedAt: string | null = null;
+    for (const row of rows) {
+      const updatedAt = String(row?.updated_at ?? '');
+      if (updatedAt && (!latestUpdatedAt || updatedAt > latestUpdatedAt)) latestUpdatedAt = updatedAt;
+    }
+
+    return { guests: rows.map((guest) => mapGuestRowFromDb(guest)), latestUpdatedAt };
+  },
+
+  /** Cheap row count used to detect guests added/removed by other stations. */
+  getGuestCount: async (eventId: string): Promise<number> => {
+    const { count, error } = await supabase
+      .from('guests')
+      .select('id', { count: 'exact', head: true })
+      .eq('event_id', eventId);
+
+    if (error) throw error;
+    return count ?? 0;
+  },
+
+  /**
+   * Guests touched at or after `since`, used by the check-in screen to stay in
+   * sync with other usher stations without re-downloading the whole list.
+   * Returns the rows plus the newest `updated_at` seen, which becomes the
+   * watermark for the next call.
+   *
+   * The bound is inclusive so rows sharing the watermark's exact timestamp are
+   * never skipped; callers merge by id, so re-sending a row is harmless.
+   */
+  getGuestsUpdatedSince: async (
+    eventId: string,
+    since: string
+  ): Promise<{ guests: Guest[]; latestUpdatedAt: string | null }> => {
+    const { data, error } = await supabase
+      .from('guests')
+      .select(CHECK_IN_COLUMNS)
+      .eq('event_id', eventId)
+      .gte('updated_at', since)
+      .order('updated_at', { ascending: true })
+      .limit(PAGE_SIZE);
+
+    if (error) throw error;
+
+    const rows = (data || []) as Record<string, unknown>[];
+    const latestUpdatedAt = rows.length ? String(rows[rows.length - 1]?.updated_at ?? '') || null : null;
+
+    return { guests: rows.map((guest) => mapGuestRowFromDb(guest)), latestUpdatedAt };
   },
 
   /**
@@ -351,15 +519,16 @@ export const guestService = {
       const duplicateNames: string[] = [];
 
       for (const guest of guests) {
-        if (isDuplicateGuestCandidate(guest, knownRows)) {
+        const normalizedGuest = withNormalizedPhone(guest);
+        if (isDuplicateGuestCandidate(normalizedGuest, knownRows)) {
           duplicateSkipped++;
-          duplicateNames.push(String(guest.name || '').trim());
+          duplicateNames.push(String(normalizedGuest.name || '').trim());
           continue;
         }
-        toInsert.push(guest);
+        toInsert.push(normalizedGuest);
         knownRows.push({
-          name: guest.name,
-          phone: guest.phone,
+          name: normalizedGuest.name,
+          phone: normalizedGuest.phone,
         });
       }
 
@@ -444,20 +613,21 @@ export const guestService = {
   // Add new guest
   addGuest: async (eventId: string, guest: Omit<Guest, 'id'>): Promise<Guest> => {
     try {
-      await ensureGuestIsUniqueForEvent(eventId, guest);
+      const normalizedGuest = withNormalizedPhone(guest);
+      await ensureGuestIsUniqueForEvent(eventId, normalizedGuest);
       await ensureUnapprovedEventGuestLimit(eventId);
       const { data, error } = await supabase
         .from('guests')
         .insert({
           event_id: eventId,
-          name: guest.name,
-          phone: guest.phone,
-          status: guest.status,
-          table_id: guest.tableId,
-          gift_amount: guest.gift,
-          message: guest.message,
-          category_id: guest.category_id,
-          number_of_people: guest.numberOfPeople,
+          name: normalizedGuest.name,
+          phone: normalizedGuest.phone,
+          status: normalizedGuest.status,
+          table_id: normalizedGuest.tableId,
+          gift_amount: normalizedGuest.gift,
+          message: normalizedGuest.message,
+          category_id: normalizedGuest.category_id,
+          number_of_people: normalizedGuest.numberOfPeople,
         })
         .select()
         .single();
@@ -498,18 +668,20 @@ export const guestService = {
 
         if (currentError) throw currentError;
         currentGuest = current;
+        const nextPhone =
+          updates.phone !== undefined ? normalizeGuestPhone(updates.phone) : String((currentGuest as any)?.phone ?? '');
         await ensureGuestIsUniqueForEvent(
           String((currentGuest as any)?.event_id || ''),
           {
             name: updates.name ?? String((currentGuest as any)?.name ?? ''),
-            phone: updates.phone ?? String((currentGuest as any)?.phone ?? ''),
+            phone: nextPhone,
           } as Pick<Guest, 'name' | 'phone'>,
           guestId
         );
       }
       
       if (updates.name) updateData.name = updates.name;
-      if (updates.phone) updateData.phone = updates.phone;
+      if (updates.phone !== undefined) updateData.phone = normalizeGuestPhone(updates.phone);
       if (updates.status) updateData.status = updates.status;
       if (updates.tableId !== undefined) updateData.table_id = updates.tableId;
       if (updates.gift !== undefined) updateData.gift_amount = updates.gift;

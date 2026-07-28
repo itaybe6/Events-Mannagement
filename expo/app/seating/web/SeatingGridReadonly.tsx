@@ -1,9 +1,14 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Rect } from 'react-native-svg';
+import { Ionicons } from '@expo/vector-icons';
 import { CELL_SIZE, TABLE_LABELS, clamp, tableCellSize, type Orientation, type TableType } from './_types';
 import { colors } from '@/constants/colors';
 import { TableSeatRing, getTableSeatBorderColor, getTableSeatFillColor } from '@/components/couple/TableSeatRing';
+
+const ZOOM_MIN = 0.2;
+const ZOOM_MAX = 12;
+const ZOOM_STEP = 1.22;
 
 function hexToRgba(hex: string, alpha: number) {
   const raw = String(hex || '').trim().replace('#', '');
@@ -73,6 +78,7 @@ export function SeatingGridReadonly({
   tableTextScale,
   showSeatRing,
   getTableOccupancy,
+  showZoomControls = true,
 }: {
   gridCols: number;
   gridRows: number;
@@ -96,6 +102,7 @@ export function SeatingGridReadonly({
   tableTextScale?: number;
   showSeatRing?: boolean;
   getTableOccupancy?: (t: TableItem) => { seated: number; capacity: number } | null;
+  showZoomControls?: boolean;
 }) {
   const isWeb = Platform.OS === 'web';
   const fitBoost = Number.isFinite(autoFitZoomMultiplier as any) ? Math.max(0.6, Math.min(2, Number(autoFitZoomMultiplier))) : 1;
@@ -166,7 +173,67 @@ export function SeatingGridReadonly({
   const [zoom, setZoom] = useState(1);
   const zoomRef = useRef(1);
   const fitZoomRef = useRef(1);
+  const manualZoomRef = useRef(false);
   const lastAutoFitTokenRef = useRef<string>('');
+
+  const applyZoom = useCallback((next: number) => {
+    manualZoomRef.current = true;
+    const clamped = clamp(next, ZOOM_MIN, ZOOM_MAX);
+    zoomRef.current = clamped;
+    setZoom(clamped);
+  }, []);
+
+  const zoomIn = useCallback(() => {
+    applyZoom(zoomRef.current * ZOOM_STEP);
+  }, [applyZoom]);
+
+  const zoomOut = useCallback(() => {
+    applyZoom(zoomRef.current / ZOOM_STEP);
+  }, [applyZoom]);
+
+  const resetZoomFit = useCallback(() => {
+    manualZoomRef.current = false;
+    const next = fitZoomRef.current || fitZoomAdjusted;
+    zoomRef.current = next;
+    setZoom(next);
+    lastAutoFitTokenRef.current = '';
+    const el = workAreaRef.current as any;
+    try {
+      if (el?.scrollTo) el.scrollTo({ left: 0, top: 0, behavior: 'smooth' });
+      else {
+        if (typeof el?.scrollLeft === 'number') el.scrollLeft = 0;
+        if (typeof el?.scrollTop === 'number') el.scrollTop = 0;
+      }
+    } catch {
+      // ignore
+    }
+  }, [fitZoomAdjusted]);
+
+  const handleWheelZoom = useCallback(
+    (e: any) => {
+      if (!isWeb) return;
+      try {
+        e?.preventDefault?.();
+        e?.stopPropagation?.();
+      } catch {
+        // ignore
+      }
+      const delta = Number(e?.deltaY ?? 0);
+      if (!Number.isFinite(delta) || delta === 0) return;
+      const factor = delta < 0 ? ZOOM_STEP : 1 / ZOOM_STEP;
+      applyZoom(zoomRef.current * factor);
+    },
+    [applyZoom, isWeb]
+  );
+
+  useEffect(() => {
+    if (!isWeb || !showZoomControls) return;
+    const el = workAreaRef.current as HTMLElement | null;
+    if (!el?.addEventListener) return;
+    const onWheel = (ev: WheelEvent) => handleWheelZoom(ev);
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [handleWheelZoom, isWeb, showZoomControls, viewport?.h, viewport?.w]);
   const tableNumFontSize = Math.round(18 * textScale);
   const tableNameFontSize = Math.round(12 * textScale);
   const tableTypeFontSize = Math.round(11 * textScale);
@@ -204,6 +271,7 @@ export function SeatingGridReadonly({
 
   useEffect(() => {
     if (!viewport?.w || !viewport?.h) return;
+    if (manualZoomRef.current) return;
     if (lastAutoFitTokenRef.current === autoFitToken) return;
     lastAutoFitTokenRef.current = autoFitToken;
 
@@ -230,8 +298,11 @@ export function SeatingGridReadonly({
   const [tooltip, setTooltip] = useState<null | { text: string; x: number; y: number }>(null);
   const [tooltipSize, setTooltipSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
 
+  const zoomPercent = Math.round(zoom * 100);
+
   return (
     <View style={styles.root}>
+      <View style={styles.shell}>
       <View
         ref={workAreaRef}
         style={styles.workArea}
@@ -504,18 +575,125 @@ export function SeatingGridReadonly({
           </View>
         </View>
       </View>
+
+      {showZoomControls ? (
+        <View style={styles.zoomControls} pointerEvents="box-none">
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="התקרבות למפה"
+            onPress={zoomIn}
+            style={({ hovered, pressed }: any) => [
+              styles.zoomBtn,
+              Platform.OS === 'web' && hovered ? styles.zoomBtnHover : null,
+              pressed ? styles.zoomBtnPressed : null,
+            ]}
+          >
+            <Ionicons name="add" size={22} color="#102A56" />
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="התאמת מפה למסגרת"
+            onPress={resetZoomFit}
+            style={({ hovered, pressed }: any) => [
+              styles.zoomFitBtn,
+              Platform.OS === 'web' && hovered ? styles.zoomBtnHover : null,
+              pressed ? styles.zoomBtnPressed : null,
+            ]}
+          >
+            <Text style={styles.zoomLabel}>{`${zoomPercent}%`}</Text>
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="התרחקות מהמפה"
+            onPress={zoomOut}
+            style={({ hovered, pressed }: any) => [
+              styles.zoomBtn,
+              Platform.OS === 'web' && hovered ? styles.zoomBtnHover : null,
+              pressed ? styles.zoomBtnPressed : null,
+            ]}
+          >
+            <Ionicons name="remove" size={22} color="#102A56" />
+          </Pressable>
+        </View>
+      ) : null}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: 'transparent' },
+  shell: { flex: 1, position: 'relative', minHeight: 0 },
   workArea: {
     flex: 1,
     alignItems: 'center',
     justifyContent: Platform.OS === 'web' ? 'flex-start' : 'center',
     padding: 0,
     ...(Platform.OS === 'web' ? ({ overflow: 'auto', userSelect: 'none', WebkitUserSelect: 'none' } as any) : null),
+  },
+  zoomControls: {
+    position: 'absolute',
+    left: 14,
+    bottom: 16,
+    zIndex: 40,
+    alignItems: 'center',
+    gap: 8,
+    ...(Platform.OS === 'web' ? ({ pointerEvents: 'auto' } as any) : null),
+  },
+  zoomBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.98)',
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.10)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#0b1c41',
+    shadowOpacity: 0.12,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
+    ...(Platform.OS === 'web'
+      ? ({
+          cursor: 'pointer',
+          boxShadow: '0 10px 24px rgba(15,23,42,0.14)',
+          backdropFilter: 'blur(8px)',
+        } as any)
+      : null),
+  },
+  zoomFitBtn: {
+    minWidth: 56,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.98)',
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.10)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...(Platform.OS === 'web'
+      ? ({
+          cursor: 'pointer',
+          boxShadow: '0 6px 18px rgba(15,23,42,0.10)',
+        } as any)
+      : null),
+  },
+  zoomBtnHover: {
+    backgroundColor: '#FFFFFF',
+    borderColor: 'rgba(43,140,238,0.35)',
+  },
+  zoomBtnPressed: {
+    opacity: 0.88,
+    transform: [{ scale: 0.96 }],
+  },
+  zoomLabel: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: 'rgba(17,24,39,0.62)',
+    textAlign: 'center',
   },
   tooltip: {
     position: 'absolute',
