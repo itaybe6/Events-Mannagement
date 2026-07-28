@@ -43,8 +43,8 @@ export default function LoginWebScreen() {
   const formSidePadding = isCompact ? 20 : isLg ? (isWide ? 56 : 40) : 24;
   // Reduce hero padding on "regular" desktops so the form column doesn't get squeezed.
   const heroPadding = isCompact ? 24 : isLg ? (isWide ? 80 : 48) : 32;
-  const heroHeadlineSize = isLg ? 52 : width >= 900 ? 44 : 36;
-  const heroHeadlineLineHeight = isLg ? 58 : width >= 900 ? 52 : 44;
+  const heroHeadlineSize = isLg ? 50 : width >= 900 ? 44 : 36;
+  const heroHeadlineLineHeight = isLg ? 56 : width >= 900 ? 52 : 44;
   const cardPadding = isCompact ? 24 : isLg ? (isWide ? 44 : 36) : 32;
   const cardMaxWidth = isLg ? (isWide ? 560 : 520) : 448; // wider on desktop
   const heroContentMaxWidth = 520; // ~ max-w-lg
@@ -560,9 +560,9 @@ const styles = StyleSheet.create({
   },
   heroHeadline: {
     color: colors.white,
-    fontSize: 52,
+    fontSize: 50,
     fontWeight: '900',
-    lineHeight: 58,
+    lineHeight: 56,
     textAlign: 'right',
   },
   heroHeadlineAccent: {
