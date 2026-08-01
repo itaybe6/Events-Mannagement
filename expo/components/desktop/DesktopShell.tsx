@@ -2,6 +2,7 @@ import React from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import { colors } from '@/constants/colors';
 import DesktopSidebar, { type DesktopNavItem } from '@/components/desktop/DesktopSidebar';
+import { useResponsive } from '@/lib/responsive';
 
 type Props = {
   title?: string;
@@ -13,11 +14,28 @@ type Props = {
 };
 
 export default function DesktopShell({ title, subtitle, navItems, footer, fullWidth, children }: Props) {
+  const { gutter, gap, sidebarMode, isTablet } = useResponsive();
+
   return (
     <View style={styles.root}>
-      <View style={[styles.container, fullWidth ? styles.containerFull : null]}>
+      <View
+        style={[
+          styles.container,
+          fullWidth ? styles.containerFull : null,
+          // Tablets should use the whole viewport; the 1280px cap only helps on
+          // a wide monitor.
+          isTablet ? styles.containerTablet : null,
+          { padding: gutter, gap },
+        ]}
+      >
         <View style={styles.main}>{children}</View>
-        <DesktopSidebar title={title} subtitle={subtitle} navItems={navItems} footer={footer} />
+        <DesktopSidebar
+          title={title}
+          subtitle={subtitle}
+          navItems={navItems}
+          footer={footer}
+          mode={sidebarMode}
+        />
       </View>
     </View>
   );
@@ -33,8 +51,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row-reverse',
     alignItems: 'stretch',
     justifyContent: 'center',
-    gap: 16,
-    padding: 16,
     maxWidth: 1280,
     width: '100%',
     alignSelf: 'center',
@@ -46,6 +62,9 @@ const styles = StyleSheet.create({
   },
   containerFull: {
     maxWidth: 1600,
+  },
+  containerTablet: {
+    maxWidth: '100%',
   },
   main: {
     flex: 1,

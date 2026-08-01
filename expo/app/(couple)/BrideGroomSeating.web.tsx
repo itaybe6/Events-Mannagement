@@ -114,9 +114,10 @@ type StatButtonProps = {
   label: string;
   accentColor: string;
   onPress: () => void;
+  narrow?: boolean;
 };
 
-function StatButton({ icon, value, label, accentColor, onPress }: StatButtonProps) {
+function StatButton({ icon, value, label, accentColor, onPress, narrow }: StatButtonProps) {
   return (
     <Pressable
       accessibilityRole="button"
@@ -146,6 +147,7 @@ function StatButton({ icon, value, label, accentColor, onPress }: StatButtonProp
             : null;
         return [
           styles.statBtn,
+          narrow ? styles.statBtnNarrow : null,
           { borderColor: border, backgroundColor: bg },
           webFx,
         ];
@@ -1260,13 +1262,14 @@ export default function BrideGroomSeatingWebScreen() {
               }
             />
 
-            <View style={styles.statsRow}>
+            <View style={[styles.statsRow, isNarrow ? styles.statsRowNarrow : null, isAdminContext ? styles.statsRowAdmin : null]}>
               <StatButton
                 icon="checkmark-circle-outline"
                 value={confirmedGuestsCount}
                 label="אישרו הגעה"
                 accentColor={colors.info}
                 onPress={() => openGuestModalWithGuests('אישרו הגעה', confirmedGuestsList)}
+                narrow={isNarrow}
               />
               <StatButton
                 icon="body"
@@ -1274,6 +1277,7 @@ export default function BrideGroomSeatingWebScreen() {
                 label="הושבו"
                 accentColor={colors.success}
                 onPress={() => openGuestModalWithGuests('הושבו', seatedGuestsList)}
+                narrow={isNarrow}
               />
               <StatButton
                 icon="walk"
@@ -1281,12 +1285,14 @@ export default function BrideGroomSeatingWebScreen() {
                 label="טרם הושבו"
                 accentColor={colors.secondary}
                 onPress={() => openGuestModalWithGuests('טרם הושבו', unseatedGuestsList)}
+                narrow={isNarrow}
               />
               <StatButton
                 icon="grid"
                 value={tables.length}
                 label="שולחנות"
                 accentColor={colors.primary}
+                narrow={isNarrow}
                 onPress={() =>
                   router.push({
                     pathname: isAdminContext ? ('/(admin)/TablesList' as const) : ('/(couple)/TablesList' as const),
@@ -1318,13 +1324,14 @@ export default function BrideGroomSeatingWebScreen() {
                 בחר מוזמנים, עבור בין שולחנות, ולחץ על המפה כדי לשבץ מהר יותר בלי ללכת לאיבוד בין אזורים שונים במסך.
               </Text>
 
-              <View style={[styles.statsRow, styles.statsRowInsideHero]}>
+              <View style={[styles.statsRow, styles.statsRowInsideHero, isNarrow ? styles.statsRowNarrow : null]}>
                 <StatButton
                   icon="checkmark-circle-outline"
                   value={confirmedGuestsCount}
                   label="אישרו הגעה"
                   accentColor={colors.info}
                   onPress={() => openGuestModalWithGuests('אישרו הגעה', confirmedGuestsList)}
+                  narrow={isNarrow}
                 />
                 <StatButton
                   icon="body"
@@ -1332,6 +1339,7 @@ export default function BrideGroomSeatingWebScreen() {
                   label="הושבו"
                   accentColor={colors.success}
                   onPress={() => openGuestModalWithGuests('הושבו', seatedGuestsList)}
+                  narrow={isNarrow}
                 />
                 <StatButton
                   icon="walk"
@@ -1339,12 +1347,14 @@ export default function BrideGroomSeatingWebScreen() {
                   label="טרם הושבו"
                   accentColor={colors.secondary}
                   onPress={() => openGuestModalWithGuests('טרם הושבו', unseatedGuestsList)}
+                  narrow={isNarrow}
                 />
                 <StatButton
                   icon="grid"
                   value={tables.length}
                   label="שולחנות"
                   accentColor={colors.primary}
+                  narrow={isNarrow}
                   onPress={() =>
                     router.push({
                       pathname: '/(couple)/TablesList' as const,
@@ -2688,6 +2698,8 @@ const styles = StyleSheet.create({
   btnPressed: { opacity: 0.92, transform: [{ scale: 0.99 }] },
 
   statsRow: { marginTop: 14, flexDirection: 'row', flexWrap: 'wrap', gap: 12, alignItems: 'stretch' },
+  statsRowNarrow: { gap: 10 },
+  statsRowAdmin: { marginTop: 0 },
   adminHeroShell: { gap: 18, marginBottom: 14 },
   adminBackBtn: {
     flexDirection: 'row-reverse',
@@ -2848,6 +2860,13 @@ const styles = StyleSheet.create({
     flexBasis: 150,
     overflow: 'hidden',
     ...(Platform.OS === 'web' ? ({ boxShadow: '0 0 0 1px rgba(11,48,65,0.02), 0 12px 28px rgba(16,24,40,0.08)' } as any) : null),
+  },
+  statBtnNarrow: {
+    flexBasis: '47%',
+    minWidth: 0,
+    minHeight: 112,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
   },
   statGlow: {
     position: 'absolute',

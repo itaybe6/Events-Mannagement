@@ -316,6 +316,7 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
   const [addPeople, setAddPeople] = useState(1);
   const [addTableQuery, setAddTableQuery] = useState("");
   const [addTableId, setAddTableId] = useState<string | null>(null);
+  const [addTablePickerExpanded, setAddTablePickerExpanded] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
 
   const tableOptions = useMemo(() => {
@@ -344,13 +345,20 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
     return tableOptions.filter((opt) => opt.label.toLowerCase().includes(q));
   }, [addTableQuery, tableOptions]);
 
+  const addSelectedTableOption = useMemo(() => {
+    if (!addTableId) return null;
+    return tableOptions.find((opt) => opt.id === addTableId) ?? null;
+  }, [addTableId, tableOptions]);
+
   const openAddSheet = useCallback(() => {
     setAddName("");
     setAddPhone("");
     setAddPeople(1);
     setAddTableQuery("");
     setAddError(null);
-    setAddTableId(tableFilterId ? String(tableFilterId).trim() || null : null);
+    const focused = tableFilterId ? String(tableFilterId).trim() || null : null;
+    setAddTableId(focused);
+    setAddTablePickerExpanded(!focused);
     setAddOpen(true);
   }, [tableFilterId]);
 
@@ -358,6 +366,7 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
     setAddOpen(false);
     setAddError(null);
     setAddTableQuery("");
+    setAddTablePickerExpanded(false);
   }, []);
 
   const confirmAddGuest = useCallback(async () => {
@@ -962,9 +971,21 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={styles.mapTitle}>מפת ישיבה</Text>
                     <Text style={styles.mapHint} numberOfLines={1}>
-                      לחץ על שולחן לסינון
+                      {tableFilterId ? tableFilterLabel || "שולחן נבחר" : "לחץ על שולחן לסינון"}
                     </Text>
                   </View>
+                  {tableFilterId ? (
+                    <TouchableOpacity
+                      onPress={openAddSheet}
+                      style={styles.mapAddGuestBtn}
+                      activeOpacity={0.9}
+                      accessibilityRole="button"
+                      accessibilityLabel={`הוסף מוזמן ל${tableFilterLabel || "שולחן"}`}
+                    >
+                      <Ionicons name="person-add" size={16} color={colors.white} />
+                      <Text style={styles.mapAddGuestBtnText}>הוסף מוזמן</Text>
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
 
                 {mapLoading ? (
@@ -1084,20 +1105,31 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
             showsVerticalScrollIndicator={false}
             contentContainerStyle={[styles.content, isAdminStyledMobile ? styles.contentAdminMobile : null, { paddingBottom: contentBottomPadding }]}
           >
-            {/* Search */}
-            <View style={styles.searchCard}>
-              <Text>
-                <Ionicons name="search" size={18} color={colors.gray[500]} />
-              </Text>
-              <TextInput
-                value={query}
-                onChangeText={setQuery}
-                placeholder="חיפוש שם או טלפון..."
-                placeholderTextColor={colors.gray[500]}
-                style={styles.searchInput}
-                textAlign="right"
-                returnKeyType="search"
-              />
+            {/* Search + add guest */}
+            <View style={styles.searchRow}>
+              <View style={[styles.searchCard, styles.searchCardInline]}>
+                <Text>
+                  <Ionicons name="search" size={18} color={colors.gray[500]} />
+                </Text>
+                <TextInput
+                  value={query}
+                  onChangeText={setQuery}
+                  placeholder="חיפוש שם או טלפון..."
+                  placeholderTextColor={colors.gray[500]}
+                  style={styles.searchInput}
+                  textAlign="right"
+                  returnKeyType="search"
+                />
+              </View>
+              <TouchableOpacity
+                onPress={openAddSheet}
+                style={styles.addGuestIconBtn}
+                activeOpacity={0.9}
+                accessibilityRole="button"
+                accessibilityLabel="הוספת מוזמן שלא נמצא ברשימה"
+              >
+                <Ionicons name="person-add" size={22} color={colors.white} />
+              </TouchableOpacity>
             </View>
 
             {/* Filters */}
@@ -1122,41 +1154,6 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                 );
               })}
             </View>
-
-            <TouchableOpacity
-              onPress={openAddSheet}
-              style={styles.addGuestBtn}
-              activeOpacity={0.9}
-              accessibilityRole="button"
-              accessibilityLabel="הוספת מוזמן שלא נמצא ברשימה"
-            >
-              <Ionicons name="person-add" size={18} color={colors.white} />
-              <Text style={styles.addGuestBtnText}>הוסף מוזמן שלא ברשימה</Text>
-            </TouchableOpacity>
-
-            {!isTablet && hasMapData ? (
-              <View style={styles.phoneMapCard}>
-                <Text style={styles.mapTitle}>מפת ישיבה</Text>
-                <View style={styles.mapViewport}>
-                  {renderNativeMapCanvas({
-                    viewportWidth: Math.max(280, windowWidth - 56),
-                    minCanvasHeight: 320,
-                    scrollStyle: { height: 320 },
-                  })}
-                  <View style={styles.mapZoomControls} pointerEvents="box-none">
-                    <TouchableOpacity onPress={zoomInMap} style={styles.mapZoomBtn} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="התקרבות למפה">
-                      <Ionicons name="add" size={22} color="#102A56" />
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={resetMapZoom} style={styles.mapZoomFitBtn} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="התאמת מפה">
-                      <Text style={styles.mapZoomLabel}>{`${Math.round(mapZoom * 100)}%`}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={zoomOutMap} style={styles.mapZoomBtn} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="התרחקות מהמפה">
-                      <Ionicons name="remove" size={22} color="#102A56" />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </View>
-            ) : null}
 
             {/* Grouped by table */}
             <View style={{ gap: 12, marginTop: 12 }}>
@@ -1449,100 +1446,136 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
 
               <View style={styles.formField}>
                 <Text style={styles.formLabel}>הושבה בשולחן</Text>
-                <Text style={styles.formHint}>אפשר להושיב בכל שולחן, גם אם המוזמן לא הוקצה במפת ההושבה.</Text>
+                {addTableId && !addTablePickerExpanded ? (
+                  <>
+                    <View style={styles.selectedTableCard}>
+                      <View style={styles.selectedTableCardIcon}>
+                        <Ionicons name="restaurant" size={18} color={colors.primary} />
+                      </View>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={styles.selectedTableCardTitle}>
+                          {addSelectedTableOption?.label ?? tableFilterLabel ?? "שולחן נבחר"}
+                        </Text>
+                        {addSelectedTableOption && addSelectedTableOption.capacity > 0 ? (
+                          <Text style={styles.selectedTableCardMeta}>
+                            {`יושבים: ${addSelectedTableOption.seated + addPeople} מתוך ${addSelectedTableOption.capacity}`}
+                          </Text>
+                        ) : (
+                          <Text style={styles.selectedTableCardMeta}>המוזמן יושב בשולחן שבחרת במפה</Text>
+                        )}
+                      </View>
+                      <Ionicons name="checkmark-circle" size={22} color={colors.primary} />
+                    </View>
+                    <Pressable
+                      onPress={() => setAddTablePickerExpanded(true)}
+                      style={({ pressed }) => [styles.changeTableLink, pressed ? { opacity: 0.85 } : null]}
+                      accessibilityRole="button"
+                      accessibilityLabel="שנה שולחן"
+                    >
+                      <Text style={styles.changeTableLinkText}>שנה שולחן</Text>
+                    </Pressable>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.formHint}>בחר שולחן להושבת המוזמן, או השאר ללא שולחן.</Text>
 
-                {tableOptions.length > 3 ? (
-                  <View style={[styles.searchCard, { marginTop: 0, height: 48 }]}>
-                    <Text>
-                      <Ionicons name="search" size={18} color={colors.gray[500]} />
-                    </Text>
-                    <TextInput
-                      value={addTableQuery}
-                      onChangeText={setAddTableQuery}
-                      placeholder="חיפוש שולחן..."
-                      placeholderTextColor={colors.gray[500]}
-                      style={styles.searchInput}
-                      textAlign="right"
-                      autoCapitalize="none"
-                    />
-                  </View>
-                ) : null}
+                    {tableOptions.length > 3 ? (
+                      <View style={[styles.searchCard, { marginTop: 0, height: 48 }]}>
+                        <Text>
+                          <Ionicons name="search" size={18} color={colors.gray[500]} />
+                        </Text>
+                        <TextInput
+                          value={addTableQuery}
+                          onChangeText={setAddTableQuery}
+                          placeholder="חיפוש שולחן..."
+                          placeholderTextColor={colors.gray[500]}
+                          style={styles.searchInput}
+                          textAlign="right"
+                          autoCapitalize="none"
+                        />
+                      </View>
+                    ) : null}
 
-                <View style={{ gap: 8 }}>
-                  <Pressable
-                    onPress={() => setAddTableId(null)}
-                    style={({ pressed }) => [
-                      styles.tableOptionRow,
-                      addTableId === null ? styles.tableOptionRowSelected : null,
-                      pressed ? { opacity: 0.9 } : null,
-                    ]}
-                    accessibilityRole="button"
-                    accessibilityLabel="בחר ללא שולחן"
-                  >
-                    <Ionicons
-                      name={addTableId === null ? "checkmark-circle" : "ellipse-outline"}
-                      size={22}
-                      color={addTableId === null ? colors.primary : "rgba(156,163,175,0.9)"}
-                    />
-                    <Text style={styles.tableOptionText}>ללא שולחן</Text>
-                  </Pressable>
-
-                  {addTableOptions.map((opt) => {
-                    const selected = addTableId === opt.id;
-                    const wouldSeat = selected ? opt.seated + addPeople : opt.seated;
-                    const overflow = opt.isReserve || opt.capacity <= 0 ? 0 : Math.max(0, wouldSeat - opt.capacity);
-                    return (
+                    <View style={{ gap: 8 }}>
                       <Pressable
-                        key={opt.id}
-                        onPress={() => setAddTableId(opt.id)}
+                        onPress={() => setAddTableId(null)}
                         style={({ pressed }) => [
                           styles.tableOptionRow,
-                          selected ? styles.tableOptionRowSelected : null,
+                          addTableId === null ? styles.tableOptionRowSelected : null,
                           pressed ? { opacity: 0.9 } : null,
                         ]}
                         accessibilityRole="button"
-                        accessibilityLabel={`הושב ב${opt.label}`}
+                        accessibilityLabel="בחר ללא שולחן"
                       >
                         <Ionicons
-                          name={selected ? "checkmark-circle" : "ellipse-outline"}
+                          name={addTableId === null ? "checkmark-circle" : "ellipse-outline"}
                           size={22}
-                          color={selected ? colors.primary : "rgba(156,163,175,0.9)"}
+                          color={addTableId === null ? colors.primary : "rgba(156,163,175,0.9)"}
                         />
-
-                        <View style={styles.tableOptionInfo}>
-                          <Text style={styles.tableOptionText} numberOfLines={1}>
-                            {opt.label}
-                          </Text>
-                          {opt.capacity > 0 ? (
-                            <Text style={styles.tableOptionMeta} numberOfLines={1}>
-                              {`יושבים: ${wouldSeat} מתוך ${opt.capacity}`}
-                            </Text>
-                          ) : null}
-                        </View>
-
-                        {opt.isReserve ? (
-                          <View style={styles.tableOptionBadgeReserve}>
-                            <Text style={styles.tableOptionBadgeReserveText}>רזרבה</Text>
-                          </View>
-                        ) : overflow > 0 ? (
-                          <View style={styles.tableOptionBadgeOverflow}>
-                            <Text style={styles.tableOptionBadgeOverflowText}>{`חריגה ${overflow}`}</Text>
-                          </View>
-                        ) : opt.capacity > 0 ? (
-                          <View style={styles.tableOptionBadgeOk}>
-                            <Text style={styles.tableOptionBadgeOkText}>פנוי</Text>
-                          </View>
-                        ) : null}
+                        <Text style={styles.tableOptionText}>ללא שולחן</Text>
                       </Pressable>
-                    );
-                  })}
 
-                  {addTableOptions.length === 0 ? (
-                    <Text style={styles.formHint}>
-                      {tableOptions.length === 0 ? "לא הוגדרו שולחנות לאירוע." : "לא נמצאו שולחנות מתאימים לחיפוש."}
-                    </Text>
-                  ) : null}
-                </View>
+                      {addTableOptions.map((opt) => {
+                        const selected = addTableId === opt.id;
+                        const wouldSeat = selected ? opt.seated + addPeople : opt.seated;
+                        const overflow = opt.isReserve || opt.capacity <= 0 ? 0 : Math.max(0, wouldSeat - opt.capacity);
+                        return (
+                          <Pressable
+                            key={opt.id}
+                            onPress={() => {
+                              setAddTableId(opt.id);
+                              setAddTablePickerExpanded(false);
+                            }}
+                            style={({ pressed }) => [
+                              styles.tableOptionRow,
+                              selected ? styles.tableOptionRowSelected : null,
+                              pressed ? { opacity: 0.9 } : null,
+                            ]}
+                            accessibilityRole="button"
+                            accessibilityLabel={`הושב ב${opt.label}`}
+                          >
+                            <Ionicons
+                              name={selected ? "checkmark-circle" : "ellipse-outline"}
+                              size={22}
+                              color={selected ? colors.primary : "rgba(156,163,175,0.9)"}
+                            />
+
+                            <View style={styles.tableOptionInfo}>
+                              <Text style={styles.tableOptionText} numberOfLines={1}>
+                                {opt.label}
+                              </Text>
+                              {opt.capacity > 0 ? (
+                                <Text style={styles.tableOptionMeta} numberOfLines={1}>
+                                  {`יושבים: ${wouldSeat} מתוך ${opt.capacity}`}
+                                </Text>
+                              ) : null}
+                            </View>
+
+                            {opt.isReserve ? (
+                              <View style={styles.tableOptionBadgeReserve}>
+                                <Text style={styles.tableOptionBadgeReserveText}>רזרבה</Text>
+                              </View>
+                            ) : overflow > 0 ? (
+                              <View style={styles.tableOptionBadgeOverflow}>
+                                <Text style={styles.tableOptionBadgeOverflowText}>{`חריגה ${overflow}`}</Text>
+                              </View>
+                            ) : opt.capacity > 0 ? (
+                              <View style={styles.tableOptionBadgeOk}>
+                                <Text style={styles.tableOptionBadgeOkText}>פנוי</Text>
+                              </View>
+                            ) : null}
+                          </Pressable>
+                        );
+                      })}
+
+                      {addTableOptions.length === 0 ? (
+                        <Text style={styles.formHint}>
+                          {tableOptions.length === 0 ? "לא הוגדרו שולחנות לאירוע." : "לא נמצאו שולחנות מתאימים לחיפוש."}
+                        </Text>
+                      ) : null}
+                    </View>
+                  </>
+                )}
               </View>
             </AppKeyboardAwareScrollView>
 
@@ -1756,6 +1789,12 @@ const styles = StyleSheet.create({
   },
   tableFilterClearText: { fontSize: 12, fontWeight: "900", color: colors.primary },
 
+  searchRow: {
+    marginTop: 8,
+    flexDirection: ROW_DIR,
+    alignItems: "center",
+    gap: 10,
+  },
   searchCard: {
     marginTop: 8,
     height: 54,
@@ -1768,7 +1807,23 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(0,0,0,0.06)",
   },
+  searchCardInline: { flex: 1, marginTop: 0 },
   searchInput: { flex: 1, fontSize: 15, fontWeight: "700", color: colors.text },
+  addGuestIconBtn: {
+    width: 54,
+    height: 54,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.primary,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+    shadowColor: colors.primary,
+    shadowOpacity: 0.22,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
+  },
 
   filtersRow: {
     marginTop: 12,
@@ -2311,19 +2366,22 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   mapHeaderRow: { flexDirection: ROW_DIR, alignItems: "center", justifyContent: "space-between", gap: 12 },
+  mapAddGuestBtn: {
+    minHeight: 38,
+    flexDirection: ROW_DIR,
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: colors.primary,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+  },
+  mapAddGuestBtnText: { fontSize: 12, fontWeight: "900", color: colors.white, textAlign: "center" },
   mapTitle: { fontSize: 16, fontWeight: "900", color: colors.text, textAlign: "right" },
   mapHint: { fontSize: 12, fontWeight: "800", color: colors.gray[600], textAlign: "right" },
   mapViewport: { flex: 1, position: "relative" },
-  phoneMapCard: {
-    marginTop: 12,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "rgba(15,23,42,0.08)",
-    backgroundColor: colors.white,
-    padding: 12,
-    gap: 10,
-    overflow: "hidden",
-  },
   mapZoomControls: {
     position: "absolute",
     left: 12,
@@ -2562,6 +2620,30 @@ const styles = StyleSheet.create({
   formStepValueWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
   formStepValue: { fontSize: 20, fontWeight: "900", color: colors.text, textAlign: "center" },
   formStepValueHint: { fontSize: 11, fontWeight: "800", color: colors.gray[600], textAlign: "center" },
+
+  selectedTableCard: {
+    flexDirection: ROW_DIR,
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    borderRadius: 16,
+    backgroundColor: "rgba(25,93,230,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(25,93,230,0.22)",
+  },
+  selectedTableCardIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.92)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  selectedTableCardTitle: { fontSize: 16, fontWeight: "900", color: colors.text, textAlign: "right" },
+  selectedTableCardMeta: { marginTop: 4, fontSize: 12, fontWeight: "800", color: colors.gray[600], textAlign: "right" },
+  changeTableLink: { alignSelf: ALIGN_RIGHT, marginTop: 8, paddingHorizontal: 4, paddingVertical: 4 },
+  changeTableLinkText: { fontSize: 12, fontWeight: "900", color: colors.primary, textAlign: "right" },
 
   tableOptionRow: {
     flexDirection: ROW_DIR,

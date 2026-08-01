@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Platform, Alert, Image, Modal, Animated, Switch, TextInput } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Platform, Alert, Image, Modal, Animated, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { colors } from '@/constants/colors';
@@ -9,7 +9,8 @@ import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import { Event } from '@/types';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { inferEventType, isFutureEventDate, isPastEventDate, MONTHS, type EventTimeFilter, type EventType } from '@/features/events/eventsConstants';
+import { isFutureEventDate, isPastEventDate, MONTHS, type EventTimeFilter } from '@/features/events/eventsConstants';
+import { EventListCard } from '@/features/events/EventListCard';
 import { useEventsListModel } from '@/features/events/useEventsListModel';
 import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
 import { ALIGN_RIGHT, IS_RTL, ROW_DIR, rtlText } from '@/lib/rtl';
@@ -21,23 +22,6 @@ const filterSheetTextDir = {
   writingDirection: 'rtl' as const,
 };
 import { useUserStore } from '@/store/userStore';
-
-const EVENT_IMAGE_BY_TYPE: Record<EventType, number> = {
-  חתונה: require('../../assets/images/wedding.jpg'),
-  'בר מצווה': require('../../assets/images/Bar Mitzvah.jpg'),
-  'בת מצווה': require('../../assets/images/Bar Mitzvah.jpg'),
-  ברית: require('../../assets/images/baby.jpg'),
-  'אירוע חברה': require('../../assets/images/wedding.jpg'),
-};
-
-function getEventDisplayTitle(rawTitle: string) {
-  const title = String(rawTitle || '').trim();
-  if (!title) return '';
-  const eventType = inferEventType(title);
-  if (!eventType) return title;
-  const withoutTypePrefix = title.replace(new RegExp(`^${eventType}\\s*[–—-]\\s*`), '').trim();
-  return withoutTypePrefix || title;
-}
 
 export default function AdminEventsScreen() {
   const router = useRouter();
@@ -155,14 +139,6 @@ export default function AdminEventsScreen() {
     extrapolate: 'clamp',
   });
   const baseHeaderSpacerHeight = insets.top + 10 + headerContentHeight;
-
-  // UI
-  const today = new Date();
-  const getDaysLeft = (date: Date | string) => {
-    const d = new Date(date);
-    const diff = Math.ceil((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-    return diff >= 0 ? `עוד ${diff} ימים` : 'עבר';
-  };
 
   return (
     <View style={styles.screen}>
@@ -388,138 +364,18 @@ export default function AdminEventsScreen() {
               ) : null}
             </View>
           ) : (
-            visibleEvents.map(event => {
-              const dateObj = new Date(event.date);
-              const dayNum = dateObj.toLocaleDateString('he-IL', { day: '2-digit' });
-              const monthName = MONTHS[dateObj.getMonth()];
-              const fullDateLabel = rtlText(dateObj.toLocaleDateString('he-IL', {
-                weekday: 'long',
-                day: '2-digit',
-                month: 'long',
-              }));
-              const eventType = inferEventType(event.title) || 'חתונה';
-              const invitationImageUrl = String(event.invitationImageUrl ?? '').trim();
-              const coverSource: any = invitationImageUrl ? { uri: invitationImageUrl } : EVENT_IMAGE_BY_TYPE[eventType];
-              const locationLabel = rtlText([event.location, event.city].filter(Boolean).join(', '));
-              const ownerNameLabel = rtlText(String(event.userName ?? '').trim());
-              const eventTitleLabel = rtlText(getEventDisplayTitle(String(event.title ?? '')));
-
-              return (
-                <View key={event.id} style={styles.eventBlock}>
-                  <TouchableOpacity
-                    onPress={() => router.push({ pathname: '/(admin)/admin-event-details', params: { id: event.id } })}
-                    style={styles.eventCard}
-                    activeOpacity={0.92}
-                  >
-                    <View style={styles.cardImageWrap}>
-                      <Image source={coverSource} style={styles.coverImg} resizeMode="cover" />
-                      <LinearGradient
-                        colors={['rgba(6,23,62,0.02)', 'rgba(6,23,62,0.45)']}
-                        style={styles.coverGradient}
-                      />
-
-                      <View style={styles.dateBadgeCard}>
-                        <Text style={styles.dateBadgeDay}>{dayNum}</Text>
-                        <Text style={styles.dateBadgeMonth}>{monthName}</Text>
-                      </View>
-
-                      <LinearGradient
-                        colors={['rgba(6,23,62,0.96)', 'rgba(0,53,102,0.92)']}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 1 }}
-                        style={styles.countdownPill}
-                      >
-                        <Text style={styles.countdownPillText}>{getDaysLeft(event.date)}</Text>
-                      </LinearGradient>
-
-                      {event.userName ? (
-                        <View style={styles.ownerPillOnImage}>
-                          <Ionicons name="person-outline" size={12} color={colors.white} />
-                          <Text style={styles.ownerPillOnImageText} numberOfLines={1}>
-                            {ownerNameLabel}
-                          </Text>
-                        </View>
-                      ) : null}
-                    </View>
-
-                    <LinearGradient
-                      colors={['rgba(255,255,255,0.98)', 'rgba(249,247,242,0.98)']}
-                      style={styles.eventCardBody}
-                    >
-                      <View style={styles.eventCardHeader}>
-                        <View style={styles.eventTypePillBody}>
-                          <Text style={styles.eventTypePillBodyText} numberOfLines={1}>
-                            {eventTitleLabel}
-                          </Text>
-                        </View>
-
-                        <View style={styles.eventTitleWrap}>
-                          {locationLabel ? (
-                            <View style={styles.locationMetaCard}>
-                              <View style={styles.locationMetaIconWrap}>
-                                <Ionicons name="location" size={12} color={colors.white} />
-                              </View>
-                              <Text style={styles.locationMetaText} numberOfLines={1}>
-                                {locationLabel}
-                              </Text>
-                            </View>
-                          ) : null}
-                        </View>
-                      </View>
-
-                      <View style={styles.metaGrid}>
-                        {typeof event.guests === 'number' && event.guests > 0 ? (
-                          <View style={styles.metaCard}>
-                            <Ionicons name="people-outline" size={15} color={colors.primary} />
-                            <Text style={styles.metaCardText}>{event.guests} מוזמנים</Text>
-                          </View>
-                        ) : null}
-                      </View>
-
-                      <TouchableOpacity
-                        activeOpacity={1}
-                        onPress={(e) => e.stopPropagation?.()}
-                        style={styles.approvalRow}
-                      >
-                        <View style={styles.approvalLeft}>
-                          {event.isApproved === false ? (
-                            <View style={styles.approvalBadgePending}>
-                              <Ionicons name="time-outline" size={12} color="#92400E" />
-                              <Text style={styles.approvalBadgePendingText}>ממתין לאישור</Text>
-                            </View>
-                          ) : (
-                            <View style={styles.approvalBadgeApproved}>
-                              <Ionicons name="checkmark-circle" size={12} color="#065F46" />
-                              <Text style={styles.approvalBadgeApprovedText}>מאושר</Text>
-                            </View>
-                          )}
-                        </View>
-                        <View style={styles.approvalRight}>
-                          <Text style={styles.approvalLabel}>
-                            {event.isApproved === false ? 'אשר אירוע' : 'ביטול אישור'}
-                          </Text>
-                          <Switch
-                            value={event.isApproved !== false}
-                            onValueChange={(val) => handleToggleApproval(event, val)}
-                            disabled={approvingEventId === event.id}
-                            trackColor={{ false: '#FCD34D', true: '#86EFAC' }}
-                            thumbColor={event.isApproved !== false ? '#059669' : '#D97706'}
-                            ios_backgroundColor="#FCD34D"
-                          />
-                        </View>
-                      </TouchableOpacity>
-
-                      <View style={styles.cardFooterRow}>
-                        <View style={styles.openActionPill}>
-                          <Text style={styles.openActionText}>לפרטי האירוע</Text>
-                          <Ionicons name="chevron-back" size={15} color={colors.white} />
-                        </View>
-                      </View>
-                    </LinearGradient>
-                  </TouchableOpacity>
-                </View>
-              );
-            })
+            visibleEvents.map((event, index) => (
+              <EventListCard
+                key={event.id}
+                event={event}
+                index={index}
+                onPress={() =>
+                  router.push({ pathname: '/(admin)/admin-event-details', params: { id: event.id } })
+                }
+                onToggleApproval={handleToggleApproval}
+                approvingEventId={approvingEventId}
+              />
+            ))
           )}
         </View>
       </AppKeyboardAwareScrollView>
@@ -1154,348 +1010,7 @@ const styles = StyleSheet.create({
   timelineWrap: {
     paddingHorizontal: 14,
     paddingTop: 0,
-    gap: 14,
-  },
-  eventBlock: {
-    paddingHorizontal: 4,
-  },
-  eventCard: {
-    width: '100%',
-    borderRadius: 30,
-    overflow: 'hidden',
-    backgroundColor: 'rgba(255,255,255,0.92)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.8)',
-    shadowColor: colors.black,
-    shadowOpacity: 0.10,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 5,
-  },
-  cardImageWrap: {
-    width: '100%',
-    aspectRatio: 16 / 9.2,
-    position: 'relative',
-  },
-  coverImg: {
-    ...StyleSheet.absoluteFillObject,
-    width: '100%',
-    height: '100%',
-  },
-  coverGradient: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  dateBadgeCard: {
-    position: 'absolute',
-    top: 14,
-    end: 14,
-    minWidth: 58,
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.90)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.65)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  dateBadgeDay: {
-    fontSize: 22,
-    lineHeight: 24,
-    fontWeight: '900',
-    color: colors.primary,
-    textAlign: 'center',
-  },
-  dateBadgeMonth: {
-    marginTop: 2,
-    fontSize: 12,
-    fontWeight: '800',
-    color: colors.gray[600],
-    textAlign: 'center',
-  },
-  countdownPill: {
-    position: 'absolute',
-    start: 14,
-    bottom: 14,
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 9,
-    paddingHorizontal: 16,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.24)',
-    shadowColor: colors.richBlack,
-    shadowOpacity: 0.16,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 4,
-  },
-  countdownPillText: {
-    fontSize: 12,
-    fontWeight: '900',
-    color: '#F6E7BD',
-    letterSpacing: 0.2,
-  },
-  eventCardBody: {
-    padding: 16,
-    gap: 14,
-  },
-  eventCardHeader: {
-    gap: 10,
-  },
-  eventTitleWrap: {
-    gap: 5,
-    alignSelf: 'stretch',
-  },
-  eventTitleNew: {
-    fontSize: 20,
-    fontWeight: '900',
-    color: colors.text,
-    textAlign: 'right',
-    writingDirection: 'rtl',
-    lineHeight: 26,
-    alignSelf: 'stretch',
-  },
-  eventDateLine: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.gray[600],
-    textAlign: 'right',
-    writingDirection: 'rtl',
-    alignSelf: 'stretch',
-  },
-  ownerPillOnImage: {
-    position: 'absolute',
-    end: 14,
-    bottom: 14,
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 7,
-    paddingHorizontal: 11,
-    borderRadius: 999,
-    backgroundColor: 'rgba(6,23,62,0.72)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.20)',
-    shadowColor: colors.black,
-    shadowOpacity: 0.18,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 3,
-  },
-  ownerPillOnImageText: {
-    fontSize: 12,
-    fontWeight: '900',
-    color: colors.white,
-    maxWidth: 160,
-  },
-  eventTypePillBody: {
-    alignSelf: ALIGN_RIGHT,
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    paddingVertical: 4,
-    paddingHorizontal: 2,
-  },
-  eventTypePillBodyText: {
-    fontSize: 20,
-    fontWeight: '900',
-  },
-  ownerPillInline: {
-    alignSelf: ALIGN_RIGHT,
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 999,
-    backgroundColor: 'rgba(6,23,62,0.06)',
-  },
-  ownerPillPlaceholder: {
-    alignSelf: ALIGN_RIGHT,
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 999,
-    backgroundColor: 'rgba(6,23,62,0.04)',
-  },
-  ownerPillPlaceholderText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: colors.primary,
-    textAlign: 'right',
-    writingDirection: 'rtl',
-  },
-  ownerAvatarWrap: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    overflow: 'hidden',
-    backgroundColor: colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  ownerAvatarImg: {
-    width: '100%',
-    height: '100%',
-  },
-  ownerBadgeText: {
-    fontSize: 12,
-    fontWeight: '900',
-    color: colors.text,
-    maxWidth: 180,
-    textAlign: 'right',
-    writingDirection: 'rtl',
-  },
-  metaGrid: {
-    flexDirection: ROW_DIR,
-    flexWrap: 'wrap',
-    gap: 8,
-    justifyContent: 'flex-start',
-    alignItems: 'flex-start',
-  },
-  metaCard: {
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.88)',
-    borderWidth: 1,
-    borderColor: 'rgba(6,23,62,0.06)',
-  },
-  locationMetaCard: {
-    alignSelf: ALIGN_RIGHT,
-    marginTop: 4,
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 999,
-    backgroundColor: 'rgba(232, 240, 255, 0.92)',
-    borderWidth: 1,
-    borderColor: 'rgba(6,23,62,0.06)',
-    shadowColor: colors.primary,
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
-  },
-  locationMetaIconWrap: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primary,
-  },
-  locationMetaText: {
-    fontSize: 12,
-    fontWeight: '900',
-    color: colors.text,
-    textAlign: 'right',
-    writingDirection: 'rtl',
-    maxWidth: 210,
-  },
-  metaCardText: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: colors.primary,
-    textAlign: 'right',
-  },
-  approvalRow: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    width: '100%',
-    marginTop: 10,
-    marginBottom: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 14,
-    backgroundColor: 'rgba(6, 23, 62, 0.04)',
-    borderWidth: 1,
-    borderColor: 'rgba(6, 23, 62, 0.08)',
-  },
-  approvalLeft: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-  },
-  approvalRight: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: 10,
-  },
-  approvalLabel: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: colors.primary,
-  },
-  approvalBadgePending: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
-    backgroundColor: 'rgba(254, 243, 199, 0.95)',
-    borderWidth: 1,
-    borderColor: 'rgba(217, 119, 6, 0.30)',
-  },
-  approvalBadgePendingText: {
-    fontSize: 11,
-    fontWeight: '900',
-    color: '#92400E',
-  },
-  approvalBadgeApproved: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
-    backgroundColor: 'rgba(209, 250, 229, 0.95)',
-    borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.30)',
-  },
-  approvalBadgeApprovedText: {
-    fontSize: 11,
-    fontWeight: '900',
-    color: '#065F46',
-  },
-  cardFooterRow: {
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: '100%',
-  },
-  openActionPill: {
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    width: '100%',
-    paddingVertical: 11,
-    paddingHorizontal: 16,
-    borderRadius: 999,
-    backgroundColor: colors.primary,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
-    shadowColor: colors.primary,
-    shadowOpacity: 0.16,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 3,
-  },
-  openActionText: {
-    fontSize: 12,
-    fontWeight: '900',
-    color: colors.white,
-    textAlign: 'right',
+    gap: 18,
   },
 
   emptyStateCard: {

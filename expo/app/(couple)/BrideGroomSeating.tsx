@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated, Pressable, ActivityIndicator, Modal, TextInput, FlatList, useWindowDimensions, Alert, PanResponder, Platform, StatusBar, ViewStyle } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated, Pressable, ActivityIndicator, Modal, TextInput, FlatList, useWindowDimensions, Alert, PanResponder, Platform, StatusBar, ViewStyle, BackHandler } from 'react-native';
 import Svg, { Defs, Line, Pattern, Rect } from 'react-native-svg';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Reanimated, {
@@ -34,11 +34,12 @@ import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
 import { SeatingGridReadonly } from '../seating/web/SeatingGridReadonly';
 import { CELL_SIZE, DEFAULT_GRID_COLS, DEFAULT_GRID_ROWS, tableCellSize, type Orientation, type TableType } from '../seating/web/_types';
 import { BlurView } from 'expo-blur';
-import { ALIGN_RIGHT, IS_RTL, ROW_DIR } from '@/lib/rtl';
+import { ALIGN_RIGHT, IS_RTL, ROW_DIR, ROW_REVERSE_DIR } from '@/lib/rtl';
 import { TableSeatRing, getTableSeatBorderColor, getTableSeatFillColor } from '@/components/couple/TableSeatRing';
 import { SeatingViewHeader, type SeatingViewMode } from '@/components/couple/SeatingViewHeader';
 import { NavyCardBackground } from '@/components/couple/NavyCardBackground';
 import { SeatingTablesGridView, type SeatingGridTableItem } from '@/components/couple/SeatingTablesGridView';
+import BackSwipe from '@/components/BackSwipe';
 
 const TABLE_PANEL_DURATION = 500;
 const TABLE_NAME_MAX_LENGTH = 10;
@@ -220,6 +221,21 @@ export default function BrideGroomSeating() {
     }
     return isAdminContext ? '/(admin)/admin-events' : '/(couple)';
   }, [isAdminContext, resolvedEventId]);
+
+  const handleBack = useCallback(() => {
+    router.replace(eventBackHref as any);
+  }, [eventBackHref, router]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (Platform.OS !== 'android') return;
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        handleBack();
+        return true;
+      });
+      return () => sub.remove();
+    }, [handleBack])
+  );
 
   const [tables, setTables] = useState<Table[]>([]);
   const [guests, setGuests] = useState<any[]>([]);
@@ -1706,6 +1722,7 @@ export default function BrideGroomSeating() {
   );
 
   return (
+    <BackSwipe fallbackHref={eventBackHref} onBack={handleBack}>
     <View style={styles.container}>
       <Stack.Screen options={{ headerShown: false }} />
       <StatusBar barStyle="light-content" backgroundColor="#152949" />
@@ -1713,13 +1730,25 @@ export default function BrideGroomSeating() {
       <View style={styles.seatingHeaderShell}>
         <NavyCardBackground variant="compact" />
         <View style={[styles.seatingHeaderInner, { paddingTop: safeTopInset + 8 }]}>
-          <View style={styles.eventSwitcherInHeader}>
-            <EventSwitcher
-              userId={userData?.id}
-              selectedEventId={resolvedEventId}
-              onSelectEventId={handleSelectEventId}
-              label="אירוע פעיל"
-            />
+          <View style={[styles.headerNavRow, { flexDirection: ROW_REVERSE_DIR }]}>
+            <TouchableOpacity
+              onPress={handleBack}
+              style={styles.headerBackBtn}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="חזרה"
+            >
+              <Ionicons name="chevron-back" size={22} color="#FFFFFF" />
+            </TouchableOpacity>
+            <View style={styles.eventSwitcherInHeader}>
+              <EventSwitcher
+                userId={userData?.id}
+                selectedEventId={resolvedEventId}
+                onSelectEventId={handleSelectEventId}
+                label="אירוע פעיל"
+              />
+            </View>
+            <View style={styles.headerSideSpacer} />
           </View>
           <SeatingViewHeader
             flush
@@ -2404,6 +2433,7 @@ export default function BrideGroomSeating() {
 
       {/* Map only: rendered inside mapFrame above */}
     </View>
+    </BackSwipe>
   );
 }
 
@@ -2791,9 +2821,28 @@ const styles = StyleSheet.create({
     position: 'relative',
     zIndex: 2,
   },
-  eventSwitcherInHeader: {
+  headerNavRow: {
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingBottom: 4,
+  },
+  headerBackBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+  headerSideSpacer: {
+    width: 42,
+    height: 42,
+  },
+  eventSwitcherInHeader: {
+    flex: 1,
     alignItems: 'center',
   },
   mapFrame: {

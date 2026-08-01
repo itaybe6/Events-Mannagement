@@ -21,6 +21,7 @@ import { SeatingGridReadonly } from '../seating/web/SeatingGridReadonly';
 import { DEFAULT_GRID_COLS, DEFAULT_GRID_ROWS, tableCellSize, type Orientation, type TableType } from '../seating/web/_types';
 import type { Guest, Table } from '@/types';
 import AdminWebPageHeader from '@/components/desktop/AdminWebPageHeader';
+import { touchHitSlop, useResponsive } from '@/lib/responsive';
 
 const NO_TABLE_KEY = '__no_table__' as const;
 
@@ -107,12 +108,15 @@ function Switch({
   onPress,
   accessibilityLabel,
   saving,
+  large,
 }: {
   checked: boolean;
   disabled?: boolean;
   saving?: boolean;
   onPress: () => void;
   accessibilityLabel: string;
+  /** Touch sizing — this is the most-tapped control on the check-in screen. */
+  large?: boolean;
 }) {
   return (
     <Pressable
@@ -121,8 +125,10 @@ function Switch({
       accessibilityLabel={accessibilityLabel}
       onPress={onPress}
       disabled={disabled}
+      hitSlop={large ? { top: 8, bottom: 8, left: 6, right: 6 } : undefined}
       style={({ hovered, pressed }: any) => [
         ui.switchWrap,
+        large ? ui.switchWrapLarge : null,
         checked ? ui.switchWrapOn : null,
         disabled ? { opacity: 0.6 } : null,
         Platform.OS === 'web' && hovered ? ui.switchHover : null,
@@ -130,8 +136,14 @@ function Switch({
       ]}
     >
       <View style={[ui.switchTrack, checked ? ui.switchTrackOn : null]} />
-      <View style={[ui.switchThumb, checked ? ui.switchThumbOn : null]}>
-        {saving ? <ActivityIndicator size={12} color={colors.primary} /> : null}
+      <View
+        style={[
+          ui.switchThumb,
+          large ? ui.switchThumbLarge : null,
+          checked ? (large ? ui.switchThumbLargeOn : ui.switchThumbOn) : null,
+        ]}
+      >
+        {saving ? <ActivityIndicator size={large ? 16 : 12} color={colors.primary} /> : null}
       </View>
     </Pressable>
   );
@@ -143,10 +155,23 @@ function EmployeeGuestCheckinWebDesktopScreen() {
   const { eventId, returnTo } = useLocalSearchParams<{ eventId?: string; returnTo?: string }>();
   const resolvedEventId = useMemo(() => String(eventId || '').trim(), [eventId]);
   const { width, height } = useWindowDimensions();
-  const isLg = width >= 1024;
+  const {
+    isPhone,
+    isTablet,
+    isTabletPortrait,
+    isTouchLayout,
+  } = useResponsive();
+  const isMobile = isPhone;
+  // Side-by-side needs real horizontal room. A portrait iPad has the width for it
+  // on paper (1024pt on a 13") but the map ends up unusably squeezed, so key off
+  // orientation rather than raw width.
+  const isSideBySide = isTablet ? !isTabletPortrait : width >= 1024;
   const isNarrow = width < 520;
-  const isMobile = width < 768;
-  const metricsInOneRow = Platform.OS === 'web' && !isMobile;
+  const metricsInOneRow = Platform.OS === 'web' && width >= 768;
+  // Row controls stay visually compact so the list keeps its density, but their
+  // hit areas grow to the 44pt minimum on touch.
+  const stepBtnHitSlop = touchHitSlop(isTouchLayout ? 34 : 26, isTouchLayout);
+  const moveBtnHitSlop = touchHitSlop(isTouchLayout ? 40 : 36, isTouchLayout);
   const isAdminRoute = String(pathname || '').toLowerCase().includes('admin-guest-checkin');
   const fallbackToDetails = useMemo(
     () =>
@@ -304,10 +329,44 @@ function EmployeeGuestCheckinWebDesktopScreen() {
     const m = new Map<number, string>();
     tablesSorted.forEach((t) => {
       const n = parseTableNumber((t as any).number);
-      if (typeof n === 'number') m.set(n, t.id);
+      if (typeof n === 'number') m.set(n, String(t.id));
     });
     return m;
   }, [tablesSorted]);
+
+  const resolveTableIdForNumber = useCallback(
+    (num: number | null | undefined): string | null => {
+      if (num === null || num === undefined || !Number.isFinite(Number(num))) return null;
+      const n = Number(num);
+      const fromMap = tableIdByNumber.get(n);
+      if (fromMap) return fromMap;
+      const found = tablesSorted.find((t) => parseTableNumber((t as any).number) === n);
+      return found ? String(found.id) : null;
+    },
+    [tableIdByNumber, tablesSorted]
+  );
+
+  const syncTableSelection = useCallback(
+    (num: number) => {
+      const id = resolveTableIdForNumber(num);
+      setSelectedTableNumber((prev) => {
+        if (prev === num) {
+          setTableFilter(null);
+          return null;
+        }
+        if (id) setTableFilter(id);
+        else setTableFilter(null);
+        return num;
+      });
+    },
+    [resolveTableIdForNumber]
+  );
+
+  const resolveFocusedTableId = useCallback((): string | null => {
+    if (tableFilter && tableFilter !== NO_TABLE_KEY) return tableFilter;
+    if (selectedTableNumber !== null) return resolveTableIdForNumber(selectedTableNumber);
+    return null;
+  }, [resolveTableIdForNumber, selectedTableNumber, tableFilter]);
 
   const tableCapacityById = useMemo(() => {
     const m = new Map<string, number>();
@@ -363,13 +422,12 @@ function EmployeeGuestCheckinWebDesktopScreen() {
 
   const handlePressMapTableNumber = useCallback(
     (num: number | null | undefined) => {
-      if (!num) return;
-      const id = tableIdByNumber.get(Number(num));
-      if (!id) return;
-      setSelectedTableNumber((prev) => (prev === num ? null : num));
-      setTableFilter((prev) => (prev === id ? null : id));
+      if (num === null || num === undefined) return;
+      const n = Number(num);
+      if (!Number.isFinite(n)) return;
+      syncTableSelection(n);
     },
-    [tableIdByNumber]
+    [syncTableSelection]
   );
 
   const checkinSeatingMap = useMemo(() => {
@@ -685,14 +743,16 @@ function EmployeeGuestCheckinWebDesktopScreen() {
   }, [tableCapacityById, tableCapacityByNumber, tableLabelById, tableNumberById, visibleGuests]);
 
   const mapCardHeight = useMemo(() => {
-    if (!height || !isLg) return 620;
-    return Math.max(620, Math.round(height - 120));
-  }, [height, isLg]);
+    if (!height) return 620;
+    if (isSideBySide) return Math.max(620, Math.round(height - 120));
+    if (isTablet) return Math.round(Math.min(720, Math.max(500, height * 0.52)));
+    return Math.round(Math.min(560, Math.max(420, height * 0.48)));
+  }, [height, isSideBySide, isTablet]);
 
   const guestListMaxHeight = useMemo(() => {
-    if (!height || !isLg) return undefined;
+    if (!height || !isSideBySide) return undefined;
     return Math.max(420, Math.round(height - 360));
-  }, [height, isLg]);
+  }, [height, isSideBySide]);
 
   const guestsListEstimatedHeight = useMemo(() => {
     // Heuristic so the list "shrinks to fit" when there are few guests.
@@ -719,24 +779,23 @@ function EmployeeGuestCheckinWebDesktopScreen() {
   }, [groupedVisibleGuests, collapsedTableGroups]);
 
   const shouldScrollGuests = useMemo(() => {
-    if (isLg) return true;
+    if (isSideBySide) return true;
     if (!guestListMaxHeight) return false;
     return guestsListEstimatedHeight > guestListMaxHeight;
-  }, [guestListMaxHeight, guestsListEstimatedHeight, isLg]);
+  }, [guestListMaxHeight, guestsListEstimatedHeight, isSideBySide]);
 
   const guestsColWidth = useMemo(() => {
-    if (!isLg) return undefined as number | undefined;
+    if (!isSideBySide) return undefined as number | undefined;
     const w = Number(width) || 0;
-    // Give the guests panel a bit more room so longer names fit better.
+    if (w < 1200) return Math.max(340, Math.min(400, Math.round(w * 0.34)));
     return Math.max(450, Math.min(520, Math.round(w * 0.38)));
-  }, [isLg, width]);
+  }, [isSideBySide, width]);
 
   const stickyTop = useMemo(() => {
     if (Platform.OS !== 'web') return 0;
-    if (!isLg) return 0;
-    // Keep a tiny gap from the top on web.
+    if (!isSideBySide) return 0;
     return 8;
-  }, [isLg]);
+  }, [isSideBySide]);
 
   const handleRefreshAll = useCallback(async () => {
     await Promise.all([refresh(), loadTables(), fetchWebSketch()]);
@@ -846,7 +905,24 @@ function EmployeeGuestCheckinWebDesktopScreen() {
   const [addPeople, setAddPeople] = useState(1);
   const [addTableQuery, setAddTableQuery] = useState('');
   const [addTableId, setAddTableId] = useState<string | null>(null);
+  const [addTablePickerExpanded, setAddTablePickerExpanded] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
+
+  const addSelectedTableOption = useMemo(() => {
+    if (!addTableId) return null;
+    return tableOptions.find((opt) => opt.id === addTableId) ?? null;
+  }, [addTableId, tableOptions]);
+
+  const addSelectedTableNumber = useMemo(() => {
+    if (selectedTableNumber !== null && resolveTableIdForNumber(selectedTableNumber) === addTableId) {
+      return selectedTableNumber;
+    }
+    if (!addTableId) return null;
+    for (const [num, id] of tableIdByNumber.entries()) {
+      if (id === addTableId) return num;
+    }
+    return null;
+  }, [addTableId, resolveTableIdForNumber, selectedTableNumber, tableIdByNumber]);
 
   const openAddModal = useCallback(() => {
     setAddName('');
@@ -854,21 +930,18 @@ function EmployeeGuestCheckinWebDesktopScreen() {
     setAddPeople(1);
     setAddTableQuery('');
     setAddError(null);
-    // Pre-select the table the usher is already focused on.
-    const focused =
-      tableFilter && tableFilter !== NO_TABLE_KEY
-        ? tableFilter
-        : selectedTableNumber
-          ? tableIdByNumber.get(Number(selectedTableNumber)) ?? null
-          : null;
-    setAddTableId(focused ?? null);
+    const focused = resolveFocusedTableId();
+    setAddTableId(focused);
+    // When a table is already selected on the map, focus on guest details — not another table list.
+    setAddTablePickerExpanded(!focused);
     setAddOpen(true);
-  }, [selectedTableNumber, tableFilter, tableIdByNumber]);
+  }, [resolveFocusedTableId]);
 
   const closeAddModal = useCallback(() => {
     setAddOpen(false);
     setAddError(null);
     setAddTableQuery('');
+    setAddTablePickerExpanded(false);
   }, []);
 
   const addOptions = useMemo(() => {
@@ -897,11 +970,14 @@ function EmployeeGuestCheckinWebDesktopScreen() {
 
   const confirmAddGuest = useCallback(async () => {
     setAddError(null);
+    const tableId =
+      addTableId ??
+      (selectedTableNumber !== null ? resolveTableIdForNumber(selectedTableNumber) : null);
     const result = await addWalkInGuest({
       name: addName,
       phone: addPhone,
       numberOfPeople: addPeople,
-      tableId: addTableId,
+      tableId,
     });
 
     if (!result.ok) {
@@ -911,11 +987,22 @@ function EmployeeGuestCheckinWebDesktopScreen() {
 
     // Make sure the freshly added guest is visible, and focus the table they were seated at.
     setFilter('all');
-    const seatedNumber = tableNumberForId(addTableId);
+    const seatedNumber = tableNumberForId(tableId);
     setSelectedTableNumber(seatedNumber);
-    if (seatedNumber !== null) setTableFilter(addTableId);
+    if (tableId) setTableFilter(tableId);
     closeAddModal();
-  }, [addName, addPeople, addPhone, addTableId, addWalkInGuest, closeAddModal, setFilter, tableNumberForId]);
+  }, [
+    addName,
+    addPeople,
+    addPhone,
+    addTableId,
+    addWalkInGuest,
+    closeAddModal,
+    resolveTableIdForNumber,
+    selectedTableNumber,
+    setFilter,
+    tableNumberForId,
+  ]);
 
   const isMoveSaving = Boolean(moveGuest && savingMoveId === moveGuest.id);
 
@@ -985,17 +1072,22 @@ function EmployeeGuestCheckinWebDesktopScreen() {
                     g.checkedInCount === null || g.checkedInCount === undefined ? people : Number(g.checkedInCount) || 0;
 
                   return (
-                    <View key={g.id} style={[styles.guestRowCompact, checkedIn ? styles.guestRowCompactOn : null, isMobile ? styles.guestRowCompactSm : null]}>
+                    <View key={g.id} style={[styles.guestRowCompact, checkedIn ? styles.guestRowCompactOn : null, isMobile ? styles.guestRowCompactSm : isTablet ? styles.guestRowCompactTablet : null]}>
                       <Pressable
                         accessibilityRole="button"
                         accessibilityLabel={`בחירת אורח ${g.name}`}
                         onPress={() => {
                           const next = typeof tableNumber === 'number' ? tableNumber : null;
-                          setSelectedTableNumber((prev) => (prev === next ? null : next));
+                          if (next === null) {
+                            setSelectedTableNumber(null);
+                            setTableFilter(null);
+                            return;
+                          }
+                          syncTableSelection(next);
                         }}
                         style={({ hovered, pressed }: any) => [
                           styles.guestRowMain,
-                          isMobile ? styles.guestRowMainSm : null,
+                          isMobile ? styles.guestRowMainSm : isTablet ? styles.guestRowMainTablet : null,
                           Platform.OS === 'web' && hovered ? ({ backgroundColor: 'rgba(6,23,62,0.03)', borderRadius: 12 } as any) : null,
                           pressed ? { opacity: 0.96 } : null,
                         ]}
@@ -1013,17 +1105,25 @@ function EmployeeGuestCheckinWebDesktopScreen() {
                         </View>
                       </Pressable>
 
-                      <View style={[styles.guestRowRight, isMobile ? styles.guestRowRightSm : null]}>
+                      <View
+                        style={[
+                          styles.guestRowRight,
+                          isTouchLayout && !isMobile ? styles.guestRowRightTouch : null,
+                          isMobile ? styles.guestRowRightSm : null,
+                        ]}
+                      >
                         <View style={styles.arrivalSlot}>
                           {checkedIn ? (
-                            <View style={styles.compactStepper}>
+                            <View style={[styles.compactStepper, isTouchLayout ? styles.compactStepperTouch : null]}>
                               <Pressable
                                 accessibilityRole="button"
                                 accessibilityLabel={`הפחת כמות שהגיעה עבור ${g.name}`}
                                 onPress={() => void setCheckedInCount(g, Math.max(0, arrivedCount - 1))}
                                 disabled={savingCountId === g.id || arrivedCount <= 0}
+                                hitSlop={stepBtnHitSlop}
                                 style={({ hovered, pressed }: any) => [
                                   styles.stepBtnCompact,
+                                  isTouchLayout ? styles.stepBtnCompactTouch : null,
                                   savingCountId === g.id || arrivedCount <= 0 ? styles.stepBtnDisabled : null,
                                   Platform.OS === 'web' && hovered ? styles.stepBtnHover : null,
                                   pressed ? { opacity: 0.92 } : null,
@@ -1078,8 +1178,10 @@ function EmployeeGuestCheckinWebDesktopScreen() {
                                 accessibilityLabel={`הגדל כמות שהגיעה עבור ${g.name}`}
                                 onPress={() => void setCheckedInCount(g, arrivedCount + 1)}
                                 disabled={savingCountId === g.id}
+                                hitSlop={stepBtnHitSlop}
                                 style={({ hovered, pressed }: any) => [
                                   styles.stepBtnCompact,
+                                  isTouchLayout ? styles.stepBtnCompactTouch : null,
                                   savingCountId === g.id ? styles.stepBtnDisabled : null,
                                   Platform.OS === 'web' && hovered ? styles.stepBtnHover : null,
                                   pressed ? { opacity: 0.92 } : null,
@@ -1097,6 +1199,7 @@ function EmployeeGuestCheckinWebDesktopScreen() {
                           checked={checkedIn}
                           saving={isSaving}
                           disabled={isSaving}
+                          large={isTouchLayout}
                           accessibilityLabel={checkedIn ? `סמן שלא הגיע: ${g.name}` : `סמן שהגיע: ${g.name}`}
                           onPress={() => void toggleCheckIn(g)}
                         />
@@ -1106,8 +1209,10 @@ function EmployeeGuestCheckinWebDesktopScreen() {
                           accessibilityLabel={`העבר אורח ${g.name} לשולחן אחר`}
                           onPress={() => openMoveModal(g)}
                           disabled={isSaving || savingMoveId === g.id}
+                          hitSlop={moveBtnHitSlop}
                           style={({ hovered, pressed }: any) => [
                             styles.moveBtn,
+                            isTouchLayout ? styles.moveBtnTouch : null,
                             (isSaving || savingMoveId === g.id) ? styles.moveBtnDisabled : null,
                             Platform.OS === 'web' && hovered ? styles.moveBtnHover : null,
                             pressed ? { opacity: 0.92 } : null,
@@ -1200,8 +1305,8 @@ function EmployeeGuestCheckinWebDesktopScreen() {
           </View>
 
           <View style={styles.topDashboardWrap}>
-            <View style={Platform.OS === 'web' && isLg ? ({ position: 'sticky', top: stickyTop } as any) : null}>
-              <View style={[styles.card, styles.dashboardCard, styles.heroMainCard, isLg ? styles.dashboardCardTop : null]}>
+            <View style={Platform.OS === 'web' && isSideBySide ? ({ position: 'sticky', top: stickyTop } as any) : null}>
+              <View style={[styles.card, styles.dashboardCard, styles.heroMainCard, isSideBySide ? styles.dashboardCardTop : null]}>
                 <View style={styles.dashboardHeader}>
                   <View style={styles.dashboardHeaderLeft}>
                     <View style={styles.dashboardHeaderIcon}>
@@ -1219,7 +1324,7 @@ function EmployeeGuestCheckinWebDesktopScreen() {
                   </View>
                 </View>
 
-                <View style={[styles.dashboardBody, isLg ? styles.dashboardBodyTop : null]}>
+                <View style={[styles.dashboardBody, isSideBySide ? styles.dashboardBodyTop : null]}>
                   <View style={[styles.metricsGrid, metricsInOneRow ? styles.metricsGridTop : null]}>
                     <CheckinOverviewStat
                       compact={metricsInOneRow}
@@ -1257,23 +1362,23 @@ function EmployeeGuestCheckinWebDesktopScreen() {
             </View>
           </View>
 
-          <View style={[styles.content, !isLg ? styles.contentSm : styles.contentLg]}>
+          <View style={[styles.content, !isSideBySide ? styles.contentSm : styles.contentLg]}>
 
             <View
               style={[
                 styles.guestsCol,
-                !isLg ? styles.colSm : styles.guestsColLg,
-                isLg && guestsColWidth ? ({ width: guestsColWidth } as any) : null,
+                !isSideBySide ? (isTablet ? styles.colTablet : styles.colSm) : styles.guestsColLg,
+                isSideBySide && guestsColWidth ? ({ width: guestsColWidth } as any) : null,
               ]}
             >
               <View
                 style={
-                  Platform.OS === 'web' && isLg
+                  Platform.OS === 'web' && isSideBySide
                     ? ({ position: 'sticky', top: stickyTop, alignSelf: 'stretch', flex: 1 } as any)
                     : null
                 }
               >
-                <View style={[styles.card, styles.guestListCard, isLg ? ({ minHeight: mapCardHeight } as any) : null]}>
+                <View style={[styles.card, styles.guestListCard, isSideBySide ? ({ minHeight: mapCardHeight } as any) : null]}>
                   <View style={styles.cardHeaderRow}>
                     <View style={styles.panelHeaderCopy}>
                       <Text style={styles.panelEyebrow}>אורחים</Text>
@@ -1286,6 +1391,7 @@ function EmployeeGuestCheckinWebDesktopScreen() {
                       onPress={openAddModal}
                       style={({ hovered, pressed }: any) => [
                         styles.addGuestBtn,
+                        isTouchLayout ? styles.addGuestBtnTouch : null,
                         Platform.OS === 'web' && hovered ? styles.addGuestBtnHover : null,
                         pressed ? { opacity: 0.92 } : null,
                       ]}
@@ -1297,7 +1403,10 @@ function EmployeeGuestCheckinWebDesktopScreen() {
                       <Pressable
                         accessibilityRole="button"
                         accessibilityLabel="נקה סינון שולחן"
-                        onPress={() => setTableFilter(null)}
+                        onPress={() => {
+                          setSelectedTableNumber(null);
+                          setTableFilter(null);
+                        }}
                         style={({ hovered, pressed }: any) => [
                           styles.linkBtn,
                           Platform.OS === 'web' && hovered ? styles.linkBtnHover : null,
@@ -1328,6 +1437,7 @@ function EmployeeGuestCheckinWebDesktopScreen() {
                           onPress={() => setFilter(option.key)}
                           style={({ hovered, pressed }: any) => [
                             styles.panelFilterChip,
+                            isTouchLayout ? styles.panelFilterChipTouch : null,
                             active ? styles.panelFilterChipActive : null,
                             Platform.OS === 'web' && hovered && !active ? styles.panelFilterChipHover : null,
                             pressed ? { opacity: 0.94 } : null,
@@ -1363,7 +1473,7 @@ function EmployeeGuestCheckinWebDesktopScreen() {
                     />
                   </View>
 
-                  <View style={[styles.listWrap, isLg ? styles.listWrapFill : null, { marginTop: 12 }]}>
+                  <View style={[styles.listWrap, isSideBySide ? styles.listWrapFill : null, { marginTop: 12 }]}>
                     {loading ? (
                       <View style={styles.loadingRow}>
                         <ActivityIndicator size="large" color={colors.primary} />
@@ -1391,13 +1501,13 @@ function EmployeeGuestCheckinWebDesktopScreen() {
                     ) : shouldScrollGuests ? (
                       <ScrollView
                         style={
-                          isLg
+                          isSideBySide
                             ? ({ flex: 1, minHeight: guestListMaxHeight, maxHeight: guestListMaxHeight } as any)
                             : guestListMaxHeight
                               ? ({ maxHeight: guestListMaxHeight } as any)
                               : undefined
                         }
-                        contentContainerStyle={isLg ? ({ flexGrow: 1 } as any) : undefined}
+                        contentContainerStyle={isSideBySide ? ({ flexGrow: 1 } as any) : undefined}
                         showsVerticalScrollIndicator={false}
                         nestedScrollEnabled
                       >
@@ -1411,12 +1521,12 @@ function EmployeeGuestCheckinWebDesktopScreen() {
               </View>
             </View>
 
-            <View style={[styles.main, !isLg ? styles.mainSm : null]}>
+            <View style={[styles.main, !isSideBySide ? styles.mainSm : null]}>
               <View
                 style={[
                   styles.card,
                   styles.mapCard,
-                  Platform.OS === 'web' && isLg ? ({ position: 'sticky', top: stickyTop } as any) : null,
+                  Platform.OS === 'web' && isSideBySide ? ({ position: 'sticky', top: stickyTop } as any) : null,
                   { minHeight: mapCardHeight },
                 ]}
               >
@@ -1432,6 +1542,22 @@ function EmployeeGuestCheckinWebDesktopScreen() {
                   </View>
 
                   <View style={styles.mapCardHeaderSide}>
+                    {selectedTableNumber ? (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`הוסף מוזמן לשולחן ${selectedTableNumber}`}
+                        onPress={openAddModal}
+                        style={({ hovered, pressed }: any) => [
+                          styles.mapAddGuestBtn,
+                          Platform.OS === 'web' && hovered ? styles.mapAddGuestBtnHover : null,
+                          pressed ? { opacity: 0.92 } : null,
+                        ]}
+                      >
+                        <Ionicons name="person-add" size={16} color={colors.white} />
+                        <Text style={styles.mapAddGuestBtnText}>הוסף לשולחן {selectedTableNumber}</Text>
+                      </Pressable>
+                    ) : null}
+
                     <View style={styles.mapStatusPill}>
                       <View
                         style={[
@@ -1696,10 +1822,20 @@ function EmployeeGuestCheckinWebDesktopScreen() {
             accessibilityRole="button"
             accessibilityLabel="סגור הוספת מוזמן"
             onPress={closeAddModal}
-            style={styles.modalBackdropPressable}
+            style={
+              addTableId && !addTablePickerExpanded && !isNarrow && !isMobile
+                ? styles.modalBackdropPressableMapSide
+                : styles.modalBackdropPressable
+            }
           />
 
-          <View style={[styles.modalCard, (isNarrow || isMobile) ? styles.modalCardNarrow : null]}>
+          <View
+            style={[
+              styles.modalCard,
+              isNarrow || isMobile ? styles.modalCardNarrow : null,
+              addTableId && !addTablePickerExpanded && !isNarrow && !isMobile ? styles.modalCardMapSide : null,
+            ]}
+          >
             <View style={styles.modalHeader}>
               <Pressable
                 accessibilityRole="button"
@@ -1714,7 +1850,11 @@ function EmployeeGuestCheckinWebDesktopScreen() {
                 <Ionicons name="close" size={18} color={colors.gray[700]} />
               </Pressable>
               <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-end' }}>
-                <Text style={styles.modalKicker}>מוזמן חדש בכניסה</Text>
+                <Text style={styles.modalKicker}>
+                  {addSelectedTableNumber !== null && !addTablePickerExpanded
+                    ? `הוספה לשולחן ${addSelectedTableNumber}`
+                    : 'מוזמן חדש בכניסה'}
+                </Text>
               </View>
             </View>
 
@@ -1813,107 +1953,149 @@ function EmployeeGuestCheckinWebDesktopScreen() {
 
               <View style={styles.formField}>
                 <Text style={styles.formLabel}>הושבה בשולחן</Text>
-                <Text style={styles.formHint}>אפשר להושיב את המוזמן בכל שולחן, גם אם לא הוקצה לו מקום במפה.</Text>
-
-                <View style={[styles.modalSearchWrap, { marginTop: 10 }]}>
-                  <View style={styles.modalSearchIcon}>
-                    <Ionicons name="search" size={18} color={colors.primary} />
-                  </View>
-                  <TextInput
-                    style={[styles.modalSearchInput, Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : null]}
-                    placeholder="חיפוש שולחן..."
-                    placeholderTextColor="rgba(107,114,128,0.75)"
-                    value={addTableQuery}
-                    onChangeText={setAddTableQuery}
-                    textAlign="right"
-                    autoCapitalize="none"
-                  />
-                </View>
-
-                <View style={{ marginTop: 12 }}>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="בחר ללא שולחן"
-                    onPress={() => setAddTableId(null)}
-                    style={({ hovered, pressed }: any) => [
-                      styles.modalOptionRow,
-                      addTableId === null ? styles.modalOptionRowSelected : null,
-                      Platform.OS === 'web' && hovered ? styles.modalOptionRowHover : null,
-                      pressed ? { opacity: 0.94 } : null,
-                    ]}
-                  >
-                    <Text style={styles.modalOptionText}>ללא שולחן</Text>
-                    <Ionicons
-                      name={addTableId === null ? 'checkmark-circle' : 'ellipse-outline'}
-                      size={20}
-                      color={addTableId === null ? colors.primary : 'rgba(156,163,175,0.9)'}
-                    />
-                  </Pressable>
-
-                  {addOptions.length === 0 ? (
-                    <Text style={styles.formHint}>לא נמצאו שולחנות מתאימים לחיפוש.</Text>
-                  ) : null}
-
-                  {addOptions.map((opt) => (
+                {addTableId && !addTablePickerExpanded ? (
+                  <>
+                    <View style={styles.selectedTableCard}>
+                      <View style={styles.selectedTableCardIcon}>
+                        <Ionicons name="restaurant" size={18} color={colors.primary} />
+                      </View>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={styles.selectedTableCardTitle}>
+                          {addSelectedTableOption?.label ??
+                            (addSelectedTableNumber !== null ? `שולחן ${addSelectedTableNumber}` : 'שולחן נבחר')}
+                        </Text>
+                        {addSelectedTableOption && addSelectedTableOption.capacity > 0 ? (
+                          <Text style={styles.selectedTableCardMeta}>
+                            יושבים: {previewSeatedForAddOption(addSelectedTableOption.id, addSelectedTableOption.seated)}{' '}
+                            מתוך {addSelectedTableOption.capacity}
+                          </Text>
+                        ) : (
+                          <Text style={styles.selectedTableCardMeta}>המוזמן יושב בשולחן שבחרת במפה</Text>
+                        )}
+                      </View>
+                      <Ionicons name="checkmark-circle" size={22} color={colors.primary} />
+                    </View>
                     <Pressable
-                      key={opt.id}
                       accessibilityRole="button"
-                      accessibilityLabel={`הושב ב${opt.label}`}
-                      onPress={() => setAddTableId(opt.id)}
+                      accessibilityLabel="שנה שולחן"
+                      onPress={() => setAddTablePickerExpanded(true)}
                       style={({ hovered, pressed }: any) => [
-                        styles.modalOptionRow,
-                        addTableId === opt.id ? styles.modalOptionRowSelected : null,
-                        Platform.OS === 'web' && hovered ? styles.modalOptionRowHover : null,
-                        pressed ? { opacity: 0.94 } : null,
+                        styles.changeTableLink,
+                        Platform.OS === 'web' && hovered ? styles.changeTableLinkHover : null,
+                        pressed ? { opacity: 0.92 } : null,
                       ]}
                     >
-                      <View style={{ flex: 1, minWidth: 0 }}>
-                        <Text style={styles.modalOptionText} numberOfLines={1}>
-                          {opt.label}
-                        </Text>
-                        {opt.capacity > 0 ? (
-                          <View style={styles.modalOptionMetaRow}>
-                            <Ionicons name="person" size={14} color="rgba(107,114,128,0.9)" />
-                            <Text style={styles.modalOptionMeta} numberOfLines={1}>
-                              יושבים: {previewSeatedForAddOption(opt.id, opt.seated)} מתוך {opt.capacity}
-                            </Text>
-                          </View>
-                        ) : null}
-                      </View>
-                      <View style={styles.modalOptionRight}>
-                        {opt.capacity > 0
-                          ? (() => {
-                              if (opt.shape === 'reserve') {
-                                return (
-                                  <View style={styles.modalBadgeReserve}>
-                                    <Text style={styles.modalBadgeReserveText}>רזרבה</Text>
-                                  </View>
-                                );
-                              }
-                              const overflow = previewOverflowForAddOption(opt.id, opt.seated, opt.capacity, opt.shape);
-                              if (overflow > 0) {
-                                return (
-                                  <View style={styles.modalBadgeOverflow}>
-                                    <Text style={styles.modalBadgeOverflowText}>חריגה {overflow}</Text>
-                                  </View>
-                                );
-                              }
-                              return (
-                                <View style={styles.modalBadgeOk}>
-                                  <Text style={styles.modalBadgeOkText}>פנוי</Text>
-                                </View>
-                              );
-                            })()
-                          : null}
-                        <Ionicons
-                          name={addTableId === opt.id ? 'checkmark-circle' : 'ellipse-outline'}
-                          size={20}
-                          color={addTableId === opt.id ? colors.primary : 'rgba(156,163,175,0.9)'}
-                        />
-                      </View>
+                      <Text style={styles.changeTableLinkText}>שנה שולחן</Text>
                     </Pressable>
-                  ))}
-                </View>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.formHint}>בחר שולחן להושבת המוזמן, או השאר ללא שולחן.</Text>
+
+                    <View style={[styles.modalSearchWrap, { marginTop: 10 }]}>
+                      <View style={styles.modalSearchIcon}>
+                        <Ionicons name="search" size={18} color={colors.primary} />
+                      </View>
+                      <TextInput
+                        style={[styles.modalSearchInput, Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : null]}
+                        placeholder="חיפוש שולחן..."
+                        placeholderTextColor="rgba(107,114,128,0.75)"
+                        value={addTableQuery}
+                        onChangeText={setAddTableQuery}
+                        textAlign="right"
+                        autoCapitalize="none"
+                      />
+                    </View>
+
+                    <View style={{ marginTop: 12 }}>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="בחר ללא שולחן"
+                        onPress={() => setAddTableId(null)}
+                        style={({ hovered, pressed }: any) => [
+                          styles.modalOptionRow,
+                          addTableId === null ? styles.modalOptionRowSelected : null,
+                          Platform.OS === 'web' && hovered ? styles.modalOptionRowHover : null,
+                          pressed ? { opacity: 0.94 } : null,
+                        ]}
+                      >
+                        <Text style={styles.modalOptionText}>ללא שולחן</Text>
+                        <Ionicons
+                          name={addTableId === null ? 'checkmark-circle' : 'ellipse-outline'}
+                          size={20}
+                          color={addTableId === null ? colors.primary : 'rgba(156,163,175,0.9)'}
+                        />
+                      </Pressable>
+
+                      {addOptions.length === 0 ? (
+                        <Text style={styles.formHint}>לא נמצאו שולחנות מתאימים לחיפוש.</Text>
+                      ) : null}
+
+                      {addOptions.map((opt) => (
+                        <Pressable
+                          key={opt.id}
+                          accessibilityRole="button"
+                          accessibilityLabel={`הושב ב${opt.label}`}
+                          onPress={() => {
+                            setAddTableId(opt.id);
+                            setAddTablePickerExpanded(false);
+                          }}
+                          style={({ hovered, pressed }: any) => [
+                            styles.modalOptionRow,
+                            addTableId === opt.id ? styles.modalOptionRowSelected : null,
+                            Platform.OS === 'web' && hovered ? styles.modalOptionRowHover : null,
+                            pressed ? { opacity: 0.94 } : null,
+                          ]}
+                        >
+                          <View style={{ flex: 1, minWidth: 0 }}>
+                            <Text style={styles.modalOptionText} numberOfLines={1}>
+                              {opt.label}
+                            </Text>
+                            {opt.capacity > 0 ? (
+                              <View style={styles.modalOptionMetaRow}>
+                                <Ionicons name="person" size={14} color="rgba(107,114,128,0.9)" />
+                                <Text style={styles.modalOptionMeta} numberOfLines={1}>
+                                  יושבים: {previewSeatedForAddOption(opt.id, opt.seated)} מתוך {opt.capacity}
+                                </Text>
+                              </View>
+                            ) : null}
+                          </View>
+                          <View style={styles.modalOptionRight}>
+                            {opt.capacity > 0
+                              ? (() => {
+                                  if (opt.shape === 'reserve') {
+                                    return (
+                                      <View style={styles.modalBadgeReserve}>
+                                        <Text style={styles.modalBadgeReserveText}>רזרבה</Text>
+                                      </View>
+                                    );
+                                  }
+                                  const overflow = previewOverflowForAddOption(opt.id, opt.seated, opt.capacity, opt.shape);
+                                  if (overflow > 0) {
+                                    return (
+                                      <View style={styles.modalBadgeOverflow}>
+                                        <Text style={styles.modalBadgeOverflowText}>חריגה {overflow}</Text>
+                                      </View>
+                                    );
+                                  }
+                                  return (
+                                    <View style={styles.modalBadgeOk}>
+                                      <Text style={styles.modalBadgeOkText}>פנוי</Text>
+                                    </View>
+                                  );
+                                })()
+                              : null}
+                            <Ionicons
+                              name={addTableId === opt.id ? 'checkmark-circle' : 'ellipse-outline'}
+                              size={20}
+                              color={addTableId === opt.id ? colors.primary : 'rgba(156,163,175,0.9)'}
+                            />
+                          </View>
+                        </Pressable>
+                      ))}
+                    </View>
+                  </>
+                )}
               </View>
             </ScrollView>
 
@@ -2019,6 +2201,7 @@ const styles = StyleSheet.create({
   // minWidth: 0 prevents the 400px base minWidth from forcing horizontal
   // overflow on phones.
   colSm: { width: '100%', maxWidth: 520, minWidth: 0, alignSelf: 'center' },
+  colTablet: { width: '100%', minWidth: 0, alignSelf: 'stretch' },
   main: { flex: 1, minWidth: 460, flexShrink: 0 },
   // When stacked (phone/tablet portrait) the map column must be allowed to
   // shrink to the viewport width instead of forcing a 460px horizontal scroll.
@@ -2203,7 +2386,7 @@ const styles = StyleSheet.create({
   overviewStatCard: {
     flexGrow: 1,
     flexBasis: '46%',
-    minWidth: 140,
+    minWidth: 120,
     minHeight: 104,
     paddingHorizontal: 16,
     paddingVertical: 14,
@@ -2427,6 +2610,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(203,213,225,0.9)',
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer', boxShadow: '0 6px 18px rgba(15,23,42,0.06)' } as any) : null),
   },
+  panelFilterChipTouch: { minHeight: 48, paddingHorizontal: 18, paddingVertical: 10 },
   panelFilterChipHover: { backgroundColor: 'rgba(241,245,249,1)', borderColor: 'rgba(148,163,184,0.45)' },
   panelFilterChipActive: {
     backgroundColor: 'rgba(25,93,230,0.10)',
@@ -2613,6 +2797,21 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
   mapCardHeaderSide: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
+  mapAddGuestBtn: {
+    minHeight: 38,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: colors.primary,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  mapAddGuestBtnHover: { opacity: 0.94 },
+  mapAddGuestBtnText: { fontSize: 12, fontWeight: '900', color: colors.white, textAlign: 'right' },
   mapStatusPill: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
@@ -2647,7 +2846,10 @@ const styles = StyleSheet.create({
   // On phones the name + controls (~196px) cannot fit on one line, so wrap the
   // controls onto a second row beneath the name.
   guestRowCompactSm: { flexWrap: 'wrap', alignItems: 'flex-start', minHeight: 0, paddingVertical: 12 },
+  // Tall enough to hold the 42pt touch stepper plus vertical padding.
+  guestRowCompactTablet: { minHeight: 68, paddingVertical: 12 },
   guestRowMainSm: { flexBasis: '100%', flexGrow: 1, flexShrink: 1 },
+  guestRowMainTablet: { flexBasis: 220, flexGrow: 1, flexShrink: 1 },
   guestRowRightSm: { width: '100%', justifyContent: 'flex-end', marginTop: 10 },
   guestRowAccent: {
     width: 4,
@@ -2669,9 +2871,12 @@ const styles = StyleSheet.create({
   },
   // Fixed controls width keeps the toggle in the same X position.
   guestRowRight: { width: 196, flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 },
+  // Touch controls are wider (62pt switch, 40pt move button, 34pt steppers), so
+  // the column has to grow with them or the move button clips.
+  guestRowRightTouch: { width: 240 },
   moveBtn: {
-    width: 32,
-    height: 32,
+    width: 36,
+    height: 36,
     borderRadius: 12,
     marginLeft: 12,
     marginRight: -6,
@@ -2682,6 +2887,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
+  moveBtnTouch: { width: 40, height: 40, borderRadius: 14 },
   moveBtnHover: { backgroundColor: 'rgba(15,23,42,0.06)' },
   moveBtnDisabled: { opacity: 0.55 },
   guestNameCompact: { fontSize: 14, fontWeight: '900', color: colors.text, textAlign: 'right' },
@@ -2711,6 +2917,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
   },
+  compactStepperTouch: { height: 42, borderRadius: 14 },
   stepBtnCompact: {
     width: 26,
     height: 26,
@@ -2721,6 +2928,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  stepBtnCompactTouch: { width: 34, height: 34, borderRadius: 12 },
   compactCountWrap: { minWidth: 20, alignItems: 'center', justifyContent: 'center' },
   compactCountText: { fontSize: 12, fontWeight: '900', color: colors.text, textAlign: 'center' },
   compactCountInput: {
@@ -2845,6 +3053,15 @@ const styles = StyleSheet.create({
     right: 452,
     backgroundColor: 'rgba(15,23,42,0.10)',
   },
+  modalBackdropPressableMapSide: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    // Scrim only the map side — keep the guest list fully visible on the right.
+    right: 452,
+    backgroundColor: 'rgba(15,23,42,0.10)',
+  },
   modalCard: {
     position: 'absolute',
     right: 16,
@@ -2863,6 +3080,10 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 10 },
     elevation: 3,
     ...(Platform.OS === 'web' ? ({ maxHeight: 'calc(100dvh - 32px)' } as any) : null),
+  },
+  modalCardMapSide: {
+    left: 16,
+    right: 'auto',
   },
   modalCardNarrow: {
     left: 0,
@@ -2985,6 +3206,38 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(6,23,62,0.16)',
   },
   modalBadgeReserveText: { fontSize: 12, fontWeight: '900', color: colors.primary, textAlign: 'center' },
+
+  selectedTableCard: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    borderRadius: 16,
+    backgroundColor: 'rgba(25,93,230,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(25,93,230,0.22)',
+  },
+  selectedTableCardIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selectedTableCardTitle: { fontSize: 16, fontWeight: '900', color: '#111827', textAlign: 'right' },
+  selectedTableCardMeta: { marginTop: 4, fontSize: 12, fontWeight: '800', color: '#6B7280', textAlign: 'right' },
+  changeTableLink: {
+    alignSelf: 'flex-end',
+    marginTop: 8,
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  changeTableLinkHover: { opacity: 0.85 },
+  changeTableLinkText: { fontSize: 12, fontWeight: '900', color: colors.primary, textAlign: 'right' },
+
   addGuestBtn: {
     flexShrink: 0,
     minHeight: 40,
@@ -3003,6 +3256,7 @@ const styles = StyleSheet.create({
     elevation: 2,
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
+  addGuestBtnTouch: { minHeight: 48, paddingHorizontal: 18 },
   addGuestBtnHover: { opacity: 0.94 },
   addGuestBtnText: { fontSize: 13, fontWeight: '900', color: colors.white, textAlign: 'right' },
   addGuestEmptyBtn: {
@@ -3128,6 +3382,7 @@ const ui = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.10)',
   },
+  switchWrapLarge: { width: 62, height: 34 },
   switchWrapOn: { backgroundColor: '#10B981', borderColor: 'rgba(16,185,129,0.35)' },
   switchHover: { opacity: 0.98 },
   switchTrack: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, borderRadius: 999 },
@@ -3145,6 +3400,8 @@ const ui = StyleSheet.create({
     right: 2,
   },
   switchThumbOn: { right: 22 - 2, backgroundColor: colors.white, borderColor: 'rgba(15,23,42,0.12)' },
+  switchThumbLarge: { width: 30, height: 30 },
+  switchThumbLargeOn: { right: 30 - 2, backgroundColor: colors.white, borderColor: 'rgba(15,23,42,0.12)' },
 });
 
 export default function EmployeeGuestCheckinWebScreen() {

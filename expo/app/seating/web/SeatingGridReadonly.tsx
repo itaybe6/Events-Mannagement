@@ -234,6 +234,53 @@ export function SeatingGridReadonly({
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
   }, [handleWheelZoom, isWeb, showZoomControls, viewport?.h, viewport?.w]);
+
+  // Pinch-to-zoom. On a tablet this is the expected gesture for a map; without it
+  // the only way to zoom is the +/- buttons, since there is no scroll wheel.
+  useEffect(() => {
+    if (!isWeb || !showZoomControls) return;
+    const el = workAreaRef.current as HTMLElement | null;
+    if (!el?.addEventListener) return;
+
+    let startDistance = 0;
+    let startZoom = 1;
+
+    const distanceOf = (touches: TouchList) => {
+      const [a, b] = [touches[0], touches[1]];
+      if (!a || !b) return 0;
+      return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    };
+
+    const onTouchStart = (ev: TouchEvent) => {
+      if (ev.touches.length !== 2) return;
+      startDistance = distanceOf(ev.touches);
+      startZoom = zoomRef.current;
+    };
+
+    const onTouchMove = (ev: TouchEvent) => {
+      if (ev.touches.length !== 2 || startDistance <= 0) return;
+      // Prevent Safari's own page zoom from fighting the map's transform.
+      ev.preventDefault();
+      const next = distanceOf(ev.touches);
+      if (next <= 0) return;
+      applyZoom(startZoom * (next / startDistance));
+    };
+
+    const onTouchEnd = (ev: TouchEvent) => {
+      if (ev.touches.length < 2) startDistance = 0;
+    };
+
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    el.addEventListener('touchend', onTouchEnd, { passive: true });
+    el.addEventListener('touchcancel', onTouchEnd, { passive: true });
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onTouchEnd);
+      el.removeEventListener('touchcancel', onTouchEnd);
+    };
+  }, [applyZoom, isWeb, showZoomControls]);
   const tableNumFontSize = Math.round(18 * textScale);
   const tableNameFontSize = Math.round(12 * textScale);
   const tableTypeFontSize = Math.round(11 * textScale);
@@ -631,7 +678,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: Platform.OS === 'web' ? 'flex-start' : 'center',
     padding: 0,
-    ...(Platform.OS === 'web' ? ({ overflow: 'auto', userSelect: 'none', WebkitUserSelect: 'none' } as any) : null),
+    ...(Platform.OS === 'web'
+      ? ({
+          overflow: 'auto',
+          userSelect: 'none',
+          WebkitUserSelect: 'none',
+          // One-finger drag still pans the map; two-finger pinch is handled by
+          // the zoom effect instead of the browser's own page zoom.
+          touchAction: 'pan-x pan-y',
+        } as any)
+      : null),
   },
   zoomControls: {
     position: 'absolute',

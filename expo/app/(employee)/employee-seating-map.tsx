@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Dimensions,
   Modal,
   Platform,
   Pressable,
@@ -11,6 +10,7 @@ import {
   Text,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -20,11 +20,10 @@ import { colors } from "@/constants/colors";
 import BackSwipe from "@/components/BackSwipe";
 import { useSeatingMapModel, type SeatingGuestRow, type SeatingTableRow } from "@/features/seating/useSeatingMapModel";
 
-const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
-
 export default function EmployeeSeatingMapScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const { eventId } = useLocalSearchParams<{ eventId?: string }>();
 
   const resolvedEventId = useMemo(() => String(eventId || "").trim(), [eventId]);
@@ -59,7 +58,7 @@ export default function EmployeeSeatingMapScreen() {
   const maxX = tables.length > 0 ? Math.max(...tables.map((t) => (typeof t.x === "number" ? t.x : screenWidth))) : screenWidth;
   const padding = 100;
   const canvasWidth = Math.max(screenWidth, maxX - minX + padding * 2);
-  const canvasHeight = Math.max(screenHeight * 1.4, 900);
+  const canvasHeight = Math.max(screenHeight * (screenWidth >= 768 ? 1.1 : 1.4), screenWidth >= 768 ? 700 : 900);
 
   const openTable = (tableId: string) => {
     setActiveTableId(tableId);

@@ -37,6 +37,12 @@ import { userService, type UserWithMetadata } from '@/lib/services/userService';
 import { pulseemBalanceService } from '@/lib/services/pulseemBalanceService';
 import { useUserStore } from '@/store/userStore';
 import { rtlText } from '@/lib/rtl';
+import { gridColumns, touchHitSlop, useResponsive } from '@/lib/responsive';
+
+/** Horizontal padding applied by `filterBarOuter` / `scrollContent`. */
+const PAGE_GUTTER = 24;
+/** Below this an event card's date, status and action row stop fitting on one line. */
+const MIN_EVENT_CARD_WIDTH = 340;
 
 const HERO_IMAGES = {
   baby: require('../../assets/images/baby.jpg'),
@@ -235,6 +241,8 @@ function getStatusMeta(date: Date | string) {
 
 export function AdminEventsListWebScreen() {
   const { width } = useWindowDimensions();
+  const { isTouchLayout } = useResponsive();
+  const iconBtnHitSlop = touchHitSlop(36, isTouchLayout);
   const router = useRouter();
   const userType = useUserStore((state) => state.userType);
   const isEmployeeWebUser = Platform.OS === 'web' && userType === 'employee';
@@ -443,7 +451,10 @@ export function AdminEventsListWebScreen() {
   const hasExactDateFilter = Boolean(filterDate);
   const hasRangeFilter = Boolean(filterStartDate || filterEndDate);
   const hasMonthFilter = Boolean(filterMonth) && !hasExactDateFilter && !hasRangeFilter;
-  const eventGridColumns = width >= 1680 ? 4 : width >= 1380 ? 3 : width >= 1040 ? 2 : 1;
+  // Derive columns from the width the grid actually gets (page minus its 24px
+  // gutters) rather than the raw window width, so an iPad lands on 2 usable
+  // columns instead of 1 giant card in portrait / 3 cramped ones in landscape.
+  const eventGridColumns = gridColumns(width - PAGE_GUTTER * 2, MIN_EVENT_CARD_WIDTH, 4);
   const eventCardWidthStyle = {
     width: eventGridColumns === 4 ? '23.5%' : eventGridColumns === 3 ? '31.8%' : eventGridColumns === 2 ? '48.8%' : '100%',
   } as const;
@@ -1040,6 +1051,7 @@ export function AdminEventsListWebScreen() {
                             accessibilityRole="button"
                             accessibilityLabel={`מחיקת אירוע ${e.title}`}
                             onPress={(pressEvent) => handleDeletePress(e, pressEvent)}
+                            hitSlop={iconBtnHitSlop}
                             style={({ hovered, pressed }: any) => [
                               styles.deleteIconBtnModern,
                               Platform.OS === 'web' && hovered ? styles.deleteIconBtnModernHover : null,
@@ -2692,7 +2704,13 @@ const styles = StyleSheet.create({
 
 export default function AdminEventsWebScreen() {
   const { width } = useWindowDimensions();
-  const isCompactDesktop = width < 1360;
+  const { isTablet, isTabletPortrait, isTouchLayout } = useResponsive();
+  // Stack the side column only when the two columns genuinely stop fitting.
+  // A 1194pt iPad in landscape has room for main + side; portrait does not.
+  const isCompactDesktop = isTablet ? isTabletPortrait : width < 1360;
+  // The year steppers are 36pt squares — grow their hit area on touch without
+  // changing how they look on a mouse-driven desktop.
+  const yearBtnHitSlop = touchHitSlop(36, isTouchLayout);
 
   const router = useRouter();
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -3162,6 +3180,7 @@ export default function AdminEventsWebScreen() {
                     accessibilityLabel="שנה קודמת"
                     onPress={() => setSelectedYear((year) => year - 1)}
                     disabled={!canPrevYear}
+                    hitSlop={yearBtnHitSlop}
                     style={({ hovered, pressed }: any) => [
                       dashboardStyles.yearBtn,
                       Platform.OS === 'web' && hovered ? dashboardStyles.yearBtnHover : null,
@@ -3184,6 +3203,7 @@ export default function AdminEventsWebScreen() {
                     accessibilityLabel="שנה הבאה"
                     onPress={() => setSelectedYear((year) => year + 1)}
                     disabled={!canNextYear}
+                    hitSlop={yearBtnHitSlop}
                     style={({ hovered, pressed }: any) => [
                       dashboardStyles.yearBtn,
                       Platform.OS === 'web' && hovered ? dashboardStyles.yearBtnHover : null,
@@ -3653,7 +3673,13 @@ export default function AdminEventsWebScreen() {
 
           </View>
 
-          <View style={[dashboardStyles.dashboardSideColumn, isCompactDesktop ? dashboardStyles.dashboardSideColumnCompact : null]}>
+          <View
+            style={[
+              dashboardStyles.dashboardSideColumn,
+              isTablet && !isCompactDesktop ? dashboardStyles.dashboardSideColumnTablet : null,
+              isCompactDesktop ? dashboardStyles.dashboardSideColumnCompact : null,
+            ]}
+          >
             <View style={[dashboardStyles.sectionCard, isCompactDesktop ? dashboardStyles.dashboardSideSectionCardCompact : null]}>
               <View style={dashboardStyles.sectionHeader}>
                 <View style={dashboardStyles.sectionHeaderTextWrap}>
@@ -4495,6 +4521,10 @@ const dashboardStyles = StyleSheet.create({
   dashboardSideColumn: {
     width: 340,
     gap: 18,
+  },
+  dashboardSideColumnTablet: {
+    width: 300,
+    gap: 14,
   },
   dashboardSideColumnCompact: {
     width: '100%',

@@ -3,8 +3,6 @@ import { LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-nati
 import { Ionicons } from '@expo/vector-icons';
 import Reanimated, {
   Easing,
-  interpolate,
-  type SharedValue,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
@@ -31,8 +29,6 @@ type SeatingViewHeaderProps = {
   flush?: boolean;
 };
 
-const AnimatedPressable = Reanimated.createAnimatedComponent(Pressable);
-
 function ViewModeToggle({
   viewMode,
   onChangeViewMode,
@@ -42,8 +38,6 @@ function ViewModeToggle({
 }) {
   const [trackWidth, setTrackWidth] = useState(0);
   const slideIndex = useSharedValue(viewMode === 'map' ? 1 : 0);
-  const mapScale = useSharedValue(1);
-  const gridScale = useSharedValue(1);
 
   useEffect(() => {
     slideIndex.value = withSpring(viewMode === 'map' ? 1 : 0, SLIDE_SPRING);
@@ -57,36 +51,34 @@ function ViewModeToggle({
     transform: [{ translateX: slideIndex.value * segmentWidth }],
   }));
 
-  const mapIconStyle = useAnimatedStyle(() => {
-    const active = slideIndex.value > 0.5;
-    return {
-      transform: [{ scale: active ? 1.08 : 1 }],
-      opacity: interpolate(slideIndex.value, [0, 1], [0.55, 1]),
-    };
-  });
-
-  const gridIconStyle = useAnimatedStyle(() => {
-    const active = slideIndex.value < 0.5;
-    return {
-      transform: [{ scale: active ? 1.08 : 1 }],
-      opacity: interpolate(slideIndex.value, [0, 1], [1, 0.55]),
-    };
-  });
-
   const onTrackLayout = (e: LayoutChangeEvent) => {
     const w = e.nativeEvent.layout.width;
     if (w > 0 && w !== trackWidth) setTrackWidth(w);
   };
 
-  const pressIn = (scale: SharedValue<number>) => {
-    scale.value = withTiming(0.94, { duration: 90, easing: Easing.out(Easing.quad) });
+  const renderSegment = (
+    mode: SeatingViewMode,
+    label: string,
+    icon: keyof typeof Ionicons.glyphMap,
+    accessibilityLabel: string
+  ) => {
+    const selected = viewMode === mode;
+    return (
+      <Pressable
+        key={mode}
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel}
+        accessibilityState={{ selected }}
+        onPress={() => onChangeViewMode(mode)}
+        style={({ pressed }) => [styles.toggleSegment, pressed ? styles.toggleSegmentPressed : null]}
+      >
+        <Ionicons name={icon} size={16} color={selected ? DNAVY : 'rgba(255,255,255,0.92)'} />
+        <Text style={[styles.toggleText, selected ? styles.toggleTextActive : styles.toggleTextInactive]}>
+          {label}
+        </Text>
+      </Pressable>
+    );
   };
-  const pressOut = (scale: SharedValue<number>) => {
-    scale.value = withSpring(1, { damping: 14, stiffness: 320 });
-  };
-
-  const mapSegmentStyle = useAnimatedStyle(() => ({ transform: [{ scale: mapScale.value }] }));
-  const gridSegmentStyle = useAnimatedStyle(() => ({ transform: [{ scale: gridScale.value }] }));
 
   return (
     <View style={styles.toggleTrack} onLayout={onTrackLayout}>
@@ -95,43 +87,8 @@ function ViewModeToggle({
       ) : null}
 
       <View style={[styles.toggleSegments, { flexDirection: ROW_DIR }]}>
-        <AnimatedPressable
-          accessibilityRole="button"
-          accessibilityLabel="תצוגת מפה"
-          accessibilityState={{ selected: viewMode === 'map' }}
-          onPress={() => onChangeViewMode('map')}
-          onPressIn={() => pressIn(mapScale)}
-          onPressOut={() => pressOut(mapScale)}
-          style={[styles.toggleSegment, mapSegmentStyle]}
-        >
-          <Reanimated.View style={[styles.toggleIconWrap, mapIconStyle]}>
-            <Ionicons
-              name="location-sharp"
-              size={15}
-              color={viewMode === 'map' ? DNAVY : '#FFFFFF'}
-            />
-          </Reanimated.View>
-          <Text style={[styles.toggleText, viewMode === 'map' ? styles.toggleTextActive : styles.toggleTextInactive]}>
-            מפה
-          </Text>
-        </AnimatedPressable>
-
-        <AnimatedPressable
-          accessibilityRole="button"
-          accessibilityLabel="תצוגת רשת"
-          accessibilityState={{ selected: viewMode === 'grid' }}
-          onPress={() => onChangeViewMode('grid')}
-          onPressIn={() => pressIn(gridScale)}
-          onPressOut={() => pressOut(gridScale)}
-          style={[styles.toggleSegment, gridSegmentStyle]}
-        >
-          <Reanimated.View style={[styles.toggleIconWrap, gridIconStyle]}>
-            <Ionicons name="grid" size={15} color={viewMode === 'grid' ? DNAVY : '#FFFFFF'} />
-          </Reanimated.View>
-          <Text style={[styles.toggleText, viewMode === 'grid' ? styles.toggleTextActive : styles.toggleTextInactive]}>
-            רשת
-          </Text>
-        </AnimatedPressable>
+        {renderSegment('map', 'מפה', 'location-sharp', 'תצוגת מפה')}
+        {renderSegment('grid', 'רשת', 'grid', 'תצוגת רשת')}
       </View>
     </View>
   );
@@ -227,11 +184,12 @@ const styles = StyleSheet.create({
   toggleTrack: {
     position: 'relative',
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'rgba(0,0,0,0.24)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.14)',
+    borderColor: 'rgba(255,255,255,0.16)',
     padding: TRACK_PAD,
-    minHeight: 46,
+    minHeight: 48,
+    overflow: 'hidden',
   },
   toggleSlider: {
     position: 'absolute',
@@ -241,9 +199,9 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: '#FFFFFF',
     shadowColor: '#000000',
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.22,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
     elevation: 4,
   },
   toggleSegments: {
@@ -255,20 +213,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    paddingHorizontal: 8,
+    gap: 7,
+    paddingVertical: 11,
+    paddingHorizontal: 10,
+    borderRadius: 999,
   },
-  toggleIconWrap: {
-    alignItems: 'center',
-    justifyContent: 'center',
+  toggleSegmentPressed: {
+    opacity: 0.88,
   },
   toggleText: {
     fontSize: 14,
     fontWeight: '800',
   },
   toggleTextInactive: {
-    color: '#FFFFFF',
+    color: 'rgba(255,255,255,0.88)',
   },
   toggleTextActive: {
     color: DNAVY,

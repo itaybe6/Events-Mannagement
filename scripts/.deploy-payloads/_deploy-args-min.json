@@ -1,0 +1,1 @@
+{"name":"process-scheduled-notification-sms","entrypoint_path":"index.ts","verify_jwt":true,"files":[{"name":"index.ts","contentLen":31228,"contentHash":"baa7fd5255063dc0"},{"name":"../_shared/whatsapp.ts","contentLen":10594,"contentHash":"7fddc4a1ee7f775f"}]}

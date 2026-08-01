@@ -1,9 +1,10 @@
 import React from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { Pressable, Platform, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { usePathname, useRouter } from 'expo-router';
 
 import { colors } from '@/constants/colors';
+import { TOUCH_TARGET, useResponsive } from '@/lib/responsive';
 import { useUserStore } from '@/store/userStore';
 
 const NAV_ITEMS = [
@@ -32,42 +33,59 @@ export default function AdminWebTopNav({ inset = false }: Props) {
   const pathname = usePathname();
   const router = useRouter();
   const userType = useUserStore((state) => state.userType);
+  const { isTouchLayout, isTablet } = useResponsive();
   const normalizedPathname = normalizeHref(pathname || '/');
   const navItems = userType === 'employee' ? EMPLOYEE_WEB_NAV_ITEMS : NAV_ITEMS;
 
-  return (
-    <View style={[styles.row, inset ? styles.rowInset : null]}>
-      {navItems.map((item) => {
-        const normalizedHref = normalizeHref(item.href);
-        const active =
-          normalizedPathname === normalizedHref || normalizedPathname.startsWith(normalizedHref + '/');
+  const items = navItems.map((item) => {
+    const normalizedHref = normalizeHref(item.href);
+    const active =
+      normalizedPathname === normalizedHref || normalizedPathname.startsWith(normalizedHref + '/');
 
-        return (
-          <Pressable
-            key={item.href}
-            accessibilityRole="button"
-            accessibilityLabel={`מעבר לעמוד ${item.label}`}
-            onPress={() => router.push(item.href)}
-            style={({ hovered, pressed }: any) => [
-              styles.item,
-              active ? styles.itemActive : null,
-              Platform.OS === 'web' && hovered && !active ? styles.itemHover : null,
-              pressed ? styles.itemPressed : null,
-            ]}
-          >
-            <View style={styles.itemContent}>
-              <Ionicons
-                name={item.icon}
-                size={16}
-                color={active ? '#FFFFFF' : '#6C7A90'}
-              />
-              <Text style={[styles.text, active ? styles.textActive : null]}>{item.label}</Text>
-            </View>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
+    return (
+      <Pressable
+        key={item.href}
+        accessibilityRole="button"
+        accessibilityLabel={`מעבר לעמוד ${item.label}`}
+        onPress={() => router.push(item.href)}
+        style={({ hovered, pressed }: any) => [
+          styles.item,
+          isTouchLayout ? styles.itemTouch : null,
+          active ? styles.itemActive : null,
+          Platform.OS === 'web' && hovered && !active ? styles.itemHover : null,
+          pressed ? styles.itemPressed : null,
+        ]}
+      >
+        <View style={styles.itemContent}>
+          <Ionicons
+            name={item.icon}
+            size={isTouchLayout ? 19 : 16}
+            color={active ? '#FFFFFF' : '#6C7A90'}
+          />
+          <Text style={[styles.text, isTouchLayout ? styles.textTouch : null, active ? styles.textActive : null]}>
+            {item.label}
+          </Text>
+        </View>
+      </Pressable>
+    );
+  });
+
+  // On a tablet the nav would otherwise wrap to two or three rows and push the
+  // actual page content below the fold. Scroll it sideways instead.
+  if (isTablet) {
+    return (
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={[styles.scroll, inset ? styles.rowInset : null]}
+        contentContainerStyle={styles.scrollContent}
+      >
+        {items}
+      </ScrollView>
+    );
+  }
+
+  return <View style={[styles.row, inset ? styles.rowInset : null]}>{items}</View>;
 }
 
 const styles = StyleSheet.create({
@@ -81,6 +99,17 @@ const styles = StyleSheet.create({
   rowInset: {
     marginBottom: 18,
   },
+  scroll: {
+    alignSelf: 'stretch',
+    flexGrow: 0,
+    ...(Platform.OS === 'web' ? ({ overscrollBehaviorX: 'contain' } as any) : null),
+  },
+  scrollContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 2,
+  },
   item: {
     minHeight: 42,
     paddingHorizontal: 18,
@@ -90,6 +119,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  itemTouch: {
+    minHeight: TOUCH_TARGET + 6,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
   },
   itemContent: {
     flexDirection: 'row',
@@ -116,6 +150,9 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#6C7A90',
     textAlign: 'right',
+  },
+  textTouch: {
+    fontSize: 15,
   },
   textActive: {
     color: '#FFFFFF',

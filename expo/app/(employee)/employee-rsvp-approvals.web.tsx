@@ -15,6 +15,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { colors } from '@/constants/colors';
 import DesktopTopBar, { TopBarIconButton } from '@/components/desktop/DesktopTopBar';
 import { useRsvpApprovalsModel } from '@/features/rsvp/useRsvpApprovalsModel';
+import { useResponsive } from '@/lib/responsive';
 import { Guest } from '@/types';
 
 const sanitizePhone = (raw: string) => (raw || '').replace(/[^\d+]/g, '');
@@ -99,6 +100,7 @@ export default function EmployeeRsvpApprovalsWebScreen() {
   const router = useRouter();
   const { eventId } = useLocalSearchParams<{ eventId?: string }>();
   const resolvedEventId = useMemo(() => String(eventId || '').trim(), [eventId]);
+  const { isTouchLayout } = useResponsive();
   const [filterOpen, setFilterOpen] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
 
@@ -359,7 +361,7 @@ export default function EmployeeRsvpApprovalsWebScreen() {
                               <MetaPill icon="people-outline" label={`אורחים ${g.numberOfPeople || 1}`} />
                               <MetaPill icon="grid-outline" label={tableLabel || 'ללא שולחן'} />
 
-                              <View style={styles.rowActions}>
+                              <View style={[styles.rowActions, isTouchLayout ? styles.rowActionsTouch : null]}>
                                 <Pressable
                                   accessibilityRole="button"
                                   accessibilityLabel={phoneOk ? `התקשר אל ${g.name}` : `אין מספר טלפון ל${g.name}`}
@@ -367,6 +369,7 @@ export default function EmployeeRsvpApprovalsWebScreen() {
                                   disabled={!phoneOk || isSaving}
                                   style={({ hovered, pressed }: any) => [
                                     styles.iconBtn,
+                                    isTouchLayout ? styles.iconBtnTouch : null,
                                     !phoneOk ? { opacity: 0.35 } : null,
                                     Platform.OS === 'web' && hovered ? styles.iconBtnHover : null,
                                     pressed ? { opacity: 0.92 } : null,
@@ -384,6 +387,7 @@ export default function EmployeeRsvpApprovalsWebScreen() {
                                       disabled={isSaving}
                                       style={({ hovered, pressed }: any) => [
                                         styles.iconBtn,
+                                      isTouchLayout ? styles.iconBtnTouch : null,
                                         styles.iconBtnDecline,
                                         Platform.OS === 'web' && hovered ? styles.iconBtnHover : null,
                                         pressed ? { opacity: 0.92 } : null,
@@ -399,6 +403,7 @@ export default function EmployeeRsvpApprovalsWebScreen() {
                                       disabled={isSaving}
                                       style={({ hovered, pressed }: any) => [
                                         styles.iconBtn,
+                                      isTouchLayout ? styles.iconBtnTouch : null,
                                         styles.iconBtnMaybe,
                                         Platform.OS === 'web' && hovered ? styles.iconBtnHover : null,
                                         pressed ? { opacity: 0.92 } : null,
@@ -414,6 +419,7 @@ export default function EmployeeRsvpApprovalsWebScreen() {
                                       disabled={isSaving}
                                       style={({ hovered, pressed }: any) => [
                                         styles.iconBtn,
+                                      isTouchLayout ? styles.iconBtnTouch : null,
                                         styles.iconBtnConfirm,
                                         Platform.OS === 'web' && hovered ? styles.iconBtnHover : null,
                                         pressed ? { opacity: 0.92 } : null,
@@ -429,6 +435,7 @@ export default function EmployeeRsvpApprovalsWebScreen() {
                                     onPress={() => setEditingId(g.id)}
                                     style={({ hovered, pressed }: any) => [
                                       styles.iconBtn,
+                                      isTouchLayout ? styles.iconBtnTouch : null,
                                       Platform.OS === 'web' && hovered ? styles.iconBtnHover : null,
                                       pressed ? { opacity: 0.92 } : null,
                                     ]}
@@ -749,6 +756,9 @@ const styles = StyleSheet.create({
   metaPillText: { fontSize: 11, fontWeight: '900', color: colors.gray[700], textAlign: 'right' },
 
   rowActions: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, marginRight: 2 },
+  // Confirm sits next to decline, so on touch these need real size and spacing
+  // rather than overlapping hit slop.
+  rowActionsTouch: { gap: 12 },
   iconBtn: {
     width: 34,
     height: 34,
@@ -760,6 +770,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(15,23,42,0.06)',
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
+  iconBtnTouch: { width: 44, height: 44 },
   iconBtnHover: { backgroundColor: 'rgba(15,23,42,0.06)' },
   iconBtnDecline: { backgroundColor: 'rgba(239, 68, 68, 0.10)', borderColor: 'rgba(239, 68, 68, 0.16)' },
   iconBtnMaybe: { backgroundColor: 'rgba(37, 99, 235, 0.10)', borderColor: 'rgba(37, 99, 235, 0.16)' },

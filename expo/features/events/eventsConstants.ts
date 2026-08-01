@@ -30,6 +30,14 @@ export const EVENT_BADGE_META: Record<
   'אירוע חברה': { icon: 'briefcase', tint: 'rgba(0, 53, 102, 0.85)' },
 };
 
+export const EVENT_IMAGE_BY_TYPE: Record<EventType, number> = {
+  חתונה: require('../../assets/images/wedding.jpg'),
+  'בר מצווה': require('../../assets/images/Bar Mitzvah.jpg'),
+  'בת מצווה': require('../../assets/images/Bar Mitzvah.jpg'),
+  ברית: require('../../assets/images/baby.jpg'),
+  'אירוע חברה': require('../../assets/images/wedding.jpg'),
+};
+
 export function inferEventType(title: string): EventType | null {
   const t = (title || '').trim();
   const match = EVENT_TYPES.find((et) => t.startsWith(et) || t.includes(et));

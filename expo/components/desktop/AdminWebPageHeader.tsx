@@ -1,8 +1,9 @@
 import React from 'react';
 import { Image } from 'expo-image';
-import { Platform, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 
 import { colors } from '@/constants/colors';
+import { useResponsive } from '@/lib/responsive';
 
 import AdminProfileShortcutBadge from './AdminProfileShortcutBadge';
 import AdminWebTopNav from './AdminWebTopNav';
@@ -36,10 +37,10 @@ export default function AdminWebPageHeader({
   showNav = true,
   useDefaultActions = true,
 }: Props) {
-  const { width } = useWindowDimensions();
-  const isMobile = width < 768;
+  const { isPhone, isTablet } = useResponsive();
+  const isMobile = isPhone;
   const leadingContent = leading ?? (
-    <View style={[styles.logoWrap, isMobile ? styles.logoWrapMobile : null]}>
+    <View style={[styles.logoWrap, isMobile ? styles.logoWrapMobile : isTablet ? styles.logoWrapTablet : null]}>
       <Image source={APP_LOGO} style={styles.logoImg} contentFit="contain" transition={0} />
     </View>
   );
@@ -104,14 +105,14 @@ export default function AdminWebPageHeader({
   }
 
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, isTablet ? styles.cardTablet : null]}>
       <View style={styles.topRow}>
         <View style={styles.identity}>
           <View style={styles.leadingWrap}>{leadingContent}</View>
 
           <View style={styles.textWrap}>
             {eyebrow ? <Text style={styles.eyebrow}>{eyebrow}</Text> : null}
-            <Text style={styles.title}>{title}</Text>
+            <Text style={[styles.title, isTablet ? styles.titleTablet : null]}>{title}</Text>
             {titleMeta ? <View style={styles.titleMetaWrap}>{titleMeta}</View> : null}
           </View>
         </View>
@@ -188,6 +189,14 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     gap: 14,
   },
+  // iPad: trim the desktop chrome so the header does not eat a third of a
+  // portrait viewport, while keeping the full nav row.
+  cardTablet: {
+    minHeight: 0,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+    gap: 14,
+  },
   topRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -246,6 +255,11 @@ const styles = StyleSheet.create({
     height: 54,
     borderRadius: 16,
   },
+  logoWrapTablet: {
+    width: 64,
+    height: 64,
+    borderRadius: 18,
+  },
   logoImg: {
     width: '88%',
     height: '88%',
@@ -281,6 +295,9 @@ const styles = StyleSheet.create({
   },
   titleMobile: {
     fontSize: 20,
+  },
+  titleTablet: {
+    fontSize: 24,
   },
   actions: {
     flexDirection: 'row',

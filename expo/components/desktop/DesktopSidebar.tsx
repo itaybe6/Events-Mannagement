@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors } from '@/constants/colors';
+import { TOUCH_TARGET, useResponsive } from '@/lib/responsive';
 
 export type DesktopNavItem = {
   href: string;
@@ -20,18 +21,37 @@ type Props = {
   navItems: DesktopNavItem[];
   footer?: React.ReactNode;
   variant?: 'default' | 'admin';
+  /** `rail` collapses to icons only — used on portrait tablets where a 270px sidebar starves the content. */
+  mode?: 'hidden' | 'rail' | 'full';
 };
 
-export default function DesktopSidebar({ title, subtitle, navItems, footer, variant = 'default' }: Props) {
+export default function DesktopSidebar({
+  title,
+  subtitle,
+  navItems,
+  footer,
+  variant = 'default',
+  mode = 'full',
+}: Props) {
   const pathname = usePathname();
   const router = useRouter();
-  const hasBrandText = Boolean(title) || Boolean(subtitle);
+  const { sidebarWidth, isTouchLayout } = useResponsive();
+  const isRail = mode === 'rail';
+  const hasBrandText = (Boolean(title) || Boolean(subtitle)) && !isRail;
   const isAdminVariant = variant === 'admin';
 
+  if (mode === 'hidden') return null;
+
   return (
-    <View style={[styles.sidebar, isAdminVariant ? styles.sidebarAdmin : null]}>
-      <View style={[styles.top, isAdminVariant ? styles.topAdmin : null]}>
-        <View style={[styles.brand, isAdminVariant ? styles.brandAdmin : null]}>
+    <View
+      style={[
+        styles.sidebar,
+        isAdminVariant ? styles.sidebarAdmin : null,
+        sidebarWidth ? { width: sidebarWidth } : null,
+      ]}
+    >
+      <View style={[styles.top, isAdminVariant ? styles.topAdmin : null, isRail ? styles.topRail : null]}>
+        <View style={[styles.brand, isAdminVariant ? styles.brandAdmin : null, isRail ? styles.brandRail : null]}>
           <View style={styles.brandRow}>
             <Pressable
               onPress={() => null}
@@ -40,6 +60,7 @@ export default function DesktopSidebar({ title, subtitle, navItems, footer, vari
               style={({ hovered, pressed }: any) => [
                 styles.logoBox,
                 isAdminVariant ? styles.logoBoxAdmin : null,
+                isRail ? styles.logoBoxRail : null,
                 Platform.OS === 'web' && hovered ? (isAdminVariant ? styles.logoBoxAdminHover : styles.logoBoxHover) : null,
                 pressed ? styles.logoBoxPressed : null,
               ]}
@@ -58,9 +79,14 @@ export default function DesktopSidebar({ title, subtitle, navItems, footer, vari
                 end={{ x: 1, y: 0 }}
                 style={styles.logoShine}
               />
-              <Image source={APP_LOGO} style={styles.logoImg} contentFit="contain" transition={0} />
+              <Image
+                source={APP_LOGO}
+                style={isRail ? styles.logoImgRail : styles.logoImg}
+                contentFit="contain"
+                transition={0}
+              />
             </Pressable>
-            {isAdminVariant ? (
+            {isAdminVariant && !isRail ? (
               <View style={styles.adminIntro}>
                 <Text style={styles.adminEyebrow}>ניהול מערכת</Text>
                 <Text style={styles.adminIntroTitle}>לוח בקרה</Text>
@@ -92,7 +118,7 @@ export default function DesktopSidebar({ title, subtitle, navItems, footer, vari
           // @ts-expect-error - react-native-web supports these props on ScrollView
           alwaysBounceVertical={false}
         >
-          {isAdminVariant ? (
+          {isAdminVariant && !isRail ? (
             <View style={styles.adminSectionHeader}>
               <Text style={styles.adminSectionEyebrow}>ניווט</Text>
               <View style={styles.adminSectionDivider} />
@@ -113,6 +139,8 @@ export default function DesktopSidebar({ title, subtitle, navItems, footer, vari
                 style={({ hovered, pressed }: any) => [
                   styles.navItem,
                   isAdminVariant ? styles.navItemAdmin : null,
+                  isRail ? styles.navItemRail : null,
+                  isTouchLayout ? styles.navItemTouch : null,
                   active ? (isAdminVariant ? styles.navItemAdminActive : styles.navItemActive) : null,
                   Platform.OS === 'web' && hovered && !active
                     ? isAdminVariant
@@ -151,10 +179,17 @@ export default function DesktopSidebar({ title, subtitle, navItems, footer, vari
                   return (
                     <>
                       {active && isAdminVariant ? <View style={styles.navActiveRail} /> : null}
-                      <Text style={labelStyles} numberOfLines={1}>
-                        {item.label}
-                      </Text>
-                      <Ionicons name={item.icon} size={18} color={iconColor} style={styles.navIcon} />
+                      {isRail ? null : (
+                        <Text style={labelStyles} numberOfLines={1}>
+                          {item.label}
+                        </Text>
+                      )}
+                      <Ionicons
+                        name={item.icon}
+                        size={isRail ? 24 : isTouchLayout ? 20 : 18}
+                        color={iconColor}
+                        style={isRail ? undefined : styles.navIcon}
+                      />
                     </>
                   );
                 }}
@@ -217,6 +252,10 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 12,
   },
+  topRail: {
+    paddingHorizontal: 8,
+    paddingTop: 10,
+  },
   navScroll: {
     flex: 1,
     minHeight: 0,
@@ -245,6 +284,11 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     paddingHorizontal: 10,
     paddingTop: 10,
+  },
+  brandRail: {
+    paddingHorizontal: 4,
+    paddingBottom: 10,
+    marginBottom: 8,
   },
   brandAdmin: {
     marginBottom: 18,
@@ -291,6 +335,10 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
   },
+  logoBoxRail: {
+    height: 52,
+    borderRadius: 14,
+  },
   logoBoxHover: {
     borderColor: 'rgba(198,168,91,0.32)',
     backgroundColor: 'rgba(11,28,65,0.03)',
@@ -310,6 +358,7 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.99 }],
   },
   logoImg: { width: '100%', height: 78 },
+  logoImgRail: { width: '100%', height: 52 },
   logoGlow: {
     ...StyleSheet.absoluteFillObject,
     opacity: 0.95,
@@ -429,6 +478,17 @@ const styles = StyleSheet.create({
     shadowOpacity: 0,
     shadowRadius: 0,
     shadowOffset: { width: 0, height: 0 },
+  },
+  navItemRail: {
+    flexDirection: 'column',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 14,
+    gap: 0,
+  },
+  navItemTouch: {
+    minHeight: TOUCH_TARGET + 8,
   },
   navItemHover: {
     backgroundColor: 'rgba(11,28,65,0.04)',
