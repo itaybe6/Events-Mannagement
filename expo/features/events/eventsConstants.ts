@@ -16,6 +16,24 @@ export const MONTHS = [
   'דצמבר',
 ] as const;
 
+/**
+ * Single blue ramp for the events UI. The old cards mixed brand navy with the
+ * gold accent on every interactive element, which read as two competing themes.
+ */
+export const EVENT_BLUE = {
+  ink: '#06173E',
+  deep: '#0B2560',
+  mid: '#1E4FD8',
+  bright: '#3B82F6',
+  sky: '#0EA5E9',
+  muted: '#61708F',
+  tint: 'rgba(30, 79, 216, 0.08)',
+  tintStrong: 'rgba(30, 79, 216, 0.14)',
+  line: 'rgba(11, 37, 96, 0.08)',
+  lineStrong: 'rgba(11, 37, 96, 0.14)',
+  surfaceSoft: '#F4F7FF',
+} as const;
+
 export const EVENT_TYPES = ['חתונה', 'בר מצווה', 'בת מצווה', 'ברית', 'אירוע חברה'] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 

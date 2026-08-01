@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Platform, Alert, Image, Modal, Animated, TextInput } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Platform, Alert, Image, Modal, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { colors } from '@/constants/colors';
@@ -9,7 +9,7 @@ import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import { Event } from '@/types';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { isFutureEventDate, isPastEventDate, MONTHS, type EventTimeFilter } from '@/features/events/eventsConstants';
+import { EVENT_BLUE, isFutureEventDate, isPastEventDate, MONTHS, type EventTimeFilter } from '@/features/events/eventsConstants';
 import { EventListCard } from '@/features/events/EventListCard';
 import { useEventsListModel } from '@/features/events/useEventsListModel';
 import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
@@ -34,10 +34,6 @@ export default function AdminEventsScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showMonthPicker, setShowMonthPicker] = useState(false);
   const [eventTimeFilter, setEventTimeFilter] = useState<EventTimeFilter>('future');
-  const [isStickyHeaderActive, setIsStickyHeaderActive] = useState(false);
-  const [headerContentHeight, setHeaderContentHeight] = useState(52);
-  const lastScrollYRef = useRef(0);
-  const scrollY = useRef(new Animated.Value(0)).current;
   const loadEventsFn = useMemo(
     () => async (options?: { force?: boolean }) => {
       const data = await eventService.getEvents(options);
@@ -123,64 +119,32 @@ export default function AdminEventsScreen() {
     setSortOrder(eventTimeFilter === 'future' ? 'asc' : 'desc');
   }, [eventTimeFilter, setSortOrder]);
 
-  const headerBackdropColor = scrollY.interpolate({
-    inputRange: [0, 14],
-    outputRange: ['rgba(255,255,255,0)', 'rgba(255,255,255,0.98)'],
-    extrapolate: 'clamp',
-  });
-  const headerBorderColor = scrollY.interpolate({
-    inputRange: [0, 14],
-    outputRange: ['rgba(6,23,62,0)', 'rgba(6,23,62,0.05)'],
-    extrapolate: 'clamp',
-  });
-  const headerShadowOpacity = scrollY.interpolate({
-    inputRange: [0, 14],
-    outputRange: [0, 0.08],
-    extrapolate: 'clamp',
-  });
-  const baseHeaderSpacerHeight = insets.top + 10 + headerContentHeight;
-
   return (
     <View style={styles.screen}>
       <LinearGradient
-        colors={['#F7FAFF', '#E8F1FF', '#F2E0BA']}
+        colors={['#F8FAFF', '#EDF3FF', '#DDE8FF']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.bg}
       />
       <LinearGradient
-        colors={['rgba(255,255,255,0.68)', 'rgba(255,255,255,0)']}
+        colors={['rgba(255,255,255,0.9)', 'rgba(255,255,255,0)']}
         start={{ x: 0.05, y: 0 }}
         end={{ x: 0.75, y: 0.55 }}
         style={styles.bgHighlight}
       />
       <LinearGradient
-        colors={['rgba(232,196,122,0.58)', 'rgba(244,224,186,0.22)', 'rgba(244,224,186,0)']}
+        colors={['rgba(59,130,246,0.16)', 'rgba(59,130,246,0.04)', 'rgba(59,130,246,0)']}
         start={{ x: 1, y: 0.95 }}
         end={{ x: 0.18, y: 0.22 }}
-        style={styles.bgWarmGlow}
+        style={styles.bgCoolGlow}
       />
 
-      <Animated.View
-        style={[
-          styles.floatingHeaderWrap,
-          styles.stickyControlsWrap,
-          {
-            backgroundColor: headerBackdropColor,
-            borderBottomColor: headerBorderColor,
-            shadowOpacity: headerShadowOpacity,
-            elevation: isStickyHeaderActive ? 4 : 0,
-            paddingTop: insets.top + (isStickyHeaderActive ? 14 : 10),
-            paddingBottom: isStickyHeaderActive ? 14 : 0,
-          },
-        ]}
+      <AppKeyboardAwareScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
       >
-        <View
-          onLayout={(event) => {
-            const nextHeight = Math.round(event.nativeEvent.layout.height);
-            setHeaderContentHeight((prev) => (prev === nextHeight ? prev : nextHeight));
-          }}
-        >
+        <View style={[styles.headerBlock, { paddingTop: insets.top + 10 }]}>
           <View style={styles.headerHeroRow}>
             <View style={styles.headerActionSlot}>
               <TouchableOpacity
@@ -191,7 +155,7 @@ export default function AdminEventsScreen() {
                 <Ionicons
                   name="options-outline"
                   size={18}
-                  color={hasActiveFilter ? colors.white : colors.primary}
+                  color={hasActiveFilter ? colors.white : EVENT_BLUE.deep}
                 />
               </TouchableOpacity>
             </View>
@@ -213,12 +177,20 @@ export default function AdminEventsScreen() {
                 }}
                 disabled={isEmployeeAppUser}
                 activeOpacity={0.88}
+                accessibilityRole="button"
+                accessibilityLabel="אירוע חדש"
               >
-                <Ionicons
-                  name="add"
-                  size={22}
-                  color={isEmployeeAppUser ? colors.gray[600] : colors.white}
+                <LinearGradient
+                  colors={
+                    isEmployeeAppUser
+                      ? ['#C9CFDA', '#B4BDCC']
+                      : [EVENT_BLUE.bright, EVENT_BLUE.mid, EVENT_BLUE.deep]
+                  }
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.heroPrimaryBtnFill}
                 />
+                <Ionicons name="add" size={24} color={colors.white} />
               </TouchableOpacity>
             </View>
           </View>
@@ -235,10 +207,18 @@ export default function AdminEventsScreen() {
                 accessibilityRole="button"
                 accessibilityState={{ selected: eventTimeFilter === 'future' }}
               >
+                {eventTimeFilter === 'future' ? (
+                  <LinearGradient
+                    colors={[EVENT_BLUE.bright, EVENT_BLUE.mid, EVENT_BLUE.deep]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.eventTimeToggleFill}
+                  />
+                ) : null}
                 <Ionicons
                   name="calendar-outline"
                   size={16}
-                  color={eventTimeFilter === 'future' ? colors.white : colors.primary}
+                  color={eventTimeFilter === 'future' ? colors.white : EVENT_BLUE.muted}
                 />
                 <Text
                   style={[
@@ -263,10 +243,18 @@ export default function AdminEventsScreen() {
                 accessibilityRole="button"
                 accessibilityState={{ selected: eventTimeFilter === 'completed' }}
               >
+                {eventTimeFilter === 'completed' ? (
+                  <LinearGradient
+                    colors={[EVENT_BLUE.bright, EVENT_BLUE.mid, EVENT_BLUE.deep]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.eventTimeToggleFill}
+                  />
+                ) : null}
                 <Ionicons
                   name="checkmark-done-outline"
                   size={16}
-                  color={eventTimeFilter === 'completed' ? colors.white : colors.primary}
+                  color={eventTimeFilter === 'completed' ? colors.white : EVENT_BLUE.muted}
                 />
                 <Text
                   style={[
@@ -285,7 +273,7 @@ export default function AdminEventsScreen() {
 
           <View style={styles.searchRowWrap}>
             <View style={styles.searchWrap}>
-              <Ionicons name="search" size={18} color={colors.gray[500]} style={styles.searchIcon} />
+              <Ionicons name="search" size={18} color={EVENT_BLUE.mid} style={styles.searchIcon} />
               <TextInput
                 value={query}
                 onChangeText={setQuery}
@@ -305,55 +293,23 @@ export default function AdminEventsScreen() {
                   accessibilityRole="button"
                   accessibilityLabel="נקה חיפוש"
                 >
-                  <Ionicons name="close" size={14} color={colors.gray[600]} />
+                  <Ionicons name="close" size={14} color={EVENT_BLUE.deep} />
                 </TouchableOpacity>
               ) : null}
             </View>
           </View>
         </View>
-      </Animated.View>
 
-      <AppKeyboardAwareScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-        scrollEventThrottle={16}
-        onScroll={(event: any) => {
-          const offsetY = Number(event?.nativeEvent?.contentOffset?.y ?? 0);
-          const clampedOffsetY = Math.max(offsetY, 0);
-          scrollY.setValue(clampedOffsetY);
-
-          if (clampedOffsetY <= 24) {
-            lastScrollYRef.current = 0;
-            setIsStickyHeaderActive(false);
-            return;
-          }
-
-          const deltaY = clampedOffsetY - lastScrollYRef.current;
-          if (Math.abs(deltaY) < 2) {
-            lastScrollYRef.current = clampedOffsetY;
-            return;
-          }
-
-          if (deltaY > 3 && !isStickyHeaderActive) {
-            setIsStickyHeaderActive(true);
-          } else if (deltaY < -3 && isStickyHeaderActive) {
-            setIsStickyHeaderActive(false);
-          }
-
-          lastScrollYRef.current = clampedOffsetY;
-        }}
-      >
-        <View style={{ height: baseHeaderSpacerHeight }} />
-
-        {/* Events */}
         <View style={styles.timelineWrap}>
           {loading ? (
             <View style={{ paddingTop: 30 }}>
-              <ActivityIndicator size="large" color={colors.primary} />
+              <ActivityIndicator size="large" color={EVENT_BLUE.mid} />
             </View>
           ) : visibleEvents.length === 0 ? (
             <View style={styles.emptyStateCard}>
-              <Ionicons name="calendar-outline" size={44} color={colors.gray[500]} />
+              <View style={styles.emptyStateIconWrap}>
+                <Ionicons name="calendar-outline" size={30} color={EVENT_BLUE.mid} />
+              </View>
               <Text style={styles.emptyStateText}>{emptyMessage}</Text>
               {trimmedQuery || eventTimeFilter === 'completed' ? (
                 <Text style={styles.emptyStateSubtext}>
@@ -364,18 +320,30 @@ export default function AdminEventsScreen() {
               ) : null}
             </View>
           ) : (
-            visibleEvents.map((event, index) => (
-              <EventListCard
-                key={event.id}
-                event={event}
-                index={index}
-                onPress={() =>
-                  router.push({ pathname: '/(admin)/admin-event-details', params: { id: event.id } })
-                }
-                onToggleApproval={handleToggleApproval}
-                approvingEventId={approvingEventId}
-              />
-            ))
+            <>
+              <View style={styles.listMetaRow}>
+                <Text style={styles.listMetaText}>
+                  {visibleEvents.length} {visibleEvents.length === 1 ? 'אירוע' : 'אירועים'}
+                </Text>
+                <View style={styles.listMetaLine} />
+              </View>
+
+              {visibleEvents.map((event, index) => (
+                <EventListCard
+                  key={event.id}
+                  event={event}
+                  index={index}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/(admin)/admin-event-details',
+                      params: { id: event.id },
+                    })
+                  }
+                  onToggleApproval={handleToggleApproval}
+                  approvingEventId={approvingEventId}
+                />
+              ))}
+            </>
           )}
         </View>
       </AppKeyboardAwareScrollView>
@@ -595,38 +563,16 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     opacity: 0.95,
   },
-  bgWarmGlow: {
+  bgCoolGlow: {
     ...StyleSheet.absoluteFillObject,
-    opacity: 0.78,
+    opacity: 0.9,
   },
 
   scrollContent: {
     paddingBottom: 140,
   },
-  floatingHeaderWrap: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 40,
-  },
-  stickyControlsWrap: {
-    backgroundColor: 'transparent',
-    paddingBottom: 0,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(6,23,62,0)',
-    shadowColor: colors.black,
-    shadowOpacity: 0,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 0,
-  },
-  stickyControlsWrapActive: {
-    backgroundColor: 'rgba(255,255,255,0.98)',
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(6,23,62,0.05)',
-    shadowOpacity: 0.08,
-    elevation: 4,
+  headerBlock: {
+    paddingBottom: 4,
   },
   headerHeroRow: {
     flexDirection: ROW_DIR,
@@ -653,73 +599,79 @@ const styles = StyleSheet.create({
   heroIconBtn: {
     width: 48,
     height: 48,
-    borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.94)',
     borderWidth: 1,
-    borderColor: 'rgba(6,23,62,0.06)',
+    borderColor: EVENT_BLUE.line,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: colors.black,
-    shadowOpacity: 0.05,
+    shadowColor: EVENT_BLUE.deep,
+    shadowOpacity: 0.08,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 6 },
     elevation: 2,
   },
   heroIconBtnActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
+    backgroundColor: EVENT_BLUE.mid,
+    borderColor: EVENT_BLUE.mid,
   },
   heroPrimaryBtn: {
     width: 48,
     height: 48,
-    borderRadius: 24,
-    backgroundColor: colors.primary,
+    borderRadius: 18,
+    overflow: 'hidden',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: colors.primary,
-    shadowOpacity: 0.2,
+    shadowColor: EVENT_BLUE.mid,
+    shadowOpacity: 0.34,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 8 },
-    elevation: 4,
+    elevation: 5,
+  },
+  heroPrimaryBtnFill: {
+    ...StyleSheet.absoluteFillObject,
   },
   heroPrimaryBtnDisabled: {
-    backgroundColor: 'rgba(201, 207, 218, 0.95)',
     shadowColor: colors.black,
     shadowOpacity: 0.06,
+    elevation: 1,
   },
   eventTimeToggleWrap: {
     paddingHorizontal: 18,
-    paddingTop: 12,
+    paddingTop: 10,
     paddingBottom: 2,
   },
   eventTimeToggle: {
     flexDirection: ROW_DIR,
     padding: 4,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.88)',
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.9)',
     borderWidth: 1,
-    borderColor: 'rgba(6,23,62,0.08)',
-    shadowColor: colors.black,
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
+    borderColor: EVENT_BLUE.line,
+    shadowColor: EVENT_BLUE.deep,
+    shadowOpacity: 0.07,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 5 },
     elevation: 2,
     gap: 4,
   },
   eventTimeToggleBtn: {
     flex: 1,
-    minHeight: 42,
-    borderRadius: 16,
+    minHeight: 40,
+    borderRadius: 14,
+    overflow: 'hidden',
     flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
     paddingHorizontal: 10,
   },
+  eventTimeToggleFill: {
+    ...StyleSheet.absoluteFillObject,
+  },
   eventTimeToggleBtnActive: {
-    backgroundColor: colors.primary,
-    shadowColor: colors.primary,
-    shadowOpacity: 0.22,
+    shadowColor: EVENT_BLUE.mid,
+    shadowOpacity: 0.3,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 5 },
     elevation: 3,
@@ -727,7 +679,7 @@ const styles = StyleSheet.create({
   eventTimeToggleText: {
     fontSize: 13,
     fontWeight: '800',
-    color: colors.gray[700],
+    color: EVENT_BLUE.muted,
     textAlign: 'center',
   },
   eventTimeToggleTextActive: {
@@ -740,41 +692,41 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
   },
   searchWrap: {
-    minHeight: 46,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.92)',
+    minHeight: 48,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.94)',
     borderWidth: 1,
-    borderColor: 'rgba(6,23,62,0.08)',
+    borderColor: EVENT_BLUE.line,
     justifyContent: 'center',
-    shadowColor: colors.black,
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
+    shadowColor: EVENT_BLUE.deep,
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 5 },
     elevation: 2,
   },
   searchIcon: {
     position: 'absolute',
     end: 14,
-    top: 14,
+    top: 15,
     zIndex: 1,
   },
   searchInput: {
-    minHeight: 46,
+    minHeight: 48,
     paddingEnd: 42,
     paddingStart: 42,
     fontSize: 14,
     fontWeight: '700',
-    color: colors.text,
+    color: EVENT_BLUE.ink,
     writingDirection: 'rtl',
   },
   searchClearBtn: {
     position: 'absolute',
     start: 10,
-    top: 9,
+    top: 10,
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: 'rgba(6,23,62,0.06)',
+    backgroundColor: EVENT_BLUE.tint,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -855,7 +807,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(6,23,62,0.07)',
+    backgroundColor: EVENT_BLUE.tint,
   },
   filterOptionTextWrap: {
     flex: 1,
@@ -878,8 +830,10 @@ const styles = StyleSheet.create({
   clearFilterBtn: {
     alignSelf: 'stretch',
     height: 48,
-    borderRadius: 18,
-    backgroundColor: 'rgba(6,23,62,0.06)',
+    borderRadius: 16,
+    backgroundColor: EVENT_BLUE.tint,
+    borderWidth: 1,
+    borderColor: EVENT_BLUE.tintStrong,
     flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'center',
@@ -888,7 +842,7 @@ const styles = StyleSheet.create({
   clearFilterBtnText: {
     fontSize: 13,
     fontWeight: '900',
-    color: colors.primary,
+    color: EVENT_BLUE.mid,
   },
   modalOverlay: {
     flex: 1,
@@ -989,9 +943,9 @@ const styles = StyleSheet.create({
     flexBasis: '31%',
   },
   monthChipV2Active: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-    shadowColor: colors.primary,
+    backgroundColor: EVENT_BLUE.mid,
+    borderColor: EVENT_BLUE.mid,
+    shadowColor: EVENT_BLUE.mid,
     shadowOpacity: 0.22,
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 10 },
@@ -1008,36 +962,66 @@ const styles = StyleSheet.create({
   },
 
   timelineWrap: {
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
     paddingTop: 0,
-    gap: 18,
+    gap: 12,
+  },
+  listMetaRow: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 4,
+    paddingBottom: 2,
+  },
+  listMetaText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: EVENT_BLUE.muted,
+    letterSpacing: 0.2,
+  },
+  listMetaLine: {
+    flex: 1,
+    height: 1,
+    borderRadius: 999,
+    backgroundColor: EVENT_BLUE.line,
   },
 
   emptyStateCard: {
-    backgroundColor: 'rgba(255,255,255,0.72)',
+    backgroundColor: 'rgba(255,255,255,0.86)',
     borderRadius: 26,
+    borderWidth: 1,
+    borderColor: EVENT_BLUE.line,
     padding: 28,
     alignItems: 'center',
-    marginTop: 40,
-    shadowColor: colors.black,
+    marginTop: 32,
+    shadowColor: EVENT_BLUE.deep,
     shadowOpacity: 0.08,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
     elevation: 2,
   },
+  emptyStateIconWrap: {
+    width: 62,
+    height: 62,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: EVENT_BLUE.tint,
+  },
   emptyStateText: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: colors.gray[600],
-    marginTop: 12,
+    fontSize: 17,
+    fontWeight: '900',
+    color: EVENT_BLUE.ink,
+    marginTop: 14,
     textAlign: 'center',
   },
   emptyStateSubtext: {
     marginTop: 6,
     fontSize: 13,
     fontWeight: '700',
-    color: colors.gray[600],
+    color: EVENT_BLUE.muted,
     textAlign: 'center',
+    lineHeight: 19,
   },
 
-}); 
+});

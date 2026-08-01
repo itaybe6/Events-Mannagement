@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { BackHandler, View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, Platform, useWindowDimensions, Modal, Alert, Pressable, TextInput, KeyboardAvoidingView, RefreshControl } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, BackHandler, View, Text, StyleSheet, ScrollView, ActivityIndicator, StatusBar, TouchableOpacity, Platform, useWindowDimensions, Modal, Alert, Pressable, TextInput, KeyboardAvoidingView, RefreshControl } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { colors } from '@/constants/colors';
 import { eventService } from '@/lib/services/eventService';
@@ -7,14 +7,26 @@ import { Ionicons } from '@expo/vector-icons';
 import { Event, Guest } from '@/types';
 import { supabase } from '@/lib/supabase';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import BackSwipe from '@/components/BackSwipe';
 import { useAdminEventDetailsModel } from '@/features/events/useAdminEventDetailsModel';
-import { ALIGN_LEFT, ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
+import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
 import { useUserStore } from '@/store/userStore';
+import RsvpDonut from '@/features/events/event-details/RsvpDonut';
+
+const PALETTE = {
+  ink: '#06173e',
+  inkDeep: '#040E24',
+  gold: '#CCA000',
+  goldLight: '#F0CB46',
+  goldPale: '#F7DE8B',
+  sheet: '#F4F7FD',
+  confirmed: '#2FA36B',
+  pending: '#E0A82E',
+  declined: '#E2544A',
+} as const;
 
 export default function AdminEventDetailsScreen() {
   const { id, eventId } = useLocalSearchParams();
@@ -53,6 +65,48 @@ export default function AdminEventDetailsScreen() {
   const { height: windowHeight, width: windowWidth } = useWindowDimensions();
   const isEmployeeAppUser = userType === 'employee' && Platform.OS !== 'web';
 
+  const heroIntro = useRef(new Animated.Value(0)).current;
+  const sheetIntro = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (loading) return;
+    Animated.stagger(110, [
+      Animated.timing(heroIntro, { toValue: 1, duration: 520, useNativeDriver: true }),
+      Animated.timing(sheetIntro, { toValue: 1, duration: 520, useNativeDriver: true }),
+    ]).start();
+  }, [loading, heroIntro, sheetIntro]);
+
+  const countdownLabel = useMemo(() => {
+    const raw = event?.date;
+    if (!raw) return '';
+    const target = new Date(raw);
+    if (!Number.isFinite(target.getTime())) return '';
+
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const startOfEvent = new Date(target);
+    startOfEvent.setHours(0, 0, 0, 0);
+
+    const days = Math.round((startOfEvent.getTime() - startOfToday.getTime()) / 86400000);
+    if (days > 1) return `עוד ${days} ימים`;
+    if (days === 1) return 'מחר הגדול';
+    if (days === 0) return 'האירוע היום';
+    if (days === -1) return 'התקיים אתמול';
+    return 'האירוע הסתיים';
+  }, [event?.date]);
+
+  const isUpcoming = useMemo(() => {
+    const raw = event?.date;
+    if (!raw) return true;
+    const target = new Date(raw);
+    if (!Number.isFinite(target.getTime())) return true;
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const startOfEvent = new Date(target);
+    startOfEvent.setHours(0, 0, 0, 0);
+    return startOfEvent.getTime() >= startOfToday.getTime();
+  }, [event?.date]);
+
   // Always go back to admin events list from this screen.
   useEffect(() => {
     if (Platform.OS !== 'android') return;
@@ -85,8 +139,9 @@ export default function AdminEventDetailsScreen() {
         fallbackHref="/(admin)/admin-events"
         onBack={() => router.replace('/(admin)/admin-events')}
       >
-        <View style={{ flex: 1, backgroundColor: colors.gray[100], justifyContent: 'center', alignItems: 'center', paddingTop: insets.top }}>
-          <ActivityIndicator size="large" color={colors.primary} />
+        <View style={{ flex: 1, backgroundColor: '#071B45', justifyContent: 'center', alignItems: 'center', paddingTop: insets.top }}>
+          <StatusBar barStyle="light-content" backgroundColor="#071B45" />
+          <ActivityIndicator size="large" color={PALETTE.goldLight} />
         </View>
       </BackSwipe>
     );
@@ -281,19 +336,6 @@ export default function AdminEventDetailsScreen() {
     setDeleteConfirmOpen(true);
   };
 
-  // Color system inspired by the provided HTML mock (kept local to this screen)
-  // IMPORTANT: do not use a hook here, because this screen has an early return during loading
-  // (changing hook order between renders breaks the Rules of Hooks).
-  const ui = {
-    bg: '#EDF5FF',
-    text: colors.richBlack,
-    muted: 'rgba(0, 53, 102, 0.72)',
-    primary: colors.richBlack,
-    accent: colors.gold,
-    glassBorder: 'rgba(21, 76, 151, 0.10)',
-    glassFill: 'rgba(244, 249, 255, 0.92)',
-  } as const;
-
   const getEventTypeLabel = () => {
     const raw = String(event?.title ?? '').trim();
     if (!raw) return 'אירוע';
@@ -329,70 +371,6 @@ export default function AdminEventDetailsScreen() {
     return (first + second).toUpperCase();
   };
 
-  const GlassPanel = ({
-    children,
-    style,
-  }: {
-    children: React.ReactNode;
-    style?: any;
-  }) => {
-    // BlurView is supported on native and web, but the visual differs; we keep a consistent fallback fill.
-    return (
-      <View style={[styles.glassOuter, { borderColor: ui.glassBorder }, style]}>
-        <BlurView intensity={28} tint="light" style={styles.glassBlur}>
-          <View style={[styles.glassInner, { backgroundColor: ui.glassFill }]}>{children}</View>
-        </BlurView>
-      </View>
-    );
-  };
-
-  const ActionRow = ({
-    title,
-    subtitle,
-    iconName,
-    iconBg,
-    iconColor,
-    onPress,
-    accessibilityLabel,
-  }: {
-    title: string;
-    subtitle: string;
-    iconName: keyof typeof Ionicons.glyphMap;
-    iconBg: string;
-    iconColor: string;
-    onPress: () => void;
-    accessibilityLabel: string;
-  }) => {
-    return (
-      <TouchableOpacity
-        style={styles.actionRow}
-        activeOpacity={0.9}
-        onPress={onPress}
-        accessibilityRole="button"
-        accessibilityLabel={accessibilityLabel}
-      >
-        <View style={styles.actionRowContent}>
-          <View style={[styles.actionRowIconSquare, { backgroundColor: iconBg }]}>
-            <Ionicons name={iconName} size={22} color={iconColor} />
-          </View>
-
-          <View style={styles.actionRowTextWrap}>
-            <Text style={[styles.actionRowTitle, { color: ui.text }]}>{title}</Text>
-            <Text style={[styles.actionRowSubtitle, { color: 'rgba(17, 24, 39, 0.60)' }]}>{subtitle}</Text>
-          </View>
-        </View>
-
-        <View style={styles.actionRowChevronCircle}>
-          <Ionicons name="chevron-back" size={20} color={'rgba(17, 24, 39, 0.55)'} />
-        </View>
-      </TouchableOpacity>
-    );
-  };
-
-  const heroTopSpacing = 58;
-  const heroBaseHeight = Math.max(420, Math.min(620, windowHeight * 0.62));
-  const weddingHeroExtraHeight = isWeddingEvent() ? 110 : 0;
-  const heroHeight = heroBaseHeight + Math.max(0, heroTopSpacing - 22) + weddingHeroExtraHeight;
   // Keep the end of the scroll content above the tab bar
   const tabBarBottomOffset = Platform.OS === 'ios' ? 30 : 20;
   const tabBarHeight = 65;
@@ -400,426 +378,355 @@ export default function AdminEventDetailsScreen() {
     total ? Math.max(0, Math.min(100, Math.round((value / total) * 100))) : 0;
   const tabBarReserve = tabBarBottomOffset + tabBarHeight + 24;
 
+  // The hero paints this much extra area above the scroll origin, so pulling the
+  // list down keeps revealing the dark gradient instead of a light seam.
+  const heroOverscroll = 420;
+
+  const eventTypeLabel = getEventTypeLabel();
+  const displayTitle = getEventDisplayTitle();
+  const showTypeChip = eventTypeLabel !== displayTitle;
+  const venueLabel = String(event.location ?? '').trim() || 'מיקום לא הוזן';
+  const cityLabel = String(event.city ?? '').trim();
+
+  const heroAnimatedStyle = {
+    opacity: heroIntro,
+    transform: [{ translateY: heroIntro.interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }],
+  };
+  const sheetAnimatedStyle = {
+    opacity: sheetIntro,
+    transform: [{ translateY: sheetIntro.interpolate({ inputRange: [0, 1], outputRange: [22, 0] }) }],
+  };
+
+  const actionTiles: ActionTile[] = [];
+  if (!isEmployeeAppUser) {
+    actionTiles.push({
+      key: 'invitation',
+      title: 'לינק להזמנה',
+      caption: 'קישורים אישיים למוזמנים',
+      icon: 'link-outline',
+      tint: ['#FFF6DC', '#FBE9B4'],
+      iconColor: PALETTE.gold,
+      onPress: () => router.push(`/(admin)/admin-invitation-links?eventId=${event.id}`),
+    });
+  }
+  actionTiles.push({
+    key: 'tables',
+    title: 'רשימת שולחנות',
+    caption: 'צפייה וניהול שולחנות',
+    icon: 'list-outline',
+    tint: ['#E8F0FF', '#D5E4FF'],
+    iconColor: colors.yaleBlue,
+    onPress: () => router.push(`/(admin)/TablesList?eventId=${event.id}`),
+  });
+  if (!isEmployeeAppUser) {
+    actionTiles.push({
+      key: 'messages',
+      title: 'הודעות אוטומטיות',
+      caption: 'תזכורות והודעות וואטסאפ',
+      icon: 'chatbubble-ellipses-outline',
+      tint: ['#E9FBF2', '#D2F2E2'],
+      iconColor: PALETTE.confirmed,
+      onPress: () =>
+        router.push(
+          `/(admin)/admin-event-messages?eventId=${event.id}&returnTo=${encodeURIComponent(`/(admin)/admin-event-details?id=${event.id}`)}`
+        ),
+    });
+    actionTiles.push({
+      key: 'rsvp',
+      title: 'אישורי הגעה',
+      caption: 'מעקב סטטוסים של מוזמנים',
+      icon: 'people-outline',
+      tint: ['#FFF6DC', '#FBE9B4'],
+      iconColor: PALETTE.gold,
+      onPress: () => router.push(`/(admin)/admin-rsvp-approvals?eventId=${event.id}`),
+    });
+  }
+  actionTiles.push({
+    key: 'checkin',
+    title: 'צ׳ק-אין אורחים',
+    caption: 'סימון הגעה בזמן אמת',
+    icon: 'qr-code-outline',
+    tint: ['#E8F0FF', '#D5E4FF'],
+    iconColor: colors.yaleBlue,
+    onPress: () =>
+      router.push(
+        `/(admin)/admin-guest-checkin?eventId=${event.id}&returnTo=${encodeURIComponent(`/(admin)/admin-event-details?id=${event.id}`)}`
+      ),
+  });
+  actionTiles.push({
+    key: 'seating',
+    title: 'מפת הושבה',
+    caption: 'צפייה וניהול מפת האולם',
+    icon: 'grid-outline',
+    tint: ['#EDEBFF', '#DEDBFB'],
+    iconColor: '#5B54C9',
+    onPress: handleSeatingMap,
+  });
+
   return (
     <View style={styles.screenRoot}>
-      <View style={[styles.safeRoot, { backgroundColor: ui.bg }]}>
+      <StatusBar barStyle="light-content" backgroundColor="#071B45" />
+      <View style={styles.safeRoot}>
         <View style={styles.safe}>
-        {/* App background gradient */}
-        <View pointerEvents="none" style={styles.bgLayer}>
-          <LinearGradient
-            colors={['#F7FAFF', '#EEF5FF', '#E1EEFF']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.bgBase}
-          />
-          <LinearGradient
-            colors={['rgba(255,255,255,0.68)', 'rgba(255,255,255,0)']}
-            start={{ x: 0.05, y: 0 }}
-            end={{ x: 0.75, y: 0.55 }}
-            style={styles.bgHighlight}
-          />
-          <LinearGradient
-            colors={['rgba(123,164,224,0.24)', 'rgba(214,231,255,0.20)', 'rgba(214,231,255,0)']}
-            start={{ x: 1, y: 0.95 }}
-            end={{ x: 0.18, y: 0.22 }}
-            style={styles.bgWarmGlow}
-          />
-          <LinearGradient
-            colors={['rgba(240,203,70,0.18)', 'rgba(240,203,70,0)']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={[styles.blob, styles.blobLeft]}
-          />
-          <LinearGradient
-            colors={['rgba(0,53,102,0.16)', 'rgba(0,53,102,0)']}
-            start={{ x: 1, y: 0 }}
-            end={{ x: 0, y: 1 }}
-            style={[styles.blob, styles.blobRight]}
-          />
-        </View>
-
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={[
-          styles.content,
-          {
-            paddingBottom: 0,
-          },
-        ]}
+        contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={isPullRefreshing}
             onRefresh={() => void handlePullToRefresh()}
-            tintColor={colors.primary}
-            colors={[colors.primary]}
-            progressBackgroundColor="rgba(255,255,255,0.96)"
+            tintColor={PALETTE.goldLight}
+            colors={[PALETTE.goldLight]}
+            progressBackgroundColor={PALETTE.ink}
             progressViewOffset={Math.max(72, insets.top + 56)}
           />
         }
       >
-        {/* Hero (background + nav + card) - scrolls with the page */}
+        {/* Hero — dark "invitation" panel that scrolls with the page */}
         <View
           style={[
-            styles.heroStack,
+            styles.hero,
             {
-              height: heroHeight,
-              paddingTop: heroTopSpacing,
+              marginTop: -heroOverscroll,
+              paddingTop: heroOverscroll + insets.top + 8,
             },
           ]}
         >
           <View pointerEvents="none" style={styles.heroGradientLayer}>
             <LinearGradient
-              colors={['#F7FAFF', '#E8F1FF', '#F2E0BA']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.bgBase}
+              colors={['#0B2A5B', '#071B45', PALETTE.inkDeep]}
+              locations={[0, 0.58, 1]}
+              start={{ x: 0.15, y: 0 }}
+              end={{ x: 0.85, y: 1 }}
+              style={StyleSheet.absoluteFill}
             />
             <LinearGradient
-              colors={['rgba(255,255,255,0.68)', 'rgba(255,255,255,0)']}
-              start={{ x: 0.05, y: 0 }}
-              end={{ x: 0.75, y: 0.55 }}
-              style={styles.bgHighlight}
+              colors={['rgba(204,160,0,0.34)', 'rgba(204,160,0,0)']}
+              start={{ x: 0.5, y: 0 }}
+              end={{ x: 0.5, y: 1 }}
+              style={styles.heroGlowGold}
             />
             <LinearGradient
-              colors={['rgba(232,196,122,0.58)', 'rgba(244,224,186,0.22)', 'rgba(244,224,186,0)']}
-              start={{ x: 1, y: 0.95 }}
-              end={{ x: 0.18, y: 0.22 }}
-              style={styles.bgWarmGlow}
+              colors={['rgba(96,152,255,0.26)', 'rgba(96,152,255,0)']}
+              start={{ x: 0.5, y: 0 }}
+              end={{ x: 0.5, y: 1 }}
+              style={styles.heroGlowBlue}
             />
           </View>
-          <View style={styles.hero}>
-            <View style={styles.heroWindowOuter}>
-              <View style={styles.heroWindowInner}>
-                <TouchableOpacity
-                  style={styles.heroBackButton}
-                  onPress={handleBackPress}
-                  activeOpacity={0.88}
-                  accessibilityRole="button"
-                  accessibilityLabel="חזרה לעמוד הקודם"
-                >
-                  <Ionicons name="chevron-back" size={20} color={colors.richBlack} />
-                </TouchableOpacity>
 
-                <View style={styles.heroTopRow}>
-                  <View style={styles.heroAvatarWrap}>
-                    <TouchableOpacity
-                      style={styles.heroAvatarRing}
-                      onPress={() => setAvatarPreviewOpen(true)}
-                      activeOpacity={0.88}
-                      accessibilityRole="button"
-                      accessibilityLabel="הגדלת תמונת פרופיל"
-                    >
-                      {userAvatarUrl ? (
-                        <Image source={{ uri: userAvatarUrl }} style={styles.heroAvatar} contentFit="cover" transition={150} />
+          <View style={styles.heroTopBar}>
+            {!isEmployeeAppUser ? (
+              <TouchableOpacity
+                style={styles.heroIconBtn}
+                onPress={openEditEvent}
+                activeOpacity={0.85}
+                disabled={editSaving}
+                accessibilityRole="button"
+                accessibilityLabel="עריכת אירוע"
+              >
+                <Ionicons name="create-outline" size={19} color="rgba(255,255,255,0.92)" />
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.heroIconBtnPlaceholder} />
+            )}
+
+            <View style={styles.heroTopBarSpacer} />
+
+            <TouchableOpacity
+              style={styles.heroIconBtn}
+              onPress={handleBackPress}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="חזרה לעמוד הקודם"
+            >
+              <Ionicons name="chevron-back" size={20} color="rgba(255,255,255,0.92)" />
+            </TouchableOpacity>
+          </View>
+
+          <Animated.View style={[styles.heroBody, heroAnimatedStyle]}>
+            <TouchableOpacity
+              onPress={() => setAvatarPreviewOpen(true)}
+              activeOpacity={0.88}
+              accessibilityRole="button"
+              accessibilityLabel="הגדלת תמונת פרופיל"
+            >
+              <LinearGradient
+                colors={[PALETTE.goldPale, PALETTE.goldLight, PALETTE.gold]}
+                start={{ x: 0.1, y: 0 }}
+                end={{ x: 0.9, y: 1 }}
+                style={styles.avatarRing}
+              >
+                <View style={styles.avatarInset}>
+                  {userAvatarUrl ? (
+                    <Image source={{ uri: userAvatarUrl }} style={styles.avatarImage} contentFit="cover" transition={150} />
+                  ) : (
+                    <View style={styles.avatarFallback}>
+                      {getInitials(userName) ? (
+                        <Text style={styles.avatarInitials}>{getInitials(userName)}</Text>
                       ) : (
-                        <View style={styles.heroAvatarFallback}>
-                          {getInitials(userName) ? (
-                            <Text style={styles.heroAvatarInitials}>{getInitials(userName)}</Text>
-                          ) : (
-                            <Ionicons name="person" size={18} color={'rgba(13,17,28,0.65)'} />
-                          )}
-                        </View>
+                        <Ionicons name="person" size={26} color="rgba(255,255,255,0.6)" />
                       )}
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={[
-                        styles.heroAvatarEditBadge,
-                        isEmployeeAppUser ? styles.heroAvatarEditBadgeDisabled : null,
-                      ]}
-                      onPress={() => {
-                        if (isEmployeeAppUser) return;
-                        openEditEvent();
-                      }}
-                      activeOpacity={0.9}
-                      disabled={editSaving || isEmployeeAppUser}
-                      accessibilityRole="button"
-                      accessibilityLabel="עריכת אירוע"
-                    >
-                      <Ionicons
-                        name="create-outline"
-                        size={16}
-                        color={isEmployeeAppUser ? colors.gray[600] : colors.white}
-                      />
-                    </TouchableOpacity>
-                  </View>
+                    </View>
+                  )}
                 </View>
+              </LinearGradient>
+            </TouchableOpacity>
 
-                <View style={styles.heroTitleWrap}>
-                  {userName ? (
-                    <View style={styles.heroOwnerTag}>
-                      <Text style={[styles.heroOwnerTagText, { color: ui.accent }]}>{userName}</Text>
-                    </View>
-                  ) : null}
-                  <Text style={[styles.heroTitleType, { color: ui.text }]}>{getEventDisplayTitle()}</Text>
-                  <View style={styles.heroEventTypeTag}>
-                    <Text style={[styles.heroEventTypeTagText, { color: ui.text }]}>{getEventTypeLabel()}</Text>
-                  </View>
-                </View>
+            {userName ? <Text style={styles.heroEyebrow}>{userName}</Text> : null}
 
-                <View style={styles.heroMetaCardsRow}>
-                  <View style={styles.heroMetaCard}>
-                    <View style={styles.heroMetaCardIcon}>
-                      <Ionicons name="calendar-outline" size={16} color={ui.accent} />
-                    </View>
-                    <Text style={[styles.heroMetaCardText, { color: ui.text }]}>{`${weekday}, ${day}`}</Text>
-                  </View>
+            <Text style={[styles.heroTitle, userName ? null : styles.heroTitleSolo]} numberOfLines={2}>
+              {displayTitle}
+            </Text>
 
-                  <View style={styles.heroMetaCard}>
-                    <View style={styles.heroMetaCardIcon}>
-                      <Ionicons name="business-outline" size={16} color={ui.accent} />
-                    </View>
-                    <Text style={[styles.heroMetaCardText, { color: ui.text }]}>{String(event.location ?? '').trim() || 'מיקום לא הוזן'}</Text>
-                  </View>
-                </View>
+            <View style={styles.ornamentRow}>
+              <LinearGradient
+                colors={['rgba(240,203,70,0)', 'rgba(240,203,70,0.75)']}
+                start={{ x: 0, y: 0.5 }}
+                end={{ x: 1, y: 0.5 }}
+                style={styles.ornamentLine}
+              />
+              <View style={styles.ornamentDiamond} />
+              <LinearGradient
+                colors={['rgba(240,203,70,0.75)', 'rgba(240,203,70,0)']}
+                start={{ x: 0, y: 0.5 }}
+                end={{ x: 1, y: 0.5 }}
+                style={styles.ornamentLine}
+              />
+            </View>
 
-                {isWeddingEvent() ? (
-                  <View style={styles.heroCoupleCard}>
-                    <View style={styles.heroCoupleHeader}>
-                      <View style={styles.heroCoupleHeaderIcon}>
-                        <Ionicons name="heart-outline" size={16} color={ui.accent} />
-                      </View>
-                      <Text style={[styles.heroCoupleHeaderText, { color: ui.muted }]}>פרטי החתונה</Text>
-                    </View>
+            {isWeddingEvent() ? (
+              <View style={styles.coupleRow}>
+                <Text style={styles.coupleName} numberOfLines={1}>
+                  {groomLabel()}
+                </Text>
+                <Ionicons name="heart" size={13} color={PALETTE.goldLight} />
+                <Text style={styles.coupleName} numberOfLines={1}>
+                  {brideLabel()}
+                </Text>
+              </View>
+            ) : null}
 
-                    <View style={styles.heroCoupleChips}>
-                      <View style={styles.heroCoupleChip}>
-                        <Text style={[styles.heroCoupleChipLabel, { color: ui.muted }]}>חתן</Text>
-                        <Text style={[styles.heroCoupleChipValue, { color: ui.text }]} numberOfLines={2}>
-                          {groomLabel()}
-                        </Text>
-                      </View>
+            {showTypeChip ? (
+              <View style={styles.typeChip}>
+                <Text style={styles.typeChipText}>{eventTypeLabel}</Text>
+              </View>
+            ) : null}
 
-                      <View style={styles.heroCoupleDivider}>
-                        <Ionicons name="heart" size={12} color={ui.accent} />
-                      </View>
+            {countdownLabel ? (
+              <LinearGradient
+                colors={
+                  isUpcoming
+                    ? [PALETTE.goldPale, PALETTE.goldLight, PALETTE.gold]
+                    : ['rgba(255,255,255,0.16)', 'rgba(255,255,255,0.08)']
+                }
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.countdownPill}
+              >
+                <Ionicons
+                  name={isUpcoming ? 'sparkles' : 'checkmark-circle'}
+                  size={13}
+                  color={isUpcoming ? PALETTE.ink : 'rgba(255,255,255,0.8)'}
+                />
+                <Text style={[styles.countdownText, !isUpcoming ? styles.countdownTextPast : null]}>
+                  {countdownLabel}
+                </Text>
+              </LinearGradient>
+            ) : null}
 
-                      <View style={styles.heroCoupleChip}>
-                        <Text style={[styles.heroCoupleChipLabel, { color: ui.muted }]}>כלה</Text>
-                        <Text style={[styles.heroCoupleChipValue, { color: ui.text }]} numberOfLines={2}>
-                          {brideLabel()}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-                ) : null}
+            <View style={styles.metaRow}>
+              <View style={styles.metaChip}>
+                <Ionicons name="calendar-outline" size={14} color={PALETTE.goldLight} />
+                <Text style={styles.metaText}>{`${weekday}, ${day}`}</Text>
+              </View>
+
+              <View style={styles.metaChip}>
+                <Ionicons name="location-outline" size={14} color={PALETTE.goldLight} />
+                <Text style={styles.metaText} numberOfLines={1}>
+                  {cityLabel ? `${venueLabel} · ${cityLabel}` : venueLabel}
+                </Text>
               </View>
             </View>
-          </View>
+          </Animated.View>
         </View>
 
-        {/* White bottom sheet with rounded corners (like the reference) */}
-        <View
+        {/* Light content sheet that curves over the hero */}
+        <Animated.View
           style={[
             styles.sheet,
-            isWeddingEvent() ? styles.sheetWeddingSpacing : null,
+            sheetAnimatedStyle,
             {
-              marginBottom: Platform.OS === 'web' ? 30 : 0,
-              paddingBottom: Platform.OS === 'web' ? 24 : tabBarReserve,
+              minHeight: windowHeight * 0.5,
+              paddingBottom: Platform.OS === 'web' ? 40 : tabBarReserve,
             },
           ]}
         >
-          {!isEmployeeAppUser ? (
-            <TouchableOpacity
-              style={styles.tileWideOuter}
-              activeOpacity={0.9}
-              onPress={() => router.push(`/(admin)/admin-rsvp-approvals?eventId=${event.id}`)}
-              accessibilityRole="button"
-              accessibilityLabel="פתיחת אישורי הגעה"
-            >
-              <View style={styles.rsvpCardInner}>
-                <View style={styles.rsvpHeaderRow}>
-                  <View style={styles.rsvpHeaderRight}>
-                    <View style={styles.rsvpHeaderValueRow}>
-                      <Text style={[styles.rsvpHeaderValue, { color: ui.accent }]}>{invitedPeople}</Text>
-                      <Text style={styles.rsvpHeaderLabelInline}>מוזמנים לאירוע</Text>
-                    </View>
-                  </View>
-                </View>
+          <View style={styles.sheetHandle} />
 
-                <View style={styles.rsvpDivider} />
+          {/* RSVP overview */}
+          <RsvpOverviewCard
+            interactive={!isEmployeeAppUser}
+            invitedPeople={invitedPeople}
+            confirmedPeople={confirmedPeople}
+            pendingPeople={pendingPeople}
+            declinedPeople={declinedPeople}
+            onPress={() => router.push(`/(admin)/admin-rsvp-approvals?eventId=${event.id}`)}
+          />
 
-                <View style={styles.rsvpGrid}>
-                  <View style={styles.rsvpStatCardGreen}>
-                    <View style={styles.rsvpStatIconCircle}>
-                      <Ionicons name="checkmark" size={16} color={colors.success} />
-                    </View>
-                    <Text style={styles.rsvpStatValue}>{confirmedPeople}</Text>
-                    <Text style={[styles.rsvpStatLabel, { color: colors.success }]}>אישרו</Text>
-                  </View>
+          <SectionHeading title="התקדמות" caption="מבט מהיר על מצב ההפקה" />
 
-                  <View style={styles.rsvpStatCardYellow}>
-                    <View style={styles.rsvpStatIconCircle}>
-                      <Ionicons name="time" size={16} color={colors.warning} />
-                    </View>
-                    <Text style={styles.rsvpStatValue}>{pendingPeople}</Text>
-                    <Text style={[styles.rsvpStatLabel, { color: colors.warning }]}>ממתינים</Text>
-                  </View>
-
-                  <View style={styles.rsvpStatCardRed}>
-                    <View style={styles.rsvpStatIconCircle}>
-                      <Ionicons name="close" size={16} color={colors.error} />
-                    </View>
-                    <Text style={styles.rsvpStatValue}>{declinedPeople}</Text>
-                    <Text style={[styles.rsvpStatLabel, { color: colors.error }]}>לא</Text>
-                  </View>
-                </View>
-              </View>
-            </TouchableOpacity>
-          ) : null}
-
-          {/* Guest status (rings) */}
-          <GlassPanel style={styles.panel}>
-            <View style={styles.panelHeaderRow}>
-              <Text style={[styles.panelTitle, { color: ui.text }]}>סטטוס אורחים</Text>
-              <View style={[styles.totalChip, { backgroundColor: 'rgba(204,160,0,0.12)' }]}>
-                <Text style={[styles.totalChipText, { color: ui.text }]}>{`${totalGuests} סה״כ`}</Text>
-              </View>
-            </View>
-
-            <View style={styles.guestStatusGrid}>
-              <View style={styles.guestStatusCard}>
-                <View style={styles.guestStatusTopRow}>
-                  <View style={styles.guestStatusMetaCol}>
-                    <Text style={[styles.guestStatusPercent, { color: colors.yaleBlue }]}>{`${getProgressPercent(confirmed, totalGuests)}%`}</Text>
-                    <Text style={[styles.guestStatusValue, { color: ui.text }]}>{confirmed}</Text>
-                  </View>
-                  <Text style={[styles.guestStatusLabel, { color: 'rgba(17,24,39,0.62)' }]}>אישרו</Text>
-                </View>
-                <View style={styles.guestStatusBarTrack}>
-                  <View style={[styles.guestStatusBarFill, { width: `${getProgressPercent(confirmed, totalGuests)}%`, backgroundColor: colors.yaleBlue }]} />
-                </View>
-              </View>
-
-              <View style={styles.guestStatusCard}>
-                <View style={styles.guestStatusTopRow}>
-                  <View style={styles.guestStatusMetaCol}>
-                    <Text style={[styles.guestStatusPercent, { color: colors.gold }]}>{`${getProgressPercent(pending, totalGuests)}%`}</Text>
-                    <Text style={[styles.guestStatusValue, { color: ui.text }]}>{pending}</Text>
-                  </View>
-                  <Text style={[styles.guestStatusLabel, { color: 'rgba(17,24,39,0.62)' }]}>ממתינים</Text>
-                </View>
-                <View style={styles.guestStatusBarTrack}>
-                  <View style={[styles.guestStatusBarFill, { width: `${getProgressPercent(pending, totalGuests)}%`, backgroundColor: colors.gold }]} />
-                </View>
-              </View>
-
-              <View style={styles.guestStatusCard}>
-                <View style={styles.guestStatusTopRow}>
-                  <View style={styles.guestStatusMetaCol}>
-                    <Text style={[styles.guestStatusPercent, { color: colors.error }]}>{`${getProgressPercent(declined, totalGuests)}%`}</Text>
-                    <Text style={[styles.guestStatusValue, { color: ui.text }]}>{declined}</Text>
-                  </View>
-                  <Text style={[styles.guestStatusLabel, { color: 'rgba(17,24,39,0.62)' }]}>לא מגיעים</Text>
-                </View>
-                <View style={styles.guestStatusBarTrack}>
-                  <View style={[styles.guestStatusBarFill, { width: `${getProgressPercent(declined, totalGuests)}%`, backgroundColor: colors.error }]} />
-                </View>
-              </View>
-            </View>
-          </GlassPanel>
-
-          <View style={styles.summaryTilesRow}>
-            <GlassPanel style={styles.summaryTile}>
-              <View style={styles.summaryTileHeader}>
-                <View style={[styles.summaryTileIcon, { backgroundColor: 'rgba(0,53,102,0.08)' }]}>
-                  <Ionicons name="checkbox-outline" size={18} color={colors.yaleBlue} />
-                </View>
-                <Text style={[styles.summaryTileLabel, { color: 'rgba(17,24,39,0.62)' }]}>הושבו</Text>
-              </View>
-              <Text style={[styles.summaryTileValue, { color: ui.text }]}>{`${seatedPercent}%`}</Text>
-              <View style={styles.guestStatusBarTrack}>
-                <View style={[styles.guestStatusBarFill, { width: `${Math.max(0, Math.min(100, seatedPercent))}%`, backgroundColor: colors.yaleBlue }]} />
-              </View>
-            </GlassPanel>
-
-            <GlassPanel style={styles.summaryTile}>
-              <View style={styles.summaryTileHeader}>
-                <View style={[styles.summaryTileIcon, { backgroundColor: 'rgba(240,203,70,0.18)' }]}>
-                  <Ionicons name="people-outline" size={18} color={colors.gold} />
-                </View>
-                <Text style={[styles.summaryTileLabel, { color: 'rgba(17,24,39,0.62)' }]}>אורחים אישרו</Text>
-              </View>
-              <Text style={[styles.summaryTileValue, { color: ui.text }]}>{confirmed}</Text>
-              <View style={styles.guestStatusBarTrack}>
-                <View style={[styles.guestStatusBarFill, { width: `${getProgressPercent(confirmed, totalGuests)}%`, backgroundColor: colors.gold }]} />
-              </View>
-            </GlassPanel>
-          </View>
-
-          {/* Bottom actions (match provided design): two stacked action cards */}
-          <View style={styles.bottomActions}>
-            {!isEmployeeAppUser ? (
-              <ActionRow
-                title="לינק להזמנה"
-                subtitle="הגדרת תמונה/כותרת והעתקת קישורים אישיים למוזמנים"
-                iconName="link-outline"
-                iconBg="rgba(204,160,0,0.14)"
-                iconColor={colors.gold}
-                onPress={() => router.push(`/(admin)/admin-invitation-links?eventId=${event.id}`)}
-                accessibilityLabel="לינק להזמנה"
-              />
-            ) : null}
-            <ActionRow
-              title="רשימת שולחנות"
-              subtitle="צפייה וניהול רשימת שולחנות"
-              iconName="list-outline"
-              iconBg="rgba(240,203,70,0.18)"
-              iconColor={colors.gold}
-              onPress={() => router.push(`/(admin)/TablesList?eventId=${event.id}`)}
-              accessibilityLabel="שולחנות"
+          <View style={styles.progressRow}>
+            <ProgressCard
+              label="הושבו"
+              value={`${seatedPercent}%`}
+              caption={`${stats.seated} מתוך ${totalGuests} אורחים`}
+              percent={seatedPercent}
+              color={colors.yaleBlue}
+              icon="grid-outline"
             />
-            {!isEmployeeAppUser ? (
-              <ActionRow
-                title="הודעות אוטומטיות"
-                subtitle="עריכה והפעלה של תזכורות והודעות וואטסאפ"
-                iconName="chatbubble-ellipses-outline"
-                iconBg="rgba(0,53,102,0.10)"
-                iconColor={colors.yaleBlue}
-                onPress={() =>
-                  router.push(
-                    `/(admin)/admin-event-messages?eventId=${event.id}&returnTo=${encodeURIComponent(`/(admin)/admin-event-details?id=${event.id}`)}`
-                  )
-                }
-                accessibilityLabel="עריכת הודעות"
-              />
-            ) : null}
-            {!isEmployeeAppUser ? (
-              <ActionRow
-                title="אישורי הגעה"
-                subtitle="מעקב אחרי מוזמנים, סטטוסים ומי כבר אישר הגעה"
-                iconName="people-outline"
-                iconBg="rgba(240,203,70,0.18)"
-                iconColor={colors.gold}
-                onPress={() => router.push(`/(admin)/admin-rsvp-approvals?eventId=${event.id}`)}
-                accessibilityLabel="אישורי הגעה"
-              />
-            ) : null}
-            <ActionRow
-              title="צ׳ק-אין אורחים"
-              subtitle="סימון הגעה של אורחים בזמן אמת"
-              iconName="checkbox-outline"
-              iconBg="rgba(0,53,102,0.10)"
-              iconColor={colors.yaleBlue}
-              onPress={() =>
-                router.push(
-                  `/(admin)/admin-guest-checkin?eventId=${event.id}&returnTo=${encodeURIComponent(`/(admin)/admin-event-details?id=${event.id}`)}`
-                )
-              }
-              accessibilityLabel="צ׳ק-אין אורחים"
-            />
-            <ActionRow
-              title="מפת הושבה"
-              subtitle="צפייה וניהול מפת האולם"
-              iconName="grid-outline"
-              iconBg="rgba(6,23,62,0.10)"
-              iconColor={colors.richBlack}
-              onPress={handleSeatingMap}
-              accessibilityLabel="מפת הושבה"
+            <ProgressCard
+              label="הודעות נשלחו"
+              value={String(stats.sentMessageCount)}
+              caption={`מתוך ${totalGuests} מוזמנים`}
+              percent={getProgressPercent(stats.sentMessageCount, totalGuests)}
+              color={PALETTE.gold}
+              icon="paper-plane-outline"
             />
           </View>
-        </View>
+
+          <SectionHeading title="ניהול האירוע" caption="כל הכלים במקום אחד" />
+
+          <View style={styles.actionGrid}>
+            {actionTiles.map((tile) => (
+              <TouchableOpacity
+                key={tile.key}
+                style={styles.actionTile}
+                activeOpacity={0.88}
+                onPress={tile.onPress}
+                accessibilityRole="button"
+                accessibilityLabel={tile.title}
+              >
+                <LinearGradient
+                  colors={tile.tint}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.actionTileIcon}
+                >
+                  <Ionicons name={tile.icon} size={21} color={tile.iconColor} />
+                </LinearGradient>
+
+                <Text style={styles.actionTileTitle} numberOfLines={1}>
+                  {tile.title}
+                </Text>
+                <Text style={styles.actionTileCaption} numberOfLines={2}>
+                  {tile.caption}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </Animated.View>
+
       </ScrollView>
       </View>
 
@@ -906,7 +813,7 @@ export default function AdminEventDetailsScreen() {
                 </View>
 
                 <View style={styles.editHeaderIcon}>
-                  <Ionicons name="create-outline" size={18} color={ui.primary} />
+                  <Ionicons name="create-outline" size={18} color={PALETTE.ink} />
                 </View>
               </View>
 
@@ -1159,7 +1066,7 @@ export default function AdminEventDetailsScreen() {
           <Pressable style={styles.noTablesCard} onPress={() => null}>
             <View style={styles.noTablesHeaderRow}>
               <View style={styles.noTablesIconCircle}>
-                <Ionicons name="grid-outline" size={18} color={ui.primary} />
+                <Ionicons name="grid-outline" size={18} color={PALETTE.ink} />
               </View>
               <View style={styles.noTablesHeaderText}>
                 <Text style={styles.noTablesTitle}>אין שולחנות במפה</Text>
@@ -1199,346 +1106,401 @@ export default function AdminEventDetailsScreen() {
   );
 }
 
+type ActionTile = {
+  key: string;
+  title: string;
+  caption: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  tint: readonly [string, string];
+  iconColor: string;
+  onPress: () => void;
+};
+
+function SectionHeading({ title, caption }: { title: string; caption: string }) {
+  return (
+    <View style={styles.sectionHead}>
+      <View style={styles.sectionHeadTextWrap}>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        <Text style={styles.sectionCaption}>{caption}</Text>
+      </View>
+      <View style={styles.sectionRule} />
+    </View>
+  );
+}
+
+function RsvpLegendRow({
+  color,
+  label,
+  value,
+  percent,
+}: {
+  color: string;
+  label: string;
+  value: number;
+  percent: number;
+}) {
+  return (
+    <View style={styles.legendRow}>
+      <View style={[styles.legendDot, { backgroundColor: color }]} />
+      <Text style={styles.legendLabel} numberOfLines={1}>
+        {label}
+      </Text>
+      <Text style={[styles.legendValue, { color }]}>{value}</Text>
+      <Text style={styles.legendPercent}>{`${percent}%`}</Text>
+    </View>
+  );
+}
+
+function RsvpOverviewCard({
+  interactive,
+  invitedPeople,
+  confirmedPeople,
+  pendingPeople,
+  declinedPeople,
+  onPress,
+}: {
+  interactive: boolean;
+  invitedPeople: number;
+  confirmedPeople: number;
+  pendingPeople: number;
+  declinedPeople: number;
+  onPress: () => void;
+}) {
+  const share = (value: number) =>
+    invitedPeople ? Math.max(0, Math.min(100, Math.round((value / invitedPeople) * 100))) : 0;
+
+  const body = (
+    <>
+      <View style={styles.overviewTopRow}>
+        <RsvpDonut
+          segments={[
+            { key: 'confirmed', value: confirmedPeople, color: PALETTE.confirmed },
+            { key: 'pending', value: pendingPeople, color: PALETTE.pending },
+            { key: 'declined', value: declinedPeople, color: PALETTE.declined },
+          ]}
+          centerValue={String(invitedPeople)}
+          centerLabel="מוזמנים"
+        />
+
+        <View style={styles.legendCol}>
+          <RsvpLegendRow
+            color={PALETTE.confirmed}
+            label="אישרו"
+            value={confirmedPeople}
+            percent={share(confirmedPeople)}
+          />
+          <RsvpLegendRow
+            color={PALETTE.pending}
+            label="ממתינים"
+            value={pendingPeople}
+            percent={share(pendingPeople)}
+          />
+          <RsvpLegendRow
+            color={PALETTE.declined}
+            label="לא מגיעים"
+            value={declinedPeople}
+            percent={share(declinedPeople)}
+          />
+        </View>
+      </View>
+
+      {interactive ? (
+        <View style={styles.overviewFooter}>
+          <Text style={styles.overviewFooterText}>ניהול אישורי הגעה</Text>
+          <Ionicons name="chevron-back" size={16} color={PALETTE.gold} />
+        </View>
+      ) : null}
+    </>
+  );
+
+  if (!interactive) {
+    return <View style={styles.overviewCard}>{body}</View>;
+  }
+
+  return (
+    <TouchableOpacity
+      style={styles.overviewCard}
+      activeOpacity={0.9}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel="פתיחת אישורי הגעה"
+    >
+      {body}
+    </TouchableOpacity>
+  );
+}
+
+function ProgressCard({
+  label,
+  value,
+  caption,
+  percent,
+  color,
+  icon,
+}: {
+  label: string;
+  value: string;
+  caption: string;
+  percent: number;
+  color: string;
+  icon: keyof typeof Ionicons.glyphMap;
+}) {
+  return (
+    <View style={styles.progressCard}>
+      <View style={styles.progressCardHeader}>
+        <View style={[styles.progressCardIcon, { backgroundColor: `${color}1A` }]}>
+          <Ionicons name={icon} size={16} color={color} />
+        </View>
+        <Text style={styles.progressCardLabel} numberOfLines={1}>
+          {label}
+        </Text>
+      </View>
+
+      <Text style={styles.progressCardValue}>{value}</Text>
+
+      <View style={styles.progressTrack}>
+        <View
+          style={[
+            styles.progressFill,
+            { width: `${Math.max(0, Math.min(100, percent))}%`, backgroundColor: color },
+          ]}
+        />
+      </View>
+
+      <Text style={styles.progressCardCaption} numberOfLines={1}>
+        {caption}
+      </Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  screenRoot: { flex: 1 },
-  safeRoot: { flex: 1 },
+  screenRoot: { flex: 1, backgroundColor: PALETTE.sheet },
+  safeRoot: { flex: 1, backgroundColor: PALETTE.sheet },
   safe: { flex: 1, backgroundColor: 'transparent' },
 
-  bgLayer: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: -3,
-  },
-  bgBase: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  bgHighlight: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  bgWarmGlow: {
-    ...StyleSheet.absoluteFillObject,
-  },
+  scroll: { flex: 1 },
+  content: { paddingBottom: 0 },
 
-  blob: {
-    position: 'absolute',
-    width: 520,
-    height: 520,
-    borderRadius: 520,
-  },
-  blobLeft: {
-    top: -240,
-    left: -280,
-  },
-  blobRight: {
-    top: -260,
-    right: -280,
-  },
-
-  heroStack: {
+  // ----- Hero -----
+  hero: {
     position: 'relative',
-    justifyContent: 'flex-start',
-    marginHorizontal: -24, // extend hero image to screen edges
-    backgroundColor: 'transparent',
+    paddingHorizontal: 24,
+    paddingBottom: 74,
+    alignItems: 'center',
   },
   heroGradientLayer: {
     ...StyleSheet.absoluteFillObject,
     overflow: 'hidden',
   },
-  scroll: {
-    flex: 1,
-    zIndex: 3,
-  },
-  navRightSpacer: { width: 40, height: 40 },
-
-  content: {
-    paddingHorizontal: 24,
-    paddingTop: 0,
-    paddingBottom: 80,
-    gap: 16,
-  },
-
-  hero: {
-    marginTop: 0,
-    paddingTop: 10,
-    paddingBottom: 4,
-    alignItems: 'center',
-  },
-
-  // Bottom "sheet" (white background with rounded top corners)
-  sheet: {
-    // Pull the sheet upward so it slightly overlaps the hero image (like the reference)
-    // Tweak this value if you want more/less overlap.
-    marginTop: -184,
-    marginHorizontal: -24, // extend to screen edges (counteracts content padding)
-    paddingHorizontal: 24,
-    paddingTop: 22,
-    paddingBottom: 24,
-    backgroundColor: '#EDF5FF',
-    borderTopLeftRadius: 34,
-    borderTopRightRadius: 34,
-    borderTopWidth: 1,
-    borderColor: 'rgba(21, 76, 151, 0.08)',
-    zIndex: 4,
-    shadowColor: colors.black,
-    shadowOpacity: 0.08,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: -2 },
-    elevation: 6,
-  },
-  sheetWeddingSpacing: {
-    marginTop: -132,
-    paddingTop: 30,
-  },
-  heroTitleWrap: {
-    alignItems: 'center',
-  },
-  heroOwnerTag: {
-    marginBottom: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: 'rgba(240,203,70,0.18)',
-    borderWidth: 1,
-    borderColor: 'rgba(204,160,0,0.22)',
-  },
-  heroOwnerTagText: {
-    fontSize: 18,
-    fontWeight: '800',
-    lineHeight: 22,
-    textAlign: 'center',
-    letterSpacing: -0.2,
-  },
-  heroTitleType: {
-    fontSize: 36,
-    fontWeight: '900',
-    lineHeight: 40,
-    textAlign: 'center',
-    letterSpacing: -0.6,
-  },
-  heroEventTypeTag: {
-    marginTop: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: 'rgba(6, 23, 62, 0.06)',
-    borderWidth: 1,
-    borderColor: 'rgba(6, 23, 62, 0.1)',
-  },
-  heroEventTypeTagText: {
-    fontSize: 15,
-    fontWeight: '800',
-    lineHeight: 18,
-    textAlign: 'center',
-    letterSpacing: -0.2,
-  },
-  heroMetaRow: {
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 10,
-    justifyContent: 'center',
-  },
-  heroMetaCardsRow: {
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    marginTop: 14,
-    flexWrap: 'wrap',
-  },
-  heroMetaCard: {
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.82)',
-    borderWidth: 1,
-    borderColor: 'rgba(6, 23, 62, 0.08)',
-    shadowColor: colors.black,
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
-  },
-  heroMetaCardIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(240,203,70,0.16)',
-  },
-  heroMetaCardText: {
-    fontSize: 15,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  heroMetaText: {
-    fontSize: 16,
-    fontWeight: '500',
-    textAlign: 'center',
-  },
-  heroCoupleCard: {
-    width: '100%',
-    maxWidth: 420,
-    marginTop: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.88)',
-    borderWidth: 1,
-    borderColor: 'rgba(6, 23, 62, 0.08)',
-    shadowColor: colors.black,
-    shadowOpacity: 0.06,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 3,
-  },
-  heroCoupleHeader: {
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginBottom: 12,
-  },
-  heroCoupleHeaderIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(240,203,70,0.16)',
-  },
-  heroCoupleHeaderText: {
-    fontSize: 13,
-    fontWeight: '800',
-    textAlign: 'center',
-  },
-  heroCoupleChips: {
-    flexDirection: ROW_DIR,
-    alignItems: 'stretch',
-    justifyContent: 'center',
-    gap: 10,
-  },
-  heroCoupleChip: {
-    flex: 1,
-    minHeight: 78,
-    borderRadius: 18,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    backgroundColor: 'rgba(247,250,255,0.96)',
-    borderWidth: 1,
-    borderColor: 'rgba(6, 23, 62, 0.06)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  heroCoupleChipLabel: {
-    fontSize: 12,
-    fontWeight: '800',
-    textAlign: 'center',
-  },
-  heroCoupleChipValue: {
-    fontSize: 18,
-    fontWeight: '900',
-    lineHeight: 24,
-    textAlign: 'center',
-  },
-  heroCoupleDivider: {
-    width: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  heroWindowOuter: {
-    width: '100%',
-    maxWidth: 560,
-    borderRadius: 0,
-  },
-  heroWindowInner: {
-    paddingHorizontal: 18,
-    paddingVertical: 18,
-    alignItems: 'center',
-    position: 'relative',
-  },
-  heroBackButton: {
+  heroGlowGold: {
     position: 'absolute',
-    top: 14,
-    right: 14,
+    width: 460,
+    height: 460,
+    borderRadius: 460,
+    bottom: -190,
+    left: -110,
+    opacity: 0.9,
+  },
+  // Both glows anchor to the bottom because the hero's top edge sits far above
+  // the viewport to cover pull-to-refresh overscroll.
+  heroGlowBlue: {
+    position: 'absolute',
+    width: 380,
+    height: 380,
+    borderRadius: 380,
+    bottom: 150,
+    right: -160,
+    opacity: 0.85,
+  },
+
+  heroTopBar: {
+    width: '100%',
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+  },
+  heroTopBarSpacer: { flex: 1 },
+  heroIconBtn: {
     width: 42,
     height: 42,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.92)',
+    backgroundColor: 'rgba(255,255,255,0.10)',
     borderWidth: 1,
-    borderColor: 'rgba(204,160,0,0.18)',
+    borderColor: 'rgba(255,255,255,0.18)',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: colors.black,
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 3,
   },
-  heroTopRow: {
+  heroIconBtnPlaceholder: { width: 42, height: 42 },
+
+  heroBody: {
     width: '100%',
-    flexDirection: ROW_DIR,
-    justifyContent: 'center',
-    marginBottom: 12,
+    maxWidth: 460,
+    alignItems: 'center',
+    marginTop: 18,
   },
-  heroAvatarWrap: {
-    position: 'relative',
-  },
-  heroAvatarRing: {
-    width: 92,
-    height: 92,
+
+  avatarRing: {
+    width: 96,
+    height: 96,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    borderWidth: 1,
-    borderColor: 'rgba(13,17,28,0.10)',
-    shadowColor: colors.black,
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
+    padding: 2.5,
+    shadowColor: PALETTE.gold,
+    shadowOpacity: 0.42,
+    shadowRadius: 22,
     shadowOffset: { width: 0, height: 10 },
-    elevation: 4,
+    elevation: 8,
+  },
+  avatarInset: {
+    flex: 1,
+    borderRadius: 999,
     overflow: 'hidden',
+    backgroundColor: '#0B1F45',
+    borderWidth: 2.5,
+    borderColor: PALETTE.inkDeep,
   },
-  heroAvatar: {
-    width: '100%',
-    height: '100%',
-  },
-  heroAvatarFallback: {
+  avatarImage: { width: '100%', height: '100%' },
+  avatarFallback: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(240,203,70,0.18)',
+    backgroundColor: 'rgba(240,203,70,0.14)',
   },
-  heroAvatarInitials: {
-    fontSize: 22,
+  avatarInitials: {
+    fontSize: 26,
     fontWeight: '900',
-    color: colors.richBlack,
+    color: PALETTE.goldLight,
+    letterSpacing: 0.5,
   },
-  heroAvatarEditBadge: {
-    position: 'absolute',
-    bottom: -8,
-    left: -8,
-    width: 36,
-    height: 36,
-    borderRadius: 999,
-    backgroundColor: colors.richBlack,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.40)',
-    justifyContent: 'center',
+
+  heroEyebrow: {
+    marginTop: 18,
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 2.4,
+    color: 'rgba(240,203,70,0.92)',
+    textAlign: 'center',
+  },
+  heroTitle: {
+    marginTop: 8,
+    fontSize: 40,
+    lineHeight: 46,
+    fontWeight: '900',
+    letterSpacing: -1.2,
+    color: '#FFFFFF',
+    textAlign: 'center',
+  },
+  heroTitleSolo: { marginTop: 20 },
+
+  ornamentRow: {
+    flexDirection: ROW_DIR,
     alignItems: 'center',
-    shadowColor: colors.black,
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 4,
+    justifyContent: 'center',
+    gap: 10,
+    marginTop: 14,
   },
-  heroAvatarEditBadgeDisabled: {
-    backgroundColor: 'rgba(201, 207, 218, 0.95)',
-    shadowOpacity: 0.05,
+  ornamentLine: { width: 56, height: 1 },
+  ornamentDiamond: {
+    width: 7,
+    height: 7,
+    backgroundColor: PALETTE.goldLight,
+    transform: [{ rotate: '45deg' }],
+  },
+
+  coupleRow: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    marginTop: 14,
+    maxWidth: '100%',
+  },
+  coupleName: {
+    fontSize: 19,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.9)',
+    letterSpacing: 0.3,
+    flexShrink: 1,
+  },
+
+  typeChip: {
+    marginTop: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+  },
+  typeChipText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: 'rgba(255,255,255,0.82)',
+    letterSpacing: 0.4,
+  },
+
+  countdownPill: {
+    marginTop: 18,
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    gap: 7,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    borderRadius: 999,
+    shadowColor: PALETTE.gold,
+    shadowOpacity: 0.35,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 5,
+  },
+  countdownText: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: PALETTE.ink,
+    letterSpacing: 0.2,
+  },
+  countdownTextPast: { color: 'rgba(255,255,255,0.82)' },
+
+  metaRow: {
+    marginTop: 20,
+    width: '100%',
+    alignItems: 'center',
+    gap: 8,
+  },
+  metaChip: {
+    maxWidth: '100%',
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  metaText: {
+    flexShrink: 1,
+    fontSize: 14,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.86)',
+  },
+
+  // ----- Content sheet -----
+  sheet: {
+    marginTop: -34,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    backgroundColor: PALETTE.sheet,
+    borderTopLeftRadius: 36,
+    borderTopRightRadius: 36,
+  },
+  sheetHandle: {
+    alignSelf: 'center',
+    width: 42,
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(6,23,62,0.14)',
+    marginBottom: 20,
   },
 
   previewOverlay: {
@@ -2030,433 +1992,214 @@ const styles = StyleSheet.create({
   },
   noTablesBtnPrimaryText: { fontSize: 14, fontWeight: '900', color: '#fff', writingDirection: 'rtl' },
 
-  glassOuter: {
-    borderWidth: 1,
+  // ----- RSVP overview -----
+  overviewCard: {
     borderRadius: 28,
-    overflow: 'hidden',
-    shadowColor: colors.black,
-    shadowOpacity: 0.07,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
+    padding: 18,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.06)',
+    shadowColor: '#0B2A5B',
+    shadowOpacity: 0.08,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 12 },
     elevation: 4,
   },
-  glassBlur: {
-    width: '100%',
-  },
-  glassInner: {
-    padding: 18,
-  },
-
-  panel: {},
-  notificationsPanel: {
-    marginTop: 14,
-    alignItems: 'center',
-  },
-
-  actionRow: {
-    width: '100%',
-    maxWidth: 560,
-    backgroundColor: 'rgba(248,252,255,0.96)',
-    borderRadius: 24,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(21, 76, 151, 0.08)',
-    shadowColor: colors.black,
-    shadowOpacity: 0.06,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 3,
+  overviewTopRow: {
     flexDirection: ROW_DIR,
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  actionRowContent: {
-    flex: 1,
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    justifyContent: 'flex-start',
     gap: 14,
   },
-  actionRowTextWrap: {
+  legendCol: {
     flex: 1,
-    alignItems: ALIGN_RIGHT,
-    justifyContent: 'center',
-  },
-  actionRowTitle: {
-    fontSize: 17,
-    fontWeight: '900',
-    textAlign: 'right',
-    letterSpacing: -0.2,
-  },
-  actionRowSubtitle: {
-    marginTop: 4,
-    fontSize: 13,
-    fontWeight: '600',
-    textAlign: 'right',
-    lineHeight: 18,
-  },
-  actionRowIconSquare: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  actionRowChevronCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 999,
-    backgroundColor: 'rgba(21, 76, 151, 0.08)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  panelHeaderRow: {
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 14,
-  },
-  panelTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    textAlign: 'right',
-  },
-  totalChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-  },
-  totalChipText: {
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  guestStatusGrid: {
-    gap: 10,
-  },
-  guestStatusCard: {
-    borderRadius: 18,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    backgroundColor: 'rgba(248,252,255,0.84)',
-    borderWidth: 1,
-    borderColor: 'rgba(21, 76, 151, 0.08)',
-  },
-  guestStatusTopRow: {
-    flexDirection: ROW_DIR,
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
     gap: 12,
-    marginBottom: 10,
   },
-  guestStatusMetaCol: {
-    alignItems: ALIGN_RIGHT,
-    gap: 2,
-    minWidth: 72,
+  legendRow: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    gap: 8,
   },
-  guestStatusLabel: {
+  legendDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 999,
+  },
+  legendLabel: {
     flex: 1,
     fontSize: 13,
     fontWeight: '700',
+    color: 'rgba(6,23,62,0.62)',
     textAlign: 'right',
   },
-  guestStatusPercent: {
-    fontSize: 13,
+  legendValue: {
+    fontSize: 18,
+    fontWeight: '900',
+    letterSpacing: -0.4,
+  },
+  legendPercent: {
+    minWidth: 38,
+    fontSize: 12,
     fontWeight: '800',
+    color: 'rgba(6,23,62,0.40)',
+    textAlign: 'left',
+  },
+  overviewFooter: {
+    marginTop: 16,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(6,23,62,0.06)',
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  overviewFooterText: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: PALETTE.gold,
+    letterSpacing: 0.2,
+  },
+
+  // ----- Section headings -----
+  sectionHead: {
+    marginTop: 28,
+    marginBottom: 14,
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    gap: 14,
+  },
+  sectionHeadTextWrap: {
+    alignItems: ALIGN_RIGHT,
+  },
+  sectionTitle: {
+    fontSize: 19,
+    fontWeight: '900',
+    color: PALETTE.ink,
+    letterSpacing: -0.4,
     textAlign: 'right',
   },
-  guestStatusValue: {
+  sectionCaption: {
+    marginTop: 2,
+    fontSize: 12,
+    fontWeight: '700',
+    color: 'rgba(6,23,62,0.45)',
+    textAlign: 'right',
+  },
+  sectionRule: {
+    flex: 1,
+    height: 1,
+    backgroundColor: 'rgba(6,23,62,0.10)',
+  },
+
+  // ----- Progress cards -----
+  progressRow: {
+    flexDirection: ROW_DIR,
+    gap: 12,
+  },
+  progressCard: {
+    flex: 1,
+    borderRadius: 22,
+    padding: 16,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.06)',
+    shadowColor: '#0B2A5B',
+    shadowOpacity: 0.05,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 2,
+  },
+  progressCardHeader: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    gap: 8,
+  },
+  progressCardIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  progressCardLabel: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '800',
+    color: 'rgba(6,23,62,0.55)',
+    textAlign: 'right',
+  },
+  progressCardValue: {
+    marginTop: 12,
     fontSize: 28,
     fontWeight: '900',
+    color: PALETTE.ink,
+    letterSpacing: -0.8,
     textAlign: 'right',
-    letterSpacing: -0.5,
   },
-  guestStatusBarTrack: {
-    height: 7,
+  progressTrack: {
+    marginTop: 10,
+    height: 6,
     borderRadius: 999,
-    backgroundColor: 'rgba(17,24,39,0.08)',
+    backgroundColor: 'rgba(6,23,62,0.07)',
     overflow: 'hidden',
     alignItems: 'flex-end',
   },
-  guestStatusBarFill: {
+  progressFill: {
     height: '100%',
     borderRadius: 999,
     alignSelf: 'flex-end',
   },
-
-  grid2: {
-    flexDirection: ROW_DIR,
-    gap: 12,
-  },
-  miniCard: {
-    flex: 1,
-    height: 148,
-    position: 'relative',
-  },
-  miniOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.9,
-  },
-  miniContent: {
-    alignItems: ALIGN_RIGHT,
-    gap: 6,
-  },
-  miniLabel: {
-    fontSize: 13,
-    fontWeight: '600',
+  progressCardCaption: {
+    marginTop: 8,
+    fontSize: 11,
+    fontWeight: '700',
+    color: 'rgba(6,23,62,0.42)',
     textAlign: 'right',
-  },
-  miniValue: {
-    fontSize: 18,
-    fontWeight: '900',
-    textAlign: 'right',
-  },
-  miniSubValue: {
-    fontSize: 14,
-    fontWeight: '600',
-    textAlign: 'right',
-  },
-  miniArrow: {
-    position: 'absolute',
-    bottom: 14,
-    left: 14,
-    width: 34,
-    height: 34,
-    borderRadius: 999,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: colors.black,
-    shadowOpacity: 0.10,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 2,
-  },
-  miniGlow: {
-    position: 'absolute',
-    width: 140,
-    height: 140,
-    borderRadius: 999,
-    right: -50,
-    bottom: -60,
-    opacity: 0.08,
   },
 
-  summaryTilesRow: {
+  // ----- Action grid -----
+  actionGrid: {
     flexDirection: ROW_DIR,
+    flexWrap: 'wrap',
     gap: 12,
-    alignItems: 'stretch',
-    marginTop: 14,
   },
-  summaryTile: {
-    flex: 1,
-    height: 120,
-  },
-  tileWideOuter: {
-    width: "100%",
-    minHeight: 208,
-    borderRadius: 24,
-    padding: 14,
-    backgroundColor: "rgba(246,250,255,0.96)",
+  actionTile: {
+    width: '47.8%',
+    flexGrow: 1,
+    minHeight: 132,
+    borderRadius: 22,
+    padding: 16,
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: "rgba(21, 76, 151, 0.08)",
-    shadowColor: colors.black,
-    shadowOpacity: 0.04,
+    borderColor: 'rgba(6,23,62,0.06)',
+    alignItems: ALIGN_RIGHT,
+    shadowColor: '#0B2A5B',
+    shadowOpacity: 0.05,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 8 },
     elevation: 2,
-    overflow: "hidden",
-    marginBottom: 14,
   },
-
-  rsvpCardInner: { flex: 1, justifyContent: "space-between" },
-  rsvpHeaderRow: {
-    flexDirection: ROW_DIR,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  rsvpHeaderRight: {
-    width: "100%",
-    alignItems: "center",
-    gap: 4,
-  },
-  rsvpHeaderValueRow: {
-    flexDirection: ROW_DIR,
-    alignItems: "baseline",
-    justifyContent: "center",
-    gap: 10,
-  },
-  rsvpHeaderValue: {
-    fontSize: 46,
-    fontWeight: "900",
-    letterSpacing: -1.0,
-    lineHeight: 48,
-    textAlign: "center",
-  },
-  rsvpHeaderLabelInline: {
-    fontSize: 15,
-    fontWeight: "800",
-    color: "rgba(0,53,102,0.68)",
-    textAlign: "center",
-    marginBottom: 6,
-  },
-  rsvpDivider: {
-    height: 1,
-    width: "100%",
-    backgroundColor: "rgba(17, 24, 39, 0.07)",
-    marginTop: 8,
-    marginBottom: 10,
-  },
-  rsvpGrid: {
-    flexDirection: ROW_DIR,
-    alignItems: "stretch",
-    gap: 10,
-  },
-  rsvpStatIconCircle: {
-    width: 30,
-    height: 30,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.65)",
-    borderWidth: 1,
-    borderColor: "rgba(17, 24, 39, 0.06)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  rsvpStatValue: {
-    fontSize: 20,
-    fontWeight: "900",
-    color: "rgba(17,24,39,0.92)",
-    marginTop: 2,
-    textAlign: "center",
-  },
-  rsvpStatLabel: {
-    fontSize: 12,
-    fontWeight: "900",
-    letterSpacing: 0.4,
-    textAlign: "center",
-  },
-  rsvpStatCardGreen: {
-    flex: 1,
-    borderRadius: 18,
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    overflow: "hidden",
-    backgroundColor: "rgba(255,255,255,0.72)",
-    borderWidth: 1,
-    borderColor: "rgba(17,24,39,0.06)",
-  },
-  rsvpStatCardYellow: {
-    flex: 1,
-    borderRadius: 18,
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    overflow: "hidden",
-    backgroundColor: "rgba(255,255,255,0.72)",
-    borderWidth: 1,
-    borderColor: "rgba(17,24,39,0.06)",
-  },
-  rsvpStatCardRed: {
-    flex: 1,
-    borderRadius: 18,
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    overflow: "hidden",
-    backgroundColor: "rgba(255,255,255,0.72)",
-    borderWidth: 1,
-    borderColor: "rgba(17,24,39,0.06)",
-  },
-  summaryTileHeader: {
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  summaryTileIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 12,
+  actionTileIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 15,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  summaryTileValue: {
-    fontSize: 28,
-    fontWeight: '900',
-    textAlign: 'right',
-    letterSpacing: -0.6,
-    marginBottom: 12,
-  },
-  summaryTileLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    textAlign: 'right',
-  },
-
-  bottomActions: {
+  actionTileTitle: {
     marginTop: 14,
-    alignItems: 'center',
-    gap: 12,
-  },
-  primaryAction: {
-    width: '100%',
-    maxWidth: 420,
-    height: 64,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.22)',
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 10,
-    shadowColor: '#0f45e6',
-    shadowOpacity: 0.16,
-    shadowRadius: 22,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 6,
-  },
-  primaryActionLeftIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  primaryActionText: {
-    flex: 1,
-    textAlign: 'center',
-    fontSize: 18,
+    fontSize: 15,
     fontWeight: '900',
-    color: '#fff',
+    color: PALETTE.ink,
+    letterSpacing: -0.3,
+    textAlign: 'right',
   },
-  primaryActionRightIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.96)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: colors.black,
-    shadowOpacity: 0.10,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 3,
-  },
-  secondaryAction: {
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 8,
-  },
-  secondaryActionText: {
-    fontSize: 14,
-    fontWeight: '800',
+  actionTileCaption: {
+    marginTop: 4,
+    fontSize: 12,
+    fontWeight: '600',
+    lineHeight: 17,
+    color: 'rgba(6,23,62,0.48)',
+    textAlign: 'right',
   },
 }); 

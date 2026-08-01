@@ -1,17 +1,16 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Switch, Platform } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Switch, ActivityIndicator } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
 import { MotiView } from 'moti';
 import { colors } from '@/constants/colors';
 import { Event } from '@/types';
-import { ALIGN_RIGHT, ROW_DIR, rtlText } from '@/lib/rtl';
+import { ROW_DIR, rtlText } from '@/lib/rtl';
 import {
   EVENT_BADGE_META,
+  EVENT_BLUE,
   EVENT_IMAGE_BY_TYPE,
-  MONTHS,
   inferEventType,
   type EventType,
 } from '@/features/events/eventsConstants';
@@ -42,6 +41,12 @@ function getCountdownTone(date: Date | string): 'today' | 'future' | 'past' {
   return 'past';
 }
 
+const COUNTDOWN_GRADIENT: Record<'today' | 'future' | 'past', [string, string]> = {
+  today: ['rgba(14,165,233,0.94)', 'rgba(30,79,216,0.94)'],
+  future: ['rgba(11,37,96,0.86)', 'rgba(30,79,216,0.86)'],
+  past: ['rgba(71,85,105,0.86)', 'rgba(51,65,85,0.86)'],
+};
+
 type EventListCardProps = {
   event: Event;
   index: number;
@@ -58,9 +63,7 @@ export function EventListCard({
   approvingEventId,
 }: EventListCardProps) {
   const dateObj = useMemo(() => new Date(event.date), [event.date]);
-  const dayNum = dateObj.toLocaleDateString('he-IL', { day: '2-digit' });
-  const monthName = MONTHS[dateObj.getMonth()];
-  const weekdayLabel = rtlText(
+  const dateLabel = rtlText(
     dateObj.toLocaleDateString('he-IL', { weekday: 'long', day: '2-digit', month: 'long' })
   );
   const eventType = inferEventType(event.title) || 'חתונה';
@@ -69,558 +72,338 @@ export function EventListCard({
   const coverSource = invitationImageUrl
     ? { uri: invitationImageUrl }
     : EVENT_IMAGE_BY_TYPE[eventType as EventType];
+
+  const ownerName = String(event.userName ?? '').trim();
+  const displayTitle = getEventDisplayTitle(String(event.title ?? ''));
+  // Most events are stored with the type as their whole title, so showing both a
+  // type chip and that same word as the heading wastes the most prominent line.
+  const heading = displayTitle && displayTitle !== eventType ? displayTitle : ownerName || eventType;
+  const showOwnerRow = Boolean(ownerName) && ownerName !== heading;
+
+  const headingLabel = rtlText(heading);
+  const ownerNameLabel = rtlText(ownerName);
   const locationLabel = rtlText([event.location, event.city].filter(Boolean).join(' · '));
-  const ownerNameLabel = rtlText(String(event.userName ?? '').trim());
-  const eventTitleLabel = rtlText(getEventDisplayTitle(String(event.title ?? '')));
   const countdownLabel = getDaysLeftLabel(event.date);
   const countdownTone = getCountdownTone(event.date);
+  const guestsCount = typeof event.guests === 'number' && event.guests > 0 ? event.guests : null;
   const isApproved = event.isApproved !== false;
   const isApproving = approvingEventId === event.id;
 
   return (
     <MotiView
-      from={{ opacity: 0, translateY: 22, scale: 0.97 }}
-      animate={{ opacity: 1, translateY: 0, scale: 1 }}
-      transition={{ type: 'timing', duration: 520, delay: Math.min(index * 70, 420) }}
-      style={styles.block}
+      from={{ opacity: 0, translateY: 16 }}
+      animate={{ opacity: 1, translateY: 0 }}
+      transition={{ type: 'timing', duration: 340, delay: Math.min(index * 55, 330) }}
     >
-      <TouchableOpacity onPress={onPress} style={styles.card} activeOpacity={0.94}>
-        <View style={styles.heroWrap}>
-          <Image source={coverSource} style={styles.coverImg} contentFit="cover" transition={300} />
-
-          <LinearGradient
-            colors={['rgba(6,23,62,0.08)', 'rgba(6,23,62,0.18)', 'rgba(6,23,62,0.82)']}
-            locations={[0, 0.42, 1]}
-            style={styles.coverGradient}
-          />
-
-          <LinearGradient
-            colors={['rgba(240,203,70,0.35)', 'rgba(240,203,70,0)']}
-            start={{ x: 1, y: 0 }}
-            end={{ x: 0, y: 1 }}
-            style={styles.coverShimmer}
-          />
-
-          <View style={styles.dateBadgeOuter}>
-            <BlurView intensity={Platform.OS === 'android' ? 42 : 28} tint="light" style={styles.dateBadgeBlur}>
-              <View style={styles.dateBadgeInner}>
-                <Text style={styles.dateBadgeDay}>{dayNum}</Text>
-                <View style={styles.dateBadgeDivider} />
-                <Text style={styles.dateBadgeMonth}>{monthName}</Text>
-              </View>
-            </BlurView>
-          </View>
-
-          <View style={styles.typePillHero}>
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="button"
+        style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+      >
+        <View style={styles.topRow}>
+          <View style={styles.posterWrap}>
+            <Image source={coverSource} style={styles.poster} contentFit="cover" transition={220} />
             <LinearGradient
-              colors={[badgeMeta.tint, 'rgba(6,23,62,0.88)']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.typePillHeroGradient}
-            >
-              <Ionicons name={badgeMeta.icon} size={13} color={colors.white} />
-              <Text style={styles.typePillHeroText}>{eventType}</Text>
-            </LinearGradient>
-          </View>
+              colors={['rgba(6,23,62,0.34)', 'rgba(6,23,62,0.02)', 'rgba(6,23,62,0.72)']}
+              locations={[0, 0.45, 1]}
+              style={StyleSheet.absoluteFill}
+            />
 
-          <View style={styles.heroBottom}>
-            <Text style={styles.heroTitle} numberOfLines={2}>
-              {eventTitleLabel}
-            </Text>
-            <View style={styles.heroAccentRow}>
-              <View style={styles.heroAccentLine} />
-              <View style={styles.heroAccentDot} />
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.bodyPanel}>
-          <View style={styles.bodyPanelHandle} />
-
-          <View style={styles.metaTopRow}>
-            <View style={styles.weekdayChip}>
-              <Ionicons name="calendar-outline" size={14} color={colors.secondary} />
-              <Text style={styles.weekdayChipText} numberOfLines={1}>
-                {weekdayLabel}
+            <View style={styles.typeChip}>
+              <Ionicons name={badgeMeta.icon} size={10} color={EVENT_BLUE.mid} />
+              <Text style={styles.typeChipText} numberOfLines={1}>
+                {eventType}
               </Text>
             </View>
 
             <LinearGradient
-              colors={
-                countdownTone === 'today'
-                  ? ['#F0CB46', '#CCA000']
-                  : countdownTone === 'future'
-                    ? ['#06173e', '#003566']
-                    : ['rgba(108,117,125,0.92)', 'rgba(73,80,87,0.92)']
-              }
+              colors={COUNTDOWN_GRADIENT[countdownTone]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
-              style={styles.countdownChip}
+              style={styles.countdownPill}
             >
               <Ionicons
                 name={countdownTone === 'past' ? 'checkmark-done' : 'time-outline'}
-                size={13}
-                color={countdownTone === 'today' ? colors.primary : colors.white}
+                size={11}
+                color={colors.white}
               />
-              <Text
-                style={[
-                  styles.countdownChipText,
-                  countdownTone === 'today' && styles.countdownChipTextToday,
-                ]}
-              >
+              <Text style={styles.countdownText} numberOfLines={1}>
                 {countdownLabel}
               </Text>
             </LinearGradient>
           </View>
 
-          {locationLabel ? (
-            <View style={styles.locationRow}>
-              <View style={styles.locationIconWrap}>
-                <Ionicons name="location" size={14} color={colors.white} />
-              </View>
-              <Text style={styles.locationText} numberOfLines={2}>
-                {locationLabel}
+          <View style={styles.content}>
+            <Text style={styles.title} numberOfLines={2}>
+              {headingLabel}
+            </Text>
+
+            <View style={styles.metaRow}>
+              <Ionicons name="calendar-outline" size={13} color={EVENT_BLUE.mid} />
+              <Text style={styles.metaText} numberOfLines={1}>
+                {dateLabel}
               </Text>
             </View>
-          ) : null}
 
-          <View style={styles.statsRow}>
-            {ownerNameLabel ? (
-              <View style={styles.statPill}>
-                {event.userAvatarUrl ? (
-                  <Image source={{ uri: event.userAvatarUrl }} style={styles.ownerAvatar} contentFit="cover" />
-                ) : (
-                  <View style={styles.ownerAvatarFallback}>
-                    <Ionicons name="person" size={12} color={colors.white} />
-                  </View>
-                )}
-                <Text style={styles.statPillText} numberOfLines={1}>
-                  {ownerNameLabel}
+            {locationLabel ? (
+              <View style={styles.metaRow}>
+                <Ionicons name="location-outline" size={13} color={EVENT_BLUE.mid} />
+                <Text style={styles.metaText} numberOfLines={1}>
+                  {locationLabel}
                 </Text>
               </View>
             ) : null}
 
-            {typeof event.guests === 'number' && event.guests > 0 ? (
-              <View style={styles.statPill}>
-                <View style={styles.statIconWrap}>
-                  <Ionicons name="people" size={13} color={colors.secondary} />
-                </View>
-                <Text style={styles.statPillText}>{event.guests} מוזמנים</Text>
+            {showOwnerRow || guestsCount ? (
+              <View style={styles.tagRow}>
+                {showOwnerRow ? (
+                  <View style={styles.tag}>
+                    {event.userAvatarUrl ? (
+                      <Image
+                        source={{ uri: event.userAvatarUrl }}
+                        style={styles.ownerAvatar}
+                        contentFit="cover"
+                      />
+                    ) : (
+                      <Ionicons name="person-outline" size={11} color={EVENT_BLUE.deep} />
+                    )}
+                    <Text style={styles.tagText} numberOfLines={1}>
+                      {ownerNameLabel}
+                    </Text>
+                  </View>
+                ) : null}
+
+                {guestsCount ? (
+                  <View style={styles.tag}>
+                    <Ionicons name="people-outline" size={11} color={EVENT_BLUE.deep} />
+                    <Text style={styles.tagText}>{guestsCount}</Text>
+                  </View>
+                ) : null}
               </View>
             ) : null}
           </View>
-
-          <TouchableOpacity
-            activeOpacity={1}
-            onPress={(e) => e.stopPropagation?.()}
-            style={styles.approvalRow}
-          >
-            <View style={styles.approvalInfo}>
-              {isApproved ? (
-                <View style={styles.approvalBadgeApproved}>
-                  <Ionicons name="shield-checkmark" size={13} color="#065F46" />
-                  <Text style={styles.approvalBadgeApprovedText}>מאושר</Text>
-                </View>
-              ) : (
-                <View style={styles.approvalBadgePending}>
-                  <Ionicons name="hourglass-outline" size={13} color="#92400E" />
-                  <Text style={styles.approvalBadgePendingText}>ממתין לאישור</Text>
-                </View>
-              )}
-            </View>
-
-            <View style={styles.approvalAction}>
-              <Text style={styles.approvalLabel}>{isApproved ? 'ביטול אישור' : 'אשר אירוע'}</Text>
-              <Switch
-                value={isApproved}
-                onValueChange={(val) => onToggleApproval(event, val)}
-                disabled={isApproving}
-                trackColor={{ false: '#FDE68A', true: '#A7F3D0' }}
-                thumbColor={isApproved ? '#059669' : '#D97706'}
-                ios_backgroundColor="#FDE68A"
-              />
-            </View>
-          </TouchableOpacity>
-
-          <LinearGradient
-            colors={['#06173e', '#003566']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.ctaButton}
-          >
-            <Text style={styles.ctaText}>לפרטי האירוע</Text>
-            <View style={styles.ctaIconWrap}>
-              <Ionicons name="chevron-back" size={16} color={colors.primary} />
-            </View>
-          </LinearGradient>
         </View>
-      </TouchableOpacity>
+
+        <View style={styles.footer}>
+          <View style={[styles.statusPill, isApproved ? styles.statusPillOn : styles.statusPillOff]}>
+            {isApproving ? (
+              <ActivityIndicator size="small" color={isApproved ? EVENT_BLUE.mid : EVENT_BLUE.muted} />
+            ) : (
+              <Ionicons
+                name={isApproved ? 'shield-checkmark' : 'hourglass-outline'}
+                size={12}
+                color={isApproved ? EVENT_BLUE.mid : EVENT_BLUE.muted}
+              />
+            )}
+            <Text
+              style={[styles.statusText, isApproved ? styles.statusTextOn : styles.statusTextOff]}
+            >
+              {isApproved ? 'מאושר' : 'ממתין לאישור'}
+            </Text>
+          </View>
+
+          <Pressable
+            onPress={(e) => e.stopPropagation?.()}
+            style={styles.switchWrap}
+            accessibilityRole="switch"
+            accessibilityLabel={isApproved ? 'ביטול אישור האירוע' : 'אישור האירוע'}
+            accessibilityState={{ checked: isApproved }}
+          >
+            <Switch
+              value={isApproved}
+              onValueChange={(val) => onToggleApproval(event, val)}
+              disabled={isApproving}
+              trackColor={{ false: '#DDE3EF', true: 'rgba(30,79,216,0.34)' }}
+              thumbColor={isApproved ? EVENT_BLUE.mid : '#94A3B8'}
+              ios_backgroundColor="#DDE3EF"
+              style={styles.approvalSwitch}
+            />
+          </Pressable>
+        </View>
+      </Pressable>
     </MotiView>
   );
 }
 
 export { getEventDisplayTitle };
 
+const POSTER_WIDTH = 104;
+const POSTER_HEIGHT = 132;
+
 const styles = StyleSheet.create({
-  block: {
-    paddingHorizontal: 2,
-  },
   card: {
-    borderRadius: 32,
-    overflow: 'hidden',
+    borderRadius: 26,
+    padding: 12,
     backgroundColor: colors.white,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.92)',
-    shadowColor: colors.richBlack,
-    shadowOpacity: 0.14,
-    shadowRadius: 28,
-    shadowOffset: { width: 0, height: 14 },
-    elevation: 8,
+    borderColor: EVENT_BLUE.line,
+    shadowColor: EVENT_BLUE.deep,
+    shadowOpacity: 0.1,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 4,
   },
-  heroWrap: {
-    width: '100%',
-    aspectRatio: 4 / 4.6,
-    position: 'relative',
-    backgroundColor: colors.primary,
+  cardPressed: {
+    opacity: 0.94,
+    transform: [{ scale: 0.995 }],
   },
-  coverImg: {
+  topRow: {
+    flexDirection: ROW_DIR,
+    gap: 12,
+  },
+  posterWrap: {
+    width: POSTER_WIDTH,
+    height: POSTER_HEIGHT,
+    borderRadius: 18,
+    overflow: 'hidden',
+    backgroundColor: EVENT_BLUE.ink,
+  },
+  poster: {
     ...StyleSheet.absoluteFillObject,
     width: '100%',
     height: '100%',
   },
-  coverGradient: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  coverShimmer: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.55,
-  },
-  dateBadgeOuter: {
+  typeChip: {
     position: 'absolute',
-    top: 16,
-    end: 16,
-    borderRadius: 20,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.72)',
-    shadowColor: colors.black,
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 4,
-  },
-  dateBadgeBlur: {
-    overflow: 'hidden',
-  },
-  dateBadgeInner: {
-    minWidth: 62,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.78)',
-  },
-  dateBadgeDay: {
-    fontSize: 26,
-    lineHeight: 28,
-    fontWeight: '900',
-    color: colors.primary,
-    textAlign: 'center',
-  },
-  dateBadgeDivider: {
-    width: 22,
-    height: 2,
-    borderRadius: 999,
-    backgroundColor: colors.secondary,
-    marginVertical: 4,
-  },
-  dateBadgeMonth: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: colors.gray[600],
-    textAlign: 'center',
-  },
-  typePillHero: {
-    position: 'absolute',
-    top: 16,
-    start: 16,
-    borderRadius: 999,
-    overflow: 'hidden',
-    shadowColor: colors.black,
-    shadowOpacity: 0.18,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 4,
-  },
-  typePillHeroGradient: {
+    top: 8,
+    start: 8,
+    end: 8,
     flexDirection: ROW_DIR,
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  typePillHeroText: {
-    fontSize: 12,
-    fontWeight: '900',
-    color: colors.white,
-    letterSpacing: 0.2,
-  },
-  heroBottom: {
-    position: 'absolute',
-    start: 18,
-    end: 18,
-    bottom: 18,
-    gap: 8,
-  },
-  heroTitle: {
-    fontSize: 24,
-    lineHeight: 30,
-    fontWeight: '900',
-    color: colors.white,
-    textAlign: 'right',
-    writingDirection: 'rtl',
-    textShadowColor: 'rgba(0,0,0,0.35)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 8,
-  },
-  heroAccentRow: {
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    gap: 8,
-    alignSelf: ALIGN_RIGHT,
-  },
-  heroAccentLine: {
-    width: 42,
-    height: 3,
-    borderRadius: 999,
-    backgroundColor: colors.secondary,
-  },
-  heroAccentDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.yellow,
-  },
-  bodyPanel: {
-    marginTop: -22,
-    paddingTop: 8,
-    paddingHorizontal: 16,
-    paddingBottom: 16,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    backgroundColor: 'rgba(255,255,255,0.98)',
-    gap: 12,
-  },
-  bodyPanelHandle: {
-    alignSelf: 'center',
-    width: 44,
-    height: 4,
-    borderRadius: 999,
-    backgroundColor: 'rgba(6,23,62,0.08)',
-    marginBottom: 2,
-  },
-  metaTopRow: {
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  weekdayChip: {
-    flex: 1,
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 16,
-    backgroundColor: 'rgba(240,203,70,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(204,160,0,0.18)',
-  },
-  weekdayChipText: {
-    flex: 1,
-    fontSize: 13,
-    fontWeight: '800',
-    color: colors.text,
-    textAlign: 'right',
-    writingDirection: 'rtl',
-  },
-  countdownChip: {
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 9,
-    paddingHorizontal: 12,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
-  },
-  countdownChipText: {
-    fontSize: 12,
-    fontWeight: '900',
-    color: colors.white,
-  },
-  countdownChipTextToday: {
-    color: colors.primary,
-  },
-  locationRow: {
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: 18,
-    backgroundColor: 'rgba(6,23,62,0.04)',
-    borderWidth: 1,
-    borderColor: 'rgba(6,23,62,0.06)',
-  },
-  locationIconWrap: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.primary,
+    gap: 4,
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.92)',
   },
-  locationText: {
-    flex: 1,
-    fontSize: 13,
-    fontWeight: '800',
-    color: colors.text,
-    textAlign: 'right',
-    writingDirection: 'rtl',
-    lineHeight: 19,
+  typeChipText: {
+    flexShrink: 1,
+    fontSize: 10,
+    fontWeight: '900',
+    color: EVENT_BLUE.deep,
   },
-  statsRow: {
-    flexDirection: ROW_DIR,
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  statPill: {
+  countdownPill: {
+    position: 'absolute',
+    bottom: 8,
+    start: 8,
+    end: 8,
     flexDirection: ROW_DIR,
     alignItems: 'center',
-    gap: 8,
-    paddingVertical: 9,
-    paddingHorizontal: 12,
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: 5,
+    paddingHorizontal: 6,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.96)',
-    borderWidth: 1,
-    borderColor: 'rgba(6,23,62,0.07)',
+  },
+  countdownText: {
+    flexShrink: 1,
+    fontSize: 10.5,
+    fontWeight: '900',
+    color: colors.white,
+  },
+  content: {
+    flex: 1,
+    minHeight: POSTER_HEIGHT,
+    gap: 6,
+    paddingTop: 2,
+  },
+  title: {
+    fontSize: 17,
+    lineHeight: 22,
+    fontWeight: '900',
+    color: EVENT_BLUE.ink,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+    letterSpacing: -0.2,
+  },
+  metaRow: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    gap: 6,
+  },
+  metaText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '700',
+    color: EVENT_BLUE.muted,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  tagRow: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 'auto',
+  },
+  tag: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    gap: 5,
+    paddingVertical: 5,
+    paddingHorizontal: 9,
+    borderRadius: 999,
+    backgroundColor: EVENT_BLUE.tint,
     maxWidth: '100%',
   },
-  statIconWrap: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(240,203,70,0.18)',
-  },
-  statPillText: {
-    fontSize: 12,
+  tagText: {
+    flexShrink: 1,
+    fontSize: 11,
     fontWeight: '800',
-    color: colors.primary,
+    color: EVENT_BLUE.deep,
     textAlign: 'right',
     writingDirection: 'rtl',
-    maxWidth: 180,
   },
   ownerAvatar: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
     backgroundColor: colors.gray[200],
   },
-  ownerAvatarFallback: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primary,
-  },
-  approvalRow: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: 18,
-    backgroundColor: 'rgba(248, 249, 250, 0.96)',
-    borderWidth: 1,
-    borderColor: 'rgba(6,23,62,0.06)',
-  },
-  approvalInfo: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-  },
-  approvalAction: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: 10,
-  },
-  approvalLabel: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: colors.primary,
-  },
-  approvalBadgePending: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: 'rgba(254, 243, 199, 0.95)',
-    borderWidth: 1,
-    borderColor: 'rgba(217, 119, 6, 0.28)',
-  },
-  approvalBadgePendingText: {
-    fontSize: 11,
-    fontWeight: '900',
-    color: '#92400E',
-  },
-  approvalBadgeApproved: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: 'rgba(209, 250, 229, 0.95)',
-    borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.28)',
-  },
-  approvalBadgeApprovedText: {
-    fontSize: 11,
-    fontWeight: '900',
-    color: '#065F46',
-  },
-  ctaButton: {
+  footer: {
     flexDirection: ROW_DIR,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     gap: 10,
-    paddingVertical: 14,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.14)',
-    shadowColor: colors.primary,
-    shadowOpacity: 0.2,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 4,
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: EVENT_BLUE.line,
   },
-  ctaText: {
-    fontSize: 14,
-    fontWeight: '900',
-    color: colors.white,
-    letterSpacing: 0.2,
-  },
-  ctaIconWrap: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+  switchWrap: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.yellow,
+  },
+  approvalSwitch: {
+    transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }],
+  },
+  statusPill: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    gap: 5,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  statusPillOn: {
+    backgroundColor: EVENT_BLUE.tint,
+    borderColor: EVENT_BLUE.tintStrong,
+  },
+  statusPillOff: {
+    backgroundColor: 'rgba(100,116,139,0.08)',
+    borderColor: 'rgba(100,116,139,0.16)',
+  },
+  statusText: {
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  statusTextOn: {
+    color: EVENT_BLUE.mid,
+  },
+  statusTextOff: {
+    color: EVENT_BLUE.muted,
   },
 });
