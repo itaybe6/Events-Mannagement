@@ -678,6 +678,8 @@ function RootLayoutNav() {
     <Stack
       screenOptions={{
         headerBackTitle: "חזרה",
+        // מסכים שלא בפוקוס מוקפאים ולא מתרנדרים ברקע — מאיץ מעברים בין עמודים
+        freezeOnBlur: true,
       }}
       initialRouteName="index"
     >

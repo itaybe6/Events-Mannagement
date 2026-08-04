@@ -71,6 +71,7 @@ export default function TablesListWebScreen() {
       : '/(couple)';
 
   const [loading, setLoading] = useState(true);
+  const hasLoadedOnceRef = React.useRef(false);
   const [tables, setTables] = useState<Table[]>([]);
   const [guests, setGuests] = useState<GuestRow[]>([]);
 
@@ -148,19 +149,18 @@ export default function TablesListWebScreen() {
     }
 
     if (userData?.id) setActiveEvent(userData.id, resolvedEventId);
-    setLoading(true);
+    // לואדר מלא רק בטעינה הראשונה; בחזרות למסך מרעננים בשקט ברקע
+    const isFirstLoad = !hasLoadedOnceRef.current;
+    if (isFirstLoad) setLoading(true);
     try {
       await Promise.all([fetchTables(), fetchGuests()]);
     } finally {
-      setLoading(false);
+      hasLoadedOnceRef.current = true;
+      if (isFirstLoad) setLoading(false);
     }
   };
 
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resolvedEventId]);
-
+  // הפוקוס מכסה גם את הטעינה הראשונית — useEffect נוסף היה גורם ל-fetch כפול
   useFocusEffect(
     React.useCallback(() => {
       load();

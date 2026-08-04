@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { Alert, Platform } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 
@@ -35,6 +35,7 @@ export type UsersModel = {
 
 export function useUsersModel(opts: { demoUsers: UserWithMetadata[] }) {
   const [users, setUsers] = useState<UserWithMetadata[]>([]);
+  const hasUsersRef = useRef(false);
   const [loading, setLoading] = useState(false);
   const [isDemoMode, setIsDemoMode] = useState(false);
 
@@ -48,8 +49,10 @@ export function useUsersModel(opts: { demoUsers: UserWithMetadata[] }) {
 
   const refreshUsers = useCallback(async () => {
     try {
-      setLoading(true);
+      // לואדר מלא רק כשאין עדיין נתונים; אם יש רשימה מוצגת מרעננים בשקט ברקע
+      if (!hasUsersRef.current) setLoading(true);
       const usersData = await userService.getAllUsers();
+      hasUsersRef.current = usersData.length > 0;
       setUsers(usersData);
       setIsDemoMode(false);
     } catch (error) {

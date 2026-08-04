@@ -74,12 +74,7 @@ export default function AdminEventsScreen() {
     }
   };
 
-  // רענון ראשוני
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  // רענון בכל חזרה לפוקוס
+  // רענון בכניסה למסך (הפוקוס מכסה גם את הטעינה הראשונית, כך שאין fetch כפול)
   useFocusEffect(
     React.useCallback(() => {
       void refresh();

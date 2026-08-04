@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { DonutChart, type DonutSegment } from '@/components/couple/DonutChart';
@@ -33,7 +33,8 @@ type CoupleHomeDashboardCardsProps = {
   eventTitle: string;
   eventDateLabel: string;
   locationLabel: string;
-  countdown: CountdownValues | null;
+  /** תאריך היעד לספירה לאחור; הטיק מתבצע בתוך רכיב הספירה בלבד כדי לא לרנדר את כל המסך כל שנייה */
+  eventDate: string | Date | null | undefined;
   guestInviteCount: number;
   guestCounts: {
     coming: number;
@@ -49,6 +50,37 @@ type CoupleHomeDashboardCardsProps = {
   onPressSeating: () => void;
   middleSlot?: React.ReactNode;
 };
+
+// רכיב עצמאי שמחזיק את השעון בתוכו — רק הוא מתרנדר מחדש כל שנייה
+function LiveCountdown({ targetDate }: { targetDate: string | Date | null | undefined }) {
+  const targetMs = useMemo(() => {
+    if (!targetDate) return NaN;
+    const t = new Date(targetDate).getTime();
+    return Number.isFinite(t) ? t : NaN;
+  }, [targetDate]);
+
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!Number.isFinite(targetMs)) return;
+    const t = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [targetMs]);
+
+  if (!Number.isFinite(targetMs)) {
+    return <Text style={styles.countdownFallback}>--:--</Text>;
+  }
+
+  const totalSeconds = Math.floor(Math.max(0, targetMs - nowMs) / 1000);
+  const countdown: CountdownValues = {
+    days: Math.floor(totalSeconds / 86400),
+    hours: Math.floor((totalSeconds % 86400) / 3600),
+    minutes: Math.floor((totalSeconds % 3600) / 60),
+    seconds: totalSeconds % 60,
+  };
+
+  return <CountdownRow countdown={countdown} />;
+}
 
 function CountdownRow({ countdown }: { countdown: CountdownValues }) {
   const unit = (value: number, label: string) => (
@@ -85,7 +117,7 @@ export function CoupleHomeDashboardCards({
   eventTitle,
   eventDateLabel,
   locationLabel,
-  countdown,
+  eventDate,
   guestInviteCount,
   guestCounts,
   confirmedPeople,
@@ -116,11 +148,7 @@ export function CoupleHomeDashboardCards({
         <Text style={[styles.eventTitle, rtlTextAlign]} numberOfLines={2}>
           {eventTitle}
         </Text>
-        {countdown ? (
-          <CountdownRow countdown={countdown} />
-        ) : (
-          <Text style={styles.countdownFallback}>--:--</Text>
-        )}
+        <LiveCountdown targetDate={eventDate} />
         <View style={styles.divider} />
         <View style={styles.metaRow}>
           <View style={styles.metaItem}>

@@ -28,12 +28,9 @@ import {
   UNAPPROVED_EVENT_GUEST_LIMIT,
   UNAPPROVED_EVENT_GUEST_LIMIT_ERROR,
 } from '@/lib/services/guestService';
-import {
-  downloadGuestImportTemplate,
-  pickAndParseGuestsFile,
-  type ParsedGuestRow,
-} from '@/lib/importGuestsExcel';
-import { exportGuestsToExcel } from '@/lib/exportGuestsExcel';
+// מודולי האקסל (xlsx) כבדים מאוד — נטענים דינמית רק בלחיצה על ייצוא/ייבוא,
+// כדי לא להכביד על טעינת העמוד.
+import type { ParsedGuestRow } from '@/lib/importGuestsExcel';
 import { exportGuestsToPdf } from '@/lib/exportGuestsPdf';
 import { guestMatchesSearch, normalizeGuestPhone } from '@/lib/guestPhone';
 
@@ -84,6 +81,7 @@ export default function CoupleGuestsWebScreen() {
       : '/(couple)';
 
   const [loading, setLoading] = useState(false);
+  const hasLoadedOnceRef = React.useRef(false);
   const [eventTitle, setEventTitle] = useState('');
   const [eventDate, setEventDate] = useState<Date | null>(null);
   const [eventLocation, setEventLocation] = useState('');
@@ -146,7 +144,9 @@ export default function CoupleGuestsWebScreen() {
     }
 
     if (userData?.id) setActiveEvent(userData.id, resolvedEventId);
-    setLoading(true);
+    // לואדר מלא רק בטעינה הראשונה; בחזרות למסך מרעננים בשקט ברקע
+    const isFirstLoad = !hasLoadedOnceRef.current;
+    if (isFirstLoad) setLoading(true);
     try {
       const [evt, cats, g, tbls] = await Promise.all([
         eventService.getEvent(resolvedEventId),
@@ -191,15 +191,12 @@ export default function CoupleGuestsWebScreen() {
       console.error('Guests web load error:', e);
       Alert.alert('שגיאה', 'לא ניתן לטעון את רשימת המוזמנים כרגע.');
     } finally {
-      setLoading(false);
+      hasLoadedOnceRef.current = true;
+      if (isFirstLoad) setLoading(false);
     }
   };
 
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resolvedEventId]);
-
+  // הפוקוס מכסה גם את הטעינה הראשונית — useEffect נוסף היה גורם ל-fetch כפול
   useFocusEffect(
     React.useCallback(() => {
       load();
@@ -542,7 +539,7 @@ export default function CoupleGuestsWebScreen() {
   };
 
   const [exportingExcel, setExportingExcel] = useState(false);
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
     if (exportingExcel) return;
     const confirmedGuests = guests.filter((g) => g.status === 'מגיע');
     if (!confirmedGuests.length) {
@@ -551,6 +548,7 @@ export default function CoupleGuestsWebScreen() {
     }
     setExportingExcel(true);
     try {
+      const { exportGuestsToExcel } = await import('@/lib/exportGuestsExcel');
       exportGuestsToExcel(guests, { eventTitle, categories });
     } catch (e) {
       console.error('Export Excel error:', e);
@@ -701,8 +699,9 @@ export default function CoupleGuestsWebScreen() {
     setImportStatusText('');
   };
 
-  const handleDownloadTemplate = () => {
+  const handleDownloadTemplate = async () => {
     try {
+      const { downloadGuestImportTemplate } = await import('@/lib/importGuestsExcel');
       downloadGuestImportTemplate({ eventTitle });
     } catch (e: any) {
       console.error('Download template error:', e);
@@ -715,6 +714,7 @@ export default function CoupleGuestsWebScreen() {
 
     let parsed: { rows: ParsedGuestRow[]; skipped: number; totalRows: number } | null = null;
     try {
+      const { pickAndParseGuestsFile } = await import('@/lib/importGuestsExcel');
       parsed = await pickAndParseGuestsFile();
     } catch (e: any) {
       console.error('Parse guests file error:', e);

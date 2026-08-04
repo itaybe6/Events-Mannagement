@@ -368,6 +368,8 @@ export default function AdminTabsLayoutShared() {
           : undefined
       }
       screenOptions={({ route, navigation }) => ({
+        // טאבים שלא בפוקוס מוקפאים ולא מתרנדרים ברקע — מאיץ מעברים בין טאבים
+        freezeOnBlur: true,
         tabBarActiveTintColor: colors.white,
         tabBarInactiveTintColor: colors.gray[500],
         tabBarPosition: isWebDesktopShell ? "left" : "bottom",

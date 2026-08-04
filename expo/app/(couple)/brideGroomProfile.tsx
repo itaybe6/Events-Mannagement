@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, Modal, Pressable, TextInput, Platform, ActivityIndicator, ScrollView } from 'react-native';
 import { useUserStore } from '@/store/userStore';
 import { useFocusEffect, useGlobalSearchParams, useRouter } from 'expo-router';
@@ -95,6 +95,7 @@ export default function BrideGroomSettings() {
     invitationImageUrl?: string;
   } | null>(null);
   const [loading, setLoading] = useState(true);
+  const hasLoadedOnceRef = useRef(false);
 
   const avatarUri = userData?.avatar_url?.trim() || '';
   const [logoutModalOpen, setLogoutModalOpen] = useState(false);
@@ -137,7 +138,9 @@ export default function BrideGroomSettings() {
         return;
       }
 
-      setLoading(true);
+      // לואדר מלא רק בטעינה הראשונה; בחזרות למסך מרעננים בשקט ברקע
+      const isFirstLoad = !hasLoadedOnceRef.current;
+      if (isFirstLoad) setLoading(true);
       try {
         const { data: avatarRow } = await supabase
           .from('users')
@@ -208,7 +211,8 @@ export default function BrideGroomSettings() {
         console.error('Error loading couple profile:', e);
         Alert.alert('שגיאה', 'לא ניתן לטעון את הפרופיל');
       } finally {
-        if (active) setLoading(false);
+        hasLoadedOnceRef.current = true;
+        if (active && isFirstLoad) setLoading(false);
       }
     };
 
@@ -219,7 +223,7 @@ export default function BrideGroomSettings() {
     };
   }, [resolvedEventId, userData?.avatar_url, userData?.id]);
 
-  useEffect(() => loadProfile(), [loadProfile]);
+  // הפוקוס מכסה גם את הטעינה הראשונית — אין צורך ב-useEffect נוסף (מנע fetch כפול)
   useFocusEffect(loadProfile);
 
   const performLogout = async () => {

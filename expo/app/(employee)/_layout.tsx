@@ -87,6 +87,8 @@ export default function EmployeeTabsLayout() {
   return (
     <Tabs
       screenOptions={{
+        // טאבים שלא בפוקוס מוקפאים ולא מתרנדרים ברקע — מאיץ מעברים בין טאבים
+        freezeOnBlur: true,
         tabBarActiveTintColor: colors.white,
         tabBarInactiveTintColor: colors.gray[500],
         headerShown: true,

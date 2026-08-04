@@ -51,7 +51,6 @@ export default function HomeScreen() {
   const [currentEvent, setCurrentEvent] = useState<any>(null);
   const [stats, setStats] = useState<HomeStats>(EMPTY_HOME_STATS);
   const [loading, setLoading] = useState(true);
-  const [now, setNow] = useState(() => new Date());
   const [hasMultipleEvents, setHasMultipleEvents] = useState(false);
   const [tablesCount, setTablesCount] = useState(0);
   // Guards against the duplicate fetch that used to run on the first mount
@@ -171,27 +170,8 @@ export default function HomeScreen() {
     }, [isLoggedIn, resolvedEventId, fetchHomeData])
   );
 
-  useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(t);
-  }, []);
-
-  const countdown = useMemo(() => {
-    const target = currentEvent?.date ? new Date(currentEvent.date).getTime() : NaN;
-    const diffMs = target - now.getTime();
-    if (!Number.isFinite(diffMs)) return null;
-
-    const safeDiff = Math.max(0, diffMs);
-    const totalSeconds = Math.floor(safeDiff / 1000);
-
-    return {
-      days: Math.floor(totalSeconds / 86400),
-      hours: Math.floor((totalSeconds % 86400) / 3600),
-      minutes: Math.floor((totalSeconds % 3600) / 60),
-      seconds: totalSeconds % 60,
-      isComplete: safeDiff <= 0,
-    };
-  }, [currentEvent?.date, now]);
+  // הספירה לאחור עברה לתוך LiveCountdown בתוך כרטיסי הדשבורד,
+  // כדי שהטיק של כל שנייה לא ירנדר מחדש את כל מסך הבית.
 
   if (!isLoggedIn) {
     return (
@@ -405,7 +385,7 @@ export default function HomeScreen() {
           eventTitle={eventTitle}
           eventDateLabel={eventDateLabel}
           locationLabel={locationLabel}
-          countdown={countdown}
+          eventDate={currentEvent?.date ?? null}
           guestInviteCount={stats.inviteCount}
           guestCounts={guestCounts}
           confirmedPeople={confirmedPeople}

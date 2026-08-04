@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, BackHandler, View, Text, StyleSheet, ScrollView, ActivityIndicator, StatusBar, TouchableOpacity, Platform, useWindowDimensions, Modal, Alert, Pressable, TextInput, KeyboardAvoidingView, RefreshControl } from 'react-native';
+import { Animated, BackHandler, Easing, View, Text, StyleSheet, ScrollView, ActivityIndicator, StatusBar, TouchableOpacity, Platform, useWindowDimensions, Modal, Alert, Pressable, TextInput, KeyboardAvoidingView, RefreshControl } from 'react-native';
+import { BlurView } from 'expo-blur';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { colors } from '@/constants/colors';
 import { eventService } from '@/lib/services/eventService';
@@ -27,6 +28,14 @@ const PALETTE = {
   confirmed: '#2FA36B',
   pending: '#E0A82E',
   declined: '#E2544A',
+} as const;
+
+// Hero accent ramp — the dark header runs cool blue + white only.
+const ACCENT = {
+  cyan: '#6EE7FF',
+  electric: '#4C8DFF',
+  deep: '#1E4FD8',
+  soft: '#A9C8FF',
 } as const;
 
 export default function AdminEventDetailsScreen() {
@@ -67,6 +76,10 @@ export default function AdminEventDetailsScreen() {
 
   const heroIntro = useRef(new Animated.Value(0)).current;
   const sheetIntro = useRef(new Animated.Value(0)).current;
+  // One driver per hero line so they can cascade in rather than land as a block.
+  const heroSteps = useRef(Array.from({ length: 6 }, () => new Animated.Value(0))).current;
+  const aurora = useRef(new Animated.Value(0)).current;
+  const pulse = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (loading) return;
@@ -74,7 +87,61 @@ export default function AdminEventDetailsScreen() {
       Animated.timing(heroIntro, { toValue: 1, duration: 520, useNativeDriver: true }),
       Animated.timing(sheetIntro, { toValue: 1, duration: 520, useNativeDriver: true }),
     ]).start();
-  }, [loading, heroIntro, sheetIntro]);
+
+    Animated.stagger(
+      85,
+      heroSteps.map((value) =>
+        Animated.timing(value, {
+          toValue: 1,
+          duration: 560,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        })
+      )
+    ).start();
+  }, [loading, heroIntro, sheetIntro, heroSteps]);
+
+  // Background aurora drifts forever; it is what makes the header feel alive.
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(aurora, {
+          toValue: 1,
+          duration: 9000,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(aurora, {
+          toValue: 0,
+          duration: 9000,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [aurora]);
+
+  // Radar ping on the status dot.
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 1900,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.delay(320),
+      ])
+    );
+    loop.start();
+    return () => {
+      loop.stop();
+      pulse.setValue(0);
+    };
+  }, [pulse]);
 
   const countdownLabel = useMemo(() => {
     const raw = event?.date;
@@ -141,7 +208,7 @@ export default function AdminEventDetailsScreen() {
       >
         <View style={{ flex: 1, backgroundColor: '#071B45', justifyContent: 'center', alignItems: 'center', paddingTop: insets.top }}>
           <StatusBar barStyle="light-content" backgroundColor="#071B45" />
-          <ActivityIndicator size="large" color={PALETTE.goldLight} />
+          <ActivityIndicator size="large" color={ACCENT.cyan} />
         </View>
       </BackSwipe>
     );
@@ -385,6 +452,29 @@ export default function AdminEventDetailsScreen() {
     opacity: heroIntro,
     transform: [{ translateY: heroIntro.interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }],
   };
+
+  const stepStyle = (index: number, rise = 18) => ({
+    opacity: heroSteps[index],
+    transform: [
+      { translateY: heroSteps[index].interpolate({ inputRange: [0, 1], outputRange: [rise, 0] }) },
+    ],
+  });
+  // The rule draws itself out from the centre instead of fading in.
+  const ruleStyle = {
+    opacity: heroSteps[3],
+    transform: [{ scaleX: heroSteps[3] }],
+  };
+  const drift = (x: [number, number], y: [number, number], s: [number, number]) => ({
+    transform: [
+      { translateX: aurora.interpolate({ inputRange: [0, 1], outputRange: x }) },
+      { translateY: aurora.interpolate({ inputRange: [0, 1], outputRange: y }) },
+      { scale: aurora.interpolate({ inputRange: [0, 1], outputRange: s }) },
+    ],
+  });
+  const pingStyle = {
+    opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.6, 0] }),
+    transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 3.2] }) }],
+  };
   const sheetAnimatedStyle = {
     opacity: sheetIntro,
     transform: [{ translateY: sheetIntro.interpolate({ inputRange: [0, 1], outputRange: [22, 0] }) }],
@@ -469,8 +559,8 @@ export default function AdminEventDetailsScreen() {
           <RefreshControl
             refreshing={isPullRefreshing}
             onRefresh={() => void handlePullToRefresh()}
-            tintColor={PALETTE.goldLight}
-            colors={[PALETTE.goldLight]}
+            tintColor={ACCENT.cyan}
+            colors={[ACCENT.cyan]}
             progressBackgroundColor={PALETTE.ink}
             progressViewOffset={Math.max(72, insets.top + 56)}
           />
@@ -488,7 +578,7 @@ export default function AdminEventDetailsScreen() {
         >
           <View pointerEvents="none" style={styles.heroGradientLayer}>
             <LinearGradient
-              colors={['#0B2A5B', '#071B45', PALETTE.inkDeep]}
+              colors={['#0C3070', '#071B45', PALETTE.inkDeep]}
               locations={[0, 0.58, 1]}
               start={{ x: 0.15, y: 0 }}
               end={{ x: 0.85, y: 1 }}
@@ -506,7 +596,7 @@ export default function AdminEventDetailsScreen() {
                   transition={220}
                 />
                 <LinearGradient
-                  colors={['rgba(4,14,36,0.94)', 'rgba(4,14,36,0.58)', 'rgba(4,14,36,0.90)']}
+                  colors={['rgba(5,16,44,0.94)', 'rgba(6,20,52,0.56)', 'rgba(4,12,32,0.92)']}
                   locations={[0, 0.4, 1]}
                   start={{ x: 0.5, y: 0 }}
                   end={{ x: 0.5, y: 1 }}
@@ -515,7 +605,8 @@ export default function AdminEventDetailsScreen() {
               </View>
             ) : null}
 
-            {/* Radial auras — soft light with no visible shape edge */}
+            {/* Aurora — three radial blobs drifting on their own paths. Each one
+                lives in its own layer so the transforms stay on the UI thread. */}
             <View
               style={[
                 styles.heroAura,
@@ -523,22 +614,42 @@ export default function AdminEventDetailsScreen() {
                 hasInvitationBackdrop ? styles.heroAuraSoft : null,
               ]}
             >
-              <Svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
-                <Defs>
-                  <RadialGradient id="heroAuraGold" cx="50%" cy="50%" r="50%">
-                    <Stop offset="0" stopColor={PALETTE.gold} stopOpacity="0.40" />
-                    <Stop offset="0.55" stopColor={PALETTE.gold} stopOpacity="0.14" />
-                    <Stop offset="1" stopColor={PALETTE.gold} stopOpacity="0" />
-                  </RadialGradient>
-                  <RadialGradient id="heroAuraBlue" cx="50%" cy="50%" r="50%">
-                    <Stop offset="0" stopColor="#6098FF" stopOpacity="0.30" />
-                    <Stop offset="1" stopColor="#6098FF" stopOpacity="0" />
-                  </RadialGradient>
-                </Defs>
-                <Ellipse cx="86" cy="4" rx="52" ry="32" fill="url(#heroAuraBlue)" />
-                <Ellipse cx="50" cy="52" rx="64" ry="42" fill="url(#heroAuraGold)" />
-                <Ellipse cx="46" cy="103" rx="72" ry="26" fill="url(#heroAuraGold)" />
-              </Svg>
+              <Animated.View style={[StyleSheet.absoluteFill, drift([-30, 26], [12, -20], [1, 1.18])]}>
+                <Svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
+                  <Defs>
+                    <RadialGradient id="auraCyan" cx="50%" cy="50%" r="50%">
+                      <Stop offset="0" stopColor={ACCENT.cyan} stopOpacity="0.34" />
+                      <Stop offset="0.55" stopColor={ACCENT.cyan} stopOpacity="0.10" />
+                      <Stop offset="1" stopColor={ACCENT.cyan} stopOpacity="0" />
+                    </RadialGradient>
+                  </Defs>
+                  <Ellipse cx="50" cy="50" rx="62" ry="40" fill="url(#auraCyan)" />
+                </Svg>
+              </Animated.View>
+
+              <Animated.View style={[StyleSheet.absoluteFill, drift([24, -22], [-14, 16], [1.12, 1])]}>
+                <Svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
+                  <Defs>
+                    <RadialGradient id="auraElectric" cx="50%" cy="50%" r="50%">
+                      <Stop offset="0" stopColor={ACCENT.electric} stopOpacity="0.40" />
+                      <Stop offset="1" stopColor={ACCENT.electric} stopOpacity="0" />
+                    </RadialGradient>
+                  </Defs>
+                  <Ellipse cx="84" cy="8" rx="54" ry="34" fill="url(#auraElectric)" />
+                </Svg>
+              </Animated.View>
+
+              <Animated.View style={[StyleSheet.absoluteFill, drift([16, -18], [8, -10], [1, 1.1])]}>
+                <Svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
+                  <Defs>
+                    <RadialGradient id="auraDeep" cx="50%" cy="50%" r="50%">
+                      <Stop offset="0" stopColor={ACCENT.electric} stopOpacity="0.34" />
+                      <Stop offset="1" stopColor={ACCENT.electric} stopOpacity="0" />
+                    </RadialGradient>
+                  </Defs>
+                  <Ellipse cx="42" cy="104" rx="70" ry="26" fill="url(#auraDeep)" />
+                </Svg>
+              </Animated.View>
             </View>
           </View>
 
@@ -572,89 +683,91 @@ export default function AdminEventDetailsScreen() {
           </View>
 
           <Animated.View style={[styles.heroBody, heroAnimatedStyle]}>
-            {/* Category → host → title → ornament → status → logistics */}
+            {/* Category → host → title → rule → status → logistics, each cascading in */}
             {showTypeChip ? (
-              <View style={styles.typeChip}>
+              <Animated.View style={[styles.glassWrap, styles.typeChip, stepStyle(0, 12)]}>
+                <BlurView intensity={26} tint="dark" style={StyleSheet.absoluteFill} />
+                <View style={styles.typeDot} />
                 <Text style={styles.typeChipText}>{eventTypeLabel}</Text>
-              </View>
+              </Animated.View>
             ) : null}
 
             {userName ? (
-              <Text style={styles.heroEyebrow} numberOfLines={1}>
+              <Animated.Text style={[styles.heroEyebrow, stepStyle(1)]} numberOfLines={1}>
                 {userName}
-              </Text>
+              </Animated.Text>
             ) : null}
 
-            <Text style={[styles.heroTitle, userName ? null : styles.heroTitleSolo]} numberOfLines={2}>
+            <Animated.Text
+              style={[styles.heroTitle, userName ? null : styles.heroTitleSolo, stepStyle(2, 22)]}
+              numberOfLines={2}
+            >
               {displayTitle}
-            </Text>
+            </Animated.Text>
 
-            <View style={styles.ornamentRow}>
+            <Animated.View style={[styles.ruleWrap, ruleStyle]}>
               <LinearGradient
-                colors={['rgba(240,203,70,0)', 'rgba(240,203,70,0.75)']}
+                colors={['rgba(110,231,255,0)', ACCENT.cyan, 'rgba(110,231,255,0)']}
                 start={{ x: 0, y: 0.5 }}
                 end={{ x: 1, y: 0.5 }}
-                style={styles.ornamentLine}
+                style={styles.ruleLine}
               />
-              <View style={styles.ornamentDiamond} />
-              <LinearGradient
-                colors={['rgba(240,203,70,0.75)', 'rgba(240,203,70,0)']}
-                start={{ x: 0, y: 0.5 }}
-                end={{ x: 1, y: 0.5 }}
-                style={styles.ornamentLine}
-              />
-            </View>
+            </Animated.View>
 
             {isWeddingEvent() ? (
-              <View style={styles.coupleRow}>
+              <Animated.View style={[styles.coupleRow, stepStyle(4)]}>
                 <Text style={styles.coupleName} numberOfLines={1}>
                   {groomLabel()}
                 </Text>
-                <Ionicons name="heart" size={13} color={PALETTE.goldLight} />
+                <Ionicons name="heart" size={13} color={ACCENT.cyan} />
                 <Text style={styles.coupleName} numberOfLines={1}>
                   {brideLabel()}
                 </Text>
-              </View>
+              </Animated.View>
             ) : null}
 
             {countdownLabel ? (
-              <LinearGradient
-                colors={
-                  isUpcoming
-                    ? [PALETTE.goldPale, PALETTE.goldLight, PALETTE.gold]
-                    : ['rgba(255,255,255,0.16)', 'rgba(255,255,255,0.08)']
-                }
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.countdownPill}
-              >
-                <Ionicons
-                  name={isUpcoming ? 'sparkles' : 'checkmark-circle'}
-                  size={12}
-                  color={isUpcoming ? PALETTE.ink : 'rgba(255,255,255,0.8)'}
-                />
-                <Text style={[styles.countdownText, !isUpcoming ? styles.countdownTextPast : null]}>
-                  {countdownLabel}
-                </Text>
-              </LinearGradient>
+              <Animated.View style={stepStyle(4)}>
+                {isUpcoming ? (
+                  <LinearGradient
+                    colors={[ACCENT.electric, ACCENT.deep]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.countdownPill}
+                  >
+                    <View style={styles.dotWrap}>
+                      <Animated.View style={[styles.dotPing, pingStyle]} />
+                      <View style={styles.dotCore} />
+                    </View>
+                    <Text style={styles.countdownText}>{countdownLabel}</Text>
+                  </LinearGradient>
+                ) : (
+                  <View style={[styles.glassWrap, styles.countdownPill, styles.countdownPillPast]}>
+                    <BlurView intensity={26} tint="dark" style={StyleSheet.absoluteFill} />
+                    <Ionicons name="checkmark-circle" size={13} color="rgba(255,255,255,0.72)" />
+                    <Text style={[styles.countdownText, styles.countdownTextPast]}>{countdownLabel}</Text>
+                  </View>
+                )}
+              </Animated.View>
             ) : null}
 
-            {/* Date and venue share a single glass bar instead of a chip per line */}
-            <View style={styles.metaBar}>
+            {/* Date and venue share a single frosted bar instead of a chip per line */}
+            <Animated.View style={[styles.glassWrap, styles.metaBar, stepStyle(5)]}>
+              <BlurView intensity={22} tint="dark" style={StyleSheet.absoluteFill} />
               <View style={styles.metaItemFixed}>
-                <Ionicons name="calendar-outline" size={13} color={PALETTE.goldLight} />
+                <Ionicons name="calendar-outline" size={13} color={ACCENT.cyan} />
                 <Text style={styles.metaText} numberOfLines={1}>{`${weekday}, ${day}`}</Text>
               </View>
 
               <View style={styles.metaDivider} />
 
               <View style={styles.metaItem}>
-                <Ionicons name="location-outline" size={13} color={PALETTE.goldLight} />
+                <Ionicons name="location-outline" size={13} color={ACCENT.cyan} />
                 <Text style={styles.metaText} numberOfLines={1}>
                   {cityLabel ? `${venueLabel} · ${cityLabel}` : venueLabel}
                 </Text>
               </View>
-            </View>
+            </Animated.View>
           </Animated.View>
         </View>
 
@@ -1303,41 +1416,41 @@ const styles = StyleSheet.create({
   heroEyebrow: {
     marginTop: 16,
     fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 2.2,
-    color: 'rgba(240,203,70,0.92)',
+    fontWeight: '700',
+    letterSpacing: 3.4,
+    color: 'rgba(255,255,255,0.72)',
     textAlign: 'center',
     textShadowColor: 'rgba(4,14,36,0.55)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 6,
   },
   heroTitle: {
-    marginTop: 5,
-    fontSize: 34,
-    lineHeight: 40,
+    marginTop: 6,
+    fontSize: 36,
+    lineHeight: 42,
     fontWeight: '900',
-    letterSpacing: -0.9,
+    letterSpacing: -1,
     color: '#FFFFFF',
     textAlign: 'center',
-    textShadowColor: 'rgba(4,14,36,0.6)',
+    textShadowColor: 'rgba(4,14,36,0.65)',
     textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 10,
+    textShadowRadius: 12,
   },
   heroTitleSolo: { marginTop: 14 },
 
-  ornamentRow: {
-    flexDirection: ROW_DIR,
+  ruleWrap: {
+    marginTop: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 9,
-    marginTop: 10,
   },
-  ornamentLine: { width: 46, height: 1 },
-  ornamentDiamond: {
-    width: 6,
-    height: 6,
-    backgroundColor: PALETTE.goldLight,
-    transform: [{ rotate: '45deg' }],
+  ruleLine: {
+    width: 132,
+    height: 2,
+    borderRadius: 2,
+    shadowColor: ACCENT.cyan,
+    shadowOpacity: 0.9,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 0 },
   },
 
   coupleRow: {
@@ -1356,43 +1469,76 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
 
-  // Category pill — opens the hero, so it reads as a gold-tinted eyebrow.
-  typeChip: {
-    paddingHorizontal: 13,
-    paddingVertical: 5,
-    borderRadius: 999,
-    backgroundColor: 'rgba(240,203,70,0.10)',
+  // Frosted base shared by every hero chip — the blur sits behind the content,
+  // so the wrapper must clip it.
+  glassWrap: {
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.08)',
     borderWidth: 1,
-    borderColor: 'rgba(240,203,70,0.30)',
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+
+  typeChip: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    gap: 7,
+    paddingHorizontal: 13,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  typeDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: ACCENT.cyan,
+    shadowColor: ACCENT.cyan,
+    shadowOpacity: 1,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 0 },
   },
   typeChipText: {
     fontSize: 11.5,
-    fontWeight: '800',
-    color: PALETTE.goldPale,
-    letterSpacing: 1.4,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.92)',
+    letterSpacing: 1.6,
   },
 
   countdownPill: {
-    marginTop: 16,
+    marginTop: 18,
     flexDirection: ROW_DIR,
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     borderRadius: 999,
-    shadowColor: PALETTE.gold,
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 5,
+    shadowColor: ACCENT.electric,
+    shadowOpacity: 0.55,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 6,
   },
+  countdownPillPast: { shadowOpacity: 0, elevation: 0 },
   countdownText: {
-    fontSize: 12,
-    fontWeight: '900',
-    color: PALETTE.ink,
-    letterSpacing: 0.2,
+    fontSize: 12.5,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: 0.3,
   },
   countdownTextPast: { color: 'rgba(255,255,255,0.82)' },
+
+  // Radar ping on the live-status dot.
+  dotWrap: { width: 8, height: 8, alignItems: 'center', justifyContent: 'center' },
+  dotPing: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 999,
+    backgroundColor: '#FFFFFF',
+  },
+  dotCore: {
+    width: 7,
+    height: 7,
+    borderRadius: 999,
+    backgroundColor: '#FFFFFF',
+  },
 
   metaBar: {
     marginTop: 14,
@@ -1401,11 +1547,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     paddingHorizontal: 14,
-    paddingVertical: 9,
+    paddingVertical: 10,
     borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.07)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
   },
   metaItem: {
     flexDirection: ROW_DIR,

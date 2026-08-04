@@ -55,6 +55,8 @@ export default function CoupleTabsLayout() {
         initialRouteName="index"
         tabBar={(props) => (isTabBarVisible ? <CoupleTabBar {...props} /> : null)}
         screenOptions={{
+          // טאבים שלא בפוקוס מוקפאים ולא מתרנדרים ברקע — מאיץ מעברים בין טאבים
+          freezeOnBlur: true,
           tabBarActiveTintColor: colors.white,
           tabBarInactiveTintColor: colors.gray[500],
           headerShown: true,

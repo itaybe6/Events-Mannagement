@@ -72,6 +72,7 @@ export default function AdminSearchScreen() {
   const insets = useSafeAreaInsets();
 
   const [loading, setLoading] = useState(true);
+  const hasLoadedOnceRef = React.useRef(false);
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<SearchScope>("all");
   const [events, setEvents] = useState<Event[]>([]);
@@ -83,7 +84,9 @@ export default function AdminSearchScreen() {
   const scopeProgress = React.useRef(new Animated.Value(1)).current;
 
   const loadSearchData = useCallback(async () => {
-    setLoading(true);
+    // לואדר מלא רק בטעינה הראשונה; בחזרות למסך מרעננים בשקט ברקע
+    const isFirstLoad = !hasLoadedOnceRef.current;
+    if (isFirstLoad) setLoading(true);
     try {
       const [eventsData, usersData] = await Promise.all([
         eventService.getEvents(),
@@ -97,6 +100,7 @@ export default function AdminSearchScreen() {
       setEvents([]);
       setUsers([]);
     } finally {
+      hasLoadedOnceRef.current = true;
       setLoading(false);
     }
   }, []);
@@ -104,12 +108,10 @@ export default function AdminSearchScreen() {
   useEffect(() => {
     if (!isLoggedIn || userType !== "admin") {
       router.replace("/login");
-      return;
     }
+  }, [isLoggedIn, userType, router]);
 
-    void loadSearchData();
-  }, [isLoggedIn, userType, router, loadSearchData]);
-
+  // הפוקוס מכסה גם את הטעינה הראשונית — קריאה נוספת ב-useEffect הייתה גורמת ל-fetch כפול
   useFocusEffect(
     useCallback(() => {
       if (!isLoggedIn || userType !== "admin") return;

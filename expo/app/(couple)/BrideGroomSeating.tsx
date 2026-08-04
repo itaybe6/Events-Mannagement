@@ -240,6 +240,7 @@ export default function BrideGroomSeating() {
   const [tables, setTables] = useState<Table[]>([]);
   const [guests, setGuests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const hasLoadedOnceRef = useRef(false);
   const [isPositionsReady, setIsPositionsReady] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [textAreas, setTextAreas] = useState<any[]>([]);
@@ -838,27 +839,20 @@ export default function BrideGroomSeating() {
     if (userData?.id && resolvedEventId) setActiveEvent(userData.id, resolvedEventId);
   }, [userData?.id, resolvedEventId, setActiveEvent]);
 
-  useEffect(() => {
-    if (resolvedEventId) {
-      setLoading(true);
-      Promise.all([
-        fetchTables(),
-        fetchTextAreas(),
-        fetchGuests(),
-      ]).finally(() => setLoading(false));
-    }
-  }, [resolvedEventId]);
-
   useFocusEffect(
     useCallback(() => {
-      // Fetch data every time the screen comes into focus
+      // רענון בכניסה למסך: לואדר מלא רק בטעינה הראשונה, אחרת רענון שקט ברקע
       if (resolvedEventId) {
-        setLoading(true);
+        const isFirstLoad = !hasLoadedOnceRef.current;
+        if (isFirstLoad) setLoading(true);
         Promise.all([
           fetchTables(),
           fetchTextAreas(),
           fetchGuests(),
-        ]).finally(() => setLoading(false));
+        ]).finally(() => {
+          hasLoadedOnceRef.current = true;
+          if (isFirstLoad) setLoading(false);
+        });
       }
       
       // איפוס מיקום וזום כשחוזרים לעמוד

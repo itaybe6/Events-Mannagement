@@ -20,7 +20,18 @@ export type SeatingGuestRow = {
 
 export type SeatingAnnotation = { id?: string; x?: number; y?: number; text?: string };
 
-export function useSeatingMapModel(eventId: string | null) {
+export function useSeatingMapModel(
+  eventId: string | null,
+  options?: {
+    /**
+     * Skip downloading the guest list. Screens that already fetch guests
+     * elsewhere (e.g. guest check-in) set this to false so the full list isn't
+     * downloaded twice on entry.
+     */
+    includeGuests?: boolean;
+  }
+) {
+  const includeGuests = options?.includeGuests !== false;
   const [loading, setLoading] = useState(true);
   const [eventTitle, setEventTitle] = useState<string>('');
   const [tables, setTables] = useState<SeatingTableRow[]>([]);
@@ -46,11 +57,13 @@ export function useSeatingMapModel(eventId: string | null) {
           .select('id,number,name,capacity,shape,x,y')
           .eq('event_id', eventId)
           .order('number'),
-        supabase
-          .from('guests')
-          .select('id,name,table_id,number_of_people')
-          .eq('event_id', eventId)
-          .order('name'),
+        includeGuests
+          ? supabase
+              .from('guests')
+              .select('id,name,table_id,number_of_people')
+              .eq('event_id', eventId)
+              .order('name')
+          : Promise.resolve({ data: [] as any[], error: null }),
         supabase.from('seating_maps').select('annotations').eq('event_id', eventId).maybeSingle(),
       ]);
 
@@ -60,7 +73,7 @@ export function useSeatingMapModel(eventId: string | null) {
 
       setEventTitle(String((evRes.data as any)?.title || ''));
       setTables(((tablesRes.data as any[]) || []) as SeatingTableRow[]);
-      setGuests(((guestsRes.data as any[]) || []) as SeatingGuestRow[]);
+      if (includeGuests) setGuests(((guestsRes.data as any[]) || []) as SeatingGuestRow[]);
       setAnnotations(Array.isArray((mapRes.data as any)?.annotations) ? ((mapRes.data as any).annotations as SeatingAnnotation[]) : []);
     } catch (e) {
       console.error('Seating map load error:', e);
@@ -71,7 +84,7 @@ export function useSeatingMapModel(eventId: string | null) {
     } finally {
       setLoading(false);
     }
-  }, [eventId]);
+  }, [eventId, includeGuests]);
 
   const tableById = useMemo(() => new Map(tables.map((t) => [t.id, t])), [tables]);
 

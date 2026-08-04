@@ -41,6 +41,7 @@ export default function TablesList() {
   const [tables, setTables] = useState<Table[]>([]);
   const [guests, setGuests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const hasLoadedOnceRef = useRef(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedTable, setSelectedTable] = useState<Table | null>(null);
   const [selectedGuestsToAdd, setSelectedGuestsToAdd] = useState<Set<string>>(new Set());
@@ -96,11 +97,14 @@ export default function TablesList() {
 
   const refresh = useCallback(async () => {
     if (!resolvedEventId) return;
-    setLoading(true);
+    // לואדר מלא רק בטעינה הראשונה; בחזרות למסך מרעננים בשקט ברקע
+    const isFirstLoad = !hasLoadedOnceRef.current;
+    if (isFirstLoad) setLoading(true);
     try {
       await Promise.all([fetchTables(), fetchGuests()]);
     } finally {
-      setLoading(false);
+      hasLoadedOnceRef.current = true;
+      if (isFirstLoad) setLoading(false);
     }
   }, [resolvedEventId]);
 

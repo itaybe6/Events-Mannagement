@@ -249,6 +249,7 @@ export default function BrideGroomSeatingWebScreen() {
   }, [isNarrow, windowHeight]);
 
   const [loading, setLoading] = useState(true);
+  const hasLoadedOnceRef = useRef(false);
   const [tables, setTables] = useState<Table[]>([]);
   const [guests, setGuests] = useState<GuestRow[]>([]);
   const [webSketch, setWebSketch] = useState<WebSketch | null>(null);
@@ -510,17 +511,18 @@ export default function BrideGroomSeatingWebScreen() {
 
   const loadAll = useCallback(async () => {
     if (!resolvedEventId) return;
-    setLoading(true);
+    // לואדר מלא רק בטעינה הראשונה; בחזרות למסך מרעננים בשקט ברקע
+    const isFirstLoad = !hasLoadedOnceRef.current;
+    if (isFirstLoad) setLoading(true);
     try {
       await Promise.all([fetchTables(), fetchGuests()]);
     } finally {
-      setLoading(false);
+      hasLoadedOnceRef.current = true;
+      if (isFirstLoad) setLoading(false);
     }
   }, [fetchGuests, fetchTables, resolvedEventId]);
 
-  useEffect(() => {
-    void loadAll();
-  }, [loadAll]);
+  // הפוקוס (למטה) מכסה גם את הטעינה הראשונית — useEffect נוסף היה גורם ל-fetch כפול
 
   // When switching event, reset quick-add selection/context.
   useEffect(() => {
