@@ -356,31 +356,6 @@ export default function AdminRsvpApprovalsScreen() {
                 </Text>
               </TouchableOpacity>
             </ScrollView>
-
-            {/* Tabs */}
-            <View style={styles.tabsRow}>
-              {[
-                { key: "all" as const, label: "הכל" },
-                { key: "מגיע" as const, label: "אישרו" },
-                { key: "אולי מגיע" as const, label: "אולי מגיעים" },
-                { key: "ממתין" as const, label: "ממתינים" },
-                { key: "לא מגיע" as const, label: "לא מגיעים" },
-              ].map((t) => {
-                const active = statusFilter === t.key;
-                return (
-                  <TouchableOpacity
-                    key={t.key}
-                    onPress={() => setStatusFilter(t.key)}
-                    activeOpacity={0.9}
-                    accessibilityRole="button"
-                    accessibilityLabel={`טאב סינון: ${t.label}`}
-                    style={[styles.tabBtn, active && styles.tabBtnActive]}
-                  >
-                    <Text style={[styles.tabText, active && styles.tabTextActive]}>{t.label}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
           </View>
 
           {/* List content */}
@@ -694,12 +669,6 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: colors.text,
   },
-
-  tabsRow: { flexDirection: ROW_DIR, borderBottomWidth: 1, borderBottomColor: "rgba(15,23,42,0.06)" },
-  tabBtn: { flex: 1, paddingBottom: 10, alignItems: "center" },
-  tabBtnActive: { borderBottomWidth: 2, borderBottomColor: colors.primary },
-  tabText: { fontSize: 13, fontWeight: "800", color: colors.gray[500] },
-  tabTextActive: { color: colors.primary, fontWeight: "900" },
 
   body: { paddingHorizontal: 0, paddingTop: 0 },
 

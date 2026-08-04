@@ -1,12 +1,12 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, Pressable, Switch, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Switch } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MotiView } from 'moti';
 import { colors } from '@/constants/colors';
 import { Event } from '@/types';
-import { ROW_DIR, rtlText } from '@/lib/rtl';
+import { ALIGN_RIGHT, ROW_DIR, TEXT_RIGHT, rtlText } from '@/lib/rtl';
 import {
   EVENT_BADGE_META,
   EVENT_BLUE,
@@ -50,6 +50,7 @@ const COUNTDOWN_GRADIENT: Record<'today' | 'future' | 'past', [string, string]> 
 type EventListCardProps = {
   event: Event;
   index: number;
+  isLast?: boolean;
   onPress: () => void;
   onToggleApproval: (event: Event, nextValue: boolean) => void;
   approvingEventId: string | null;
@@ -58,6 +59,7 @@ type EventListCardProps = {
 export function EventListCard({
   event,
   index,
+  isLast = false,
   onPress,
   onToggleApproval,
   approvingEventId,
@@ -94,6 +96,7 @@ export function EventListCard({
       from={{ opacity: 0, translateY: 16 }}
       animate={{ opacity: 1, translateY: 0 }}
       transition={{ type: 'timing', duration: 340, delay: Math.min(index * 55, 330) }}
+      style={styles.block}
     >
       <Pressable
         onPress={onPress}
@@ -154,8 +157,8 @@ export function EventListCard({
               </View>
             ) : null}
 
-            {showOwnerRow || guestsCount ? (
-              <View style={styles.tagRow}>
+            <View style={styles.ownerRow}>
+              <View style={styles.tagGroup}>
                 {showOwnerRow ? (
                   <View style={styles.tag}>
                     {event.userAvatarUrl ? (
@@ -180,47 +183,29 @@ export function EventListCard({
                   </View>
                 ) : null}
               </View>
-            ) : null}
-          </View>
-        </View>
 
-        <View style={styles.footer}>
-          <View style={[styles.statusPill, isApproved ? styles.statusPillOn : styles.statusPillOff]}>
-            {isApproving ? (
-              <ActivityIndicator size="small" color={isApproved ? EVENT_BLUE.mid : EVENT_BLUE.muted} />
-            ) : (
-              <Ionicons
-                name={isApproved ? 'shield-checkmark' : 'hourglass-outline'}
-                size={12}
-                color={isApproved ? EVENT_BLUE.mid : EVENT_BLUE.muted}
-              />
-            )}
-            <Text
-              style={[styles.statusText, isApproved ? styles.statusTextOn : styles.statusTextOff]}
-            >
-              {isApproved ? 'מאושר' : 'ממתין לאישור'}
-            </Text>
+              <Pressable
+                onPress={(e) => e.stopPropagation?.()}
+                style={styles.toggleWrap}
+                accessibilityRole="switch"
+                accessibilityLabel={isApproved ? 'ביטול אישור האירוע' : 'אישור האירוע'}
+                accessibilityState={{ checked: isApproved, disabled: isApproving }}
+              >
+                <Switch
+                  value={isApproved}
+                  onValueChange={(val) => onToggleApproval(event, val)}
+                  disabled={isApproving}
+                  trackColor={{ false: '#DDE3EF', true: 'rgba(30,79,216,0.34)' }}
+                  thumbColor={isApproved ? EVENT_BLUE.mid : '#94A3B8'}
+                  ios_backgroundColor="#DDE3EF"
+                />
+              </Pressable>
+            </View>
           </View>
-
-          <Pressable
-            onPress={(e) => e.stopPropagation?.()}
-            style={styles.switchWrap}
-            accessibilityRole="switch"
-            accessibilityLabel={isApproved ? 'ביטול אישור האירוע' : 'אישור האירוע'}
-            accessibilityState={{ checked: isApproved }}
-          >
-            <Switch
-              value={isApproved}
-              onValueChange={(val) => onToggleApproval(event, val)}
-              disabled={isApproving}
-              trackColor={{ false: '#DDE3EF', true: 'rgba(30,79,216,0.34)' }}
-              thumbColor={isApproved ? EVENT_BLUE.mid : '#94A3B8'}
-              ios_backgroundColor="#DDE3EF"
-              style={styles.approvalSwitch}
-            />
-          </Pressable>
         </View>
       </Pressable>
+
+      {!isLast ? <View style={styles.divider} /> : null}
     </MotiView>
   );
 }
@@ -231,6 +216,9 @@ const POSTER_WIDTH = 104;
 const POSTER_HEIGHT = 132;
 
 const styles = StyleSheet.create({
+  block: {
+    gap: 0,
+  },
   card: {
     borderRadius: 26,
     padding: 12,
@@ -263,6 +251,8 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
+  // Invitation photos are often near-white, so a translucent chip disappears on
+  // them. Opaque fill + hairline border keeps it readable over any cover.
   typeChip: {
     position: 'absolute',
     top: 8,
@@ -272,10 +262,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
-    paddingVertical: 4,
+    paddingVertical: 5,
     paddingHorizontal: 6,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.92)',
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: 'rgba(11,37,96,0.12)',
+    shadowColor: EVENT_BLUE.ink,
+    shadowOpacity: 0.22,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
   },
   typeChipText: {
     flexShrink: 1,
@@ -313,7 +310,7 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     fontWeight: '900',
     color: EVENT_BLUE.ink,
-    textAlign: 'right',
+    textAlign: TEXT_RIGHT,
     writingDirection: 'rtl',
     letterSpacing: -0.2,
   },
@@ -328,32 +325,44 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     fontWeight: '700',
     color: EVENT_BLUE.muted,
-    textAlign: 'right',
+    textAlign: TEXT_RIGHT,
     writingDirection: 'rtl',
   },
-  tagRow: {
+  ownerRow: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginTop: 'auto',
+  },
+  tagGroup: {
+    flex: 1,
+    flexShrink: 1,
     flexDirection: ROW_DIR,
     alignItems: 'center',
     flexWrap: 'wrap',
+    justifyContent: ALIGN_RIGHT,
     gap: 6,
-    marginTop: 'auto',
   },
   tag: {
+    flexShrink: 1,
     flexDirection: ROW_DIR,
     alignItems: 'center',
     gap: 5,
+    minHeight: 26,
     paddingVertical: 5,
     paddingHorizontal: 9,
     borderRadius: 999,
-    backgroundColor: EVENT_BLUE.tint,
-    maxWidth: '100%',
+    backgroundColor: '#EAF0FF',
+    borderWidth: 1,
+    borderColor: 'rgba(30,79,216,0.18)',
   },
   tagText: {
     flexShrink: 1,
     fontSize: 11,
     fontWeight: '800',
     color: EVENT_BLUE.deep,
-    textAlign: 'right',
+    textAlign: TEXT_RIGHT,
     writingDirection: 'rtl',
   },
   ownerAvatar: {
@@ -362,48 +371,16 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: colors.gray[200],
   },
-  footer: {
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-    marginTop: 12,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: EVENT_BLUE.line,
+  toggleWrap: {
+    flexShrink: 0,
   },
-  switchWrap: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  approvalSwitch: {
-    transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }],
-  },
-  statusPill: {
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    gap: 5,
-    paddingVertical: 5,
-    paddingHorizontal: 10,
+  divider: {
+    height: StyleSheet.hairlineWidth * 2,
+    marginTop: 18,
+    marginBottom: 18,
+    marginHorizontal: 8,
+    backgroundColor: EVENT_BLUE.lineStrong,
     borderRadius: 999,
-    borderWidth: 1,
-  },
-  statusPillOn: {
-    backgroundColor: EVENT_BLUE.tint,
-    borderColor: EVENT_BLUE.tintStrong,
-  },
-  statusPillOff: {
-    backgroundColor: 'rgba(100,116,139,0.08)',
-    borderColor: 'rgba(100,116,139,0.16)',
-  },
-  statusText: {
-    fontSize: 11,
-    fontWeight: '900',
-  },
-  statusTextOn: {
-    color: EVENT_BLUE.mid,
-  },
-  statusTextOff: {
-    color: EVENT_BLUE.muted,
+    opacity: 0.72,
   },
 });

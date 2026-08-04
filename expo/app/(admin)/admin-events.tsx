@@ -13,12 +13,10 @@ import { EVENT_BLUE, isFutureEventDate, isPastEventDate, MONTHS, type EventTimeF
 import { EventListCard } from '@/features/events/EventListCard';
 import { useEventsListModel } from '@/features/events/useEventsListModel';
 import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
-import { ALIGN_RIGHT, IS_RTL, ROW_DIR, rtlText } from '@/lib/rtl';
+import { ALIGN_RIGHT, ROW_DIR, TEXT_RIGHT, rtlText } from '@/lib/rtl';
 
-// With I18nManager.forceRTL, `textAlign: 'right'` often pins Hebrew to the physical LEFT (mirroring).
-// Same pattern as BrideGroomSeating `guestName` / admin-event-details modals.
 const filterSheetTextDir = {
-  textAlign: (IS_RTL ? 'left' : 'right') as 'left' | 'right',
+  textAlign: TEXT_RIGHT,
   writingDirection: 'rtl' as const,
 };
 import { useUserStore } from '@/store/userStore';
@@ -273,14 +271,14 @@ export default function AdminEventsScreen() {
 
           <View style={styles.searchRowWrap}>
             <View style={styles.searchWrap}>
-              <Ionicons name="search" size={18} color={EVENT_BLUE.mid} style={styles.searchIcon} />
+              <Ionicons name="search" size={18} color={EVENT_BLUE.mid} />
               <TextInput
                 value={query}
                 onChangeText={setQuery}
                 placeholder="חיפוש לפי שם, לקוח, אולם, עיר או תאריך..."
                 placeholderTextColor={colors.gray[500]}
                 style={styles.searchInput}
-                textAlign={IS_RTL ? 'right' : 'left'}
+                textAlign={TEXT_RIGHT}
                 returnKeyType="search"
                 autoCorrect={false}
                 autoCapitalize="none"
@@ -333,6 +331,7 @@ export default function AdminEventsScreen() {
                   key={event.id}
                   event={event}
                   index={index}
+                  isLast={index === visibleEvents.length - 1}
                   onPress={() =>
                     router.push({
                       pathname: '/(admin)/admin-event-details',
@@ -691,38 +690,34 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     paddingBottom: 12,
   },
+  // Laid out as a flex row (rather than absolutely positioned side icons) so the
+  // magnifier stays on the visual right in both LTR dev and forced-RTL builds.
   searchWrap: {
     minHeight: 48,
     borderRadius: 16,
     backgroundColor: 'rgba(255,255,255,0.94)',
     borderWidth: 1,
     borderColor: EVENT_BLUE.line,
-    justifyContent: 'center',
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
     shadowColor: EVENT_BLUE.deep,
     shadowOpacity: 0.06,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 5 },
     elevation: 2,
   },
-  searchIcon: {
-    position: 'absolute',
-    end: 14,
-    top: 15,
-    zIndex: 1,
-  },
   searchInput: {
+    flex: 1,
     minHeight: 48,
-    paddingEnd: 42,
-    paddingStart: 42,
+    paddingVertical: 0,
     fontSize: 14,
     fontWeight: '700',
     color: EVENT_BLUE.ink,
     writingDirection: 'rtl',
   },
   searchClearBtn: {
-    position: 'absolute',
-    start: 10,
-    top: 10,
     width: 28,
     height: 28,
     borderRadius: 14,
@@ -964,7 +959,7 @@ const styles = StyleSheet.create({
   timelineWrap: {
     paddingHorizontal: 16,
     paddingTop: 0,
-    gap: 12,
+    gap: 0,
   },
   listMetaRow: {
     flexDirection: ROW_DIR,
@@ -972,6 +967,7 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingHorizontal: 4,
     paddingBottom: 2,
+    marginBottom: 12,
   },
   listMetaText: {
     fontSize: 12,

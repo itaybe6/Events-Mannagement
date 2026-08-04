@@ -18,6 +18,12 @@ export const ROW_REVERSE_DIR = (I18nManager.isRTL ? 'row-reverse' : 'row') as co
 export const ALIGN_RIGHT = (I18nManager.isRTL ? 'flex-start' : 'flex-end') as const;
 export const ALIGN_LEFT = (I18nManager.isRTL ? 'flex-end' : 'flex-start') as const;
 
+// Text alignment mirrors too: once the app runs with forced RTL (release builds),
+// `textAlign: 'right'` resolves to `end`, which is the physical LEFT. Use these
+// when you mean a *visual* side, the same way ALIGN_RIGHT works for layout.
+export const TEXT_RIGHT = (I18nManager.isRTL ? 'left' : 'right') as 'left' | 'right';
+export const TEXT_LEFT = (I18nManager.isRTL ? 'right' : 'left') as 'left' | 'right';
+
 // Unicode RTL mark to force correct text direction for edge-cases
 // (e.g. multi-line titles, mixed punctuation, or when RN text layout guesses wrong).
 export const RTL_MARK = '\u200F' as const;

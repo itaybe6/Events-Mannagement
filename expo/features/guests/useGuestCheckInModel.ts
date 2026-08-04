@@ -5,7 +5,7 @@ import { guestService, mapGuestRowFromDb } from '@/lib/services/guestService';
 import { guestMatchesSearch } from '@/lib/guestPhone';
 import type { Guest, GuestCategory } from '@/types';
 
-export type GuestCheckInFilter = 'all' | 'checked_in' | 'not_checked_in';
+export type GuestCheckInFilter = 'all' | 'checked_in' | 'not_checked_in' | 'maybe_coming';
 export type GuestCheckInCategoryKey = string; // category_id or a stable sentinel for uncategorized
 
 export type GuestCheckInSection = {
@@ -392,6 +392,7 @@ export function useGuestCheckInModel(params: {
     const base = guests.filter((g) => {
       if (filter === 'checked_in') return Boolean(g.checkedIn);
       if (filter === 'not_checked_in') return !Boolean(g.checkedIn);
+      if (filter === 'maybe_coming') return g.status === 'אולי מגיע';
       return true;
     });
     if (!q) return base;

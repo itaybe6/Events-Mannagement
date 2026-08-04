@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Event, Guest } from '@/types';
 import { supabase } from '@/lib/supabase';
 import { LinearGradient } from 'expo-linear-gradient';
+import Svg, { Defs, Ellipse, RadialGradient, Stop } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
@@ -37,9 +38,8 @@ export default function AdminEventDetailsScreen() {
     const fromEventId = typeof eventId === 'string' ? eventId : Array.isArray(eventId) ? eventId[0] : '';
     return fromId || fromEventId || '';
   }, [eventId, id]);
-  const { event, setEvent, guests, userName, userAvatarUrl, loading, error, stats, refresh } =
+  const { event, setEvent, guests, userName, loading, error, stats, refresh } =
     useAdminEventDetailsModel(resolvedEventId);
-  const [avatarPreviewOpen, setAvatarPreviewOpen] = useState(false);
   const [noTablesModalOpen, setNoTablesModalOpen] = useState(false);
   const [isPullRefreshing, setIsPullRefreshing] = useState(false);
 
@@ -62,7 +62,7 @@ export default function AdminEventDetailsScreen() {
     brideName: '',
   });
   const insets = useSafeAreaInsets();
-  const { height: windowHeight, width: windowWidth } = useWindowDimensions();
+  const { height: windowHeight } = useWindowDimensions();
   const isEmployeeAppUser = userType === 'employee' && Platform.OS !== 'web';
 
   const heroIntro = useRef(new Animated.Value(0)).current;
@@ -362,15 +362,6 @@ export default function AdminEventDetailsScreen() {
   const groomLabel = () => (event?.groomName || '').trim() || 'לא הוזן';
   const brideLabel = () => (event?.brideName || '').trim() || 'לא הוזן';
 
-  const getInitials = (name: string) => {
-    const trimmed = (name || '').trim();
-    if (!trimmed) return '';
-    const parts = trimmed.split(/\s+/).filter(Boolean);
-    const first = parts[0]?.[0] ?? '';
-    const second = parts.length > 1 ? parts[1]?.[0] ?? '' : '';
-    return (first + second).toUpperCase();
-  };
-
   // Keep the end of the scroll content above the tab bar
   const tabBarBottomOffset = Platform.OS === 'ios' ? 30 : 20;
   const tabBarHeight = 65;
@@ -387,6 +378,8 @@ export default function AdminEventDetailsScreen() {
   const showTypeChip = eventTypeLabel !== displayTitle;
   const venueLabel = String(event.location ?? '').trim() || 'מיקום לא הוזן';
   const cityLabel = String(event.city ?? '').trim();
+  const invitationImageUrl = String(event.invitationImageUrl ?? '').trim();
+  const hasInvitationBackdrop = invitationImageUrl.length > 0;
 
   const heroAnimatedStyle = {
     opacity: heroIntro,
@@ -501,18 +494,52 @@ export default function AdminEventDetailsScreen() {
               end={{ x: 0.85, y: 1 }}
               style={StyleSheet.absoluteFill}
             />
-            <LinearGradient
-              colors={['rgba(204,160,0,0.34)', 'rgba(204,160,0,0)']}
-              start={{ x: 0.5, y: 0 }}
-              end={{ x: 0.5, y: 1 }}
-              style={styles.heroGlowGold}
-            />
-            <LinearGradient
-              colors={['rgba(96,152,255,0.26)', 'rgba(96,152,255,0)']}
-              start={{ x: 0.5, y: 0 }}
-              end={{ x: 0.5, y: 1 }}
-              style={styles.heroGlowBlue}
-            />
+
+            {/* The invitation artwork backs only the on-screen part of the hero —
+                above it sits the overscroll area, which stays plain dark. */}
+            {hasInvitationBackdrop ? (
+              <View style={[styles.heroBackdrop, { top: heroOverscroll }]}>
+                <Image
+                  source={{ uri: invitationImageUrl }}
+                  style={StyleSheet.absoluteFill}
+                  contentFit="cover"
+                  transition={220}
+                />
+                <LinearGradient
+                  colors={['rgba(4,14,36,0.94)', 'rgba(4,14,36,0.58)', 'rgba(4,14,36,0.90)']}
+                  locations={[0, 0.4, 1]}
+                  start={{ x: 0.5, y: 0 }}
+                  end={{ x: 0.5, y: 1 }}
+                  style={StyleSheet.absoluteFill}
+                />
+              </View>
+            ) : null}
+
+            {/* Radial auras — soft light with no visible shape edge */}
+            <View
+              style={[
+                styles.heroAura,
+                { top: heroOverscroll - 90 },
+                hasInvitationBackdrop ? styles.heroAuraSoft : null,
+              ]}
+            >
+              <Svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
+                <Defs>
+                  <RadialGradient id="heroAuraGold" cx="50%" cy="50%" r="50%">
+                    <Stop offset="0" stopColor={PALETTE.gold} stopOpacity="0.40" />
+                    <Stop offset="0.55" stopColor={PALETTE.gold} stopOpacity="0.14" />
+                    <Stop offset="1" stopColor={PALETTE.gold} stopOpacity="0" />
+                  </RadialGradient>
+                  <RadialGradient id="heroAuraBlue" cx="50%" cy="50%" r="50%">
+                    <Stop offset="0" stopColor="#6098FF" stopOpacity="0.30" />
+                    <Stop offset="1" stopColor="#6098FF" stopOpacity="0" />
+                  </RadialGradient>
+                </Defs>
+                <Ellipse cx="86" cy="4" rx="52" ry="32" fill="url(#heroAuraBlue)" />
+                <Ellipse cx="50" cy="52" rx="64" ry="42" fill="url(#heroAuraGold)" />
+                <Ellipse cx="46" cy="103" rx="72" ry="26" fill="url(#heroAuraGold)" />
+              </Svg>
+            </View>
           </View>
 
           <View style={styles.heroTopBar}>
@@ -545,35 +572,18 @@ export default function AdminEventDetailsScreen() {
           </View>
 
           <Animated.View style={[styles.heroBody, heroAnimatedStyle]}>
-            <TouchableOpacity
-              onPress={() => setAvatarPreviewOpen(true)}
-              activeOpacity={0.88}
-              accessibilityRole="button"
-              accessibilityLabel="הגדלת תמונת פרופיל"
-            >
-              <LinearGradient
-                colors={[PALETTE.goldPale, PALETTE.goldLight, PALETTE.gold]}
-                start={{ x: 0.1, y: 0 }}
-                end={{ x: 0.9, y: 1 }}
-                style={styles.avatarRing}
-              >
-                <View style={styles.avatarInset}>
-                  {userAvatarUrl ? (
-                    <Image source={{ uri: userAvatarUrl }} style={styles.avatarImage} contentFit="cover" transition={150} />
-                  ) : (
-                    <View style={styles.avatarFallback}>
-                      {getInitials(userName) ? (
-                        <Text style={styles.avatarInitials}>{getInitials(userName)}</Text>
-                      ) : (
-                        <Ionicons name="person" size={26} color="rgba(255,255,255,0.6)" />
-                      )}
-                    </View>
-                  )}
-                </View>
-              </LinearGradient>
-            </TouchableOpacity>
+            {/* Category → host → title → ornament → status → logistics */}
+            {showTypeChip ? (
+              <View style={styles.typeChip}>
+                <Text style={styles.typeChipText}>{eventTypeLabel}</Text>
+              </View>
+            ) : null}
 
-            {userName ? <Text style={styles.heroEyebrow}>{userName}</Text> : null}
+            {userName ? (
+              <Text style={styles.heroEyebrow} numberOfLines={1}>
+                {userName}
+              </Text>
+            ) : null}
 
             <Text style={[styles.heroTitle, userName ? null : styles.heroTitleSolo]} numberOfLines={2}>
               {displayTitle}
@@ -607,12 +617,6 @@ export default function AdminEventDetailsScreen() {
               </View>
             ) : null}
 
-            {showTypeChip ? (
-              <View style={styles.typeChip}>
-                <Text style={styles.typeChipText}>{eventTypeLabel}</Text>
-              </View>
-            ) : null}
-
             {countdownLabel ? (
               <LinearGradient
                 colors={
@@ -626,7 +630,7 @@ export default function AdminEventDetailsScreen() {
               >
                 <Ionicons
                   name={isUpcoming ? 'sparkles' : 'checkmark-circle'}
-                  size={13}
+                  size={12}
                   color={isUpcoming ? PALETTE.ink : 'rgba(255,255,255,0.8)'}
                 />
                 <Text style={[styles.countdownText, !isUpcoming ? styles.countdownTextPast : null]}>
@@ -635,14 +639,17 @@ export default function AdminEventDetailsScreen() {
               </LinearGradient>
             ) : null}
 
-            <View style={styles.metaRow}>
-              <View style={styles.metaChip}>
-                <Ionicons name="calendar-outline" size={14} color={PALETTE.goldLight} />
-                <Text style={styles.metaText}>{`${weekday}, ${day}`}</Text>
+            {/* Date and venue share a single glass bar instead of a chip per line */}
+            <View style={styles.metaBar}>
+              <View style={styles.metaItemFixed}>
+                <Ionicons name="calendar-outline" size={13} color={PALETTE.goldLight} />
+                <Text style={styles.metaText} numberOfLines={1}>{`${weekday}, ${day}`}</Text>
               </View>
 
-              <View style={styles.metaChip}>
-                <Ionicons name="location-outline" size={14} color={PALETTE.goldLight} />
+              <View style={styles.metaDivider} />
+
+              <View style={styles.metaItem}>
+                <Ionicons name="location-outline" size={13} color={PALETTE.goldLight} />
                 <Text style={styles.metaText} numberOfLines={1}>
                   {cityLabel ? `${venueLabel} · ${cityLabel}` : venueLabel}
                 </Text>
@@ -729,47 +736,6 @@ export default function AdminEventDetailsScreen() {
 
       </ScrollView>
       </View>
-
-      {/* Avatar preview (big centered) */}
-      <Modal
-        transparent
-        visible={avatarPreviewOpen}
-        animationType="fade"
-        onRequestClose={() => setAvatarPreviewOpen(false)}
-      >
-        <Pressable style={styles.previewOverlay} onPress={() => setAvatarPreviewOpen(false)}>
-          <TouchableOpacity
-            style={[styles.previewCloseBtn, { top: Math.max(18, insets.top + 10) }]}
-            onPress={() => setAvatarPreviewOpen(false)}
-            activeOpacity={0.85}
-            accessibilityRole="button"
-            accessibilityLabel="סגירת תמונה"
-          >
-            <Ionicons name="close" size={18} color={'rgba(255,255,255,0.90)'} />
-          </TouchableOpacity>
-
-          <Pressable onPress={() => null} style={styles.previewContent}>
-            {userAvatarUrl ? (
-              <Image
-                source={{ uri: userAvatarUrl }}
-                style={{
-                  width: Math.min(windowWidth * 0.96, 920),
-                  height: Math.min(windowHeight * 0.86, 820),
-                  borderRadius: 22,
-                  backgroundColor: 'rgba(255,255,255,0.06)',
-                }}
-                contentFit="contain"
-                transition={150}
-              />
-            ) : (
-              <View style={styles.previewFallback}>
-                <Ionicons name="person" size={34} color={'rgba(255,255,255,0.78)'} />
-                <Text style={[styles.previewFallbackText, { color: 'rgba(255,255,255,0.78)' }]}>אין תמונה להצגה</Text>
-              </View>
-            )}
-          </Pressable>
-        </Pressable>
-      </Modal>
 
       {/* Edit event modal */}
       <Modal transparent visible={editOpen} animationType="fade" onRequestClose={() => setEditOpen(false)}>
@@ -1286,33 +1252,28 @@ const styles = StyleSheet.create({
   hero: {
     position: 'relative',
     paddingHorizontal: 24,
-    paddingBottom: 74,
+    paddingBottom: 52,
     alignItems: 'center',
   },
   heroGradientLayer: {
     ...StyleSheet.absoluteFillObject,
     overflow: 'hidden',
   },
-  heroGlowGold: {
+  heroBackdrop: {
     position: 'absolute',
-    width: 460,
-    height: 460,
-    borderRadius: 460,
-    bottom: -190,
-    left: -110,
-    opacity: 0.9,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
-  // Both glows anchor to the bottom because the hero's top edge sits far above
-  // the viewport to cover pull-to-refresh overscroll.
-  heroGlowBlue: {
+  // The aura spans only the on-screen part of the hero — the overscroll area
+  // above it stays plain dark.
+  heroAura: {
     position: 'absolute',
-    width: 380,
-    height: 380,
-    borderRadius: 380,
-    bottom: 150,
-    right: -160,
-    opacity: 0.85,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
+  heroAuraSoft: { opacity: 0.45 },
 
   heroTopBar: {
     width: '100%',
@@ -1336,72 +1297,45 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 460,
     alignItems: 'center',
-    marginTop: 18,
-  },
-
-  avatarRing: {
-    width: 96,
-    height: 96,
-    borderRadius: 999,
-    padding: 2.5,
-    shadowColor: PALETTE.gold,
-    shadowOpacity: 0.42,
-    shadowRadius: 22,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 8,
-  },
-  avatarInset: {
-    flex: 1,
-    borderRadius: 999,
-    overflow: 'hidden',
-    backgroundColor: '#0B1F45',
-    borderWidth: 2.5,
-    borderColor: PALETTE.inkDeep,
-  },
-  avatarImage: { width: '100%', height: '100%' },
-  avatarFallback: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(240,203,70,0.14)',
-  },
-  avatarInitials: {
-    fontSize: 26,
-    fontWeight: '900',
-    color: PALETTE.goldLight,
-    letterSpacing: 0.5,
+    marginTop: 26,
   },
 
   heroEyebrow: {
-    marginTop: 18,
-    fontSize: 13,
+    marginTop: 16,
+    fontSize: 12,
     fontWeight: '800',
-    letterSpacing: 2.4,
+    letterSpacing: 2.2,
     color: 'rgba(240,203,70,0.92)',
     textAlign: 'center',
+    textShadowColor: 'rgba(4,14,36,0.55)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
   },
   heroTitle: {
-    marginTop: 8,
-    fontSize: 40,
-    lineHeight: 46,
+    marginTop: 5,
+    fontSize: 34,
+    lineHeight: 40,
     fontWeight: '900',
-    letterSpacing: -1.2,
+    letterSpacing: -0.9,
     color: '#FFFFFF',
     textAlign: 'center',
+    textShadowColor: 'rgba(4,14,36,0.6)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 10,
   },
-  heroTitleSolo: { marginTop: 20 },
+  heroTitleSolo: { marginTop: 14 },
 
   ornamentRow: {
     flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
-    marginTop: 14,
+    gap: 9,
+    marginTop: 10,
   },
-  ornamentLine: { width: 56, height: 1 },
+  ornamentLine: { width: 46, height: 1 },
   ornamentDiamond: {
-    width: 7,
-    height: 7,
+    width: 6,
+    height: 6,
     backgroundColor: PALETTE.goldLight,
     transform: [{ rotate: '45deg' }],
   },
@@ -1410,77 +1344,90 @@ const styles = StyleSheet.create({
     flexDirection: ROW_DIR,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 12,
-    marginTop: 14,
+    gap: 10,
+    marginTop: 10,
     maxWidth: '100%',
   },
   coupleName: {
-    fontSize: 19,
+    fontSize: 16,
     fontWeight: '700',
     color: 'rgba(255,255,255,0.9)',
     letterSpacing: 0.3,
     flexShrink: 1,
   },
 
+  // Category pill — opens the hero, so it reads as a gold-tinted eyebrow.
   typeChip: {
-    marginTop: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
+    paddingHorizontal: 13,
+    paddingVertical: 5,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(240,203,70,0.10)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.16)',
+    borderColor: 'rgba(240,203,70,0.30)',
   },
   typeChipText: {
-    fontSize: 13,
+    fontSize: 11.5,
     fontWeight: '800',
-    color: 'rgba(255,255,255,0.82)',
-    letterSpacing: 0.4,
+    color: PALETTE.goldPale,
+    letterSpacing: 1.4,
   },
 
   countdownPill: {
-    marginTop: 18,
+    marginTop: 16,
     flexDirection: ROW_DIR,
     alignItems: 'center',
-    gap: 7,
-    paddingHorizontal: 16,
-    paddingVertical: 9,
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: 999,
     shadowColor: PALETTE.gold,
     shadowOpacity: 0.35,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
     elevation: 5,
   },
   countdownText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '900',
     color: PALETTE.ink,
     letterSpacing: 0.2,
   },
   countdownTextPast: { color: 'rgba(255,255,255,0.82)' },
 
-  metaRow: {
-    marginTop: 20,
-    width: '100%',
-    alignItems: 'center',
-    gap: 8,
-  },
-  metaChip: {
+  metaBar: {
+    marginTop: 14,
     maxWidth: '100%',
     flexDirection: ROW_DIR,
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
     paddingHorizontal: 14,
     paddingVertical: 9,
-    borderRadius: 14,
+    borderRadius: 16,
     backgroundColor: 'rgba(255,255,255,0.07)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.12)',
   },
+  metaItem: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    gap: 6,
+    flexShrink: 1,
+  },
+  metaItemFixed: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    gap: 6,
+    flexShrink: 0,
+  },
+  metaDivider: {
+    width: 1,
+    height: 16,
+    borderRadius: 1,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
   metaText: {
     flexShrink: 1,
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
     color: 'rgba(255,255,255,0.86)',
   },
@@ -1501,43 +1448,6 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: 'rgba(6,23,62,0.14)',
     marginBottom: 20,
-  },
-
-  previewOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.78)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 18,
-  },
-  previewContent: { alignItems: 'center', justifyContent: 'center' },
-  previewCloseBtn: {
-    position: 'absolute',
-    left: 16,
-    width: 34,
-    height: 34,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.14)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.22)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 2,
-  },
-  previewFallback: {
-    width: 280,
-    height: 240,
-    borderRadius: 18,
-    backgroundColor: 'rgba(17,24,39,0.04)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 10,
-  },
-  previewFallbackText: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: 'rgba(17,24,39,0.60)',
-    textAlign: 'center',
   },
 
   editOverlay: {

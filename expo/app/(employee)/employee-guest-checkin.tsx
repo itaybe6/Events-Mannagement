@@ -763,6 +763,7 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                     { key: "all" as const, label: "הכל" },
                     { key: "checked_in" as const, label: "הגיעו" },
                     { key: "not_checked_in" as const, label: "לא הגיעו" },
+                    { key: "maybe_coming" as const, label: "אולי מגיעים" },
                   ].map((opt) => {
                     const active = filter === opt.key;
                     return (
@@ -1138,6 +1139,7 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                 { key: "all" as const, label: "הכל" },
                 { key: "checked_in" as const, label: "הגיעו" },
                 { key: "not_checked_in" as const, label: "לא הגיעו" },
+                { key: "maybe_coming" as const, label: "אולי מגיעים" },
               ].map((opt) => {
                 const active = filter === opt.key;
                 return (
