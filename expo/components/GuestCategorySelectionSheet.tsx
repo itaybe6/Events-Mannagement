@@ -19,7 +19,7 @@ import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
-import { IS_RTL, ROW_DIR } from '@/lib/rtl';
+import { ALIGN_RIGHT, IS_RTL, ROW_DIR, TEXT_RIGHT } from '@/lib/rtl';
 
 type Side = 'groom' | 'bride';
 type SideFilter = 'all' | Side;
@@ -391,7 +391,7 @@ export function GuestCategorySelectionSheet({
                     <AppKeyboardAwareScrollView
                       showsVerticalScrollIndicator={false}
                       keyboardShouldPersistTaps="handled"
-                      contentContainerStyle={[styles.createArea, { paddingBottom: Math.max(24, insets.bottom + 16) }]}
+                      contentContainerStyle={[styles.createArea, { paddingBottom: 12 }]}
                     >
                       <View style={styles.createCard}>
                         <Text style={styles.createHint}>
@@ -409,7 +409,10 @@ export function GuestCategorySelectionSheet({
                               style={styles.input}
                               autoCapitalize="none"
                               autoCorrect={false}
-                              textAlign="right"
+                              textAlign={TEXT_RIGHT}
+                              onSubmitEditing={() => {
+                                if (!isCreateDisabled) void handleConfirm();
+                              }}
                               onKeyPress={(e) => {
                                 if (Platform.OS !== 'web') return;
                                 const key = (e as any)?.nativeEvent?.key;
@@ -462,25 +465,25 @@ export function GuestCategorySelectionSheet({
                             </View>
                           </View>
                         )}
-
-                        <View style={styles.createSubmitShell}>
-                          <TouchableOpacity
-                            onPress={() => void handleConfirm()}
-                            disabled={isCreateDisabled}
-                            activeOpacity={0.9}
-                            style={[
-                              styles.createSubmitBtn,
-                              isCreateDisabled ? styles.createSubmitBtnDisabled : styles.createSubmitBtnEnabled,
-                            ]}
-                          >
-                            <Ionicons name="checkmark" size={20} color="#fff" />
-                            <Text style={styles.createSubmitBtnText}>
-                              {creating ? 'מוסיף...' : enableSides ? 'הוסף קטגוריה' : 'שמור קטגוריה'}
-                            </Text>
-                          </TouchableOpacity>
-                        </View>
                       </View>
                     </AppKeyboardAwareScrollView>
+
+                    <View style={[styles.createFooterBar, { paddingBottom: Math.max(16, insets.bottom + 10) }]}>
+                      <TouchableOpacity
+                        onPress={() => void handleConfirm()}
+                        disabled={isCreateDisabled}
+                        activeOpacity={0.9}
+                        style={[
+                          styles.createSubmitBtn,
+                          isCreateDisabled ? styles.createSubmitBtnDisabled : styles.createSubmitBtnEnabled,
+                        ]}
+                      >
+                        <Ionicons name="checkmark" size={22} color="#fff" />
+                        <Text style={styles.createSubmitBtnText}>
+                          {creating ? 'מוסיף...' : enableSides ? 'הוסף קטגוריה' : 'שמור קטגוריה'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 ) : (
                   <FlatList
@@ -592,7 +595,7 @@ export function GuestCategorySelectionSheet({
                                 style={styles.manageInput}
                                 autoCapitalize="none"
                                 autoCorrect={false}
-                                textAlign="right"
+                                textAlign={TEXT_RIGHT}
                               />
                             </View>
                             <View style={styles.manageButtonsRow}>
@@ -816,7 +819,7 @@ const styles = StyleSheet.create({
     paddingBottom: 138,
   },
   gridRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: ROW_DIR,
     justifyContent: 'space-between',
     marginBottom: 14,
   },
@@ -949,7 +952,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     fontWeight: '600',
     color: 'rgba(51,65,85,0.78)',
-    textAlign: 'right',
+    textAlign: TEXT_RIGHT,
   },
   createSection: {
     gap: 8,
@@ -958,7 +961,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
     color: 'rgba(15,23,42,0.75)',
-    textAlign: 'right',
+    textAlign: TEXT_RIGHT,
   },
   inputWrap: {
     borderRadius: 18,
@@ -976,7 +979,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#0f172a',
-    textAlign: 'right',
+    textAlign: TEXT_RIGHT,
   },
   sideRow: {
     flexDirection: ROW_DIR,
@@ -1003,6 +1006,14 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#135bec',
   },
+  createFooterBar: {
+    width: '100%',
+    paddingTop: 10,
+    paddingHorizontal: 0,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(148,163,184,0.18)',
+    backgroundColor: 'rgba(248,251,255,0.98)',
+  },
   createSubmitBtn: {
     height: 56,
     borderRadius: 18,
@@ -1017,13 +1028,6 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 8 },
     elevation: 5,
-  },
-  createSubmitShell: {
-    marginTop: 6,
-    width: '100%',
-    borderRadius: 18,
-    overflow: 'hidden',
-    backgroundColor: '#135bec',
   },
   createSubmitBtnEnabled: {
     backgroundColor: '#135bec',
@@ -1070,14 +1074,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '900',
     color: '#135bec',
-    textAlign: 'right',
+    textAlign: TEXT_RIGHT,
     marginBottom: 6,
   },
   manageTitle: {
     fontSize: 24,
     fontWeight: '900',
     color: '#0f172a',
-    textAlign: 'right',
+    textAlign: TEXT_RIGHT,
   },
   manageSubtitle: {
     marginTop: 8,
@@ -1085,7 +1089,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     fontWeight: '600',
     color: 'rgba(51,65,85,0.78)',
-    textAlign: 'right',
+    textAlign: TEXT_RIGHT,
   },
   manageInputWrap: {
     marginTop: 16,
@@ -1100,7 +1104,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#0f172a',
-    textAlign: 'right',
+    textAlign: TEXT_RIGHT,
   },
   manageButtonsRow: {
     marginTop: 16,
@@ -1178,26 +1182,26 @@ const styles = StyleSheet.create({
   },
   manageActionTextWrap: {
     flex: 1,
-    alignItems: 'flex-end',
+    alignItems: ALIGN_RIGHT,
   },
   manageActionTitle: {
     fontSize: 15,
     fontWeight: '900',
     color: '#0f172a',
-    textAlign: 'right',
+    textAlign: TEXT_RIGHT,
   },
   manageActionTitleDanger: {
     fontSize: 15,
     fontWeight: '900',
     color: '#b91c1c',
-    textAlign: 'right',
+    textAlign: TEXT_RIGHT,
   },
   manageActionSubtitle: {
     marginTop: 4,
     fontSize: 12,
     fontWeight: '700',
     color: 'rgba(51,65,85,0.74)',
-    textAlign: 'right',
+    textAlign: TEXT_RIGHT,
   },
 });
 
