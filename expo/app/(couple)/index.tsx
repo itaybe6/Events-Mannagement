@@ -5,6 +5,7 @@ import { useUserStore } from '@/store/userStore';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import { colors } from '@/constants/colors';
 import { Ionicons } from '@expo/vector-icons';
+import { authService } from '@/lib/services/authService';
 import { eventService } from '@/lib/services/eventService';
 import { guestService } from '@/lib/services/guestService';
 import { tableService } from '@/lib/services/tableService';
@@ -40,7 +41,7 @@ const EMPTY_HOME_STATS: HomeStats = {
 };
 
 export default function HomeScreen() {
-  const { isLoggedIn, userData, initializeAuth } = useUserStore();
+  const { isLoggedIn, userData, initializeAuth, login } = useUserStore();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
@@ -110,11 +111,24 @@ export default function HomeScreen() {
       try {
         setLoading(true);
         let eventId = resolvedEventId;
-        if (!eventId) {
+
+        // 1) Prefer an already-resolved id, but verify it still loads.
+        // 2) If missing/stale, resolve the owner's primary event from `events.user_id`
+        //    (prod DB may not have `users.event_id` yet).
+        let event = eventId ? await eventService.getEventLite(eventId) : null;
+        if (!event) {
           await initializeAuth();
-          eventId = useUserStore.getState().userData?.event_id || null;
+          const ud = useUserStore.getState().userData;
+          eventId = ud?.event_id || null;
+          if (!eventId && ud?.id) {
+            eventId = await authService.getPrimaryEventId(ud.id);
+          }
+          if (eventId) {
+            event = await eventService.getEventLite(eventId);
+          }
         }
-        if (!eventId) {
+
+        if (!event || !eventId) {
           if (cancelled) return;
           setCurrentEvent(null);
           setStats(EMPTY_HOME_STATS);
@@ -122,9 +136,23 @@ export default function HomeScreen() {
           return;
         }
 
-        if (userData?.id) setActiveEvent(userData.id, eventId);
+        const uid = userData?.id || useUserStore.getState().userData?.id;
+        if (uid) {
+          setActiveEvent(uid, eventId);
+          const ud = useUserStore.getState().userData;
+          if (ud && ud.event_id !== eventId) {
+            login(ud.userType, { ...ud, event_id: eventId });
+          }
+        }
 
-        await fetchHomeData(eventId);
+        const [guestStats, tablesTotal] = await Promise.all([
+          guestService.getEventGuestStats(eventId),
+          tableService.getTablesCount(eventId),
+        ]);
+        if (cancelled) return;
+        setCurrentEvent(event);
+        setStats(guestStats);
+        setTablesCount(tablesTotal);
         // Mark that the initial load is done so the focus effect doesn't
         // immediately re-fetch the same data on first mount.
         hasLoadedOnceRef.current = true;

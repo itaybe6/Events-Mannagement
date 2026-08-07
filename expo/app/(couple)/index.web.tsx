@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle, Line, Path } from 'react-native-svg';
 
 import { colors } from '@/constants/colors';
+import { authService } from '@/lib/services/authService';
 import { eventService } from '@/lib/services/eventService';
 import { guestService } from '@/lib/services/guestService';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
@@ -20,7 +21,7 @@ export default function CoupleHomeWebScreen() {
   const isCompactDesktop = windowWidth < 1280;
   const isMobile = windowWidth < 600;
 
-  const { isLoggedIn, userData, initializeAuth } = useUserStore();
+  const { isLoggedIn, userData, initializeAuth, login } = useUserStore();
   const activeUserId = useEventSelectionStore((s) => s.activeUserId);
   const activeEventId = useEventSelectionStore((s) => s.activeEventId);
   const setActiveEvent = useEventSelectionStore((s) => s.setActiveEvent);
@@ -48,21 +49,37 @@ export default function CoupleHomeWebScreen() {
       try {
         setLoading(true);
         let eventId = resolvedEventId;
-        if (!eventId) {
+        let event = eventId ? await eventService.getEvent(eventId) : null;
+
+        if (!event) {
           await initializeAuth();
-          eventId = useUserStore.getState().userData?.event_id || null;
+          const ud = useUserStore.getState().userData;
+          eventId = ud?.event_id || null;
+          if (!eventId && ud?.id) {
+            eventId = await authService.getPrimaryEventId(ud.id);
+          }
+          if (eventId) {
+            event = await eventService.getEvent(eventId);
+          }
         }
-        if (!eventId) {
+
+        if (!event || !eventId) {
           setCurrentEvent(null);
           setGuests([]);
           setLoading(false);
           return;
         }
 
-        if (userData?.id) setActiveEvent(userData.id, eventId);
+        const uid = userData?.id || useUserStore.getState().userData?.id;
+        if (uid) {
+          setActiveEvent(uid, eventId);
+          const ud = useUserStore.getState().userData;
+          if (ud && ud.event_id !== eventId) {
+            login(ud.userType, { ...ud, event_id: eventId });
+          }
+        }
 
-        const [event, guestsData] = await Promise.all([eventService.getEvent(eventId), guestService.getGuests(eventId)]);
-
+        const guestsData = await guestService.getGuests(eventId);
         setCurrentEvent(event);
         setGuests(guestsData as Guest[]);
       } catch (e) {
