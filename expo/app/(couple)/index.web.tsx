@@ -19,7 +19,7 @@ export default function CoupleHomeWebScreen() {
   const { eventId: queryEventId } = useLocalSearchParams<{ eventId?: string }>();
   const { width: windowWidth } = useWindowDimensions();
   const isCompactDesktop = windowWidth < 1280;
-  const isMobile = windowWidth < 600;
+  const isMobile = windowWidth < 700;
 
   const { isLoggedIn, userData, initializeAuth, login } = useUserStore();
   const activeUserId = useEventSelectionStore((s) => s.activeUserId);
@@ -117,12 +117,14 @@ export default function CoupleHomeWebScreen() {
     };
   }, [guests]);
 
-  const formatDateOnly = (date: Date) =>
-    new Date(date).toLocaleDateString('he-IL', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
+  const formatDateOnly = (date: Date) => {
+    const d = new Date(date);
+    if (!Number.isFinite(d.getTime())) return '—';
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    return `${day}/${month}/${year}`;
+  };
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1_000);
@@ -300,7 +302,7 @@ export default function CoupleHomeWebScreen() {
     );
   }
 
-  const contentPaddingH = windowWidth >= 1024 ? 24 : 18;
+  const contentPaddingH = isMobile ? 12 : windowWidth >= 1024 ? 24 : 18;
 
   return (
     <View style={styles.page}>
@@ -310,6 +312,7 @@ export default function CoupleHomeWebScreen() {
           {
             paddingHorizontal: contentPaddingH,
           },
+          isMobile ? styles.containerMobile : null,
         ]}
       >
         {currentEvent && currentEvent.isApproved === false ? (
@@ -326,17 +329,17 @@ export default function CoupleHomeWebScreen() {
           </View>
         ) : null}
 
-        <View style={[styles.heroSection, isCompactDesktop ? styles.heroSectionStack : null]}>
+        <View style={[styles.heroSection, isCompactDesktop ? styles.heroSectionStack : null, isMobile ? styles.heroSectionMobile : null]}>
           <Surface style={[styles.heroMainCard, isMobile ? styles.cardPadMobile : null]} hoverStyle={styles.surfaceHoverSoft}>
             <View pointerEvents="none" style={styles.heroMainGlowTop} />
             <View pointerEvents="none" style={styles.heroMainGlowBottom} />
             <View style={styles.heroTopBar}>
-            <View style={styles.heroEyebrow}>
-              <View style={styles.heroEyebrowIcon}>
-                <Ionicons name="sparkles-outline" size={16} color={stylesVars.accentBlue} />
+              <View style={styles.heroEyebrow}>
+                <View style={styles.heroEyebrowIcon}>
+                  <Ionicons name="sparkles-outline" size={16} color={stylesVars.accentBlue} />
+                </View>
+                <Text style={styles.heroEyebrowText}>לוח הבקרה</Text>
               </View>
-              <Text style={styles.heroEyebrowText}>לוח הבקרה של האירוע</Text>
-            </View>
               <View style={styles.heroStatusPill}>
                 <View style={styles.heroStatusDot} />
                 <Text style={styles.heroStatusText}>{daysLabel}</Text>
@@ -344,53 +347,28 @@ export default function CoupleHomeWebScreen() {
             </View>
 
             <Text style={[styles.heroTitle, isMobile ? styles.heroTitleMobile : null]}>{coupleOrTitle || 'האירוע שלכם'}</Text>
-            <Text style={styles.heroSubtitle}>
-              דשבורד נקי ומדויק לניהול האירוע: אישורי הגעה, הושבה, תמונת מצב ולחץ תפעולי במקום אחד.
-            </Text>
-
-            <View style={styles.heroPrimaryFactsRow}>
-              <QuickFactChip icon="calendar-outline" tone="blue" label="תאריך" value={formatDateOnly(currentEvent.date)} />
-              <QuickFactChip icon="location-outline" tone="purple" label="מיקום" value={eventLocation} />
-            </View>
-
-            <View style={[styles.heroMetricsRow, isMobile ? styles.heroMetricsRowMobile : null]}>
-              {dashboardHighlights.map((item) => {
-                const tone = toneColors(item.tone);
-                return (
-                  <View
-                    key={item.label}
-                    style={[
-                      styles.heroMetricCard,
-                      {
-                        backgroundColor: withAlpha(tone.main, 0.16),
-                        borderColor: withAlpha(tone.main, 0.26),
-                      },
-                    ]}
-                  >
-                    <View pointerEvents="none" style={[styles.heroMetricGlow, { backgroundColor: withAlpha(tone.main, 0.18) }]} />
-                    <View style={[styles.heroMetricBadge, { backgroundColor: withAlpha(tone.main, 0.12) }]}>
-                      <Ionicons name={heroMetricIcon(item.tone)} size={14} color={tone.main} />
-                    </View>
-                    <Text style={styles.heroMetricValue}>{item.value}</Text>
-                    <Text style={styles.heroMetricLabel}>{item.label}</Text>
-                    <Text style={styles.heroMetricCaption}>{item.caption}</Text>
-                  </View>
-                );
-              })}
-            </View>
+            {!isMobile ? (
+              <Text style={styles.heroSubtitle}>
+                דשבורד נקי ומדויק לניהול האירוע: אישורי הגעה, הושבה, תמונת מצב ולחץ תפעולי במקום אחד.
+              </Text>
+            ) : null}
 
             <View style={[styles.heroCountdownCard, isMobile ? styles.heroCountdownCardMobile : null]}>
-              <View style={styles.heroCountdownHeader}>
-                <View style={styles.heroCountdownIcon}>
-                  <Ionicons name="timer-outline" size={18} color={stylesVars.accentBlue} />
+              <View style={[styles.heroCountdownHeader, isMobile ? styles.heroCountdownHeaderMobile : null]}>
+                <View style={[styles.heroCountdownIcon, isMobile ? styles.heroCountdownIconMobile : null]}>
+                  <Ionicons name="timer-outline" size={isMobile ? 16 : 18} color={stylesVars.accentBlue} />
                 </View>
-                <View style={styles.heroCountdownHeaderText}>
-                  <Text style={styles.heroCountdownTitle}>הספירה לאחור לאירוע</Text>
-                  <Text style={styles.heroCountdownSubtitle}>
-                    {countdown && countdown.totalMs <= 0
-                      ? 'היום הגדול כבר כאן'
-                      : 'הטיימר מתעדכן אוטומטית לפי תאריך האירוע'}
+                <View style={[styles.heroCountdownHeaderText, isMobile ? styles.heroCountdownHeaderTextMobile : null]}>
+                  <Text style={[styles.heroCountdownTitle, isMobile ? styles.heroCountdownTitleMobile : null]}>
+                    הספירה לאחור לאירוע
                   </Text>
+                  {!isMobile ? (
+                    <Text style={styles.heroCountdownSubtitle}>
+                      {countdown && countdown.totalMs <= 0
+                        ? 'היום הגדול כבר כאן'
+                        : 'הטיימר מתעדכן אוטומטית לפי תאריך האירוע'}
+                    </Text>
+                  ) : null}
                 </View>
               </View>
 
@@ -410,14 +388,64 @@ export default function CoupleHomeWebScreen() {
                 ))}
               </View>
             </View>
+
+            <View style={[styles.heroPrimaryFactsRow, isMobile ? styles.heroPrimaryFactsRowMobile : null]}>
+              <QuickFactChip
+                icon="calendar-outline"
+                tone="blue"
+                label="תאריך"
+                value={formatDateOnly(currentEvent.date)}
+                dense={isMobile}
+              />
+              <QuickFactChip
+                icon="location-outline"
+                tone="purple"
+                label="מיקום"
+                value={eventLocation}
+                dense={isMobile}
+              />
+            </View>
+
+            <View style={[styles.heroMetricsRow, isMobile ? styles.heroMetricsRowMobile : null]}>
+              {dashboardHighlights.map((item) => {
+                const tone = toneColors(item.tone);
+                return (
+                  <View
+                    key={item.label}
+                    style={[
+                      styles.heroMetricCard,
+                      isMobile ? styles.heroMetricCardMobile : null,
+                      {
+                        backgroundColor: withAlpha(tone.main, 0.16),
+                        borderColor: withAlpha(tone.main, 0.26),
+                      },
+                    ]}
+                  >
+                    {!isMobile ? (
+                      <View pointerEvents="none" style={[styles.heroMetricGlow, { backgroundColor: withAlpha(tone.main, 0.18) }]} />
+                    ) : null}
+                    <View style={[styles.heroMetricBadge, { backgroundColor: withAlpha(tone.main, 0.12) }]}>
+                      <Ionicons name={heroMetricIcon(item.tone)} size={isMobile ? 13 : 14} color={tone.main} />
+                    </View>
+                    <Text style={[styles.heroMetricValue, isMobile ? styles.heroMetricValueMobile : null]}>{item.value}</Text>
+                    <Text style={[styles.heroMetricLabel, isMobile ? styles.heroMetricLabelMobile : null]} numberOfLines={1}>
+                      {item.label}
+                    </Text>
+                    {!isMobile ? <Text style={styles.heroMetricCaption}>{item.caption}</Text> : null}
+                  </View>
+                );
+              })}
+            </View>
           </Surface>
 
           <Surface style={[styles.heroSideCard, isMobile ? styles.cardPadMobile : null]} hoverStyle={styles.surfaceHoverSoft}>
             <View pointerEvents="none" style={styles.heroSideGlow} />
-            <View style={styles.sideCardHeaderRow}>
+            <View style={[styles.sideCardHeaderRow, isMobile ? styles.sideCardHeaderRowMobile : null]}>
               <View style={styles.sideCardHeader}>
-                <Text style={styles.sideCardTitle}>תמונת מצב מהירה</Text>
-                <Text style={styles.sideCardCaption}>כל המדדים הקריטיים של האירוע במבט אחד</Text>
+                <Text style={[styles.sideCardTitle, isMobile ? styles.sideCardTitleMobile : null]}>תמונת מצב מהירה</Text>
+                {!isMobile ? (
+                  <Text style={styles.sideCardCaption}>כל המדדים הקריטיים של האירוע במבט אחד</Text>
+                ) : null}
               </View>
               <View style={styles.sideCardRateBadge}>
                 <Text style={styles.sideCardRateValue}>{stats.responseRate}%</Text>
@@ -430,6 +458,7 @@ export default function CoupleHomeWebScreen() {
               value={stats.responseRate}
               caption={`${stats.confirmed + stats.declined} מתוך ${stats.total} השיבו`}
               tone="blue"
+              dense={isMobile}
             />
 
             <ProgressMeter
@@ -437,9 +466,10 @@ export default function CoupleHomeWebScreen() {
               value={stats.seatingRate}
               caption={stats.confirmed > 0 ? `${stats.seated} מתוך ${stats.confirmed} מאשרים שובצו` : 'עדיין אין אורחים מאושרים'}
               tone="green"
+              dense={isMobile}
             />
 
-            <View style={styles.focusBox}>
+            <View style={[styles.focusBox, isMobile ? styles.focusBoxMobile : null]}>
               <View style={styles.focusBoxIcon}>
                 <Ionicons
                   name={stats.pending > 0 ? 'notifications-outline' : stats.needSeat > 0 ? 'grid-outline' : 'checkmark-done-outline'}
@@ -447,30 +477,36 @@ export default function CoupleHomeWebScreen() {
                   color={stylesVars.primary}
                 />
               </View>
-              <Text style={styles.focusBoxText}>{priorityMessage}</Text>
+              <Text style={styles.focusBoxText} numberOfLines={isMobile ? 3 : undefined}>
+                {priorityMessage}
+              </Text>
             </View>
 
-            <View style={styles.sideStatsGrid}>
-              <MiniStat label="סה״כ מוזמנים" value={stats.total} tone="blue" />
-              <MiniStat label="מאשרים" value={stats.confirmed} tone="green" />
-              <MiniStat label="אולי מגיעים" value={stats.maybe} tone="purple" />
-              <MiniStat label="ממתינים" value={stats.pending} tone="gold" />
-              <MiniStat label="לא מגיעים" value={stats.declined} tone="red" />
-              <MiniStat label="לשיבוץ" value={stats.needSeat} tone="purple" />
+            <View style={[styles.sideStatsGrid, isMobile ? styles.sideStatsGridMobile : null]}>
+              <MiniStat label="סה״כ מוזמנים" value={stats.total} tone="blue" dense={isMobile} />
+              <MiniStat label="מאשרים" value={stats.confirmed} tone="green" dense={isMobile} />
+              <MiniStat label="אולי מגיעים" value={stats.maybe} tone="purple" dense={isMobile} />
+              <MiniStat label="ממתינים" value={stats.pending} tone="gold" dense={isMobile} />
+              <MiniStat label="לא מגיעים" value={stats.declined} tone="red" dense={isMobile} />
+              <MiniStat label="לשיבוץ" value={stats.needSeat} tone="purple" dense={isMobile} />
             </View>
           </Surface>
         </View>
 
-        <View style={styles.analyticsSection}>
+        <View style={[styles.analyticsSection, isMobile ? styles.analyticsSectionMobile : null]}>
           <View style={[styles.analyticsGrid, isCompactDesktop ? styles.analyticsGridStack : null]}>
             <Surface style={[styles.analyticsMainCard, isMobile ? styles.cardPadMobile : null]} hoverStyle={styles.surfaceHoverSoft}>
-              <View style={styles.analyticsCardHeader}>
+              <View style={[styles.analyticsCardHeader, isMobile ? styles.analyticsCardHeaderMobile : null]}>
                 <View style={styles.analyticsCardIcon}>
                   <Ionicons name="pulse-outline" size={18} color={stylesVars.accentGreen} />
                 </View>
                 <View style={styles.analyticsCardHeaderText}>
-                  <Text style={styles.analyticsCardTitle}>מד מוכנות האירוע</Text>
-                  <Text style={styles.analyticsCardSubtitle}>תמונת מצב חיה שמשלבת מענה, הושבה וסגירת משימות במקום בלוק טקסט סטטי.</Text>
+                  <Text style={[styles.analyticsCardTitle, isMobile ? styles.analyticsCardTitleMobile : null]}>מד מוכנות האירוע</Text>
+                  {!isMobile ? (
+                    <Text style={styles.analyticsCardSubtitle}>
+                      תמונת מצב חיה שמשלבת מענה, הושבה וסגירת משימות במקום בלוק טקסט סטטי.
+                    </Text>
+                  ) : null}
                 </View>
               </View>
 
@@ -482,67 +518,109 @@ export default function CoupleHomeWebScreen() {
                   <View style={styles.readinessHeroBadge}>
                     <Text style={styles.readinessHeroBadgeText}>{readinessScore}% מוכנות</Text>
                   </View>
-                  <Text style={styles.readinessHeroTitle}>כמה האירוע סגור כרגע?</Text>
-                  <Text style={styles.readinessHeroCaption}>{readinessSummary}</Text>
+                  <Text style={[styles.readinessHeroTitle, isMobile ? styles.readinessHeroTitleMobile : null]}>
+                    כמה האירוע סגור כרגע?
+                  </Text>
+                  <Text style={styles.readinessHeroCaption} numberOfLines={isMobile ? 2 : undefined}>
+                    {readinessSummary}
+                  </Text>
                 </View>
               </View>
 
               <View style={[styles.gaugeStatsList, isMobile ? styles.gaugeStatsListMobile : null]}>
-                {eventGaugeItems.map((item) => (
-                  <View key={item.key} style={[styles.gaugeStatCard, { borderColor: item.tint }]}>
-                    <View style={styles.gaugeStatTop}>
-                      <View style={[styles.gaugeStatBadge, { backgroundColor: item.tint }]}>
-                        <Text style={[styles.gaugeStatBadgeText, { color: item.accent }]}>{item.badge}</Text>
+                {eventGaugeItems.map((item) => {
+                  const pct = item.total > 0 ? Math.round((item.value / item.total) * 100) : 0;
+                  if (isMobile) {
+                    return (
+                      <View key={item.key} style={[styles.gaugeStatCardMobile, { borderColor: item.tint, backgroundColor: withAlpha(item.accent, 0.04) }]}>
+                        <View style={styles.gaugeStatMobileTop}>
+                          <View style={[styles.gaugeStatIconCircle, styles.gaugeStatIconCircleMobile, { backgroundColor: item.tint }]}>
+                            <Ionicons name={item.icon} size={16} color={item.accent} />
+                          </View>
+                          <View style={styles.gaugeStatMobileText}>
+                            <Text style={styles.gaugeStatLabel} numberOfLines={1}>
+                              {item.label}
+                            </Text>
+                            <Text style={styles.gaugeStatHint} numberOfLines={1}>
+                              {item.hint}
+                            </Text>
+                          </View>
+                          <View style={[styles.gaugeStatBadge, { backgroundColor: item.tint }]}>
+                            <Text style={[styles.gaugeStatBadgeText, { color: item.accent }]}>{item.badge}</Text>
+                          </View>
+                        </View>
+                        <View style={styles.gaugeStatMobileTrack}>
+                          <View style={[styles.gaugeStatMobileFill, { width: `${pct}%`, backgroundColor: item.accent }]} />
+                        </View>
+                        <Text style={styles.gaugeStatMobileMeta}>
+                          {item.value} מתוך {item.total}
+                        </Text>
                       </View>
-                      <View style={[styles.gaugeStatIconCircle, { backgroundColor: item.tint }]}>
-                        <Ionicons name={item.icon} size={18} color={item.accent} />
-                      </View>
-                    </View>
+                    );
+                  }
 
-                    <View style={styles.gaugeStatBody}>
-                      <View style={styles.gaugeStatMeterWrap}>
-                        <GaugeMeter value={item.value} total={item.total} color={item.accent} trackColor={item.tint} />
+                  return (
+                    <View key={item.key} style={[styles.gaugeStatCard, { borderColor: item.tint }]}>
+                      <View style={styles.gaugeStatTop}>
+                        <View style={[styles.gaugeStatBadge, { backgroundColor: item.tint }]}>
+                          <Text style={[styles.gaugeStatBadgeText, { color: item.accent }]}>{item.badge}</Text>
+                        </View>
+                        <View style={[styles.gaugeStatIconCircle, { backgroundColor: item.tint }]}>
+                          <Ionicons name={item.icon} size={18} color={item.accent} />
+                        </View>
                       </View>
-                      <Text style={styles.gaugeStatLabel}>{item.label}</Text>
-                      <View style={styles.gaugeStatBottom}>
-                        <Text style={styles.gaugeStatValue}>{item.value}</Text>
-                        <Text style={styles.gaugeStatOutOf}>{`מתוך ${item.total}`}</Text>
+
+                      <View style={styles.gaugeStatBody}>
+                        <View style={styles.gaugeStatMeterWrap}>
+                          <GaugeMeter value={item.value} total={item.total} color={item.accent} trackColor={item.tint} />
+                        </View>
+                        <Text style={styles.gaugeStatLabel}>{item.label}</Text>
+                        <View style={styles.gaugeStatBottom}>
+                          <Text style={styles.gaugeStatValue}>{item.value}</Text>
+                          <Text style={styles.gaugeStatOutOf}>{`מתוך ${item.total}`}</Text>
+                        </View>
+                        <Text style={styles.gaugeStatHint}>{item.hint}</Text>
                       </View>
-                      <Text style={styles.gaugeStatHint}>{item.hint}</Text>
                     </View>
-                  </View>
-                ))}
+                  );
+                })}
               </View>
             </Surface>
 
             <View style={[styles.analyticsSideColumn, isMobile ? styles.analyticsSideColumnMobile : null]}>
               <Surface style={[styles.analyticsInsightCard, isMobile ? styles.cardPadMobile : null]} hoverStyle={styles.surfaceHoverSoft}>
-                <View style={styles.analyticsCardHeader}>
+                <View style={[styles.analyticsCardHeader, isMobile ? styles.analyticsCardHeaderMobile : null]}>
                   <View style={styles.analyticsCardIcon}>
                     <Ionicons name="sparkles-outline" size={18} color={stylesVars.accentPurple} />
                   </View>
                   <View style={styles.analyticsCardHeaderText}>
-                    <Text style={styles.analyticsCardTitle}>מוקדי טיפול</Text>
-                    <Text style={styles.analyticsCardSubtitle}>הנקודות שעדיין דורשות מענה או סגירה לפני האירוע.</Text>
+                    <Text style={[styles.analyticsCardTitle, isMobile ? styles.analyticsCardTitleMobile : null]}>מוקדי טיפול</Text>
+                    {!isMobile ? (
+                      <Text style={styles.analyticsCardSubtitle}>הנקודות שעדיין דורשות מענה או סגירה לפני האירוע.</Text>
+                    ) : null}
                   </View>
                 </View>
 
-                <View style={styles.analyticsMiniGrid}>
-                  <MiniStat label="ממתינים" value={stats.pending} tone="gold" compact />
-                  <MiniStat label="אולי מגיעים" value={stats.maybe} tone="purple" compact />
-                  <MiniStat label="לשיבוץ" value={stats.needSeat} tone="purple" compact />
-                  <MiniStat label="דורשים טיפול" value={stats.pending + stats.needSeat} tone="red" compact />
+                <View style={[styles.analyticsMiniGrid, isMobile ? styles.sideStatsGridMobile : null]}>
+                  <MiniStat label="ממתינים" value={stats.pending} tone="gold" compact dense={isMobile} />
+                  <MiniStat label="אולי מגיעים" value={stats.maybe} tone="purple" compact dense={isMobile} />
+                  <MiniStat label="לשיבוץ" value={stats.needSeat} tone="purple" compact dense={isMobile} />
+                  <MiniStat label="לטיפול" value={stats.pending + stats.needSeat} tone="red" compact dense={isMobile} />
                 </View>
               </Surface>
 
               <Surface style={[styles.analyticsInsightCard, isMobile ? styles.cardPadMobile : null]} hoverStyle={styles.surfaceHoverSoft}>
-                <View style={styles.analyticsCardHeader}>
+                <View style={[styles.analyticsCardHeader, isMobile ? styles.analyticsCardHeaderMobile : null]}>
                   <View style={styles.analyticsCardIcon}>
                     <Ionicons name="bar-chart-outline" size={18} color={stylesVars.accentBlue} />
                   </View>
                   <View style={styles.analyticsCardHeaderText}>
-                    <Text style={styles.analyticsCardTitle}>חלוקת סטטוסים של המוזמנים</Text>
-                    <Text style={styles.analyticsCardSubtitle}>גרף שממחיש איך רשימת האורחים מתפלגת כרגע לפי מצב הגעה.</Text>
+                    <Text style={[styles.analyticsCardTitle, isMobile ? styles.analyticsCardTitleMobile : null]}>
+                      חלוקת סטטוסים
+                    </Text>
+                    {!isMobile ? (
+                      <Text style={styles.analyticsCardSubtitle}>גרף שממחיש איך רשימת האורחים מתפלגת כרגע לפי מצב הגעה.</Text>
+                    ) : null}
                   </View>
                 </View>
 
@@ -645,23 +723,39 @@ function QuickFactChip({
   tone,
   label,
   value,
+  dense = false,
 }: {
   icon: React.ComponentProps<typeof Ionicons>['name'];
   tone: 'blue' | 'purple' | 'gold';
   label: string;
   value: string;
+  dense?: boolean;
 }) {
   const colorsByTone = toneColors(tone);
 
   return (
-    <View style={[styles.factChip, { backgroundColor: colorsByTone.soft, borderColor: colorsByTone.border }]}>
-      <View pointerEvents="none" style={[styles.factChipGlow, { backgroundColor: withAlpha(colorsByTone.main, 0.12) }]} />
-      <View style={[styles.factChipIconWrap, { backgroundColor: withAlpha(colorsByTone.main, 0.12) }]}>
-        <Ionicons name={icon} size={18} color={colorsByTone.main} />
+    <View
+      style={[
+        styles.factChip,
+        dense ? styles.factChipDense : null,
+        { backgroundColor: colorsByTone.soft, borderColor: colorsByTone.border },
+      ]}
+    >
+      {!dense ? (
+        <View pointerEvents="none" style={[styles.factChipGlow, { backgroundColor: withAlpha(colorsByTone.main, 0.12) }]} />
+      ) : null}
+      <View
+        style={[
+          styles.factChipIconWrap,
+          dense ? styles.factChipIconWrapDense : null,
+          { backgroundColor: withAlpha(colorsByTone.main, 0.12) },
+        ]}
+      >
+        <Ionicons name={icon} size={dense ? 15 : 18} color={colorsByTone.main} />
       </View>
       <View style={styles.factChipContent}>
         <Text style={styles.factChipLabel}>{label}</Text>
-        <Text style={styles.factChipValue} numberOfLines={2}>
+        <Text style={[styles.factChipValue, dense ? styles.factChipValueDense : null]} numberOfLines={dense ? 1 : 2}>
           {value}
         </Text>
       </View>
@@ -763,27 +857,29 @@ function ProgressMeter({
   value,
   caption,
   tone,
+  dense = false,
 }: {
   label: string;
   value: number;
   caption: string;
   tone: 'blue' | 'green';
+  dense?: boolean;
 }) {
   const resolvedValue = clampPercent(value);
   const colorsByTone = toneColors(tone);
 
   return (
-    <View style={styles.progressBlock}>
+    <View style={[styles.progressBlock, dense ? styles.progressBlockDense : null]}>
       <View style={styles.progressBlockHeader}>
         <Text style={styles.progressLabel}>{label}</Text>
         <Text style={[styles.progressValue, { color: colorsByTone.main }]}>{resolvedValue}%</Text>
       </View>
 
-      <View style={styles.progressTrack}>
+      <View style={[styles.progressTrack, dense ? styles.progressTrackDense : null]}>
         <View style={[styles.progressFill, { width: `${resolvedValue}%`, backgroundColor: colorsByTone.main }]} />
       </View>
 
-      <Text style={styles.progressCaption} numberOfLines={2}>
+      <Text style={styles.progressCaption} numberOfLines={dense ? 1 : 2}>
         {caption}
       </Text>
     </View>
@@ -795,13 +891,42 @@ function MiniStat({
   value,
   tone,
   compact = false,
+  dense = false,
 }: {
   label: string;
   value: string | number;
   tone: 'blue' | 'green' | 'gold' | 'red' | 'purple';
   compact?: boolean;
+  dense?: boolean;
 }) {
   const colorsByTone = toneColors(tone);
+
+  if (dense) {
+    return (
+      <View
+        style={[
+          styles.miniStatCard,
+          styles.miniStatCardDense,
+          {
+            backgroundColor: withAlpha(colorsByTone.main, 0.08),
+            borderColor: withAlpha(colorsByTone.main, 0.2),
+          },
+        ]}
+      >
+        <View style={styles.miniStatDenseRow}>
+          <Text style={[styles.miniStatValueDense, { color: colorsByTone.main }]} numberOfLines={1}>
+            {value}
+          </Text>
+          <View style={[styles.miniStatToneBadge, styles.miniStatToneBadgeDense, { backgroundColor: withAlpha(colorsByTone.main, 0.12) }]}>
+            <View style={[styles.miniStatDot, { backgroundColor: colorsByTone.main }]} />
+            <Text style={styles.miniStatLabel} numberOfLines={1}>
+              {label}
+            </Text>
+          </View>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View
@@ -939,6 +1064,10 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     direction: 'rtl',
   },
+  containerMobile: {
+    gap: 14,
+    paddingBottom: 20,
+  },
   container: {
     paddingHorizontal: 18,
     paddingTop: 22,
@@ -1033,37 +1162,213 @@ const styles = StyleSheet.create({
   heroSectionStack: {
     flexDirection: 'column',
   },
+  heroSectionMobile: {
+    gap: 12,
+    marginBottom: 14,
+  },
   cardPadMobile: {
-    padding: 16,
-    borderRadius: 22,
+    padding: 14,
+    borderRadius: 20,
   },
   heroTitleMobile: {
-    fontSize: 24,
-    lineHeight: 30,
-    marginTop: 14,
+    fontSize: 22,
+    lineHeight: 28,
+    marginTop: 10,
+  },
+  heroPrimaryFactsRowMobile: {
+    marginTop: 12,
+    gap: 8,
   },
   heroMetricsRowMobile: {
-    flexWrap: 'wrap',
+    marginTop: 12,
+    flexWrap: 'nowrap',
+    gap: 8,
+  },
+  heroMetricCardMobile: {
+    flexBasis: 0,
+    flexGrow: 1,
+    minWidth: 0,
+    minHeight: 0,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderRadius: 16,
+  },
+  heroMetricValueMobile: {
+    marginTop: 8,
+    fontSize: 20,
+    lineHeight: 24,
+  },
+  heroMetricLabelMobile: {
+    marginTop: 4,
+    fontSize: 11,
   },
   heroCountdownCardMobile: {
+    marginTop: 12,
+    marginBottom: 0,
     flexDirection: 'column',
     alignItems: 'stretch',
-    gap: 14,
-    padding: 14,
+    gap: 10,
+    padding: 12,
+    borderRadius: 18,
+  },
+  heroCountdownHeaderMobile: {
+    justifyContent: 'flex-start',
+    gap: 10,
+  },
+  heroCountdownIconMobile: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+  },
+  heroCountdownHeaderTextMobile: {
+    minWidth: 0,
+    flex: 1,
+  },
+  heroCountdownTitleMobile: {
+    fontSize: 14,
   },
   heroCountdownGridMobile: {
-    gap: 6,
+    gap: 4,
     justifyContent: 'space-between',
+    width: '100%',
+  },
+  sideCardHeaderRowMobile: {
+    marginBottom: 4,
+    gap: 10,
+  },
+  sideCardTitleMobile: {
+    fontSize: 17,
+  },
+  focusBoxMobile: {
+    marginTop: 2,
+    marginBottom: 12,
+    padding: 12,
+  },
+  sideStatsGridMobile: {
+    gap: 8,
   },
   readinessHeroMobile: {
     flexDirection: 'column',
     alignItems: 'center',
+    gap: 10,
+    padding: 12,
+    marginBottom: 12,
+  },
+  readinessHeroTitleMobile: {
+    fontSize: 16,
+    textAlign: 'center',
   },
   gaugeStatsListMobile: {
     flexDirection: 'column',
+    gap: 8,
+  },
+  analyticsSectionMobile: {
+    gap: 12,
+  },
+  analyticsCardHeaderMobile: {
+    marginBottom: 12,
+  },
+  analyticsCardTitleMobile: {
+    fontSize: 16,
   },
   analyticsSideColumnMobile: {
     minWidth: 0,
+    gap: 12,
+  },
+  gaugeStatCardMobile: {
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: 8,
+  },
+  gaugeStatMobileTop: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 10,
+  },
+  gaugeStatMobileText: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  gaugeStatIconCircleMobile: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+  },
+  gaugeStatMobileTrack: {
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(15,23,42,0.08)',
+    overflow: 'hidden',
+  },
+  gaugeStatMobileFill: {
+    height: '100%',
+    borderRadius: 999,
+  },
+  gaugeStatMobileMeta: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.gray[500],
+    textAlign: 'right',
+  },
+  factChipDense: {
+    minWidth: 0,
+    flexBasis: '48%',
+    flexGrow: 1,
+    minHeight: 0,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    gap: 10,
+  },
+  factChipIconWrapDense: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+  },
+  factChipValueDense: {
+    marginTop: 2,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  progressBlockDense: {
+    marginBottom: 10,
+    gap: 6,
+  },
+  progressTrackDense: {
+    height: 7,
+  },
+  miniStatCardDense: {
+    flexBasis: '48%',
+    flexGrow: 1,
+    minWidth: '46%',
+    minHeight: 0,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    justifyContent: 'center',
+  },
+  miniStatDenseRow: {
+    width: '100%',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  miniStatToneBadgeDense: {
+    paddingVertical: 5,
+    paddingHorizontal: 8,
+    flexShrink: 1,
+    maxWidth: '68%',
+  },
+  miniStatValueDense: {
+    fontSize: 22,
+    fontWeight: '900',
+    lineHeight: 26,
+    textAlign: 'left',
+    flexShrink: 0,
   },
   heroMainCard: {
     flex: 1.35,
@@ -1312,7 +1617,8 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   heroCountdownCard: {
-    marginTop: 22,
+    marginTop: 16,
+    marginBottom: 4,
     padding: 18,
     borderRadius: 24,
     borderWidth: 2,
@@ -1386,8 +1692,8 @@ const styles = StyleSheet.create({
     lineHeight: 44,
   },
   countdownValueMobile: {
-    fontSize: 28,
-    lineHeight: 32,
+    fontSize: 24,
+    lineHeight: 28,
   },
   countdownLabel: {
     fontSize: 12,

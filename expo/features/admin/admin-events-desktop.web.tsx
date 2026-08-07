@@ -179,6 +179,7 @@ function DashboardStatCard({
   icon,
   tone = 'default',
   badgeText,
+  compact = false,
 }: {
   title: string;
   value: string;
@@ -186,6 +187,7 @@ function DashboardStatCard({
   icon: keyof typeof Ionicons.glyphMap;
   tone?: 'default' | 'accent' | 'gold' | 'dark';
   badgeText?: string;
+  compact?: boolean;
 }) {
   const isDark = tone === 'dark';
   const iconBackground =
@@ -199,7 +201,13 @@ function DashboardStatCard({
   const iconColor = tone === 'accent' ? '#195DE6' : tone === 'gold' ? '#C6931A' : isDark ? '#FFFFFF' : colors.text;
 
   return (
-    <View style={[dashboardStyles.overviewStatCard, isDark ? dashboardStyles.overviewStatCardDark : null]}>
+    <View
+      style={[
+        dashboardStyles.overviewStatCard,
+        isDark ? dashboardStyles.overviewStatCardDark : null,
+        compact ? dashboardStyles.overviewStatCardPhone : null,
+      ]}
+    >
       <View style={dashboardStyles.overviewStatHeader}>
         <View
           style={[
@@ -219,7 +227,14 @@ function DashboardStatCard({
       </View>
 
       <Text style={[dashboardStyles.overviewStatTitle, isDark ? dashboardStyles.overviewStatTitleDark : null]}>{title}</Text>
-      <Text style={[dashboardStyles.overviewStatValue, isDark ? dashboardStyles.overviewStatValueDark : null]} numberOfLines={1}>
+      <Text
+        style={[
+          dashboardStyles.overviewStatValue,
+          isDark ? dashboardStyles.overviewStatValueDark : null,
+          compact ? dashboardStyles.overviewStatValuePhone : null,
+        ]}
+        numberOfLines={1}
+      >
         {value}
       </Text>
       <Text style={[dashboardStyles.overviewStatSubtitle, isDark ? dashboardStyles.overviewStatSubtitleDark : null]}>{subtitle}</Text>
@@ -2704,10 +2719,11 @@ const styles = StyleSheet.create({
 
 export default function AdminEventsWebScreen() {
   const { width } = useWindowDimensions();
-  const { isTablet, isTabletPortrait, isTouchLayout } = useResponsive();
+  const { isTablet, isTabletPortrait, isTouchLayout, isPhone, gutter } = useResponsive();
   // Stack the side column only when the two columns genuinely stop fitting.
   // A 1194pt iPad in landscape has room for main + side; portrait does not.
-  const isCompactDesktop = isTablet ? isTabletPortrait : width < 1360;
+  // Phone web always stacks — the desktop two-column grid cannot fit.
+  const isCompactDesktop = isPhone || (isTablet ? isTabletPortrait : width < 1360);
   // The year steppers are 36pt squares — grow their hit area on touch without
   // changing how they look on a mouse-driven desktop.
   const yearBtnHitSlop = touchHitSlop(36, isTouchLayout);
@@ -3131,50 +3147,72 @@ export default function AdminEventsWebScreen() {
     [clients.length, clientsLoading, loading, selectedYear, yearTotalBudget, yearTotalEvents, yearTotalGuests]
   );
 
+  const smsBalancePill = (
+    <LinearGradient
+      colors={['#0B3DA6', '#195de6', '#3B82F6']}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={[dashboardStyles.smsPill, isPhone ? dashboardStyles.smsPillPhone : null]}
+    >
+      <View style={dashboardStyles.smsPillIcon}>
+        <Ionicons name="chatbubbles" size={15} color="#FFFFFF" />
+      </View>
+      <View style={dashboardStyles.smsPillTextWrap}>
+        <Text style={dashboardStyles.smsPillLabel}>יתרת הודעות SMS</Text>
+        {smsBalance.loading ? (
+          <ActivityIndicator size="small" color="#FFFFFF" />
+        ) : smsBalance.credits != null ? (
+          <Text style={dashboardStyles.smsPillValue} numberOfLines={1}>
+            {smsBalance.credits}
+            <Text style={dashboardStyles.smsPillUnit}> הודעות נותרו</Text>
+          </Text>
+        ) : (
+          <Text style={dashboardStyles.smsPillErr} numberOfLines={1}>
+            {smsBalance.error || 'לא זמין'}
+          </Text>
+        )}
+      </View>
+    </LinearGradient>
+  );
+
+  const chartPlotHeight = isPhone ? 160 : 200;
+
   return (
     <View style={dashboardStyles.page}>
-      <ScrollView style={dashboardStyles.scroll} contentContainerStyle={dashboardStyles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={dashboardStyles.scroll}
+        contentContainerStyle={[
+          dashboardStyles.scrollContent,
+          isPhone
+            ? {
+                paddingHorizontal: gutter,
+                paddingTop: 16,
+                paddingBottom: 140,
+                gap: 16,
+              }
+            : null,
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={dashboardStyles.heroShell}>
           <AdminWebPageHeader
             eyebrow="ניהול אירועים"
             title="דשבורד אירועים למנהל"
-            navTrailing={
-              <LinearGradient
-                colors={['#0B3DA6', '#195de6', '#3B82F6']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={dashboardStyles.smsPill}
-              >
-                <View style={dashboardStyles.smsPillIcon}>
-                  <Ionicons name="chatbubbles" size={15} color="#FFFFFF" />
-                </View>
-                <View style={dashboardStyles.smsPillTextWrap}>
-                  <Text style={dashboardStyles.smsPillLabel}>יתרת הודעות SMS</Text>
-                  {smsBalance.loading ? (
-                    <ActivityIndicator size="small" color="#FFFFFF" />
-                  ) : smsBalance.credits != null ? (
-                    <Text style={dashboardStyles.smsPillValue} numberOfLines={1}>
-                      {smsBalance.credits}
-                      <Text style={dashboardStyles.smsPillUnit}> הודעות נותרו</Text>
-                    </Text>
-                  ) : (
-                    <Text style={dashboardStyles.smsPillErr} numberOfLines={1}>
-                      {smsBalance.error || 'לא זמין'}
-                    </Text>
-                  )}
-                </View>
-              </LinearGradient>
-            }
+            navTrailing={smsBalancePill}
           />
 
-          <View style={dashboardStyles.heroCard}>
-            <View style={dashboardStyles.heroChartCard}>
-              <View style={dashboardStyles.sectionHeader}>
-                <View style={dashboardStyles.sectionHeaderTextWrap}>
-                  <Text style={dashboardStyles.sectionEyebrow}>גרף פעילות</Text>
-                  <Text style={dashboardStyles.sectionTitle}>ביצועים חודשיים</Text>
+          <View style={[dashboardStyles.heroCard, isPhone ? dashboardStyles.heroCardPhone : null]}>
+            <View style={[dashboardStyles.heroChartCard, isPhone ? dashboardStyles.heroChartCardPhone : null]}>
+              <View style={[dashboardStyles.sectionHeader, isPhone ? dashboardStyles.sectionHeaderPhone : null]}>
+                <View style={[dashboardStyles.sectionHeaderTextWrap, isPhone ? dashboardStyles.sectionHeaderTextWrapPhone : null]}>
+                  <Text style={[dashboardStyles.sectionEyebrow, isPhone ? dashboardStyles.sectionEyebrowPhone : null]} numberOfLines={1}>
+                    גרף פעילות
+                  </Text>
+                  <Text style={[dashboardStyles.sectionTitle, isPhone ? dashboardStyles.sectionTitlePhone : null]} numberOfLines={1}>
+                    ביצועים חודשיים
+                  </Text>
                 </View>
-                <View style={dashboardStyles.yearControls}>
+                <View style={[dashboardStyles.yearControls, isPhone ? dashboardStyles.yearControlsPhone : null]}>
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel="שנה קודמת"
@@ -3191,7 +3229,7 @@ export default function AdminEventsWebScreen() {
                     <Ionicons name="chevron-back" size={18} color={colors.text} />
                   </Pressable>
 
-                  <View style={dashboardStyles.yearPill}>
+                  <View style={[dashboardStyles.yearPill, isPhone ? dashboardStyles.yearPillPhone : null]}>
                     <Ionicons name="calendar-outline" size={14} color={colors.text} />
                     <Text style={dashboardStyles.yearPillText}>{selectedYear}</Text>
                     <View style={dashboardStyles.pillDot} />
@@ -3217,7 +3255,7 @@ export default function AdminEventsWebScreen() {
               </View>
 
               <View style={dashboardStyles.chartPlot}>
-                <View pointerEvents="none" style={dashboardStyles.chartGrid}>
+                <View pointerEvents="none" style={[dashboardStyles.chartGrid, { height: chartPlotHeight }]}>
                   {[0, 1, 2, 3, 4].map((line) => (
                     <View
                       key={`grid-${line}`}
@@ -3229,7 +3267,13 @@ export default function AdminEventsWebScreen() {
                   ))}
                 </View>
 
-                <View style={dashboardStyles.chartBarsRow}>
+                <View
+                  style={[
+                    dashboardStyles.chartBarsRow,
+                    { height: chartPlotHeight },
+                    isPhone ? dashboardStyles.chartBarsRowPhone : null,
+                  ]}
+                >
                   {bars12.map((bar) => {
                     const isCurrentMonth = isCurrentYear && bar.monthIndex === now.getMonth();
                     const hasValue = bar.value > 0;
@@ -3243,11 +3287,19 @@ export default function AdminEventsWebScreen() {
                         onPress={() => null}
                         style={({ pressed }: any) => [
                           dashboardStyles.chartBarCol,
+                          { height: chartPlotHeight },
+                          isPhone ? dashboardStyles.chartBarColPhone : null,
                           pressed ? { opacity: 0.96 } : null,
                         ]}
                       >
                         {({ hovered }: any) => (
-                          <View style={dashboardStyles.chartBarTrack}>
+                          <View
+                            style={[
+                              dashboardStyles.chartBarTrack,
+                              { height: chartPlotHeight },
+                              isPhone ? dashboardStyles.chartBarTrackPhone : null,
+                            ]}
+                          >
                             {hasValue ? (
                               <LinearGradient
                                 colors={isCurrentMonth ? ['#1D4ED8', '#3B82F6', '#60A5FA'] : ['#2E55C9', '#4C82F7']}
@@ -3266,14 +3318,16 @@ export default function AdminEventsWebScreen() {
                               <View style={dashboardStyles.chartBarEmpty} />
                             )}
 
-                            <View
-                              style={[
-                                dashboardStyles.chartBarTooltip,
-                                Platform.OS === 'web' && hovered ? { opacity: 1 } : ({ display: 'none' } as any),
-                              ]}
-                            >
-                              <Text style={dashboardStyles.chartBarTooltipText}>{bar.value}</Text>
-                            </View>
+                            {!isPhone ? (
+                              <View
+                                style={[
+                                  dashboardStyles.chartBarTooltip,
+                                  Platform.OS === 'web' && hovered ? { opacity: 1 } : ({ display: 'none' } as any),
+                                ]}
+                              >
+                                <Text style={dashboardStyles.chartBarTooltipText}>{bar.value}</Text>
+                              </View>
+                            ) : null}
                           </View>
                         )}
                       </Pressable>
@@ -3281,15 +3335,31 @@ export default function AdminEventsWebScreen() {
                   })}
                 </View>
 
-                <View style={dashboardStyles.chartLabelsRow}>
+                <View style={[dashboardStyles.chartLabelsRow, isPhone ? dashboardStyles.chartLabelsRowPhone : null]}>
                   {bars12.map((bar) => {
                     const isCurrentMonth = isCurrentYear && bar.monthIndex === now.getMonth();
                     return (
-                      <View key={`label-${selectedYear}-${bar.monthIndex}`} style={dashboardStyles.chartLabelCol}>
-                        <Text style={[dashboardStyles.chartBarLabel, isCurrentMonth ? dashboardStyles.chartBarLabelHot : null]}>
+                      <View
+                        key={`label-${selectedYear}-${bar.monthIndex}`}
+                        style={[dashboardStyles.chartLabelCol, isPhone ? dashboardStyles.chartLabelColPhone : null]}
+                      >
+                        <Text
+                          style={[
+                            dashboardStyles.chartBarLabel,
+                            isPhone ? dashboardStyles.chartBarLabelPhone : null,
+                            isCurrentMonth ? dashboardStyles.chartBarLabelHot : null,
+                          ]}
+                          numberOfLines={1}
+                        >
                           {bar.label}
                         </Text>
-                        <Text style={[dashboardStyles.chartBarValue, isCurrentMonth ? dashboardStyles.chartBarValueHot : null]}>
+                        <Text
+                          style={[
+                            dashboardStyles.chartBarValue,
+                            isPhone ? dashboardStyles.chartBarValuePhone : null,
+                            isCurrentMonth ? dashboardStyles.chartBarValueHot : null,
+                          ]}
+                        >
                           {bar.value}
                         </Text>
                       </View>
@@ -3301,14 +3371,14 @@ export default function AdminEventsWebScreen() {
           </View>
         </View>
 
-        <View style={dashboardStyles.filterCard}>
-          <View style={dashboardStyles.searchRow}>
+        <View style={[dashboardStyles.filterCard, isPhone ? dashboardStyles.filterCardPhone : null]}>
+          <View style={[dashboardStyles.searchRow, isPhone ? dashboardStyles.searchRowPhone : null]}>
             <View style={dashboardStyles.searchWrap}>
               <Ionicons name="search" size={18} color={colors.gray[500]} style={dashboardStyles.searchIcon} />
               <TextInput
                 value={query}
                 onChangeText={setQuery}
-                placeholder="חיפוש לפי שם אירוע, לקוח, אולם או עיר..."
+                placeholder={isPhone ? 'חיפוש אירוע, לקוח או עיר...' : 'חיפוש לפי שם אירוע, לקוח, אולם או עיר...'}
                 placeholderTextColor={colors.gray[500]}
                 style={dashboardStyles.searchInput}
                 textAlign="right"
@@ -3326,7 +3396,7 @@ export default function AdminEventsWebScreen() {
               ) : null}
             </View>
 
-            <View style={dashboardStyles.searchSummary}>
+            <View style={[dashboardStyles.searchSummary, isPhone ? dashboardStyles.searchSummaryPhone : null]}>
               <View style={dashboardStyles.activeFiltersBadge}>
                 <Ionicons name="options-outline" size={15} color={colors.primary} />
                 <Text style={dashboardStyles.activeFiltersBadgeText}>
@@ -3339,7 +3409,7 @@ export default function AdminEventsWebScreen() {
             </View>
           </View>
 
-          <View style={dashboardStyles.filtersTopRow}>
+          <View style={[dashboardStyles.filtersTopRow, isPhone ? dashboardStyles.filtersTopRowPhone : null]}>
             <View style={dashboardStyles.statusTabsRow}>
               {[
                 { key: 'all', label: 'הכל', count: statusCounts.all },
@@ -3372,8 +3442,8 @@ export default function AdminEventsWebScreen() {
               })}
             </View>
 
-            <View style={dashboardStyles.controlsRow}>
-              <View style={dashboardStyles.controlSelect}>
+            <View style={[dashboardStyles.controlsRow, isPhone ? dashboardStyles.controlsRowPhone : null]}>
+              <View style={[dashboardStyles.controlSelect, isPhone ? dashboardStyles.controlSelectPhone : null]}>
                 <View pointerEvents="none" style={dashboardStyles.controlSelectIconWrap}>
                   <Ionicons name="calendar-outline" size={14} color={colors.gray[600]} />
                 </View>
@@ -3398,7 +3468,7 @@ export default function AdminEventsWebScreen() {
                 </Picker>
               </View>
 
-              <View style={dashboardStyles.controlSelect}>
+              <View style={[dashboardStyles.controlSelect, isPhone ? dashboardStyles.controlSelectPhone : null]}>
                 <View pointerEvents="none" style={dashboardStyles.controlSelectIconWrap}>
                   <Ionicons name="albums-outline" size={14} color={colors.gray[600]} />
                 </View>
@@ -3566,13 +3636,15 @@ export default function AdminEventsWebScreen() {
 
         <View style={[dashboardStyles.contentGrid, isCompactDesktop ? dashboardStyles.contentGridCompact : null]}>
           <View style={dashboardStyles.dashboardMainColumn}>
-            <View style={dashboardStyles.sectionCard}>
+            <View style={[dashboardStyles.sectionCard, isPhone ? dashboardStyles.sectionCardPhone : null]}>
               <View style={[dashboardStyles.overviewStatsSection, dashboardStyles.overviewStatsSectionFirst]}>
                 <View style={dashboardStyles.overviewStatsHeader}>
                   <Text style={dashboardStyles.overviewStatsEyebrow}>מדדי פרופיל</Text>
-                  <Text style={dashboardStyles.overviewStatsTitle}>תמונת שנה מהירה</Text>
+                  <Text style={[dashboardStyles.overviewStatsTitle, isPhone ? dashboardStyles.sectionTitlePhone : null]}>
+                    תמונת שנה מהירה
+                  </Text>
                 </View>
-                <View style={dashboardStyles.overviewStatsGrid}>
+                <View style={[dashboardStyles.overviewStatsGrid, isPhone ? dashboardStyles.overviewStatsGridPhone : null]}>
                   {profileStyleStats.map((item) => (
                     <DashboardStatCard
                       key={item.key}
@@ -3582,6 +3654,7 @@ export default function AdminEventsWebScreen() {
                       icon={item.icon}
                       tone={item.tone}
                       badgeText={item.badgeText}
+                      compact={isPhone}
                     />
                   ))}
                 </View>
@@ -3589,10 +3662,14 @@ export default function AdminEventsWebScreen() {
 
               <View style={dashboardStyles.recentEventsSection}>
                 <View style={dashboardStyles.overviewStatsDivider} />
-                <View style={dashboardStyles.sectionHeader}>
-                  <View style={dashboardStyles.sectionHeaderTextWrap}>
-                    <Text style={dashboardStyles.sectionEyebrow}>אירועים אחרונים</Text>
-                    <Text style={dashboardStyles.sectionTitle}>הפעילות האחרונה במערכת</Text>
+                <View style={[dashboardStyles.sectionHeader, isPhone ? dashboardStyles.sectionHeaderPhone : null]}>
+                  <View style={[dashboardStyles.sectionHeaderTextWrap, isPhone ? dashboardStyles.sectionHeaderTextWrapPhone : null]}>
+                    <Text style={dashboardStyles.sectionEyebrow} numberOfLines={1}>
+                      אירועים אחרונים
+                    </Text>
+                    <Text style={[dashboardStyles.sectionTitle, isPhone ? dashboardStyles.sectionTitlePhone : null]} numberOfLines={2}>
+                      הפעילות האחרונה במערכת
+                    </Text>
                   </View>
                   <Pressable
                     accessibilityRole="button"
@@ -3681,10 +3758,14 @@ export default function AdminEventsWebScreen() {
             ]}
           >
             <View style={[dashboardStyles.sectionCard, isCompactDesktop ? dashboardStyles.dashboardSideSectionCardCompact : null]}>
-              <View style={dashboardStyles.sectionHeader}>
-                <View style={dashboardStyles.sectionHeaderTextWrap}>
-                  <Text style={dashboardStyles.sectionEyebrow}>לקוחות אחרונים</Text>
-                  <Text style={dashboardStyles.sectionTitle}>הלקוחות שהצטרפו לאחרונה</Text>
+              <View style={[dashboardStyles.sectionHeader, isPhone ? dashboardStyles.sectionHeaderPhone : null]}>
+                <View style={[dashboardStyles.sectionHeaderTextWrap, isPhone ? dashboardStyles.sectionHeaderTextWrapPhone : null]}>
+                  <Text style={dashboardStyles.sectionEyebrow} numberOfLines={1}>
+                    לקוחות אחרונים
+                  </Text>
+                  <Text style={[dashboardStyles.sectionTitle, isPhone ? dashboardStyles.sectionTitlePhone : null]} numberOfLines={2}>
+                    הלקוחות שהצטרפו לאחרונה
+                  </Text>
                 </View>
                 <Pressable
                   accessibilityRole="button"
@@ -3906,6 +3987,11 @@ const dashboardStyles = StyleSheet.create({
     shadowRadius: 22,
     shadowOffset: { width: 0, height: 10 },
   },
+  heroCardPhone: {
+    borderRadius: 22,
+    padding: 14,
+    gap: 14,
+  },
   heroChartCard: {
     marginTop: 2,
     borderRadius: 24,
@@ -3914,6 +4000,11 @@ const dashboardStyles = StyleSheet.create({
     borderColor: 'rgba(6,23,62,0.05)',
     padding: 20,
     gap: 16,
+  },
+  heroChartCardPhone: {
+    borderRadius: 18,
+    padding: 14,
+    gap: 14,
   },
   heroTopRow: {
     flexDirection: 'row',
@@ -4141,10 +4232,20 @@ const dashboardStyles = StyleSheet.create({
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 8 },
   },
+  filterCardPhone: {
+    borderRadius: 20,
+    padding: 14,
+    gap: 12,
+  },
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
+  },
+  searchRowPhone: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: 10,
   },
   searchWrap: {
     flex: 1,
@@ -4185,6 +4286,12 @@ const dashboardStyles = StyleSheet.create({
     gap: 8,
     minWidth: 230,
   },
+  searchSummaryPhone: {
+    minWidth: 0,
+    width: '100%',
+    alignItems: 'stretch',
+    gap: 6,
+  },
   activeFiltersBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -4216,6 +4323,10 @@ const dashboardStyles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 12,
     flexWrap: 'wrap',
+  },
+  filtersTopRowPhone: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
   },
   statusTabsRow: {
     flexDirection: 'row',
@@ -4268,6 +4379,9 @@ const dashboardStyles = StyleSheet.create({
     gap: 10,
     flexWrap: 'wrap',
   },
+  controlsRowPhone: {
+    width: '100%',
+  },
   controlSelect: {
     width: 162,
     height: 42,
@@ -4282,6 +4396,12 @@ const dashboardStyles = StyleSheet.create({
     shadowOpacity: 0.04,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
+  },
+  controlSelectPhone: {
+    flexGrow: 1,
+    flexBasis: '46%',
+    minWidth: 140,
+    width: '46%',
   },
   controlSelectIconWrap: {
     position: 'absolute',
@@ -4550,16 +4670,36 @@ const dashboardStyles = StyleSheet.create({
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 8 },
   },
+  sectionCardPhone: {
+    borderRadius: 20,
+    padding: 14,
+    gap: 14,
+  },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
   },
+  sectionHeaderPhone: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: 12,
+  },
   sectionHeaderTextWrap: {
     flex: 1,
+    minWidth: 0,
     alignItems: 'stretch',
     gap: 4,
+  },
+  sectionHeaderTextWrapPhone: {
+    // Base style uses `flex: 1` (flexBasis: 0). In a column header that
+    // collapses the title block to 0 height — reset to content size.
+    flexGrow: 0,
+    flexShrink: 0,
+    flexBasis: 'auto',
+    width: '100%',
+    minHeight: 44,
   },
   sectionEyebrow: {
     fontSize: 12,
@@ -4567,11 +4707,21 @@ const dashboardStyles = StyleSheet.create({
     color: '#195de6',
     textAlign: 'right',
   },
+  sectionEyebrowPhone: {
+    fontSize: 12,
+    lineHeight: 16,
+    alignSelf: 'stretch',
+  },
   sectionTitle: {
     fontSize: 19,
     fontWeight: '900',
     color: colors.text,
     textAlign: 'right',
+  },
+  sectionTitlePhone: {
+    fontSize: 17,
+    lineHeight: 22,
+    alignSelf: 'stretch',
   },
   smsBalanceBanner: {
     flexDirection: 'row-reverse',
@@ -4666,6 +4816,13 @@ const dashboardStyles = StyleSheet.create({
           shadowRadius: 12,
           shadowOffset: { width: 0, height: 6 },
         }),
+  },
+  smsPillPhone: {
+    width: '100%',
+    justifyContent: 'flex-end',
+    borderRadius: 18,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
   },
   smsPillIcon: {
     width: 30,
@@ -4820,6 +4977,11 @@ const dashboardStyles = StyleSheet.create({
     gap: 8,
     flexShrink: 0,
   },
+  yearControlsPhone: {
+    width: '100%',
+    justifyContent: 'center',
+    flexShrink: 1,
+  },
   yearBtn: {
     width: 36,
     height: 36,
@@ -4843,6 +5005,11 @@ const dashboardStyles = StyleSheet.create({
     flexDirection: 'row-reverse',
     alignItems: 'center',
     gap: 8,
+  },
+  yearPillPhone: {
+    flex: 1,
+    justifyContent: 'center',
+    minWidth: 0,
   },
   yearPillText: {
     fontSize: 12,
@@ -4882,17 +5049,28 @@ const dashboardStyles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 10,
   },
+  chartBarsRowPhone: {
+    gap: 3,
+    width: '100%',
+  },
   chartLabelsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: 10,
     marginTop: 12,
   },
+  chartLabelsRowPhone: {
+    gap: 3,
+    marginTop: 8,
+  },
   chartLabelCol: {
     flex: 1,
     minWidth: 42,
     alignItems: 'center',
     gap: 2,
+  },
+  chartLabelColPhone: {
+    minWidth: 0,
   },
   chartBarCol: {
     flex: 1,
@@ -4902,12 +5080,18 @@ const dashboardStyles = StyleSheet.create({
     justifyContent: 'flex-end',
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
+  chartBarColPhone: {
+    minWidth: 0,
+  },
   chartBarTrack: {
     width: '100%',
     maxWidth: 46,
     height: 200,
     justifyContent: 'flex-end',
     position: 'relative',
+  },
+  chartBarTrackPhone: {
+    maxWidth: 22,
   },
   chartBarFill: {
     width: '100%',
@@ -4967,6 +5151,9 @@ const dashboardStyles = StyleSheet.create({
     fontWeight: '800',
     color: colors.gray[600],
   },
+  chartBarLabelPhone: {
+    fontSize: 9,
+  },
   chartBarLabelHot: {
     color: colors.primary,
   },
@@ -4975,6 +5162,10 @@ const dashboardStyles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '900',
     color: 'rgba(15,23,42,0.55)',
+  },
+  chartBarValuePhone: {
+    marginTop: 0,
+    fontSize: 9,
   },
   chartBarValueHot: {
     color: colors.primary,
@@ -5099,6 +5290,9 @@ const dashboardStyles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 14,
   },
+  overviewStatsGridPhone: {
+    gap: 10,
+  },
   overviewStatCard: {
     flexGrow: 1,
     flexBasis: 230,
@@ -5111,6 +5305,14 @@ const dashboardStyles = StyleSheet.create({
     borderColor: 'rgba(6,23,62,0.06)',
     justifyContent: 'space-between',
     gap: 10,
+  },
+  overviewStatCardPhone: {
+    flexBasis: '100%',
+    minWidth: '100%',
+    minHeight: 0,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    borderRadius: 18,
   },
   overviewStatCardDark: {
     backgroundColor: '#152B57',
@@ -5167,6 +5369,9 @@ const dashboardStyles = StyleSheet.create({
     fontWeight: '900',
     color: colors.text,
     textAlign: 'right',
+  },
+  overviewStatValuePhone: {
+    fontSize: 22,
   },
   overviewStatValueDark: {
     color: '#FFFFFF',

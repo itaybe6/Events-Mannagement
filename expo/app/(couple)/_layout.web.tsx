@@ -26,7 +26,10 @@ function isCoupleHomePath(path: string) {
 function isWebSelfScrollingCoupleRoute(pathname: string) {
   const p = String(pathname || '').trim().replace(/\/+$/, '') || '/';
   const segments = p.split('/').filter(Boolean);
-  return segments[segments.length - 1] === 'TablesList';
+  const leaf = segments[segments.length - 1];
+  // Keep this list stable: flipping shell structure mid-navigation remounts <Slot>
+  // and can reset Expo Router back to the couple home route.
+  return leaf === 'TablesList';
 }
 
 export default function CoupleWebLayout() {
@@ -356,7 +359,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   pageScrollContent: {
-    paddingBottom: 24,
+    paddingBottom: 28,
+    ...(Platform.OS === 'web'
+      ? ({
+          maxWidth: '100%',
+        } as any)
+      : null),
   },
   pageScrollSlot: {
     minWidth: 0,

@@ -54,6 +54,7 @@ export default function TablesListWebScreen() {
   const PageContentComponent: any = useEmbeddedWebShell ? View : ScrollView;
   const contentWidth = Math.max(0, windowWidth);
   const isNarrow = contentWidth < 980;
+  const isMobile = contentWidth < 700;
 
   const resolvedEventId =
     String(
@@ -526,10 +527,11 @@ export default function TablesListWebScreen() {
 
   const contentMaxWidth =
     contentWidth >= 1900 ? 1720 : contentWidth >= 1600 ? 1520 : contentWidth >= 1400 ? 1320 : undefined;
-  const contentPaddingH = contentWidth >= 1100 ? 20 : 16;
+  const contentPaddingH = isMobile ? 12 : contentWidth >= 1100 ? 20 : 16;
   const pageContentStyle = [
     styles.container,
     isAdminContext ? styles.containerAdmin : null,
+    isMobile ? styles.containerMobile : null,
     {
       paddingHorizontal: contentPaddingH,
       ...(!isAdminContext && contentMaxWidth ? { maxWidth: contentMaxWidth } : null),
@@ -587,7 +589,11 @@ export default function TablesListWebScreen() {
     { key: 'tables', label: 'שולחנות', value: tables.length },
     { key: 'full', label: 'מלאים', value: fullTablesCount },
     { key: 'empty', label: 'ריקים', value: emptyTablesCount },
-    { key: 'waiting', label: 'ממתינים לשיבוץ', value: unseatedGuestsArriving.length },
+    {
+      key: 'waiting',
+      label: isMobile ? 'לשיבוץ' : 'ממתינים לשיבוץ',
+      value: unseatedGuestsArriving.length,
+    },
   ];
   const selectedTableSummary = selectedTable ? getTableDisplayTitle(selectedTable) : 'עדיין לא נבחר שולחן';
 
@@ -741,14 +747,19 @@ export default function TablesListWebScreen() {
             <AdminWebPageHeader
               eyebrow="ניהול אירוע"
               title="רשימת שולחנות"
-              subtitle="ניהול מהיר של תפוסה, מושבים ואורחים בכל שולחן מתוך מסך אחד."
+              subtitle={isMobile ? undefined : 'ניהול מהיר של תפוסה, מושבים ואורחים בכל שולחן מתוך מסך אחד.'}
               subtitleContent={
-                <View style={styles.adminHeaderMetaBar}>
-                  <View style={styles.adminHeaderMetaGroup}>
+                <View style={[styles.adminHeaderMetaBar, isMobile ? styles.adminHeaderMetaBarMobile : null]}>
+                  <View style={[styles.adminHeaderMetaGroup, isMobile ? styles.adminHeaderMetaGroupMobile : null]}>
                     {adminHeaderStats.map((item) => (
-                      <View key={item.key} style={styles.adminHeaderStatChip}>
+                      <View
+                        key={item.key}
+                        style={[styles.adminHeaderStatChip, isMobile ? styles.adminHeaderStatChipMobile : null]}
+                      >
                         <Text style={styles.adminHeaderStatValue}>{item.value}</Text>
-                        <Text style={styles.adminHeaderStatLabel}>{item.label}</Text>
+                        <Text style={styles.adminHeaderStatLabel} numberOfLines={1}>
+                          {item.label}
+                        </Text>
                       </View>
                     ))}
                   </View>
@@ -759,6 +770,7 @@ export default function TablesListWebScreen() {
                     onPress={goToSeatingMap}
                     style={({ hovered, pressed }: any) => [
                       styles.adminHeaderActionBtn,
+                      isMobile ? styles.adminHeaderActionBtnMobile : null,
                       Platform.OS === 'web' && hovered ? styles.adminHeaderActionBtnHover : null,
                       pressed ? styles.btnPressed : null,
                     ]}
@@ -769,7 +781,7 @@ export default function TablesListWebScreen() {
                 </View>
               }
               actions={
-                <View style={styles.adminHeaderSelectionBadge}>
+                <View style={[styles.adminHeaderSelectionBadge, isMobile ? styles.adminHeaderSelectionBadgeMobile : null]}>
                   <Ionicons name="albums-outline" size={15} color={colors.primary} />
                   <Text style={styles.adminHeaderSelectionText} numberOfLines={1}>
                     {selectedTableSummary}
@@ -785,12 +797,13 @@ export default function TablesListWebScreen() {
                   onPress={handleBack}
                   style={({ hovered, pressed }: any) => [
                     styles.adminBackBtn,
+                    isMobile ? styles.adminBackBtnMobile : null,
                     Platform.OS === 'web' && hovered ? styles.adminBackBtnHover : null,
                     pressed ? styles.btnPressed : null,
                   ]}
                 >
                   <Ionicons name="arrow-forward" size={16} color={colors.text} />
-                  <Text style={styles.adminBackBtnText}>חזרה</Text>
+                  {!isMobile ? <Text style={styles.adminBackBtnText}>חזרה</Text> : null}
                 </Pressable>
               }
             />
@@ -819,11 +832,17 @@ export default function TablesListWebScreen() {
               <View style={[styles.sideCol, !isNarrow ? { width: sideWidth } : null]}>{/* Tables list */}
                 <View style={[styles.card, isAdminContext ? styles.cardAdmin : null]}>
                   {isAdminContext ? (
-                    <View style={styles.adminSectionHeader}>
+                    <View style={[styles.adminSectionHeader, isMobile ? styles.adminSectionHeaderMobile : null]}>
                       <View style={styles.adminSectionHeaderText}>
                         <Text style={styles.adminSectionEyebrow}>רשימה וסינון</Text>
-                        <Text style={styles.adminSectionTitle}>בחירת שולחן</Text>
-                        <Text style={styles.adminSectionSubtitle}>חיפוש מהיר ומעבר בין כל שולחנות האירוע לפי סטטוס תפוסה.</Text>
+                        <Text style={[styles.adminSectionTitle, isMobile ? styles.adminSectionTitleMobile : null]}>
+                          בחירת שולחן
+                        </Text>
+                        {!isMobile ? (
+                          <Text style={styles.adminSectionSubtitle}>
+                            חיפוש מהיר ומעבר בין כל שולחנות האירוע לפי סטטוס תפוסה.
+                          </Text>
+                        ) : null}
                       </View>
                     </View>
                   ) : null}
@@ -834,13 +853,17 @@ export default function TablesListWebScreen() {
                     <TextInput
                       value={tableQuery}
                       onChangeText={setTableQuery}
-                      placeholder="חיפוש לפי מספר / שם שולחן..."
+                      placeholder={isMobile ? 'חיפוש שולחן...' : 'חיפוש לפי מספר / שם שולחן...'}
                       placeholderTextColor={colors.gray[500]}
-                      style={[styles.searchInput, isAdminContext ? styles.searchInputAdmin : null]}
+                      style={[
+                        styles.searchInput,
+                        isAdminContext ? styles.searchInputAdmin : null,
+                        isMobile ? styles.searchInputMobile : null,
+                      ]}
                     />
                   </View>
 
-                  <View style={styles.chipsRow}>
+                  <View style={[styles.chipsRow, isMobile ? styles.chipsRowMobile : null]}>
                     {tableChips.map((c) => (
                       <Chip
                         key={c.key}
@@ -1137,11 +1160,17 @@ export default function TablesListWebScreen() {
               <View style={[styles.sideCol, { width: sideWidth }]}>
                 <View style={[styles.card, isAdminContext ? styles.cardAdmin : null]}>
                   {isAdminContext ? (
-                    <View style={styles.adminSectionHeader}>
+                    <View style={[styles.adminSectionHeader, isMobile ? styles.adminSectionHeaderMobile : null]}>
                       <View style={styles.adminSectionHeaderText}>
                         <Text style={styles.adminSectionEyebrow}>רשימה וסינון</Text>
-                        <Text style={styles.adminSectionTitle}>בחירת שולחן</Text>
-                        <Text style={styles.adminSectionSubtitle}>חיפוש מהיר ומעבר בין כל שולחנות האירוע לפי סטטוס תפוסה.</Text>
+                        <Text style={[styles.adminSectionTitle, isMobile ? styles.adminSectionTitleMobile : null]}>
+                          בחירת שולחן
+                        </Text>
+                        {!isMobile ? (
+                          <Text style={styles.adminSectionSubtitle}>
+                            חיפוש מהיר ומעבר בין כל שולחנות האירוע לפי סטטוס תפוסה.
+                          </Text>
+                        ) : null}
                       </View>
                     </View>
                   ) : null}
@@ -1152,13 +1181,17 @@ export default function TablesListWebScreen() {
                     <TextInput
                       value={tableQuery}
                       onChangeText={setTableQuery}
-                      placeholder="חיפוש לפי מספר / שם שולחן..."
+                      placeholder={isMobile ? 'חיפוש שולחן...' : 'חיפוש לפי מספר / שם שולחן...'}
                       placeholderTextColor={colors.gray[500]}
-                      style={[styles.searchInput, isAdminContext ? styles.searchInputAdmin : null]}
+                      style={[
+                        styles.searchInput,
+                        isAdminContext ? styles.searchInputAdmin : null,
+                        isMobile ? styles.searchInputMobile : null,
+                      ]}
                     />
                   </View>
 
-                  <View style={styles.chipsRow}>
+                  <View style={[styles.chipsRow, isMobile ? styles.chipsRowMobile : null]}>
                     {tableChips.map((c) => (
                       <Chip
                         key={c.key}
@@ -2076,6 +2109,10 @@ const styles = StyleSheet.create({
     paddingTop: 24,
     ...(Platform.OS === 'web' ? ({ alignSelf: 'stretch', direction: 'rtl' } as any) : null),
   },
+  containerMobile: {
+    paddingTop: 12,
+    gap: 12,
+  },
   adminHeroShell: {
     width: '100%',
   },
@@ -2087,12 +2124,21 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
   },
+  adminHeaderMetaBarMobile: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: 10,
+  },
   adminHeaderMetaGroup: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
     flexWrap: 'wrap',
     ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
+  },
+  adminHeaderMetaGroupMobile: {
+    width: '100%',
+    gap: 6,
   },
   adminHeaderStatChip: {
     minHeight: 34,
@@ -2105,6 +2151,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row-reverse',
     alignItems: 'center',
     gap: 8,
+  },
+  adminHeaderStatChipMobile: {
+    minHeight: 30,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    flexGrow: 1,
+    flexBasis: '46%',
+    justifyContent: 'center',
   },
   adminHeaderStatValue: {
     fontSize: 13,
@@ -2130,6 +2184,11 @@ const styles = StyleSheet.create({
     gap: 8,
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
+  adminHeaderActionBtnMobile: {
+    width: '100%',
+    justifyContent: 'center',
+    minHeight: 42,
+  },
   adminHeaderActionBtnHover: {
     backgroundColor: 'rgba(15,69,230,0.12)',
   },
@@ -2151,6 +2210,32 @@ const styles = StyleSheet.create({
     flexDirection: 'row-reverse',
     alignItems: 'center',
     gap: 8,
+  },
+  adminHeaderSelectionBadgeMobile: {
+    maxWidth: 140,
+    minHeight: 36,
+    paddingHorizontal: 10,
+  },
+  adminBackBtnMobile: {
+    minHeight: 36,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+  },
+  adminSectionHeaderMobile: {
+    marginBottom: 10,
+    paddingBottom: 10,
+  },
+  adminSectionTitleMobile: {
+    fontSize: 16,
+  },
+  searchInputMobile: {
+    height: 44,
+    borderRadius: 14,
+    fontSize: 13,
+  },
+  chipsRowMobile: {
+    marginTop: 10,
+    gap: 6,
   },
   adminHeaderSelectionText: {
     flex: 1,

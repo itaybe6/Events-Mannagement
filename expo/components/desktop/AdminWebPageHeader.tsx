@@ -92,11 +92,11 @@ export default function AdminWebPageHeader({
               <View style={styles.navSectionDivider} />
               <Text style={styles.navSectionLabel}>ניווט מהיר</Text>
             </View>
-            <View style={styles.navRow}>
-              <View style={styles.navWrap}>
+            <View style={[styles.navRow, styles.navRowMobile]}>
+              <View style={[styles.navWrap, styles.navWrapMobile]}>
                 <AdminWebTopNav />
               </View>
-              {navTrailing ? <View style={styles.navTrailing}>{navTrailing}</View> : null}
+              {navTrailing ? <View style={[styles.navTrailing, styles.navTrailingMobile]}>{navTrailing}</View> : null}
             </View>
           </View>
         ) : null}
@@ -376,12 +376,26 @@ const styles = StyleSheet.create({
     gap: 16,
     flexWrap: 'wrap',
   },
+  navRowMobile: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: 12,
+  },
   navWrap: {
     minHeight: 42,
     justifyContent: 'center',
     flexShrink: 1,
   },
+  navWrapMobile: {
+    width: '100%',
+    minWidth: 0,
+    flexShrink: 1,
+  },
   navTrailing: {
     flexShrink: 0,
+  },
+  navTrailingMobile: {
+    width: '100%',
+    alignItems: 'stretch',
   },
 });
