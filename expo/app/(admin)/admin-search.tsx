@@ -23,6 +23,7 @@ import type { Event } from "@/types";
 import { AdminTabRoute } from "@/components/animations/shopifytabs/lib/constants/admin-tabs";
 import { ROW_DIR, ALIGN_RIGHT, rtlText } from "@/lib/rtl";
 import { getFloatingTabBarContentPadding } from "@/lib/floatingTabBarInset";
+import { softTileShadow, tileSurface } from "@/lib/platformShadow";
 import { inferEventType } from "@/features/events/eventsConstants";
 
 type SearchScope = "all" | "events" | "users";
@@ -488,14 +489,10 @@ const styles = StyleSheet.create({
     minHeight: 60,
     paddingHorizontal: 16,
     borderRadius: 24,
-    backgroundColor: "rgba(255,255,255,0.94)",
+    backgroundColor: tileSurface("rgba(255,255,255,0.94)"),
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.92)",
-    shadowColor: colors.richBlack,
-    shadowOpacity: 0.035,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 1,
+    ...softTileShadow({ opacity: 0.035, radius: 10, y: 3 }),
   },
   searchIconWrap: {
     width: 34,
@@ -528,32 +525,30 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 10,
     borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.52)",
+    backgroundColor: tileSurface("rgba(255,255,255,0.52)", "#F3F6FB"),
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.82)",
-    shadowColor: colors.richBlack,
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
+    ...softTileShadow({ opacity: 0.06, radius: 12, y: 4 }),
   },
   scopeChip: {
     minWidth: 84,
     paddingVertical: 11,
     paddingHorizontal: 18,
     borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.82)",
+    backgroundColor: tileSurface("rgba(255,255,255,0.82)"),
     borderWidth: 1,
     borderColor: "rgba(6,23,62,0.05)",
   },
   scopeChipActive: {
     backgroundColor: colors.primary,
     borderColor: colors.primary,
-    shadowColor: colors.primary,
-    shadowOpacity: 0.18,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 3,
+    ...softTileShadow({
+      color: colors.primary,
+      opacity: 0.18,
+      radius: 10,
+      y: 4,
+      androidElevation: 0,
+    }),
   },
   scopeChipText: {
     color: colors.gray[700],
@@ -613,20 +608,16 @@ const styles = StyleSheet.create({
     gap: 12,
     padding: 15,
     borderRadius: 26,
-    backgroundColor: "rgba(255,255,255,0.9)",
+    backgroundColor: tileSurface("rgba(255,255,255,0.9)"),
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.78)",
-    shadowColor: colors.richBlack,
-    shadowOpacity: 0.06,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 2,
+    ...softTileShadow({ opacity: 0.06, radius: 14, y: 6 }),
   },
   resultCardEvent: {
-    backgroundColor: "rgba(255,255,255,0.92)",
+    backgroundColor: tileSurface("rgba(255,255,255,0.92)"),
   },
   resultCardUser: {
-    backgroundColor: "rgba(255,255,255,0.88)",
+    backgroundColor: tileSurface("rgba(255,255,255,0.88)"),
   },
   resultIconWrap: {
     width: 48,

@@ -14,6 +14,7 @@ import { EventSwitcher } from '@/components/EventSwitcher';
 import { CoupleHomeDashboardCards } from '@/components/couple/CoupleHomeDashboardCards';
 import { ALIGN_RIGHT, ROW_DIR, TEXT_RIGHT, rtlText } from '@/lib/rtl';
 import { getFloatingTabBarContentPadding } from '@/lib/floatingTabBarInset';
+import { softTileShadow, tileSurface } from '@/lib/platformShadow';
 
 const rtlTextAlign = {
   textAlign: TEXT_RIGHT,
@@ -589,11 +590,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(254, 243, 199, 0.95)',
     borderWidth: 1,
     borderColor: 'rgba(217, 119, 6, 0.30)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    elevation: 2,
+    ...softTileShadow({ opacity: 0.06, radius: 10, y: 4 }),
   },
   pendingBannerIconWrap: {
     width: 40,
@@ -632,12 +629,8 @@ const styles = StyleSheet.create({
     marginTop: Platform.OS === 'web' ? -72 : -12,
     borderRadius: 28,
     overflow: 'hidden',
-    backgroundColor: 'rgba(255,255,255,0.92)',
-    shadowColor: colors.black,
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.12,
-    shadowRadius: 22,
-    elevation: 5,
+    backgroundColor: tileSurface('rgba(255,255,255,0.92)'),
+    ...softTileShadow({ opacity: 0.12, radius: 22, y: 12, androidElevation: 1 }),
   },
   heroBannerImage: {
     ...StyleSheet.absoluteFillObject,
@@ -652,14 +645,10 @@ const styles = StyleSheet.create({
     width: 110,
     height: 110,
     borderRadius: 55,
-    backgroundColor: 'rgba(255,255,255,0.9)',
+    backgroundColor: tileSurface('rgba(255,255,255,0.9)'),
     borderWidth: 2,
     borderColor: 'rgba(11, 28, 65, 0.22)',
-    shadowColor: colors.black,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    elevation: 3,
+    ...softTileShadow({ opacity: 0.08, radius: 10, y: 6 }),
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
@@ -698,11 +687,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: 'rgba(11, 28, 65, 0.08)',
-    shadowColor: colors.black,
-    shadowOpacity: 0.08,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 4,
+    ...softTileShadow({ opacity: 0.08, radius: 14, y: 6 }),
   },
   countdownHeading: {
     fontSize: 18,

@@ -30,6 +30,7 @@ import { invitationAssetService } from '@/lib/services/invitationAssetService';
 import { ROW_DIR } from '@/lib/rtl';
 import { ensurePhotoLibraryPermission } from '@/lib/permissions';
 import { getFloatingTabBarContentPadding } from '@/lib/floatingTabBarInset';
+import { softTileShadow, tileSurface } from '@/lib/platformShadow';
 
 function getEventTypeLabel(rawTitle: string) {
   const raw = String(rawTitle ?? '').trim();
@@ -969,16 +970,17 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.96)',
+    backgroundColor: tileSurface('rgba(255,255,255,0.96)'),
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: colors.richBlack,
-    shadowOpacity: 0.14,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
+    ...softTileShadow({
+      color: colors.richBlack,
+      opacity: 0.14,
+      radius: 14,
+      y: 8,
+    }),
   },
   screenTitle: {
     flex: 1,
@@ -1020,13 +1022,13 @@ const styles = StyleSheet.create({
   },
 
   card: {
-    backgroundColor: 'rgba(255,255,255,0.95)',
+    backgroundColor: tileSurface('rgba(255,255,255,0.95)'),
     borderRadius: 18,
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.08)',
     padding: 14,
     gap: 10,
-    ...(Platform.OS === 'android' ? ({ elevation: 1 } as any) : null),
+    ...softTileShadow({ opacity: 0.06, radius: 14, y: 6 }),
     ...(Platform.OS === 'web' ? ({ boxShadow: '0 10px 26px rgba(2,6,23,0.06)' } as any) : null),
   },
   cardMobile: { padding: 16, gap: 12 },
@@ -1249,7 +1251,6 @@ const styles = StyleSheet.create({
     height: 44,
     alignSelf: 'stretch',
     borderRadius: 14,
-    ...(Platform.OS === 'android' ? ({ elevation: 2 } as any) : null),
   },
   demoBtnDisabled: { opacity: 0.55, ...(Platform.OS === 'web' ? ({ cursor: 'default' } as any) : null) },
   demoBtnText: { fontSize: 12, fontWeight: '900', color: '#fff', textAlign: 'right' },
@@ -1317,11 +1318,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexDirection: ROW_DIR,
     gap: 8,
-    shadowColor: colors.primary,
-    shadowOpacity: 0.18,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 5,
+    ...softTileShadow({
+      color: colors.primary,
+      opacity: 0.18,
+      radius: 12,
+      y: 8,
+      androidElevation: 0,
+    }),
   },
   saveSimpleBtnDesktop: {
     height: 56,

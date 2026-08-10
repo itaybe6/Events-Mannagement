@@ -7,6 +7,7 @@ import { MotiView } from 'moti';
 import { colors } from '@/constants/colors';
 import { Event } from '@/types';
 import { ALIGN_RIGHT, ROW_DIR, TEXT_RIGHT, rtlText } from '@/lib/rtl';
+import { softTileShadow } from '@/lib/platformShadow';
 import {
   EVENT_BADGE_META,
   EVENT_BLUE,
@@ -225,11 +226,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     borderWidth: 1,
     borderColor: EVENT_BLUE.line,
-    shadowColor: EVENT_BLUE.deep,
-    shadowOpacity: 0.1,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 4,
+    ...softTileShadow({
+      color: EVENT_BLUE.deep,
+      opacity: 0.1,
+      radius: 18,
+      y: 10,
+      androidElevation: 1,
+    }),
   },
   cardPressed: {
     opacity: 0.94,
@@ -268,11 +271,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     borderWidth: 1,
     borderColor: 'rgba(11,37,96,0.12)',
-    shadowColor: EVENT_BLUE.ink,
-    shadowOpacity: 0.22,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 3,
+    ...softTileShadow({
+      color: EVENT_BLUE.ink,
+      opacity: 0.22,
+      radius: 6,
+      y: 2,
+      androidElevation: 0,
+    }),
   },
   typeChipText: {
     flexShrink: 1,
