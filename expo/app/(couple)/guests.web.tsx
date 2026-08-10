@@ -33,6 +33,7 @@ import {
 import type { ParsedGuestRow } from '@/lib/importGuestsExcel';
 import { exportGuestsToPdf } from '@/lib/exportGuestsPdf';
 import { guestMatchesSearch, normalizeGuestPhone } from '@/lib/guestPhone';
+import { getGuestInviteUrl, openInviteUrl } from '@/lib/invitationUrl';
 
 type GuestStatus = 'ממתין' | 'אולי מגיע' | 'מגיע' | 'לא מגיע';
 type GuestRow = {
@@ -43,6 +44,8 @@ type GuestRow = {
   category_id?: string | null;
   tableId?: string | null;
   numberOfPeople?: number | null;
+  invitationToken?: string;
+  invitationCode?: string;
 };
 type GuestCategoryRow = { id: string; name: string; side?: 'groom' | 'bride' };
 type TableRow = { id: string; name?: string | null; number?: number | null; capacity?: number | null; area?: string | null };
@@ -2169,6 +2172,7 @@ function GuestListRow({
     guest.status === 'מגיע' ? 'success' : guest.status === 'אולי מגיע' ? 'primary' : guest.status === 'לא מגיע' ? 'danger' : 'warning';
   const sc = toneColor(statusTone);
   const initials = guestInitials(guest.name);
+  const inviteUrl = getGuestInviteUrl(guest);
 
   return (
     <Pressable
@@ -2221,6 +2225,21 @@ function GuestListRow({
 
           {/* Info: Count */}
           <View style={styles.guestDetailsRow}>
+            {inviteUrl ? (
+              <Pressable
+                accessibilityRole="link"
+                accessibilityLabel={`פתיחת הזמנה עבור ${guest.name}`}
+                onPress={() => void openInviteUrl(inviteUrl)}
+                style={({ hovered, pressed }: any) => [
+                  styles.inviteLinkBtn,
+                  Platform.OS === 'web' && hovered ? styles.inviteLinkBtnHover : null,
+                  pressed ? styles.btnPressed : null,
+                ]}
+              >
+                <Ionicons name="mail-open-outline" size={14} color={colors.primary} />
+                <Text style={styles.inviteLinkText}>הזמנה</Text>
+              </Pressable>
+            ) : null}
             <View style={styles.guestInfoPill}>
               <Ionicons name="people-outline" size={13} color={colors.gray[500]} />
               <Text style={styles.guestInfoText}>כמות {guest.numberOfPeople || 1}</Text>
@@ -3163,6 +3182,22 @@ const styles = StyleSheet.create({
   guestAvatarText: { fontSize: 15, fontWeight: '900', color: colors.primary, textAlign: 'center' },
   guestCardTitleWrap: { flex: 1, minWidth: 0, gap: 6 },
   guestCardName: { fontSize: 16, fontWeight: '900', color: colors.text, textAlign: 'right', lineHeight: 22 },
+  inviteLinkBtn: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 11,
+    backgroundColor: 'rgba(17, 82, 212, 0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(17, 82, 212, 0.24)',
+  },
+  inviteLinkBtnHover: {
+    backgroundColor: 'rgba(17, 82, 212, 0.16)',
+    borderColor: 'rgba(17, 82, 212, 0.34)',
+  },
+  inviteLinkText: { fontSize: 13, fontWeight: '900', color: colors.primary, textAlign: 'right', writingDirection: 'rtl' },
   guestDetailsRow: {
     flexDirection: 'row',
     alignItems: 'center',
