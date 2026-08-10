@@ -866,15 +866,10 @@ export default function CoupleGuestsWebScreen() {
   }, [contentWidth]);
 
   const guestItemWidth = useMemo(() => {
-    // Responsive:
-    // - narrow: 1 col
-    // - laptop: 2 cols
-    // - desktop+: compact fixed widths (cleaner, narrower cards)
     if (contentWidth < 720) return '100%';
-    if (contentWidth < 1100) return '48%';
-    if (contentWidth < 1480) return 286;
-    if (contentWidth < 1720) return 266;
-    return 246;
+    if (contentWidth < 1040) return '48%';
+    if (contentWidth < 1400) return '31%';
+    return '23%';
   }, [contentWidth]);
 
   // Compact cards look cleaner than large square tiles for guests lists.
@@ -2250,6 +2245,7 @@ function GuestListRow({
   const sc = toneColor(statusTone);
   const initials = guestInitials(guest.name);
   const inviteUrl = getGuestInviteUrl(guest);
+  const peopleCount = guest.numberOfPeople || 1;
 
   return (
     <Pressable
@@ -2270,87 +2266,86 @@ function GuestListRow({
               </Text>
             </View>
 
-            <View style={styles.guestCardTitleWrap}>
-              <Text style={[styles.guestCardName, compact ? styles.guestCardNameCompact : null]} numberOfLines={1}>
-                {guest.name}
-              </Text>
-              <View style={styles.guestCardMetaRow}>
+            <View style={styles.guestCardMain}>
+              <View style={styles.guestCardNameRow}>
+                <Text style={[styles.guestCardName, compact ? styles.guestCardNameCompact : null]} numberOfLines={1}>
+                  {guest.name}
+                </Text>
+                <Pressable
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked }}
+                  accessibilityLabel={checked ? 'הסר בחירה' : 'בחר אורח'}
+                  onPress={onToggleCheck}
+                  style={({ hovered, pressed }: any) => [
+                    styles.checkbox,
+                    compact ? styles.checkboxCompact : null,
+                    checked ? styles.checkboxChecked : null,
+                    Platform.OS === 'web' && hovered ? styles.checkboxHover : null,
+                    pressed ? styles.btnPressed : null,
+                  ]}
+                >
+                  {checked ? <Ionicons name="checkmark" size={14} color={colors.white} /> : null}
+                </Pressable>
+              </View>
+
+              <View style={styles.guestCardStatusRow}>
+                <View
+                  style={[
+                    styles.statusPill,
+                    styles.statusPillInline,
+                    compact ? styles.statusPillCompact : null,
+                    { backgroundColor: sc.soft, borderColor: `${sc.main}22` },
+                  ]}
+                >
+                  <View style={[styles.statusDot, { backgroundColor: sc.main }]} />
+                  <Text style={[styles.statusText, compact ? styles.statusTextCompact : null, { color: sc.text }]}>
+                    {guest.status}
+                  </Text>
+                </View>
                 {inviteUrl ? (
                   <Pressable
                     accessibilityRole="link"
                     accessibilityLabel={`פתיחת הזמנה עבור ${guest.name}`}
                     onPress={() => void openInviteUrl(inviteUrl)}
                     style={({ hovered, pressed }: any) => [
-                      styles.inviteLinkBtn,
-                      compact ? styles.inviteLinkBtnCompact : null,
-                      Platform.OS === 'web' && hovered ? styles.inviteLinkBtnHover : null,
+                      styles.inviteTextLink,
+                      Platform.OS === 'web' && hovered ? styles.inviteTextLinkHover : null,
                       pressed ? styles.btnPressed : null,
                     ]}
                   >
-                    <Ionicons name="mail-open-outline" size={compact ? 12 : 14} color={colors.primary} />
-                    <Text style={[styles.inviteLinkText, compact ? styles.inviteLinkTextCompact : null]}>הזמנה</Text>
+                    <Ionicons name="open-outline" size={compact ? 12 : 13} color={colors.primary} />
+                    <Text style={[styles.inviteTextLinkLabel, compact ? styles.inviteTextLinkLabelCompact : null]}>
+                      קישור להזמנה
+                    </Text>
                   </Pressable>
                 ) : null}
-                <View
-                  style={[
-                    styles.statusPill,
-                    styles.statusPillInline,
-                    { backgroundColor: sc.soft, borderColor: 'rgba(0,0,0,0.06)' },
-                  ]}
-                >
-                  <View style={[styles.statusDot, { backgroundColor: sc.main }]} />
-                  <Text style={[styles.statusText, { color: sc.text }]}>{guest.status}</Text>
-                </View>
-                <View style={[styles.guestInfoPill, compact ? styles.guestInfoPillCompact : null]}>
-                  <Ionicons name="people-outline" size={12} color={colors.gray[500]} />
-                  <Text style={styles.guestInfoText}>{guest.numberOfPeople || 1}</Text>
-                </View>
-                {hasSentMessage ? (
-                  <View style={[styles.guestInfoPill, styles.messageSentPill, compact ? styles.guestInfoPillCompact : null]}>
-                    <Ionicons name="checkmark-done-outline" size={12} color="#047857" />
-                    <Text style={[styles.guestInfoText, styles.messageSentText]}>נשלח</Text>
-                  </View>
-                ) : null}
               </View>
             </View>
-
-            <Pressable
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked }}
-              accessibilityLabel={checked ? 'הסר בחירה' : 'בחר אורח'}
-              onPress={onToggleCheck}
-              style={({ hovered, pressed }: any) => [
-                styles.checkbox,
-                compact ? styles.checkboxCompact : null,
-                checked ? styles.checkboxChecked : null,
-                Platform.OS === 'web' && hovered ? styles.checkboxHover : null,
-                pressed ? styles.btnPressed : null,
-              ]}
-            >
-              {checked ? <Ionicons name="checkmark" size={14} color={colors.white} /> : null}
-            </Pressable>
           </View>
 
-          {!compact ? (
-            <View style={styles.guestDetailsRow}>
-              <View style={styles.guestInfoPill}>
-                <Ionicons name="people-outline" size={13} color={colors.gray[500]} />
-                <Text style={styles.guestInfoText}>כמות {guest.numberOfPeople || 1}</Text>
-              </View>
-              {hasSentMessage ? (
-                <View style={[styles.guestInfoPill, styles.messageSentPill]}>
-                  <Ionicons name="checkmark-done-outline" size={13} color="#047857" />
-                  <Text style={[styles.guestInfoText, styles.messageSentText]}>הודעה נשלחה</Text>
-                </View>
-              ) : null}
+          <View style={[styles.guestCardMetaRow, compact ? styles.guestCardMetaRowCompact : null]}>
+            <View style={styles.guestMetaItem}>
+              <Ionicons name="people-outline" size={14} color={colors.gray[500]} />
+              <Text style={styles.guestMetaText}>
+                {peopleCount} {peopleCount === 1 ? 'אורח' : 'אורחים'}
+              </Text>
             </View>
-          ) : null}
+            {hasSentMessage ? (
+              <>
+                <View style={styles.guestMetaDot} />
+                <View style={styles.guestMetaItem}>
+                  <Ionicons name="checkmark-done-outline" size={14} color="#047857" />
+                  <Text style={[styles.guestMetaText, styles.guestMetaTextSuccess]}>הודעה נשלחה</Text>
+                </View>
+              </>
+            ) : null}
+          </View>
 
           <View style={[styles.guestCardFooterBar, compact ? styles.guestCardFooterBarCompact : null]}>
-            <View style={[styles.guestInfoPill, compact ? styles.guestInfoPillCompact : null, { flex: 1, minWidth: 0 }]}>
-              <Ionicons name="call-outline" size={13} color={colors.gray[500]} />
+            <View style={styles.guestPhoneRow}>
+              <Ionicons name="call-outline" size={14} color={colors.gray[500]} />
               <Text style={styles.guestCardPhone} numberOfLines={1}>
-                {guest.phone}
+                {guest.phone || '—'}
               </Text>
             </View>
             <View style={styles.guestCardActions}>
@@ -3309,38 +3304,89 @@ const styles = StyleSheet.create({
   checkboxHover: { borderColor: 'rgba(6,23,62,0.35)' },
   checkboxChecked: { backgroundColor: colors.primary, borderColor: colors.primary },
   guestCard: {
-    padding:10,
+    padding: 18,
     borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.07)',
+    borderColor: 'rgba(15,23,42,0.08)',
     borderRadius: 20,
     backgroundColor: colors.white,
     gap: 14,
+    minHeight: 156,
     // @ts-expect-error - react-native-web supports direction
     direction: 'rtl',
     // @ts-expect-error - react-native-web supports boxShadow
-    boxShadow: '0 1px 3px rgba(16,24,40,0.04), 0 8px 24px rgba(16,24,40,0.07)',
+    boxShadow: '0 1px 2px rgba(16,24,40,0.03), 0 10px 28px rgba(16,24,40,0.06)',
   },
   guestCardCompact: {
-    padding: 12,
+    padding: 14,
     borderRadius: 16,
-    gap: 10,
+    gap: 12,
+    minHeight: 0,
   },
   guestCardSquare: {
     aspectRatio: 1,
   },
   guestCardHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 12,
     minWidth: 0,
   },
   guestCardHeaderCompact: {
     gap: 10,
   },
+  guestCardMain: {
+    flex: 1,
+    minWidth: 0,
+    gap: 8,
+  },
+  guestCardNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    minWidth: 0,
+  },
+  guestCardStatusRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 10,
+  },
+  guestCardMetaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 2,
+  },
+  guestCardMetaRowCompact: {
+    gap: 6,
+  },
+  guestMetaItem: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 5,
+  },
+  guestMetaDot: {
+    width: 3,
+    height: 3,
+    borderRadius: 999,
+    backgroundColor: 'rgba(15,23,42,0.22)',
+  },
+  guestMetaText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: colors.gray[600],
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  guestMetaTextSuccess: {
+    color: '#047857',
+  },
   guestAvatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 16,
+    width: 48,
+    height: 48,
+    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
@@ -3352,85 +3398,56 @@ const styles = StyleSheet.create({
   },
   guestAvatarText: { fontSize: 15, fontWeight: '900', color: colors.primary, textAlign: 'center' },
   guestAvatarTextCompact: { fontSize: 13 },
-  guestCardTitleWrap: { flex: 1, minWidth: 0, gap: 6 },
-  guestCardName: { fontSize: 16, fontWeight: '900', color: colors.text, textAlign: 'right', lineHeight: 22 },
+  guestCardName: { flex: 1, minWidth: 0, fontSize: 16, fontWeight: '900', color: colors.text, textAlign: 'right', lineHeight: 22 },
   guestCardNameCompact: { fontSize: 14, lineHeight: 20 },
-  guestCardMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  inviteLinkBtn: {
+  inviteTextLink: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderRadius: 11,
-    backgroundColor: 'rgba(17, 82, 212, 0.10)',
-    borderWidth: 1,
-    borderColor: 'rgba(17, 82, 212, 0.24)',
-  },
-  inviteLinkBtnCompact: {
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: 9,
     gap: 4,
+    paddingVertical: 2,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
-  inviteLinkBtnHover: {
-    backgroundColor: 'rgba(17, 82, 212, 0.16)',
-    borderColor: 'rgba(17, 82, 212, 0.34)',
+  inviteTextLinkHover: {
+    opacity: 0.78,
   },
-  inviteLinkText: { fontSize: 13, fontWeight: '900', color: colors.primary, textAlign: 'right', writingDirection: 'rtl' },
-  inviteLinkTextCompact: { fontSize: 12 },
-  guestDetailsRow: {
-    flexDirection: 'row',
+  inviteTextLinkLabel: {
+    fontSize: 12.5,
+    fontWeight: '800',
+    color: colors.primary,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+    textDecorationLine: 'underline',
+    textDecorationColor: 'rgba(17, 82, 212, 0.35)',
+  },
+  inviteTextLinkLabelCompact: {
+    fontSize: 12,
+  },
+  guestPhoneRow: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row-reverse',
     alignItems: 'center',
-    gap: 8,
-    flexWrap: 'wrap',
-  },
-  guestInfoPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderRadius: 11,
-    backgroundColor: 'rgba(248,250,252,0.98)',
-    borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.06)',
-  },
-  guestInfoPillCompact: {
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: 9,
+    gap: 7,
   },
   guestCardPhone: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.gray[600],
+    color: colors.gray[700],
     // @ts-ignore - react-native-web supports direction
     direction: 'ltr',
     textAlign: 'left',
     flex: 1,
-  },
-  guestInfoText: { fontSize: 13, fontWeight: '700', color: colors.gray[700], textAlign: 'right', writingDirection: 'rtl' },
-  messageSentPill: {
-    backgroundColor: 'rgba(236,253,245,0.95)',
-    borderColor: 'rgba(16,185,129,0.24)',
-  },
-  messageSentText: {
-    color: '#047857',
+    minWidth: 0,
   },
   guestCardFooterBar: {
-    paddingTop: 14,
+    marginTop: 'auto',
+    paddingTop: 12,
     borderTopWidth: 1,
     borderTopColor: 'rgba(15,23,42,0.06)',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 8,
+    gap: 10,
   },
   guestCardFooterBarCompact: {
     paddingTop: 10,
@@ -3535,8 +3552,13 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     alignSelf: 'flex-start',
   },
+  statusPillCompact: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
   statusDot: { width: 6, height: 6, borderRadius: 999 },
-  statusText: { fontSize: 11, fontWeight: '900', textAlign: 'right', writingDirection: 'rtl' },
+  statusText: { fontSize: 12, fontWeight: '900', textAlign: 'right', writingDirection: 'rtl' },
+  statusTextCompact: { fontSize: 11 },
   actions: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
   iconBtn: {
     width: 30,

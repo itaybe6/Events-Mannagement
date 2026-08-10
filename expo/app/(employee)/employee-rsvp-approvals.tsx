@@ -225,13 +225,13 @@ export default function EmployeeRsvpApprovalsScreen() {
                                 {inviteUrl ? (
                                   <TouchableOpacity
                                     onPress={() => void openInviteUrl(inviteUrl)}
-                                    activeOpacity={0.85}
+                                    activeOpacity={0.75}
                                     accessibilityRole="link"
                                     accessibilityLabel={`פתיחת הזמנה עבור ${g.name}`}
                                     style={styles.inviteLinkBtn}
                                   >
-                                    <Ionicons name="mail-open-outline" size={14} color={colors.primary} />
-                                    <Text style={styles.inviteLinkText}>הזמנה</Text>
+                                    <Ionicons name="open-outline" size={13} color={colors.primary} />
+                                    <Text style={styles.inviteLinkText}>קישור להזמנה</Text>
                                   </TouchableOpacity>
                                 ) : null}
                               </View>
@@ -488,19 +488,19 @@ const styles = StyleSheet.create({
   nameCol: { flex: 1, minWidth: 0, alignItems: "flex-end" },
   guestName: { minWidth: 0, flexShrink: 1, fontSize: 14, fontWeight: "900", color: colors.text, textAlign: "right" },
   inviteLinkBtn: {
-    marginTop: 6,
+    marginTop: 4,
     flexDirection: "row-reverse",
     alignItems: "center",
-    gap: 6,
+    gap: 4,
     alignSelf: "flex-end",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: "rgba(17, 82, 212, 0.10)",
-    borderWidth: 1,
-    borderColor: "rgba(17, 82, 212, 0.24)",
   },
-  inviteLinkText: { fontSize: 12, fontWeight: "900", color: colors.primary },
+  inviteLinkText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: colors.primary,
+    textDecorationLine: "underline",
+    textDecorationColor: "rgba(17, 82, 212, 0.35)",
+  },
   leftSlot: { width: 170, alignItems: "flex-start", justifyContent: "center" },
 
   badgeBase: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, borderWidth: 1 },
