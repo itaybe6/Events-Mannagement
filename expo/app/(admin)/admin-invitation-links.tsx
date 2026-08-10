@@ -29,6 +29,7 @@ import { eventService } from '@/lib/services/eventService';
 import { invitationAssetService } from '@/lib/services/invitationAssetService';
 import { ROW_DIR } from '@/lib/rtl';
 import { ensurePhotoLibraryPermission } from '@/lib/permissions';
+import { getFloatingTabBarContentPadding } from '@/lib/floatingTabBarInset';
 
 function getEventTypeLabel(rawTitle: string) {
   const raw = String(rawTitle ?? '').trim();
@@ -416,13 +417,17 @@ export default function AdminInvitationLinksScreen() {
         </View>
       ) : null}
       <AppKeyboardAwareScrollView
+        floatingTabBarPadding={getFloatingTabBarContentPadding(insets.bottom)}
         contentContainerStyle={[
           styles.content,
           isMobile ? styles.contentMobile : null,
           isDesktopWide ? styles.contentDesktop : null,
           isLaptopDesktop ? styles.contentDesktopLaptop : null,
           isNarrow ? styles.contentNarrow : null,
-          { paddingTop: 8 },
+          {
+            paddingTop: 8,
+            paddingBottom: getFloatingTabBarContentPadding(insets.bottom),
+          },
         ]}
         showsVerticalScrollIndicator={false}
       >
@@ -982,7 +987,7 @@ const styles = StyleSheet.create({
     color: colors.richBlack,
     textAlign: 'right',
   },
-  content: { padding: 18, paddingBottom: Platform.OS === 'web' ? 40 : 110, gap: 14 },
+  content: { paddingHorizontal: 18, paddingTop: 18, gap: 14 },
   contentDesktop: {
     width: '100%',
     maxWidth: 1680,
@@ -998,7 +1003,8 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   contentMobile: {},
-  contentNarrow: { padding: 14, gap: 12 },
+  // Do not set shorthand `padding` here — it wipes the tab-bar bottom inset on narrow Android phones.
+  contentNarrow: { paddingHorizontal: 14, paddingTop: 14, gap: 12 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 24 },
   centerText: { fontSize: 14, fontWeight: '800', color: colors.gray[700], textAlign: 'center' },
 

@@ -24,6 +24,7 @@ import { UserWithMetadata } from '@/lib/services/userService';
 import { useUsersModel } from '@/features/users/useUsersModel';
 import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
 import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
+import { getFloatingTabBarContentPadding } from '@/lib/floatingTabBarInset';
 
 type UserFilter = 'all' | 'admin' | 'event_owner' | 'employee';
 
@@ -221,7 +222,13 @@ export default function UsersScreen() {
       <AppKeyboardAwareScrollView
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={[styles.pageContent, { paddingTop: headerHeight + 8 }]}
+        contentContainerStyle={[
+          styles.pageContent,
+          {
+            paddingTop: headerHeight + 8,
+            paddingBottom: getFloatingTabBarContentPadding(insets.bottom),
+          },
+        ]}
         scrollEventThrottle={16}
         onScroll={(event: any) => {
           const offsetY = Number(event?.nativeEvent?.contentOffset?.y ?? 0);
@@ -519,7 +526,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   pageContent: {
-    paddingBottom: 24,
+    paddingBottom: 0,
   },
   headerHeroRow: {
     flexDirection: ROW_DIR,

@@ -3,11 +3,11 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { DonutChart, type DonutSegment } from '@/components/couple/DonutChart';
 import { NavyCardBackground } from '@/components/couple/NavyCardBackground';
-import { ALIGN_RIGHT, IS_RTL, ROW_DIR } from '@/lib/rtl';
+import { ALIGN_RIGHT, ROW_DIR, TEXT_RIGHT } from '@/lib/rtl';
 
 // With I18nManager.forceRTL (native build), `textAlign: 'right'` mirrors to the physical left.
 const rtlTextAlign = {
-  textAlign: (IS_RTL ? 'left' : 'right') as 'left' | 'right',
+  textAlign: TEXT_RIGHT,
   writingDirection: 'rtl' as const,
 };
 import { colors } from '@/constants/colors';

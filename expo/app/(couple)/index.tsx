@@ -12,10 +12,11 @@ import { tableService } from '@/lib/services/tableService';
 import { BlurView } from 'expo-blur';
 import { EventSwitcher } from '@/components/EventSwitcher';
 import { CoupleHomeDashboardCards } from '@/components/couple/CoupleHomeDashboardCards';
-import { ALIGN_RIGHT, IS_RTL, ROW_DIR, rtlText } from '@/lib/rtl';
+import { ALIGN_RIGHT, ROW_DIR, TEXT_RIGHT, rtlText } from '@/lib/rtl';
+import { getFloatingTabBarContentPadding } from '@/lib/floatingTabBarInset';
 
 const rtlTextAlign = {
-  textAlign: (IS_RTL ? 'left' : 'right') as 'left' | 'right',
+  textAlign: TEXT_RIGHT,
   writingDirection: 'rtl' as const,
 };
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -383,7 +384,11 @@ export default function HomeScreen() {
     <View style={styles.screen}>
       <ScrollView
         style={styles.container}
-        contentContainerStyle={[styles.contentContainer, isWeb && styles.contentContainerWeb]}
+        contentContainerStyle={[
+          styles.contentContainer,
+          isWeb && styles.contentContainerWeb,
+          !isWeb ? { paddingBottom: getFloatingTabBarContentPadding(insets.bottom) } : null,
+        ]}
       >
         {!isWeb ? (
           <View style={[styles.scrollHeader, { paddingTop: Math.max(insets.top - 10, 4) }]}>
@@ -565,7 +570,7 @@ const styles = StyleSheet.create({
   contentContainer: {
     paddingHorizontal: 18,
     paddingTop: Platform.OS === 'web' ? 22 : 4,
-    paddingBottom: Platform.OS === 'web' ? 56 : 130,
+    paddingBottom: Platform.OS === 'web' ? 56 : 0,
     gap: 16,
   },
   contentContainerWeb: {

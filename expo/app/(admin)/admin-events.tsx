@@ -14,6 +14,7 @@ import { EventListCard } from '@/features/events/EventListCard';
 import { useEventsListModel } from '@/features/events/useEventsListModel';
 import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
 import { ALIGN_RIGHT, ROW_DIR, TEXT_RIGHT, rtlText } from '@/lib/rtl';
+import { getFloatingTabBarContentPadding } from '@/lib/floatingTabBarInset';
 
 const filterSheetTextDir = {
   textAlign: TEXT_RIGHT,
@@ -135,7 +136,10 @@ export default function AdminEventsScreen() {
 
       <AppKeyboardAwareScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: getFloatingTabBarContentPadding(insets.bottom) },
+        ]}
       >
         <View style={[styles.headerBlock, { paddingTop: insets.top + 10 }]}>
           <View style={styles.headerHeroRow}>
@@ -563,7 +567,7 @@ const styles = StyleSheet.create({
   },
 
   scrollContent: {
-    paddingBottom: 140,
+    paddingBottom: 0,
   },
   headerBlock: {
     paddingBottom: 4,

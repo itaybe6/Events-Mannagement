@@ -53,7 +53,7 @@ module.exports = {
         backgroundColor: "#ffffff"
       },
       package: "com.moonevents.app",
-      supportsRtl: true,
+      supportsRtl: false,
       permissions: [
         "android.permission.READ_CONTACTS",
         "android.permission.READ_EXTERNAL_STORAGE",

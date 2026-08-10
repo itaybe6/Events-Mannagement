@@ -14,6 +14,7 @@ import { eventService } from "@/lib/services/eventService";
 import { EVENT_BADGE_META, inferEventType, type EventType } from "@/features/events/eventsConstants";
 import type { Event } from "@/types";
 import { ALIGN_RIGHT, ROW_DIR } from "@/lib/rtl";
+import { getFloatingTabBarContentPadding } from "@/lib/floatingTabBarInset";
 import { DeleteAccountSection } from "@/components/DeleteAccountSection";
 
 const ui = {
@@ -367,10 +368,7 @@ export default function AdminProfileScreen() {
     setVisibleHalf(0);
   };
 
-  // Bottom padding for content above tab bar
-  const TAB_BAR_HEIGHT = 65;
-  const TAB_BAR_BOTTOM_GAP = Platform.OS === "ios" ? 30 : 20;
-  const contentBottomPadding = TAB_BAR_HEIGHT + TAB_BAR_BOTTOM_GAP + 20;
+  const contentBottomPadding = getFloatingTabBarContentPadding(insets.bottom);
 
   if (!userData) {
     return (
@@ -412,7 +410,7 @@ export default function AdminProfileScreen() {
         contentContainerStyle={[
           styles.content,
           {
-            paddingBottom: contentBottomPadding + insets.bottom,
+            paddingBottom: contentBottomPadding,
           },
         ]}
         showsVerticalScrollIndicator={false}

@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { colors } from '@/constants/colors';
 import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
+import { getFloatingTabBarContentPadding } from '@/lib/floatingTabBarInset';
 
 type NotificationTemplate = {
   notification_type: string;
@@ -332,7 +333,10 @@ export default function AdminEventMessagesScreen() {
       ) : (
         <ScrollView
           style={styles.scroll}
-          contentContainerStyle={[styles.content, { paddingBottom: 28 + Math.max(90, insets.bottom + 90) }]}
+          contentContainerStyle={[
+            styles.content,
+            { paddingBottom: getFloatingTabBarContentPadding(insets.bottom) },
+          ]}
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.notificationsSection}>

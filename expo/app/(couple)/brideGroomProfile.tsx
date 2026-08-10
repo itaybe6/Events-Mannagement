@@ -21,6 +21,7 @@ import { EventSwitcher } from '@/components/EventSwitcher';
 import { DeleteAccountSection } from '@/components/DeleteAccountSection';
 import { ProfileMenuCard, ProfileMenuRow } from '@/components/couple/ProfileMenuRow';
 import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
+import { getFloatingTabBarContentPadding } from '@/lib/floatingTabBarInset';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const ui = {
@@ -579,7 +580,7 @@ export default function BrideGroomSettings() {
           styles.scrollContent,
           {
             paddingTop: insets.top + 8,
-            paddingBottom: 120 + insets.bottom,
+            paddingBottom: getFloatingTabBarContentPadding(insets.bottom),
           },
         ],
         showsVerticalScrollIndicator: false,

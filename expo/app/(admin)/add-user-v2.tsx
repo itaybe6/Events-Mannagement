@@ -28,6 +28,7 @@ import { avatarService } from '@/lib/services/avatarService';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLayoutStore } from '@/store/layoutStore';
 import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
+import { getFloatingTabBarContentPadding } from '@/lib/floatingTabBarInset';
 import { ensurePhotoLibraryPermission } from '@/lib/permissions';
 
 
@@ -420,7 +421,9 @@ export default function AddUserScreenV2({
               styles.mobileContent,
               {
                 paddingTop: 0,
-                paddingBottom: keyboardVisible ? 24 : Math.max(insets.bottom, 24) + 24,
+                paddingBottom: keyboardVisible
+                  ? 24
+                  : getFloatingTabBarContentPadding(insets.bottom),
               },
             ]}
             keyboardShouldPersistTaps="handled"

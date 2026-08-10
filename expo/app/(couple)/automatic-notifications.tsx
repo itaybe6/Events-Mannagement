@@ -20,6 +20,7 @@ import { useUserStore } from '@/store/userStore';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import { Event } from '@/types';
 import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
+import { getFloatingTabBarContentPadding } from '@/lib/floatingTabBarInset';
 
 type NotificationTemplate = {
   notification_type: string;
@@ -718,7 +719,13 @@ export default function AutomaticNotificationsScreen(props?: { editorPathname?: 
 
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={[styles.content, { paddingTop: topContentInset, paddingBottom: 28 + Math.max(90, insets.bottom + 90) }]}
+        contentContainerStyle={[
+          styles.content,
+          {
+            paddingTop: topContentInset,
+            paddingBottom: getFloatingTabBarContentPadding(insets.bottom),
+          },
+        ]}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.notificationsSection}>

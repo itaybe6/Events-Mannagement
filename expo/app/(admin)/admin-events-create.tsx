@@ -11,6 +11,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import BackSwipe from '@/components/BackSwipe';
 import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
 import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
+import { getFloatingTabBarContentPadding } from '@/lib/floatingTabBarInset';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const EVENT_TYPES = [
@@ -240,7 +241,11 @@ export default function AdminEventsCreateScreen() {
           stickyHeaderIndices={[0]}
           contentContainerStyle={[
             styles.contentContainer,
-            { paddingBottom: keyboardVisible ? 140 : Math.max(insets.bottom, 24) + 84 },
+            {
+              paddingBottom: keyboardVisible
+                ? Math.max(140, getFloatingTabBarContentPadding(insets.bottom))
+                : getFloatingTabBarContentPadding(insets.bottom),
+            },
           ]}
           keyboardShouldPersistTaps="always"
           keyboardDismissMode="on-drag"

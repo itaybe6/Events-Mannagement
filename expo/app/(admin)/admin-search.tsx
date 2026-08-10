@@ -22,6 +22,7 @@ import { useUserStore } from "@/store/userStore";
 import type { Event } from "@/types";
 import { AdminTabRoute } from "@/components/animations/shopifytabs/lib/constants/admin-tabs";
 import { ROW_DIR, ALIGN_RIGHT, rtlText } from "@/lib/rtl";
+import { getFloatingTabBarContentPadding } from "@/lib/floatingTabBarInset";
 import { inferEventType } from "@/features/events/eventsConstants";
 
 type SearchScope = "all" | "events" | "users";
@@ -285,7 +286,10 @@ export default function AdminSearchScreen() {
         </Animated.View>
       </Animated.View>
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: getFloatingTabBarContentPadding(insets.bottom) },
+        ]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         scrollEventThrottle={16}
@@ -461,7 +465,7 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 18,
-    paddingBottom: 140,
+    paddingBottom: 0,
     gap: 16,
   },
   floatingTopControls: {
