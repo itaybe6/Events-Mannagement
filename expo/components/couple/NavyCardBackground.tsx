@@ -190,14 +190,23 @@ function DriftingAurora() {
 
 type NavyCardBackgroundProps = {
   variant?: 'full' | 'compact';
+  borderRadius?: number;
 };
 
-export function NavyCardBackground({ variant = 'full' }: NavyCardBackgroundProps) {
+export function NavyCardBackground({ variant = 'full', borderRadius = 22 }: NavyCardBackgroundProps) {
   const stars = variant === 'compact' ? COMPACT_STARS : FULL_STARS;
   const isCompact = variant === 'compact';
+  const clipStyle = { borderRadius, overflow: 'hidden' as const };
 
   return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+    <View style={[StyleSheet.absoluteFill, clipStyle]} pointerEvents="none">
+      {/* Solid navy base — required so white foreground text never sits on a light page bg */}
+      <LinearGradient
+        colors={['#1A3358', '#152949', '#0F1F3A']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[StyleSheet.absoluteFill, { borderRadius }]}
+      />
       <DriftingAurora />
       <PulsingGlow
         style={[styles.glowOrb, isCompact ? styles.glowOrbCompactPrimary : styles.glowOrbPrimary]}

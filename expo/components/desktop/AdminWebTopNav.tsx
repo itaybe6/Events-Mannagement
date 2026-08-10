@@ -33,9 +33,11 @@ export default function AdminWebTopNav({ inset = false }: Props) {
   const pathname = usePathname();
   const router = useRouter();
   const userType = useUserStore((state) => state.userType);
-  const { isTouchLayout, isTablet } = useResponsive();
+  const { isTouchLayout, isTablet, isPhone } = useResponsive();
   const normalizedPathname = normalizeHref(pathname || '/');
   const navItems = userType === 'employee' ? EMPLOYEE_WEB_NAV_ITEMS : NAV_ITEMS;
+  // Phone + tablet: wrap would eat the viewport; scroll pills sideways instead.
+  const useHorizontalScroll = isPhone || isTablet;
 
   const items = navItems.map((item) => {
     const normalizedHref = normalizeHref(item.href);
@@ -51,6 +53,7 @@ export default function AdminWebTopNav({ inset = false }: Props) {
         style={({ hovered, pressed }: any) => [
           styles.item,
           isTouchLayout ? styles.itemTouch : null,
+          isPhone ? styles.itemPhone : null,
           active ? styles.itemActive : null,
           Platform.OS === 'web' && hovered && !active ? styles.itemHover : null,
           pressed ? styles.itemPressed : null,
@@ -70,9 +73,7 @@ export default function AdminWebTopNav({ inset = false }: Props) {
     );
   });
 
-  // On a tablet the nav would otherwise wrap to two or three rows and push the
-  // actual page content below the fold. Scroll it sideways instead.
-  if (isTablet) {
+  if (useHorizontalScroll) {
     return (
       <ScrollView
         horizontal
@@ -124,6 +125,11 @@ const styles = StyleSheet.create({
     minHeight: TOUCH_TARGET + 6,
     paddingHorizontal: 20,
     paddingVertical: 12,
+  },
+  itemPhone: {
+    minHeight: 40,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
   },
   itemContent: {
     flexDirection: 'row',

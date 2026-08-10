@@ -617,32 +617,50 @@ export default function SelectCategoryScreen() {
                         key={value}
                         onPress={() => setNewSide(value)}
                         accessibilityRole="button"
+                        accessibilityState={{ selected: on }}
                         accessibilityLabel={label}
                         style={({ pressed }) => [
-                          styles.sidePill,
-                          on && { backgroundColor: theme.tint, borderColor: theme.accent },
+                          styles.sideCard,
+                          on && {
+                            backgroundColor: theme.tint,
+                            borderColor: theme.accent,
+                          },
                           pressed && styles.pressedSoft,
                         ]}
                       >
+                        {on ? (
+                          <View style={[styles.sideCardCheck, { backgroundColor: theme.accent }]}>
+                            <Ionicons name="checkmark" size={11} color="#fff" />
+                          </View>
+                        ) : null}
                         <View
                           style={[
-                            styles.sidePillIcon,
-                            { backgroundColor: on ? theme.accent : 'rgba(20,27,51,0.06)' },
+                            styles.sideCardIcon,
+                            {
+                              backgroundColor: on ? theme.accent : 'rgba(20,27,51,0.06)',
+                            },
                           ]}
                         >
-                          <Ionicons name={icon} size={15} color={on ? '#fff' : DIM} />
+                          <Ionicons name={icon} size={22} color={on ? '#fff' : DIM} />
                         </View>
                         <Text
-                          style={[styles.sidePillText, on && { color: theme.accentDeep, fontWeight: '800' }]}
+                          style={[
+                            styles.sideCardText,
+                            on && { color: theme.accentDeep },
+                          ]}
                           numberOfLines={1}
                         >
                           {label}
                         </Text>
-                        {on ? (
-                          <View style={[styles.sidePillCheck, { backgroundColor: theme.accent }]}>
-                            <Ionicons name="checkmark" size={12} color="#fff" />
-                          </View>
-                        ) : null}
+                        <Text
+                          style={[
+                            styles.sideCardHint,
+                            on && { color: theme.accent },
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {on ? 'נבחר' : 'הקישו לבחירה'}
+                        </Text>
                       </Pressable>
                     );
                   })}
@@ -676,15 +694,6 @@ export default function SelectCategoryScreen() {
                       </View>
                     </View>
                   )}
-                </Pressable>
-
-                <Pressable
-                  onPress={closeCreate}
-                  accessibilityRole="button"
-                  accessibilityLabel="ביטול"
-                  style={({ pressed }) => [styles.modalSecondary, pressed && styles.pressedSoft]}
-                >
-                  <Text style={styles.modalSecondaryText}>ביטול</Text>
                 </Pressable>
               </View>
             </ScrollView>
@@ -1186,55 +1195,53 @@ const styles = StyleSheet.create({
   sideRow: {
     width: '100%',
     flexDirection: ROW_DIR,
-    gap: 10,
+    gap: 12,
     marginBottom: 22,
   },
-  sidePill: {
+  sideCard: {
     flex: 1,
     minWidth: 0,
-    flexDirection: ROW_DIR,
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 8,
-    paddingVertical: 11,
+    paddingVertical: 18,
     paddingHorizontal: 12,
-    borderRadius: 16,
+    borderRadius: 18,
     backgroundColor: BG,
     borderWidth: 1.5,
     borderColor: LINE,
+    position: 'relative',
+    minHeight: 132,
   },
-  sidePillIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 10,
+  sideCardIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sidePillText: {
-    flex: 1,
-    minWidth: 0,
-    fontSize: 13.5,
-    fontWeight: '700',
-    color: DIM,
-    textAlign: TEXT_RIGHT,
+  sideCardText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: TEXT,
+    textAlign: 'center',
     writingDirection: IS_RTL ? 'rtl' : 'ltr',
   },
-  sidePillCheck: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+  sideCardHint: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: FAINT,
+    textAlign: 'center',
+    writingDirection: IS_RTL ? 'rtl' : 'ltr',
+  },
+  sideCardCheck: {
+    position: 'absolute',
+    top: 10,
+    ...(IS_RTL ? { left: 10 } : { right: 10 }),
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  modalSecondary: {
-    width: '100%',
-    height: 46,
-    marginTop: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalSecondaryText: {
-    fontSize: 14.5,
-    fontWeight: '700',
-    color: DIM,
   },
 });

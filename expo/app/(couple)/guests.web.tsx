@@ -859,7 +859,7 @@ export default function CoupleGuestsWebScreen() {
     ];
 
   const cardWidth = useMemo(() => {
-    if (contentWidth < 360) return '100%';
+    if (contentWidth < 700) return '48%';
     if (contentWidth < 980) return '48%';
     if (contentWidth < 1180) return '31.8%';
     return '19.2%';
@@ -884,6 +884,7 @@ export default function CoupleGuestsWebScreen() {
   const pageContentStyle = [
     styles.content,
     useManagerChrome ? styles.contentAdmin : null,
+    isMobile ? styles.contentMobile : null,
     !useManagerChrome ? { maxWidth: contentMaxWidth } : null,
   ];
   const adminHeaderStats = [
@@ -923,12 +924,12 @@ export default function CoupleGuestsWebScreen() {
             <AdminWebPageHeader
               eyebrow="ניהול אירוע"
               title="אישורי הגעה"
-              subtitle="ניהול RSVP, חיפוש מהיר, סינון סטטוסים וסידור המוזמנים לפי קטגוריות מתוך מסך אחד."
+              subtitle={isMobile ? undefined : 'ניהול RSVP, חיפוש מהיר, סינון סטטוסים וסידור המוזמנים לפי קטגוריות מתוך מסך אחד.'}
               subtitleContent={
-                <View style={styles.adminHeaderMetaBar}>
-                  <View style={styles.adminHeaderMetaGroup}>
+                <View style={[styles.adminHeaderMetaBar, isMobile ? styles.adminHeaderMetaBarMobile : null]}>
+                  <View style={[styles.adminHeaderMetaGroup, isMobile ? styles.adminHeaderMetaGroupMobile : null]}>
                     {adminHeaderStats.map((item) => (
-                      <View key={item.key} style={styles.adminHeaderStatChip}>
+                      <View key={item.key} style={[styles.adminHeaderStatChip, isMobile ? styles.adminHeaderStatChipMobile : null]}>
                         <Text style={styles.adminHeaderStatValue}>{item.value}</Text>
                         <Text style={styles.adminHeaderStatLabel}>{item.label}</Text>
                       </View>
@@ -1068,33 +1069,73 @@ export default function CoupleGuestsWebScreen() {
         )}
 
         {/* Metrics */}
-        <View style={styles.metricsRow}>
+        <View style={[styles.metricsRow, isMobile ? styles.metricsRowMobile : null]}>
           <MetricCard
             title='סה״כ מוזמנים'
             value={guestCounts.total}
             tone="primary"
             width={cardWidth}
-            admin={useManagerChrome}
+            admin={useManagerChrome && !isMobile}
+            compact={isMobile}
           />
-          <MetricCard title="אישרו הגעה" value={guestCounts.coming} hint={pct(guestCounts.coming, guestCounts.total)} tone="success" width={cardWidth} admin={useManagerChrome} />
-          <MetricCard title="אולי מגיעים" value={guestCounts.maybe} hint={pct(guestCounts.maybe, guestCounts.total)} tone="primary" width={cardWidth} admin={useManagerChrome} />
-          <MetricCard title="ממתינים לתשובה" value={guestCounts.pending} hint={pct(guestCounts.pending, guestCounts.total)} tone="warning" width={cardWidth} admin={useManagerChrome} />
-          <MetricCard title="לא מגיעים" value={guestCounts.notComing} hint={pct(guestCounts.notComing, guestCounts.total)} tone="danger" width={cardWidth} admin={useManagerChrome} />
+          <MetricCard
+            title="אישרו"
+            value={guestCounts.coming}
+            hint={pct(guestCounts.coming, guestCounts.total)}
+            tone="success"
+            width={cardWidth}
+            admin={useManagerChrome && !isMobile}
+            compact={isMobile}
+          />
+          <MetricCard
+            title="אולי"
+            value={guestCounts.maybe}
+            hint={pct(guestCounts.maybe, guestCounts.total)}
+            tone="primary"
+            width={cardWidth}
+            admin={useManagerChrome && !isMobile}
+            compact={isMobile}
+          />
+          <MetricCard
+            title="ממתינים"
+            value={guestCounts.pending}
+            hint={pct(guestCounts.pending, guestCounts.total)}
+            tone="warning"
+            width={cardWidth}
+            admin={useManagerChrome && !isMobile}
+            compact={isMobile}
+          />
+          <MetricCard
+            title="לא מגיעים"
+            value={guestCounts.notComing}
+            hint={pct(guestCounts.notComing, guestCounts.total)}
+            tone="danger"
+            width={cardWidth}
+            admin={useManagerChrome && !isMobile}
+            compact={isMobile}
+          />
         </View>
 
         {/* Filter Bar */}
-        <View style={[styles.filterBar, useManagerChrome ? styles.filterBarAdmin : null, isNarrow ? styles.filterBarNarrow : styles.filterBarWide]}>
+        <View
+          style={[
+            styles.filterBar,
+            useManagerChrome ? styles.filterBarAdmin : null,
+            isNarrow ? styles.filterBarNarrow : styles.filterBarWide,
+            isMobile ? styles.filterBarMobile : null,
+          ]}
+        >
           <View style={[styles.filterPrimaryRow, isNarrow ? styles.filterPrimaryRowNarrow : null]}>
-            <View style={[styles.searchWrap, isNarrow ? { width: '100%' } : { width: 420 }]}>
+            <View style={[styles.searchWrap, isNarrow || isMobile ? { width: '100%', minWidth: 0 } : { width: 420 }]}>
               <View style={styles.searchIconRight}>
                 <Ionicons name="search" size={18} color={colors.gray[500]} />
               </View>
               <TextInput
                 value={searchQuery}
                 onChangeText={setSearchQuery}
-                placeholder="חיפוש מוזמנים לפי שם או טלפון..."
+                placeholder={isMobile ? 'חיפוש לפי שם או טלפון...' : 'חיפוש מוזמנים לפי שם או טלפון...'}
                 placeholderTextColor={colors.gray[500]}
-                style={styles.searchInput}
+                style={[styles.searchInput, isMobile ? styles.searchInputMobile : null]}
               />
             </View>
 
@@ -1283,22 +1324,27 @@ export default function CoupleGuestsWebScreen() {
                       }
                       style={({ hovered, pressed }: any) => [
                         styles.groupHeader,
+                        isMobile ? styles.groupHeaderMobile : null,
                         Platform.OS === 'web' && hovered ? styles.groupHeaderHover : null,
                         pressed ? styles.btnPressed : null,
                       ]}
                     >
-                      <View style={styles.groupHeaderLeft}>
+                      <View style={[styles.groupHeaderLeft, isMobile ? styles.groupHeaderLeftMobile : null]}>
                         <Ionicons
                           name="chevron-down"
                           size={18}
                           color={colors.gray[500]}
                           style={isExpanded ? undefined : (styles.chevronCollapsed as any)}
                         />
-                        <View style={styles.groupIconWrap}>
-                          <Ionicons name={cat.id === '__uncategorized__' ? 'albums-outline' : 'folder-open-outline'} size={17} color={colors.primary} />
+                        <View style={[styles.groupIconWrap, isMobile ? styles.groupIconWrapMobile : null]}>
+                          <Ionicons
+                            name={cat.id === '__uncategorized__' ? 'albums-outline' : 'folder-open-outline'}
+                            size={isMobile ? 15 : 17}
+                            color={colors.primary}
+                          />
                         </View>
                         <View style={styles.groupTitleWrap}>
-                          <Text style={styles.groupTitle} numberOfLines={1}>
+                          <Text style={[styles.groupTitle, isMobile ? styles.groupTitleMobile : null]} numberOfLines={1}>
                             {cat.name}
                           </Text>
                           <View style={styles.groupPill}>
@@ -1307,16 +1353,19 @@ export default function CoupleGuestsWebScreen() {
                         </View>
                       </View>
 
-                      <View style={styles.groupHeaderRight}>
+                      <View style={[styles.groupHeaderRight, isMobile ? styles.groupHeaderRightMobile : null]}>
                         <MiniStatDot label={`${counts.coming} אישרו`} tone="success" />
                         <MiniStatDot label={`${counts.maybe} אולי`} tone="primary" />
                         <MiniStatDot label={`${counts.pending} ממתינים`} tone="warning" />
-                        <MiniStatDot label={`${counts.notComing} לא מגיעים`} tone="danger" />
+                        <MiniStatDot
+                          label={isMobile ? `${counts.notComing} לא` : `${counts.notComing} לא מגיעים`}
+                          tone="danger"
+                        />
                       </View>
                     </Pressable>
 
                     {isExpanded ? (
-                      <View style={styles.groupBody}>
+                      <View style={[styles.groupBody, isMobile ? styles.groupBodyMobile : null]}>
                         {list.length === 0 ? (
                           <Text style={styles.groupEmpty}>אין תוצאות בקבוצה הזו</Text>
                         ) : (
@@ -1327,6 +1376,7 @@ export default function CoupleGuestsWebScreen() {
                               hasSentMessage={sentGuestIds.has(g.id)}
                               width={guestItemWidth}
                               square={useSquareGuestCards}
+                              compact={isMobile}
                               checked={selectedGuestIds.has(g.id)}
                               onToggleCheck={() => toggleSelectGuest(g.id)}
                               onEdit={() => openEdit(g)}
@@ -2014,6 +2064,7 @@ function MetricCard({
   tone,
   width,
   admin,
+  compact = false,
 }: {
   title: string;
   value: number;
@@ -2021,6 +2072,7 @@ function MetricCard({
   tone: 'primary' | 'success' | 'warning' | 'danger';
   width: any;
   admin?: boolean;
+  compact?: boolean;
 }) {
   const c = toneColor(tone);
   const iconName =
@@ -2040,6 +2092,29 @@ function MetricCard({
           ? 'אורחים שסימנו שלא יגיעו לאירוע'
           : 'תמונת מצב כללית של רשימת המוזמנים';
   const adminBadgeText = hint || (tone === 'primary' ? 'מבט כללי' : 'יחס מהרשימה');
+
+  if (compact) {
+    return (
+      <View
+        style={[
+          styles.metricCard,
+          styles.metricCardCompact,
+          { width, borderRightColor: c.main, backgroundColor: c.soft },
+        ]}
+      >
+        <View style={styles.metricCompactRow}>
+          <Text style={[styles.metricValueCompact, { color: c.text }]}>{value}</Text>
+          <View style={styles.metricCompactLabelWrap}>
+            <View style={[styles.metricCompactDot, { backgroundColor: c.main }]} />
+            <Text style={styles.metricTitleCompact} numberOfLines={1}>
+              {title}
+            </Text>
+          </View>
+        </View>
+        {hint ? <Text style={[styles.metricHintCompact, { color: c.text }]}>{hint}</Text> : null}
+      </View>
+    );
+  }
 
   if (admin) {
     return (
@@ -2154,6 +2229,7 @@ function GuestListRow({
   hasSentMessage,
   width,
   square,
+  compact = false,
   checked,
   onToggleCheck,
   onEdit,
@@ -2163,6 +2239,7 @@ function GuestListRow({
   hasSentMessage: boolean;
   width?: any;
   square?: boolean;
+  compact?: boolean;
   checked: boolean;
   onToggleCheck: () => void;
   onEdit: () => void;
@@ -2178,6 +2255,7 @@ function GuestListRow({
     <Pressable
       style={({ hovered }: any) => [
         styles.guestCard,
+        compact ? styles.guestCardCompact : null,
         width ? { width } : null,
         square ? styles.guestCardSquare : null,
         Platform.OS === 'web' && hovered ? styles.guestRowHover : null,
@@ -2185,25 +2263,38 @@ function GuestListRow({
     >
       {() => (
         <>
-          {/* Header: Avatar + Name/Status + Checkbox */}
-          <View style={styles.guestCardHeader}>
-            <View style={[styles.guestAvatar, { backgroundColor: sc.soft }]}>
-              <Text style={[styles.guestAvatarText, { color: sc.text }]}>{initials}</Text>
+          <View style={[styles.guestCardHeader, compact ? styles.guestCardHeaderCompact : null]}>
+            <View style={[styles.guestAvatar, compact ? styles.guestAvatarCompact : null, { backgroundColor: sc.soft }]}>
+              <Text style={[styles.guestAvatarText, compact ? styles.guestAvatarTextCompact : null, { color: sc.text }]}>
+                {initials}
+              </Text>
             </View>
 
             <View style={styles.guestCardTitleWrap}>
-              <Text style={styles.guestCardName} numberOfLines={1}>
+              <Text style={[styles.guestCardName, compact ? styles.guestCardNameCompact : null]} numberOfLines={1}>
                 {guest.name}
               </Text>
-              <View
-                style={[
-                  styles.statusPill,
-                  styles.statusPillInline,
-                  { backgroundColor: sc.soft, borderColor: 'rgba(0,0,0,0.06)' },
-                ]}
-              >
-                <View style={[styles.statusDot, { backgroundColor: sc.main }]} />
-                <Text style={[styles.statusText, { color: sc.text }]}>{guest.status}</Text>
+              <View style={styles.guestCardMetaRow}>
+                <View
+                  style={[
+                    styles.statusPill,
+                    styles.statusPillInline,
+                    { backgroundColor: sc.soft, borderColor: 'rgba(0,0,0,0.06)' },
+                  ]}
+                >
+                  <View style={[styles.statusDot, { backgroundColor: sc.main }]} />
+                  <Text style={[styles.statusText, { color: sc.text }]}>{guest.status}</Text>
+                </View>
+                <View style={[styles.guestInfoPill, compact ? styles.guestInfoPillCompact : null]}>
+                  <Ionicons name="people-outline" size={12} color={colors.gray[500]} />
+                  <Text style={styles.guestInfoText}>{guest.numberOfPeople || 1}</Text>
+                </View>
+                {hasSentMessage ? (
+                  <View style={[styles.guestInfoPill, styles.messageSentPill, compact ? styles.guestInfoPillCompact : null]}>
+                    <Ionicons name="checkmark-done-outline" size={12} color="#047857" />
+                    <Text style={[styles.guestInfoText, styles.messageSentText]}>נשלח</Text>
+                  </View>
+                ) : null}
               </View>
             </View>
 
@@ -2214,6 +2305,7 @@ function GuestListRow({
               onPress={onToggleCheck}
               style={({ hovered, pressed }: any) => [
                 styles.checkbox,
+                compact ? styles.checkboxCompact : null,
                 checked ? styles.checkboxChecked : null,
                 Platform.OS === 'web' && hovered ? styles.checkboxHover : null,
                 pressed ? styles.btnPressed : null,
@@ -2223,6 +2315,7 @@ function GuestListRow({
             </Pressable>
           </View>
 
+<<<<<<< HEAD
           {/* Info: Count */}
           <View style={styles.guestDetailsRow}>
             {inviteUrl ? (
@@ -2248,13 +2341,25 @@ function GuestListRow({
               <View style={[styles.guestInfoPill, styles.messageSentPill]}>
                 <Ionicons name="checkmark-done-outline" size={13} color="#047857" />
                 <Text style={[styles.guestInfoText, styles.messageSentText]}>הודעה נשלחה</Text>
+=======
+          {!compact ? (
+            <View style={styles.guestDetailsRow}>
+              <View style={styles.guestInfoPill}>
+                <Ionicons name="people-outline" size={13} color={colors.gray[500]} />
+                <Text style={styles.guestInfoText}>כמות {guest.numberOfPeople || 1}</Text>
+>>>>>>> 383cf7b132b3d616caa83a59d0daabe2f7670833
               </View>
-            ) : null}
-          </View>
+              {hasSentMessage ? (
+                <View style={[styles.guestInfoPill, styles.messageSentPill]}>
+                  <Ionicons name="checkmark-done-outline" size={13} color="#047857" />
+                  <Text style={[styles.guestInfoText, styles.messageSentText]}>הודעה נשלחה</Text>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
 
-          {/* Footer: Phone + Actions */}
-          <View style={styles.guestCardFooterBar}>
-            <View style={[styles.guestInfoPill, { flex: 1, minWidth: 0 }]}>
+          <View style={[styles.guestCardFooterBar, compact ? styles.guestCardFooterBarCompact : null]}>
+            <View style={[styles.guestInfoPill, compact ? styles.guestInfoPillCompact : null, { flex: 1, minWidth: 0 }]}>
               <Ionicons name="call-outline" size={13} color={colors.gray[500]} />
               <Text style={styles.guestCardPhone} numberOfLines={1}>
                 {guest.phone}
@@ -2391,6 +2496,11 @@ const styles = StyleSheet.create({
     paddingTop: 24,
     ...(Platform.OS === 'web' ? ({ alignSelf: 'stretch', direction: 'rtl' } as any) : null),
   },
+  contentMobile: {
+    padding: 12,
+    paddingBottom: 24,
+    gap: 12,
+  },
   adminHeroShell: {
     width: '100%',
   },
@@ -2402,12 +2512,19 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
   },
+  adminHeaderMetaBarMobile: {
+    gap: 8,
+  },
   adminHeaderMetaGroup: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
     flexWrap: 'wrap',
     ...(Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null),
+  },
+  adminHeaderMetaGroupMobile: {
+    gap: 6,
+    width: '100%',
   },
   adminHeaderStatChip: {
     minHeight: 34,
@@ -2420,6 +2537,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row-reverse',
     alignItems: 'center',
     gap: 8,
+  },
+  adminHeaderStatChipMobile: {
+    minHeight: 30,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
   },
   adminHeaderStatValue: {
     fontSize: 13,
@@ -2581,6 +2703,9 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 14,
     alignItems: 'stretch',
+  },
+  metricsRowMobile: {
+    gap: 8,
   },
   metricCard: {
     backgroundColor: colors.white,
@@ -2777,6 +2902,22 @@ const styles = StyleSheet.create({
   },
   filterBarNarrow: {
     padding: 14,
+  },
+  filterBarMobile: {
+    padding: 12,
+    borderRadius: 18,
+    gap: 10,
+    ...(Platform.OS === 'web'
+      ? ({
+          position: 'relative',
+          top: 0,
+        } as any)
+      : null),
+  },
+  searchInputMobile: {
+    height: 44,
+    borderRadius: 14,
+    fontSize: 13,
   },
   filterBarWide: {
     alignItems: 'stretch',
@@ -3047,8 +3188,20 @@ const styles = StyleSheet.create({
     gap: 14,
     backgroundColor: colors.white,
   },
+  groupHeaderMobile: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    gap: 10,
+  },
   groupHeaderHover: { backgroundColor: 'rgba(248,250,252,0.95)' },
   groupHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1, minWidth: 0, flexWrap: 'wrap' },
+  groupHeaderLeftMobile: {
+    flexWrap: 'nowrap',
+    width: '100%',
+    gap: 10,
+  },
   groupIconWrap: {
     width: 38,
     height: 38,
@@ -3059,6 +3212,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(6,23,62,0.08)',
     flexShrink: 0,
+  },
+  groupIconWrapMobile: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
   },
   groupTitleWrap: { flex: 1, minWidth: 0, gap: 6, alignItems: 'flex-start', justifyContent: 'center' },
   groupToggleBtn: {
@@ -3075,6 +3233,7 @@ const styles = StyleSheet.create({
     transform: [{ rotate: '-90deg' }],
   },
   groupTitle: { fontSize: 18, fontWeight: '900', color: colors.text, textAlign: 'right', width: '100%', writingDirection: 'rtl' },
+  groupTitleMobile: { fontSize: 15 },
   groupPill: {
     paddingHorizontal: 11,
     paddingVertical: 5,
@@ -3085,6 +3244,11 @@ const styles = StyleSheet.create({
   },
   groupPillText: { fontSize: 11, fontWeight: '900', color: colors.gray[700], textAlign: 'right', writingDirection: 'rtl' },
   groupHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'nowrap', justifyContent: 'flex-start' },
+  groupHeaderRightMobile: {
+    width: '100%',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
   miniStat: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 999, backgroundColor: 'rgba(248,250,252,0.95)', borderWidth: 1, borderColor: 'rgba(15,23,42,0.06)' },
   miniDot: { width: 7, height: 7, borderRadius: 999 },
   miniStatText: { fontSize: 11.5, fontWeight: '800', color: colors.gray[600], textAlign: 'right', writingDirection: 'rtl' },
@@ -3102,6 +3266,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(248,250,252,0.72)',
     // @ts-expect-error - react-native-web supports direction
     direction: 'rtl',
+  },
+  groupBodyMobile: {
+    paddingHorizontal: 10,
+    paddingTop: 10,
+    paddingBottom: 12,
+    gap: 10,
   },
   groupEmpty: {
     width: '100%',
@@ -3162,6 +3332,11 @@ const styles = StyleSheet.create({
     // @ts-expect-error - react-native-web supports boxShadow
     boxShadow: '0 1px 3px rgba(16,24,40,0.04), 0 8px 24px rgba(16,24,40,0.07)',
   },
+  guestCardCompact: {
+    padding: 12,
+    borderRadius: 16,
+    gap: 10,
+  },
   guestCardSquare: {
     aspectRatio: 1,
   },
@@ -3171,6 +3346,9 @@ const styles = StyleSheet.create({
     gap: 12,
     minWidth: 0,
   },
+  guestCardHeaderCompact: {
+    gap: 10,
+  },
   guestAvatar: {
     width: 50,
     height: 50,
@@ -3179,9 +3357,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
   },
+  guestAvatarCompact: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+  },
   guestAvatarText: { fontSize: 15, fontWeight: '900', color: colors.primary, textAlign: 'center' },
+  guestAvatarTextCompact: { fontSize: 13 },
   guestCardTitleWrap: { flex: 1, minWidth: 0, gap: 6 },
   guestCardName: { fontSize: 16, fontWeight: '900', color: colors.text, textAlign: 'right', lineHeight: 22 },
+<<<<<<< HEAD
   inviteLinkBtn: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
@@ -3198,6 +3383,15 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(17, 82, 212, 0.34)',
   },
   inviteLinkText: { fontSize: 13, fontWeight: '900', color: colors.primary, textAlign: 'right', writingDirection: 'rtl' },
+=======
+  guestCardNameCompact: { fontSize: 14, lineHeight: 20 },
+  guestCardMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+>>>>>>> 383cf7b132b3d616caa83a59d0daabe2f7670833
   guestDetailsRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -3214,6 +3408,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(248,250,252,0.98)',
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.06)',
+  },
+  guestInfoPillCompact: {
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 9,
   },
   guestCardPhone: {
     fontSize: 13,
@@ -3240,6 +3439,59 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 8,
+  },
+  guestCardFooterBarCompact: {
+    paddingTop: 10,
+  },
+  checkboxCompact: {
+    width: 22,
+    height: 22,
+  },
+  metricCardCompact: {
+    minHeight: 0,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 16,
+    borderRightWidth: 3,
+    justifyContent: 'center',
+    gap: 4,
+    // @ts-expect-error - react-native-web supports boxShadow
+    boxShadow: '0 1px 2px rgba(16,24,40,0.04)',
+  },
+  metricCompactRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  metricValueCompact: {
+    fontSize: 22,
+    fontWeight: '900',
+    lineHeight: 26,
+    textAlign: 'left',
+  },
+  metricCompactLabelWrap: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  metricCompactDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 999,
+  },
+  metricTitleCompact: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.gray[700],
+    textAlign: 'right',
+  },
+  metricHintCompact: {
+    fontSize: 11,
+    fontWeight: '700',
+    textAlign: 'right',
   },
   guestCardActions: {
     flexDirection: 'row',

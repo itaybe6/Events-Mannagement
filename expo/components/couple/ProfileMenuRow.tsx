@@ -97,13 +97,16 @@ const styles = StyleSheet.create({
   },
   menuRowLabel: {
     flex: 1,
+    minWidth: 0,
     fontSize: 15.5,
     fontWeight: '600',
     color: profileMenuUi.text,
     textAlign: 'right',
   },
   menuRowDetail: {
-    maxWidth: '38%',
+    maxWidth: '34%',
+    flexShrink: 1,
+    minWidth: 0,
     fontSize: 13.5,
     fontWeight: '500',
     color: profileMenuUi.faint,

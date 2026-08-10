@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, Modal, Pressable, TextInput, Platform, ActivityIndicator, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, Modal, Pressable, TextInput, Platform, ActivityIndicator, ScrollView, useWindowDimensions } from 'react-native';
 import { useUserStore } from '@/store/userStore';
 import { useFocusEffect, useGlobalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -81,6 +81,9 @@ export default function BrideGroomSettings() {
   const { userData, logout } = useUserStore();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
+  const isWeb = Platform.OS === 'web';
+  const isMobileWeb = isWeb && windowWidth < 700;
   const globalParams = useGlobalSearchParams<{ eventId?: string | string[] }>();
   const activeUserId = useEventSelectionStore((s) => s.activeUserId);
   const activeEventId = useEventSelectionStore((s) => s.activeEventId);
@@ -556,31 +559,57 @@ export default function BrideGroomSettings() {
     );
   }
 
+  // On web the couple shell already owns the page ScrollView. Nesting another
+  // scroll here fights the shell and used to contribute to flaky remounts.
+  const ScrollContainer: any = isWeb ? View : AppKeyboardAwareScrollView;
+  const scrollContainerProps = isWeb
+    ? {
+        style: [
+          styles.scrollContent,
+          isMobileWeb ? styles.scrollContentMobileWeb : null,
+          {
+            paddingTop: isMobileWeb ? 8 : 12,
+            paddingBottom: 28,
+          },
+        ],
+      }
+    : {
+        style: styles.scrollView,
+        contentContainerStyle: [
+          styles.scrollContent,
+          {
+            paddingTop: insets.top + 8,
+            paddingBottom: 120 + insets.bottom,
+          },
+        ],
+        showsVerticalScrollIndicator: false,
+      };
+
   return (
     <View style={styles.root}>
-      <AppKeyboardAwareScrollView
-        style={styles.scrollView}
-        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 8, paddingBottom: 120 + insets.bottom }]}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.identityCard}>
+      <ScrollContainer {...scrollContainerProps}>
+        <View style={[styles.identityCard, isMobileWeb ? styles.identityCardMobileWeb : null]}>
           <NavyCardBackground variant="compact" />
           <View style={styles.identityContent}>
-            <View style={styles.identityAvatarRing}>
+            <View style={[styles.identityAvatarRing, isMobileWeb ? styles.identityAvatarRingMobileWeb : null]}>
               {avatarUri ? (
                 <Image source={{ uri: avatarUri }} style={styles.identityAvatarImg} contentFit="cover" transition={120} />
               ) : (
                 <View style={styles.identityAvatarFallback}>
-                  <Text style={styles.identityAvatarInitial}>{nameInitial}</Text>
+                  <Text style={[styles.identityAvatarInitial, isMobileWeb ? styles.identityAvatarInitialMobileWeb : null]}>
+                    {nameInitial}
+                  </Text>
                 </View>
               )}
             </View>
-            <Text style={styles.identityName}>{String(userData?.name || '')}</Text>
+            <Text style={[styles.identityName, isMobileWeb ? styles.identityNameMobileWeb : null]}>
+              {String(userData?.name || '')}
+            </Text>
             <Text style={styles.identitySubtitle} numberOfLines={2}>
               {profileSubtitle}
             </Text>
 
-            <View style={styles.statsRow}>
+            <View style={[styles.statsRow, isMobileWeb ? styles.statsRowMobileWeb : null]}>
               {(
                 [
                   ['הזמנות', profileStats.invitations],
@@ -591,7 +620,7 @@ export default function BrideGroomSettings() {
                 <React.Fragment key={label}>
                   {index > 0 ? <View style={styles.statsDivider} /> : null}
                   <View style={styles.statCell}>
-                    <Text style={styles.statValue}>{value}</Text>
+                    <Text style={[styles.statValue, isMobileWeb ? styles.statValueMobileWeb : null]}>{value}</Text>
                     <Text style={styles.statLabel}>{label}</Text>
                   </View>
                 </React.Fragment>
@@ -660,7 +689,7 @@ export default function BrideGroomSettings() {
           </View>
         )}
 
-      </AppKeyboardAwareScrollView>
+      </ScrollContainer>
 
       <Modal
         visible={eventEditorOpen}
@@ -1297,6 +1326,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     gap: 16,
   },
+  scrollContentMobileWeb: {
+    paddingHorizontal: 12,
+    gap: 12,
+  },
   identityCard: {
     position: 'relative',
     overflow: 'hidden',
@@ -1308,6 +1341,29 @@ const styles = StyleSheet.create({
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 10 },
     elevation: 6,
+  },
+  identityCardMobileWeb: {
+    borderRadius: 18,
+    padding: 16,
+  },
+  identityAvatarRingMobileWeb: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    marginBottom: 10,
+  },
+  identityAvatarInitialMobileWeb: {
+    fontSize: 26,
+  },
+  identityNameMobileWeb: {
+    fontSize: 18,
+  },
+  statsRowMobileWeb: {
+    marginTop: 14,
+    paddingTop: 12,
+  },
+  statValueMobileWeb: {
+    fontSize: 18,
   },
   identityContent: {
     alignItems: 'center',

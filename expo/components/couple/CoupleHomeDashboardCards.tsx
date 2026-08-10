@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { DonutChart, type DonutSegment } from '@/components/couple/DonutChart';
 import { NavyCardBackground } from '@/components/couple/NavyCardBackground';
-import { IS_RTL, ROW_DIR } from '@/lib/rtl';
+import { ALIGN_RIGHT, IS_RTL, ROW_DIR } from '@/lib/rtl';
 
 // With I18nManager.forceRTL (native build), `textAlign: 'right'` mirrors to the physical left.
 const rtlTextAlign = {
@@ -173,26 +173,28 @@ export function CoupleHomeDashboardCards({
       <Pressable
         onPress={onPressRsvp}
         accessibilityRole="button"
-        style={({ pressed }) => [styles.rsvpCard, pressed && styles.cardPressed]}
+        style={({ pressed }) => [styles.rsvpCardOuter, pressed && styles.cardPressed]}
       >
-        <NavyCardBackground variant="full" />
-        <View style={styles.rsvpContent}>
-        <View style={styles.rsvpHeader}>
-          <Text style={[styles.rsvpTitle, rtlTextAlign]}>אישורי הגעה</Text>
-          <Text style={[styles.rsvpCountLabel, rtlTextAlign]}>{guestInviteCount} הזמנות</Text>
-        </View>
-        <View style={styles.rsvpBody}>
-          <View style={styles.legendCol}>
-            <RsvpLegendItem color={RSVP_COLORS.coming} label="מגיעים" value={guestCounts.coming} />
-            <RsvpLegendItem color={RSVP_COLORS.maybe} label="אולי" value={guestCounts.maybe} />
-            <RsvpLegendItem color={RSVP_COLORS.pending} label="ממתינים" value={guestCounts.pending} />
-            <RsvpLegendItem color={RSVP_COLORS.declined} label="לא מגיעים" value={guestCounts.declined} />
+        <View style={styles.rsvpCard}>
+          <NavyCardBackground variant="full" borderRadius={22} />
+          <View style={styles.rsvpContent}>
+            <View style={styles.rsvpHeader}>
+              <Text style={[styles.rsvpTitle, rtlTextAlign]}>אישורי הגעה</Text>
+              <Text style={[styles.rsvpCountLabel, rtlTextAlign]}>{guestInviteCount} הזמנות</Text>
+            </View>
+            <View style={styles.rsvpBody}>
+              <View style={styles.legendCol}>
+                <RsvpLegendItem color={RSVP_COLORS.coming} label="מגיעים" value={guestCounts.coming} />
+                <RsvpLegendItem color={RSVP_COLORS.maybe} label="אולי" value={guestCounts.maybe} />
+                <RsvpLegendItem color={RSVP_COLORS.pending} label="ממתינים" value={guestCounts.pending} />
+                <RsvpLegendItem color={RSVP_COLORS.declined} label="לא מגיעים" value={guestCounts.declined} />
+              </View>
+              <DonutChart segments={donutSegments} size={150} stroke={14}>
+                <Text style={styles.donutValue}>{confirmedPeople}</Text>
+                <Text style={styles.donutLabel}>מגיעים בפועל</Text>
+              </DonutChart>
+            </View>
           </View>
-          <DonutChart segments={donutSegments} size={150} stroke={14}>
-            <Text style={styles.donutValue}>{confirmedPeople}</Text>
-            <Text style={styles.donutLabel}>מגיעים בפועל</Text>
-          </DonutChart>
-        </View>
         </View>
       </Pressable>
 
@@ -216,7 +218,7 @@ export function CoupleHomeDashboardCards({
         <View style={styles.seatingFooter}>
           {notSeatedPeople > 0 ? (
             <View style={styles.seatingPendingRow}>
-              <Ionicons name="chevron-back" size={14} color={RSVP_COLORS.pending} />
+              <Ionicons name="chevron-back" size={14} color="#92400E" />
               <Text style={styles.seatingPendingText}>{notSeatedPeople} ממתינים לשיבוץ</Text>
             </View>
           ) : (
@@ -292,19 +294,20 @@ const styles = StyleSheet.create({
   },
   countdownLabel: {
     fontSize: 11,
-    color: colors.gray[600],
+    fontWeight: '600',
+    color: colors.gray[700],
     letterSpacing: 0.5,
   },
   countdownSep: {
     fontSize: 26,
     fontWeight: '300',
-    color: 'rgba(30, 58, 110, 0.35)',
+    color: 'rgba(30, 58, 110, 0.45)',
     marginTop: 2,
   },
   countdownFallback: {
     fontSize: 16,
     fontWeight: '700',
-    color: colors.gray[600],
+    color: colors.gray[700],
     textAlign: 'center',
     marginBottom: 8,
   },
@@ -330,20 +333,25 @@ const styles = StyleSheet.create({
   },
   metaText: {
     fontSize: 13,
-    color: colors.gray[600],
+    fontWeight: '600',
+    color: colors.gray[700],
     textAlign: 'right',
     flexShrink: 1,
+  },
+  rsvpCardOuter: {
+    borderRadius: 22,
+    shadowColor: DNAVY,
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.35,
+    shadowRadius: 18,
+    elevation: 6,
   },
   rsvpCard: {
     backgroundColor: DNAVY,
     borderRadius: 22,
     padding: 18,
     overflow: 'hidden',
-    shadowColor: DNAVY,
-    shadowOffset: { width: 0, height: 16 },
-    shadowOpacity: 0.35,
-    shadowRadius: 18,
-    elevation: 6,
+    position: 'relative',
   },
   cardPressed: {
     opacity: 0.94,
@@ -457,6 +465,9 @@ const styles = StyleSheet.create({
     borderRadius: 99,
     backgroundColor: 'rgba(30, 58, 110, 0.08)',
     overflow: 'hidden',
+    flexDirection: 'row',
+    // Visual right edge (handles I18nManager RTL mirroring)
+    justifyContent: ALIGN_RIGHT,
   },
   progressFill: {
     height: '100%',
@@ -473,7 +484,8 @@ const styles = StyleSheet.create({
   },
   seatingStats: {
     fontSize: 12.5,
-    color: colors.gray[600],
+    fontWeight: '600',
+    color: colors.gray[700],
     flex: 1,
   },
   seatingPendingRow: {
@@ -483,7 +495,7 @@ const styles = StyleSheet.create({
   },
   seatingPendingText: {
     fontSize: 12.5,
-    color: RSVP_COLORS.pending,
-    fontWeight: '600',
+    color: '#92400E',
+    fontWeight: '700',
   },
 });

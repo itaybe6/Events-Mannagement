@@ -21,6 +21,7 @@ import { avatarService } from '@/lib/services/avatarService';
 import { supabase } from '@/lib/supabase';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import { useUserStore } from '@/store/userStore';
+import { useMobileWebLayout } from '@/lib/useMobileWebLayout';
 import BrideGroomProfileScreen from './brideGroomProfile';
 
 export default function BrideGroomProfileWebScreen() {
@@ -30,6 +31,7 @@ export default function BrideGroomProfileWebScreen() {
   const activeUserId = useEventSelectionStore((s) => s.activeUserId);
   const activeEventId = useEventSelectionStore((s) => s.activeEventId);
   const { width } = useWindowDimensions();
+  const { preferNativeMobileLayout } = useMobileWebLayout();
 
   const [loading, setLoading] = useState(true);
   const [profileSaving, setProfileSaving] = useState(false);
@@ -295,7 +297,8 @@ export default function BrideGroomProfileWebScreen() {
     }
   };
 
-  if (width < 900) {
+  // Phone / narrow mobile web: use the compact native profile UI (tuned for web padding).
+  if (preferNativeMobileLayout || width < 900) {
     return <BrideGroomProfileScreen />;
   }
 
@@ -883,7 +886,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-start',
-    flexWrap: 'nowrap',
+    flexWrap: 'wrap',
     gap: 10,
     alignSelf: 'stretch',
   },
@@ -985,7 +988,7 @@ const styles = StyleSheet.create({
   profileCardsRowStack: { flexDirection: 'column' },
   profileSectionCard: {
     flex: 1,
-    minWidth: 320,
+    minWidth: 0,
     borderRadius: 22,
     padding: 18,
     backgroundColor: 'rgba(248,250,252,0.92)',
@@ -1273,9 +1276,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 16,
-    flexWrap: 'nowrap',
+    flexWrap: 'wrap',
   },
-  logoutInfo: { flex: 1, minWidth: 260, alignItems: 'flex-start', gap: 4 },
+  logoutInfo: { flex: 1, minWidth: 0, alignItems: 'flex-start', gap: 4 },
   logoutTitle: {
     fontSize: 16,
     fontWeight: '900',

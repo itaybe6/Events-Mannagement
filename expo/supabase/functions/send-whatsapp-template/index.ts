@@ -30,7 +30,7 @@ function normalizeFilterToStatuses(filter: string): GuestStatus[] | null {
   if (f === "maybe" || f === "אולי מגיע") return MAYBE_STATUSES;
   return [];
 }
-
+//
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",

@@ -716,7 +716,8 @@ export const authService = {
 
       if (!profile) return null;
 
-      let resolvedEventId = profile.event_id;
+      // `users.event_id` may be missing in older DBs; always resolve for owners.
+      let resolvedEventId = (profile as { event_id?: string | null }).event_id ?? null;
       if (!resolvedEventId && profile.user_type === 'event_owner') {
         resolvedEventId = await authService.getPrimaryEventId(profile.id);
       }
@@ -772,7 +773,21 @@ export const authService = {
         .update(dbUpdates)
         .eq('id', user.id);
 
-      if (error) throw error;
+      // Older prod DBs may not have users.event_id yet — don't fail the whole update.
+      if (error) {
+        const msg = String((error as any)?.message || '');
+        const missingEventIdCol =
+          dbUpdates.event_id !== undefined &&
+          (msg.includes('event_id') || String((error as any)?.code || '') === '42703');
+        if (missingEventIdCol) {
+          const { event_id: _ignored, ...rest } = dbUpdates;
+          if (Object.keys(rest).length === 0) return true;
+          const retry = await supabase.from('users').update(rest).eq('id', user.id);
+          if (retry.error) throw retry.error;
+          return true;
+        }
+        throw error;
+      }
 
       return true;
     } catch (error) {
