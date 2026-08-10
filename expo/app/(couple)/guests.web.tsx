@@ -2275,6 +2275,22 @@ function GuestListRow({
                 {guest.name}
               </Text>
               <View style={styles.guestCardMetaRow}>
+                {inviteUrl ? (
+                  <Pressable
+                    accessibilityRole="link"
+                    accessibilityLabel={`פתיחת הזמנה עבור ${guest.name}`}
+                    onPress={() => void openInviteUrl(inviteUrl)}
+                    style={({ hovered, pressed }: any) => [
+                      styles.inviteLinkBtn,
+                      compact ? styles.inviteLinkBtnCompact : null,
+                      Platform.OS === 'web' && hovered ? styles.inviteLinkBtnHover : null,
+                      pressed ? styles.btnPressed : null,
+                    ]}
+                  >
+                    <Ionicons name="mail-open-outline" size={compact ? 12 : 14} color={colors.primary} />
+                    <Text style={[styles.inviteLinkText, compact ? styles.inviteLinkTextCompact : null]}>הזמנה</Text>
+                  </Pressable>
+                ) : null}
                 <View
                   style={[
                     styles.statusPill,
@@ -2315,39 +2331,11 @@ function GuestListRow({
             </Pressable>
           </View>
 
-<<<<<<< HEAD
-          {/* Info: Count */}
-          <View style={styles.guestDetailsRow}>
-            {inviteUrl ? (
-              <Pressable
-                accessibilityRole="link"
-                accessibilityLabel={`פתיחת הזמנה עבור ${guest.name}`}
-                onPress={() => void openInviteUrl(inviteUrl)}
-                style={({ hovered, pressed }: any) => [
-                  styles.inviteLinkBtn,
-                  Platform.OS === 'web' && hovered ? styles.inviteLinkBtnHover : null,
-                  pressed ? styles.btnPressed : null,
-                ]}
-              >
-                <Ionicons name="mail-open-outline" size={14} color={colors.primary} />
-                <Text style={styles.inviteLinkText}>הזמנה</Text>
-              </Pressable>
-            ) : null}
-            <View style={styles.guestInfoPill}>
-              <Ionicons name="people-outline" size={13} color={colors.gray[500]} />
-              <Text style={styles.guestInfoText}>כמות {guest.numberOfPeople || 1}</Text>
-            </View>
-            {hasSentMessage ? (
-              <View style={[styles.guestInfoPill, styles.messageSentPill]}>
-                <Ionicons name="checkmark-done-outline" size={13} color="#047857" />
-                <Text style={[styles.guestInfoText, styles.messageSentText]}>הודעה נשלחה</Text>
-=======
           {!compact ? (
             <View style={styles.guestDetailsRow}>
               <View style={styles.guestInfoPill}>
                 <Ionicons name="people-outline" size={13} color={colors.gray[500]} />
                 <Text style={styles.guestInfoText}>כמות {guest.numberOfPeople || 1}</Text>
->>>>>>> 383cf7b132b3d616caa83a59d0daabe2f7670833
               </View>
               {hasSentMessage ? (
                 <View style={[styles.guestInfoPill, styles.messageSentPill]}>
@@ -3366,7 +3354,13 @@ const styles = StyleSheet.create({
   guestAvatarTextCompact: { fontSize: 13 },
   guestCardTitleWrap: { flex: 1, minWidth: 0, gap: 6 },
   guestCardName: { fontSize: 16, fontWeight: '900', color: colors.text, textAlign: 'right', lineHeight: 22 },
-<<<<<<< HEAD
+  guestCardNameCompact: { fontSize: 14, lineHeight: 20 },
+  guestCardMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
   inviteLinkBtn: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
@@ -3378,20 +3372,18 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(17, 82, 212, 0.24)',
   },
+  inviteLinkBtnCompact: {
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 9,
+    gap: 4,
+  },
   inviteLinkBtnHover: {
     backgroundColor: 'rgba(17, 82, 212, 0.16)',
     borderColor: 'rgba(17, 82, 212, 0.34)',
   },
   inviteLinkText: { fontSize: 13, fontWeight: '900', color: colors.primary, textAlign: 'right', writingDirection: 'rtl' },
-=======
-  guestCardNameCompact: { fontSize: 14, lineHeight: 20 },
-  guestCardMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
->>>>>>> 383cf7b132b3d616caa83a59d0daabe2f7670833
+  inviteLinkTextCompact: { fontSize: 12 },
   guestDetailsRow: {
     flexDirection: 'row',
     alignItems: 'center',
