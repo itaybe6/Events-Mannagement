@@ -1,6 +1,14 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.52.0";
+import {
+  buildWaPayload,
+  getWhatsappToken,
+  normalizeWaPhone,
+  parseTableNumber,
+  sendWaMessage,
+  type WaTemplate,
+} from "../_shared/whatsapp.ts";
 
 type SendCheckinTableSmsRequest = {
   eventId: string;
@@ -8,6 +16,8 @@ type SendCheckinTableSmsRequest = {
   /** "checkin" = arrival message; "table_update" = table number update after move */
   type?: "checkin" | "table_update";
 };
+
+const CHECKIN_TEMPLATE_NAME = "table_number";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -27,29 +37,14 @@ function json(body: unknown, init?: ResponseInit) {
   });
 }
 
-function normalizePhone(raw: unknown): { ok: true; value: string } | { ok: false; value: string } {
-  const s = String(raw ?? "").trim();
-  const cleaned = s.replace(/[^\d+]/g, "");
-  const digits = cleaned.replace(/\D/g, "");
-  if (!digits || digits.length < 7) return { ok: false, value: cleaned };
-  return { ok: true, value: cleaned };
-}
-
-function pulseemBodyLooksOk(text: string): { ok: boolean; reason?: string } {
-  const s = (text ?? "").trim();
-  if (!s) return { ok: false, reason: "empty_pulseem_response" };
-  try {
-    const j = JSON.parse(s);
-    const status = String(j?.status ?? "").toLowerCase();
-    const err = String(j?.error ?? j?.message ?? "").trim();
-    if (status === "error") return { ok: false, reason: err || "pulseem_status_error" };
-    if (!status && err) return { ok: false, reason: err };
-    if (status && status !== "success" && status !== "ok" && err) return { ok: false, reason: err };
-    return { ok: true };
-  } catch {
-    if (s.toLowerCase().includes("error")) return { ok: false, reason: "pulseem_error_in_body" };
-    return { ok: true };
-  }
+function fallbackTableNumberTemplate(): WaTemplate {
+  return {
+    template_name: CHECKIN_TEMPLATE_NAME,
+    language_code: "en",
+    header_type: "none",
+    variables: [{ index: 1, label: "מספר שולחן" }],
+    buttons: [],
+  };
 }
 
 serve(async (req) => {
@@ -64,10 +59,11 @@ serve(async (req) => {
       return json({ error: "Missing Supabase environment variables" }, { status: 500 });
     }
 
-    const pulseemApiKey = Deno.env.get("PULSEEM_API_KEY");
-    const pulseemFromNumber = String(Deno.env.get("PULSEEM_FROM_NUMBER") ?? "").trim();
-    if (!pulseemApiKey) {
-      return json({ error: "Missing Pulseem secret (PULSEEM_API_KEY)" }, { status: 500 });
+    const waToken = getWhatsappToken();
+    const waPhoneId = String(Deno.env.get("WHATSAPP_PHONE_NUMBER_ID") ?? "").trim();
+    if (!waToken) return json({ error: "missing_whatsapp_token" }, { status: 500 });
+    if (!waPhoneId) {
+      return json({ error: "Missing WhatsApp phone id (WHATSAPP_PHONE_NUMBER_ID)" }, { status: 500 });
     }
 
     const authHeader = req.headers.get("authorization") ?? req.headers.get("Authorization") ?? "";
@@ -111,7 +107,7 @@ serve(async (req) => {
     const eventId = String(body.eventId ?? "").trim();
     const guestId = String(body.guestId ?? "").trim();
     const messageType = String(body.type ?? "checkin").trim() as "checkin" | "table_update";
-    const smsType = messageType === "table_update" ? "table_update" : "checkin";
+    const sendKind = messageType === "table_update" ? "table_update" : "checkin";
 
     if (!eventId || !guestId) {
       return json({ error: "Missing eventId or guestId" }, { status: 400 });
@@ -146,7 +142,7 @@ serve(async (req) => {
     if (guestError) return json({ error: guestError.message }, { status: 500 });
     if (!guest) return json({ error: "Guest not found" }, { status: 404 });
 
-    const phoneNorm = normalizePhone((guest as any).phone);
+    const phoneNorm = normalizeWaPhone((guest as any).phone);
     if (!phoneNorm.ok) {
       return json({ error: "Guest has no valid phone number", sent: false }, { status: 400 });
     }
@@ -159,71 +155,66 @@ serve(async (req) => {
         .select("number")
         .eq("id", tableId)
         .maybeSingle();
-      if (tableRow != null) {
-        const n = (tableRow as any).number;
-        if (typeof n === "number" && Number.isFinite(n)) tableNumber = n;
-        else if (typeof n === "string") {
-          const parsed = parseInt(n.trim(), 10);
-          if (Number.isFinite(parsed)) tableNumber = parsed;
-        }
-      }
+      tableNumber = parseTableNumber((tableRow as any)?.number);
     }
 
-    const message =
-      smsType === "table_update"
-        ? tableNumber != null
-          ? `עדכון: מספר השולחן שלך הוא ${tableNumber}`
-          : "עדכון: לא שובצת לשולחן."
-        : tableNumber != null
-          ? `השולחן שלך הוא ${tableNumber}`
-          : "הגעת לאירוע. ברוך הבא!";
+    const tableNumberText = tableNumber != null ? String(tableNumber) : "ללא שולחן";
 
-    const sendId = `${smsType}-${eventId.replace(/-/g, "").slice(0, 8)}-${Date.now().toString(36)}`;
+    const { data: tpl } = await adminClient
+      .from("whatsapp_templates")
+      .select("template_name, language_code, header_type, body_text, variables, buttons")
+      .eq("template_name", CHECKIN_TEMPLATE_NAME)
+      .eq("is_active", true)
+      .maybeSingle();
 
-    const payload: any = {
-      sendId,
-      isAsync: false,
-      smsSendData: {
-        toNumberList: [phoneNorm.value],
-        referenceList: [guestId],
-        textList: [message],
+    const template: WaTemplate = tpl
+      ? {
+          template_name: String((tpl as any).template_name || CHECKIN_TEMPLATE_NAME),
+          language_code: String((tpl as any).language_code || "en"),
+          header_type: ((tpl as any).header_type ?? "none") as WaTemplate["header_type"],
+          body_text: (tpl as any).body_text,
+          variables:
+            Array.isArray((tpl as any).variables) && (tpl as any).variables.length > 0
+              ? (tpl as any).variables
+              : [{ index: 1, label: "מספר שולחן" }],
+          buttons: Array.isArray((tpl as any).buttons) ? (tpl as any).buttons : [],
+        }
+      : fallbackTableNumberTemplate();
+
+    const payload = buildWaPayload({
+      to: phoneNorm.value,
+      template,
+      params: { body: [tableNumberText] },
+      vars: {
+        table: tableNumberText,
+        "מספר_שולחן": tableNumberText,
       },
-    };
-    if (pulseemFromNumber) payload.smsSendData.fromNumber = pulseemFromNumber;
-
-    const pulseemUrl = "https://api.pulseem.com/api/v1/SmsApi/SendSms";
-    const resp = await fetch(pulseemUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "APIKey": pulseemApiKey,
-        "X-Api-Key": pulseemApiKey,
-      },
-      body: JSON.stringify(payload),
     });
 
-    const respText = await resp.text().catch(() => "");
-    const parsed = pulseemBodyLooksOk(respText);
-    const effectiveOk = resp.ok && parsed.ok;
+    const res = await sendWaMessage({
+      phoneNumberId: waPhoneId,
+      accessToken: waToken,
+      payload,
+    });
 
-    if (effectiveOk) {
-      const rows = [
+    if (res.ok) {
+      await adminClient.from("messages").insert([
         {
           event_id: eventId,
-          type: "SMS",
+          type: "וואטסאפ",
           recipient: String((guest as any).name ?? "אורח"),
           phone: phoneNorm.value,
-          status: `נשלח (${smsType === "table_update" ? "עדכון שולחן" : "צ'ק-אין שולחן"}, sendId=${sendId})`,
+          status: `נשלח (${sendKind === "table_update" ? "עדכון שולחן" : "צ'ק-אין שולחן"}${res.messageId ? `, ${res.messageId}` : ""})`,
           sent_date: new Date().toISOString(),
         },
-      ];
-      await adminClient.from("messages").insert(rows);
+      ]);
     }
 
     return json({
-      ok: effectiveOk,
-      sent: effectiveOk,
-      error: effectiveOk ? undefined : (parsed.reason || respText || "Unknown error"),
+      ok: res.ok,
+      sent: res.ok,
+      tableNumber: tableNumberText,
+      error: res.ok ? undefined : (res.error || `whatsapp:${res.status}`),
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);

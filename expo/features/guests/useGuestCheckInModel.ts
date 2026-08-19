@@ -47,6 +47,19 @@ function guestArrivedPeople(g: Guest): number {
 
 export { guestInvitedPeople, guestArrivedPeople };
 
+function notifyGuestTableNumber(
+  eventId: string | null,
+  guestId: string,
+  type: 'checkin' | 'table_update' = 'checkin',
+) {
+  if (!eventId || !guestId) return;
+  void supabase.functions
+    .invoke('send-checkin-table-sms', {
+      body: { eventId, guestId, type },
+    })
+    .catch((e) => console.warn('Check-in table WhatsApp send failed:', e));
+}
+
 function normalizeCategoryId(raw: unknown) {
   const s = String(raw ?? '').trim();
   return s ? s.toLowerCase() : null;
@@ -79,7 +92,7 @@ export function useGuestCheckInModel(params: {
    * guests changed since the previous one.
    */
   syncIntervalMs?: number;
-  /** Called after a guest is successfully marked as checked-in (toggle ON). Use to e.g. send table SMS. */
+  /** Called after a guest is successfully marked as checked-in (toggle ON). Use to e.g. send table WhatsApp. */
   onCheckInSuccess?: (guest: Guest) => void;
 }) {
   const {
@@ -467,8 +480,9 @@ export function useGuestCheckInModel(params: {
         guest.checkedInCount === null || guest.checkedInCount === undefined ? fallbackCount : Number(guest.checkedInCount) || 0;
       const updated = await guestService.setGuestCheckedIn(guest.id, next, next ? { checkedInCount: desiredCount } : undefined);
       setGuests((prev) => prev.map((g) => (g.id === guest.id ? { ...g, ...updated } : g)));
-      if (next && onCheckInSuccess) {
-        onCheckInSuccess({ ...guest, ...updated });
+      if (next) {
+        notifyGuestTableNumber(eventId, guest.id, 'checkin');
+        onCheckInSuccess?.({ ...guest, ...updated });
       }
     } catch (e) {
       console.error('Check-in update error:', e);
@@ -476,7 +490,7 @@ export function useGuestCheckInModel(params: {
     } finally {
       setSavingId(null);
     }
-  }, [onCheckInSuccess]);
+  }, [eventId, onCheckInSuccess]);
 
   const setCheckedInCount = useCallback(async (guest: Guest, checkedInCount: number) => {
     const next = Math.max(0, Math.floor(Number(checkedInCount) || 0));
@@ -542,6 +556,10 @@ export function useGuestCheckInModel(params: {
         if (prev.some((g) => g.id === guest.id)) return prev.map((g) => (g.id === guest.id ? { ...g, ...guest } : g));
         return [...prev, guest].sort((a, b) => a.name.localeCompare(b.name, 'he'));
       });
+
+      if (shouldCheckIn) {
+        notifyGuestTableNumber(eventId, guest.id, 'checkin');
+      }
 
       return { ok: true, guest };
     } catch (e) {
