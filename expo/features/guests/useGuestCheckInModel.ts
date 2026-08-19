@@ -50,9 +50,10 @@ export { guestInvitedPeople, guestArrivedPeople };
 function notifyGuestTableNumber(
   eventId: string | null,
   guestId: string,
+  tableId?: string | null,
   type: 'checkin' | 'table_update' = 'checkin',
 ) {
-  if (!eventId || !guestId) return;
+  if (!eventId || !guestId || !String(tableId ?? '').trim()) return;
   void supabase.functions
     .invoke('send-checkin-table-sms', {
       body: { eventId, guestId, type },
@@ -481,7 +482,7 @@ export function useGuestCheckInModel(params: {
       const updated = await guestService.setGuestCheckedIn(guest.id, next, next ? { checkedInCount: desiredCount } : undefined);
       setGuests((prev) => prev.map((g) => (g.id === guest.id ? { ...g, ...updated } : g)));
       if (next) {
-        notifyGuestTableNumber(eventId, guest.id, 'checkin');
+        notifyGuestTableNumber(eventId, guest.id, updated.tableId ?? guest.tableId, 'checkin');
         onCheckInSuccess?.({ ...guest, ...updated });
       }
     } catch (e) {
@@ -558,7 +559,7 @@ export function useGuestCheckInModel(params: {
       });
 
       if (shouldCheckIn) {
-        notifyGuestTableNumber(eventId, guest.id, 'checkin');
+        notifyGuestTableNumber(eventId, guest.id, guest.tableId ?? tableId, 'checkin');
       }
 
       return { ok: true, guest };

@@ -142,11 +142,6 @@ serve(async (req) => {
     if (guestError) return json({ error: guestError.message }, { status: 500 });
     if (!guest) return json({ error: "Guest not found" }, { status: 404 });
 
-    const phoneNorm = normalizeWaPhone((guest as any).phone);
-    if (!phoneNorm.ok) {
-      return json({ error: "Guest has no valid phone number", sent: false }, { status: 400 });
-    }
-
     let tableNumber: number | null = null;
     const tableId = (guest as any).table_id ? String((guest as any).table_id).trim() : null;
     if (tableId) {
@@ -158,7 +153,16 @@ serve(async (req) => {
       tableNumber = parseTableNumber((tableRow as any)?.number);
     }
 
-    const tableNumberText = tableNumber != null ? String(tableNumber) : "ללא שולחן";
+    if (tableNumber == null) {
+      return json({ ok: true, sent: false, skipped: "no_table" });
+    }
+
+    const phoneNorm = normalizeWaPhone((guest as any).phone);
+    if (!phoneNorm.ok) {
+      return json({ error: "Guest has no valid phone number", sent: false }, { status: 400 });
+    }
+
+    const tableNumberText = String(tableNumber);
 
     const { data: tpl } = await adminClient
       .from("whatsapp_templates")
