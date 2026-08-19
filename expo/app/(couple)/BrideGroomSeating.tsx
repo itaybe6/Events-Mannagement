@@ -34,7 +34,7 @@ import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
 import { SeatingGridReadonly } from '../seating/web/SeatingGridReadonly';
 import { CELL_SIZE, DEFAULT_GRID_COLS, DEFAULT_GRID_ROWS, tableCellSize, type Orientation, type TableType } from '../seating/web/_types';
 import { BlurView } from 'expo-blur';
-import { ALIGN_RIGHT, IS_RTL, ROW_DIR, ROW_REVERSE_DIR } from '@/lib/rtl';
+import { ALIGN_RIGHT, IS_RTL, ROW_DIR, ROW_REVERSE_DIR, TEXT_RIGHT } from '@/lib/rtl';
 import { TableSeatRing, getTableSeatBorderColor, getTableSeatFillColor } from '@/components/couple/TableSeatRing';
 import { SeatingViewHeader, type SeatingViewMode } from '@/components/couple/SeatingViewHeader';
 import { NavyCardBackground } from '@/components/couple/NavyCardBackground';
@@ -3178,7 +3178,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '900',
     color: colors.text,
-    textAlign: IS_RTL ? 'left' : 'right',
+    textAlign: TEXT_RIGHT,
     writingDirection: IS_RTL ? 'rtl' : 'ltr',
     lineHeight: 17,
     flexShrink: 1,
@@ -3483,7 +3483,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '900',
     color: colors.text,
-    textAlign: IS_RTL ? 'left' : 'right',
+    textAlign: TEXT_RIGHT,
     writingDirection: IS_RTL ? 'rtl' : 'ltr',
     lineHeight: 18,
   },

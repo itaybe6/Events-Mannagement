@@ -11,54 +11,21 @@ import {
   Alert,
   Platform,
 } from 'react-native';
-import { BlurView } from 'expo-blur';
 import { colors } from '@/constants/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useUserStore } from '@/store/userStore';
 import { LottieAnimation } from '@/components/LottieAnimation';
+import { LavaLampBackground } from '@/components/LavaLampBackground';
 import { supabase } from '@/lib/supabase';
 import { authService } from '@/lib/services/authService';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
-import Animated, {
-  Easing,
-  useAnimatedStyle,
-  useDerivedValue,
-  withRepeat,
-  withSequence,
-  withTiming,
-} from 'react-native-reanimated';
 
-const { width, height } = Dimensions.get('window');
+const { height } = Dimensions.get('window');
 
 const NAVY_DEEP = '#010c21';
 const HERO_HEIGHT = Math.max(280, height * 0.47);
-const LAVA_LAMP_COLORS = [
-  'rgba(26, 58, 112, 0.28)',
-  'rgba(38, 78, 145, 0.22)',
-  'rgba(65, 105, 180, 0.18)',
-  'rgba(94, 128, 194, 0.14)',
-];
-
-function randomNumber(min: number, max: number) {
-  return Math.floor(Math.random() * (max - min + 1) + min);
-}
-
-type LavaLampCircleData = {
-  radius: number;
-  index: number;
-  color: string;
-  originX: number;
-  originY: number;
-  travel: number;
-  duration: number;
-  scaleTo: number;
-};
-
-type LavaLampCircleProps = {
-  circle: LavaLampCircleData;
-};
 
 function RingsHeroIcon() {
   return (
@@ -113,102 +80,6 @@ function StarField() {
         />
       ))}
     </View>
-  );
-}
-
-function LavaLampBackground() {
-  const circles = useMemo<LavaLampCircleData[]>(
-    () =>
-      LAVA_LAMP_COLORS.map((color, index) => {
-        const radius = (width * randomNumber(36, 58)) / 100;
-        const safeX = Math.max(radius * 2, width - radius * 2);
-        const safeY = Math.max(radius * 1.3, HERO_HEIGHT - radius * 1.3);
-
-        return {
-          radius,
-          index,
-          color,
-          originX: randomNumber(radius, safeX),
-          originY: randomNumber(radius * 0.6, safeY),
-          travel: randomNumber(24, 72),
-          duration: randomNumber(14000, 22000),
-          scaleTo: randomNumber(108, 126) / 100,
-        };
-      }),
-    []
-  );
-
-  return (
-    <View style={styles.lavaLampLayer} pointerEvents="none">
-      <View style={styles.lavaLampBase} />
-      {circles.map((circle) => (
-        <LavaLampCircle key={`lava-${circle.index}`} circle={circle} />
-      ))}
-      <BlurView style={StyleSheet.absoluteFillObject} intensity={72} tint="dark" />
-    </View>
-  );
-}
-
-function LavaLampCircle({ circle }: LavaLampCircleProps) {
-  const rotation = useDerivedValue(() =>
-    withRepeat(
-      withSequence(
-        withTiming(0, { duration: 0 }),
-        withTiming(360, {
-          duration: circle.duration,
-          easing: Easing.linear,
-        })
-      ),
-      -1,
-      false
-    )
-  );
-
-  const scale = useDerivedValue(() =>
-    withRepeat(
-      withSequence(
-        withTiming(circle.scaleTo, {
-          duration: Math.round(circle.duration * 0.45),
-          easing: Easing.inOut(Easing.ease),
-        }),
-        withTiming(1, {
-          duration: Math.round(circle.duration * 0.55),
-          easing: Easing.inOut(Easing.ease),
-        })
-      ),
-      -1,
-      true
-    )
-  );
-
-  const orbitStyle = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${rotation.value}deg` }, { scale: scale.value }],
-  }));
-
-  return (
-    <Animated.View
-      style={[
-        styles.lavaLampOrbit,
-        orbitStyle,
-        {
-          left: circle.originX,
-          top: circle.originY,
-        },
-      ]}
-    >
-      <View
-        style={[
-          styles.lavaLampBlob,
-          {
-            width: circle.radius * 2,
-            height: circle.radius * 2,
-            borderRadius: circle.radius,
-            backgroundColor: circle.color,
-            transform: [{ translateX: circle.travel }, { translateY: -circle.radius * 0.35 }],
-          },
-        ]}
-      />
-    </Animated.View>
   );
 }
 
@@ -376,7 +247,7 @@ export default function LoginScreen() {
         >
         {/* Top hero (55%) */}
         <View style={styles.hero}>
-          <LavaLampBackground />
+          <LavaLampBackground height={HERO_HEIGHT} />
           <StarField />
           <View style={styles.glow} pointerEvents="none" />
 
@@ -407,7 +278,7 @@ export default function LoginScreen() {
             <View style={styles.form}>
               {/* Email */}
               <View style={styles.field}>
-                <View style={styles.fieldIconRight} pointerEvents="none">
+                <View style={styles.fieldIconLeading} pointerEvents="none">
                   <Ionicons name="mail-outline" size={20} color={colors.gray[500]} />
                 </View>
                 <TextInput
@@ -428,7 +299,7 @@ export default function LoginScreen() {
 
               {/* Password */}
               <View style={styles.field}>
-                <View style={styles.fieldIconRight} pointerEvents="none">
+                <View style={styles.fieldIconLeading} pointerEvents="none">
                   <Ionicons
                     name="lock-closed-outline"
                     size={20}
@@ -452,7 +323,7 @@ export default function LoginScreen() {
                 />
 
                 <TouchableOpacity
-                  style={styles.fieldIconLeftButton}
+                  style={styles.fieldIconTrailingButton}
                   onPress={() => setShowPassword((prev) => !prev)}
                   accessibilityLabel={showPassword ? 'הסתר סיסמה' : 'הצג סיסמה'}
                 >
@@ -519,21 +390,6 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     minHeight: height,
     backgroundColor: colors.white,
-  },
-  lavaLampLayer: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  lavaLampBase: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: NAVY_DEEP,
-  },
-  lavaLampOrbit: {
-    position: 'absolute',
-    width: 1,
-    height: 1,
-  },
-  lavaLampBlob: {
-    position: 'absolute',
   },
   hero: {
     height: HERO_HEIGHT,
@@ -632,12 +488,12 @@ const styles = StyleSheet.create({
     backgroundColor: colors.gray[50],
     borderRadius: 18,
     marginBottom: 14,
-    paddingRight: 46, // space for right icon
+    paddingRight: 46,
     paddingLeft: 14,
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.06)',
   },
-  fieldIconRight: {
+  fieldIconLeading: {
     position: 'absolute',
     right: 14,
     top: 0,
@@ -645,7 +501,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  fieldIconLeftButton: {
+  fieldIconTrailingButton: {
     position: 'absolute',
     left: 12,
     top: 0,

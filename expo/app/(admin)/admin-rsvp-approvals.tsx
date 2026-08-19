@@ -26,6 +26,8 @@ import BackSwipe from "@/components/BackSwipe";
 import AppHeader, { APP_HEADER_HEIGHT_COMPACT, getAppHeaderTotalHeight } from "@/components/AppHeader";
 import { useRsvpApprovalsModel } from "@/features/rsvp/useRsvpApprovalsModel";
 import { ALIGN_LEFT, ALIGN_RIGHT, ROW_DIR } from "@/lib/rtl";
+import { getGuestInviteUrl, openInviteUrl } from "@/lib/invitationUrl";
+import { getFloatingTabBarContentPadding } from "@/lib/floatingTabBarInset";
 
 const sanitizePhone = (raw: string) => (raw || "").replace(/[^\d+]/g, "");
 
@@ -78,10 +80,7 @@ export default function AdminRsvpApprovalsScreen() {
     setStatus,
   } = useRsvpApprovalsModel(resolvedEventId);
 
-  // Keep content above the custom tab bar
-  const TAB_BAR_HEIGHT = 65;
-  const TAB_BAR_BOTTOM_GAP = Platform.OS === "ios" ? 30 : 20;
-  const bottomReserve = TAB_BAR_HEIGHT + TAB_BAR_BOTTOM_GAP + 18;
+  const bottomReserve = getFloatingTabBarContentPadding(insets.bottom);
 
   if (loading) {
     return (
@@ -273,7 +272,7 @@ export default function AdminRsvpApprovalsScreen() {
             styles.content,
             {
               paddingTop: isWeb ? insets.top : 8,
-              paddingBottom: bottomReserve + insets.bottom,
+              paddingBottom: bottomReserve,
             },
           ]}
         >
@@ -390,6 +389,7 @@ export default function AdminRsvpApprovalsScreen() {
                         const badgeLabel = g.status; // "מגיע" | "אולי מגיע" | "ממתין" | "לא מגיע"
                         const isEditing = editingId === g.id;
                         const showActionButtons = g.status === "ממתין" || g.status === "אולי מגיע" || isEditing;
+                        const inviteUrl = getGuestInviteUrl(g);
                         return (
                           <View key={g.id} style={styles.guestItem}>
                             <View style={styles.rightGroup}>
@@ -397,6 +397,18 @@ export default function AdminRsvpApprovalsScreen() {
                                 <Text style={styles.guestName} numberOfLines={1}>
                                   {g.name}
                                 </Text>
+                                {inviteUrl ? (
+                                  <TouchableOpacity
+                                    onPress={() => void openInviteUrl(inviteUrl)}
+                                    activeOpacity={0.75}
+                                    accessibilityRole="link"
+                                    accessibilityLabel={`פתיחת הזמנה עבור ${g.name}`}
+                                    style={styles.inviteLinkBtn}
+                                  >
+                                    <Ionicons name="open-outline" size={13} color={colors.primary} />
+                                    <Text style={styles.inviteLinkText}>קישור להזמנה</Text>
+                                  </TouchableOpacity>
+                                ) : null}
                               </View>
                             </View>
 
@@ -706,6 +718,20 @@ const styles = StyleSheet.create({
   rightGroup: { flex: 1, minWidth: 0, flexDirection: ROW_DIR, alignItems: "center" },
   nameCol: { flex: 1, minWidth: 0, alignItems: ALIGN_RIGHT },
   guestName: { minWidth: 0, flexShrink: 1, fontSize: 14, fontWeight: "900", color: colors.text, textAlign: "right" },
+  inviteLinkBtn: {
+    marginTop: 4,
+    flexDirection: ROW_DIR,
+    alignItems: "center",
+    gap: 4,
+    alignSelf: "flex-end",
+  },
+  inviteLinkText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: colors.primary,
+    textDecorationLine: "underline",
+    textDecorationColor: "rgba(17, 82, 212, 0.35)",
+  },
   leftSlot: { width: 210, alignItems: ALIGN_LEFT, justifyContent: "center" },
 
   badgeBase: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, borderWidth: 1 },

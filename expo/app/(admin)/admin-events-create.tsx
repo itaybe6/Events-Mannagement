@@ -11,6 +11,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import BackSwipe from '@/components/BackSwipe';
 import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
 import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
+import { getFloatingTabBarContentPadding } from '@/lib/floatingTabBarInset';
+import { softTileShadow, tileSurface } from '@/lib/platformShadow';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const EVENT_TYPES = [
@@ -240,7 +242,11 @@ export default function AdminEventsCreateScreen() {
           stickyHeaderIndices={[0]}
           contentContainerStyle={[
             styles.contentContainer,
-            { paddingBottom: keyboardVisible ? 140 : Math.max(insets.bottom, 24) + 84 },
+            {
+              paddingBottom: keyboardVisible
+                ? Math.max(140, getFloatingTabBarContentPadding(insets.bottom))
+                : getFloatingTabBarContentPadding(insets.bottom),
+            },
           ]}
           keyboardShouldPersistTaps="always"
           keyboardDismissMode="on-drag"
@@ -634,16 +640,12 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.84)',
+    backgroundColor: tileSurface('rgba(255,255,255,0.84)'),
     borderWidth: 1,
     borderColor: 'rgba(6,23,62,0.08)',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: colors.black,
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 3,
+    ...softTileShadow({ opacity: 0.05, radius: 12, y: 6 }),
   },
   mobileTopBarTitle: {
     fontSize: 22,
@@ -662,14 +664,10 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     marginTop: 12,
     marginBottom: 24,
-    backgroundColor: 'rgba(255,255,255,0.94)',
+    backgroundColor: tileSurface('rgba(255,255,255,0.94)'),
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.78)',
-    shadowColor: colors.black,
-    shadowOpacity: 0.08,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 3,
+    ...softTileShadow({ opacity: 0.08, radius: 18, y: 8 }),
   },
   heroSurface: {
     ...StyleSheet.absoluteFillObject,
@@ -803,11 +801,12 @@ const styles = StyleSheet.create({
   },
   eventCardActive: {
     borderColor: colors.primary,
-    shadowColor: colors.primary,
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 2,
+    ...softTileShadow({
+      color: colors.primary,
+      opacity: 0.12,
+      radius: 12,
+      y: 6,
+    }),
   },
   eventIconWrap: {
     width: 36,
@@ -960,14 +959,10 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 10,
     overflow: 'hidden',
-    backgroundColor: 'rgba(255,255,255,0.94)',
+    backgroundColor: tileSurface('rgba(255,255,255,0.94)'),
     borderWidth: 1,
     borderColor: 'rgba(6,23,62,0.08)',
-    shadowColor: colors.black,
-    shadowOpacity: 0.06,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 3,
+    ...softTileShadow({ opacity: 0.06, radius: 14, y: 8 }),
   },
   datePickerCardGradient: {
     ...StyleSheet.absoluteFillObject,
@@ -1032,11 +1027,13 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     paddingVertical: 14,
     paddingHorizontal: 16,
-    shadowColor: colors.primary,
-    shadowOpacity: 0.18,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 3,
+    ...softTileShadow({
+      color: colors.primary,
+      opacity: 0.18,
+      radius: 18,
+      y: 10,
+      androidElevation: 0,
+    }),
   },
   createBtnRow: {
     flexDirection: ROW_DIR,
@@ -1074,15 +1071,15 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     padding: 18,
     alignItems: ALIGN_RIGHT,
-    overflow: 'hidden',
-    backgroundColor: 'rgba(255,255,255,0.96)',
+    backgroundColor: tileSurface('rgba(255,255,255,0.96)'),
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.72)',
-    shadowColor: colors.black,
-    shadowOpacity: 0.18,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 10,
+    ...softTileShadow({
+      opacity: 0.18,
+      radius: 24,
+      y: 12,
+      androidElevation: 2,
+    }),
   },
   modalContentGradient: {
     ...StyleSheet.absoluteFillObject,

@@ -21,6 +21,8 @@ import { EventSwitcher } from '@/components/EventSwitcher';
 import { DeleteAccountSection } from '@/components/DeleteAccountSection';
 import { ProfileMenuCard, ProfileMenuRow } from '@/components/couple/ProfileMenuRow';
 import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
+import { getFloatingTabBarContentPadding } from '@/lib/floatingTabBarInset';
+import { softTileShadow, tileSurface } from '@/lib/platformShadow';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const ui = {
@@ -579,7 +581,7 @@ export default function BrideGroomSettings() {
           styles.scrollContent,
           {
             paddingTop: insets.top + 8,
-            paddingBottom: 120 + insets.bottom,
+            paddingBottom: getFloatingTabBarContentPadding(insets.bottom),
           },
         ],
         showsVerticalScrollIndicator: false,
@@ -1563,46 +1565,34 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.78)',
+    backgroundColor: tileSurface('rgba(255,255,255,0.78)'),
     borderWidth: 1,
     borderColor: 'rgba(6,23,62,0.08)',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: colors.black,
-    shadowOpacity: 0.06,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 2,
+    ...softTileShadow({ opacity: 0.06, radius: 14, y: 8 }),
   },
   invitationEditorHeroBadge: {
     width: 48,
     height: 48,
     borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.86)',
+    backgroundColor: tileSurface('rgba(255,255,255,0.86)'),
     borderWidth: 1,
     borderColor: 'rgba(6,23,62,0.08)',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: colors.black,
-    shadowOpacity: 0.06,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 2,
+    ...softTileShadow({ opacity: 0.06, radius: 14, y: 8 }),
   },
   profileEditorHeroBadge: {
     width: 48,
     height: 48,
     borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.86)',
+    backgroundColor: tileSurface('rgba(255,255,255,0.86)'),
     borderWidth: 1,
     borderColor: 'rgba(6,23,62,0.08)',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: colors.black,
-    shadowOpacity: 0.06,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 2,
+    ...softTileShadow({ opacity: 0.06, radius: 14, y: 8 }),
   },
   eventEditorTitle: {
     marginTop: 10,

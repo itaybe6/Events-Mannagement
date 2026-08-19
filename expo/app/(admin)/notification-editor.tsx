@@ -29,7 +29,8 @@ import { buildDirectionsDetailsText, buildEventLocationText, normalizeBaseUrl } 
 import { fetchEventHasSeating, TABLE_NUMBER_PREVIEW, TABLE_NUMBER_TOKEN } from '@/lib/messageVariables';
 import { supabase } from '@/lib/supabase';
 import { useLayoutStore } from '@/store/layoutStore';
-import { ALIGN_RIGHT, IS_RTL, ROW_DIR, ROW_REVERSE_DIR } from '@/lib/rtl';
+import { ALIGN_RIGHT, IS_RTL, ROW_DIR, ROW_REVERSE_DIR, TEXT_RIGHT } from '@/lib/rtl';
+import { getFloatingTabBarContentPadding } from '@/lib/floatingTabBarInset';
 import { I18nManager } from 'react-native';
 
 type NotificationSettingRow = {
@@ -997,7 +998,10 @@ export function AdminNotificationEditorScreen({ viewerMode = 'admin' }: { viewer
 
         <ScrollView
           style={styles.nativeScroll}
-          contentContainerStyle={[styles.nativeContent, { paddingBottom: 28 + Math.max(24, insets.bottom + 24) }]}
+          contentContainerStyle={[
+            styles.nativeContent,
+            { paddingBottom: getFloatingTabBarContentPadding(insets.bottom) },
+          ]}
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.nativeHeaderCard}>
@@ -1823,7 +1827,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: colors.richBlack,
-    textAlign: IS_RTL ? 'left' : 'right',
+    textAlign: TEXT_RIGHT,
     lineHeight: 24,
     alignSelf: 'stretch',
   },
@@ -1871,7 +1875,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: colors.gray[700],
-    textAlign: IS_RTL ? 'left' : 'right',
+    textAlign: TEXT_RIGHT,
     lineHeight: 20,
     alignSelf: 'stretch',
   },
@@ -1879,7 +1883,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: colors.error,
-    textAlign: IS_RTL ? 'left' : 'right',
+    textAlign: TEXT_RIGHT,
     lineHeight: 18,
     alignSelf: 'stretch',
   },

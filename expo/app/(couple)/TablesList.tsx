@@ -26,7 +26,8 @@ import { EventSwitcher } from '@/components/EventSwitcher';
 import BackSwipe from '@/components/BackSwipe';
 import { AppLoader, AppLoaderScreen } from '@/components/AppLoader';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ALIGN_LEFT, ALIGN_RIGHT, IS_RTL, ROW_DIR, ROW_REVERSE_DIR } from '@/lib/rtl';
+import { ALIGN_LEFT, ALIGN_RIGHT, IS_RTL, ROW_DIR, ROW_REVERSE_DIR, TEXT_RIGHT } from '@/lib/rtl';
+import { getFloatingTabBarContentPadding } from '@/lib/floatingTabBarInset';
 
 export default function TablesList() {
   const userData = useUserStore((s) => s.userData);
@@ -487,7 +488,13 @@ export default function TablesList() {
           <AppKeyboardAwareScrollView
             style={styles.scrollView}
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={[styles.scrollViewContent, { paddingTop: scrollTopPad }]}
+            contentContainerStyle={[
+              styles.scrollViewContent,
+              {
+                paddingTop: scrollTopPad,
+                paddingBottom: getFloatingTabBarContentPadding(insets.bottom),
+              },
+            ]}
           >
           <View style={styles.statsBar}>
             <View style={styles.statsGrid}>
@@ -1037,7 +1044,7 @@ const styles = StyleSheet.create({
   },
   scrollViewContent: {
     paddingHorizontal: 16,
-    paddingBottom: 100,
+    paddingBottom: 0,
   },
   tableCard: {
     backgroundColor: '#FFFFFF',
@@ -1225,7 +1232,7 @@ const styles = StyleSheet.create({
     color: '#374151',
     flex: 1,
     // RN mirrors layout in RTL builds; this keeps the name visually right-aligned.
-    textAlign: IS_RTL ? 'left' : 'right',
+    textAlign: TEXT_RIGHT,
     writingDirection: IS_RTL ? 'rtl' : 'ltr',
     lineHeight: 18,
   },
@@ -1387,7 +1394,7 @@ const styles = StyleSheet.create({
     width: '100%',
     fontSize: 22,
     fontWeight: '800',
-    textAlign: IS_RTL ? 'left' : 'right',
+    textAlign: TEXT_RIGHT,
     color: '#111827',
   },
   modalSubtitle: {
@@ -1395,7 +1402,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '500',
     color: '#6B7280',
-    textAlign: IS_RTL ? 'left' : 'right',
+    textAlign: TEXT_RIGHT,
     lineHeight: 20,
   },
   filterContainer: {
@@ -1485,7 +1492,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#475569',
-    textAlign: IS_RTL ? 'left' : 'right',
+    textAlign: TEXT_RIGHT,
   },
   selectedCountPill: {
     flexDirection: ROW_DIR,
@@ -1549,7 +1556,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: '#111827',
-    textAlign: IS_RTL ? 'left' : 'right',
+    textAlign: TEXT_RIGHT,
     lineHeight: 18,
     width: '100%',
   },
@@ -1557,7 +1564,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '500',
     color: '#6B7280',
-    textAlign: IS_RTL ? 'left' : 'right',
+    textAlign: TEXT_RIGHT,
     flex: 1,
     minWidth: 0,
   },

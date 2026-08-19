@@ -15,6 +15,7 @@ import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import BackSwipe from '@/components/BackSwipe';
 import { useAdminEventDetailsModel } from '@/features/events/useAdminEventDetailsModel';
 import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
+import { getFloatingTabBarContentPadding } from '@/lib/floatingTabBarInset';
 import { useUserStore } from '@/store/userStore';
 import RsvpDonut from '@/features/events/event-details/RsvpDonut';
 
@@ -80,6 +81,9 @@ export default function AdminEventDetailsScreen() {
   const heroSteps = useRef(Array.from({ length: 6 }, () => new Animated.Value(0))).current;
   const aurora = useRef(new Animated.Value(0)).current;
   const pulse = useRef(new Animated.Value(0)).current;
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const [heroHeight, setHeroHeight] = useState(0);
+  const SHEET_OVERLAP = 44;
 
   useEffect(() => {
     if (loading) return;
@@ -429,16 +433,9 @@ export default function AdminEventDetailsScreen() {
   const groomLabel = () => (event?.groomName || '').trim() || 'לא הוזן';
   const brideLabel = () => (event?.brideName || '').trim() || 'לא הוזן';
 
-  // Keep the end of the scroll content above the tab bar
-  const tabBarBottomOffset = Platform.OS === 'ios' ? 30 : 20;
-  const tabBarHeight = 65;
   const getProgressPercent = (value: number, total: number) =>
     total ? Math.max(0, Math.min(100, Math.round((value / total) * 100))) : 0;
-  const tabBarReserve = tabBarBottomOffset + tabBarHeight + 24;
-
-  // The hero paints this much extra area above the scroll origin, so pulling the
-  // list down keeps revealing the dark gradient instead of a light seam.
-  const heroOverscroll = 420;
+  const tabBarReserve = getFloatingTabBarContentPadding(insets.bottom);
 
   const eventTypeLabel = getEventTypeLabel();
   const displayTitle = getEventDisplayTitle();
@@ -447,10 +444,37 @@ export default function AdminEventDetailsScreen() {
   const cityLabel = String(event.city ?? '').trim();
   const invitationImageUrl = String(event.invitationImageUrl ?? '').trim();
   const hasInvitationBackdrop = invitationImageUrl.length > 0;
+  const measuredHeroHeight = heroHeight > 0 ? heroHeight : Math.round(windowHeight * 0.44);
+  const sheetPadTop = Math.max(measuredHeroHeight - SHEET_OVERLAP, 200);
 
   const heroAnimatedStyle = {
     opacity: heroIntro,
     transform: [{ translateY: heroIntro.interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }],
+  };
+
+  // Sticky hero: the curved sheet scrolls up over it. Subtle parallax keeps it alive.
+  const heroParallaxStyle = {
+    transform: [
+      {
+        translateY: scrollY.interpolate({
+          inputRange: [-140, 0, 260],
+          outputRange: [56, 0, -48],
+          extrapolate: 'clamp',
+        }),
+      },
+      {
+        scale: scrollY.interpolate({
+          inputRange: [-140, 0, 260],
+          outputRange: [1.06, 1, 0.96],
+          extrapolate: 'clamp',
+        }),
+      },
+    ],
+    opacity: scrollY.interpolate({
+      inputRange: [0, 180, 300],
+      outputRange: [1, 0.72, 0.4],
+      extrapolate: 'clamp',
+    }),
   };
 
   const stepStyle = (index: number, rise = 18) => ({
@@ -551,304 +575,303 @@ export default function AdminEventDetailsScreen() {
       <StatusBar barStyle="light-content" backgroundColor="#071B45" />
       <View style={styles.safeRoot}>
         <View style={styles.safe}>
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={isPullRefreshing}
-            onRefresh={() => void handlePullToRefresh()}
-            tintColor={ACCENT.cyan}
-            colors={[ACCENT.cyan]}
-            progressBackgroundColor={PALETTE.ink}
-            progressViewOffset={Math.max(72, insets.top + 56)}
-          />
-        }
-      >
-        {/* Hero — dark "invitation" panel that scrolls with the page */}
-        <View
-          style={[
-            styles.hero,
-            {
-              marginTop: -heroOverscroll,
-              paddingTop: heroOverscroll + insets.top + 8,
-            },
-          ]}
-        >
-          <View pointerEvents="none" style={styles.heroGradientLayer}>
-            <LinearGradient
-              colors={['#0C3070', '#071B45', PALETTE.inkDeep]}
-              locations={[0, 0.58, 1]}
-              start={{ x: 0.15, y: 0 }}
-              end={{ x: 0.85, y: 1 }}
-              style={StyleSheet.absoluteFill}
-            />
-
-            {/* The invitation artwork backs only the on-screen part of the hero —
-                above it sits the overscroll area, which stays plain dark. */}
-            {hasInvitationBackdrop ? (
-              <View style={[styles.heroBackdrop, { top: heroOverscroll }]}>
-                <Image
-                  source={{ uri: invitationImageUrl }}
-                  style={StyleSheet.absoluteFill}
-                  contentFit="cover"
-                  transition={220}
-                />
+          {/* Sticky hero — stays put while the curved sheet rises over it */}
+          <Animated.View
+            pointerEvents="none"
+            style={[styles.heroFixed, heroParallaxStyle]}
+            onLayout={(e) => {
+              const next = Math.round(e.nativeEvent.layout.height);
+              if (next > 0 && next !== heroHeight) setHeroHeight(next);
+            }}
+          >
+            <View style={[styles.hero, { paddingTop: insets.top + 8 }]}>
+              <View pointerEvents="none" style={styles.heroGradientLayer}>
                 <LinearGradient
-                  colors={['rgba(5,16,44,0.94)', 'rgba(6,20,52,0.56)', 'rgba(4,12,32,0.92)']}
-                  locations={[0, 0.4, 1]}
-                  start={{ x: 0.5, y: 0 }}
-                  end={{ x: 0.5, y: 1 }}
+                  colors={['#0C3070', '#071B45', PALETTE.inkDeep]}
+                  locations={[0, 0.58, 1]}
+                  start={{ x: 0.15, y: 0 }}
+                  end={{ x: 0.85, y: 1 }}
                   style={StyleSheet.absoluteFill}
                 />
+
+                {hasInvitationBackdrop ? (
+                  <View style={styles.heroBackdrop}>
+                    <Image
+                      source={{ uri: invitationImageUrl }}
+                      style={StyleSheet.absoluteFill}
+                      contentFit="cover"
+                      transition={220}
+                    />
+                    <LinearGradient
+                      colors={['rgba(5,16,44,0.94)', 'rgba(6,20,52,0.56)', 'rgba(4,12,32,0.92)']}
+                      locations={[0, 0.4, 1]}
+                      start={{ x: 0.5, y: 0 }}
+                      end={{ x: 0.5, y: 1 }}
+                      style={StyleSheet.absoluteFill}
+                    />
+                  </View>
+                ) : null}
+
+                <View
+                  style={[styles.heroAura, hasInvitationBackdrop ? styles.heroAuraSoft : null]}
+                >
+                  <Animated.View style={[StyleSheet.absoluteFill, drift([-30, 26], [12, -20], [1, 1.18])]}>
+                    <Svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
+                      <Defs>
+                        <RadialGradient id="auraCyan" cx="50%" cy="50%" r="50%">
+                          <Stop offset="0" stopColor={ACCENT.cyan} stopOpacity="0.34" />
+                          <Stop offset="0.55" stopColor={ACCENT.cyan} stopOpacity="0.10" />
+                          <Stop offset="1" stopColor={ACCENT.cyan} stopOpacity="0" />
+                        </RadialGradient>
+                      </Defs>
+                      <Ellipse cx="50" cy="50" rx="62" ry="40" fill="url(#auraCyan)" />
+                    </Svg>
+                  </Animated.View>
+
+                  <Animated.View style={[StyleSheet.absoluteFill, drift([24, -22], [-14, 16], [1.12, 1])]}>
+                    <Svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
+                      <Defs>
+                        <RadialGradient id="auraElectric" cx="50%" cy="50%" r="50%">
+                          <Stop offset="0" stopColor={ACCENT.electric} stopOpacity="0.40" />
+                          <Stop offset="1" stopColor={ACCENT.electric} stopOpacity="0" />
+                        </RadialGradient>
+                      </Defs>
+                      <Ellipse cx="84" cy="8" rx="54" ry="34" fill="url(#auraElectric)" />
+                    </Svg>
+                  </Animated.View>
+
+                  <Animated.View style={[StyleSheet.absoluteFill, drift([16, -18], [8, -10], [1, 1.1])]}>
+                    <Svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
+                      <Defs>
+                        <RadialGradient id="auraDeep" cx="50%" cy="50%" r="50%">
+                          <Stop offset="0" stopColor={ACCENT.electric} stopOpacity="0.34" />
+                          <Stop offset="1" stopColor={ACCENT.electric} stopOpacity="0" />
+                        </RadialGradient>
+                      </Defs>
+                      <Ellipse cx="42" cy="104" rx="70" ry="26" fill="url(#auraDeep)" />
+                    </Svg>
+                  </Animated.View>
+                </View>
               </View>
-            ) : null}
 
-            {/* Aurora — three radial blobs drifting on their own paths. Each one
-                lives in its own layer so the transforms stay on the UI thread. */}
-            <View
-              style={[
-                styles.heroAura,
-                { top: heroOverscroll - 90 },
-                hasInvitationBackdrop ? styles.heroAuraSoft : null,
-              ]}
-            >
-              <Animated.View style={[StyleSheet.absoluteFill, drift([-30, 26], [12, -20], [1, 1.18])]}>
-                <Svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
-                  <Defs>
-                    <RadialGradient id="auraCyan" cx="50%" cy="50%" r="50%">
-                      <Stop offset="0" stopColor={ACCENT.cyan} stopOpacity="0.34" />
-                      <Stop offset="0.55" stopColor={ACCENT.cyan} stopOpacity="0.10" />
-                      <Stop offset="1" stopColor={ACCENT.cyan} stopOpacity="0" />
-                    </RadialGradient>
-                  </Defs>
-                  <Ellipse cx="50" cy="50" rx="62" ry="40" fill="url(#auraCyan)" />
-                </Svg>
-              </Animated.View>
+              {/* Spacer matching the floating top bar so body layout stays correct */}
+              <View style={styles.heroTopBarSpacerBlock} />
 
-              <Animated.View style={[StyleSheet.absoluteFill, drift([24, -22], [-14, 16], [1.12, 1])]}>
-                <Svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
-                  <Defs>
-                    <RadialGradient id="auraElectric" cx="50%" cy="50%" r="50%">
-                      <Stop offset="0" stopColor={ACCENT.electric} stopOpacity="0.40" />
-                      <Stop offset="1" stopColor={ACCENT.electric} stopOpacity="0" />
-                    </RadialGradient>
-                  </Defs>
-                  <Ellipse cx="84" cy="8" rx="54" ry="34" fill="url(#auraElectric)" />
-                </Svg>
-              </Animated.View>
+              <Animated.View style={[styles.heroBody, heroAnimatedStyle]}>
+                {showTypeChip ? (
+                  <Animated.View style={[styles.glassWrap, styles.typeChip, stepStyle(0, 12)]}>
+                    <BlurView intensity={26} tint="dark" style={StyleSheet.absoluteFill} />
+                    <View style={styles.typeDot} />
+                    <Text style={styles.typeChipText}>{eventTypeLabel}</Text>
+                  </Animated.View>
+                ) : null}
 
-              <Animated.View style={[StyleSheet.absoluteFill, drift([16, -18], [8, -10], [1, 1.1])]}>
-                <Svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
-                  <Defs>
-                    <RadialGradient id="auraDeep" cx="50%" cy="50%" r="50%">
-                      <Stop offset="0" stopColor={ACCENT.electric} stopOpacity="0.34" />
-                      <Stop offset="1" stopColor={ACCENT.electric} stopOpacity="0" />
-                    </RadialGradient>
-                  </Defs>
-                  <Ellipse cx="42" cy="104" rx="70" ry="26" fill="url(#auraDeep)" />
-                </Svg>
+                {userName ? (
+                  <Animated.Text style={[styles.heroEyebrow, stepStyle(1)]} numberOfLines={1}>
+                    {userName}
+                  </Animated.Text>
+                ) : null}
+
+                <Animated.Text
+                  style={[styles.heroTitle, userName ? null : styles.heroTitleSolo, stepStyle(2, 22)]}
+                  numberOfLines={2}
+                >
+                  {displayTitle}
+                </Animated.Text>
+
+                <Animated.View style={[styles.ruleWrap, ruleStyle]}>
+                  <LinearGradient
+                    colors={['rgba(110,231,255,0)', ACCENT.cyan, 'rgba(110,231,255,0)']}
+                    start={{ x: 0, y: 0.5 }}
+                    end={{ x: 1, y: 0.5 }}
+                    style={styles.ruleLine}
+                  />
+                </Animated.View>
+
+                {isWeddingEvent() ? (
+                  <Animated.View style={[styles.coupleRow, stepStyle(4)]}>
+                    <Text style={styles.coupleName} numberOfLines={1}>
+                      {groomLabel()}
+                    </Text>
+                    <Ionicons name="heart" size={13} color={ACCENT.cyan} />
+                    <Text style={styles.coupleName} numberOfLines={1}>
+                      {brideLabel()}
+                    </Text>
+                  </Animated.View>
+                ) : null}
+
+                {countdownLabel ? (
+                  <Animated.View style={stepStyle(4)}>
+                    {isUpcoming ? (
+                      <LinearGradient
+                        colors={[ACCENT.electric, ACCENT.deep]}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={styles.countdownPill}
+                      >
+                        <View style={styles.dotWrap}>
+                          <Animated.View style={[styles.dotPing, pingStyle]} />
+                          <View style={styles.dotCore} />
+                        </View>
+                        <Text style={styles.countdownText}>{countdownLabel}</Text>
+                      </LinearGradient>
+                    ) : (
+                      <View style={[styles.glassWrap, styles.countdownPill, styles.countdownPillPast]}>
+                        <BlurView intensity={26} tint="dark" style={StyleSheet.absoluteFill} />
+                        <Ionicons name="checkmark-circle" size={13} color="rgba(255,255,255,0.72)" />
+                        <Text style={[styles.countdownText, styles.countdownTextPast]}>{countdownLabel}</Text>
+                      </View>
+                    )}
+                  </Animated.View>
+                ) : null}
+
+                <Animated.View style={[styles.glassWrap, styles.metaBar, stepStyle(5)]}>
+                  <BlurView intensity={22} tint="dark" style={StyleSheet.absoluteFill} />
+                  <View style={styles.metaItemFixed}>
+                    <Ionicons name="calendar-outline" size={13} color={ACCENT.cyan} />
+                    <Text style={styles.metaText} numberOfLines={1}>{`${weekday}, ${day}`}</Text>
+                  </View>
+
+                  <View style={styles.metaDivider} />
+
+                  <View style={styles.metaItem}>
+                    <Ionicons name="location-outline" size={13} color={ACCENT.cyan} />
+                    <Text style={styles.metaText} numberOfLines={1}>
+                      {cityLabel ? `${venueLabel} · ${cityLabel}` : venueLabel}
+                    </Text>
+                  </View>
+                </Animated.View>
               </Animated.View>
+            </View>
+          </Animated.View>
+
+          {/* Floating chrome — stays tappable above the rising sheet */}
+          <View style={[styles.heroTopBarFloating, { paddingTop: insets.top + 8 }]} pointerEvents="box-none">
+            <View style={styles.heroTopBar}>
+              {!isEmployeeAppUser ? (
+                <TouchableOpacity
+                  style={styles.heroIconBtn}
+                  onPress={openEditEvent}
+                  activeOpacity={0.85}
+                  disabled={editSaving}
+                  accessibilityRole="button"
+                  accessibilityLabel="עריכת אירוע"
+                >
+                  <Ionicons name="create-outline" size={19} color="rgba(255,255,255,0.92)" />
+                </TouchableOpacity>
+              ) : (
+                <View style={styles.heroIconBtnPlaceholder} />
+              )}
+
+              <View style={styles.heroTopBarSpacer} />
+
+              <TouchableOpacity
+                style={styles.heroIconBtn}
+                onPress={handleBackPress}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel="חזרה לעמוד הקודם"
+              >
+                <Ionicons name="chevron-back" size={20} color="rgba(255,255,255,0.92)" />
+              </TouchableOpacity>
             </View>
           </View>
 
-          <View style={styles.heroTopBar}>
-            {!isEmployeeAppUser ? (
-              <TouchableOpacity
-                style={styles.heroIconBtn}
-                onPress={openEditEvent}
-                activeOpacity={0.85}
-                disabled={editSaving}
-                accessibilityRole="button"
-                accessibilityLabel="עריכת אירוע"
-              >
-                <Ionicons name="create-outline" size={19} color="rgba(255,255,255,0.92)" />
-              </TouchableOpacity>
-            ) : (
-              <View style={styles.heroIconBtnPlaceholder} />
-            )}
-
-            <View style={styles.heroTopBarSpacer} />
-
-            <TouchableOpacity
-              style={styles.heroIconBtn}
-              onPress={handleBackPress}
-              activeOpacity={0.85}
-              accessibilityRole="button"
-              accessibilityLabel="חזרה לעמוד הקודם"
-            >
-              <Ionicons name="chevron-back" size={20} color="rgba(255,255,255,0.92)" />
-            </TouchableOpacity>
-          </View>
-
-          <Animated.View style={[styles.heroBody, heroAnimatedStyle]}>
-            {/* Category → host → title → rule → status → logistics, each cascading in */}
-            {showTypeChip ? (
-              <Animated.View style={[styles.glassWrap, styles.typeChip, stepStyle(0, 12)]}>
-                <BlurView intensity={26} tint="dark" style={StyleSheet.absoluteFill} />
-                <View style={styles.typeDot} />
-                <Text style={styles.typeChipText}>{eventTypeLabel}</Text>
-              </Animated.View>
-            ) : null}
-
-            {userName ? (
-              <Animated.Text style={[styles.heroEyebrow, stepStyle(1)]} numberOfLines={1}>
-                {userName}
-              </Animated.Text>
-            ) : null}
-
-            <Animated.Text
-              style={[styles.heroTitle, userName ? null : styles.heroTitleSolo, stepStyle(2, 22)]}
-              numberOfLines={2}
-            >
-              {displayTitle}
-            </Animated.Text>
-
-            <Animated.View style={[styles.ruleWrap, ruleStyle]}>
-              <LinearGradient
-                colors={['rgba(110,231,255,0)', ACCENT.cyan, 'rgba(110,231,255,0)']}
-                start={{ x: 0, y: 0.5 }}
-                end={{ x: 1, y: 0.5 }}
-                style={styles.ruleLine}
+          <Animated.ScrollView
+            style={styles.scroll}
+            contentContainerStyle={[styles.content, { paddingTop: sheetPadTop }]}
+            showsVerticalScrollIndicator={false}
+            scrollEventThrottle={16}
+            onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
+              useNativeDriver: true,
+            })}
+            refreshControl={
+              <RefreshControl
+                refreshing={isPullRefreshing}
+                onRefresh={() => void handlePullToRefresh()}
+                tintColor={ACCENT.cyan}
+                colors={[ACCENT.cyan]}
+                progressBackgroundColor={PALETTE.ink}
+                progressViewOffset={Math.max(72, insets.top + 56)}
               />
-            </Animated.View>
+            }
+          >
+            {/* Light content sheet that curves up over the sticky hero */}
+            <Animated.View
+              style={[
+                styles.sheet,
+                sheetAnimatedStyle,
+                {
+                  minHeight: windowHeight * 0.55,
+                  paddingBottom: tabBarReserve,
+                },
+              ]}
+            >
+              <View style={styles.sheetHandle} />
 
-            {isWeddingEvent() ? (
-              <Animated.View style={[styles.coupleRow, stepStyle(4)]}>
-                <Text style={styles.coupleName} numberOfLines={1}>
-                  {groomLabel()}
-                </Text>
-                <Ionicons name="heart" size={13} color={ACCENT.cyan} />
-                <Text style={styles.coupleName} numberOfLines={1}>
-                  {brideLabel()}
-                </Text>
-              </Animated.View>
-            ) : null}
+              <RsvpOverviewCard
+                interactive={!isEmployeeAppUser}
+                invitedPeople={invitedPeople}
+                confirmedPeople={confirmedPeople}
+                pendingPeople={pendingPeople}
+                declinedPeople={declinedPeople}
+                onPress={() => router.push(`/(admin)/admin-rsvp-approvals?eventId=${event.id}`)}
+              />
 
-            {countdownLabel ? (
-              <Animated.View style={stepStyle(4)}>
-                {isUpcoming ? (
-                  <LinearGradient
-                    colors={[ACCENT.electric, ACCENT.deep]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.countdownPill}
+              <SectionHeading title="התקדמות" caption="מבט מהיר על מצב ההפקה" />
+
+              <View style={styles.progressRow}>
+                <ProgressCard
+                  label="הושבו"
+                  value={`${seatedPercent}%`}
+                  caption={`${stats.seated} מתוך ${totalGuests} אורחים`}
+                  percent={seatedPercent}
+                  color={colors.yaleBlue}
+                  icon="grid-outline"
+                />
+                <ProgressCard
+                  label="הודעות נשלחו"
+                  value={String(stats.sentMessageCount)}
+                  caption={`מתוך ${totalGuests} מוזמנים`}
+                  percent={getProgressPercent(stats.sentMessageCount, totalGuests)}
+                  color={PALETTE.gold}
+                  icon="paper-plane-outline"
+                />
+              </View>
+
+              <SectionHeading title="ניהול האירוע" caption="כל הכלים במקום אחד" />
+
+              <View style={styles.actionGrid}>
+                {actionTiles.map((tile) => (
+                  <TouchableOpacity
+                    key={tile.key}
+                    style={styles.actionTile}
+                    activeOpacity={0.88}
+                    onPress={tile.onPress}
+                    accessibilityRole="button"
+                    accessibilityLabel={tile.title}
                   >
-                    <View style={styles.dotWrap}>
-                      <Animated.View style={[styles.dotPing, pingStyle]} />
-                      <View style={styles.dotCore} />
-                    </View>
-                    <Text style={styles.countdownText}>{countdownLabel}</Text>
-                  </LinearGradient>
-                ) : (
-                  <View style={[styles.glassWrap, styles.countdownPill, styles.countdownPillPast]}>
-                    <BlurView intensity={26} tint="dark" style={StyleSheet.absoluteFill} />
-                    <Ionicons name="checkmark-circle" size={13} color="rgba(255,255,255,0.72)" />
-                    <Text style={[styles.countdownText, styles.countdownTextPast]}>{countdownLabel}</Text>
-                  </View>
-                )}
-              </Animated.View>
-            ) : null}
+                    <LinearGradient
+                      colors={tile.tint}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.actionTileIcon}
+                    >
+                      <Ionicons name={tile.icon} size={21} color={tile.iconColor} />
+                    </LinearGradient>
 
-            {/* Date and venue share a single frosted bar instead of a chip per line */}
-            <Animated.View style={[styles.glassWrap, styles.metaBar, stepStyle(5)]}>
-              <BlurView intensity={22} tint="dark" style={StyleSheet.absoluteFill} />
-              <View style={styles.metaItemFixed}>
-                <Ionicons name="calendar-outline" size={13} color={ACCENT.cyan} />
-                <Text style={styles.metaText} numberOfLines={1}>{`${weekday}, ${day}`}</Text>
-              </View>
-
-              <View style={styles.metaDivider} />
-
-              <View style={styles.metaItem}>
-                <Ionicons name="location-outline" size={13} color={ACCENT.cyan} />
-                <Text style={styles.metaText} numberOfLines={1}>
-                  {cityLabel ? `${venueLabel} · ${cityLabel}` : venueLabel}
-                </Text>
+                    <Text style={styles.actionTileTitle} numberOfLines={1}>
+                      {tile.title}
+                    </Text>
+                    <Text style={styles.actionTileCaption} numberOfLines={2}>
+                      {tile.caption}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
               </View>
             </Animated.View>
-          </Animated.View>
+          </Animated.ScrollView>
         </View>
-
-        {/* Light content sheet that curves over the hero */}
-        <Animated.View
-          style={[
-            styles.sheet,
-            sheetAnimatedStyle,
-            {
-              minHeight: windowHeight * 0.5,
-              paddingBottom: Platform.OS === 'web' ? 40 : tabBarReserve,
-            },
-          ]}
-        >
-          <View style={styles.sheetHandle} />
-
-          {/* RSVP overview */}
-          <RsvpOverviewCard
-            interactive={!isEmployeeAppUser}
-            invitedPeople={invitedPeople}
-            confirmedPeople={confirmedPeople}
-            pendingPeople={pendingPeople}
-            declinedPeople={declinedPeople}
-            onPress={() => router.push(`/(admin)/admin-rsvp-approvals?eventId=${event.id}`)}
-          />
-
-          <SectionHeading title="התקדמות" caption="מבט מהיר על מצב ההפקה" />
-
-          <View style={styles.progressRow}>
-            <ProgressCard
-              label="הושבו"
-              value={`${seatedPercent}%`}
-              caption={`${stats.seated} מתוך ${totalGuests} אורחים`}
-              percent={seatedPercent}
-              color={colors.yaleBlue}
-              icon="grid-outline"
-            />
-            <ProgressCard
-              label="הודעות נשלחו"
-              value={String(stats.sentMessageCount)}
-              caption={`מתוך ${totalGuests} מוזמנים`}
-              percent={getProgressPercent(stats.sentMessageCount, totalGuests)}
-              color={PALETTE.gold}
-              icon="paper-plane-outline"
-            />
-          </View>
-
-          <SectionHeading title="ניהול האירוע" caption="כל הכלים במקום אחד" />
-
-          <View style={styles.actionGrid}>
-            {actionTiles.map((tile) => (
-              <TouchableOpacity
-                key={tile.key}
-                style={styles.actionTile}
-                activeOpacity={0.88}
-                onPress={tile.onPress}
-                accessibilityRole="button"
-                accessibilityLabel={tile.title}
-              >
-                <LinearGradient
-                  colors={tile.tint}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.actionTileIcon}
-                >
-                  <Ionicons name={tile.icon} size={21} color={tile.iconColor} />
-                </LinearGradient>
-
-                <Text style={styles.actionTileTitle} numberOfLines={1}>
-                  {tile.title}
-                </Text>
-                <Text style={styles.actionTileCaption} numberOfLines={2}>
-                  {tile.caption}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </Animated.View>
-
-      </ScrollView>
-      </View>
 
       {/* Edit event modal */}
       <Modal transparent visible={editOpen} animationType="fade" onRequestClose={() => setEditOpen(false)}>
@@ -1354,18 +1377,25 @@ function ProgressCard({
 }
 
 const styles = StyleSheet.create({
-  screenRoot: { flex: 1, backgroundColor: PALETTE.sheet },
-  safeRoot: { flex: 1, backgroundColor: PALETTE.sheet },
-  safe: { flex: 1, backgroundColor: 'transparent' },
+  screenRoot: { flex: 1, backgroundColor: PALETTE.inkDeep },
+  safeRoot: { flex: 1, backgroundColor: PALETTE.inkDeep },
+  safe: { flex: 1, backgroundColor: 'transparent', overflow: 'hidden' },
 
-  scroll: { flex: 1 },
-  content: { paddingBottom: 0 },
+  scroll: { flex: 1, zIndex: 2 },
+  content: { paddingBottom: 0, flexGrow: 1 },
 
-  // ----- Hero -----
+  // ----- Sticky hero -----
+  heroFixed: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 0,
+  },
   hero: {
     position: 'relative',
     paddingHorizontal: 24,
-    paddingBottom: 52,
+    paddingBottom: 56,
     alignItems: 'center',
   },
   heroGradientLayer: {
@@ -1373,27 +1403,31 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   heroBackdrop: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
+    ...StyleSheet.absoluteFillObject,
   },
-  // The aura spans only the on-screen part of the hero — the overscroll area
-  // above it stays plain dark.
   heroAura: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
+    ...StyleSheet.absoluteFillObject,
   },
   heroAuraSoft: { opacity: 0.45 },
 
+  heroTopBarFloating: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 5,
+    paddingHorizontal: 24,
+  },
   heroTopBar: {
     width: '100%',
     flexDirection: ROW_DIR,
     alignItems: 'center',
   },
   heroTopBarSpacer: { flex: 1 },
+  heroTopBarSpacerBlock: {
+    width: '100%',
+    height: 42,
+  },
   heroIconBtn: {
     width: 42,
     height: 42,
@@ -1575,21 +1609,25 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.86)',
   },
 
-  // ----- Content sheet -----
+  // ----- Content sheet (rises over the sticky hero) -----
   sheet: {
-    marginTop: -34,
     paddingHorizontal: 20,
-    paddingTop: 12,
+    paddingTop: 14,
     backgroundColor: PALETTE.sheet,
-    borderTopLeftRadius: 36,
-    borderTopRightRadius: 36,
+    borderTopLeftRadius: 40,
+    borderTopRightRadius: 40,
+    shadowColor: '#040E24',
+    shadowOpacity: 0.22,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: -8 },
+    elevation: 14,
   },
   sheetHandle: {
     alignSelf: 'center',
-    width: 42,
-    height: 4,
+    width: 46,
+    height: 5,
     borderRadius: 999,
-    backgroundColor: 'rgba(6,23,62,0.14)',
+    backgroundColor: 'rgba(6,23,62,0.16)',
     marginBottom: 20,
   },
 

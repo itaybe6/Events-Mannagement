@@ -21,6 +21,7 @@ import { colors } from "@/constants/colors";
 import { Guest, GuestCategory } from "@/types";
 import BackSwipe from "@/components/BackSwipe";
 import { useRsvpApprovalsModel } from "@/features/rsvp/useRsvpApprovalsModel";
+import { getGuestInviteUrl, openInviteUrl } from "@/lib/invitationUrl";
 
 const sanitizePhone = (raw: string) => (raw || "").replace(/[^\d+]/g, "");
 
@@ -213,6 +214,7 @@ export default function EmployeeRsvpApprovalsScreen() {
                         const badgeLabel = g.status; // "מגיע" | "אולי מגיע" | "ממתין" | "לא מגיע"
                         const isEditing = editingId === g.id;
                         const showActionButtons = g.status === "ממתין" || g.status === "אולי מגיע" || isEditing;
+                        const inviteUrl = getGuestInviteUrl(g);
                         return (
                           <View key={g.id} style={styles.guestItem}>
                             <View style={styles.rightGroup}>
@@ -220,6 +222,18 @@ export default function EmployeeRsvpApprovalsScreen() {
                                 <Text style={styles.guestName} numberOfLines={1}>
                                   {g.name}
                                 </Text>
+                                {inviteUrl ? (
+                                  <TouchableOpacity
+                                    onPress={() => void openInviteUrl(inviteUrl)}
+                                    activeOpacity={0.75}
+                                    accessibilityRole="link"
+                                    accessibilityLabel={`פתיחת הזמנה עבור ${g.name}`}
+                                    style={styles.inviteLinkBtn}
+                                  >
+                                    <Ionicons name="open-outline" size={13} color={colors.primary} />
+                                    <Text style={styles.inviteLinkText}>קישור להזמנה</Text>
+                                  </TouchableOpacity>
+                                ) : null}
                               </View>
                             </View>
 
@@ -473,6 +487,20 @@ const styles = StyleSheet.create({
   rightGroup: { flex: 1, minWidth: 0, flexDirection: "row-reverse", alignItems: "center", gap: 10 },
   nameCol: { flex: 1, minWidth: 0, alignItems: "flex-end" },
   guestName: { minWidth: 0, flexShrink: 1, fontSize: 14, fontWeight: "900", color: colors.text, textAlign: "right" },
+  inviteLinkBtn: {
+    marginTop: 4,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 4,
+    alignSelf: "flex-end",
+  },
+  inviteLinkText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: colors.primary,
+    textDecorationLine: "underline",
+    textDecorationColor: "rgba(17, 82, 212, 0.35)",
+  },
   leftSlot: { width: 170, alignItems: "flex-start", justifyContent: "center" },
 
   badgeBase: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, borderWidth: 1 },

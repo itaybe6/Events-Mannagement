@@ -1,7 +1,7 @@
 import { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
 import React, { FC } from "react";
-import { I18nManager, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { TabButton } from "../custom-tab-bar/tab-button";
 
@@ -26,7 +26,6 @@ function CoupleTabIcon({ focused, activeIcon, inactiveIcon }: CoupleTabIconProps
 
 export const CoupleTabBar: FC<BottomTabBarProps> = ({ state, navigation }) => {
   const insets = useSafeAreaInsets();
-  const ltrRowDirection = I18nManager.isRTL ? "row-reverse" : "row";
 
   const isTabFocused = (routeName: string) => {
     const index = state.routes.findIndex((route) => route.name === routeName);
@@ -116,7 +115,7 @@ const styles = StyleSheet.create({
     left: 10,
     right: 10,
     zIndex: 50,
-    flexDirection: I18nManager.isRTL ? "row-reverse" : "row",
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
@@ -128,7 +127,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
   },
   centerGroup: {
-    flexDirection: I18nManager.isRTL ? "row-reverse" : "row",
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,

@@ -11,7 +11,6 @@ import { useLayoutStore } from '@/store/layoutStore';
 import { useUserStore } from '@/store/userStore';
 import AppHeader, { APP_HEADER_HEIGHT_COMPACT, getAppHeaderTotalHeight } from "@/components/AppHeader";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-
 export default function CoupleTabsLayout() {
   const router = useRouter();
   const rootNavigationState = useRootNavigationState();

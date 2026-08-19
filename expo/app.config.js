@@ -10,8 +10,8 @@ module.exports = {
   expo: {
     name: "Moon",
     slug: "euroe-nitgmal-eiroom-mekapim",
-    version: "1.0.6",
-    runtimeVersion: "1.0.6",
+    version: "1.0.7",
+    runtimeVersion: "1.0.7",
     updates: {
       url: "https://u.expo.dev/292e2bf1-e784-4c87-9375-36040694dec9",
       // Never block startup on (or instantly apply) an OTA update.
@@ -53,7 +53,7 @@ module.exports = {
         backgroundColor: "#ffffff"
       },
       package: "com.moonevents.app",
-      supportsRtl: true,
+      supportsRtl: false,
       permissions: [
         "android.permission.READ_CONTACTS",
         "android.permission.READ_EXTERNAL_STORAGE",

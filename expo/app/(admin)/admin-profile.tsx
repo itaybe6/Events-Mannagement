@@ -14,6 +14,8 @@ import { eventService } from "@/lib/services/eventService";
 import { EVENT_BADGE_META, inferEventType, type EventType } from "@/features/events/eventsConstants";
 import type { Event } from "@/types";
 import { ALIGN_RIGHT, ROW_DIR } from "@/lib/rtl";
+import { getFloatingTabBarContentPadding } from "@/lib/floatingTabBarInset";
+import { softTileShadow, tileSurface } from "@/lib/platformShadow";
 import { DeleteAccountSection } from "@/components/DeleteAccountSection";
 
 const ui = {
@@ -367,10 +369,7 @@ export default function AdminProfileScreen() {
     setVisibleHalf(0);
   };
 
-  // Bottom padding for content above tab bar
-  const TAB_BAR_HEIGHT = 65;
-  const TAB_BAR_BOTTOM_GAP = Platform.OS === "ios" ? 30 : 20;
-  const contentBottomPadding = TAB_BAR_HEIGHT + TAB_BAR_BOTTOM_GAP + 20;
+  const contentBottomPadding = getFloatingTabBarContentPadding(insets.bottom);
 
   if (!userData) {
     return (
@@ -412,7 +411,7 @@ export default function AdminProfileScreen() {
         contentContainerStyle={[
           styles.content,
           {
-            paddingBottom: contentBottomPadding + insets.bottom,
+            paddingBottom: contentBottomPadding,
           },
         ]}
         showsVerticalScrollIndicator={false}
@@ -728,14 +727,10 @@ const styles = StyleSheet.create({
     marginHorizontal: -16,
     paddingHorizontal: 16,
     paddingBottom: 12,
-    backgroundColor: "rgba(255,255,255,0.96)",
+    backgroundColor: tileSurface("rgba(255,255,255,0.96)"),
     borderBottomWidth: 1,
     borderBottomColor: "rgba(6,23,62,0.06)",
-    shadowColor: colors.black,
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 4,
+    ...softTileShadow({ opacity: 0.05, radius: 12, y: 6 }),
   },
   topBar: {
     flexDirection: ROW_DIR,
@@ -767,11 +762,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: ui.primary,
-    shadowColor: ui.primary,
-    shadowOpacity: 0.18,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
+    ...softTileShadow({
+      color: ui.primary,
+      opacity: 0.18,
+      radius: 14,
+      y: 8,
+      androidElevation: 0,
+    }),
   },
   topBarActionPressed: {
     opacity: 0.9,
@@ -784,25 +781,17 @@ const styles = StyleSheet.create({
     padding: 16,
     borderWidth: 1,
     borderColor: ui.border,
-    shadowColor: colors.black,
-    shadowOpacity: 0.06,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 2,
+    ...softTileShadow({ opacity: 0.06, radius: 20, y: 10 }),
   },
 
   heroCard: {
-    backgroundColor: "rgba(255,255,255,0.98)",
+    backgroundColor: tileSurface("rgba(255,255,255,0.98)"),
     borderRadius: 24,
     paddingHorizontal: 16,
     paddingVertical: 18,
     borderWidth: 1,
     borderColor: "rgba(6,23,62,0.08)",
-    shadowColor: colors.black,
-    shadowOpacity: 0.05,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 3,
+    ...softTileShadow({ opacity: 0.05, radius: 16, y: 8 }),
   },
   heroIdentity: { flex: 1, flexDirection: ROW_DIR, alignItems: "center", gap: 14, minWidth: 0 },
   avatarRing: {
@@ -921,11 +910,12 @@ const styles = StyleSheet.create({
     flexDirection: ROW_DIR,
     alignItems: "center",
     gap: 8,
-    shadowColor: ui.primary,
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 4,
+    ...softTileShadow({
+      color: ui.primary,
+      opacity: 0.08,
+      radius: 10,
+      y: 6,
+    }),
   },
   totalPillTextRow: { flexDirection: ROW_DIR, alignItems: "baseline", gap: 6 },
   totalPillNumber: { fontSize: 14, fontWeight: "900", color: ui.primary },
@@ -1066,11 +1056,7 @@ const styles = StyleSheet.create({
     padding: 18,
     borderWidth: 1,
     borderColor: ui.border,
-    shadowColor: colors.black,
-    shadowOpacity: 0.1,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
+    ...softTileShadow({ opacity: 0.1, radius: 20, y: 8 }),
   },
   footerDangerBtn: {
     width: "100%",
@@ -1078,11 +1064,13 @@ const styles = StyleSheet.create({
     height: 62,
     borderRadius: 22,
     overflow: "hidden",
-    shadowColor: "#c62828",
-    shadowOpacity: 0.25,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 8,
+    ...softTileShadow({
+      color: "#c62828",
+      opacity: 0.25,
+      radius: 12,
+      y: 4,
+      androidElevation: 0,
+    }),
   },
   footerDangerGradient: {
     flex: 1,
@@ -1117,11 +1105,12 @@ const styles = StyleSheet.create({
     paddingTop: 32,
     paddingBottom: 24,
     alignItems: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.15,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 12,
+    ...softTileShadow({
+      opacity: 0.15,
+      radius: 24,
+      y: 12,
+      androidElevation: 2,
+    }),
   },
   loIconWrap: {
     marginBottom: 18,
@@ -1188,11 +1177,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    shadowColor: "#c62828",
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 5,
+    ...softTileShadow({
+      color: "#c62828",
+      opacity: 0.25,
+      radius: 10,
+      y: 4,
+      androidElevation: 0,
+    }),
   },
   loConfirmText: {
     fontSize: 15,
