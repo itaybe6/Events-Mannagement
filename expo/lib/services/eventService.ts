@@ -3,15 +3,46 @@ import { cachedQuery, invalidateCache, peekCached } from '../queryCache';
 import { Event, Task } from '@/types';
 
 const EVENTS_LIST_KEY = 'events:all';
+const EVENTS_UPCOMING_KEY = 'events:upcoming';
+
+/** Columns the admin/employee event list actually renders. Skipping `*` and
+ *  `tasks(*)` is the difference between a ~2s first load and a single light
+ *  round-trip — the list never showed tasks anyway. */
+const EVENT_LIST_COLUMNS =
+  'id, title, date, location, city, guests_count, budget, groom_name, bride_name, invitation_image_url, is_approved, user_id, users (name, avatar_url)';
+
+function mapEventListRow(event: any): Event {
+  return {
+    id: event.id,
+    title: event.title,
+    date: new Date(event.date),
+    location: event.location,
+    city: event.city || '',
+    story: '',
+    guests: event.guests_count || 0,
+    budget: Number(event.budget) || 0,
+    groomName: event.groom_name ?? undefined,
+    brideName: event.bride_name ?? undefined,
+    invitationImageUrl: event.invitation_image_url ?? undefined,
+    user_id: event.user_id,
+    userName: event?.users?.name ?? undefined,
+    userAvatarUrl: event?.users?.avatar_url ?? undefined,
+    isApproved: event.is_approved ?? undefined,
+    tasks: [],
+  };
+}
 
 /** Called by every write path so the next read doesn't serve a stale list. */
 function invalidateEventsCache(): void {
   invalidateCache(EVENTS_LIST_KEY);
+  invalidateCache(EVENTS_UPCOMING_KEY);
 }
 
 export const eventService = {
   /** Last loaded events list, if any, so a screen can paint before revalidating. */
   peekEvents: (): Event[] | undefined => peekCached<Event[]>(EVENTS_LIST_KEY),
+
+  peekUpcomingEvents: (): Event[] | undefined => peekCached<Event[]>(EVENTS_UPCOMING_KEY),
 
   invalidateEventsCache,
 
@@ -23,48 +54,41 @@ export const eventService = {
     try {
       const { data, error } = await supabase
         .from('events')
-        .select(`
-          *,
-          tasks (*),
-          users (name, avatar_url)
-        `)
+        .select(EVENT_LIST_COLUMNS)
         .order('date', { ascending: true });
 
       if (error) throw error;
 
-      return data.map(event => ({
-        id: event.id,
-        title: event.title,
-        date: new Date(event.date),
-        location: event.location,
-        city: event.city || '',
-        story: event.story || '',
-        guests: event.guests_count || 0,
-        budget: Number(event.budget) || 0,
-        groomName: (event as any).groom_name ?? undefined,
-        brideName: (event as any).bride_name ?? undefined,
-        rsvpLink: (event as any).rsvp_link ?? undefined,
-        invitationTitle: (event as any).invitation_title ?? undefined,
-        invitationImageUrl: (event as any).invitation_image_url ?? undefined,
-        receptionTime: (event as any).reception_time ?? undefined,
-        ceremonyTime: (event as any).ceremony_time ?? undefined,
-        brideParents: (event as any).bride_parents ?? undefined,
-        groomParents: (event as any).groom_parents ?? undefined,
-        user_id: event.user_id,
-        userName: (event as any)?.users?.name ?? undefined,
-        userAvatarUrl: (event as any)?.users?.avatar_url ?? undefined,
-        isApproved: (event as any).is_approved ?? undefined,
-        tasks: event.tasks.map((task: any) => ({
-          id: task.id,
-          title: task.title,
-          completed: task.completed,
-          dueDate: new Date(task.due_date),
-        })) || [],
-      }));
+      return (data || []).map(mapEventListRow);
     } catch (error) {
       console.error('Get events error:', error);
       throw error;
     }
+  },
+
+  /** Upcoming/today events only — what the admin mobile list shows first. */
+  getUpcomingEvents: async (opts?: { force?: boolean }): Promise<Event[]> => {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    return cachedQuery(
+      EVENTS_UPCOMING_KEY,
+      async () => {
+        const { data, error } = await supabase
+          .from('events')
+          .select(EVENT_LIST_COLUMNS)
+          .gte('date', start.toISOString())
+          .order('date', { ascending: true });
+
+        if (error) throw error;
+        return (data || []).map(mapEventListRow);
+      },
+      { maxAgeMs: 30_000, force: opts?.force }
+    );
+  },
+
+  prefetchEventsList: (): void => {
+    void eventService.getUpcomingEvents().catch(() => undefined);
+    void eventService.getEvents().catch(() => undefined);
   },
 
   // Get all events for a specific user (event owner)
@@ -72,29 +96,36 @@ export const eventService = {
     userId: string,
     opts?: { limit?: number; asAdmin?: boolean }
   ): Promise<Array<Pick<Event, 'id' | 'title' | 'date' | 'location' | 'city'>>> => {
-    try {
-      const client = opts?.asAdmin ? supabaseAdmin : supabase;
-      const query = client
-        .from('events')
-        .select('id,title,date,location,city')
-        .eq('user_id', userId)
-        .order('date', { ascending: true });
+    const cacheKey = `events:user:${userId}:${opts?.limit ?? 'all'}:${opts?.asAdmin ? 'admin' : 'user'}`;
+    return cachedQuery(
+      cacheKey,
+      async () => {
+        try {
+          const client = opts?.asAdmin ? supabaseAdmin : supabase;
+          const query = client
+            .from('events')
+            .select('id,title,date,location,city')
+            .eq('user_id', userId)
+            .order('date', { ascending: true });
 
-      const { data, error } = await (opts?.limit ? query.limit(opts.limit) : query);
+          const { data, error } = await (opts?.limit ? query.limit(opts.limit) : query);
 
-      if (error) throw error;
+          if (error) throw error;
 
-      return (data || []).map((e: any) => ({
-        id: e.id,
-        title: e.title,
-        date: new Date(e.date),
-        location: e.location,
-        city: e.city || '',
-      }));
-    } catch (error) {
-      console.error('Get events for user error:', error);
-      throw error;
-    }
+          return (data || []).map((e: any) => ({
+            id: e.id,
+            title: e.title,
+            date: new Date(e.date),
+            location: e.location,
+            city: e.city || '',
+          }));
+        } catch (error) {
+          console.error('Get events for user error:', error);
+          throw error;
+        }
+      },
+      { maxAgeMs: 30_000 }
+    );
   },
 
   // Get single event by ID
@@ -170,37 +201,43 @@ export const eventService = {
       })
     | null
   > => {
-    try {
-      const cleanId = String(eventId || '').trim();
-      if (!cleanId) return null;
+    const cleanId = String(eventId || '').trim();
+    if (!cleanId) return null;
 
-      const { data, error } = await supabase
-        .from('events')
-        .select('id, title, date, location, city, groom_name, bride_name, is_approved')
-        .eq('id', cleanId)
-        .maybeSingle();
+    return cachedQuery(
+      `event:lite:${cleanId}`,
+      async () => {
+        try {
+          const { data, error } = await supabase
+            .from('events')
+            .select('id, title, date, location, city, groom_name, bride_name, is_approved')
+            .eq('id', cleanId)
+            .maybeSingle();
 
-      if (error) {
-        const code = (error as any)?.code ? String((error as any).code) : '';
-        if (code === 'PGRST116') return null;
-        throw error;
-      }
-      if (!data) return null;
+          if (error) {
+            const code = (error as any)?.code ? String((error as any).code) : '';
+            if (code === 'PGRST116') return null;
+            throw error;
+          }
+          if (!data) return null;
 
-      return {
-        id: data.id,
-        title: data.title,
-        date: new Date(data.date),
-        location: data.location,
-        city: data.city || '',
-        groomName: (data as any).groom_name ?? undefined,
-        brideName: (data as any).bride_name ?? undefined,
-        isApproved: (data as any).is_approved ?? undefined,
-      };
-    } catch (error) {
-      console.error('Get event (lite) error:', error);
-      throw error;
-    }
+          return {
+            id: data.id,
+            title: data.title,
+            date: new Date(data.date),
+            location: data.location,
+            city: data.city || '',
+            groomName: (data as any).groom_name ?? undefined,
+            brideName: (data as any).bride_name ?? undefined,
+            isApproved: (data as any).is_approved ?? undefined,
+          };
+        } catch (error) {
+          console.error('Get event (lite) error:', error);
+          throw error;
+        }
+      },
+      { maxAgeMs: 30_000 }
+    );
   },
 
   // Create new event

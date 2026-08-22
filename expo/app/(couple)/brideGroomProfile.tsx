@@ -54,7 +54,7 @@ function formatDateDisplay(value?: Date | string | null) {
   return `${day}/${month}/${year}`;
 }
 
-const EVENT_TYPE_PREFIXES = ['חתונה', 'בר מצווה', 'בת מצווה', 'ברית', 'בריתה', 'אירוע חברה'] as const;
+const EVENT_TYPE_PREFIXES = ['חתונה', 'חינה', 'בר מצווה', 'בת מצווה', 'ברית', 'בריתה', 'אירוע חברה'] as const;
 
 function getEventTitleBadgeText(title: string) {
   const raw = String(title || '').trim();

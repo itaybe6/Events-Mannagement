@@ -24,7 +24,7 @@ type MinimalEvent = {
   city: string;
 };
 
-const EVENT_TYPE_PREFIXES = ['חתונה', 'בר מצווה', 'בת מצווה', 'ברית', 'בריתה', 'אירוע חברה'] as const;
+const EVENT_TYPE_PREFIXES = ['חתונה', 'חינה', 'בר מצווה', 'בת מצווה', 'ברית', 'בריתה', 'אירוע חברה'] as const;
 
 function getDisplayEventTitle(title: string) {
   const raw = String(title || '').trim();

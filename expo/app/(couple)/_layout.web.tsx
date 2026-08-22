@@ -6,8 +6,9 @@ import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import { colors } from '@/constants/colors';
 import { eventService } from '@/lib/services/eventService';
 import AdminWebPageHeader from '@/components/desktop/AdminWebPageHeader';
-import CoupleWebTopNav from '@/components/desktop/CoupleWebTopNav';
 import CoupleProfileShortcutBadge from '@/components/desktop/CoupleProfileShortcutBadge';
+import WebAppShell from '@/components/desktop/WebAppShell';
+import { useResponsive } from '@/lib/responsive';
 import { inferEventType } from '@/features/events/eventsConstants';
 
 function getWebPathname() {
@@ -39,6 +40,8 @@ export default function CoupleWebLayout() {
   const isNavigationReady = Boolean(rootNavigationState?.key);
   const { width: windowWidth } = useWindowDimensions();
   const isMobile = windowWidth < 768;
+  const { sidebarMode } = useResponsive();
+  const hasSidebar = sidebarMode !== 'hidden';
   const globalParams = useGlobalSearchParams<{ eventId?: string | string[] }>();
   const { userType, isLoggedIn, loading, userData } = useUserStore();
   const activeUserId = useEventSelectionStore((s) => s.activeUserId);
@@ -105,7 +108,7 @@ export default function CoupleWebLayout() {
       }
 
       try {
-        const event = await eventService.getEvent(resolvedEventId);
+        const event = await eventService.getEventLite(resolvedEventId);
         if (active) setEventMeta(event);
       } catch (error) {
         if (active) setEventMeta(null);
@@ -166,7 +169,7 @@ export default function CoupleWebLayout() {
   const usePageScrollShell =
     isCoupleHomePath(normalizedPathname) || !isWebSelfScrollingCoupleRoute(normalizedPathname);
 
-  if (loading || !isLoggedIn) {
+  if (!isLoggedIn) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color={colors.primary} />
@@ -176,6 +179,7 @@ export default function CoupleWebLayout() {
   }
 
   return (
+    <WebAppShell>
     <View style={styles.page}>
       <View pointerEvents="none" style={styles.bgOrbs}>
         <View style={styles.bgOrbTopRight} />
@@ -213,25 +217,16 @@ export default function CoupleWebLayout() {
                   </View>
                 }
                 hideSubtitleDivider
-                subtitleContent={
-                  <View style={styles.headerContent}>
-                    <View style={styles.headerNavWrap}>
-                      <View style={styles.headerNavSectionHeader}>
-                        <View style={styles.headerNavSectionDivider} />
-                        <Text style={styles.headerNavSectionLabel}>ניווט מהיר</Text>
-                      </View>
-                      <CoupleWebTopNav eventId={resolvedEventId} />
-                    </View>
-                  </View>
-                }
                 showNav={false}
                 useDefaultActions={false}
                 actions={
-                  <CoupleProfileShortcutBadge
-                    userId={userData?.id}
-                    selectedEventId={resolvedEventId}
-                    onSelectEventId={handleSelectEventId}
-                  />
+                  hasSidebar ? undefined : (
+                    <CoupleProfileShortcutBadge
+                      userId={userData?.id}
+                      selectedEventId={resolvedEventId}
+                      onSelectEventId={handleSelectEventId}
+                    />
+                  )
                 }
               />
             </View>
@@ -266,25 +261,16 @@ export default function CoupleWebLayout() {
                   </View>
                 }
                 hideSubtitleDivider
-                subtitleContent={
-                  <View style={styles.headerContent}>
-                    <View style={styles.headerNavWrap}>
-                      <View style={styles.headerNavSectionHeader}>
-                        <View style={styles.headerNavSectionDivider} />
-                        <Text style={styles.headerNavSectionLabel}>ניווט מהיר</Text>
-                      </View>
-                      <CoupleWebTopNav eventId={resolvedEventId} />
-                    </View>
-                  </View>
-                }
                 showNav={false}
                 useDefaultActions={false}
                 actions={
-                  <CoupleProfileShortcutBadge
-                    userId={userData?.id}
-                    selectedEventId={resolvedEventId}
-                    onSelectEventId={handleSelectEventId}
-                  />
+                  hasSidebar ? undefined : (
+                    <CoupleProfileShortcutBadge
+                      userId={userData?.id}
+                      selectedEventId={resolvedEventId}
+                      onSelectEventId={handleSelectEventId}
+                    />
+                  )
                 }
               />
             </View>
@@ -301,6 +287,7 @@ export default function CoupleWebLayout() {
         )}
       </View>
     </View>
+    </WebAppShell>
   );
 }
 

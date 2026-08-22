@@ -3,6 +3,7 @@ import { Slot, usePathname, useRouter, useSegments } from 'expo-router';
 import { ActivityIndicator, Platform, StyleSheet, Text, View } from 'react-native';
 import { useUserStore } from '@/store/userStore';
 import { colors } from '@/constants/colors';
+import WebAppShell from '@/components/desktop/WebAppShell';
 
 export default function EmployeeWebLayout() {
   const router = useRouter();
@@ -49,11 +50,13 @@ export default function EmployeeWebLayout() {
   }
 
   return (
+    <WebAppShell>
     <View style={[styles.container, topNav ? styles.containerTopNav : null]}>
       <View style={topNav ? styles.contentTopNav : styles.content}>
         <Slot />
       </View>
     </View>
+    </WebAppShell>
   );
 }
 

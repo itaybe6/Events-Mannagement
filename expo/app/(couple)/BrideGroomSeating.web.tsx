@@ -1238,6 +1238,7 @@ export default function BrideGroomSeatingWebScreen() {
               title="מפת הושבה"
               subtitle="ניהול חלוקת האורחים והסקיצה של האולם בקו עיצובי אחיד עם מסך הצ׳ק אין."
               showNav={false}
+              showMenu={!useEmbeddedWebShell}
               useDefaultActions={false}
               leading={
                 <Pressable

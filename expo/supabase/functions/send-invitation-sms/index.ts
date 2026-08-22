@@ -140,7 +140,7 @@ function fillTemplate(template: string, vars: Record<string, string>) {
   return out;
 }
 
-const EVENT_TYPE_PREFIXES = ["חתונה", "בר מצווה", "בת מצווה", "ברית", "בריתה", "אירוע חברה"] as const;
+const EVENT_TYPE_PREFIXES = ["חתונה", "חינה", "בר מצווה", "בת מצווה", "ברית", "בריתה", "אירוע חברה"] as const;
 
 function getEventDisplayTitle(rawTitle: unknown) {
   const raw = String(rawTitle ?? "").trim();

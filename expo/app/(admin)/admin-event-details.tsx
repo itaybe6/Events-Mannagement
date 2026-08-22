@@ -537,6 +537,18 @@ export default function AdminEventDetailsScreen() {
       ),
   });
   actionTiles.push({
+    key: 'live-seating',
+    title: 'מפת לייב באירוע',
+    caption: 'כמה באמת יושבים בכל שולחן',
+    icon: 'pulse-outline',
+    tint: ['#FFE9E9', '#FFD5D5'],
+    iconColor: '#DC2626',
+    onPress: () =>
+      router.push(
+        `/(admin)/live-seating?eventId=${event.id}&returnTo=${encodeURIComponent(`/(admin)/admin-event-details?id=${event.id}`)}`
+      ),
+  });
+  actionTiles.push({
     key: 'seating',
     title: 'מפת הושבה',
     caption: 'צפייה וניהול מפת האולם',

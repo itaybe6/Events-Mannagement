@@ -55,6 +55,11 @@ const EVENT_TYPE_META = {
     border: 'rgba(204, 160, 0, 0.22)',
     text: '#5E4600',
   },
+  חינה: {
+    background: 'rgba(255, 237, 213, 0.96)',
+    border: 'rgba(180, 83, 9, 0.22)',
+    text: '#9A3412',
+  },
   'בר מצווה': {
     background: 'rgba(229, 238, 255, 0.96)',
     border: 'rgba(0, 53, 102, 0.14)',

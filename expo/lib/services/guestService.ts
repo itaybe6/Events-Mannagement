@@ -1,6 +1,7 @@
 import { supabase } from '../supabase';
 import { Guest } from '@/types';
 import { normalizeGuestPhone } from '../guestPhone';
+import { cachedQuery } from '../queryCache';
 
 /**
  * Maximum number of guests allowed on an event that has NOT been approved yet.
@@ -333,19 +334,26 @@ export const guestService = {
    * `latestUpdatedAt` seeds the incremental sync watermark.
    */
   getGuestsForCheckIn: async (
-    eventId: string
+    eventId: string,
+    opts?: { force?: boolean }
   ): Promise<{ guests: Guest[]; latestUpdatedAt: string | null }> => {
-    const rows = await fetchAllRows<Record<string, unknown>>(() =>
-      supabase.from('guests').select(CHECK_IN_COLUMNS, { count: 'exact' }).eq('event_id', eventId).order('name')
+    return cachedQuery(
+      `guests:checkin:${eventId}`,
+      async () => {
+        const rows = await fetchAllRows<Record<string, unknown>>(() =>
+          supabase.from('guests').select(CHECK_IN_COLUMNS, { count: 'exact' }).eq('event_id', eventId).order('name')
+        );
+
+        let latestUpdatedAt: string | null = null;
+        for (const row of rows) {
+          const updatedAt = String(row?.updated_at ?? '');
+          if (updatedAt && (!latestUpdatedAt || updatedAt > latestUpdatedAt)) latestUpdatedAt = updatedAt;
+        }
+
+        return { guests: rows.map((guest) => mapGuestRowFromDb(guest)), latestUpdatedAt };
+      },
+      { maxAgeMs: 10_000, force: opts?.force }
     );
-
-    let latestUpdatedAt: string | null = null;
-    for (const row of rows) {
-      const updatedAt = String(row?.updated_at ?? '');
-      if (updatedAt && (!latestUpdatedAt || updatedAt > latestUpdatedAt)) latestUpdatedAt = updatedAt;
-    }
-
-    return { guests: rows.map((guest) => mapGuestRowFromDb(guest)), latestUpdatedAt };
   },
 
   /** Cheap row count used to detect guests added/removed by other stations. */
@@ -450,56 +458,78 @@ export const guestService = {
       seatedPeople: 0,
     };
 
-    try {
-      const cleanId = String(eventId || '').trim();
-      if (!cleanId) return empty;
+    const cleanId = String(eventId || '').trim();
+    if (!cleanId) return empty;
 
-      const { data, error } = await supabase
-        .from('guests')
-        .select('status, number_of_people, table_id')
-        .eq('event_id', cleanId);
+    return cachedQuery(
+      `guests:home-stats:${cleanId}`,
+      async () => {
+        try {
+          const { data: rpcRows, error: rpcError } = await supabase.rpc('get_event_guest_home_stats', {
+            p_event_id: cleanId,
+          });
 
-      if (error) throw error;
+          if (!rpcError && Array.isArray(rpcRows) && rpcRows[0]) {
+            const row = rpcRows[0] as Record<string, unknown>;
+            return {
+              inviteCount: Number(row.invite_count) || 0,
+              coming: Number(row.coming) || 0,
+              maybe: Number(row.maybe) || 0,
+              pending: Number(row.pending) || 0,
+              declined: Number(row.declined) || 0,
+              confirmedPeople: Number(row.confirmed_people) || 0,
+              seatedPeople: Number(row.seated_people) || 0,
+            };
+          }
 
-      const rows = data || [];
-      let coming = 0;
-      let maybe = 0;
-      let pending = 0;
-      let declined = 0;
-      let confirmedPeople = 0;
-      let seatedPeople = 0;
+          const rows = await fetchAllRows<Record<string, unknown>>(() =>
+            supabase
+              .from('guests')
+              .select('status, number_of_people, table_id', { count: 'exact' })
+              .eq('event_id', cleanId)
+          );
 
-      for (const row of rows) {
-        const status = (row as any).status;
-        const people = Number((row as any).number_of_people ?? 1) || 1;
-        const hasTable = String((row as any).table_id ?? '').trim().length > 0;
+          let coming = 0;
+          let maybe = 0;
+          let pending = 0;
+          let declined = 0;
+          let confirmedPeople = 0;
+          let seatedPeople = 0;
 
-        if (status === 'מגיע') {
-          coming += people;
-          confirmedPeople += people;
-          if (hasTable) seatedPeople += people;
-        } else if (status === 'אולי מגיע') {
-          maybe += people;
-        } else if (status === 'ממתין') {
-          pending += people;
-        } else if (status === 'לא מגיע') {
-          declined += people;
+          for (const row of rows) {
+            const status = (row as any).status;
+            const people = Number((row as any).number_of_people ?? 1) || 1;
+            const hasTable = String((row as any).table_id ?? '').trim().length > 0;
+
+            if (status === 'מגיע') {
+              coming += people;
+              confirmedPeople += people;
+              if (hasTable) seatedPeople += people;
+            } else if (status === 'אולי מגיע') {
+              maybe += people;
+            } else if (status === 'ממתין') {
+              pending += people;
+            } else if (status === 'לא מגיע') {
+              declined += people;
+            }
+          }
+
+          return {
+            inviteCount: rows.length,
+            coming,
+            maybe,
+            pending,
+            declined,
+            confirmedPeople,
+            seatedPeople,
+          };
+        } catch (error) {
+          console.error('Get event guest stats error:', error);
+          throw error;
         }
-      }
-
-      return {
-        inviteCount: rows.length,
-        coming,
-        maybe,
-        pending,
-        declined,
-        confirmedPeople,
-        seatedPeople,
-      };
-    } catch (error) {
-      console.error('Get event guest stats error:', error);
-      throw error;
-    }
+      },
+      { maxAgeMs: 15_000 }
+    );
   },
 
   addGuestsBatch: async (

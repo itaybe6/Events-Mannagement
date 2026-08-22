@@ -17,6 +17,8 @@ import { EmployeeTabBar } from "@/components/animations/shopifytabs/employee-tab
 import { AdminSharedHeader } from "@/components/animations/shopifytabs/admin-shared-header";
 import { isAdminMainTabRoute } from "@/components/animations/shopifytabs/lib/constants/admin-tabs";
 import { useMobileWebLayout } from "@/lib/useMobileWebLayout";
+import WebAppShell from "@/components/desktop/WebAppShell";
+import { eventService } from "@/lib/services/eventService";
 
 export default function AdminTabsLayoutShared() {
   const router = useRouter();
@@ -73,6 +75,12 @@ export default function AdminTabsLayoutShared() {
     setTabBarVisible(true);
     setAdminHeaderVisible(true);
   }, [setAdminHeaderVisible, setTabBarVisible]);
+
+  useEffect(() => {
+    if (userType === "admin" || userType === "employee") {
+      eventService.prefetchEventsList();
+    }
+  }, [userType]);
 
   useEffect(() => {
     if (loading) return;
@@ -285,7 +293,7 @@ export default function AdminTabsLayoutShared() {
   }
 
   screens.push(<Tabs.Screen key="add-user-v2" name="add-user-v2" options={{ href: null, headerShown: false }} />);
-  screens.push(<Tabs.Screen key="admin-guest-checkin" name="admin-guest-checkin" options={{ href: null }} />);
+  screens.push(<Tabs.Screen key="admin-guest-checkin" name="admin-guest-checkin" options={{ href: null, headerShown: false }} />);
   screens.push(
     <Tabs.Screen
       key="admin-invitation-links"
@@ -343,8 +351,10 @@ export default function AdminTabsLayoutShared() {
   screens.push(<Tabs.Screen key="BrideGroomSeating" name="BrideGroomSeating" options={{ href: null }} />);
   screens.push(<Tabs.Screen key="seating-templates" name="seating-templates" options={{ href: null }} />);
   screens.push(<Tabs.Screen key="seating-map" name="seating-map" options={{ href: null }} />);
+  screens.push(<Tabs.Screen key="live-seating" name="live-seating" options={{ href: null, headerShown: false }} />);
 
   return (
+    <WebAppShell>
     <Tabs
       tabBar={
         isWebDesktopShell
@@ -501,6 +511,7 @@ export default function AdminTabsLayoutShared() {
     >
       {screens}
     </Tabs>
+    </WebAppShell>
   );
 }
 

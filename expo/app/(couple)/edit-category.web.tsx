@@ -14,6 +14,7 @@ export default function EditCategoryWebScreen() {
           title="עריכת קטגוריה"
           subtitle="עריכת שם הקטגוריה ושיוכה מתוך ממשק הדסקטופ המעודכן."
           showNav={false}
+          showMenu={false}
           useDefaultActions={false}
         />
       </View>

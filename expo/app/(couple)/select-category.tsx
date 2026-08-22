@@ -163,7 +163,7 @@ export default function SelectCategoryScreen() {
         const groom = String((evt as any)?.groomName ?? '').trim();
         const bride = String((evt as any)?.brideName ?? '').trim();
         const inferredType =
-          ['חתונה', 'בר מצווה', 'בת מצווה', 'ברית', 'אירוע חברה'].find(
+          ['חתונה', 'חינה', 'בר מצווה', 'בת מצווה', 'ברית', 'אירוע חברה'].find(
             (et) => title.startsWith(et) || title.includes(et)
           ) || null;
 

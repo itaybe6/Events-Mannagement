@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const EVENT_TYPES = [
   { label: 'חתונה', value: 'חתונה' },
+  { label: 'חינה', value: 'חינה' },
   { label: 'בר מצווה', value: 'בר מצווה' },
   { label: 'בת מצווה', value: 'בת מצווה' },
   { label: 'ברית', value: 'ברית' },
@@ -22,6 +23,7 @@ const EVENT_TYPES = [
 ];
 const EVENT_TYPE_META: Record<string, { icon: keyof typeof Ionicons.glyphMap; hint: string }> = {
   חתונה: { icon: 'heart', hint: 'יום מיוחד לזוג' },
+  חינה: { icon: 'color-palette', hint: 'חגיגה מסורתית' },
   'בר מצווה': { icon: 'ribbon', hint: 'אירוע משפחתי' },
   'בת מצווה': { icon: 'sparkles', hint: 'חגיגה מרגשת' },
   ברית: { icon: 'star', hint: 'מסורת וחיבור' },

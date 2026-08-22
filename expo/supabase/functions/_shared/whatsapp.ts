@@ -200,7 +200,7 @@ export async function sendWaMessage(args: {
   }
 }
 
-const EVENT_TYPE_PREFIXES = ["חתונה", "בר מצווה", "בת מצווה", "ברית", "בריתה", "אירוע חברה"];
+const EVENT_TYPE_PREFIXES = ["חתונה", "חינה", "בר מצווה", "בת מצווה", "ברית", "בריתה", "אירוע חברה"];
 
 export function getEventDisplayTitle(rawTitle: unknown): string {
   const raw = String(rawTitle ?? "").trim();

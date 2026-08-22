@@ -541,6 +541,20 @@ export default function AdminEventDetailsWebScreen() {
       tint: 'rgba(17,24,39,0.10)',
       onPress: handleSeatingMap,
     },
+    {
+      key: 'live-seating',
+      step: 'שלב 8',
+      title: 'מפת לייב באירוע',
+      subtitle: 'כמה אנשים באמת יושבים בכל שולחן, עם עדכון ידני של הכמות.',
+      meta: 'בזמן אמת',
+      icon: 'pulse-outline' as const,
+      accent: '#DC2626',
+      tint: 'rgba(220,38,38,0.12)',
+      onPress: () =>
+        router.push(
+          `/(admin)/live-seating?eventId=${event.id}&returnTo=${encodeURIComponent(`/(admin)/admin-event-details?id=${event.id}`)}`
+        ),
+    },
   ] as const;
   const seatedPeople = guests.filter((g) => Boolean(g.tableId)).reduce((sum, guest) => sum + (Number(guest.numberOfPeople) || 1), 0);
   const unassignedConfirmedPeople = Math.max(stats.confirmedPeople - seatedPeople, 0);
@@ -552,17 +566,16 @@ export default function AdminEventDetailsWebScreen() {
       return bTime - aTime || String(a.name || '').localeCompare(String(b.name || ''), 'he');
     })
     .slice(0, 5);
-  const workflowActionRows = isNarrow
-    ? [
-        [workflowSteps[0], workflowSteps[1]],
-        [workflowSteps[2], workflowSteps[3]],
-        [workflowSteps[4], workflowSteps[5]],
-        [workflowSteps[6]],
-      ]
-    : [
-        [workflowSteps[0], workflowSteps[1], workflowSteps[2], workflowSteps[3]],
-        [workflowSteps[4], workflowSteps[5], workflowSteps[6]],
-      ];
+  // Chunked rather than hand-indexed so adding a step doesn't silently drop it.
+  const workflowRowSize = isNarrow ? 2 : 4;
+  const workflowActionRows = workflowSteps.reduce<Array<Array<(typeof workflowSteps)[number]>>>(
+    (rows, step, index) => {
+      if (index % workflowRowSize === 0) rows.push([]);
+      rows[rows.length - 1].push(step);
+      return rows;
+    },
+    []
+  );
   const sentGuestList = guests.filter((g) => sentGuestIds.has(String(g.id)));
   const notSentGuestList = guests.filter((g) => !sentGuestIds.has(String(g.id)));
   const phoneCard = {

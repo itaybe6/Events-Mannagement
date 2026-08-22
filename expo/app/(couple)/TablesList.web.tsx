@@ -789,6 +789,7 @@ export default function TablesListWebScreen() {
                 </View>
               }
               showNav={false}
+              showMenu={!useEmbeddedWebShell}
               useDefaultActions={false}
               leading={
                 <Pressable

@@ -70,7 +70,7 @@ type SmsRunSummary = {
 const normalizeMessage = (s: string) => String(s || '').replace(/\r\n/g, '\n').trim();
 
 type EventKind = 'wedding' | 'brit' | 'barMitzvah' | 'generic';
-const EVENT_TYPE_PREFIXES = ['חתונה', 'בר מצווה', 'בת מצווה', 'ברית', 'בריתה', 'אירוע חברה'] as const;
+const EVENT_TYPE_PREFIXES = ['חתונה', 'חינה', 'בר מצווה', 'בת מצווה', 'ברית', 'בריתה', 'אירוע חברה'] as const;
 
 function getEventDisplayTitle(rawTitle: string) {
   const raw = String(rawTitle ?? '').trim();
@@ -3491,6 +3491,7 @@ export default function AutomaticNotificationsWebScreen() {
                   </View>
                 }
                 showNav={false}
+                showMenu={!useEmbeddedWebShell}
                 useDefaultActions={false}
                 leading={
                   <Pressable

@@ -18,6 +18,7 @@ import { colors } from '@/constants/colors';
 import { useUserStore } from '@/store/userStore';
 import { supabase } from '@/lib/supabase';
 import { authService } from '@/lib/services/authService';
+import { eventService } from '@/lib/services/eventService';
 
 export default function LoginWebScreen() {
   const [username, setUsername] = useState('');
@@ -169,8 +170,10 @@ export default function LoginWebScreen() {
       });
 
       if (userRow.user_type === 'admin') {
+        eventService.prefetchEventsList();
         router.replace('/(admin)/admin-events');
       } else if (userRow.user_type === 'employee') {
+        eventService.prefetchEventsList();
         router.replace('/(employee)/employee-events');
       } else {
         router.replace('/(couple)');

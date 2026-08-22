@@ -152,7 +152,7 @@ export default function EditCategoryScreen() {
       const groom = String(evt?.groomName ?? '').trim();
       const bride = String(evt?.brideName ?? '').trim();
       const inferredType =
-        ['חתונה', 'בר מצווה', 'בת מצווה', 'ברית', 'אירוע חברה'].find(et => title.startsWith(et) || title.includes(et)) ||
+        ['חתונה', 'חינה', 'בר מצווה', 'בת מצווה', 'ברית', 'אירוע חברה'].find(et => title.startsWith(et) || title.includes(et)) ||
         null;
       const shouldEnable = !!groom || !!bride ? true : inferredType && inferredType !== 'חתונה' ? false : true;
       setEnableSides(shouldEnable);

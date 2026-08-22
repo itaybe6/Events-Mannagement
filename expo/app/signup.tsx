@@ -49,6 +49,7 @@ const LAVA_LAMP_COLORS = [
 
 const EVENT_TYPES: { label: string; value: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { label: 'חתונה', value: 'חתונה', icon: 'heart' },
+  { label: 'חינה', value: 'חינה', icon: 'color-palette' },
   { label: 'בר מצווה', value: 'בר מצווה', icon: 'ribbon' },
   { label: 'בת מצווה', value: 'בת מצווה', icon: 'sparkles' },
   { label: 'ברית', value: 'ברית', icon: 'star' },

@@ -147,7 +147,7 @@ export default function GuestsScreen() {
     try {
       const [guestsData, event, cats, messagedGuestIds] = await Promise.all([
         guestService.getGuests(resolvedEventId),
-        eventService.getEvent(resolvedEventId),
+        eventService.getEventLite(resolvedEventId),
         guestService.getGuestCategories(resolvedEventId),
         guestService.getMessagedGuestIds(resolvedEventId),
       ]);

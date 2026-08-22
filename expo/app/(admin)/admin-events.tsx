@@ -32,15 +32,33 @@ export default function AdminEventsScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showMonthPicker, setShowMonthPicker] = useState(false);
   const [eventTimeFilter, setEventTimeFilter] = useState<EventTimeFilter>('future');
+  const eventTimeFilterRef = React.useRef<EventTimeFilter>('future');
+  eventTimeFilterRef.current = eventTimeFilter;
+
   const loadEventsFn = useMemo(
     () => async (options?: { force?: boolean }) => {
-      const data = await eventService.getEvents(options);
-      return Array.isArray(data) ? (data as Event[]) : [];
+      // Completed tab / explicit refresh needs the full list. The first visit
+      // only shows upcoming events, so we fetch that slice first (~12 rows)
+      // instead of every past event plus unused joins.
+      if (options?.force || eventTimeFilterRef.current === 'completed') {
+        const data = await eventService.getEvents(options);
+        return Array.isArray(data) ? (data as Event[]) : [];
+      }
+
+      const cachedAll = eventService.peekEvents();
+      if (cachedAll?.length) return cachedAll;
+
+      const upcoming = await eventService.getUpcomingEvents(options);
+      void eventService.getEvents();
+      return Array.isArray(upcoming) ? upcoming : [];
     },
     []
   );
 
-  const initialEvents = useMemo(() => eventService.peekEvents(), []);
+  const initialEvents = useMemo(
+    () => eventService.peekEvents() ?? eventService.peekUpcomingEvents(),
+    []
+  );
 
   const {
     loading,
@@ -110,7 +128,10 @@ export default function AdminEventsScreen() {
 
   useEffect(() => {
     setSortOrder(eventTimeFilter === 'future' ? 'asc' : 'desc');
-  }, [eventTimeFilter, setSortOrder]);
+    if (eventTimeFilter === 'completed') {
+      void refresh();
+    }
+  }, [eventTimeFilter, refresh, setSortOrder]);
 
   return (
     <View style={styles.screen}>

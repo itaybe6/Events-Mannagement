@@ -34,7 +34,7 @@ export const EVENT_BLUE = {
   surfaceSoft: '#F4F7FF',
 } as const;
 
-export const EVENT_TYPES = ['חתונה', 'בר מצווה', 'בת מצווה', 'ברית', 'אירוע חברה'] as const;
+export const EVENT_TYPES = ['חתונה', 'חינה', 'בר מצווה', 'בת מצווה', 'ברית', 'אירוע חברה'] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
 export const EVENT_BADGE_META: Record<
@@ -42,6 +42,7 @@ export const EVENT_BADGE_META: Record<
   { icon: keyof typeof Ionicons.glyphMap; tint: string }
 > = {
   חתונה: { icon: 'heart', tint: 'rgba(204, 160, 0, 0.85)' },
+  חינה: { icon: 'color-palette', tint: 'rgba(180, 83, 9, 0.85)' },
   'בר מצווה': { icon: 'book', tint: 'rgba(6, 23, 62, 0.85)' },
   'בת מצווה': { icon: 'book', tint: 'rgba(6, 23, 62, 0.85)' },
   ברית: { icon: 'balloon', tint: 'rgba(240, 203, 70, 0.9)' },
@@ -50,6 +51,7 @@ export const EVENT_BADGE_META: Record<
 
 export const EVENT_IMAGE_BY_TYPE: Record<EventType, number> = {
   חתונה: require('../../assets/images/wedding.jpg'),
+  חינה: require('../../assets/images/bride and groom.jpg'),
   'בר מצווה': require('../../assets/images/Bar Mitzvah.jpg'),
   'בת מצווה': require('../../assets/images/Bar Mitzvah.jpg'),
   ברית: require('../../assets/images/baby.jpg'),

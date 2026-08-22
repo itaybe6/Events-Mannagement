@@ -18,6 +18,7 @@ import { useRouter } from 'expo-router';
 import { useUserStore } from '@/store/userStore';
 import { LottieAnimation } from '@/components/LottieAnimation';
 import { supabase } from '@/lib/supabase';
+import { eventService } from '@/lib/services/eventService';
 import { authService } from '@/lib/services/authService';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
@@ -327,9 +328,8 @@ export default function LoginScreen() {
       });
 
       // ניתוב לקבוצת טאבים לפי סוג משתמש
-      if (userRow.user_type === 'admin') {
-        router.replace('/(admin)/admin-events');
-      } else if (userRow.user_type === 'employee') {
+      if (userRow.user_type === 'admin' || userRow.user_type === 'employee') {
+        eventService.prefetchEventsList();
         router.replace('/(admin)/admin-events');
       } else {
         router.replace('/(couple)');

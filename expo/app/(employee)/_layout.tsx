@@ -217,7 +217,8 @@ export default function EmployeeTabsLayout() {
       {/* Hidden employee internal routes */}
       <Tabs.Screen name="employee-event-details" options={{ href: null }} />
       <Tabs.Screen name="employee-seating-map" options={{ href: null }} />
-      <Tabs.Screen name="employee-guest-checkin" options={{ href: null }} />
+      <Tabs.Screen name="employee-live-seating" options={{ href: null, headerShown: false }} />
+      <Tabs.Screen name="employee-guest-checkin" options={{ href: null, headerShown: false }} />
       <Tabs.Screen name="employee-rsvp-approvals" options={{ href: null }} />
     </Tabs>
   );

@@ -7,6 +7,8 @@ import { useResponsive } from '@/lib/responsive';
 
 import AdminProfileShortcutBadge from './AdminProfileShortcutBadge';
 import AdminWebTopNav from './AdminWebTopNav';
+import WebAppMenu from './WebAppMenu';
+import { useWebAppShell } from './WebAppShell';
 
 const APP_LOGO = require('../../assets/images/logoMoon.png');
 
@@ -21,6 +23,7 @@ type Props = {
   actions?: React.ReactNode;
   navTrailing?: React.ReactNode;
   showNav?: boolean;
+  showMenu?: boolean;
   useDefaultActions?: boolean;
 };
 
@@ -34,17 +37,22 @@ export default function AdminWebPageHeader({
   leading,
   actions,
   navTrailing,
-  showNav = true,
+  showNav = false,
+  showMenu = true,
   useDefaultActions = true,
 }: Props) {
   const { isPhone, isTablet } = useResponsive();
+  const { hasSidebar } = useWebAppShell();
   const isMobile = isPhone;
   const leadingContent = leading ?? (
-    <View style={[styles.logoWrap, isMobile ? styles.logoWrapMobile : isTablet ? styles.logoWrapTablet : null]}>
-      <Image source={APP_LOGO} style={styles.logoImg} contentFit="contain" transition={0} />
-    </View>
+    hasSidebar ? null : (
+      <View style={[styles.logoWrap, isMobile ? styles.logoWrapMobile : isTablet ? styles.logoWrapTablet : null]}>
+        <Image source={APP_LOGO} style={styles.logoImg} contentFit="contain" transition={0} />
+      </View>
+    )
   );
-  const actionsContent = actions ?? (useDefaultActions ? <AdminProfileShortcutBadge /> : null);
+  const actionsContent = actions ?? (useDefaultActions && !hasSidebar ? <AdminProfileShortcutBadge /> : null);
+  const menuControl = !hasSidebar && showMenu ? <WebAppMenu /> : null;
   const subtitleParts = String(subtitle ?? '')
     .split('•')
     .map((part) => part.trim())
@@ -55,7 +63,8 @@ export default function AdminWebPageHeader({
     return (
       <View style={[styles.card, styles.cardMobile]}>
         <View style={styles.mobileTopRow}>
-          <View style={styles.leadingWrap}>{leadingContent}</View>
+          {menuControl}
+          {leadingContent ? <View style={styles.leadingWrap}>{leadingContent}</View> : null}
           {actionsContent ? <View style={styles.mobileActions}>{actionsContent}</View> : null}
         </View>
 
@@ -108,7 +117,7 @@ export default function AdminWebPageHeader({
     <View style={[styles.card, isTablet ? styles.cardTablet : null]}>
       <View style={styles.topRow}>
         <View style={styles.identity}>
-          <View style={styles.leadingWrap}>{leadingContent}</View>
+          {leadingContent ? <View style={styles.leadingWrap}>{leadingContent}</View> : null}
 
           <View style={styles.textWrap}>
             {eyebrow ? <Text style={styles.eyebrow}>{eyebrow}</Text> : null}
@@ -117,7 +126,12 @@ export default function AdminWebPageHeader({
           </View>
         </View>
 
-        {actionsContent ? <View style={styles.actions}>{actionsContent}</View> : null}
+        {actionsContent || menuControl ? (
+          <View style={styles.actions}>
+            {actionsContent}
+            {menuControl}
+          </View>
+        ) : null}
       </View>
 
       {subtitle || subtitleContent ? (

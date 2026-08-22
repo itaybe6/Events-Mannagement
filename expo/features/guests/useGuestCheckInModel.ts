@@ -1,8 +1,9 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 import { supabase } from '@/lib/supabase';
+import { peekCached } from '@/lib/queryCache';
 import { guestService, mapGuestRowFromDb } from '@/lib/services/guestService';
-import { guestMatchesSearch } from '@/lib/guestPhone';
+import { guestMatchesSearch, phoneSearchKey } from '@/lib/guestPhone';
 import type { Guest, GuestCategory } from '@/types';
 
 export type GuestCheckInFilter = 'all' | 'checked_in' | 'not_checked_in' | 'maybe_coming';
@@ -135,7 +136,16 @@ export function useGuestCheckInModel(params: {
       return;
     }
 
-    if (!silent) setLoading(true);
+    if (!silent) {
+      const cached = peekCached<{ guests: Guest[]; latestUpdatedAt: string | null }>(`guests:checkin:${eventId}`);
+      if (cached?.guests?.length) {
+        setGuests(cached.guests);
+        syncedUpToRef.current = cached.latestUpdatedAt ?? syncedUpToRef.current;
+        setLoading(false);
+      } else {
+        setLoading(true);
+      }
+    }
     try {
       const [data, cats] = await Promise.all([
         guestService.getGuestsForCheckIn(eventId),
@@ -387,8 +397,21 @@ export function useGuestCheckInModel(params: {
   // lets React interrupt the list work.
   const deferredQuery = useDeferredValue(query);
 
+  const searchIndex = useMemo(() => {
+    const m = new Map<string, { name: string; phone: string; status: string }>();
+    for (const g of guests) {
+      m.set(g.id, {
+        name: String(g.name || '').toLowerCase(),
+        phone: phoneSearchKey(g.phone),
+        status: String(g.status || '').toLowerCase(),
+      });
+    }
+    return m;
+  }, [guests]);
+
   const filteredGuests = useMemo(() => {
     const q = deferredQuery.trim().toLowerCase();
+    const qPhone = phoneSearchKey(deferredQuery);
     const base = guests.filter((g) => {
       if (filter === 'checked_in') return Boolean(g.checkedIn);
       if (filter === 'not_checked_in') return !Boolean(g.checkedIn);
@@ -396,8 +419,13 @@ export function useGuestCheckInModel(params: {
       return true;
     });
     if (!q) return base;
-    return base.filter((g) => guestMatchesSearch(g, q) || String(g.status || '').toLowerCase().includes(q));
-  }, [guests, deferredQuery, filter]);
+    return base.filter((g) => {
+      const idx = searchIndex.get(g.id);
+      if (!idx) return guestMatchesSearch(g, q) || String(g.status || '').toLowerCase().includes(q);
+      if (idx.name.includes(q) || idx.status.includes(q)) return true;
+      return qPhone ? idx.phone.includes(qPhone) : false;
+    });
+  }, [guests, deferredQuery, filter, searchIndex]);
 
   const counts = useMemo(() => {
     let totalPeople = 0;

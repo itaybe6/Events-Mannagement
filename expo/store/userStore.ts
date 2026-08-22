@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authService, AuthUser } from '@/lib/services/authService';
+import { eventService } from '@/lib/services/eventService';
 
 export type UserType = 'event_owner' | 'admin' | 'employee';
 
@@ -149,6 +150,9 @@ export const useUserStore = create<UserState>()(
               userData: user,
               loading: false,
             });
+            if (user.userType === 'admin' || user.userType === 'employee') {
+              eventService.prefetchEventsList();
+            }
             return;
           }
 

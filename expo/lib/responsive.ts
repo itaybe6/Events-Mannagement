@@ -166,7 +166,7 @@ function tokensFor(deviceClass: DeviceClass, isTouch: boolean) {
         gap: 20,
         controlHeight: isTouch ? TOUCH_TARGET : 42,
         cardRadius: 24,
-        sidebarWidth: 270,
+        sidebarWidth: 300,
         sidebarMode: 'full' as const,
         contentMaxWidth: 1600,
       };

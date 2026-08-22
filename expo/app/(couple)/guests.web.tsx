@@ -152,10 +152,10 @@ export default function CoupleGuestsWebScreen() {
     if (isFirstLoad) setLoading(true);
     try {
       const [evt, cats, g, tbls] = await Promise.all([
-        eventService.getEvent(resolvedEventId),
+        eventService.getEventLite(resolvedEventId),
         guestService.getGuestCategories(resolvedEventId),
         guestService.getGuests(resolvedEventId),
-        tableService.getTables(resolvedEventId).catch((tableErr) => {
+        tableService.getTablesLite(resolvedEventId).catch((tableErr) => {
           console.warn('Guests web tables load error:', tableErr);
           return [] as any[];
         }),
@@ -1018,6 +1018,7 @@ export default function CoupleGuestsWebScreen() {
                 </View>
               }
               showNav={false}
+              showMenu={!useEmbeddedWebShell}
               useDefaultActions={false}
               leading={
                 <Pressable

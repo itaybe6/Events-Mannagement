@@ -10,7 +10,6 @@ import { eventService } from '@/lib/services/eventService';
 import { guestService } from '@/lib/services/guestService';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import { useUserStore } from '@/store/userStore';
-import type { Guest } from '@/types';
 
 export default function CoupleHomeWebScreen() {
   const router = useRouter();
@@ -27,9 +26,18 @@ export default function CoupleHomeWebScreen() {
   const setActiveEvent = useEventSelectionStore((s) => s.setActiveEvent);
 
   const [currentEvent, setCurrentEvent] = useState<any>(null);
-  const [guests, setGuests] = useState<Guest[]>([]);
+  const [stats, setStats] = useState({
+    confirmed: 0,
+    maybe: 0,
+    declined: 0,
+    pending: 0,
+    seated: 0,
+    needSeat: 0,
+    total: 0,
+    responseRate: 0,
+    seatingRate: 0,
+  });
   const [loading, setLoading] = useState(true);
-  const [now, setNow] = useState(() => new Date());
 
   const resolvedEventId =
     String(
@@ -49,42 +57,77 @@ export default function CoupleHomeWebScreen() {
       try {
         setLoading(true);
         let eventId = resolvedEventId;
-        let event = eventId ? await eventService.getEvent(eventId) : null;
 
-        if (!event) {
-          await initializeAuth();
-          const ud = useUserStore.getState().userData;
-          eventId = ud?.event_id || null;
-          if (!eventId && ud?.id) {
-            eventId = await authService.getPrimaryEventId(ud.id);
-          }
-          if (eventId) {
-            event = await eventService.getEvent(eventId);
+        const applyStats = (guestStats: Awaited<ReturnType<typeof guestService.getEventGuestStats>>) => {
+          const confirmed = guestStats.coming;
+          const seated = guestStats.seatedPeople;
+          const total = guestStats.inviteCount;
+          const responded = guestStats.coming + guestStats.maybe + guestStats.declined;
+          setStats({
+            confirmed,
+            maybe: guestStats.maybe,
+            declined: guestStats.declined,
+            pending: guestStats.pending,
+            seated,
+            needSeat: Math.max(0, confirmed - seated),
+            total,
+            responseRate: total > 0 ? Math.round((responded / total) * 100) : 0,
+            seatingRate: confirmed > 0 ? Math.round((seated / confirmed) * 100) : 0,
+          });
+        };
+
+        if (eventId) {
+          const [event, guestStats] = await Promise.all([
+            eventService.getEventLite(eventId),
+            guestService.getEventGuestStats(eventId),
+          ]);
+          if (event) {
+            const uid = userData?.id || useUserStore.getState().userData?.id;
+            if (uid) {
+              setActiveEvent(uid, eventId);
+              const ud = useUserStore.getState().userData;
+              if (ud && ud.event_id !== eventId) {
+                login(ud.userType, { ...ud, event_id: eventId });
+              }
+            }
+            setCurrentEvent(event);
+            applyStats(guestStats);
+            return;
           }
         }
 
-        if (!event || !eventId) {
+        await initializeAuth();
+        const ud = useUserStore.getState().userData;
+        eventId = ud?.event_id || null;
+        if (!eventId && ud?.id) {
+          eventId = await authService.getPrimaryEventId(ud.id);
+        }
+        if (!eventId) {
           setCurrentEvent(null);
-          setGuests([]);
-          setLoading(false);
           return;
         }
 
         const uid = userData?.id || useUserStore.getState().userData?.id;
         if (uid) {
           setActiveEvent(uid, eventId);
-          const ud = useUserStore.getState().userData;
-          if (ud && ud.event_id !== eventId) {
-            login(ud.userType, { ...ud, event_id: eventId });
+          const latest = useUserStore.getState().userData;
+          if (latest && latest.event_id !== eventId) {
+            login(latest.userType, { ...latest, event_id: eventId });
           }
         }
 
-        const guestsData = await guestService.getGuests(eventId);
+        const [event, guestStats] = await Promise.all([
+          eventService.getEventLite(eventId),
+          guestService.getEventGuestStats(eventId),
+        ]);
+        if (!event) {
+          setCurrentEvent(null);
+          return;
+        }
         setCurrentEvent(event);
-        setGuests(guestsData as Guest[]);
+        applyStats(guestStats);
       } catch (e) {
         setCurrentEvent(null);
-        setGuests([]);
       } finally {
         setLoading(false);
       }
@@ -92,30 +135,6 @@ export default function CoupleHomeWebScreen() {
 
     loadData();
   }, [initializeAuth, isLoggedIn, isNavigationReady, resolvedEventId, router, setActiveEvent, userData?.id]);
-
-  const stats = useMemo(() => {
-    const confirmed = guests.filter((g) => g.status === 'מגיע').length;
-    const maybe = guests.filter((g) => g.status === 'אולי מגיע').length;
-    const declined = guests.filter((g) => g.status === 'לא מגיע').length;
-    const pending = guests.filter((g) => g.status === 'ממתין').length;
-    const seated = guests.filter((g) => g.status === 'מגיע' && g.tableId).length;
-    const needSeat = Math.max(0, confirmed - seated);
-    const responded = confirmed + maybe + declined;
-    const responseRate = guests.length > 0 ? Math.round((responded / guests.length) * 100) : 0;
-    const seatingRate = confirmed > 0 ? Math.round((seated / confirmed) * 100) : 0;
-
-    return {
-      confirmed,
-      maybe,
-      declined,
-      pending,
-      seated,
-      needSeat,
-      total: guests.length,
-      responseRate,
-      seatingRate,
-    };
-  }, [guests]);
 
   const formatDateOnly = (date: Date) => {
     const d = new Date(date);
@@ -126,12 +145,7 @@ export default function CoupleHomeWebScreen() {
     return `${day}/${month}/${year}`;
   };
 
-  useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 1_000);
-    return () => clearInterval(t);
-  }, []);
-
-  const countdown = useMemo(() => getCountdownParts(currentEvent?.date, now), [currentEvent?.date, now]);
+  const countdown = useMemo(() => getCountdownParts(currentEvent?.date, new Date()), [currentEvent?.date]);
 
   const coupleOrTitle = useMemo(() => {
     const groom = String(currentEvent?.groomName || '').trim();
@@ -372,21 +386,7 @@ export default function CoupleHomeWebScreen() {
                 </View>
               </View>
 
-              <View style={[styles.heroCountdownGrid, isMobile ? styles.heroCountdownGridMobile : null]}>
-                {[
-                  { key: 'days', label: 'ימים', value: countdown?.days ?? 0 },
-                  { key: 'hours', label: 'שעות', value: countdown?.hours ?? 0 },
-                  { key: 'minutes', label: 'דקות', value: countdown?.minutes ?? 0 },
-                  { key: 'seconds', label: 'שניות', value: countdown?.seconds ?? 0 },
-                ].map((unit, index, arr) => (
-                  <React.Fragment key={unit.key}>
-                    <CountdownUnit label={unit.label} value={unit.value} compact={isMobile} />
-                    {index < arr.length - 1 ? (
-                      <Text style={[styles.countdownSeparator, isMobile ? styles.countdownSeparatorMobile : null]}>:</Text>
-                    ) : null}
-                  </React.Fragment>
-                ))}
-              </View>
+              <LiveHeroCountdown targetDate={currentEvent?.date} compact={isMobile} />
             </View>
 
             <View style={[styles.heroPrimaryFactsRow, isMobile ? styles.heroPrimaryFactsRowMobile : null]}>
@@ -767,6 +767,41 @@ function heroMetricIcon(tone: 'blue' | 'green' | 'gold') {
   if (tone === 'green') return 'sparkles-outline';
   if (tone === 'gold') return 'grid-outline';
   return 'people-outline';
+}
+
+function LiveHeroCountdown({
+  targetDate,
+  compact = false,
+}: {
+  targetDate: unknown;
+  compact?: boolean;
+}) {
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1_000);
+    return () => clearInterval(t);
+  }, []);
+
+  const countdown = getCountdownParts(targetDate, now);
+
+  return (
+    <View style={[styles.heroCountdownGrid, compact ? styles.heroCountdownGridMobile : null]}>
+      {[
+        { key: 'days', label: 'ימים', value: countdown?.days ?? 0 },
+        { key: 'hours', label: 'שעות', value: countdown?.hours ?? 0 },
+        { key: 'minutes', label: 'דקות', value: countdown?.minutes ?? 0 },
+        { key: 'seconds', label: 'שניות', value: countdown?.seconds ?? 0 },
+      ].map((unit, index, arr) => (
+        <React.Fragment key={unit.key}>
+          <CountdownUnit label={unit.label} value={unit.value} compact={compact} />
+          {index < arr.length - 1 ? (
+            <Text style={[styles.countdownSeparator, compact ? styles.countdownSeparatorMobile : null]}>:</Text>
+          ) : null}
+        </React.Fragment>
+      ))}
+    </View>
+  );
 }
 
 function CountdownUnit({

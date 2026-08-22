@@ -18,7 +18,20 @@ function initialsLabel(name: string) {
   return (a + b).toUpperCase() || 'U';
 }
 
-export default function AdminProfileShortcutBadge() {
+type Props = {
+  variant?: 'header' | 'sidebar';
+  /** `onDark` restyles the trigger for the midnight sidebar; the popover stays light. */
+  tone?: 'onLight' | 'onDark';
+  compact?: boolean;
+  profileHref?: string;
+};
+
+export default function AdminProfileShortcutBadge({
+  variant = 'header',
+  tone = 'onLight',
+  compact = false,
+  profileHref,
+}: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const userData = useUserStore((state) => state.userData);
@@ -30,7 +43,12 @@ export default function AdminProfileShortcutBadge() {
   const adminName = String(userData?.name || '').trim() || 'מנהל מערכת';
   const adminInitials = initialsLabel(adminName);
   const normalizedPathname = String(pathname || '').replace(/\/\([^/]+\)/g, '') || '/';
-  const isProfilePage = normalizedPathname === '/admin-profile';
+  const resolvedProfileHref = profileHref || '/(admin)/admin-profile';
+  const profileLeaf =
+    resolvedProfileHref.replace(/\/\([^/]+\)/g, '').split('/').filter(Boolean).pop() || 'admin-profile';
+  const isProfilePage = normalizedPathname === `/${profileLeaf}` || normalizedPathname.endsWith(`/${profileLeaf}`);
+  const isSidebar = variant === 'sidebar';
+  const onDark = tone === 'onDark';
   const adminAvatarUri = useMemo(() => {
     const direct = String(userData?.avatar_url ?? '').trim();
     if (direct) return direct;
@@ -63,7 +81,7 @@ export default function AdminProfileShortcutBadge() {
   const handleOpenProfile = () => {
     setMenuOpen(false);
     if (!isProfilePage) {
-      router.push('/(admin)/admin-profile');
+      router.push(resolvedProfileHref as any);
     }
   };
 
@@ -82,7 +100,7 @@ export default function AdminProfileShortcutBadge() {
   };
 
   return (
-    <View ref={wrapperRef} style={styles.wrapper}>
+    <View ref={wrapperRef} style={[styles.wrapper, isSidebar ? styles.wrapperSidebar : null]}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`פתיחת תפריט הפרופיל של ${adminName}`}
@@ -90,12 +108,19 @@ export default function AdminProfileShortcutBadge() {
         onPress={() => setMenuOpen((prev) => !prev)}
         style={({ hovered, pressed }: any) => [
           styles.profileBadge,
-          menuOpen ? styles.profileBadgeActive : null,
-          Platform.OS === 'web' && hovered ? styles.profileBadgeHover : null,
+          isSidebar ? styles.profileBadgeSidebar : null,
+          onDark ? styles.profileBadgeDark : null,
+          compact ? styles.profileBadgeCompact : null,
+          menuOpen ? (onDark ? styles.profileBadgeDarkActive : styles.profileBadgeActive) : null,
+          Platform.OS === 'web' && hovered
+            ? onDark
+              ? styles.profileBadgeDarkHover
+              : styles.profileBadgeHover
+            : null,
           pressed ? styles.actionPressed : null,
         ]}
       >
-        <View style={styles.profileBadgeAvatar}>
+        <View style={[styles.profileBadgeAvatar, onDark ? styles.profileBadgeAvatarDark : null]}>
           {adminAvatarUri ? (
             <Image source={{ uri: adminAvatarUri }} style={styles.profileBadgeImage} contentFit="cover" transition={0} />
           ) : (
@@ -103,20 +128,24 @@ export default function AdminProfileShortcutBadge() {
           )}
         </View>
 
-        <Text style={styles.profileBadgeName} numberOfLines={1}>
-          {adminName}
-        </Text>
+        {!compact ? (
+          <Text style={[styles.profileBadgeName, isSidebar ? styles.profileBadgeNameSidebar : null, onDark ? styles.profileBadgeNameDark : null]} numberOfLines={1}>
+            {adminName}
+          </Text>
+        ) : null}
 
-        <Ionicons
-          name={menuOpen ? 'chevron-up' : 'chevron-down'}
-          size={16}
-          color={colors.gray[600]}
-          style={styles.chevron}
-        />
+        {!compact ? (
+          <Ionicons
+            name={menuOpen ? 'chevron-up' : 'chevron-down'}
+            size={16}
+            color={onDark ? 'rgba(226,234,250,0.85)' : colors.gray[600]}
+            style={styles.chevron}
+          />
+        ) : null}
       </Pressable>
 
       {menuOpen ? (
-        <View style={styles.menuLayer}>
+        <View style={[styles.menuLayer, isSidebar ? styles.menuLayerSidebar : null]}>
           <View style={styles.menu}>
             <Pressable
               accessibilityRole="button"
@@ -174,6 +203,10 @@ const styles = StyleSheet.create({
     position: 'relative',
     zIndex: 40,
   },
+  wrapperSidebar: {
+    width: '100%',
+    zIndex: 80,
+  },
   profileBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -186,6 +219,45 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(6,23,62,0.08)',
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  profileBadgeSidebar: {
+    width: '100%',
+    backgroundColor: '#FFFFFF',
+    borderColor: 'rgba(29,93,230,0.16)',
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 6px 16px rgba(29,93,230,0.08)' } as any)
+      : null),
+  },
+  profileBadgeDark: {
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderColor: 'rgba(255,255,255,0.12)',
+    ...(Platform.OS === 'web'
+      ? ({
+          backdropFilter: 'blur(12px)',
+          boxShadow: '0 10px 26px rgba(3,7,20,0.45), inset 0 1px 0 rgba(255,255,255,0.10)',
+        } as any)
+      : null),
+  },
+  profileBadgeDarkHover: {
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderColor: 'rgba(255,255,255,0.28)',
+  },
+  profileBadgeDarkActive: {
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderColor: 'rgba(255,255,255,0.42)',
+  },
+  profileBadgeAvatarDark: {
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderColor: 'rgba(255,255,255,0.42)',
+  },
+  profileBadgeNameDark: {
+    color: '#F5F8FF',
+  },
+  profileBadgeCompact: {
+    paddingHorizontal: 6,
+    paddingVertical: 6,
+    alignSelf: 'center',
+    width: 'auto',
   },
   profileBadgeActive: {
     backgroundColor: '#FFFFFF',
@@ -235,6 +307,10 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: colors.text,
     textAlign: 'right',
+    flex: 1,
+  },
+  profileBadgeNameSidebar: {
+    maxWidth: '100%',
   },
   menuLayer: {
     position: 'absolute',
@@ -244,6 +320,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     transform: [{ translateX: -110 }],
     zIndex: 60,
+  },
+  menuLayerSidebar: {
+    top: 'auto',
+    bottom: '100%',
+    marginTop: 0,
+    marginBottom: 10,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 0,
+    transform: [{ translateX: 0 }],
   },
   menu: {
     minWidth: 220,

@@ -2,6 +2,8 @@ import React from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Platform, Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 import { colors } from '@/constants/colors';
+import { useWebAppShell } from '@/components/desktop/WebAppShell';
+import WebAppMenu from '@/components/desktop/WebAppMenu';
 
 type DesktopTopBarProps = {
   title?: string;
@@ -13,11 +15,15 @@ type DesktopTopBarProps = {
 export default function DesktopTopBar({ title, subtitle, leftActions, rightActions }: DesktopTopBarProps) {
   const hasTitle = Boolean(title);
   const hasSubtitle = Boolean(subtitle);
+  const { hasSidebar } = useWebAppShell();
 
   return (
     <View style={styles.wrap}>
       <View style={styles.inner}>
-        <View style={styles.actionsRight}>{rightActions}</View>
+        <View style={styles.actionsRight}>
+          {hasSidebar ? null : <WebAppMenu compact />}
+          {rightActions}
+        </View>
 
         <View style={styles.titleBlock}>
           {hasTitle ? (

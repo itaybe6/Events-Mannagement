@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Platform,
@@ -20,8 +20,9 @@ import { supabase } from '@/lib/supabase';
 import { SeatingGridReadonly } from '../seating/web/SeatingGridReadonly';
 import { DEFAULT_GRID_COLS, DEFAULT_GRID_ROWS, tableCellSize, type Orientation, type TableType } from '../seating/web/_types';
 import type { Guest, Table } from '@/types';
-import AdminWebPageHeader from '@/components/desktop/AdminWebPageHeader';
 import { touchHitSlop, useResponsive } from '@/lib/responsive';
+import WebAppMenu from '@/components/desktop/WebAppMenu';
+import { useWebAppShell } from '@/components/desktop/WebAppShell';
 
 const NO_TABLE_KEY = '__no_table__' as const;
 
@@ -82,22 +83,25 @@ function CheckinOverviewStat({
   label,
   value,
   icon,
-  compact,
+  highlight,
 }: {
   label: string;
   value: number;
   icon: keyof typeof Ionicons.glyphMap;
-  compact?: boolean;
+  /** Single accent for the "arrived" stat — keeps the rest of the strip quiet. */
+  highlight?: boolean;
 }) {
   return (
-    <View style={[styles.overviewStatCard, compact ? styles.overviewStatCardCompact : null]}>
-      <View style={styles.overviewStatTop}>
-        <View style={styles.overviewStatIconBox}>
-          <Ionicons name={icon} size={17} color={colors.primary} />
-        </View>
-        <Text style={styles.overviewStatLabel}>{label}</Text>
+    <View style={styles.overviewStatCard}>
+      <View style={[styles.overviewStatIconBox, highlight ? styles.overviewStatIconBoxHighlight : null]}>
+        <Ionicons name={icon} size={14} color={highlight ? '#0E9F6E' : colors.primary} />
       </View>
-      <Text style={styles.overviewStatValue}>{value}</Text>
+      <View style={styles.overviewStatCopy}>
+        <Text style={styles.overviewStatValue}>{value}</Text>
+        <Text style={styles.overviewStatLabel} numberOfLines={1}>
+          {label}
+        </Text>
+      </View>
     </View>
   );
 }
@@ -160,13 +164,21 @@ function EmployeeGuestCheckinWebDesktopScreen() {
     isTablet,
     isTabletPortrait,
     isTouchLayout,
+    sidebarWidth,
   } = useResponsive();
+  const { hasSidebar, sidebarInset } = useWebAppShell();
+  const railInset = hasSidebar ? sidebarInset || sidebarWidth || 280 : 0;
+  const scrollTopFabRight = hasSidebar ? Math.max(20, railInset + 18) : 22;
   const isMobile = isPhone;
   // Side-by-side needs real horizontal room. A portrait iPad has the width for it
   // on paper (1024pt on a 13") but the map ends up unusably squeezed, so key off
   // orientation rather than raw width.
   const isSideBySide = isTablet ? !isTabletPortrait : width >= 1024;
   const isNarrow = width < 520;
+  // Drawers are `position: fixed` to the viewport, so they must sit to the
+  // LEFT of the RTL sidebar instead of sliding out underneath it.
+  const drawerRight = hasSidebar && !isNarrow && !isMobile ? railInset + 16 : 16;
+  const drawerScrimRight = drawerRight + 436;
   const metricsInOneRow = Platform.OS === 'web' && width >= 768;
   // Row controls stay visually compact so the list keeps its density, but their
   // hit areas grow to the 44pt minimum on touch.
@@ -191,6 +203,29 @@ function EmployeeGuestCheckinWebDesktopScreen() {
   const handleBack = useCallback(() => {
     router.replace(backHref as any);
   }, [backHref, router]);
+
+  /**
+   * Live map, with this check-in screen as its "back" target so an usher can
+   * bounce between counting heads and marking arrivals.
+   */
+  const liveMapHref = useMemo(() => {
+    if (!resolvedEventId) return null;
+
+    const liveBase = isAdminRoute ? '/(admin)/live-seating' : '/(employee)/employee-live-seating';
+    const checkInBase = isAdminRoute
+      ? '/(admin)/admin-guest-checkin'
+      : '/(employee)/employee-guest-checkin';
+    const rawReturn = String(returnTo || '').trim();
+    const backToCheckIn = `${checkInBase}?eventId=${resolvedEventId}${
+      rawReturn ? `&returnTo=${encodeURIComponent(rawReturn)}` : ''
+    }`;
+
+    return `${liveBase}?eventId=${resolvedEventId}&returnTo=${encodeURIComponent(backToCheckIn)}`;
+  }, [isAdminRoute, resolvedEventId, returnTo]);
+
+  const openLiveMap = useCallback(() => {
+    if (liveMapHref) router.push(liveMapHref as any);
+  }, [liveMapHref, router]);
   const [collapsedTableGroups, setCollapsedTableGroups] = useState<Record<string, boolean>>({});
   const [tableFilter, setTableFilter] = useState<string | null>(null);
   const [tables, setTables] = useState<Table[]>([]);
@@ -244,6 +279,24 @@ function EmployeeGuestCheckinWebDesktopScreen() {
 
   const [editingArrivedCountGuestId, setEditingArrivedCountGuestId] = useState<string | null>(null);
   const [editingArrivedCountValue, setEditingArrivedCountValue] = useState('');
+  const pageScrollRef = useRef<ScrollView>(null);
+  const guestsScrollRef = useRef<ScrollView>(null);
+  const pageScrolledRef = useRef(false);
+  const guestsScrolledRef = useRef(false);
+  const [showScrollTop, setShowScrollTop] = useState(false);
+
+  const updateShowScrollTop = useCallback((source: 'page' | 'guests', y: number) => {
+    const scrolled = y > 220;
+    if (source === 'page') pageScrolledRef.current = scrolled;
+    else guestsScrolledRef.current = scrolled;
+    const next = pageScrolledRef.current || guestsScrolledRef.current;
+    setShowScrollTop((prev) => (prev === next ? prev : next));
+  }, []);
+
+  const scrollPageToTop = useCallback(() => {
+    pageScrollRef.current?.scrollTo({ x: 0, y: 0, animated: true });
+    guestsScrollRef.current?.scrollTo({ x: 0, y: 0, animated: true });
+  }, []);
 
   const startEditArrivedCount = useCallback((g: any, arrivedCount: number) => {
     const id = String(g?.id ?? '').trim();
@@ -280,7 +333,7 @@ function EmployeeGuestCheckinWebDesktopScreen() {
     }
 
     try {
-      const rows = await tableService.getTables(resolvedEventId);
+      const rows = await tableService.getTablesLite(resolvedEventId);
       const normalized = rows.map((t) => {
         const n = parseTableNumber((t as any).number);
         return { ...t, number: n === null ? undefined : n };
@@ -442,6 +495,9 @@ function EmployeeGuestCheckinWebDesktopScreen() {
         hideTableType
         useBaseColorAsWebBackground
         showTableBorder={false}
+        autoFitZoomMultiplier={isSideBySide ? 0.76 : 0.86}
+        cellSizeMultiplier={0.88}
+        tableTextScale={0.8}
         getTableBaseColor={(t: any) => {
           const selected = Boolean(selectedTableNumber) && Number(t?.number) === Number(selectedTableNumber);
           if (selected) return '#10B981';
@@ -491,7 +547,7 @@ function EmployeeGuestCheckinWebDesktopScreen() {
         onPressTableNumber={handlePressMapTableNumber}
       />
     );
-  }, [handlePressMapTableNumber, seatedByNumber, selectedTableNumber, webSketch]);
+  }, [handlePressMapTableNumber, isSideBySide, seatedByNumber, selectedTableNumber, webSketch]);
 
   const buildSketchFromCurrentTables = useCallback((currentTables: Table[]): WebSketch | null => {
     const placed = (currentTables || [])
@@ -631,10 +687,17 @@ function EmployeeGuestCheckinWebDesktopScreen() {
     }, 0);
     const arrivingNotArrivedGuests = guests.filter((g) => g.status === 'מגיע' && !g.checkedIn).length;
 
+    const occupiedByTableId = new Map<string, number>();
+    for (const g of guests) {
+      const tid = String(g.tableId ?? '').trim();
+      if (!tid) continue;
+      occupiedByTableId.set(tid, (occupiedByTableId.get(tid) || 0) + 1);
+    }
+
     const reserveTables = tables.filter((t) => t.shape === 'reserve');
     const regularTables = tables.filter((t) => t.shape !== 'reserve');
 
-    const occupiedCount = (t: Table) => (Array.isArray(t.guests) ? t.guests.length : 0);
+    const occupiedCount = (t: Table) => occupiedByTableId.get(t.id) || 0;
     const fullTables = regularTables.filter((t) => (t.capacity || 0) > 0 && occupiedCount(t) >= (t.capacity || 0));
     const emptyTables = regularTables.filter((t) => occupiedCount(t) === 0);
 
@@ -742,26 +805,86 @@ function EmployeeGuestCheckinWebDesktopScreen() {
     return arr;
   }, [tableCapacityById, tableCapacityByNumber, tableLabelById, tableNumberById, visibleGuests]);
 
-  const mapCardHeight = useMemo(() => {
-    if (!height) return 620;
-    if (isSideBySide) return Math.max(620, Math.round(height - 120));
-    if (isTablet) return Math.round(Math.min(720, Math.max(500, height * 0.52)));
-    return Math.round(Math.min(560, Math.max(420, height * 0.48)));
+  const INITIAL_RENDER_ROWS = 40;
+  const RENDER_ROWS_PER_BATCH = 80;
+  const [rowRenderLimit, setRowRenderLimit] = useState(INITIAL_RENDER_ROWS);
+
+  useEffect(() => {
+    setRowRenderLimit(INITIAL_RENDER_ROWS);
+  }, [query, filter, tableFilter]);
+
+  const totalListRows = useMemo(
+    () => groupedVisibleGuests.reduce((sum, group) => sum + group.guests.length, 0),
+    [groupedVisibleGuests]
+  );
+
+  useEffect(() => {
+    if (rowRenderLimit >= totalListRows) return;
+    const t = setTimeout(() => {
+      setRowRenderLimit((prev) => prev + RENDER_ROWS_PER_BATCH);
+    }, 32);
+    return () => clearTimeout(t);
+  }, [rowRenderLimit, totalListRows]);
+
+  const renderedGroupedGuests = useMemo(() => {
+    if (rowRenderLimit >= totalListRows) return groupedVisibleGuests;
+    let used = 0;
+    const out: typeof groupedVisibleGuests = [];
+    for (const group of groupedVisibleGuests) {
+      if (used >= rowRenderLimit) break;
+      const remaining = rowRenderLimit - used;
+      if (group.guests.length <= remaining) {
+        out.push(group);
+        used += group.guests.length;
+      } else {
+        out.push({ ...group, guests: group.guests.slice(0, remaining) });
+        used = rowRenderLimit;
+      }
+    }
+    return out;
+  }, [groupedVisibleGuests, rowRenderLimit, totalListRows]);
+
+  const allGroupsCollapsed = useMemo(
+    () => groupedVisibleGuests.length > 0 && groupedVisibleGuests.every((g) => Boolean(collapsedTableGroups[g.key])),
+    [collapsedTableGroups, groupedVisibleGuests]
+  );
+
+  const toggleCollapseAllGroups = useCallback(() => {
+    if (allGroupsCollapsed) {
+      setCollapsedTableGroups({});
+      return;
+    }
+    const next: Record<string, boolean> = {};
+    groupedVisibleGuests.forEach((g) => {
+      next[g.key] = true;
+    });
+    setCollapsedTableGroups(next);
+  }, [allGroupsCollapsed, groupedVisibleGuests]);
+
+  const workspaceHeight = useMemo(() => {
+    if (!height) return 520;
+    // Fill the viewport: subtract the chrome above the workspace (top bar,
+    // metrics strip and paddings) so the map + guest list reach the bottom.
+    if (isSideBySide) return Math.max(460, Math.round(height - 208));
+    if (isTablet) return Math.round(Math.min(480, Math.max(360, height * 0.42)));
+    return Math.round(Math.min(400, Math.max(300, height * 0.38)));
   }, [height, isSideBySide, isTablet]);
+
+  const mapStageHeight = useMemo(() => Math.max(280, workspaceHeight - 64), [workspaceHeight]);
 
   const guestListMaxHeight = useMemo(() => {
     if (!height || !isSideBySide) return undefined;
-    return Math.max(420, Math.round(height - 360));
-  }, [height, isSideBySide]);
+    return Math.max(260, workspaceHeight - 148);
+  }, [height, isSideBySide, workspaceHeight]);
 
   const guestsListEstimatedHeight = useMemo(() => {
     // Heuristic so the list "shrinks to fit" when there are few guests.
-    const GROUP_GAP = 10;
-    const GROUP_HEADER_H = 52;
-    const BODY_PADDING_V = 20; // tableGroupBody paddingVertical
-    const BODY_GAP = 10; // tableGroupBody gap
-    const ROW_H = 66; // guestRowCompact height + padding
-    const LIST_WRAP_PADDING_V = 28; // listWrap paddingVertical (14 top + 14 bottom)
+    const GROUP_GAP = 8;
+    const GROUP_HEADER_H = 42;
+    const BODY_PADDING_V = 16;
+    const BODY_GAP = 6;
+    const ROW_H = 54;
+    const LIST_WRAP_PADDING_V = 16;
 
     let total = LIST_WRAP_PADDING_V;
     groupedVisibleGuests.forEach((group, idx) => {
@@ -787,8 +910,9 @@ function EmployeeGuestCheckinWebDesktopScreen() {
   const guestsColWidth = useMemo(() => {
     if (!isSideBySide) return undefined as number | undefined;
     const w = Number(width) || 0;
-    if (w < 1200) return Math.max(340, Math.min(400, Math.round(w * 0.34)));
-    return Math.max(450, Math.min(520, Math.round(w * 0.38)));
+    if (w < 1200) return Math.max(340, Math.min(400, Math.round(w * 0.4)));
+    if (w < 1600) return Math.max(400, Math.min(440, Math.round(w * 0.34)));
+    return 440;
   }, [isSideBySide, width]);
 
   const stickyTop = useMemo(() => {
@@ -796,10 +920,6 @@ function EmployeeGuestCheckinWebDesktopScreen() {
     if (!isSideBySide) return 0;
     return 8;
   }, [isSideBySide]);
-
-  const handleRefreshAll = useCallback(async () => {
-    await Promise.all([refresh(), loadTables(), fetchWebSketch()]);
-  }, [fetchWebSketch, loadTables, refresh]);
 
   const tableNumberForId = useCallback(
     (tableId: string | null) => {
@@ -985,11 +1105,11 @@ function EmployeeGuestCheckinWebDesktopScreen() {
       return;
     }
 
-    // Make sure the freshly added guest is visible, and focus the table they were seated at.
+    // Show the full list again — don't leave the screen filtered to the table
+    // the walk-in was just seated at (users had to refresh to "un-stick" it).
     setFilter('all');
-    const seatedNumber = tableNumberForId(tableId);
-    setSelectedTableNumber(seatedNumber);
-    if (tableId) setTableFilter(tableId);
+    setSelectedTableNumber(null);
+    setTableFilter(null);
     closeAddModal();
   }, [
     addName,
@@ -1001,7 +1121,6 @@ function EmployeeGuestCheckinWebDesktopScreen() {
     resolveTableIdForNumber,
     selectedTableNumber,
     setFilter,
-    tableNumberForId,
   ]);
 
   const isMoveSaving = Boolean(moveGuest && savingMoveId === moveGuest.id);
@@ -1017,7 +1136,7 @@ function EmployeeGuestCheckinWebDesktopScreen() {
 
   const guestsListContent = (
     <View style={styles.tableGroupsWrap}>
-      {groupedVisibleGuests.map((group) => {
+      {renderedGroupedGuests.map((group) => {
         const collapsed = Boolean(collapsedTableGroups[group.key]);
         const maxPeople = (Number((group as any).maxPeople) || 0) > 0 ? Number((group as any).maxPeople) || 0 : group.peopleTotal;
         const overflow = Math.max(0, (Number(group.arrivedPeople) || 0) - (Number(maxPeople) || 0));
@@ -1059,6 +1178,21 @@ function EmployeeGuestCheckinWebDesktopScreen() {
                 <Ionicons name={collapsed ? 'chevron-down' : 'chevron-up'} size={16} color={colors.gray[500]} />
               </View>
             </Pressable>
+
+            <View style={styles.tableGroupProgressTrack}>
+              <View
+                style={[
+                  styles.tableGroupProgressFill,
+                  {
+                    width: `${Math.min(
+                      100,
+                      maxPeople > 0 ? Math.round(((Number(group.arrivedPeople) || 0) / maxPeople) * 100) : 0
+                    )}%`,
+                  } as any,
+                  overflow > 0 ? styles.tableGroupProgressFillOver : null,
+                ]}
+              />
+            </View>
 
             {collapsed ? null : (
               <View style={styles.tableGroupBody}>
@@ -1257,107 +1391,63 @@ function EmployeeGuestCheckinWebDesktopScreen() {
         </View>
       ) : (
         <ScrollView
+          ref={pageScrollRef}
           style={styles.pageScroll}
           contentContainerStyle={styles.screen}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
+          scrollEventThrottle={16}
+          onScroll={(e) => updateShowScrollTop('page', e.nativeEvent.contentOffset.y)}
         >
-          <View style={styles.heroShell}>
-            <AdminWebPageHeader
-              eyebrow={isAdminRoute ? 'ניהול אורחים' : 'צ׳ק אין'}
-              title="צ'ק אין אורחים"
-              subtitle={`${counts.checkedIn} מתוך ${counts.total} מוזמנים באולם`}
-              showNav={false}
-              useDefaultActions={false}
-              leading={
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="חזרה לרשימת האירועים"
-                  onPress={handleBack}
-                  style={({ hovered, pressed }: any) => [
-                    styles.webBackBtn,
-                    Platform.OS === 'web' && hovered ? styles.webBackBtnHover : null,
-                    pressed ? styles.webBackBtnPressed : null,
-                  ]}
-                >
-                  <Ionicons name="arrow-forward" size={16} color={colors.text} />
-                  <Text style={styles.webBackBtnText}>חזרה</Text>
-                </Pressable>
-              }
-              actions={
-                <View style={styles.heroHeaderActions}>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="רענן נתוני צ׳ק אין"
-                    onPress={() => void handleRefreshAll()}
-                    style={({ hovered, pressed }: any) => [
-                      styles.heroHeaderActionBtn,
-                      Platform.OS === 'web' && hovered ? styles.heroHeaderActionBtnHover : null,
-                      pressed ? { opacity: 0.9 } : null,
-                    ]}
-                  >
-                    <Ionicons name="refresh" size={16} color={colors.primary} />
-                    <Text style={styles.heroHeaderActionText}>רענון</Text>
-                  </Pressable>
-                </View>
-              }
-            />
-          </View>
+          {hasSidebar ? null : (
+            <View style={styles.mobileNavRow}>
+              <WebAppMenu compact />
+            </View>
+          )}
 
           <View style={styles.topDashboardWrap}>
-            <View style={Platform.OS === 'web' && isSideBySide ? ({ position: 'sticky', top: stickyTop } as any) : null}>
-              <View style={[styles.card, styles.dashboardCard, styles.heroMainCard, isSideBySide ? styles.dashboardCardTop : null]}>
-                <View style={styles.dashboardHeader}>
-                  <View style={styles.dashboardHeaderLeft}>
-                    <View style={styles.dashboardHeaderIcon}>
-                      <Ionicons name="pulse-outline" size={18} color="#fff" />
-                    </View>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={styles.dashboardHeaderTitle}>תמונת מצב בזמן אמת</Text>
-                      <Text style={styles.dashboardHeaderSub}>מוזמנים, שולחנות ויחס הגעה לאירוע</Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.dashboardHeaderBadge}>
-                    <Text style={styles.dashboardHeaderBadgeValue}>{attendanceRate}%</Text>
-                    <Text style={styles.dashboardHeaderBadgeText}>יחס הגעה</Text>
-                  </View>
+            <View style={styles.metricsStrip}>
+              <View style={[styles.metricsStripMain, metricsInOneRow ? styles.metricsStripRow : null]}>
+                <View style={styles.metricsStripLive}>
+                  <Ionicons name="pulse-outline" size={14} color="#F0CB46" />
+                  <Text style={styles.metricsStripLiveText}>בזמן אמת</Text>
                 </View>
 
-                <View style={[styles.dashboardBody, isSideBySide ? styles.dashboardBodyTop : null]}>
-                  <View style={[styles.metricsGrid, metricsInOneRow ? styles.metricsGridTop : null]}>
-                    <CheckinOverviewStat
-                      compact={metricsInOneRow}
-                      label='סה"כ מוזמנים'
-                      value={eventOverview.invitedPeople}
-                      icon="people-outline"
-                    />
-                    <CheckinOverviewStat
-                      compact={metricsInOneRow}
-                      label="הגיעו לאולם"
-                      value={counts.checkedIn}
-                      icon="walk-outline"
-                    />
-                    <CheckinOverviewStat
-                      compact={metricsInOneRow}
-                      label="שולחנות ריקים"
-                      value={eventOverview.emptyTables}
-                      icon="grid-outline"
-                    />
-                    <CheckinOverviewStat
-                      compact={metricsInOneRow}
-                      label="שולחנות מלאים"
-                      value={eventOverview.fullTables}
-                      icon="checkmark-circle-outline"
-                    />
-                    <CheckinOverviewStat
-                      compact={metricsInOneRow}
-                      label="שולחנות רזרבה"
-                      value={eventOverview.reserveTables}
-                      icon="bookmark-outline"
-                    />
-                  </View>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="מפת לייב באירוע"
+                  onPress={openLiveMap}
+                  style={({ hovered, pressed }: any) => [
+                    styles.liveMapBtn,
+                    Platform.OS === 'web' && hovered ? styles.liveMapBtnHover : null,
+                    pressed ? { opacity: 0.92 } : null,
+                  ]}
+                >
+                  <View style={styles.liveMapDot} />
+                  <Text style={styles.liveMapBtnText}>מפת לייב</Text>
+                </Pressable>
+
+                <View style={[styles.metricsGrid, metricsInOneRow ? styles.metricsGridTop : null]}>
+                  <CheckinOverviewStat label='סה"כ מוזמנים' value={eventOverview.invitedPeople} icon="people-outline" />
+                  <CheckinOverviewStat label="הגיעו לאולם" value={counts.checkedIn} icon="walk-outline" highlight />
+                  <CheckinOverviewStat label="שולחנות ריקים" value={eventOverview.emptyTables} icon="grid-outline" />
+                  <CheckinOverviewStat label="שולחנות מלאים" value={eventOverview.fullTables} icon="checkmark-circle-outline" />
+                  <CheckinOverviewStat label="שולחנות רזרבה" value={eventOverview.reserveTables} icon="bookmark-outline" />
                 </View>
+
+                <View style={styles.metricsStripRate}>
+                  <Text style={styles.metricsStripRateValue}>{attendanceRate}%</Text>
+                  <Text style={styles.metricsStripRateLabel}>יחס הגעה</Text>
+                </View>
+              </View>
+
+              <View style={styles.arrivalProgressWrap}>
+                <View style={styles.arrivalProgressTrack}>
+                  <View style={[styles.arrivalProgressFill, { width: `${attendanceRate}%` } as any]} />
+                </View>
+                <Text style={styles.arrivalProgressText}>
+                  {eventOverview.arrivedPeople} מתוך {eventOverview.invitedPeople} אורחים באולם
+                </Text>
               </View>
             </View>
           </View>
@@ -1378,12 +1468,10 @@ function EmployeeGuestCheckinWebDesktopScreen() {
                     : null
                 }
               >
-                <View style={[styles.card, styles.guestListCard, isSideBySide ? ({ minHeight: mapCardHeight } as any) : null]}>
+                <View style={[styles.card, styles.guestListCard, isSideBySide ? ({ height: workspaceHeight } as any) : null]}>
                   <View style={styles.cardHeaderRow}>
                     <View style={styles.panelHeaderCopy}>
-                      <Text style={styles.panelEyebrow}>אורחים</Text>
                       <Text style={styles.panelTitle}>רשימת צ'ק אין</Text>
-                      <Text style={styles.panelSubtitle}>נהל את האורחים לפי חיפוש, סטטוס ושולחן בלחיצה אחת.</Text>
                     </View>
                     <Pressable
                       accessibilityRole="button"
@@ -1418,12 +1506,27 @@ function EmployeeGuestCheckinWebDesktopScreen() {
                     ) : null}
                   </View>
 
-                  <View style={styles.panelMetaRow}>
-                    <View style={styles.panelMetaPill}>
-                      <Ionicons name="people-outline" size={14} color={colors.primary} />
-                      <Text style={styles.panelMetaPillText}>{visibleGuests.length} אורחים בתצוגה</Text>
+                  {groupedVisibleGuests.length > 1 ? (
+                    <View style={styles.panelMetaRow}>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={allGroupsCollapsed ? 'פתח את כל השולחנות' : 'סגור את כל השולחנות'}
+                        onPress={toggleCollapseAllGroups}
+                        style={({ hovered, pressed }: any) => [
+                          styles.collapseAllBtn,
+                          Platform.OS === 'web' && hovered ? styles.collapseAllBtnHover : null,
+                          pressed ? { opacity: 0.92 } : null,
+                        ]}
+                      >
+                        <Ionicons
+                          name={allGroupsCollapsed ? 'chevron-expand-outline' : 'chevron-collapse-outline'}
+                          size={14}
+                          color={colors.primary}
+                        />
+                        <Text style={styles.collapseAllBtnText}>{allGroupsCollapsed ? 'פתח הכל' : 'סגור הכל'}</Text>
+                      </Pressable>
                     </View>
-                  </View>
+                  ) : null}
 
                   <View style={styles.panelFilterChipsRow}>
                     {filterOptions.map((option) => {
@@ -1458,7 +1561,7 @@ function EmployeeGuestCheckinWebDesktopScreen() {
                     })}
                   </View>
 
-                  <View style={[styles.mainSearchWrap, { marginTop: 12 }]}>
+                  <View style={[styles.mainSearchWrap, { marginTop: 8 }]}>
                     <View style={styles.searchIconRight}>
                       <Ionicons name="search" size={18} color={colors.gray[500]} />
                     </View>
@@ -1473,7 +1576,7 @@ function EmployeeGuestCheckinWebDesktopScreen() {
                     />
                   </View>
 
-                  <View style={[styles.listWrap, isSideBySide ? styles.listWrapFill : null, { marginTop: 12 }]}>
+                  <View style={[styles.listWrap, isSideBySide ? styles.listWrapFill : null, { marginTop: 8 }]}>
                     {loading ? (
                       <View style={styles.loadingRow}>
                         <ActivityIndicator size="large" color={colors.primary} />
@@ -1500,9 +1603,10 @@ function EmployeeGuestCheckinWebDesktopScreen() {
                       </View>
                     ) : shouldScrollGuests ? (
                       <ScrollView
+                        ref={guestsScrollRef}
                         style={
                           isSideBySide
-                            ? ({ flex: 1, minHeight: guestListMaxHeight, maxHeight: guestListMaxHeight } as any)
+                            ? ({ flex: 1, minHeight: 0 } as any)
                             : guestListMaxHeight
                               ? ({ maxHeight: guestListMaxHeight } as any)
                               : undefined
@@ -1510,6 +1614,8 @@ function EmployeeGuestCheckinWebDesktopScreen() {
                         contentContainerStyle={isSideBySide ? ({ flexGrow: 1 } as any) : undefined}
                         showsVerticalScrollIndicator={false}
                         nestedScrollEnabled
+                        scrollEventThrottle={16}
+                        onScroll={(e) => updateShowScrollTop('guests', e.nativeEvent.contentOffset.y)}
                       >
                         {guestsListContent}
                       </ScrollView>
@@ -1527,18 +1633,29 @@ function EmployeeGuestCheckinWebDesktopScreen() {
                   styles.card,
                   styles.mapCard,
                   Platform.OS === 'web' && isSideBySide ? ({ position: 'sticky', top: stickyTop } as any) : null,
-                  { minHeight: mapCardHeight },
+                  isSideBySide ? ({ height: workspaceHeight } as any) : null,
                 ]}
               >
                 <View style={styles.mapCardHeader}>
                   <View style={styles.panelHeaderCopy}>
-                    <Text style={styles.panelEyebrow}>מפת הושבה</Text>
-                    <Text style={styles.panelTitle}>פריסת שולחנות חיה</Text>
-                    <Text style={styles.panelSubtitle}>
-                      {selectedTableNumber
-                        ? `השולחן ${selectedTableNumber} מודגש כעת במפה`
-                        : 'לחץ על שולחן במפה או על אורח ברשימה כדי למקד את הסקיצה'}
+                    <Text style={styles.panelTitle}>
+                      {selectedTableNumber ? `שולחן ${selectedTableNumber}` : 'מפת הושבה'}
                     </Text>
+                  </View>
+
+                  <View style={styles.mapLegendRow}>
+                    <View style={styles.mapLegendItem}>
+                      <View style={[styles.mapLegendDot, { backgroundColor: colors.primary }]} />
+                      <Text style={styles.mapLegendText}>רגיל</Text>
+                    </View>
+                    <View style={styles.mapLegendItem}>
+                      <View style={[styles.mapLegendDot, { backgroundColor: colors.secondary }]} />
+                      <Text style={styles.mapLegendText}>רזרבה</Text>
+                    </View>
+                    <View style={styles.mapLegendItem}>
+                      <View style={[styles.mapLegendDot, { backgroundColor: '#10B981' }]} />
+                      <Text style={styles.mapLegendText}>מלא</Text>
+                    </View>
                   </View>
 
                   <View style={styles.mapCardHeaderSide}>
@@ -1553,7 +1670,7 @@ function EmployeeGuestCheckinWebDesktopScreen() {
                           pressed ? { opacity: 0.92 } : null,
                         ]}
                       >
-                        <Ionicons name="person-add" size={16} color={colors.white} />
+                        <Ionicons name="person-add" size={14} color={colors.white} />
                         <Text style={styles.mapAddGuestBtnText}>הוסף לשולחן {selectedTableNumber}</Text>
                       </Pressable>
                     ) : null}
@@ -1588,22 +1705,7 @@ function EmployeeGuestCheckinWebDesktopScreen() {
                   </View>
                 </View>
 
-                <View style={styles.mapLegendRow}>
-                  <View style={styles.mapLegendItem}>
-                    <View style={[styles.mapLegendDot, { backgroundColor: colors.primary }]} />
-                    <Text style={styles.mapLegendText}>שולחן רגיל</Text>
-                  </View>
-                  <View style={styles.mapLegendItem}>
-                    <View style={[styles.mapLegendDot, { backgroundColor: colors.secondary }]} />
-                    <Text style={styles.mapLegendText}>שולחן רזרבה</Text>
-                  </View>
-                  <View style={styles.mapLegendItem}>
-                    <View style={[styles.mapLegendDot, { backgroundColor: '#10B981' }]} />
-                    <Text style={styles.mapLegendText}>מלא או מסומן</Text>
-                  </View>
-                </View>
-
-                <View style={{ flex: 1, minHeight: mapCardHeight }}>
+                <View style={[styles.mapStage, { height: mapStageHeight }]}>
                   {mapLoading ? (
                     <View style={styles.loadingRow}>
                       <ActivityIndicator size="large" color={colors.primary} />
@@ -1614,7 +1716,7 @@ function EmployeeGuestCheckinWebDesktopScreen() {
                   ) : (
                     <View style={styles.mapEmptyState}>
                       <View style={styles.mapEmptyIconWrap}>
-                        <Ionicons name="map-outline" size={34} color={colors.primary} />
+                        <Ionicons name="map-outline" size={28} color={colors.primary} />
                       </View>
                       <Text style={styles.mapEmptyTitle}>עדיין אין מפת הושבה</Text>
                       <Text style={styles.mapEmptyText}>כשתהיה סקיצה לאירוע, היא תופיע כאן באופן אוטומטי.</Text>
@@ -1627,16 +1729,35 @@ function EmployeeGuestCheckinWebDesktopScreen() {
         </ScrollView>
       )}
 
+      {showScrollTop && !addOpen && !moveGuest ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="חזרה לראש העמוד"
+          onPress={scrollPageToTop}
+          style={({ hovered, pressed }: any) => [
+            styles.scrollTopFab,
+            { right: scrollTopFabRight },
+            Platform.OS === 'web' && hovered ? styles.scrollTopFabHover : null,
+            pressed ? { opacity: 0.92, transform: [{ translateY: 1 }] } : null,
+          ]}
+        >
+          <Text style={styles.scrollTopFabText}>למעלה</Text>
+          <View style={styles.scrollTopFabIcon}>
+            <Ionicons name="chevron-up" size={16} color={colors.primary} />
+          </View>
+        </Pressable>
+      ) : null}
+
       {moveGuest ? (
         <View style={styles.modalBackdrop}>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="סגור העברת אורח"
             onPress={closeMoveModal}
-            style={styles.modalBackdropPressable}
+            style={[styles.modalBackdropPressable, { right: drawerScrimRight }]}
           />
 
-          <View style={[styles.modalCard, (isNarrow || isMobile) ? styles.modalCardNarrow : null]}>
+          <View style={[styles.modalCard, (isNarrow || isMobile) ? styles.modalCardNarrow : { right: drawerRight }]}>
             <View style={styles.modalHeader}>
               <Pressable
                 accessibilityRole="button"
@@ -1825,14 +1946,14 @@ function EmployeeGuestCheckinWebDesktopScreen() {
             style={
               addTableId && !addTablePickerExpanded && !isNarrow && !isMobile
                 ? styles.modalBackdropPressableMapSide
-                : styles.modalBackdropPressable
+                : [styles.modalBackdropPressable, { right: drawerScrimRight }]
             }
           />
 
           <View
             style={[
               styles.modalCard,
-              isNarrow || isMobile ? styles.modalCardNarrow : null,
+              isNarrow || isMobile ? styles.modalCardNarrow : { right: drawerRight },
               addTableId && !addTablePickerExpanded && !isNarrow && !isMobile ? styles.modalCardMapSide : null,
             ]}
           >
@@ -2159,9 +2280,9 @@ const styles = StyleSheet.create({
       ? ({
           minHeight: '100dvh',
           direction: 'rtl',
-          backgroundColor: '#F7FAFF',
+          backgroundColor: '#F6F9FF',
           backgroundImage:
-            'radial-gradient(circle at top right, rgba(25,93,230,0.14), rgba(25,93,230,0) 40%), radial-gradient(circle at top left, rgba(232,241,255,0.95), rgba(232,241,255,0) 34%), radial-gradient(circle at bottom left, rgba(242,224,186,0.34), rgba(242,224,186,0) 32%), radial-gradient(circle at bottom center, rgba(240,203,70,0.12), rgba(240,203,70,0) 26%)',
+            'radial-gradient(circle at 88% -10%, rgba(6,23,62,0.10), rgba(6,23,62,0) 42%), radial-gradient(circle at 8% 4%, rgba(240,203,70,0.14), rgba(240,203,70,0) 30%), radial-gradient(circle at 50% 120%, rgba(0,53,102,0.10), rgba(0,53,102,0) 44%), linear-gradient(180deg, #F2F6FF 0%, #F7FAFF 40%, #FDFDFB 100%)',
         } as any)
       : null),
   },
@@ -2169,30 +2290,74 @@ const styles = StyleSheet.create({
     flex: 1,
     ...(Platform.OS === 'web' ? ({ overflowY: 'auto', overscrollBehavior: 'contain' } as any) : null),
   },
+  scrollTopFab: {
+    position: Platform.OS === 'web' ? ('fixed' as any) : 'absolute',
+    bottom: 26,
+    zIndex: 40,
+    minHeight: 44,
+    paddingLeft: 8,
+    paddingRight: 14,
+    borderRadius: 999,
+    backgroundColor: colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.22)',
+    shadowColor: colors.primary,
+    shadowOpacity: 0.28,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 10,
+    ...(Platform.OS === 'web'
+      ? ({
+          cursor: 'pointer',
+          boxShadow: '0 14px 32px rgba(6,23,62,0.28), 0 0 0 4px rgba(6,23,62,0.06)',
+          backdropFilter: 'blur(8px)',
+        } as any)
+      : null),
+  },
+  scrollTopFabHover: {
+    transform: [{ translateY: -2 }],
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 18px 36px rgba(6,23,62,0.34), 0 0 0 5px rgba(255,255,255,0.12)' } as any) : null),
+  },
+  scrollTopFabText: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: colors.white,
+    textAlign: 'right',
+    letterSpacing: 0.2,
+  },
+  scrollTopFabIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 999,
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
   screen: {
     width: '100%',
-    // Allow more horizontal room so the seating map can be big on wide monitors.
     maxWidth: 1960,
     alignSelf: 'center',
     paddingHorizontal: 12,
-    paddingBottom: 28,
-    paddingTop: 8,
+    paddingBottom: 22,
+    paddingTop: 6,
   },
 
   content: {
-    marginTop: 8,
+    marginTop: 6,
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 10,
+    gap: 8,
   },
   contentLg: {
     alignItems: 'stretch',
-    ...(Platform.OS === 'web' ? ({ minHeight: 'calc(100dvh - 280px)' } as any) : null),
   },
-  contentSm: { flexDirection: 'column', gap: 10 },
+  contentSm: { flexDirection: 'column', gap: 8 },
   // Keep side columns tighter to prioritize the map width.
-  guestsCol: { width: 500, flexShrink: 1, minWidth: 400 },
+  guestsCol: { width: 440, flexShrink: 1, minWidth: 340 },
   guestsColLg: {
     alignSelf: 'stretch',
     ...(Platform.OS === 'web' ? ({ display: 'flex', flexDirection: 'column' } as any) : null),
@@ -2202,22 +2367,27 @@ const styles = StyleSheet.create({
   // overflow on phones.
   colSm: { width: '100%', maxWidth: 520, minWidth: 0, alignSelf: 'center' },
   colTablet: { width: '100%', minWidth: 0, alignSelf: 'stretch' },
-  main: { flex: 1, minWidth: 460, flexShrink: 0 },
+  main: { flex: 1, minWidth: 0, flexShrink: 1 },
   // When stacked (phone/tablet portrait) the map column must be allowed to
   // shrink to the viewport width instead of forcing a 460px horizontal scroll.
   mainSm: { width: '100%', minWidth: 0, flexShrink: 1 },
 
   card: {
-    backgroundColor: 'rgba(255,255,255,0.96)',
+    backgroundColor: 'rgba(255,255,255,0.97)',
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.06)',
-    padding: 16,
+    borderColor: 'rgba(6,23,62,0.06)',
+    padding: 14,
     shadowColor: colors.primary,
-    shadowOpacity: 0.05,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.04,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
     elevation: 1,
+    ...(Platform.OS === 'web'
+      ? ({
+          boxShadow: '0 16px 40px rgba(6,23,62,0.06), 0 2px 6px rgba(6,23,62,0.03)',
+        } as any)
+      : null),
   },
   guestListCard: {
     flex: 1,
@@ -2229,49 +2399,116 @@ const styles = StyleSheet.create({
     width: '100%',
     alignSelf: 'stretch',
   },
-  topDashboardWrap: { width: '100%', marginTop: 8, marginBottom: 10 },
+  topDashboardWrap: { width: '100%', marginTop: 8, marginBottom: 4 },
   dashboardCardTop: { maxWidth: 1960 },
   cardTitle: { fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'right' },
-  heroShell: { width: '100%', marginTop: 8, gap: 10 },
-  heroHeaderActions: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
-  heroHeaderActionBtn: {
-    minHeight: 40,
-    flexDirection: 'row-reverse',
+  heroShell: { width: '100%', marginTop: 4, gap: 8 },
+  mobileNavRow: {
+    width: '100%',
+    marginTop: 2,
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 14,
-    borderRadius: 14,
-    backgroundColor: 'rgba(248,250,252,1)',
-    borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.08)',
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+    justifyContent: 'flex-start',
   },
-  heroHeaderActionBtnHover: { backgroundColor: 'rgba(241,245,249,1)' },
-  heroHeaderActionText: { fontSize: 13, fontWeight: '900', color: colors.primary, textAlign: 'right' },
-  webBackBtn: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: 8,
+  metricsStrip: {
+    width: '100%',
+    borderRadius: 18,
+    paddingHorizontal: 12,
     paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 999,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: 'rgba(255,255,255,0.96)',
     borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.08)',
+    borderColor: 'rgba(6,23,62,0.06)',
+    gap: 10,
+    ...(Platform.OS === 'web'
+      ? ({
+          boxShadow: '0 14px 34px rgba(6,23,62,0.06), 0 2px 6px rgba(6,23,62,0.03)',
+          backdropFilter: 'blur(10px)',
+        } as any)
+      : null),
+  },
+  metricsStripMain: { gap: 8 },
+  metricsStripRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  liveMapBtn: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 7,
+    paddingHorizontal: 12,
+    minHeight: 32,
+    borderRadius: 999,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: 'rgba(220,38,38,0.30)',
+    flexShrink: 0,
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
-  webBackBtnHover: {
-    backgroundColor: '#F8FAFD',
-    borderColor: 'rgba(15,69,230,0.12)',
+  liveMapBtnHover: { backgroundColor: '#FEF2F2' },
+  liveMapDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#DC2626' },
+  liveMapBtnText: { fontSize: 12, fontWeight: '900', color: '#B91C1C' },
+  metricsStripLive: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 11,
+    minHeight: 32,
+    borderRadius: 999,
+    backgroundColor: colors.primary,
+    flexShrink: 0,
+    ...(Platform.OS === 'web'
+      ? ({
+          backgroundImage: 'linear-gradient(135deg, #06173E, #0F2F6B)',
+          boxShadow: '0 8px 18px rgba(6,23,62,0.22)',
+        } as any)
+      : null),
   },
-  webBackBtnPressed: {
-    opacity: 0.92,
+  metricsStripLiveText: { fontSize: 11, fontWeight: '900', color: '#fff', textAlign: 'right' },
+  metricsStripRate: {
+    minWidth: 76,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 14,
+    backgroundColor: 'rgba(240,203,70,0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(204,160,0,0.24)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
   },
-  webBackBtnText: {
-    color: colors.text,
-    fontSize: 13,
-    fontWeight: '900',
+  metricsStripRateValue: { fontSize: 17, fontWeight: '900', color: colors.primary, textAlign: 'center' },
+  metricsStripRateLabel: { fontSize: 10, fontWeight: '800', color: 'rgba(6,23,62,0.60)', textAlign: 'center' },
+  arrivalProgressWrap: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 10,
+    paddingTop: 2,
+  },
+  arrivalProgressTrack: {
+    flex: 1,
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: 'rgba(6,23,62,0.07)',
+    overflow: 'hidden',
+  },
+  arrivalProgressFill: {
+    height: '100%',
+    borderRadius: 999,
+    backgroundColor: '#10B981',
+    ...(Platform.OS === 'web'
+      ? ({
+          backgroundImage: 'linear-gradient(90deg, #34D399, #10B981)',
+          transition: 'width 500ms ease',
+        } as any)
+      : null),
+  },
+  arrivalProgressText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: 'rgba(6,23,62,0.65)',
     textAlign: 'right',
+    flexShrink: 0,
   },
 
   dashboardGrid: {
@@ -2353,8 +2590,8 @@ const styles = StyleSheet.create({
   },
   heroFilterChipHover: { backgroundColor: 'rgba(241,245,249,1)' },
   heroFilterChipActive: {
-    backgroundColor: 'rgba(25,93,230,0.08)',
-    borderColor: 'rgba(25,93,230,0.22)',
+    backgroundColor: 'rgba(6,23,62,0.06)',
+    borderColor: 'rgba(6,23,62,0.22)',
   },
   heroFilterChipText: { fontSize: 13, fontWeight: '900', color: colors.gray[700], textAlign: 'right' },
   heroFilterChipTextActive: { color: colors.primary },
@@ -2381,61 +2618,55 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(6,23,62,0.05)',
   },
   heroMetaChipText: { fontSize: 12, fontWeight: '800', color: colors.primary, textAlign: 'right' },
-  metricsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  metricsGridTop: { flexWrap: 'nowrap', gap: 10 },
+  metricsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, flex: 1 },
+  metricsGridTop: { flexWrap: 'nowrap', gap: 6 },
   overviewStatCard: {
     flexGrow: 1,
-    flexBasis: '46%',
-    minWidth: 120,
-    minHeight: 104,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderRadius: 18,
-    backgroundColor: '#F8FAFD',
+    flexBasis: 0,
+    minWidth: 88,
+    minHeight: 0,
+    paddingHorizontal: 9,
+    paddingVertical: 7,
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: 'rgba(6,23,62,0.06)',
-    gap: 10,
-    ...(Platform.OS === 'web'
-      ? ({
-          boxShadow: '0 8px 24px rgba(11,28,65,0.04)',
-        } as any)
-      : null),
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 2px 8px rgba(6,23,62,0.04)' } as any) : null),
   },
-  overviewStatCardCompact: {
-    flex: 1,
-    flexBasis: 0,
-    minWidth: 0,
-    minHeight: 112,
-    borderRadius: 20,
-  },
+  overviewStatCardCompact: {},
   overviewStatTop: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'flex-start',
-    gap: 10,
+    gap: 8,
   },
+  overviewStatCopy: { flex: 1, minWidth: 0, gap: 0 },
   overviewStatIconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    backgroundColor: 'rgba(6,23,62,0.05)',
-    borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.06)',
+    width: 28,
+    height: 28,
+    borderRadius: 10,
+    backgroundColor: 'rgba(6,23,62,0.06)',
+    borderWidth: 0,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
   },
+  overviewStatIconBoxHighlight: {
+    backgroundColor: 'rgba(16,185,129,0.12)',
+  },
   overviewStatLabel: {
-    flex: 1,
     minWidth: 0,
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: '800',
     color: colors.gray[600],
     textAlign: 'right',
-    lineHeight: 16,
+    lineHeight: 13,
   },
   overviewStatValue: {
-    fontSize: 28,
+    fontSize: 16,
     fontWeight: '900',
     color: colors.text,
     textAlign: 'right',
@@ -2529,15 +2760,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   mainSearchWrap: {
-    height: 46,
-    borderRadius: 16,
-    backgroundColor: 'rgba(15,23,42,0.04)',
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.06)',
+    borderColor: 'rgba(6,23,62,0.10)',
     justifyContent: 'center',
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 1px 4px rgba(6,23,62,0.04)' } as any) : null),
   },
-  searchIconRight: { position: 'absolute', right: 12 },
-  searchInput: { paddingRight: 42, paddingLeft: 12, fontSize: 14, fontWeight: '800', color: colors.text },
+  searchIconRight: { position: 'absolute', right: 10 },
+  searchInput: { paddingRight: 36, paddingLeft: 10, fontSize: 13, fontWeight: '800', color: colors.text },
 
   pillsRow: { marginTop: 8, flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   pillsRowTop: { marginTop: 0 },
@@ -2571,58 +2803,60 @@ const styles = StyleSheet.create({
   },
   summaryPillText: { fontSize: 12, fontWeight: '900', color: colors.primary, textAlign: 'right' },
 
-  cardHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  panelHeaderCopy: { flex: 1, minWidth: 0, gap: 4 },
+  cardHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  panelHeaderCopy: { flex: 1, minWidth: 0, gap: 2 },
   panelEyebrow: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '900',
     color: colors.primary,
     textAlign: 'right',
-    letterSpacing: 0.7,
+    letterSpacing: 0.6,
     textTransform: 'uppercase' as any,
   },
-  panelTitle: { fontSize: 22, fontWeight: '900', color: '#111827', textAlign: 'right' },
-  panelSubtitle: { fontSize: 12, fontWeight: '700', color: colors.gray[600], lineHeight: 18, textAlign: 'right' },
-  panelMetaRow: { marginTop: 10, flexDirection: 'row', flexWrap: 'nowrap', gap: 10 },
-  panelMetaPill: {
+  panelTitle: { fontSize: 16, fontWeight: '900', color: colors.primary, textAlign: 'right', letterSpacing: 0.1 },
+  panelSubtitle: { fontSize: 11, fontWeight: '700', color: colors.gray[600], lineHeight: 16, textAlign: 'right' },
+  panelMetaRow: { marginTop: 8, flexDirection: 'row', flexWrap: 'nowrap', gap: 8 },
+  collapseAllBtn: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: 999,
-    backgroundColor: 'rgba(248,250,252,1)',
+    backgroundColor: 'rgba(6,23,62,0.05)',
     borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.06)',
+    borderColor: 'rgba(6,23,62,0.10)',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer', transition: 'background-color 140ms ease' } as any) : null),
   },
-  panelMetaPillText: { fontSize: 12, fontWeight: '800', color: colors.gray[700], textAlign: 'right' },
-  panelFilterChipsRow: { marginTop: 12, flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  collapseAllBtnHover: { backgroundColor: 'rgba(6,23,62,0.09)' },
+  collapseAllBtnText: { fontSize: 11, fontWeight: '900', color: colors.primary, textAlign: 'right' },
+  panelFilterChipsRow: { marginTop: 8, flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   panelFilterChip: {
-    minHeight: 42,
+    minHeight: 32,
     flexDirection: 'row-reverse',
     alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: 999,
     backgroundColor: 'rgba(248,250,252,0.96)',
     borderWidth: 1,
     borderColor: 'rgba(203,213,225,0.9)',
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer', boxShadow: '0 6px 18px rgba(15,23,42,0.06)' } as any) : null),
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
-  panelFilterChipTouch: { minHeight: 48, paddingHorizontal: 18, paddingVertical: 10 },
+  panelFilterChipTouch: { minHeight: 40, paddingHorizontal: 14, paddingVertical: 8 },
   panelFilterChipHover: { backgroundColor: 'rgba(241,245,249,1)', borderColor: 'rgba(148,163,184,0.45)' },
   panelFilterChipActive: {
-    backgroundColor: 'rgba(25,93,230,0.10)',
-    borderColor: 'rgba(25,93,230,0.28)',
-    ...(Platform.OS === 'web' ? ({ boxShadow: '0 10px 24px rgba(25,93,230,0.12)' } as any) : null),
+    backgroundColor: 'rgba(6,23,62,0.08)',
+    borderColor: 'rgba(6,23,62,0.26)',
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 10px 24px rgba(6,23,62,0.10)' } as any) : null),
   },
-  panelFilterChipText: { fontSize: 13, fontWeight: '900', color: colors.gray[700], textAlign: 'right' },
+  panelFilterChipText: { fontSize: 12, fontWeight: '900', color: colors.gray[700], textAlign: 'right' },
   panelFilterChipTextActive: { color: colors.primary },
   panelFilterChipCount: {
-    minWidth: 28,
-    height: 28,
-    paddingHorizontal: 8,
+    minWidth: 22,
+    height: 22,
+    paddingHorizontal: 6,
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
@@ -2664,39 +2898,59 @@ const styles = StyleSheet.create({
   h2: { fontSize: 22, fontWeight: '900', color: colors.text, textAlign: 'right' },
 
   listWrap: {
-    marginTop: 12,
-    backgroundColor: 'rgba(255,255,255,0.72)',
-    borderRadius: 22,
+    marginTop: 8,
+    backgroundColor: 'rgba(246,249,255,0.75)',
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.06)',
-    padding: 14,
+    borderColor: 'rgba(6,23,62,0.05)',
+    padding: 8,
   },
   listWrapFill: {
     flex: 1,
     minHeight: 0,
     ...(Platform.OS === 'web' ? ({ display: 'flex', flexDirection: 'column' } as any) : null),
   },
-  tableGroupsWrap: { gap: 10 },
+  tableGroupsWrap: { gap: 8 },
   tableGroupCard: {
-    borderRadius: 18,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.06)',
-    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderColor: 'rgba(6,23,62,0.07)',
+    backgroundColor: '#FFFFFF',
     overflow: 'hidden',
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 2px 10px rgba(6,23,62,0.04)' } as any) : null),
   },
   tableGroupCardOverflow: {
     borderColor: 'rgba(239,68,68,0.26)',
     backgroundColor: 'rgba(254,242,242,0.92)',
   },
   tableGroupHeader: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 10,
-    backgroundColor: 'rgba(15,23,42,0.02)',
-    ...(Platform.OS === 'web' ? ({ direction: 'ltr' } as any) : null),
+    backgroundColor: 'rgba(6,23,62,0.02)',
+    ...(Platform.OS === 'web'
+      ? ({
+          direction: 'ltr',
+          backgroundImage: 'linear-gradient(180deg, rgba(246,249,255,0.9), rgba(255,255,255,0.4))',
+        } as any)
+      : null),
+  },
+  tableGroupProgressTrack: {
+    height: 3,
+    backgroundColor: 'rgba(6,23,62,0.06)',
+    overflow: 'hidden',
+  },
+  tableGroupProgressFill: {
+    height: '100%',
+    borderRadius: 999,
+    backgroundColor: '#10B981',
+    ...(Platform.OS === 'web' ? ({ transition: 'width 400ms ease' } as any) : null),
+  },
+  tableGroupProgressFillOver: {
+    backgroundColor: '#EF4444',
   },
   tableGroupHeaderOverflow: { backgroundColor: 'rgba(239,68,68,0.06)' },
   tableGroupTitleRow: {
@@ -2739,7 +2993,7 @@ const styles = StyleSheet.create({
   tableGroupMetaDim: { fontSize: 11, fontWeight: '800', color: colors.gray[600], textAlign: 'left' },
   tableGroupMetaStrongOverflow: { fontSize: 12, fontWeight: '900', color: '#DC2626', textAlign: 'left' },
   tableGroupMetaDimOverflow: { fontSize: 11, fontWeight: '900', color: '#DC2626', textAlign: 'left' },
-  tableGroupBody: { padding: 10, gap: 10 },
+  tableGroupBody: { padding: 8, gap: 6 },
   tableHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2760,20 +3014,15 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: 13, fontWeight: '700', color: colors.gray[600], textAlign: 'center' },
   mapEmptyState: {
     flex: 1,
-    minHeight: 320,
+    minHeight: 220,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 12,
-    paddingHorizontal: 24,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: 'rgba(148,163,184,0.18)',
-    backgroundColor: 'rgba(255,255,255,0.68)',
-    ...(Platform.OS === 'web' ? ({ boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.45)' } as any) : null),
+    gap: 8,
+    paddingHorizontal: 20,
   },
   mapEmptyIconWrap: {
-    width: 72,
-    height: 72,
+    width: 52,
+    height: 52,
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
@@ -2781,43 +3030,65 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(6,23,62,0.10)',
   },
-  mapEmptyTitle: { fontSize: 22, fontWeight: '900', color: colors.text, textAlign: 'center' },
-  mapEmptyText: { maxWidth: 360, fontSize: 14, fontWeight: '700', lineHeight: 22, color: colors.gray[600], textAlign: 'center' },
+  mapEmptyTitle: { fontSize: 16, fontWeight: '900', color: colors.text, textAlign: 'center' },
+  mapEmptyText: { maxWidth: 320, fontSize: 13, fontWeight: '700', lineHeight: 20, color: colors.gray[600], textAlign: 'center' },
 
-  mapLegendRow: { marginTop: 10, flexDirection: 'row', flexWrap: 'wrap', gap: 12, alignItems: 'center' },
-  mapLegendItem: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
-  mapLegendDot: { width: 10, height: 10, borderRadius: 999 },
-  mapLegendText: { fontSize: 12, fontWeight: '900', color: colors.gray[700], textAlign: 'right' },
-  mapCard: { gap: 12 },
+  mapLegendRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' },
+  mapLegendItem: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6 },
+  mapLegendDot: { width: 8, height: 8, borderRadius: 999 },
+  mapLegendText: { fontSize: 11, fontWeight: '800', color: colors.gray[700], textAlign: 'right' },
+  mapCard: { gap: 8, overflow: 'hidden' },
+  mapStage: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: '#F3F7FC',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.05)',
+    ...(Platform.OS === 'web'
+      ? ({
+          display: 'flex',
+          flexDirection: 'column',
+          backgroundImage: 'radial-gradient(rgba(6,23,62,0.07) 1px, transparent 1.4px)',
+          backgroundSize: '20px 20px',
+          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.7), inset 0 0 40px rgba(6,23,62,0.02)',
+        } as any)
+      : null),
+  },
   mapCardHeader: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 12,
+    gap: 10,
     flexWrap: 'wrap',
   },
   mapCardHeaderSide: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
   mapAddGuestBtn: {
-    minHeight: 38,
+    minHeight: 32,
     flexDirection: 'row-reverse',
     alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 12,
+    gap: 6,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    borderRadius: 999,
     backgroundColor: colors.primary,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+    borderColor: 'rgba(240,203,70,0.30)',
+    ...(Platform.OS === 'web'
+      ? ({
+          cursor: 'pointer',
+          backgroundImage: 'linear-gradient(135deg, #0A2454, #06173E)',
+          boxShadow: '0 8px 18px rgba(6,23,62,0.22)',
+        } as any)
+      : null),
   },
   mapAddGuestBtnHover: { opacity: 0.94 },
   mapAddGuestBtnText: { fontSize: 12, fontWeight: '900', color: colors.white, textAlign: 'right' },
   mapStatusPill: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: 999,
     backgroundColor: 'rgba(248,250,252,1)',
     borderWidth: 1,
@@ -2828,21 +3099,26 @@ const styles = StyleSheet.create({
 
   guestRowCompact: {
     position: 'relative',
-    minHeight: 56,
-    borderRadius: 16,
+    minHeight: 48,
+    borderRadius: 13,
     borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.06)',
-    backgroundColor: 'rgba(255,255,255,0.98)',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    borderColor: 'rgba(6,23,62,0.06)',
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 7,
+    paddingHorizontal: 10,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-start',
     gap: 10,
     overflow: 'hidden',
-    ...(Platform.OS === 'web' ? ({ direction: 'ltr' } as any) : null),
+    ...(Platform.OS === 'web'
+      ? ({ direction: 'ltr', transition: 'border-color 140ms ease, box-shadow 140ms ease' } as any)
+      : null),
   },
-  guestRowCompactOn: { backgroundColor: 'rgba(34,197,94,0.06)', borderColor: 'rgba(34,197,94,0.14)' },
+  guestRowCompactOn: {
+    backgroundColor: 'rgba(16,185,129,0.05)',
+    borderColor: 'rgba(16,185,129,0.16)',
+  },
   // On phones the name + controls (~196px) cannot fit on one line, so wrap the
   // controls onto a second row beneath the name.
   guestRowCompactSm: { flexWrap: 'wrap', alignItems: 'flex-start', minHeight: 0, paddingVertical: 12 },
@@ -2890,7 +3166,7 @@ const styles = StyleSheet.create({
   moveBtnTouch: { width: 40, height: 40, borderRadius: 14 },
   moveBtnHover: { backgroundColor: 'rgba(15,23,42,0.06)' },
   moveBtnDisabled: { opacity: 0.55 },
-  guestNameCompact: { fontSize: 14, fontWeight: '900', color: colors.text, textAlign: 'right' },
+  guestNameCompact: { fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'right' },
   guestMetaCompact: { marginTop: 0, fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'right' },
   arrivalSlot: { width: 112, alignItems: 'center', justifyContent: 'center' },
   peoplePill: {
@@ -2998,7 +3274,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarCompact: { width: 34, height: 34 },
+  avatarCompact: { width: 28, height: 28 },
   avatarOn: { backgroundColor: 'rgba(34,197,94,0.10)', borderColor: 'rgba(34,197,94,0.20)' },
   avatarText: { fontSize: 12, fontWeight: '900', color: colors.gray[700], textAlign: 'center' },
   guestName: { fontSize: 15, fontWeight: '900', color: colors.text, textAlign: 'right' },
@@ -3051,7 +3327,8 @@ const styles = StyleSheet.create({
     bottom: 0,
     // Leave room for the right-side drawer (width 420 + 16px margin on each side).
     right: 452,
-    backgroundColor: 'rgba(15,23,42,0.10)',
+    backgroundColor: 'rgba(6,23,62,0.16)',
+    ...(Platform.OS === 'web' ? ({ backdropFilter: 'blur(2px)' } as any) : null),
   },
   modalBackdropPressableMapSide: {
     position: 'absolute',
@@ -3060,7 +3337,8 @@ const styles = StyleSheet.create({
     bottom: 0,
     // Scrim only the map side — keep the guest list fully visible on the right.
     right: 452,
-    backgroundColor: 'rgba(15,23,42,0.10)',
+    backgroundColor: 'rgba(6,23,62,0.16)',
+    ...(Platform.OS === 'web' ? ({ backdropFilter: 'blur(2px)' } as any) : null),
   },
   modalCard: {
     position: 'absolute',
@@ -3069,17 +3347,22 @@ const styles = StyleSheet.create({
     bottom: 16,
     width: 420,
     maxWidth: 440,
-    borderRadius: 24,
+    borderRadius: 26,
     borderWidth: 1,
-    borderColor: 'rgba(6,23,62,0.20)',
-    backgroundColor: '#F9FAFB',
+    borderColor: 'rgba(6,23,62,0.10)',
+    backgroundColor: '#FBFCFE',
     padding: 18,
     shadowColor: colors.primary,
     shadowOpacity: 0.12,
     shadowRadius: 24,
     shadowOffset: { width: 0, height: 10 },
     elevation: 3,
-    ...(Platform.OS === 'web' ? ({ maxHeight: 'calc(100dvh - 32px)' } as any) : null),
+    ...(Platform.OS === 'web'
+      ? ({
+          maxHeight: 'calc(100dvh - 32px)',
+          boxShadow: '0 30px 70px rgba(6,23,62,0.26), 0 4px 14px rgba(6,23,62,0.10)',
+        } as any)
+      : null),
   },
   modalCardMapSide: {
     left: 16,
@@ -3214,9 +3497,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 14,
     borderRadius: 16,
-    backgroundColor: 'rgba(25,93,230,0.08)',
+    backgroundColor: 'rgba(6,23,62,0.06)',
     borderWidth: 1,
-    borderColor: 'rgba(25,93,230,0.22)',
+    borderColor: 'rgba(6,23,62,0.22)',
   },
   selectedTableCardIcon: {
     width: 40,
@@ -3240,25 +3523,39 @@ const styles = StyleSheet.create({
 
   addGuestBtn: {
     flexShrink: 0,
-    minHeight: 40,
+    minHeight: 34,
     flexDirection: 'row-reverse',
     alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 14,
-    borderRadius: 14,
+    gap: 6,
+    paddingHorizontal: 12,
+    borderRadius: 999,
     backgroundColor: colors.primary,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
+    borderColor: 'rgba(240,203,70,0.30)',
     shadowColor: colors.primary,
     shadowOpacity: 0.22,
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 8 },
     elevation: 2,
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+    ...(Platform.OS === 'web'
+      ? ({
+          cursor: 'pointer',
+          backgroundImage: 'linear-gradient(135deg, #0A2454, #06173E)',
+          boxShadow: '0 10px 22px rgba(6,23,62,0.24)',
+          transition: 'transform 140ms ease, box-shadow 140ms ease',
+        } as any)
+      : null),
   },
   addGuestBtnTouch: { minHeight: 48, paddingHorizontal: 18 },
-  addGuestBtnHover: { opacity: 0.94 },
-  addGuestBtnText: { fontSize: 13, fontWeight: '900', color: colors.white, textAlign: 'right' },
+  addGuestBtnHover: {
+    ...(Platform.OS === 'web'
+      ? ({
+          transform: [{ translateY: -1 }],
+          boxShadow: '0 14px 28px rgba(6,23,62,0.30), 0 0 0 3px rgba(240,203,70,0.16)',
+        } as any)
+      : ({ opacity: 0.94 } as any)),
+  },
+  addGuestBtnText: { fontSize: 12, fontWeight: '900', color: colors.white, textAlign: 'right' },
   addGuestEmptyBtn: {
     marginTop: 6,
     flexDirection: 'row-reverse',
@@ -3349,12 +3646,23 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     backgroundColor: colors.primary,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.20)',
+    borderColor: 'rgba(240,203,70,0.28)',
     alignItems: 'center',
     justifyContent: 'center',
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+    ...(Platform.OS === 'web'
+      ? ({
+          cursor: 'pointer',
+          backgroundImage: 'linear-gradient(135deg, #0A2454, #06173E)',
+          boxShadow: '0 12px 26px rgba(6,23,62,0.24)',
+          transition: 'box-shadow 140ms ease',
+        } as any)
+      : null),
   },
-  modalPrimaryBtnHover: { opacity: 0.98 },
+  modalPrimaryBtnHover: {
+    ...(Platform.OS === 'web'
+      ? ({ boxShadow: '0 16px 32px rgba(6,23,62,0.32), 0 0 0 3px rgba(240,203,70,0.16)' } as any)
+      : ({ opacity: 0.98 } as any)),
+  },
   modalPrimaryBtnText: { fontSize: 13, fontWeight: '900', color: colors.white, textAlign: 'center' },
   modalBtnDisabled: { opacity: 0.6 },
 
@@ -3383,7 +3691,11 @@ const ui = StyleSheet.create({
     borderColor: 'rgba(15,23,42,0.10)',
   },
   switchWrapLarge: { width: 62, height: 34 },
-  switchWrapOn: { backgroundColor: '#10B981', borderColor: 'rgba(16,185,129,0.35)' },
+  switchWrapOn: {
+    backgroundColor: '#10B981',
+    borderColor: 'rgba(16,185,129,0.35)',
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 4px 12px rgba(16,185,129,0.30)' } as any) : null),
+  },
   switchHover: { opacity: 0.98 },
   switchTrack: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, borderRadius: 999 },
   switchTrackOn: {},

@@ -22,6 +22,7 @@ import AdminWebPageHeader from '@/components/desktop/AdminWebPageHeader';
 
 const EVENT_TYPES = [
   { label: 'חתונה', value: 'חתונה', icon: 'heart' as const, hint: 'יום מיוחד לזוג' },
+  { label: 'חינה', value: 'חינה', icon: 'color-palette' as const, hint: 'חגיגה מסורתית' },
   { label: 'בר מצווה', value: 'בר מצווה', icon: 'ribbon' as const, hint: 'אירוע משפחתי' },
   { label: 'בת מצווה', value: 'בת מצווה', icon: 'sparkles' as const, hint: 'חגיגה מרגשת' },
   { label: 'ברית', value: 'ברית', icon: 'star' as const, hint: 'מסורת וחיבור' },

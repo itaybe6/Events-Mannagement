@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -34,6 +34,28 @@ import { ALIGN_RIGHT, ROW_DIR, ROW_REVERSE_DIR } from "@/lib/rtl";
 import type { Guest } from "@/types";
 
 type Props = { hideTopBar?: boolean };
+
+const SCROLL_TOP_THRESHOLD = 220;
+
+function ScrollToTopFab({
+  bottom,
+  onPress,
+}: {
+  bottom: number;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.88}
+      accessibilityRole="button"
+      accessibilityLabel="חזרה לראש הרשימה"
+      style={[styles.scrollTopFab, { bottom }]}
+    >
+      <Ionicons name="chevron-up" size={24} color={colors.white} />
+    </TouchableOpacity>
+  );
+}
 
 function CheckInToggle({
   checked,
@@ -266,6 +288,29 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
     router.replace(backHref as any);
   }, [backHref, router]);
 
+  /**
+   * Live map, with this check-in screen as its "back" target so an usher can
+   * bounce between counting heads and marking arrivals.
+   */
+  const liveMapHref = useMemo(() => {
+    if (!resolvedEventId) return null;
+
+    const liveBase = isAdminContext ? "/(admin)/live-seating" : "/(employee)/employee-live-seating";
+    const checkInBase = isAdminContext
+      ? "/(admin)/admin-guest-checkin"
+      : "/(employee)/employee-guest-checkin";
+    const rawReturn = String(returnTo || "").trim();
+    const backToCheckIn = `${checkInBase}?eventId=${resolvedEventId}${
+      rawReturn ? `&returnTo=${encodeURIComponent(rawReturn)}` : ""
+    }`;
+
+    return `${liveBase}?eventId=${resolvedEventId}&returnTo=${encodeURIComponent(backToCheckIn)}`;
+  }, [isAdminContext, resolvedEventId, returnTo]);
+
+  const openLiveMap = useCallback(() => {
+    if (liveMapHref) router.push(liveMapHref as any);
+  }, [liveMapHref, router]);
+
   useFocusEffect(
     useCallback(() => {
       if (Platform.OS !== "android") return;
@@ -368,6 +413,25 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
   const TAB_BAR_BOTTOM_GAP = Platform.OS === "ios" ? 30 : 20;
   const bottomReserve = TAB_BAR_HEIGHT + TAB_BAR_BOTTOM_GAP + 18;
   const contentBottomPadding = bottomReserve + (isAdminStyledMobile ? 42 : insets.bottom);
+  const listScrollRef = useRef<any>(null);
+  const [showScrollTop, setShowScrollTop] = useState(false);
+
+  const onListScroll = useCallback((e: { nativeEvent: { contentOffset: { y: number } } }) => {
+    const next = e.nativeEvent.contentOffset.y > SCROLL_TOP_THRESHOLD;
+    setShowScrollTop((prev) => (prev === next ? prev : next));
+  }, []);
+
+  const scrollListToTop = useCallback(() => {
+    const node = listScrollRef.current;
+    if (!node) return;
+    if (typeof node.scrollToPosition === "function") {
+      node.scrollToPosition(0, 0, true);
+      return;
+    }
+    if (typeof node.scrollTo === "function") {
+      node.scrollTo({ x: 0, y: 0, animated: true });
+    }
+  }, []);
 
   const [tableFilterId, setTableFilterId] = useState<string | null>(null);
   const [tableModalOpen, setTableModalOpen] = useState(false);
@@ -463,6 +527,10 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
   const INITIAL_RENDER_ROWS = 30;
   const RENDER_ROWS_PER_BATCH = 80;
   const [rowRenderLimit, setRowRenderLimit] = useState(INITIAL_RENDER_ROWS);
+
+  useEffect(() => {
+    setRowRenderLimit(INITIAL_RENDER_ROWS);
+  }, [query, filter, tableFilterId]);
 
   const totalListRows = useMemo(() => {
     const secs = isTablet ? visibleSections : tableSections;
@@ -873,6 +941,16 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                   <Ionicons name="chevron-forward" size={22} color={colors.primary} />
                 </TouchableOpacity>
                 <Text style={styles.screenTitle}>צ׳ק-אין אורחים</Text>
+                <TouchableOpacity
+                  onPress={openLiveMap}
+                  style={styles.liveMapBtn}
+                  activeOpacity={0.86}
+                  accessibilityRole="button"
+                  accessibilityLabel="מפת לייב באירוע"
+                >
+                  <View style={styles.liveMapDot} />
+                  <Text style={styles.liveMapBtnText}>מפת לייב</Text>
+                </TouchableOpacity>
               </View>
             </View>
           </>
@@ -899,15 +977,27 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
               </Text>
             </View>
 
-            <TouchableOpacity
-              onPress={onRefreshAll}
-              style={styles.topIconBtn}
-              activeOpacity={0.85}
-              accessibilityRole="button"
-              accessibilityLabel="רענון"
-            >
-              <Ionicons name="refresh" size={20} color={colors.primary} />
-            </TouchableOpacity>
+            <View style={styles.topActions}>
+              <TouchableOpacity
+                onPress={openLiveMap}
+                style={styles.topIconBtn}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel="מפת לייב באירוע"
+              >
+                <Ionicons name="pulse" size={20} color="#DC2626" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={onRefreshAll}
+                style={styles.topIconBtn}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel="רענון"
+              >
+                <Ionicons name="refresh" size={20} color={colors.primary} />
+              </TouchableOpacity>
+            </View>
           </View>
         ) : null}
 
@@ -923,9 +1013,12 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
               ]}
             >
               <AppKeyboardAwareScrollView
+                ref={listScrollRef}
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={[styles.content, { paddingBottom: contentBottomPadding }]}
                 keyboardShouldPersistTaps="handled"
+                scrollEventThrottle={16}
+                onScroll={onListScroll}
               >
                 {tableFilterId ? (
                   <View style={styles.tableFilterRow}>
@@ -1166,6 +1259,9 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                   ) : null}
                 </View>
               </AppKeyboardAwareScrollView>
+              {showScrollTop && !addOpen && !tableModalOpen ? (
+                <ScrollToTopFab bottom={20} onPress={scrollListToTop} />
+              ) : null}
             </View>
 
             {/* Map */}
@@ -1306,8 +1402,11 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
           </View>
         ) : (
           <AppKeyboardAwareScrollView
+            ref={listScrollRef}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={[styles.content, isAdminStyledMobile ? styles.contentAdminMobile : null, { paddingBottom: contentBottomPadding }]}
+            scrollEventThrottle={16}
+            onScroll={onListScroll}
           >
             {/* Search + add guest */}
             <View style={styles.searchRow}>
@@ -1494,6 +1593,9 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
             {isAdminStyledMobile ? <View style={styles.bottomContentSpacer} /> : null}
           </AppKeyboardAwareScrollView>
         )}
+        {!isTablet && showScrollTop && !addOpen ? (
+          <ScrollToTopFab bottom={Math.max(18, bottomReserve - 8)} onPress={scrollListToTop} />
+        ) : null}
       </View>
       </View>
 
@@ -1778,6 +1880,24 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
 }
 
 const styles = StyleSheet.create({
+  scrollTopFab: {
+    position: "absolute",
+    right: 16,
+    zIndex: 40,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+    shadowColor: colors.black,
+    shadowOpacity: 0.22,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
+  },
   screen: { flex: 1, backgroundColor: colors.gray[100] },
   screenTransparent: { backgroundColor: "transparent" },
   bg: { ...StyleSheet.absoluteFillObject },
@@ -1822,6 +1942,21 @@ const styles = StyleSheet.create({
     textAlign: "right",
   },
 
+  liveMapBtn: {
+    flexDirection: ROW_DIR,
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    height: 38,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.96)",
+    borderWidth: 1,
+    borderColor: "rgba(220,38,38,0.28)",
+  },
+  liveMapDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: "#DC2626" },
+  liveMapBtnText: { fontSize: 12.5, fontWeight: "900", color: "#B91C1C" },
+
+  topActions: { flexDirection: ROW_DIR, alignItems: "center", gap: 8 },
   topBar: {
     paddingHorizontal: 14,
     paddingTop: 8,
@@ -1913,6 +2048,7 @@ const styles = StyleSheet.create({
     minWidth: 380,
     borderLeftWidth: 1,
     borderLeftColor: "rgba(0,0,0,0.06)",
+    overflow: "visible",
   },
   mapPane: { flex: 1, padding: 16, paddingTop: 6 },
 
