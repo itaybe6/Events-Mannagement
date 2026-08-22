@@ -1237,7 +1237,7 @@ const styles = StyleSheet.create({
   sideCardCheck: {
     position: 'absolute',
     top: 10,
-    ...(IS_RTL ? { left: 10 } : { right: 10 }),
+    right: 10,
     width: 22,
     height: 22,
     borderRadius: 11,

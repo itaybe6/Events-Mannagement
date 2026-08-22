@@ -23,7 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GuestCategorySelectionSheet } from '@/components/GuestCategorySelectionSheet';
 import { useLayoutStore } from '@/store/layoutStore';
 import BackSwipe from '@/components/BackSwipe';
-import { ALIGN_RIGHT, IS_RTL, ROW_DIR, rtlText } from '@/lib/rtl';
+import { ALIGN_RIGHT, IS_RTL, ROW_DIR, TEXT_RIGHT, rtlText } from '@/lib/rtl';
 
 export default function EditCategoryScreen() {
   const router = useRouter();
@@ -840,7 +840,7 @@ const styles = StyleSheet.create({
     width: '100%',
     fontSize: 22,
     fontWeight: '900',
-    textAlign: IS_RTL ? 'left' : 'right',
+    textAlign: TEXT_RIGHT,
     writingDirection: 'rtl',
   },
   appDialogMessageWrap: {
@@ -855,7 +855,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     lineHeight: 24,
-    textAlign: IS_RTL ? 'left' : 'right',
+    textAlign: TEXT_RIGHT,
     writingDirection: 'rtl',
   },
   appDialogButtonsRow: {

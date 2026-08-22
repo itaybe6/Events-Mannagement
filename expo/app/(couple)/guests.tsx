@@ -21,6 +21,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
 import { AppLoader, AppLoaderScreen } from '@/components/AppLoader';
 import { ALIGN_RIGHT, ROW_DIR, ROW_REVERSE_DIR, rtlText } from '@/lib/rtl';
+import { getFloatingTabBarContentPadding } from '@/lib/floatingTabBarInset';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { guestMatchesSearch, normalizeGuestPhone } from '@/lib/guestPhone';
 
@@ -800,7 +801,12 @@ export default function GuestsScreen() {
       {/* Guests by category */}
       <Animated.ScrollView
         style={styles.guestList}
-        contentContainerStyle={styles.guestListContent}
+        contentContainerStyle={[
+          styles.guestListContent,
+          Platform.OS !== 'web'
+            ? { paddingBottom: getFloatingTabBarContentPadding(insets.bottom) }
+            : null,
+        ]}
         showsVerticalScrollIndicator={false}
         onScroll={
           Platform.OS !== 'web'
@@ -1776,7 +1782,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   guestListContent: {
-    paddingBottom: Platform.OS === 'web' ? 80 : 122,
+    paddingBottom: Platform.OS === 'web' ? 80 : 0,
     flexGrow: 1,
   },
   loadingBox: {

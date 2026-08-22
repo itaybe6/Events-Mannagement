@@ -28,6 +28,8 @@ import { avatarService } from '@/lib/services/avatarService';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLayoutStore } from '@/store/layoutStore';
 import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
+import { getFloatingTabBarContentPadding } from '@/lib/floatingTabBarInset';
+import { softTileShadow, tileSurface } from '@/lib/platformShadow';
 import { ensurePhotoLibraryPermission } from '@/lib/permissions';
 
 
@@ -40,13 +42,12 @@ const ui = {
 const rtlTextAlign = 'right' as const;
 const isRTL = I18nManager.isRTL;
 
-const baseShadow = {
-  shadowColor: '#000',
-  shadowOffset: { width: 0, height: 10 },
-  shadowOpacity: 0.12,
-  shadowRadius: 18,
-  elevation: 6,
-};
+const baseShadow = softTileShadow({
+  opacity: 0.12,
+  radius: 18,
+  y: 10,
+  androidElevation: 0,
+});
 
 type UserType = 'event_owner' | 'admin' | 'employee';
 
@@ -420,7 +421,9 @@ export default function AddUserScreenV2({
               styles.mobileContent,
               {
                 paddingTop: 0,
-                paddingBottom: keyboardVisible ? 24 : Math.max(insets.bottom, 24) + 24,
+                paddingBottom: keyboardVisible
+                  ? 24
+                  : getFloatingTabBarContentPadding(insets.bottom),
               },
             ]}
             keyboardShouldPersistTaps="handled"
@@ -1221,16 +1224,12 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.84)',
+    backgroundColor: tileSurface('rgba(255,255,255,0.84)'),
     borderWidth: 1,
     borderColor: 'rgba(6,23,62,0.08)',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: colors.black,
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 3,
+    ...softTileShadow({ opacity: 0.05, radius: 12, y: 6 }),
   },
   mobileTopBarTitle: {
     fontSize: 22,
@@ -1250,11 +1249,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
     marginBottom: 14,
-    shadowColor: colors.black,
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 2,
+    ...softTileShadow({ opacity: 0.04, radius: 10, y: 6 }),
   },
   mobileDemoNoteIconWrap: {
     width: 30,
@@ -1270,14 +1265,10 @@ const styles = StyleSheet.create({
     padding: 18,
     marginBottom: 18,
     overflow: 'hidden',
-    backgroundColor: 'rgba(255,255,255,0.94)',
+    backgroundColor: tileSurface('rgba(255,255,255,0.94)'),
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.78)',
-    shadowColor: colors.black,
-    shadowOpacity: 0.08,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 4,
+    ...softTileShadow({ opacity: 0.08, radius: 20, y: 10 }),
   },
   mobileHeroCardGradient: {
     ...StyleSheet.absoluteFillObject,
@@ -1321,14 +1312,10 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     padding: 16,
     marginBottom: 16,
-    backgroundColor: 'rgba(255,255,255,0.86)',
+    backgroundColor: tileSurface('rgba(255,255,255,0.86)'),
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.78)',
-    shadowColor: colors.black,
-    shadowOpacity: 0.06,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 3,
+    ...softTileShadow({ opacity: 0.06, radius: 18, y: 8 }),
   },
   mobileSectionHeader: {
     alignItems: ALIGN_RIGHT,
@@ -1352,11 +1339,13 @@ const styles = StyleSheet.create({
   mobilePrimaryButton: {
     borderRadius: 18,
     overflow: 'hidden',
-    shadowColor: colors.primary,
-    shadowOpacity: 0.18,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 4,
+    ...softTileShadow({
+      color: colors.primary,
+      opacity: 0.18,
+      radius: 16,
+      y: 10,
+      androidElevation: 0,
+    }),
   },
   mobileBottomSubmitButton: {
     marginTop: 6,
@@ -1439,11 +1428,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden',
     backgroundColor: '#fff',
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.12,
-    shadowRadius: 18,
-    elevation: 4,
+    ...softTileShadow({
+      color: colors.primary,
+      opacity: 0.12,
+      radius: 18,
+      y: 10,
+      androidElevation: 0,
+    }),
   },
   avatarImage: { width: '100%', height: '100%', resizeMode: 'cover' },
   avatarCta: { fontSize: 14, fontWeight: '900', color: ui.primary, textAlign: 'center' },
@@ -1486,11 +1477,13 @@ const styles = StyleSheet.create({
   inputLtr: { textAlign: 'left' },
   inputFocused: {
     borderColor: ui.primary,
-    shadowColor: colors.primary,
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
+    ...softTileShadow({
+      color: colors.primary,
+      opacity: 0.08,
+      radius: 10,
+      y: 4,
+      androidElevation: 0,
+    }),
   },
 
   divider: {

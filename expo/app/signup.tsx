@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -13,11 +13,11 @@ import {
   ActivityIndicator,
   Keyboard,
 } from 'react-native';
-import { BlurView } from 'expo-blur';
 import { colors } from '@/constants/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useUserStore } from '@/store/userStore';
+import { LavaLampBackground } from '@/components/LavaLampBackground';
 import { supabase } from '@/lib/supabase';
 import { userService } from '@/lib/services/userService';
 import { eventService } from '@/lib/services/eventService';
@@ -27,25 +27,11 @@ import { ALIGN_LEFT, ALIGN_RIGHT, ROW_DIR, ROW_REVERSE_DIR } from '@/lib/rtl';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
-import Animated, {
-  Easing,
-  useAnimatedStyle,
-  useDerivedValue,
-  withRepeat,
-  withSequence,
-  withTiming,
-} from 'react-native-reanimated';
 
-const { width, height } = Dimensions.get('window');
+const { height } = Dimensions.get('window');
 
 const NAVY_DEEP = '#010c21';
 const HERO_HEIGHT = Math.max(220, height * 0.32);
-const LAVA_LAMP_COLORS = [
-  'rgba(26, 58, 112, 0.28)',
-  'rgba(38, 78, 145, 0.22)',
-  'rgba(65, 105, 180, 0.18)',
-  'rgba(94, 128, 194, 0.14)',
-];
 
 const EVENT_TYPES: { label: string; value: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { label: 'חתונה', value: 'חתונה', icon: 'heart' },
@@ -55,117 +41,6 @@ const EVENT_TYPES: { label: string; value: string; icon: keyof typeof Ionicons.g
   { label: 'ברית', value: 'ברית', icon: 'star' },
   { label: 'אירוע חברה', value: 'אירוע חברה', icon: 'briefcase' },
 ];
-
-function randomNumber(min: number, max: number) {
-  return Math.floor(Math.random() * (max - min + 1) + min);
-}
-
-type LavaLampCircleData = {
-  radius: number;
-  index: number;
-  color: string;
-  originX: number;
-  originY: number;
-  travel: number;
-  duration: number;
-  scaleTo: number;
-};
-
-function LavaLampBackground() {
-  const circles = useMemo<LavaLampCircleData[]>(
-    () =>
-      LAVA_LAMP_COLORS.map((color, index) => {
-        const radius = (width * randomNumber(36, 58)) / 100;
-        const safeX = Math.max(radius * 2, width - radius * 2);
-        const safeY = Math.max(radius * 1.3, HERO_HEIGHT - radius * 1.3);
-
-        return {
-          radius,
-          index,
-          color,
-          originX: randomNumber(radius, safeX),
-          originY: randomNumber(radius * 0.6, safeY),
-          travel: randomNumber(24, 72),
-          duration: randomNumber(14000, 22000),
-          scaleTo: randomNumber(108, 126) / 100,
-        };
-      }),
-    []
-  );
-
-  return (
-    <View style={styles.lavaLampLayer} pointerEvents="none">
-      <View style={styles.lavaLampBase} />
-      {circles.map((circle) => (
-        <LavaLampCircle key={`lava-${circle.index}`} circle={circle} />
-      ))}
-      <BlurView style={StyleSheet.absoluteFillObject} intensity={72} tint="dark" />
-    </View>
-  );
-}
-
-function LavaLampCircle({ circle }: { circle: LavaLampCircleData }) {
-  const rotation = useDerivedValue(() =>
-    withRepeat(
-      withSequence(
-        withTiming(0, { duration: 0 }),
-        withTiming(360, {
-          duration: circle.duration,
-          easing: Easing.linear,
-        })
-      ),
-      -1,
-      false
-    )
-  );
-
-  const scale = useDerivedValue(() =>
-    withRepeat(
-      withSequence(
-        withTiming(circle.scaleTo, {
-          duration: Math.round(circle.duration * 0.45),
-          easing: Easing.inOut(Easing.ease),
-        }),
-        withTiming(1, {
-          duration: Math.round(circle.duration * 0.55),
-          easing: Easing.inOut(Easing.ease),
-        })
-      ),
-      -1,
-      true
-    )
-  );
-
-  const orbitStyle = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${rotation.value}deg` }, { scale: scale.value }],
-  }));
-
-  return (
-    <Animated.View
-      style={[
-        styles.lavaLampOrbit,
-        orbitStyle,
-        {
-          left: circle.originX,
-          top: circle.originY,
-        },
-      ]}
-    >
-      <View
-        style={[
-          styles.lavaLampBlob,
-          {
-            width: circle.radius * 2,
-            height: circle.radius * 2,
-            borderRadius: circle.radius,
-            backgroundColor: circle.color,
-            transform: [{ translateX: circle.travel }, { translateY: -circle.radius * 0.35 }],
-          },
-        ]}
-      />
-    </Animated.View>
-  );
-}
 
 type Step = 1 | 2;
 
@@ -696,7 +571,7 @@ export default function SignupScreen() {
         keyboardOpeningTime={Platform.OS === 'ios' ? 0 : 100}
       >
         <View style={styles.hero}>
-          <LavaLampBackground />
+          <LavaLampBackground height={HERO_HEIGHT} />
 
           <View style={[styles.heroTopBar, { paddingTop: insets.top + 8 }]}>
             <TouchableOpacity
@@ -766,22 +641,6 @@ const styles = StyleSheet.create({
     minHeight: height,
     backgroundColor: colors.white,
   },
-  lavaLampLayer: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  lavaLampBase: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: NAVY_DEEP,
-  },
-  lavaLampOrbit: {
-    position: 'absolute',
-    width: 1,
-    height: 1,
-  },
-  lavaLampBlob: {
-    position: 'absolute',
-  },
-
   hero: {
     height: HERO_HEIGHT,
     backgroundColor: NAVY_DEEP,

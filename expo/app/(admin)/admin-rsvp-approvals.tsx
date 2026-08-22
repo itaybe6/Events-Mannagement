@@ -27,6 +27,7 @@ import AppHeader, { APP_HEADER_HEIGHT_COMPACT, getAppHeaderTotalHeight } from "@
 import { useRsvpApprovalsModel } from "@/features/rsvp/useRsvpApprovalsModel";
 import { ALIGN_LEFT, ALIGN_RIGHT, ROW_DIR } from "@/lib/rtl";
 import { getGuestInviteUrl, openInviteUrl } from "@/lib/invitationUrl";
+import { getFloatingTabBarContentPadding } from "@/lib/floatingTabBarInset";
 
 const sanitizePhone = (raw: string) => (raw || "").replace(/[^\d+]/g, "");
 
@@ -79,10 +80,7 @@ export default function AdminRsvpApprovalsScreen() {
     setStatus,
   } = useRsvpApprovalsModel(resolvedEventId);
 
-  // Keep content above the custom tab bar
-  const TAB_BAR_HEIGHT = 65;
-  const TAB_BAR_BOTTOM_GAP = Platform.OS === "ios" ? 30 : 20;
-  const bottomReserve = TAB_BAR_HEIGHT + TAB_BAR_BOTTOM_GAP + 18;
+  const bottomReserve = getFloatingTabBarContentPadding(insets.bottom);
 
   if (loading) {
     return (
@@ -274,7 +272,7 @@ export default function AdminRsvpApprovalsScreen() {
             styles.content,
             {
               paddingTop: isWeb ? insets.top : 8,
-              paddingBottom: bottomReserve + insets.bottom,
+              paddingBottom: bottomReserve,
             },
           ]}
         >

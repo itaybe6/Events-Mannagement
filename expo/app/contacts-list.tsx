@@ -30,7 +30,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppKeyboardAwareFlatList } from '@/components/AppKeyboardAware';
 import BackSwipe from '@/components/BackSwipe';
 import { AppLoader, AppLoaderScreen } from '@/components/AppLoader';
-import { IS_RTL, ROW_DIR } from '@/lib/rtl';
+import { IS_RTL, ROW_DIR, TEXT_RIGHT } from '@/lib/rtl';
 
 export default function ContactsListScreen() {
   const [contacts, setContacts] = useState<any[]>([]);
@@ -836,7 +836,7 @@ const styles = StyleSheet.create({
   contactName: {
     fontSize: 15,
     fontWeight: '800',
-    textAlign: IS_RTL ? 'left' : 'right',
+    textAlign: TEXT_RIGHT,
     writingDirection: IS_RTL ? 'rtl' : 'ltr',
   },
   contactPhone: {
@@ -942,7 +942,7 @@ const styles = StyleSheet.create({
   bottomButtonText: {
     fontSize: 16,
     fontWeight: '800',
-    textAlign: IS_RTL ? 'left' : 'right',
+    textAlign: TEXT_RIGHT,
     writingDirection: IS_RTL ? 'rtl' : 'ltr',
   },
 

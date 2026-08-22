@@ -3,14 +3,15 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { DonutChart, type DonutSegment } from '@/components/couple/DonutChart';
 import { NavyCardBackground } from '@/components/couple/NavyCardBackground';
-import { ALIGN_RIGHT, IS_RTL, ROW_DIR } from '@/lib/rtl';
+import { ALIGN_RIGHT, ROW_DIR, TEXT_RIGHT } from '@/lib/rtl';
 
 // With I18nManager.forceRTL (native build), `textAlign: 'right'` mirrors to the physical left.
 const rtlTextAlign = {
-  textAlign: (IS_RTL ? 'left' : 'right') as 'left' | 'right',
+  textAlign: TEXT_RIGHT,
   writingDirection: 'rtl' as const,
 };
 import { colors } from '@/constants/colors';
+import { softTileShadow } from '@/lib/platformShadow';
 
 const DACC = '#1E3A6E';
 const DNAVY = '#152949';
@@ -245,11 +246,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(11, 28, 65, 0.08)',
     padding: 20,
     overflow: 'hidden',
-    shadowColor: colors.black,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 14,
-    elevation: 3,
+    ...softTileShadow({ opacity: 0.08, radius: 14, y: 4 }),
   },
   countdownGlow: {
     position: 'absolute',
@@ -340,11 +337,13 @@ const styles = StyleSheet.create({
   },
   rsvpCardOuter: {
     borderRadius: 22,
-    shadowColor: DNAVY,
-    shadowOffset: { width: 0, height: 16 },
-    shadowOpacity: 0.35,
-    shadowRadius: 18,
-    elevation: 6,
+    ...softTileShadow({
+      color: DNAVY,
+      opacity: 0.35,
+      radius: 18,
+      y: 16,
+      androidElevation: 0,
+    }),
   },
   rsvpCard: {
     backgroundColor: DNAVY,
@@ -425,11 +424,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(11, 28, 65, 0.08)',
     padding: 18,
-    shadowColor: colors.black,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 14,
-    elevation: 3,
+    ...softTileShadow({ opacity: 0.08, radius: 14, y: 4 }),
   },
   seatingHeader: {
     flexDirection: ROW_DIR,

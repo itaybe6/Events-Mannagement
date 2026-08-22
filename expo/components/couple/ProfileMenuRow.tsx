@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/colors';
+import { softTileShadow } from '@/lib/platformShadow';
 import { ROW_DIR } from '@/lib/rtl';
 
 export const profileMenuUi = {
@@ -74,11 +75,12 @@ const styles = StyleSheet.create({
     borderColor: profileMenuUi.line,
     paddingHorizontal: 14,
     paddingVertical: 6,
-    shadowColor: '#161D38',
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
+    ...softTileShadow({
+      color: '#161D38',
+      opacity: 0.08,
+      radius: 16,
+      y: 4,
+    }),
   },
   menuRow: {
     flexDirection: ROW_DIR,

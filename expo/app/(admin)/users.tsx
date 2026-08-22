@@ -24,6 +24,8 @@ import { UserWithMetadata } from '@/lib/services/userService';
 import { useUsersModel } from '@/features/users/useUsersModel';
 import { AppKeyboardAwareScrollView } from '@/components/AppKeyboardAware';
 import { ALIGN_RIGHT, ROW_DIR } from '@/lib/rtl';
+import { getFloatingTabBarContentPadding } from '@/lib/floatingTabBarInset';
+import { softTileShadow, tileSurface } from '@/lib/platformShadow';
 
 type UserFilter = 'all' | 'admin' | 'event_owner' | 'employee';
 
@@ -221,7 +223,13 @@ export default function UsersScreen() {
       <AppKeyboardAwareScrollView
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={[styles.pageContent, { paddingTop: headerHeight + 8 }]}
+        contentContainerStyle={[
+          styles.pageContent,
+          {
+            paddingTop: headerHeight + 8,
+            paddingBottom: getFloatingTabBarContentPadding(insets.bottom),
+          },
+        ]}
         scrollEventThrottle={16}
         onScroll={(event: any) => {
           const offsetY = Number(event?.nativeEvent?.contentOffset?.y ?? 0);
@@ -513,13 +521,10 @@ const styles = StyleSheet.create({
     right: 0,
     zIndex: 40,
     borderBottomWidth: 1,
-    shadowColor: colors.black,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 4,
+    ...softTileShadow({ opacity: 0.05, radius: 12, y: 6 }),
   },
   pageContent: {
-    paddingBottom: 24,
+    paddingBottom: 0,
   },
   headerHeroRow: {
     flexDirection: ROW_DIR,
@@ -551,23 +556,21 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: colors.primary,
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 4,
+    ...softTileShadow({
+      color: colors.primary,
+      opacity: 0.2,
+      radius: 16,
+      y: 8,
+      androidElevation: 0,
+    }),
   },
   searchWrap: {
     height: 56,
     borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.88)',
+    backgroundColor: tileSurface('rgba(255,255,255,0.88)'),
     borderWidth: 1,
     borderColor: 'rgba(6,23,62,0.06)',
-    shadowColor: colors.black,
-    shadowOpacity: 0.05,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 2,
+    ...softTileShadow({ opacity: 0.05, radius: 14, y: 6 }),
     flexDirection: ROW_DIR,
     alignItems: 'center',
     paddingStart: 14,
@@ -606,11 +609,13 @@ const styles = StyleSheet.create({
   filterChipActive: {
     backgroundColor: colors.primary,
     borderColor: 'rgba(6, 23, 62, 0.20)',
-    shadowColor: colors.primary,
-    shadowOpacity: 0.18,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 3,
+    ...softTileShadow({
+      color: colors.primary,
+      opacity: 0.18,
+      radius: 14,
+      y: 6,
+      androidElevation: 0,
+    }),
   },
   filterChipText: {
     fontSize: 13,
@@ -675,14 +680,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 14,
     borderRadius: 28,
-    backgroundColor: 'rgba(255,255,255,0.9)',
+    backgroundColor: tileSurface('rgba(255,255,255,0.9)'),
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.8)',
-    shadowColor: colors.black,
-    shadowOpacity: 0.08,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 4,
+    ...softTileShadow({ opacity: 0.08, radius: 18, y: 10 }),
     position: 'relative',
   },
   avatarWrap: {
@@ -795,18 +796,19 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 440,
     borderRadius: 32,
-    backgroundColor: 'rgba(255,255,255,0.98)',
+    backgroundColor: tileSurface('rgba(255,255,255,0.98)'),
     paddingHorizontal: 20,
     paddingBottom: 20,
     paddingTop: 12,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.78)',
-    shadowColor: colors.black,
-    shadowOpacity: 0.2,
-    shadowRadius: 30,
-    shadowOffset: { width: 0, height: 16 },
-    elevation: 14,
-    overflow: 'hidden',
+    ...softTileShadow({
+      opacity: 0.2,
+      radius: 30,
+      y: 16,
+      // Keep Android modal lift tiny — translucent children amplify elevation into dark slabs.
+      androidElevation: 2,
+    }),
   },
   modalCardGradient: {
     ...StyleSheet.absoluteFillObject,
@@ -864,14 +866,16 @@ const styles = StyleSheet.create({
     height: 96,
     borderRadius: 48,
     padding: 4,
-    backgroundColor: 'rgba(255,255,255,0.94)',
+    backgroundColor: tileSurface('rgba(255,255,255,0.94)'),
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.82)',
-    shadowColor: colors.primary,
-    shadowOpacity: 0.12,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 5,
+    ...softTileShadow({
+      color: colors.primary,
+      opacity: 0.12,
+      radius: 18,
+      y: 10,
+      androidElevation: 0,
+    }),
   },
   modalAvatarWrap: {
     flex: 1,
@@ -970,14 +974,10 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 14,
     borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.78)',
+    backgroundColor: tileSurface('rgba(255,255,255,0.78)'),
     borderWidth: 1,
     borderColor: 'rgba(6,23,62,0.06)',
-    shadowColor: colors.black,
-    shadowOpacity: 0.04,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 2,
+    ...softTileShadow(),
   },
   modalInfoIcon: {
     width: 44,
@@ -1032,7 +1032,7 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingVertical: 14,
     borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.82)',
+    backgroundColor: tileSurface('rgba(255,255,255,0.82)'),
     borderWidth: 1,
     borderColor: 'rgba(6, 23, 62, 0.12)',
   },
@@ -1051,11 +1051,13 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 18,
     backgroundColor: colors.error,
-    shadowColor: colors.error,
-    shadowOpacity: 0.14,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 3,
+    ...softTileShadow({
+      color: colors.error,
+      opacity: 0.14,
+      radius: 14,
+      y: 8,
+      androidElevation: 0,
+    }),
   },
   modalActionDangerText: {
     color: colors.white,

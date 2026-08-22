@@ -17,11 +17,14 @@ import "../global.css";
 // We load Rubik via `expo-font` on all platforms (see `lib/fonts.*.ts`).
 // `global.css` still sets a sensible CSS fallback stack for the DOM.
 
-// RTL is forced in native (plugins/withForceRTL.js) so it applies from first launch.
-// Keep a JS safety net for native release builds while excluding web.
+// Keep Yoga LTR on both platforms so Android matches iPhone.
+// Hebrew UI is handled manually (row-reverse / textAlign right) via `lib/rtl.ts`.
+// Native plugin (withForceRTL) is also set to disable forced RTL — rebuild required
+// for the native side; `direction: 'ltr'` on the root view applies immediately.
 if (Platform.OS !== 'web') {
-  I18nManager.allowRTL(true);
-  I18nManager.forceRTL(true);
+  I18nManager.allowRTL(false);
+  I18nManager.forceRTL(false);
+  I18nManager.swapLeftAndRightInRTL(false);
 }
 
 const rtlTextStyle = { textAlign: 'right' as const, writingDirection: 'rtl' as const };
@@ -460,10 +463,16 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <RootLayoutNav />
+      {/* Lock Yoga to LTR even if a native build still has forceRTL=true.
+          Without this, Android mirrors the entire tree vs iPhone. */}
+      <View style={rootLtrStyle}>
+        <RootLayoutNav />
+      </View>
     </GestureHandlerRootView>
   );
 }
+
+const rootLtrStyle = { flex: 1, direction: 'ltr' as const };
 
 function normalizePath(path: string): string {
   return String(path || '').replace(/\/+$/, '') || '/';
