@@ -18,6 +18,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import type { LayoutChangeEvent } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -26,14 +27,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/constants/colors';
 import BackSwipe from '@/components/BackSwipe';
 import { ROW_DIR, TEXT_RIGHT } from '@/lib/rtl';
-import { guestArrivedPeople, guestInvitedPeople } from '@/features/guests/useGuestCheckInModel';
 import {
   useLiveSeatingModel,
   type LiveSeatingTable,
   type LiveTableStatus,
 } from '@/features/seating/useLiveSeatingModel';
-import { buildLiveMapLayout, type PlacedTable } from '@/features/seating/liveSeatingLayout';
-import type { Guest } from '@/types';
+import LiveMapCanvas from '@/features/seating/LiveMapCanvas';
 
 const PALETTE = {
   ink: '#06173e',
@@ -64,17 +63,10 @@ const STATUS_STYLE: Record<
   over: { bar: '#F59E0B', tint: '#FEF3C7', border: 'rgba(245,158,11,0.48)', label: 'מעל תפוסה' },
 };
 
-const LEGEND: LiveTableStatus[] = ['empty', 'partial', 'full', 'over'];
-
 function tableLabel(table: Pick<LiveSeatingTable, 'number' | 'name'>) {
   if (typeof table.number === 'number') return `שולחן ${table.number}`;
   const name = String(table.name || '').trim();
   return name || 'שולחן';
-}
-
-function tableShortLabel(table: Pick<LiveSeatingTable, 'number' | 'name'>) {
-  if (typeof table.number === 'number') return String(table.number);
-  return String(table.name || '?').trim().slice(0, 4);
 }
 
 function signed(value: number) {
@@ -84,7 +76,7 @@ function signed(value: number) {
 export default function LiveSeatingScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const { width: windowWidth } = useWindowDimensions();
   const { eventId, returnTo } = useLocalSearchParams<{ eventId?: string; returnTo?: string }>();
 
   const resolvedEventId = useMemo(() => String(eventId || '').trim(), [eventId]);
@@ -108,6 +100,7 @@ export default function LiveSeatingScreen() {
     savingTableIds,
     refresh,
     adjustTable,
+    setLivePeople,
     clearTable,
   } = useLiveSeatingModel(resolvedEventId || null);
 
@@ -140,36 +133,46 @@ export default function LiveSeatingScreen() {
     });
   }, [filter, guestsByTable, query, tables]);
 
-  // The map card is a fixed window the whole hall is scaled into, so the plan
-  // is readable at a glance instead of needing to be panned around.
-  const mapViewport = useMemo(
-    () => ({
-      width: Math.max(240, windowWidth - 24 - 20),
-      height: Math.round(Math.min(Math.max(windowHeight * 0.46, 280), 460)),
-    }),
-    [windowHeight, windowWidth]
-  );
+  // The map fills whatever the controls leave behind, measured rather than
+  // guessed — a guess based on window height is wrong the moment the notice
+  // banner or the filter row wraps to another line.
+  const [bodySize, setBodySize] = useState<{ width: number; height: number } | null>(null);
+  const onBodyLayout = useCallback((e: LayoutChangeEvent) => {
+    const { width, height } = e.nativeEvent.layout;
+    setBodySize((prev) =>
+      prev && Math.abs(prev.width - width) < 1 && Math.abs(prev.height - height) < 1
+        ? prev
+        : { width, height }
+    );
+  }, []);
 
-  const mapLayout = useMemo(
-    () => buildLiveMapLayout(visibleTables, mapViewport),
-    [mapViewport, visibleTables]
-  );
+  const mapViewport = useMemo(() => {
+    if (!bodySize) return null;
+    // Card padding (10 each side) plus the legend and hint that sit under it.
+    return {
+      width: Math.max(200, bodySize.width - 20),
+      height: Math.max(220, bodySize.height - 20 - 62),
+    };
+  }, [bodySize]);
 
   const activeTable = useMemo(
     () => (activeTableId ? tables.find((t) => t.id === activeTableId) ?? null : null),
     [activeTableId, tables]
   );
-  const activeGuests = useMemo(
-    () => (activeTableId ? guestsByTable.get(activeTableId) || [] : []),
-    [activeTableId, guestsByTable]
-  );
-
   const handleAdjust = useCallback(
     async (tableId: string, delta: number) => {
       const result = await adjustTable(tableId, delta);
       if (!result.ok && result.error) Alert.alert('שגיאה', result.error);
     },
     [adjustTable]
+  );
+
+  const handleSetCount = useCallback(
+    async (tableId: string, value: number) => {
+      const result = await setLivePeople(tableId, value);
+      if (!result.ok && result.error) Alert.alert('שגיאה', result.error);
+    },
+    [setLivePeople]
   );
 
   const handleClear = useCallback(
@@ -194,8 +197,6 @@ export default function LiveSeatingScreen() {
       </View>
     );
   }
-
-  const occupancy = totals.capacity > 0 ? Math.min(1, totals.livePeople / totals.capacity) : 0;
 
   const controls = (
     <View style={styles.controlsBlock}>
@@ -298,7 +299,7 @@ export default function LiveSeatingScreen() {
       <View style={styles.screenRoot}>
         <StatusBar barStyle="light-content" backgroundColor={PALETTE.ink} />
 
-        <View style={[styles.hero, { paddingTop: insets.top + 10 }]}>
+        <View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>
           <LinearGradient
             colors={['#0C3070', '#071B45', PALETTE.inkDeep]}
             locations={[0, 0.58, 1]}
@@ -307,30 +308,32 @@ export default function LiveSeatingScreen() {
             style={StyleSheet.absoluteFill}
           />
 
-          <View style={styles.heroTopBar}>
+          <View style={styles.topBarRow}>
             <TouchableOpacity
               onPress={() => router.replace(backHref as any)}
-              style={styles.heroIconBtn}
+              style={styles.topIconBtn}
               activeOpacity={0.85}
               accessibilityRole="button"
               accessibilityLabel="חזרה"
             >
-              <Ionicons name="chevron-forward" size={21} color={colors.white} />
+              <Ionicons name="chevron-forward" size={20} color={colors.white} />
             </TouchableOpacity>
 
-            <View style={styles.heroTitleWrap}>
-              <LiveBadge />
-              <Text style={styles.heroTitle} numberOfLines={1}>
-                מפת לייב
-              </Text>
-              <Text style={styles.heroSubtitle} numberOfLines={1}>
-                {eventTitle || 'אירוע'}
+            <View style={styles.topTitleWrap}>
+              <View style={styles.topTitleRow}>
+                <LiveDot />
+                <Text style={styles.topTitle} numberOfLines={1}>
+                  מפת לייב
+                </Text>
+              </View>
+              <Text style={styles.topStatLine} numberOfLines={1}>
+                {`${totals.livePeople} מתוך ${totals.capacity} יושבים · ${totals.freeSeats} פנויים`}
               </Text>
             </View>
 
             <TouchableOpacity
               onPress={() => void refresh({ silent: true })}
-              style={styles.heroIconBtn}
+              style={styles.topIconBtn}
               activeOpacity={0.85}
               accessibilityRole="button"
               accessibilityLabel="רענון"
@@ -338,149 +341,71 @@ export default function LiveSeatingScreen() {
               {refreshing ? (
                 <ActivityIndicator size="small" color={colors.white} />
               ) : (
-                <Ionicons name="refresh" size={19} color={colors.white} />
+                <Ionicons name="refresh" size={18} color={colors.white} />
               )}
             </TouchableOpacity>
           </View>
-
-          <View style={styles.heroStat}>
-            <View style={styles.heroStatMain}>
-              <Text style={styles.heroStatValue}>{totals.livePeople}</Text>
-              <View style={styles.heroStatCopy}>
-                <Text style={styles.heroStatLabel}>יושבים עכשיו</Text>
-                <Text style={styles.heroStatCaption}>
-                  {`מתוך ${totals.capacity} מקומות · ${totals.freeSeats} פנויים`}
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.heroProgressTrack}>
-              <View style={[styles.heroProgressFill, { width: `${Math.round(occupancy * 100)}%` }]} />
-            </View>
-          </View>
-
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.heroPills}>
-            <HeroPill icon="checkbox-outline" label="צ׳ק-אין" value={String(totals.checkedInPeople)} />
-            <HeroPill
-              icon="hand-left-outline"
-              label="תוספת ידנית"
-              value={signed(totals.manualExtra)}
-              tone={totals.adjustedTables > 0 ? 'warn' : undefined}
-            />
-            <HeroPill icon="albums-outline" label="שולחנות מלאים" value={`${totals.fullTables}/${totals.tables}`} />
-            {totals.unseatedArrivedPeople > 0 ? (
-              <HeroPill
-                icon="alert-circle-outline"
-                label="הגיעו ללא שולחן"
-                value={String(totals.unseatedArrivedPeople)}
-                tone="warn"
-              />
-            ) : null}
-          </ScrollView>
         </View>
 
         <View style={styles.sheet}>
-          {loading && !tables.length ? (
-            <View style={styles.loadingBox}>
-              <ActivityIndicator size="large" color={PALETTE.ink} />
-              <Text style={styles.loadingText}>טוען את מפת הלייב...</Text>
-            </View>
-          ) : view === 'list' ? (
-            <FlatList
-              data={visibleTables}
-              key={`live-cols-${columns}`}
-              numColumns={columns}
-              keyExtractor={(item) => item.id}
-              columnWrapperStyle={styles.gridRow}
-              contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 120 }]}
-              showsVerticalScrollIndicator={false}
-              refreshControl={
-                <RefreshControl
-                  refreshing={refreshing}
-                  onRefresh={() => void refresh({ silent: true })}
-                  tintColor={PALETTE.ink}
-                />
-              }
-              ListHeaderComponent={controls}
-              renderItem={({ item }) => (
-                <TableCard
-                  table={item}
-                  columns={columns}
-                  saving={savingTableIds.has(item.id)}
-                  canEdit={supportsManualEdit}
-                  onOpen={() => setActiveTableId(item.id)}
-                  onAdjust={(delta) => void handleAdjust(item.id, delta)}
-                />
-              )}
-              ListEmptyComponent={emptyBlock}
-            />
-          ) : (
-            <ScrollView
-              contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 120 }]}
-              showsVerticalScrollIndicator={false}
-              refreshControl={
-                <RefreshControl
-                  refreshing={refreshing}
-                  onRefresh={() => void refresh({ silent: true })}
-                  tintColor={PALETTE.ink}
-                />
-              }
-            >
-              {controls}
+          {controls}
 
-              {visibleTables.length === 0 ? (
-                emptyBlock
-              ) : mapLayout.placed.length === 0 ? (
-                // Belt and braces: never leave a blank canvas where tables exist.
-                <View style={styles.emptyBox}>
-                  <View style={styles.emptyIconWrap}>
-                    <Ionicons name="map-outline" size={30} color="rgba(6,23,62,0.35)" />
-                  </View>
-                  <Text style={styles.emptyTitle}>לא ניתן לצייר את המפה</Text>
-                  <Text style={styles.emptyText}>עברו לתצוגת רשימה כדי לראות ולעדכן את השולחנות</Text>
-                </View>
-              ) : (
-                <>
-                  <View style={[styles.canvasCard, { height: mapViewport.height + 20 }]}>
-                    <View style={{ width: mapLayout.width, height: mapLayout.height }}>
-                      {mapLayout.placed.map((placed) => (
-                        <MapTile
-                          key={placed.table.id}
-                          placed={placed}
-                          onPress={() => setActiveTableId(placed.table.id)}
-                        />
-                      ))}
-                    </View>
-                  </View>
-
-                  <View style={styles.legendRow}>
-                    {LEGEND.map((key) => (
-                      <View key={key} style={styles.legendItem}>
-                        <View style={[styles.legendDot, { backgroundColor: STATUS_STYLE[key].bar }]} />
-                        <Text style={styles.legendText}>{STATUS_STYLE[key].label}</Text>
-                      </View>
-                    ))}
-                  </View>
-
-                  <Text style={styles.mapHint}>
-                    {mapLayout.autoPlacedCount > 0
-                      ? `הקישו על שולחן לעדכון · ${mapLayout.autoPlacedCount} שולחנות ללא מיקום בסקיצה מסודרים בתחתית המפה`
-                      : 'הקישו על שולחן כדי לעדכן את מספר היושבים'}
-                  </Text>
-                </>
-              )}
-            </ScrollView>
-          )}
+          <View style={styles.body} onLayout={onBodyLayout}>
+            {loading && !tables.length ? (
+              <View style={styles.loadingBox}>
+                <ActivityIndicator size="large" color={PALETTE.ink} />
+                <Text style={styles.loadingText}>טוען את מפת הלייב...</Text>
+              </View>
+            ) : visibleTables.length === 0 ? (
+              emptyBlock
+            ) : view === 'list' ? (
+              <FlatList
+                data={visibleTables}
+                key={`live-cols-${columns}`}
+                numColumns={columns}
+                keyExtractor={(item) => item.id}
+                columnWrapperStyle={styles.gridRow}
+                contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 110 }]}
+                showsVerticalScrollIndicator={false}
+                refreshControl={
+                  <RefreshControl
+                    refreshing={refreshing}
+                    onRefresh={() => void refresh({ silent: true })}
+                    tintColor={PALETTE.ink}
+                  />
+                }
+                renderItem={({ item }) => (
+                  <TableCard
+                    table={item}
+                    columns={columns}
+                    saving={savingTableIds.has(item.id)}
+                    canEdit={supportsManualEdit}
+                    onOpen={() => setActiveTableId(item.id)}
+                    onAdjust={(delta) => void handleAdjust(item.id, delta)}
+                  />
+                )}
+              />
+            ) : mapViewport ? (
+              <LiveMapCanvas
+                tables={visibleTables}
+                viewport={mapViewport}
+                selectedId={activeTableId}
+                onSelectTable={setActiveTableId}
+              />
+            ) : null}
+          </View>
         </View>
 
         <TableDetailModal
           table={activeTable}
-          guests={activeGuests}
           saving={activeTable ? savingTableIds.has(activeTable.id) : false}
           canEdit={supportsManualEdit}
           onClose={() => setActiveTableId(null)}
           onAdjust={(delta) => {
             if (activeTable) void handleAdjust(activeTable.id, delta);
+          }}
+          onSetCount={(value) => {
+            if (activeTable) void handleSetCount(activeTable.id, value);
           }}
           onClear={() => {
             if (activeTable) void handleClear(activeTable.id);
@@ -492,7 +417,7 @@ export default function LiveSeatingScreen() {
 }
 
 /** The "live" dot, pulsing so the screen reads as a running feed. */
-function LiveBadge() {
+function LiveDot() {
   const pulse = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -514,87 +439,10 @@ function LiveBadge() {
   };
 
   return (
-    <View style={styles.liveBadge}>
-      <View style={styles.liveDotWrap}>
-        <Animated.View style={[styles.liveDotRing, ringStyle]} />
-        <View style={styles.liveDot} />
-      </View>
-      <Text style={styles.liveBadgeText}>בזמן אמת</Text>
+    <View style={styles.liveDotWrap}>
+      <Animated.View style={[styles.liveDotRing, ringStyle]} />
+      <View style={styles.liveDot} />
     </View>
-  );
-}
-
-function HeroPill({
-  icon,
-  label,
-  value,
-  tone,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  value: string;
-  tone?: 'warn';
-}) {
-  const warn = tone === 'warn';
-  return (
-    <View style={[styles.heroPill, warn && styles.heroPillWarn]}>
-      <Ionicons name={icon} size={13} color={warn ? '#FFD27A' : 'rgba(255,255,255,0.75)'} />
-      <Text style={[styles.heroPillLabel, warn && styles.heroPillLabelWarn]}>{label}</Text>
-      <Text style={[styles.heroPillValue, warn && styles.heroPillValueWarn]}>{value}</Text>
-    </View>
-  );
-}
-
-/** One table on the spatial map, sized by its footprint and coloured by fill. */
-function MapTile({ placed, onPress }: { placed: PlacedTable; onPress: () => void }) {
-  const { table, left, top, width, height } = placed;
-  const palette = STATUS_STYLE[table.status];
-  const short = Math.min(width, height);
-
-  const showCount = short >= 40;
-  const numberSize = short >= 58 ? 16 : short >= 44 ? 13 : 11;
-  const countSize = short >= 58 ? 12 : 10;
-  const isReserve = table.shape === 'reserve';
-
-  return (
-    <Pressable
-      onPress={onPress}
-      hitSlop={4}
-      style={({ pressed }) => [
-        styles.mapTile,
-        {
-          left,
-          top,
-          width,
-          height,
-          borderRadius: Math.max(6, Math.min(16, short * 0.22)),
-          backgroundColor: isReserve ? 'rgba(6,23,62,0.82)' : palette.tint,
-          borderColor: isReserve ? 'rgba(6,23,62,0.9)' : palette.border,
-        },
-        pressed && { opacity: 0.82 },
-      ]}
-      accessibilityRole="button"
-      accessibilityLabel={`${tableLabel(table)}, ${table.livePeople} מתוך ${table.capacity} יושבים`}
-    >
-      <Text
-        style={[styles.mapTileNumber, { fontSize: numberSize }, isReserve && styles.mapTileNumberReserve]}
-        numberOfLines={1}
-      >
-        {tableShortLabel(table)}
-      </Text>
-      {showCount ? (
-        <Text
-          style={[
-            styles.mapTileCount,
-            { fontSize: countSize, color: isReserve ? 'rgba(255,255,255,0.72)' : palette.bar },
-          ]}
-          numberOfLines={1}
-        >
-          {`${table.livePeople}/${table.capacity}`}
-        </Text>
-      ) : null}
-      {table.manualExtra !== 0 && short >= 34 ? <View style={styles.mapTileFlag} /> : null}
-    </Pressable>
   );
 }
 
@@ -711,24 +559,23 @@ function StepperButton({
 
 function TableDetailModal({
   table,
-  guests,
   saving,
   canEdit,
   onClose,
   onAdjust,
+  onSetCount,
   onClear,
 }: {
   table: LiveSeatingTable | null;
-  guests: Guest[];
   saving: boolean;
   canEdit: boolean;
   onClose: () => void;
   onAdjust: (delta: number) => void;
+  onSetCount: (value: number) => void;
   onClear: () => void;
 }) {
-  const arrived = guests.filter((g) => g.checkedIn);
-  const expected = guests.filter((g) => !g.checkedIn);
   const palette = table ? STATUS_STYLE[table.status] : STATUS_STYLE.empty;
+  const counter = useHeadcountEditor(table, canEdit, onSetCount);
 
   return (
     <Modal visible={Boolean(table)} transparent animationType="fade" onRequestClose={onClose}>
@@ -773,8 +620,40 @@ function TableDetailModal({
                   />
 
                   <View style={styles.bigCounterCenter}>
-                    <Text style={[styles.bigCounterValue, { color: palette.bar }]}>{table.livePeople}</Text>
-                    <Text style={styles.bigCounterCaption}>{`מתוך ${table.capacity} מקומות`}</Text>
+                    {counter.editing ? (
+                      <TextInput
+                        value={counter.draft}
+                        onChangeText={counter.setDraft}
+                        onSubmitEditing={counter.commit}
+                        onBlur={counter.commit}
+                        keyboardType="number-pad"
+                        returnKeyType="done"
+                        maxLength={3}
+                        autoFocus
+                        selectTextOnFocus
+                        style={[styles.bigCounterInput, { color: palette.bar }]}
+                        accessibilityLabel="הזנת מספר היושבים בשולחן"
+                      />
+                    ) : (
+                      <TouchableOpacity
+                        onPress={counter.start}
+                        disabled={!canEdit || saving}
+                        activeOpacity={0.7}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${table.livePeople} יושבים, הקישו להקלדת מספר`}
+                        style={styles.bigCounterValueWrap}
+                      >
+                        <Text style={[styles.bigCounterValue, { color: palette.bar }]}>
+                          {table.livePeople}
+                        </Text>
+                        {canEdit ? (
+                          <Ionicons name="create-outline" size={14} color="rgba(6,23,62,0.32)" />
+                        ) : null}
+                      </TouchableOpacity>
+                    )}
+                    <Text style={styles.bigCounterCaption}>
+                      {counter.editing ? 'הזינו מספר ואשרו' : `מתוך ${table.capacity} מקומות`}
+                    </Text>
                   </View>
 
                   <StepperButton
@@ -808,36 +687,6 @@ function TableDetailModal({
                     <Text style={styles.clearBtnText}>איפוס התוספת הידנית</Text>
                   </TouchableOpacity>
                 ) : null}
-
-                <Text style={styles.sectionLabel}>{`הגיעו (${arrived.length})`}</Text>
-                {arrived.length === 0 ? (
-                  <Text style={styles.sectionEmpty}>אף אורח בשולחן לא סומן כהגיע</Text>
-                ) : (
-                  arrived.map((guest) => (
-                    <View key={guest.id} style={styles.guestRow}>
-                      <Text style={styles.guestCount}>{`${guestArrivedPeople(guest)}×`}</Text>
-                      <Text style={styles.guestName} numberOfLines={1}>
-                        {guest.name}
-                      </Text>
-                    </View>
-                  ))
-                )}
-
-                {expected.length ? (
-                  <>
-                    <Text style={styles.sectionLabel}>{`טרם הגיעו (${expected.length})`}</Text>
-                    {expected.map((guest) => (
-                      <View key={guest.id} style={[styles.guestRow, styles.guestRowMuted]}>
-                        <Text style={[styles.guestCount, styles.guestCountMuted]}>
-                          {`${guestInvitedPeople(guest)}×`}
-                        </Text>
-                        <Text style={[styles.guestName, styles.guestNameMuted]} numberOfLines={1}>
-                          {guest.name}
-                        </Text>
-                      </View>
-                    ))}
-                  </>
-                ) : null}
               </ScrollView>
             </>
           ) : null}
@@ -845,6 +694,49 @@ function TableDetailModal({
       </Pressable>
     </Modal>
   );
+}
+
+/**
+ * Tap-to-type headcount. Counting a table and typing "11" beats tapping plus
+ * eleven times, so the number itself is an input.
+ */
+function useHeadcountEditor(
+  table: LiveSeatingTable | null,
+  canEdit: boolean,
+  onSetCount: (value: number) => void
+) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const committedRef = useRef(false);
+
+  // Opening a different table must not carry the previous one's draft over.
+  useEffect(() => {
+    setEditing(false);
+    setDraft('');
+  }, [table?.id]);
+
+  const start = useCallback(() => {
+    if (!canEdit || !table) return;
+    committedRef.current = false;
+    setDraft(String(table.livePeople));
+    setEditing(true);
+  }, [canEdit, table]);
+
+  const commit = useCallback(() => {
+    // Submit-then-blur would otherwise apply the same value twice.
+    if (committedRef.current) return;
+    committedRef.current = true;
+    setEditing(false);
+
+    const digits = draft.replace(/[^0-9]/g, '');
+    if (!digits) return;
+
+    const next = Number(digits);
+    if (!Number.isFinite(next) || next === table?.livePeople) return;
+    onSetCount(next);
+  }, [draft, onSetCount, table?.livePeople]);
+
+  return { editing, draft, setDraft, start, commit };
 }
 
 function BreakdownRow({
@@ -870,6 +762,34 @@ function BreakdownRow({
 
 const styles = StyleSheet.create({
   screenRoot: { flex: 1, backgroundColor: PALETTE.sheet },
+
+  // ----- Slim top bar -----
+  topBar: { position: 'relative', paddingHorizontal: 12, paddingBottom: 14, overflow: 'hidden' },
+  topBarRow: { flexDirection: ROW_DIR, alignItems: 'center', gap: 10 },
+  topIconBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  topTitleWrap: { flex: 1, alignItems: 'center' },
+  topTitleRow: { flexDirection: ROW_DIR, alignItems: 'center', gap: 7 },
+  topTitle: { fontSize: 17, fontWeight: '900', color: colors.white },
+  topStatLine: {
+    marginTop: 2,
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.66)',
+    textAlign: 'center',
+  },
+
+  // The map/list fills whatever the controls leave behind.
+  body: { flex: 1, paddingHorizontal: 12 },
+  listContent: { paddingTop: 2 },
   center: {
     flex: 1,
     backgroundColor: PALETTE.sheet,
@@ -885,92 +805,22 @@ const styles = StyleSheet.create({
   // ----- Hero -----
   // The sheet's rounded top overlaps the hero by 22pt, so the pills need that
   // much clearance plus breathing room below them.
-  hero: { position: 'relative', paddingHorizontal: 16, paddingBottom: 38, overflow: 'hidden' },
-  heroTopBar: { flexDirection: ROW_DIR, alignItems: 'center', gap: 10 },
-  heroIconBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.10)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  heroTitleWrap: { flex: 1, alignItems: 'center' },
-  heroTitle: { marginTop: 5, fontSize: 19, fontWeight: '900', color: colors.white, textAlign: 'center' },
-  heroSubtitle: {
-    marginTop: 2,
-    fontSize: 12,
-    fontWeight: '700',
-    color: 'rgba(255,255,255,0.62)',
-    textAlign: 'center',
-  },
 
-  liveBadge: {
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,77,77,0.16)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,77,77,0.38)',
-  },
   liveDotWrap: { width: 7, height: 7, alignItems: 'center', justifyContent: 'center' },
   liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: PALETTE.live },
   liveDotRing: { position: 'absolute', width: 7, height: 7, borderRadius: 4, backgroundColor: PALETTE.live },
-  liveBadgeText: { fontSize: 10, fontWeight: '900', color: '#FFB4B4', letterSpacing: 0.4 },
 
-  heroStat: { marginTop: 20, gap: 12 },
-  heroStatMain: { flexDirection: ROW_DIR, alignItems: 'center', gap: 14 },
-  heroStatValue: { fontSize: 52, fontWeight: '900', color: colors.white, lineHeight: 56 },
-  heroStatCopy: { flex: 1 },
-  heroStatLabel: { fontSize: 15, fontWeight: '900', color: colors.white, textAlign: TEXT_RIGHT },
-  heroStatCaption: {
-    marginTop: 3,
-    fontSize: 12,
-    fontWeight: '700',
-    color: 'rgba(255,255,255,0.62)',
-    textAlign: TEXT_RIGHT,
-  },
-  heroProgressTrack: {
-    height: 7,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.14)',
-    overflow: 'hidden',
-  },
-  heroProgressFill: { height: '100%', borderRadius: 999, backgroundColor: '#6EE7FF' },
 
-  heroPills: { flexDirection: ROW_DIR, gap: 8, paddingTop: 16 },
-  heroPill: {
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 11,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.09)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.14)',
-  },
-  heroPillWarn: { backgroundColor: 'rgba(240,203,70,0.14)', borderColor: 'rgba(240,203,70,0.36)' },
-  heroPillLabel: { fontSize: 11, fontWeight: '800', color: 'rgba(255,255,255,0.7)' },
-  heroPillLabelWarn: { color: '#FFD27A' },
-  heroPillValue: { fontSize: 12.5, fontWeight: '900', color: colors.white },
-  heroPillValueWarn: { color: '#FFE1A3' },
 
   // ----- Sheet -----
   sheet: {
     flex: 1,
-    marginTop: -22,
+    marginTop: -18,
     backgroundColor: PALETTE.sheet,
     borderTopLeftRadius: 30,
     borderTopRightRadius: 30,
     overflow: 'hidden',
   },
-  scrollContent: { paddingHorizontal: 12, paddingTop: 16 },
   gridRow: { flexDirection: ROW_DIR },
 
   controlsBlock: { gap: 12, paddingBottom: 14 },
@@ -1034,58 +884,7 @@ const styles = StyleSheet.create({
   filterChipTextActive: { color: colors.white },
 
   // ----- Map -----
-  canvasCard: {
-    backgroundColor: colors.white,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: 'rgba(6,23,62,0.06)',
-    padding: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-    shadowColor: PALETTE.ink,
-    shadowOpacity: 0.05,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 2,
-  },
-  mapTile: {
-    position: 'absolute',
-    borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  mapTileNumber: { fontWeight: '900', color: PALETTE.ink },
-  mapTileNumberReserve: { color: colors.white },
-  mapTileCount: { fontWeight: '900', marginTop: 1 },
-  mapTileFlag: {
-    position: 'absolute',
-    top: 4,
-    left: 4,
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: '#F59E0B',
-  },
 
-  legendRow: {
-    flexDirection: ROW_DIR,
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: 14,
-    marginTop: 14,
-  },
-  legendItem: { flexDirection: ROW_DIR, alignItems: 'center', gap: 5 },
-  legendDot: { width: 9, height: 9, borderRadius: 5 },
-  legendText: { fontSize: 11.5, fontWeight: '800', color: 'rgba(6,23,62,0.55)' },
-  mapHint: {
-    marginTop: 10,
-    fontSize: 11.5,
-    fontWeight: '700',
-    color: 'rgba(6,23,62,0.42)',
-    textAlign: 'center',
-    paddingHorizontal: 10,
-  },
 
   // ----- List cards -----
   card: { flex: 1, padding: 5 },
@@ -1214,8 +1013,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
   },
-  bigCounterCenter: { alignItems: 'center' },
+  bigCounterCenter: { alignItems: 'center', minWidth: 120 },
+  bigCounterValueWrap: { flexDirection: ROW_DIR, alignItems: 'center', gap: 6 },
   bigCounterValue: { fontSize: 44, fontWeight: '900', lineHeight: 50 },
+  bigCounterInput: {
+    fontSize: 44,
+    fontWeight: '900',
+    lineHeight: 50,
+    minWidth: 110,
+    textAlign: 'center',
+    paddingVertical: 0,
+    borderBottomWidth: 2,
+    borderBottomColor: 'rgba(6,23,62,0.18)',
+    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : null),
+  },
   bigCounterCaption: { fontSize: 12, fontWeight: '800', color: 'rgba(6,23,62,0.45)' },
 
   breakdown: { gap: 8 },
@@ -1238,21 +1049,5 @@ const styles = StyleSheet.create({
   },
   clearBtnText: { fontSize: 13, fontWeight: '900', color: colors.gray[700] },
 
-  sectionLabel: { marginTop: 6, fontSize: 13, fontWeight: '900', color: PALETTE.ink, textAlign: TEXT_RIGHT },
-  sectionEmpty: { fontSize: 12, fontWeight: '700', color: 'rgba(6,23,62,0.38)', textAlign: TEXT_RIGHT },
 
-  guestRow: {
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 14,
-    backgroundColor: 'rgba(22,163,74,0.07)',
-  },
-  guestRowMuted: { backgroundColor: 'rgba(6,23,62,0.04)' },
-  guestName: { flex: 1, fontSize: 14, fontWeight: '800', color: PALETTE.ink, textAlign: TEXT_RIGHT },
-  guestNameMuted: { color: 'rgba(6,23,62,0.5)' },
-  guestCount: { width: 44, fontSize: 13, fontWeight: '900', color: '#16A34A' },
-  guestCountMuted: { color: 'rgba(6,23,62,0.38)' },
 });

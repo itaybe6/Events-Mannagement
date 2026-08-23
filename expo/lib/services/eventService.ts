@@ -1,15 +1,23 @@
 import { supabase, supabaseAdmin } from '../supabase';
 import { cachedQuery, invalidateCache, peekCached } from '../queryCache';
 import { Event, Task } from '@/types';
+import { guestService } from './guestService';
 
 const EVENTS_LIST_KEY = 'events:all';
 const EVENTS_UPCOMING_KEY = 'events:upcoming';
 
-/** Columns the admin/employee event list actually renders. Skipping `*` and
- *  `tasks(*)` is the difference between a ~2s first load and a single light
- *  round-trip — the list never showed tasks anyway. */
+/** Columns the admin/employee event list actually renders. Skipping `*` ,
+ *  `tasks(*)`, and the `users` embed — that join re-checked RLS on every row
+ *  and was only used for a display name we already have on the event. */
 const EVENT_LIST_COLUMNS =
-  'id, title, date, location, city, guests_count, budget, groom_name, bride_name, invitation_image_url, is_approved, user_id, users (name, avatar_url)';
+  'id, title, date, location, city, guests_count, budget, groom_name, bride_name, invitation_image_url, is_approved, user_id';
+
+function coupleDisplayName(event: any): string | undefined {
+  const groom = String(event?.groom_name ?? '').trim();
+  const bride = String(event?.bride_name ?? '').trim();
+  if (groom && bride) return `${bride} ו${groom}`;
+  return groom || bride || undefined;
+}
 
 function mapEventListRow(event: any): Event {
   return {
@@ -25,8 +33,7 @@ function mapEventListRow(event: any): Event {
     brideName: event.bride_name ?? undefined,
     invitationImageUrl: event.invitation_image_url ?? undefined,
     user_id: event.user_id,
-    userName: event?.users?.name ?? undefined,
-    userAvatarUrl: event?.users?.avatar_url ?? undefined,
+    userName: coupleDisplayName(event),
     isApproved: event.is_approved ?? undefined,
     tasks: [],
   };
@@ -36,6 +43,8 @@ function mapEventListRow(event: any): Event {
 function invalidateEventsCache(): void {
   invalidateCache(EVENTS_LIST_KEY);
   invalidateCache(EVENTS_UPCOMING_KEY);
+  invalidateCache('event:lite:', { prefix: true });
+  invalidateCache('event:details:', { prefix: true });
 }
 
 export const eventService = {
@@ -48,7 +57,7 @@ export const eventService = {
 
   // Get all events for current user
   getEvents: async (opts?: { force?: boolean }): Promise<Event[]> =>
-    cachedQuery(EVENTS_LIST_KEY, () => eventService.fetchEvents(), { force: opts?.force }),
+    cachedQuery(EVENTS_LIST_KEY, () => eventService.fetchEvents(), { maxAgeMs: 60_000, force: opts?.force }),
 
   fetchEvents: async (): Promise<Event[]> => {
     try {
@@ -89,6 +98,10 @@ export const eventService = {
   prefetchEventsList: (): void => {
     void eventService.getUpcomingEvents().catch(() => undefined);
     void eventService.getEvents().catch(() => undefined);
+    void guestService.getGuestPeopleStatsForAllEvents().catch(() => undefined);
+    if (typeof window !== 'undefined') {
+      void import('@/features/admin/admin-events-desktop.web').catch(() => undefined);
+    }
   },
 
   // Get all events for a specific user (event owner)
@@ -238,6 +251,63 @@ export const eventService = {
       },
       { maxAgeMs: 30_000 }
     );
+  },
+
+  /**
+   * Single event for the details screen: every rendered column but no
+   * `tasks(*)` / `users` joins, so the header paints in one light round-trip.
+   */
+  getEventDetailsLite: async (eventId: string): Promise<Event | null> => {
+    const cleanId = String(eventId || '').trim();
+    if (!cleanId) return null;
+
+    return cachedQuery(
+      `event:details:${cleanId}`,
+      async () => {
+        const { data, error } = await supabase
+          .from('events')
+          .select(
+            'id, title, date, location, city, story, guests_count, budget, groom_name, bride_name, rsvp_link, invitation_image_url, is_approved, user_id'
+          )
+          .eq('id', cleanId)
+          .maybeSingle();
+
+        if (error) {
+          const code = (error as any)?.code ? String((error as any).code) : '';
+          if (code === 'PGRST116') return null;
+          throw error;
+        }
+        if (!data) return null;
+
+        return {
+          id: data.id,
+          title: data.title,
+          date: new Date(data.date),
+          location: data.location,
+          city: data.city || '',
+          story: data.story || '',
+          guests: data.guests_count || 0,
+          budget: Number(data.budget) || 0,
+          groomName: (data as any).groom_name ?? undefined,
+          brideName: (data as any).bride_name ?? undefined,
+          rsvpLink: (data as any).rsvp_link ?? undefined,
+          invitationImageUrl: (data as any).invitation_image_url ?? undefined,
+          isApproved: (data as any).is_approved ?? undefined,
+          user_id: data.user_id,
+          tasks: [],
+        } as Event;
+      },
+      { maxAgeMs: 15_000 }
+    );
+  },
+
+  /** Last events-list row for this event, if any — lets details paint instantly. */
+  peekEventFromLists: (eventId: string): Event | undefined => {
+    const cleanId = String(eventId || '').trim();
+    if (!cleanId) return undefined;
+    const all = peekCached<Event[]>(EVENTS_LIST_KEY);
+    const upcoming = peekCached<Event[]>(EVENTS_UPCOMING_KEY);
+    return all?.find((e) => e.id === cleanId) ?? upcoming?.find((e) => e.id === cleanId);
   },
 
   // Create new event

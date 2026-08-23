@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Platform,
@@ -16,14 +16,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/colors';
 import AdminWebPageHeader from '@/components/desktop/AdminWebPageHeader';
 import { useResponsive } from '@/lib/responsive';
-import { guestArrivedPeople, guestInvitedPeople } from '@/features/guests/useGuestCheckInModel';
 import {
   useLiveSeatingModel,
   type LiveSeatingTable,
   type LiveTableStatus,
 } from '@/features/seating/useLiveSeatingModel';
-import { buildLiveMapLayout, type PlacedTable } from '@/features/seating/liveSeatingLayout';
-import type { Guest } from '@/types';
+import LiveMapCanvas from '@/features/seating/LiveMapCanvas';
 
 const WEB_RTL = Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null;
 
@@ -48,8 +46,6 @@ const STATUS_STYLE: Record<
   full: { bar: '#16A34A', tint: '#ECFDF5', border: 'rgba(22,163,74,0.32)', label: 'מלא' },
   over: { bar: '#F59E0B', tint: '#FFFBEB', border: 'rgba(245,158,11,0.38)', label: 'מעל תפוסה' },
 };
-
-const LEGEND: LiveTableStatus[] = ['empty', 'partial', 'full', 'over'];
 
 function tableLabel(table: Pick<LiveSeatingTable, 'number' | 'name'>) {
   if (typeof table.number === 'number') return `שולחן ${table.number}`;
@@ -88,6 +84,7 @@ export default function LiveSeatingWebScreen() {
     savingTableIds,
     refresh,
     adjustTable,
+    setLivePeople,
     clearTable,
     clearAll,
   } = useLiveSeatingModel(resolvedEventId || null);
@@ -133,26 +130,25 @@ export default function LiveSeatingWebScreen() {
     }),
     [activeTableId, showSidePanel, windowHeight, windowWidth]
   );
-  const mapLayout = useMemo(
-    () => buildLiveMapLayout(visibleTables, mapViewport),
-    [mapViewport, visibleTables]
-  );
 
   const activeTable = useMemo(
     () => (activeTableId ? tables.find((t) => t.id === activeTableId) ?? null : null),
     [activeTableId, tables]
   );
-  const activeGuests = useMemo(
-    () => (activeTableId ? guestsByTable.get(activeTableId) || [] : []),
-    [activeTableId, guestsByTable]
-  );
-
   const handleAdjust = useCallback(
     async (tableId: string, delta: number) => {
       const result = await adjustTable(tableId, delta);
       setNotice(result.ok ? null : result.error ?? 'הפעולה נכשלה');
     },
     [adjustTable]
+  );
+
+  const handleSetCount = useCallback(
+    async (tableId: string, value: number) => {
+      const result = await setLivePeople(tableId, value);
+      setNotice(result.ok ? null : result.error ?? 'הפעולה נכשלה');
+    },
+    [setLivePeople]
   );
 
   const handleClear = useCallback(
@@ -385,37 +381,13 @@ export default function LiveSeatingWebScreen() {
               ))}
             </View>
           ) : (
-            <View style={styles.mapWrap}>
-              <View style={[styles.canvasCard, { height: mapViewport.height + 24 }]}>
-                <View style={{ width: mapLayout.width, height: mapLayout.height }}>
-                  {mapLayout.placed.map((placed) => (
-                    <MapTile
-                      key={placed.table.id}
-                      placed={placed}
-                      selected={placed.table.id === activeTableId}
-                      onPress={() =>
-                        setActiveTableId((prev) => (prev === placed.table.id ? null : placed.table.id))
-                      }
-                    />
-                  ))}
-                </View>
-              </View>
-
-              <View style={styles.legendRow}>
-                {LEGEND.map((key) => (
-                  <View key={key} style={styles.legendItem}>
-                    <View style={[styles.legendDot, { backgroundColor: STATUS_STYLE[key].bar }]} />
-                    <Text style={styles.legendText}>{STATUS_STYLE[key].label}</Text>
-                  </View>
-                ))}
-              </View>
-
-              <Text style={styles.canvasNote}>
-                {mapLayout.autoPlacedCount > 0
-                  ? `לחצו על שולחן לעדכון · ${mapLayout.autoPlacedCount} שולחנות ללא מיקום בסקיצה מסודרים בתחתית המפה`
-                  : 'לחצו על שולחן כדי לעדכן את מספר היושבים'}
-              </Text>
-            </View>
+            <LiveMapCanvas
+              tables={visibleTables}
+              viewport={mapViewport}
+              selectedId={activeTableId}
+              onSelectTable={(id) => setActiveTableId((prev) => (prev === id ? null : id))}
+              actionWord="לחצו"
+            />
           )}
         </View>
 
@@ -423,11 +395,11 @@ export default function LiveSeatingWebScreen() {
           <View style={[styles.panel, showSidePanel ? styles.panelSide : styles.panelInline]}>
             <TableDetailPanel
               table={activeTable}
-              guests={activeGuests}
               saving={savingTableIds.has(activeTable.id)}
               canEdit={supportsManualEdit}
               onClose={() => setActiveTableId(null)}
               onAdjust={(delta) => void handleAdjust(activeTable.id, delta)}
+              onSetCount={(value) => void handleSetCount(activeTable.id, value)}
               onClear={() => void handleClear(activeTable.id)}
             />
           </View>
@@ -463,67 +435,6 @@ function StatCard({
         <Text style={[styles.statCaption, tone === 'dark' && styles.statCaptionDark]}>{caption}</Text>
       </View>
     </View>
-  );
-}
-
-/** One table on the spatial map, sized by its footprint and coloured by fill. */
-function MapTile({
-  placed,
-  selected,
-  onPress,
-}: {
-  placed: PlacedTable;
-  selected: boolean;
-  onPress: () => void;
-}) {
-  const { table, left, top, width, height } = placed;
-  const palette = STATUS_STYLE[table.status];
-  const short = Math.min(width, height);
-
-  const showCount = short >= 40;
-  const numberSize = short >= 58 ? 16 : short >= 44 ? 13 : 11;
-  const countSize = short >= 58 ? 12 : 10;
-  const isReserve = table.shape === 'reserve';
-
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ hovered }: any) => [
-        styles.mapTile,
-        {
-          left,
-          top,
-          width,
-          height,
-          borderRadius: Math.max(6, Math.min(16, short * 0.22)),
-          backgroundColor: isReserve ? 'rgba(6,23,62,0.82)' : palette.tint,
-          borderColor: isReserve ? 'rgba(6,23,62,0.9)' : palette.border,
-        },
-        selected && styles.mapTileSelected,
-        hovered && styles.mapTileHover,
-      ]}
-      accessibilityRole="button"
-      accessibilityLabel={`${tableLabel(table)}, ${table.livePeople} מתוך ${table.capacity} יושבים`}
-    >
-      <Text
-        style={[styles.mapTileNumber, { fontSize: numberSize }, isReserve && styles.mapTileNumberReserve]}
-        numberOfLines={1}
-      >
-        {typeof table.number === 'number' ? table.number : String(table.name || '?').slice(0, 4)}
-      </Text>
-      {showCount ? (
-        <Text
-          style={[
-            styles.mapTileCount,
-            { fontSize: countSize, color: isReserve ? 'rgba(255,255,255,0.72)' : palette.bar },
-          ]}
-          numberOfLines={1}
-        >
-          {`${table.livePeople}/${table.capacity}`}
-        </Text>
-      ) : null}
-      {table.manualExtra !== 0 && short >= 34 ? <View style={styles.mapTileFlag} /> : null}
-    </Pressable>
   );
 }
 
@@ -644,24 +555,23 @@ function StepperButton({
 
 function TableDetailPanel({
   table,
-  guests,
   saving,
   canEdit,
   onClose,
   onAdjust,
+  onSetCount,
   onClear,
 }: {
   table: LiveSeatingTable;
-  guests: Guest[];
   saving: boolean;
   canEdit: boolean;
   onClose: () => void;
   onAdjust: (delta: number) => void;
+  onSetCount: (value: number) => void;
   onClear: () => void;
 }) {
   const palette = STATUS_STYLE[table.status];
-  const arrived = guests.filter((g) => g.checkedIn);
-  const expected = guests.filter((g) => !g.checkedIn);
+  const counter = useHeadcountEditor(table, canEdit, onSetCount);
 
   return (
     <>
@@ -684,8 +594,35 @@ function TableDetailPanel({
           accessibilityLabel="הפחתת יושב אחד"
         />
         <View style={styles.bigCounterCenter}>
-          <Text style={[styles.bigCounterValue, { color: palette.bar }]}>{table.livePeople}</Text>
-          <Text style={styles.bigCounterCaption}>{`מתוך ${table.capacity} מקומות`}</Text>
+          {counter.editing ? (
+            <TextInput
+              value={counter.draft}
+              onChangeText={counter.setDraft}
+              onSubmitEditing={counter.commit}
+              onBlur={counter.commit}
+              keyboardType="number-pad"
+              returnKeyType="done"
+              maxLength={3}
+              autoFocus
+              selectTextOnFocus
+              style={[styles.bigCounterInput, { color: palette.bar }]}
+              accessibilityLabel="הזנת מספר היושבים בשולחן"
+            />
+          ) : (
+            <Pressable
+              onPress={counter.start}
+              disabled={!canEdit || saving}
+              accessibilityRole="button"
+              accessibilityLabel={`${table.livePeople} יושבים, לחצו להקלדת מספר`}
+              style={styles.bigCounterValueWrap}
+            >
+              <Text style={[styles.bigCounterValue, { color: palette.bar }]}>{table.livePeople}</Text>
+              {canEdit ? <Ionicons name="create-outline" size={14} color={colors.gray[500]} /> : null}
+            </Pressable>
+          )}
+          <Text style={styles.bigCounterCaption}>
+            {counter.editing ? 'הזינו מספר ואשרו' : `מתוך ${table.capacity} מקומות`}
+          </Text>
         </View>
         <StepperButton
           icon="add"
@@ -717,38 +654,50 @@ function TableDetailPanel({
           <Text style={styles.clearBtnText}>איפוס התוספת הידנית</Text>
         </Pressable>
       ) : null}
-
-      <Text style={styles.sectionLabel}>{`הגיעו (${arrived.length})`}</Text>
-      {arrived.length === 0 ? (
-        <Text style={styles.sectionEmpty}>אף אורח בשולחן לא סומן כהגיע</Text>
-      ) : (
-        arrived.map((guest) => (
-          <View key={guest.id} style={styles.guestRow}>
-            <Text style={styles.guestCount}>{`${guestArrivedPeople(guest)}×`}</Text>
-            <Text style={styles.guestName} numberOfLines={1}>
-              {guest.name}
-            </Text>
-          </View>
-        ))
-      )}
-
-      {expected.length ? (
-        <>
-          <Text style={styles.sectionLabel}>{`טרם הגיעו (${expected.length})`}</Text>
-          {expected.map((guest) => (
-            <View key={guest.id} style={[styles.guestRow, styles.guestRowMuted]}>
-              <Text style={[styles.guestCount, styles.guestCountMuted]}>
-                {`${guestInvitedPeople(guest)}×`}
-              </Text>
-              <Text style={[styles.guestName, styles.guestNameMuted]} numberOfLines={1}>
-                {guest.name}
-              </Text>
-            </View>
-          ))}
-        </>
-      ) : null}
     </>
   );
+}
+
+/**
+ * Tap-to-type headcount. Counting a table and typing "11" beats clicking plus
+ * eleven times, so the number itself is an input.
+ */
+function useHeadcountEditor(
+  table: LiveSeatingTable | null,
+  canEdit: boolean,
+  onSetCount: (value: number) => void
+) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const committedRef = useRef(false);
+
+  useEffect(() => {
+    setEditing(false);
+    setDraft('');
+  }, [table?.id]);
+
+  const start = useCallback(() => {
+    if (!canEdit || !table) return;
+    committedRef.current = false;
+    setDraft(String(table.livePeople));
+    setEditing(true);
+  }, [canEdit, table]);
+
+  const commit = useCallback(() => {
+    // Submit-then-blur would otherwise apply the same value twice.
+    if (committedRef.current) return;
+    committedRef.current = true;
+    setEditing(false);
+
+    const digits = draft.replace(/[^0-9]/g, '');
+    if (!digits) return;
+
+    const next = Number(digits);
+    if (!Number.isFinite(next) || next === table?.livePeople) return;
+    onSetCount(next);
+  }, [draft, onSetCount, table?.livePeople]);
+
+  return { editing, draft, setDraft, start, commit };
 }
 
 function BreakdownRow({
@@ -907,56 +856,6 @@ const styles = StyleSheet.create({
   viewToggleText: { fontSize: 12, fontWeight: '800', color: colors.gray[700] },
   viewToggleTextActive: { color: colors.white },
 
-  mapWrap: { gap: 12 },
-  canvasCard: {
-    backgroundColor: colors.white,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.07)',
-    padding: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  canvasNote: {
-    fontSize: 11.5,
-    fontWeight: '700',
-    color: colors.gray[500],
-    textAlign: 'center',
-  },
-  legendRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: 16,
-    ...WEB_RTL,
-  },
-  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6, ...WEB_RTL },
-  legendDot: { width: 9, height: 9, borderRadius: 5 },
-  legendText: { fontSize: 11.5, fontWeight: '800', color: colors.gray[600] },
-  mapTile: {
-    position: 'absolute',
-    borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
-  },
-  mapTileHover: {
-    ...(Platform.OS === 'web' ? ({ boxShadow: '0 6px 18px rgba(15,23,42,0.16)' } as any) : null),
-  },
-  mapTileSelected: { borderColor: colors.primary, borderWidth: 2.5 },
-  mapTileNumber: { fontWeight: '900', color: colors.text },
-  mapTileNumberReserve: { color: colors.white },
-  mapTileCount: { fontWeight: '900', marginTop: 1 },
-  mapTileFlag: {
-    position: 'absolute',
-    top: 4,
-    left: 4,
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: '#F59E0B',
-  },
 
   card: {
     flexGrow: 1,
@@ -1042,8 +941,26 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     ...WEB_RTL,
   },
-  bigCounterCenter: { alignItems: 'center' },
+  bigCounterCenter: { alignItems: 'center', minWidth: 110 },
+  bigCounterValueWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    ...WEB_RTL,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
   bigCounterValue: { fontSize: 38, fontWeight: '900', lineHeight: 44 },
+  bigCounterInput: {
+    fontSize: 38,
+    fontWeight: '900',
+    lineHeight: 44,
+    minWidth: 100,
+    textAlign: 'center',
+    paddingVertical: 0,
+    borderBottomWidth: 2,
+    borderBottomColor: 'rgba(15,23,42,0.18)',
+    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : null),
+  },
   bigCounterCaption: { fontSize: 11.5, fontWeight: '800', color: colors.gray[600] },
 
   breakdown: { gap: 7 },
@@ -1069,24 +986,7 @@ const styles = StyleSheet.create({
   clearBtnHover: { backgroundColor: colors.gray[200] },
   clearBtnText: { fontSize: 12.5, fontWeight: '900', color: colors.gray[700] },
 
-  sectionLabel: { marginTop: 6, fontSize: 12.5, fontWeight: '900', color: colors.text, textAlign: 'right' },
-  sectionEmpty: { fontSize: 12, fontWeight: '700', color: colors.gray[500], textAlign: 'right' },
 
-  guestRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 9,
-    paddingHorizontal: 11,
-    borderRadius: 12,
-    backgroundColor: 'rgba(22,163,74,0.07)',
-    ...WEB_RTL,
-  },
-  guestRowMuted: { backgroundColor: 'rgba(15,23,42,0.04)' },
-  guestName: { flex: 1, fontSize: 13, fontWeight: '800', color: colors.text, textAlign: 'right' },
-  guestNameMuted: { color: colors.gray[600] },
-  guestCount: { width: 42, fontSize: 12.5, fontWeight: '900', color: '#16A34A', textAlign: 'left' },
-  guestCountMuted: { color: colors.gray[500] },
 
   loadingBox: { alignItems: 'center', gap: 10, paddingVertical: 60 },
   loadingText: { fontSize: 13, fontWeight: '800', color: colors.gray[600] },

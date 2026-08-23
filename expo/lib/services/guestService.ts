@@ -276,42 +276,48 @@ export const guestService = {
    * waiting for the event list to arrive first, which saves a full round trip.
    */
   getGuestPeopleStatsForAllEvents: async (): Promise<Record<string, EventGuestPeopleStats>> => {
-    const next: Record<string, EventGuestPeopleStats> = {};
+    return cachedQuery(
+      'guests:people-stats:all',
+      async () => {
+        const next: Record<string, EventGuestPeopleStats> = {};
 
-    const { data: rpcRows, error: rpcError } = await supabase.rpc('get_events_guest_people_stats', {
-      p_event_ids: null,
-    });
+        const { data: rpcRows, error: rpcError } = await supabase.rpc('get_events_guest_people_stats', {
+          p_event_ids: null,
+        });
 
-    if (!rpcError && Array.isArray(rpcRows)) {
-      for (const row of rpcRows as any[]) {
-        const eventId = String(row?.event_id ?? '').trim();
-        if (!eventId) continue;
-        next[eventId] = {
-          invitedPeople: Number(row?.invited_people) || 0,
-          comingPeople: Number(row?.coming_people) || 0,
-          seatedPeople: Number(row?.seated_people) || 0,
-        };
-      }
-      return next;
-    }
+        if (!rpcError && Array.isArray(rpcRows)) {
+          for (const row of rpcRows as any[]) {
+            const eventId = String(row?.event_id ?? '').trim();
+            if (!eventId) continue;
+            next[eventId] = {
+              invitedPeople: Number(row?.invited_people) || 0,
+              comingPeople: Number(row?.coming_people) || 0,
+              seatedPeople: Number(row?.seated_people) || 0,
+            };
+          }
+          return next;
+        }
 
-    const rows = await fetchAllRows<Record<string, unknown>>(() =>
-      supabase.from('guests').select('event_id,status,number_of_people,table_id', { count: 'exact' })
+        const rows = await fetchAllRows<Record<string, unknown>>(() =>
+          supabase.from('guests').select('event_id,status,number_of_people,table_id', { count: 'exact' })
+        );
+
+        for (const row of rows) {
+          const eventId = String(row?.event_id ?? '').trim();
+          if (!eventId) continue;
+
+          const people = Number(row?.number_of_people) || 1;
+          const prev = next[eventId] || { invitedPeople: 0, comingPeople: 0, seatedPeople: 0 };
+          prev.invitedPeople += people;
+          if (String(row?.status ?? '').trim() === 'מגיע') prev.comingPeople += people;
+          if (row?.table_id) prev.seatedPeople += people;
+          next[eventId] = prev;
+        }
+
+        return next;
+      },
+      { maxAgeMs: 30_000 }
     );
-
-    for (const row of rows) {
-      const eventId = String(row?.event_id ?? '').trim();
-      if (!eventId) continue;
-
-      const people = Number(row?.number_of_people) || 1;
-      const prev = next[eventId] || { invitedPeople: 0, comingPeople: 0, seatedPeople: 0 };
-      prev.invitedPeople += people;
-      if (String(row?.status ?? '').trim() === 'מגיע') prev.comingPeople += people;
-      if (row?.table_id) prev.seatedPeople += people;
-      next[eventId] = prev;
-    }
-
-    return next;
   },
 
   // Get all guests for an event
@@ -354,6 +360,96 @@ export const guestService = {
       },
       { maxAgeMs: 10_000, force: opts?.force }
     );
+  },
+
+  /**
+   * First paint for check-in: a short alphabetical slice so the screen is
+   * interactive before the full guest list finishes downloading.
+   */
+  getCheckInPreview: async (
+    eventId: string,
+    limit = 40
+  ): Promise<{ guests: Guest[]; latestUpdatedAt: string | null }> => {
+    const { data, error } = await supabase
+      .from('guests')
+      .select(CHECK_IN_COLUMNS)
+      .eq('event_id', eventId)
+      .order('name')
+      .limit(Math.max(1, Math.min(limit, 80)));
+
+    if (error) throw error;
+
+    const rows = (data || []) as Record<string, unknown>[];
+    let latestUpdatedAt: string | null = null;
+    for (const row of rows) {
+      const updatedAt = String(row?.updated_at ?? '');
+      if (updatedAt && (!latestUpdatedAt || updatedAt > latestUpdatedAt)) latestUpdatedAt = updatedAt;
+    }
+
+    return { guests: rows.map((guest) => mapGuestRowFromDb(guest)), latestUpdatedAt };
+  },
+
+  /** People totals for the check-in header, without downloading guest rows. */
+  getCheckInBootstrap: async (
+    eventId: string
+  ): Promise<{ invitedPeople: number; arrivedPeople: number; guestRows: number }> => {
+    const { data, error } = await supabase.rpc('get_event_checkin_bootstrap', {
+      p_event_id: eventId,
+    });
+
+    if (!error) {
+      const row = (Array.isArray(data) ? data[0] : data) as
+        | { invited_people?: number; arrived_people?: number; guest_rows?: number }
+        | null;
+      if (row) {
+        return {
+          invitedPeople: Number(row.invited_people) || 0,
+          arrivedPeople: Number(row.arrived_people) || 0,
+          guestRows: Number(row.guest_rows) || 0,
+        };
+      }
+    }
+
+    const { count } = await supabase
+      .from('guests')
+      .select('id', { count: 'exact', head: true })
+      .eq('event_id', eventId);
+
+    return { invitedPeople: 0, arrivedPeople: 0, guestRows: count ?? 0 };
+  },
+
+  /**
+   * Server-side name/phone search. Ushers type a few letters; we only need the
+   * top matches, not a scan of every guest on the device.
+   */
+  searchGuestsForCheckIn: async (eventId: string, query: string, limit = 40): Promise<Guest[]> => {
+    const q = String(query ?? '').trim();
+    if (!q) return [];
+
+    const { data, error } = await supabase.rpc('search_event_checkin_guests', {
+      p_event_id: eventId,
+      p_query: q,
+      p_limit: Math.max(1, Math.min(limit, 80)),
+    });
+
+    if (!error && Array.isArray(data)) {
+      return (data as Record<string, unknown>[]).map((row) => mapGuestRowFromDb(row));
+    }
+
+    const digits = q.replace(/\D/g, '');
+    const orParts = [`name.ilike.%${q.replace(/[%*,()]/g, '')}%`];
+    if (digits) orParts.push(`phone.ilike.%${digits}%`);
+
+    const { data: rows, error: fallbackError } = await supabase
+      .from('guests')
+      .select(CHECK_IN_COLUMNS)
+      .eq('event_id', eventId)
+      .or(orParts.join(','))
+      .order('name')
+      .limit(Math.max(1, Math.min(limit, 80)));
+
+    if (fallbackError) throw fallbackError;
+    return ((rows || []) as Record<string, unknown>[]).map((row) => mapGuestRowFromDb(row));
   },
 
   /** Cheap row count used to detect guests added/removed by other stations. */

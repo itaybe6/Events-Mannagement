@@ -55,14 +55,60 @@ const countUniquePhones = (rows: Array<{ phone?: string }>) => {
   return count;
 };
 
-export function useAdminEventDetailsModel(eventId: string) {
-  const [loading, setLoading] = useState(true);
+type HomeStatsRow = {
+  inviteCount: number;
+  coming: number;
+  maybe: number;
+  pending: number;
+  declined: number;
+  confirmedPeople: number;
+  seatedPeople: number;
+};
+
+export function useAdminEventDetailsModel(
+  eventId: string,
+  opts?: {
+    /**
+     * When false, guest aggregates come from the `get_event_guest_home_stats`
+     * RPC instead of downloading every guest row. The stats-only details
+     * screen doesn't render individual guests, and pulling ~800 full rows just
+     * to sum them was most of its load time. `guests` stays empty in this mode.
+     */
+    includeGuests?: boolean;
+  }
+) {
+  const includeGuests = opts?.includeGuests !== false;
+  // Paint immediately with the row the user just tapped on the events list.
+  const seededEvent = useMemo(() => eventService.peekEventFromLists(eventId) ?? null, [eventId]);
+  const [loading, setLoading] = useState(!seededEvent);
   const [error, setError] = useState<string | null>(null);
-  const [event, setEvent] = useState<Event | null>(null);
+  const [event, setEvent] = useState<Event | null>(seededEvent);
   const [guests, setGuests] = useState<Guest[]>([]);
+  const [rpcStats, setRpcStats] = useState<HomeStatsRow | null>(null);
   const [sentGuestIds, setSentGuestIds] = useState<Set<string>>(new Set());
   const [userName, setUserName] = useState<string>('');
   const [userAvatarUrl, setUserAvatarUrl] = useState<string>('');
+
+  const loadOwner = async (userId: string | undefined) => {
+    if (!userId) {
+      setUserName('');
+      setUserAvatarUrl('');
+      return;
+    }
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('name, avatar_url')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (!userError && userData) {
+      setUserName(String(userData.name || ''));
+      setUserAvatarUrl(String((userData as any).avatar_url || ''));
+    } else {
+      setUserName('');
+      setUserAvatarUrl('');
+    }
+  };
 
   const refresh = async (options?: { silent?: boolean }) => {
     const silent = options?.silent === true;
@@ -77,10 +123,31 @@ export function useAdminEventDetailsModel(eventId: string) {
       return;
     }
 
-    if (!silent) setLoading(true);
+    if (!silent && !event) setLoading(true);
     setError(null);
 
     try {
+      if (!includeGuests) {
+        const [eventData, homeStats, messagedGuestIds] = await Promise.all([
+          eventService.getEventDetailsLite(eventId),
+          guestService.getEventGuestStats(eventId),
+          guestService.getMessagedGuestIds(eventId),
+        ]);
+
+        setEvent(eventData ?? null);
+        setRpcStats(homeStats);
+        setSentGuestIds(messagedGuestIds instanceof Set ? messagedGuestIds : new Set());
+
+        if (!eventData) {
+          setError('האירוע לא נמצא');
+          return;
+        }
+
+        // Owner name fills in when it arrives; nothing else waits on it.
+        void loadOwner(eventData.user_id).catch(() => undefined);
+        return;
+      }
+
       const [eventData, guestsData, messagedGuestIds] = await Promise.all([
         eventService.getEvent(eventId),
         guestService.getGuests(eventId),
@@ -96,25 +163,7 @@ export function useAdminEventDetailsModel(eventId: string) {
         return;
       }
 
-      // Fetch owner user name + avatar (for admin view)
-      if (eventData.user_id) {
-        const { data: userData, error: userError } = await supabase
-          .from('users')
-          .select('name, avatar_url')
-          .eq('id', eventData.user_id)
-          .maybeSingle();
-
-        if (!userError && userData) {
-          setUserName(String(userData.name || ''));
-          setUserAvatarUrl(String((userData as any).avatar_url || ''));
-        } else {
-          setUserName('');
-          setUserAvatarUrl('');
-        }
-      } else {
-        setUserName('');
-        setUserAvatarUrl('');
-      }
+      await loadOwner(eventData.user_id);
     } catch (e) {
       console.error('Admin event details load error:', e);
       Alert.alert('שגיאה', 'שגיאה בטעינת האירוע');
@@ -135,6 +184,27 @@ export function useAdminEventDetailsModel(eventId: string) {
   }, [eventId]);
 
   const stats = useMemo<AdminEventDetailsStats>(() => {
+    if (!includeGuests) {
+      const s = rpcStats;
+      const invitedPeople = s ? s.coming + s.maybe + s.pending + s.declined : 0;
+      return {
+        confirmed: 0,
+        declined: 0,
+        pending: 0,
+        maybe: 0,
+        seated: s?.seatedPeople ?? 0,
+        totalGuests: s?.inviteCount ?? 0,
+        seatedPercent: invitedPeople ? Math.round(((s?.seatedPeople ?? 0) / invitedPeople) * 100) : 0,
+        invitedPeople,
+        confirmedPeople: s?.coming ?? 0,
+        pendingPeople: s?.pending ?? 0,
+        declinedPeople: s?.declined ?? 0,
+        maybePeople: s?.maybe ?? 0,
+        uniquePhoneCount: 0,
+        sentMessageCount: sentGuestIds.size,
+      };
+    }
+
     const confirmed = guests.filter((g) => g.status === 'מגיע').length;
     const declined = guests.filter((g) => g.status === 'לא מגיע').length;
     const pending = guests.filter((g) => g.status === 'ממתין').length;
@@ -166,7 +236,7 @@ export function useAdminEventDetailsModel(eventId: string) {
       uniquePhoneCount,
       sentMessageCount: sentGuestIds.size,
     };
-  }, [guests, sentGuestIds]);
+  }, [guests, includeGuests, rpcStats, sentGuestIds]);
 
   return {
     loading,

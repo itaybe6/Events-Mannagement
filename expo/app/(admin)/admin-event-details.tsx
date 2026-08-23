@@ -49,7 +49,8 @@ export default function AdminEventDetailsScreen() {
     return fromId || fromEventId || '';
   }, [eventId, id]);
   const { event, setEvent, guests, userName, loading, error, stats, refresh } =
-    useAdminEventDetailsModel(resolvedEventId);
+    // המסך מציג רק מספרים מסכמים — אין צורך להוריד את כל רשימת האורחים.
+    useAdminEventDetailsModel(resolvedEventId, { includeGuests: false });
   const [noTablesModalOpen, setNoTablesModalOpen] = useState(false);
   const [isPullRefreshing, setIsPullRefreshing] = useState(false);
 

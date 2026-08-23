@@ -77,6 +77,9 @@ const EMPTY_TOTALS: LiveSeatingTotals = {
 /** Safety net behind realtime, so a dropped socket can't freeze the numbers. */
 const SYNC_INTERVAL_MS = 20_000;
 
+/** Upper bound when typing a headcount directly, to blunt typos. */
+const MAX_MANUAL_HEADCOUNT = 999;
+
 function tableStatus(livePeople: number, capacity: number): LiveTableStatus {
   if (capacity > 0 && livePeople > capacity) return 'over';
   if (livePeople <= 0) return 'empty';
@@ -418,6 +421,31 @@ export function useLiveSeatingModel(eventId: string | null) {
     [markPending, supportsManualEdit, tableById]
   );
 
+  /**
+   * Sets the headcount at a table to an exact number, for when counting is
+   * faster than tapping. Expressed as a delta on top of what check-in already
+   * knows, so it goes through the same atomic write and stays correct when two
+   * stations touch the same table.
+   */
+  const setLivePeople = useCallback(
+    async (tableId: string, target: number): Promise<{ ok: boolean; error?: string }> => {
+      const id = String(tableId || '').trim();
+      const table = id ? tableById.get(id) : undefined;
+      if (!table) return { ok: false, error: 'שולחן לא נמצא' };
+
+      const wanted = Math.floor(Number(target));
+      if (!Number.isFinite(wanted)) return { ok: false, error: 'יש להזין מספר' };
+
+      // A slip of the finger shouldn't be able to record hundreds of people.
+      const capped = Math.max(0, Math.min(wanted, MAX_MANUAL_HEADCOUNT));
+      const delta = capped - table.livePeople;
+      if (delta === 0) return { ok: true };
+
+      return adjustTable(id, delta);
+    },
+    [adjustTable, tableById]
+  );
+
   /** Drops a table's manual correction back to the pure check-in number. */
   const clearTable = useCallback(
     async (tableId: string): Promise<{ ok: boolean; error?: string }> => {
@@ -473,6 +501,7 @@ export function useLiveSeatingModel(eventId: string | null) {
     savingTableIds,
     refresh,
     adjustTable,
+    setLivePeople,
     clearTable,
     clearAll,
   };

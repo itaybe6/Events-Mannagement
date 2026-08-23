@@ -15,6 +15,7 @@ import { useLocalSearchParams, usePathname, useRouter } from 'expo-router';
 
 import { colors } from '@/constants/colors';
 import { useGuestCheckInModel } from '@/features/guests/useGuestCheckInModel';
+import { TableNumberFilter } from '@/features/guests/TableNumberFilter';
 import { tableService } from '@/lib/services/tableService';
 import { supabase } from '@/lib/supabase';
 import { SeatingGridReadonly } from '../seating/web/SeatingGridReadonly';
@@ -250,6 +251,8 @@ function EmployeeGuestCheckinWebDesktopScreen() {
 
   const {
     loading,
+    searching,
+    listHint,
     guests,
     filteredGuests,
     counts,
@@ -271,6 +274,22 @@ function EmployeeGuestCheckinWebDesktopScreen() {
     errorTitle: 'שגיאה',
     errorMessage: 'לא ניתן לטעון את רשימת האורחים',
   });
+
+  // Uncontrolled search input: binding value={query} re-rendered the whole
+  // screen (including every guest card) on each keystroke.
+  const queryDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onChangeQuery = useCallback(
+    (text: string) => {
+      if (queryDebounceRef.current) clearTimeout(queryDebounceRef.current);
+      queryDebounceRef.current = setTimeout(() => setQuery(text), 120);
+    },
+    [setQuery]
+  );
+  useEffect(() => {
+    return () => {
+      if (queryDebounceRef.current) clearTimeout(queryDebounceRef.current);
+    };
+  }, []);
 
   const [moveGuest, setMoveGuest] = useState<Guest | null>(null);
   const [moveTableQuery, setMoveTableQuery] = useState('');
@@ -678,13 +697,8 @@ function EmployeeGuestCheckinWebDesktopScreen() {
   }, [resolvedEventId, tables.length]);
 
   const eventOverview = useMemo(() => {
-    const invitedPeople = guests.reduce((sum, g) => sum + (Number(g.numberOfPeople) || 1), 0);
-    const arrivedPeople = guests.reduce((sum, g) => {
-      if (!g.checkedIn) return sum;
-      const actual = g.checkedInCount === null || g.checkedInCount === undefined ? null : Number(g.checkedInCount);
-      const n = actual !== null && Number.isFinite(actual) ? actual : Number(g.numberOfPeople) || 1;
-      return sum + n;
-    }, 0);
+    const invitedPeople = counts.total;
+    const arrivedPeople = counts.checkedIn;
     const arrivingNotArrivedGuests = guests.filter((g) => g.status === 'מגיע' && !g.checkedIn).length;
 
     const occupiedByTableId = new Map<string, number>();
@@ -709,7 +723,7 @@ function EmployeeGuestCheckinWebDesktopScreen() {
       emptyTables: emptyTables.length,
       reserveTables: reserveTables.length,
     };
-  }, [guests, tables]);
+  }, [counts.checkedIn, counts.total, guests, tables]);
 
   const attendanceRate = useMemo(() => {
     if (!eventOverview.invitedPeople) return 0;
@@ -805,12 +819,19 @@ function EmployeeGuestCheckinWebDesktopScreen() {
     return arr;
   }, [tableCapacityById, tableCapacityByNumber, tableLabelById, tableNumberById, visibleGuests]);
 
+  // Progressive render with a cap: painting every guest card made each search
+  // keystroke re-render the whole list. Beyond the cap a "show more" button
+  // reveals the rest on demand.
   const INITIAL_RENDER_ROWS = 40;
   const RENDER_ROWS_PER_BATCH = 80;
+  const AUTO_RENDER_ROW_CAP = 160;
+  const SHOW_MORE_STEP = 240;
   const [rowRenderLimit, setRowRenderLimit] = useState(INITIAL_RENDER_ROWS);
+  const [renderCap, setRenderCap] = useState(AUTO_RENDER_ROW_CAP);
 
   useEffect(() => {
     setRowRenderLimit(INITIAL_RENDER_ROWS);
+    setRenderCap(AUTO_RENDER_ROW_CAP);
   }, [query, filter, tableFilter]);
 
   const totalListRows = useMemo(
@@ -819,12 +840,18 @@ function EmployeeGuestCheckinWebDesktopScreen() {
   );
 
   useEffect(() => {
-    if (rowRenderLimit >= totalListRows) return;
+    const target = Math.min(totalListRows, renderCap);
+    if (rowRenderLimit >= target) return;
     const t = setTimeout(() => {
-      setRowRenderLimit((prev) => prev + RENDER_ROWS_PER_BATCH);
+      setRowRenderLimit((prev) => Math.min(prev + RENDER_ROWS_PER_BATCH, target));
     }, 32);
     return () => clearTimeout(t);
-  }, [rowRenderLimit, totalListRows]);
+  }, [renderCap, rowRenderLimit, totalListRows]);
+
+  const hiddenListRows = Math.max(0, totalListRows - Math.min(rowRenderLimit, renderCap, totalListRows));
+  const showMoreRows = useCallback(() => {
+    setRenderCap((prev) => prev + SHOW_MORE_STEP);
+  }, []);
 
   const renderedGroupedGuests = useMemo(() => {
     if (rowRenderLimit >= totalListRows) return groupedVisibleGuests;
@@ -967,6 +994,31 @@ function EmployeeGuestCheckinWebDesktopScreen() {
       return { id, label, capacity, seated, shape };
     });
   }, [seatedByTableId, tableLabelById, tablesSorted]);
+
+  const tableFilterOptions = useMemo(
+    () => [
+      ...tableOptions.map((opt) => ({
+        id: opt.id,
+        label: opt.label,
+        meta: opt.capacity > 0 ? `${opt.seated}/${opt.capacity}` : undefined,
+      })),
+      { id: NO_TABLE_KEY, label: 'ללא שולחן' },
+    ],
+    [tableOptions]
+  );
+
+  const applyTableFilter = useCallback(
+    (id: string | null) => {
+      setTableFilter(id);
+      if (!id || id === NO_TABLE_KEY) {
+        setSelectedTableNumber(null);
+        return;
+      }
+      const n = tableNumberById.get(id);
+      setSelectedTableNumber(typeof n === 'number' ? n : null);
+    },
+    [tableNumberById]
+  );
 
   const moveOptions = useMemo(() => {
     const q = moveTableQuery.trim().toLowerCase();
@@ -1367,6 +1419,22 @@ function EmployeeGuestCheckinWebDesktopScreen() {
           </View>
         );
       })}
+      {hiddenListRows > 0 ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="הצגת אורחים נוספים ברשימה"
+          onPress={showMoreRows}
+          style={({ hovered, pressed }: any) => [
+            styles.showMoreBtn,
+            Platform.OS === 'web' && hovered ? { backgroundColor: 'rgba(17,24,39,0.03)' } : null,
+            pressed ? { opacity: 0.92 } : null,
+          ]}
+        >
+          <Ionicons name="chevron-down" size={16} color={colors.primary} />
+          <Text style={styles.showMoreBtnText}>הצג עוד אורחים ({hiddenListRows})</Text>
+        </Pressable>
+      ) : null}
+      {listHint ? <Text style={styles.listHint}>{listHint}</Text> : null}
     </View>
   );
 
@@ -1567,20 +1635,39 @@ function EmployeeGuestCheckinWebDesktopScreen() {
                     </View>
                     <TextInput
                       style={styles.searchInput}
-                      placeholder="חיפוש אורח או שולחן..."
+                      placeholder="חיפוש שם או טלפון..."
                       placeholderTextColor={colors.gray[500]}
-                      value={query}
-                      onChangeText={setQuery}
+                      defaultValue={query}
+                      onChangeText={onChangeQuery}
                       textAlign="right"
                       autoCapitalize="none"
                     />
+                    {searching ? (
+                      <View style={styles.searchSpinner}>
+                        <ActivityIndicator size="small" color={colors.primary} />
+                      </View>
+                    ) : null}
                   </View>
 
+                  {(isMobile || isNarrow || !isSideBySide) ? (
+                    <TableNumberFilter
+                      compact
+                      options={tableFilterOptions}
+                      selectedId={tableFilter}
+                      onSelect={applyTableFilter}
+                    />
+                  ) : null}
+
                   <View style={[styles.listWrap, isSideBySide ? styles.listWrapFill : null, { marginTop: 8 }]}>
-                    {loading ? (
+                    {loading && visibleGuests.length === 0 && !query.trim() ? (
                       <View style={styles.loadingRow}>
                         <ActivityIndicator size="large" color={colors.primary} />
                         <Text style={styles.loadingText}>טוען אורחים…</Text>
+                      </View>
+                    ) : searching && visibleGuests.length === 0 ? (
+                      <View style={styles.loadingRow}>
+                        <ActivityIndicator size="large" color={colors.primary} />
+                        <Text style={styles.loadingText}>מחפש…</Text>
                       </View>
                     ) : visibleGuests.length === 0 ? (
                       <View style={styles.emptyRow}>
@@ -2769,6 +2856,7 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? ({ boxShadow: '0 1px 4px rgba(6,23,62,0.04)' } as any) : null),
   },
   searchIconRight: { position: 'absolute', right: 10 },
+  searchSpinner: { position: 'absolute', left: 10, top: 0, bottom: 0, justifyContent: 'center' },
   searchInput: { paddingRight: 36, paddingLeft: 10, fontSize: 13, fontWeight: '800', color: colors.text },
 
   pillsRow: { marginTop: 8, flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
@@ -3012,6 +3100,21 @@ const styles = StyleSheet.create({
   emptyRow: { paddingVertical: 30, alignItems: 'center', gap: 8 },
   emptyTitle: { fontSize: 15, fontWeight: '900', color: colors.text, textAlign: 'center' },
   emptyText: { fontSize: 13, fontWeight: '700', color: colors.gray[600], textAlign: 'center' },
+  listHint: { marginTop: 10, fontSize: 12, fontWeight: '700', color: colors.gray[600], textAlign: 'center' },
+  showMoreBtn: {
+    marginTop: 6,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+  },
+  showMoreBtnText: { fontSize: 13, fontWeight: '800', color: colors.primary },
   mapEmptyState: {
     flex: 1,
     minHeight: 220,

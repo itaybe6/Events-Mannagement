@@ -82,6 +82,80 @@ function checkInFieldsEqual(a: Guest, b: Guest): boolean {
   );
 }
 
+const SEARCH_RESULT_CAP = 40;
+const PREVIEW_LIMIT = 40;
+const SEARCH_DEBOUNCE_MS = 80;
+
+function mutableCheckInFields(g: Guest): Partial<Guest> {
+  return {
+    checkedIn: g.checkedIn,
+    checkedInAt: g.checkedInAt,
+    checkedInCount: g.checkedInCount,
+    tableId: g.tableId,
+    status: g.status,
+  };
+}
+
+async function hydrateGuestCategories(
+  eventId: string,
+  nextGuests: Guest[],
+  nextCats: GuestCategory[]
+): Promise<GuestCategory[]> {
+  if (nextGuests.length === 0) return nextCats;
+
+  const idsFromGuests = Array.from(
+    new Set(
+      nextGuests
+        .map((g) => (g as any)?.category_id)
+        .filter(Boolean)
+        .map((id) => String(id).trim())
+        .filter(Boolean)
+    )
+  );
+
+  const known = new Set(nextCats.map((c) => normalizeCategoryId(c?.id)).filter(Boolean) as string[]);
+  const missing = idsFromGuests.filter((id) => {
+    const norm = normalizeCategoryId(id);
+    return norm ? !known.has(norm) : false;
+  });
+
+  if ((nextCats.length === 0 || missing.length > 0) && idsFromGuests.length > 0) {
+    const idsToFetch = nextCats.length === 0 ? idsFromGuests : missing;
+    const { data: catRows, error } = await supabase
+      .from('guest_categories')
+      .select('id,name,event_id,side')
+      .in('id', idsToFetch);
+
+    if (!error && Array.isArray(catRows)) {
+      const fetched = catRows
+        .map((c: any) => ({
+          id: String(c?.id ?? ''),
+          name: String(c.name ?? '').trim() || 'ללא קטגוריה',
+          event_id: String(c?.event_id ?? eventId),
+          side: (c?.side ?? 'groom') as GuestCategory['side'],
+        }))
+        .filter((c) => Boolean(c.id));
+
+      if (nextCats.length === 0) return fetched;
+
+      const byNorm = new Map<string, GuestCategory>();
+      nextCats.forEach((c) => {
+        const norm = normalizeCategoryId(c?.id);
+        if (norm) byNorm.set(norm, c);
+      });
+      fetched.forEach((c) => {
+        const norm = normalizeCategoryId(c?.id);
+        if (norm && !byNorm.has(norm)) {
+          nextCats.push(c);
+          byNorm.set(norm, c);
+        }
+      });
+    }
+  }
+
+  return nextCats;
+}
+
 export function useGuestCheckInModel(params: {
   eventId: string | null;
   errorTitle?: string;
@@ -107,7 +181,13 @@ export function useGuestCheckInModel(params: {
   } = params;
 
   const [loading, setLoading] = useState(true);
+  const [listReady, setListReady] = useState(false);
+  const [searching, setSearching] = useState(false);
   const [guests, setGuests] = useState<Guest[]>([]);
+  const [serverSearchGuests, setServerSearchGuests] = useState<Guest[] | null>(null);
+  const [bootstrapStats, setBootstrapStats] = useState<{ total: number; checkedIn: number; guestRows: number } | null>(
+    null
+  );
   const [categories, setCategories] = useState<GuestCategory[]>([]);
   const [query, setQuery] = useState('');
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -120,6 +200,10 @@ export function useGuestCheckInModel(params: {
   /** Newest `updated_at` already applied locally; the incremental sync watermark. */
   const syncedUpToRef = useRef<string | null>(null);
   const syncInFlightRef = useRef(false);
+  const fullLoadInFlightRef = useRef(false);
+  const listReadyRef = useRef(false);
+  const dirtyIdsRef = useRef<Set<string>>(new Set());
+  const searchGenRef = useRef(0);
   const knownCategoryIdsRef = useRef<Set<string>>(new Set());
   // Lets the sync read the current list without re-subscribing its interval on
   // every check-in.
@@ -129,6 +213,14 @@ export function useGuestCheckInModel(params: {
   useEffect(() => {
     syncedUpToRef.current = null;
     knownCategoryIdsRef.current = new Set();
+    listReadyRef.current = false;
+    fullLoadInFlightRef.current = false;
+    dirtyIdsRef.current = new Set();
+    searchGenRef.current += 1;
+    setListReady(false);
+    setServerSearchGuests(null);
+    setBootstrapStats(null);
+    setSearching(false);
   }, [eventId]);
 
   const categoryNameById = useMemo(() => {
@@ -141,110 +233,129 @@ export function useGuestCheckInModel(params: {
     return m;
   }, [categories]);
 
+  const applyFullGuestList = useCallback((nextGuests: Guest[]) => {
+    setGuests((prev) => {
+      const prevById = new Map(prev.map((g) => [g.id, g]));
+      const seen = new Set<string>();
+      const merged = nextGuests.map((g) => {
+        seen.add(g.id);
+        if (dirtyIdsRef.current.has(g.id)) {
+          const local = prevById.get(g.id);
+          if (local) return { ...g, ...mutableCheckInFields(local) };
+        }
+        return g;
+      });
+      for (const g of prev) {
+        if (!seen.has(g.id)) merged.push(g);
+      }
+      for (const id of Array.from(dirtyIdsRef.current)) {
+        if (seen.has(id)) dirtyIdsRef.current.delete(id);
+      }
+      return merged;
+    });
+  }, []);
+
+  const loadFullGuestList = useCallback(
+    async (id: string, opts?: { force?: boolean }) => {
+      if (fullLoadInFlightRef.current) return;
+      fullLoadInFlightRef.current = true;
+      try {
+        const [data, cats] = await Promise.all([
+          guestService.getGuestsForCheckIn(id, { force: opts?.force }),
+          guestService.getGuestCategories(id),
+        ]);
+
+        const nextGuests = Array.isArray(data?.guests) ? data.guests : [];
+        syncedUpToRef.current = data?.latestUpdatedAt ?? syncedUpToRef.current;
+        const nextCats = await hydrateGuestCategories(
+          id,
+          nextGuests,
+          Array.isArray(cats) ? (cats as GuestCategory[]) : []
+        );
+
+        knownCategoryIdsRef.current = new Set(
+          nextCats.map((c) => normalizeCategoryId(c?.id)).filter(Boolean) as string[]
+        );
+        applyFullGuestList(nextGuests);
+        setCategories(nextCats);
+        listReadyRef.current = true;
+        setListReady(true);
+        setBootstrapStats(null);
+      } finally {
+        fullLoadInFlightRef.current = false;
+      }
+    },
+    [applyFullGuestList]
+  );
+
   const refresh = useCallback(async (options?: { silent?: boolean }) => {
     const silent = Boolean(options?.silent);
     if (!eventId) {
       setGuests([]);
       setCategories([]);
+      setBootstrapStats(null);
+      listReadyRef.current = false;
+      setListReady(false);
       setLoading(false);
       return;
     }
 
-    if (!silent) {
-      const cached = peekCached<{ guests: Guest[]; latestUpdatedAt: string | null }>(`guests:checkin:${eventId}`);
-      if (cached?.guests?.length) {
-        setGuests(cached.guests);
-        syncedUpToRef.current = cached.latestUpdatedAt ?? syncedUpToRef.current;
-        setLoading(false);
-      } else {
-        setLoading(true);
-      }
+    const cached = peekCached<{ guests: Guest[]; latestUpdatedAt: string | null }>(`guests:checkin:${eventId}`);
+    if (!silent && cached?.guests?.length) {
+      applyFullGuestList(cached.guests);
+      syncedUpToRef.current = cached.latestUpdatedAt ?? syncedUpToRef.current;
+      listReadyRef.current = true;
+      setListReady(true);
+      setLoading(false);
+    } else if (!silent && !listReadyRef.current) {
+      setLoading(true);
     }
+
     try {
-      const [data, cats] = await Promise.all([
-        guestService.getGuestsForCheckIn(eventId),
-        guestService.getGuestCategories(eventId),
-      ]);
+      if (!cached && !listReadyRef.current) {
+        const [preview, boot, cats] = await Promise.all([
+          guestService.getCheckInPreview(eventId, PREVIEW_LIMIT),
+          guestService.getCheckInBootstrap(eventId),
+          guestService.getGuestCategories(eventId),
+        ]);
 
-      const nextGuests = Array.isArray(data?.guests) ? data.guests : [];
-      syncedUpToRef.current = data?.latestUpdatedAt ?? syncedUpToRef.current;
-      let nextCats = Array.isArray(cats) ? (cats as GuestCategory[]) : [];
-
-      // Fallback: if the category list comes back empty (or isn't visible to this user),
-      // try loading category names by the IDs referenced by guests.
-      if (nextGuests.length > 0) {
-        const idsFromGuests = Array.from(
-          new Set(
-            nextGuests
-              .map((g) => (g as any)?.category_id)
-              .filter(Boolean)
-              .map((id) => String(id).trim())
-              .filter(Boolean)
-          )
+        const previewGuests = Array.isArray(preview?.guests) ? preview.guests : [];
+        const nextCats = await hydrateGuestCategories(
+          eventId,
+          previewGuests,
+          Array.isArray(cats) ? (cats as GuestCategory[]) : []
         );
-
-        const known = new Set(
-          nextCats
-            .map((c) => normalizeCategoryId(c?.id))
-            .filter(Boolean) as string[]
+        knownCategoryIdsRef.current = new Set(
+          nextCats.map((c) => normalizeCategoryId(c?.id)).filter(Boolean) as string[]
         );
-        const missing = idsFromGuests.filter((id) => {
-          const norm = normalizeCategoryId(id);
-          return norm ? !known.has(norm) : false;
+        setGuests(previewGuests);
+        setCategories(nextCats);
+        setBootstrapStats({
+          total: boot.invitedPeople,
+          checkedIn: boot.arrivedPeople,
+          guestRows: boot.guestRows,
         });
-
-        if ((nextCats.length === 0 || missing.length > 0) && idsFromGuests.length > 0) {
-          const idsToFetch = nextCats.length === 0 ? idsFromGuests : missing;
-          const { data: catRows, error } = await supabase
-            .from('guest_categories')
-            .select('id,name,event_id,side')
-            .in('id', idsToFetch);
-
-          if (!error && Array.isArray(catRows)) {
-            const fetched = catRows
-              .map((c: any) => ({
-                id: String(c?.id ?? ''),
-                name: String(c?.name ?? '').trim() || 'ללא קטגוריה',
-                event_id: String(c?.event_id ?? eventId),
-                side: (c?.side ?? 'groom') as any,
-              }))
-              .filter((c) => Boolean(c.id));
-
-            if (nextCats.length === 0) nextCats = fetched;
-            else {
-              const byNorm = new Map<string, GuestCategory>();
-              nextCats.forEach((c) => {
-                const norm = normalizeCategoryId(c?.id);
-                if (norm) byNorm.set(norm, c);
-              });
-              fetched.forEach((c) => {
-                const norm = normalizeCategoryId(c?.id);
-                if (norm && !byNorm.has(norm)) {
-                  nextCats.push(c);
-                  byNorm.set(norm, c);
-                }
-              });
-            }
-          }
-        }
+        setLoading(false);
+        void loadFullGuestList(eventId).catch((e) => {
+          console.warn('Guest check-in background load failed:', e);
+        });
+        return;
       }
 
-      knownCategoryIdsRef.current = new Set(
-        nextCats.map((c) => normalizeCategoryId(c?.id)).filter(Boolean) as string[]
-      );
-      setGuests(nextGuests);
-      setCategories(nextCats);
+      await loadFullGuestList(eventId, { force: silent || Boolean(cached) });
     } catch (e) {
       console.error('Guest check-in load error:', e);
       if (!silent) {
         Alert.alert(errorTitle, errorMessage);
-        setGuests([]);
-        setCategories([]);
+        if (!guestsRef.current.length) {
+          setGuests([]);
+          setCategories([]);
+        }
       }
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [errorMessage, errorTitle, eventId]);
+  }, [applyFullGuestList, errorMessage, errorTitle, eventId, loadFullGuestList]);
 
   /**
    * Pulls only the guests changed since the last sync and merges them.
@@ -260,6 +371,7 @@ export function useGuestCheckInModel(params: {
 
     const since = syncedUpToRef.current;
     if (!since) {
+      if (!listReadyRef.current) return;
       await refresh({ silent: true });
       return;
     }
@@ -308,7 +420,9 @@ export function useGuestCheckInModel(params: {
       }
 
       // Totals disagreeing means a row was deleted, or added while we were offline.
-      if (serverCount !== localCount) await refresh({ silent: true });
+      // Skip while the first full download is still in flight — the local list is
+      // still a preview slice, so the counts will disagree on purpose.
+      if (listReadyRef.current && serverCount !== localCount) await refresh({ silent: true });
     } catch (e) {
       console.warn('Guest check-in incremental sync failed:', e);
     } finally {
@@ -383,7 +497,11 @@ export function useGuestCheckInModel(params: {
             if (!row?.id) return;
             advanceWatermark(row);
             const updated = mapGuestRowFromDb(row);
+            if (dirtyIdsRef.current.has(updated.id)) return;
             setGuests((prev) => prev.map((g) => (g.id === updated.id ? { ...g, ...updated } : g)));
+            setServerSearchGuests((prev) =>
+              prev ? prev.map((g) => (g.id === updated.id ? { ...g, ...updated } : g)) : prev
+            );
             return;
           }
 
@@ -411,6 +529,58 @@ export function useGuestCheckInModel(params: {
   // lets React interrupt the list work.
   const deferredQuery = useDeferredValue(query);
 
+  useEffect(() => {
+    const q = query.trim();
+    if (!eventId || !q) {
+      searchGenRef.current += 1;
+      setServerSearchGuests(null);
+      setSearching(false);
+      return;
+    }
+    if (listReady) {
+      searchGenRef.current += 1;
+      setServerSearchGuests(null);
+      setSearching(false);
+      return;
+    }
+
+    const gen = ++searchGenRef.current;
+    setSearching(true);
+    const timeoutId = setTimeout(() => {
+      void guestService
+        .searchGuestsForCheckIn(eventId, q, SEARCH_RESULT_CAP)
+        .then((hits) => {
+          if (gen !== searchGenRef.current) return;
+          setServerSearchGuests(hits);
+          setGuests((prev) => {
+            const byId = new Map(prev.map((g) => [g.id, g]));
+            let changed = false;
+            for (const guest of hits) {
+              const existing = byId.get(guest.id);
+              if (existing && checkInFieldsEqual(existing, guest)) continue;
+              if (dirtyIdsRef.current.has(guest.id) && existing) continue;
+              changed = true;
+              byId.set(guest.id, existing ? { ...existing, ...guest } : guest);
+            }
+            if (!changed) return prev;
+            return Array.from(byId.values());
+          });
+        })
+        .catch((e) => {
+          if (gen !== searchGenRef.current) return;
+          console.warn('Guest check-in search failed:', e);
+          setServerSearchGuests([]);
+        })
+        .finally(() => {
+          if (gen === searchGenRef.current) setSearching(false);
+        });
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [eventId, listReady, query]);
+
   const searchIndex = useMemo(() => {
     const m = new Map<string, { name: string; phone: string; status: string }>();
     for (const g of guests) {
@@ -423,25 +593,53 @@ export function useGuestCheckInModel(params: {
     return m;
   }, [guests]);
 
+  const matchesFilter = useCallback((g: Guest) => {
+    if (filter === 'checked_in') return Boolean(g.checkedIn);
+    if (filter === 'not_checked_in') return !Boolean(g.checkedIn);
+    if (filter === 'maybe_coming') return g.status === 'אולי מגיע';
+    return true;
+  }, [filter]);
+
   const filteredGuests = useMemo(() => {
     const q = deferredQuery.trim().toLowerCase();
     const qPhone = phoneSearchKey(deferredQuery);
-    const base = guests.filter((g) => {
-      if (filter === 'checked_in') return Boolean(g.checkedIn);
-      if (filter === 'not_checked_in') return !Boolean(g.checkedIn);
-      if (filter === 'maybe_coming') return g.status === 'אולי מגיע';
-      return true;
-    });
-    if (!q) return base;
-    return base.filter((g) => {
-      const idx = searchIndex.get(g.id);
-      if (!idx) return guestMatchesSearch(g, q) || String(g.status || '').toLowerCase().includes(q);
-      if (idx.name.includes(q) || idx.status.includes(q)) return true;
-      return qPhone ? idx.phone.includes(qPhone) : false;
-    });
-  }, [guests, deferredQuery, filter, searchIndex]);
+
+    const applySearch = (list: Guest[]) => {
+      if (!q) return list;
+      return list.filter((g) => {
+        const idx = searchIndex.get(g.id);
+        if (!idx) return guestMatchesSearch(g, q) || String(g.status || '').toLowerCase().includes(q);
+        if (idx.name.includes(q) || idx.status.includes(q)) return true;
+        return qPhone ? idx.phone.includes(qPhone) : false;
+      });
+    };
+
+    if (q && !listReady) {
+      return (serverSearchGuests ?? []).filter(matchesFilter).slice(0, SEARCH_RESULT_CAP);
+    }
+
+    const matched = applySearch(guests.filter(matchesFilter));
+    return q ? matched.slice(0, SEARCH_RESULT_CAP) : matched;
+  }, [deferredQuery, guests, listReady, matchesFilter, searchIndex, serverSearchGuests]);
+
+  const listHint = useMemo(() => {
+    const q = query.trim();
+    if (q && (filteredGuests.length >= SEARCH_RESULT_CAP || (serverSearchGuests && serverSearchGuests.length >= SEARCH_RESULT_CAP))) {
+      return 'מציג את התוצאות הראשונות. הוסיפו אותיות לחיפוש מדויק יותר.';
+    }
+    if (!q && !listReady && (bootstrapStats?.guestRows ?? 0) > guests.length) {
+      return 'חפשו שם או מספר טלפון — הרשימה המלאה נטענת ברקע.';
+    }
+    if (!q && listReady && guests.length > 80) {
+      return 'חפשו שם או מספר טלפון לאיתור מהיר.';
+    }
+    return null;
+  }, [bootstrapStats?.guestRows, filteredGuests.length, guests.length, listReady, query, serverSearchGuests]);
 
   const counts = useMemo(() => {
+    if (!listReady && bootstrapStats) {
+      return { total: bootstrapStats.total, checkedIn: bootstrapStats.checkedIn };
+    }
     let totalPeople = 0;
     let arrivedPeople = 0;
     for (const g of guests) {
@@ -452,7 +650,7 @@ export function useGuestCheckInModel(params: {
       total: totalPeople,
       checkedIn: arrivedPeople,
     };
-  }, [guests]);
+  }, [bootstrapStats, guests, listReady]);
 
   const sections = useMemo<GuestCheckInSection[]>(() => {
     const grouped = new Map<GuestCheckInCategoryKey, Guest[]>();
@@ -503,17 +701,25 @@ export function useGuestCheckInModel(params: {
   const toggleCheckIn = useCallback(async (guest: Guest) => {
     const next = !Boolean(guest.checkedIn);
     setSavingId(guest.id);
+    dirtyIdsRef.current.add(guest.id);
     try {
       const fallbackCount = Number(guest.numberOfPeople) || 1;
       const desiredCount =
         guest.checkedInCount === null || guest.checkedInCount === undefined ? fallbackCount : Number(guest.checkedInCount) || 0;
       const updated = await guestService.setGuestCheckedIn(guest.id, next, next ? { checkedInCount: desiredCount } : undefined);
+      const merged = { ...guest, ...updated };
       setGuests((prev) => prev.map((g) => (g.id === guest.id ? { ...g, ...updated } : g)));
+      setServerSearchGuests((prev) => (prev ? prev.map((g) => (g.id === guest.id ? { ...g, ...updated } : g)) : prev));
+      if (!listReadyRef.current) {
+        const delta = guestArrivedPeople(merged) - guestArrivedPeople(guest);
+        setBootstrapStats((s) => (s ? { ...s, checkedIn: Math.max(0, s.checkedIn + delta) } : s));
+      }
       if (next) {
         notifyGuestTableNumber(eventId, guest.id, updated.tableId ?? guest.tableId, 'checkin');
         onCheckInSuccess?.({ ...guest, ...updated });
       }
     } catch (e) {
+      dirtyIdsRef.current.delete(guest.id);
       console.error('Check-in update error:', e);
       Alert.alert('שגיאה', 'לא ניתן לעדכן הגעה');
     } finally {
@@ -524,10 +730,18 @@ export function useGuestCheckInModel(params: {
   const setCheckedInCount = useCallback(async (guest: Guest, checkedInCount: number) => {
     const next = Math.max(0, Math.floor(Number(checkedInCount) || 0));
     setSavingCountId(guest.id);
+    dirtyIdsRef.current.add(guest.id);
     try {
       const updated = await guestService.setGuestCheckedInCount(guest.id, next);
+      const merged = { ...guest, ...updated };
       setGuests((prev) => prev.map((g) => (g.id === guest.id ? { ...g, ...updated } : g)));
+      setServerSearchGuests((prev) => (prev ? prev.map((g) => (g.id === guest.id ? { ...g, ...updated } : g)) : prev));
+      if (!listReadyRef.current) {
+        const delta = guestArrivedPeople(merged) - guestArrivedPeople(guest);
+        setBootstrapStats((s) => (s ? { ...s, checkedIn: Math.max(0, s.checkedIn + delta) } : s));
+      }
     } catch (e) {
+      dirtyIdsRef.current.delete(guest.id);
       console.error('Check-in count update error:', e);
       Alert.alert('שגיאה', 'לא ניתן לעדכן כמות הגעה');
     } finally {
@@ -537,11 +751,14 @@ export function useGuestCheckInModel(params: {
 
   const assignGuestToTable = useCallback(async (guest: Guest, tableId: string | null) => {
     setSavingMoveId(guest.id);
+    dirtyIdsRef.current.add(guest.id);
     try {
       const updated = await guestService.assignGuestToTable(guest.id, tableId);
       setGuests((prev) => prev.map((g) => (g.id === guest.id ? { ...g, ...updated } : g)));
+      setServerSearchGuests((prev) => (prev ? prev.map((g) => (g.id === guest.id ? { ...g, ...updated } : g)) : prev));
       return true;
     } catch (e) {
+      dirtyIdsRef.current.delete(guest.id);
       console.error('Assign guest to table error:', e);
       Alert.alert('שגיאה', 'לא ניתן להעביר אורח בין שולחנות');
       return false;
@@ -585,6 +802,18 @@ export function useGuestCheckInModel(params: {
         if (prev.some((g) => g.id === guest.id)) return prev.map((g) => (g.id === guest.id ? { ...g, ...guest } : g));
         return [...prev, guest].sort((a, b) => a.name.localeCompare(b.name, 'he'));
       });
+      if (!listReadyRef.current) {
+        const arrived = guestArrivedPeople(guest);
+        setBootstrapStats((s) =>
+          s
+            ? {
+                total: s.total + guestInvitedPeople(guest),
+                checkedIn: s.checkedIn + arrived,
+                guestRows: s.guestRows + 1,
+              }
+            : s
+        );
+      }
 
       if (shouldCheckIn) {
         notifyGuestTableNumber(eventId, guest.id, guest.tableId ?? tableId, 'checkin');
@@ -603,6 +832,9 @@ export function useGuestCheckInModel(params: {
   return {
     // data
     loading,
+    listReady,
+    searching,
+    listHint,
     guests,
     categories,
     filteredGuests,

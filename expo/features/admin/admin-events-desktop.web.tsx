@@ -273,13 +273,20 @@ export function AdminEventsListWebScreen() {
 
   const loadEventsFn = useMemo(
     () => async (options?: { force?: boolean }) => {
+      if (!options?.force) {
+        const cachedAll = eventService.peekEvents();
+        if (cachedAll?.length) return cachedAll;
+      }
       const data = await eventService.getEvents(options);
       return Array.isArray(data) ? (data as Event[]) : [];
     },
     []
   );
 
-  const initialEvents = useMemo(() => eventService.peekEvents(), []);
+  const initialEvents = useMemo(
+    () => eventService.peekEvents() ?? eventService.peekUpcomingEvents(),
+    []
+  );
 
   const {
     events,
@@ -327,29 +334,31 @@ export function AdminEventsListWebScreen() {
 
   useEffect(() => {
     let cancelled = false;
-    setClientsLoading(true);
-
-    userService
-      .getClients()
-      .then((data) => {
-        if (cancelled) return;
-        const sorted = [...data].sort(
-          (a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
-        );
-        setClients(sorted);
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          console.error('Failed to load recent clients:', error);
-          setClients([]);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setClientsLoading(false);
-      });
+    const timer = setTimeout(() => {
+      setClientsLoading(true);
+      userService
+        .getClients()
+        .then((data) => {
+          if (cancelled) return;
+          const sorted = [...data].sort(
+            (a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+          );
+          setClients(sorted);
+        })
+        .catch((error) => {
+          if (!cancelled) {
+            console.error('Failed to load recent clients:', error);
+            setClients([]);
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setClientsLoading(false);
+        });
+    }, 0);
 
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
   }, []);
 
@@ -2743,13 +2752,20 @@ export default function AdminEventsWebScreen() {
 
   const loadEventsFn = useMemo(
     () => async (options?: { force?: boolean }) => {
+      if (!options?.force) {
+        const cachedAll = eventService.peekEvents();
+        if (cachedAll?.length) return cachedAll;
+      }
       const data = await eventService.getEvents(options);
       return Array.isArray(data) ? (data as Event[]) : [];
     },
     []
   );
 
-  const initialEvents = useMemo(() => eventService.peekEvents(), []);
+  const initialEvents = useMemo(
+    () => eventService.peekEvents() ?? eventService.peekUpcomingEvents(),
+    []
+  );
 
   const {
     events,
@@ -2789,29 +2805,31 @@ export default function AdminEventsWebScreen() {
 
   useEffect(() => {
     let cancelled = false;
-    setClientsLoading(true);
-
-    userService
-      .getClients()
-      .then((data) => {
-        if (cancelled) return;
-        const sorted = [...data].sort(
-          (a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
-        );
-        setClients(sorted);
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          console.error('Failed to load recent clients:', error);
-          setClients([]);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setClientsLoading(false);
-      });
+    const timer = setTimeout(() => {
+      setClientsLoading(true);
+      userService
+        .getClients()
+        .then((data) => {
+          if (cancelled) return;
+          const sorted = [...data].sort(
+            (a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+          );
+          setClients(sorted);
+        })
+        .catch((error) => {
+          if (!cancelled) {
+            console.error('Failed to load recent clients:', error);
+            setClients([]);
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setClientsLoading(false);
+        });
+    }, 0);
 
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
   }, []);
 

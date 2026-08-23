@@ -28,6 +28,7 @@ import { colors } from "@/constants/colors";
 import BackSwipe from "@/components/BackSwipe";
 import AppHeader from "@/components/AppHeader";
 import { guestArrivedPeople, guestInvitedPeople, useGuestCheckInModel } from "@/features/guests/useGuestCheckInModel";
+import { TableNumberFilter } from "@/features/guests/TableNumberFilter";
 import { useSeatingMapModel } from "@/features/seating/useSeatingMapModel";
 import { supabase } from "@/lib/supabase";
 import { ALIGN_RIGHT, ROW_DIR, ROW_REVERSE_DIR } from "@/lib/rtl";
@@ -36,6 +37,7 @@ import type { Guest } from "@/types";
 type Props = { hideTopBar?: boolean };
 
 const SCROLL_TOP_THRESHOLD = 220;
+const NO_TABLE_FILTER = "__no_table__";
 
 function ScrollToTopFab({
   bottom,
@@ -324,6 +326,8 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
 
   const {
     loading,
+    searching,
+    listHint,
     guests,
     filteredGuests,
     query,
@@ -356,6 +360,23 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
     // רשימת האורחים כבר נטענת דרך useGuestCheckInModel — אין צורך להוריד אותה שוב עבור המפה
     includeGuests: false,
   });
+
+  // תיבת החיפוש לא-מבוקרת בכוונה: value={query} גרם לרינדור-מחדש של כל המסך
+  // (כולל מאות כרטיסי אורחים) על כל אות שהוקלדה. עדכון ה-state נדחה מעט,
+  // כך שההקלדה עצמה נשארת חלקה.
+  const queryDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onChangeQuery = useCallback(
+    (text: string) => {
+      if (queryDebounceRef.current) clearTimeout(queryDebounceRef.current);
+      queryDebounceRef.current = setTimeout(() => setQuery(text), 120);
+    },
+    [setQuery]
+  );
+  useEffect(() => {
+    return () => {
+      if (queryDebounceRef.current) clearTimeout(queryDebounceRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     void refreshGuests();
@@ -474,11 +495,17 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
 
   // Phone (mobile) view groups guests by table instead of by category.
   const tableSections = useMemo(() => {
+    const filterTid = tableFilterId ? String(tableFilterId).trim() : null;
+    const sourceGuests = !filterTid
+      ? filteredGuests
+      : filterTid === NO_TABLE_FILTER
+        ? filteredGuests.filter((g) => !String(g.tableId ?? "").trim())
+        : filteredGuests.filter((g) => String(g.tableId ?? "").trim() === filterTid);
     const groups = new Map<string, { key: string; name: string; sort: number; data: Guest[] }>();
-    filteredGuests.forEach((g) => {
+    sourceGuests.forEach((g) => {
       const tid = String(g.tableId ?? "").trim();
       const t = tid ? tableById.get(tid) : null;
-      let key = "__no_table__";
+      let key = NO_TABLE_FILTER;
       let name = "ללא שולחן";
       let sort = 2_000_000;
       if (t) {
@@ -498,14 +525,17 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
         checkedIn: sec.data.reduce((sum, g) => sum + guestArrivedPeople(g), 0),
         total: sec.data.reduce((sum, g) => sum + guestInvitedPeople(g), 0),
       }));
-  }, [filteredGuests, tableById]);
+  }, [filteredGuests, tableById, tableFilterId]);
 
   const visibleSections = useMemo(() => {
     const tid = tableFilterId ? String(tableFilterId).trim() : null;
     if (!tid) return sections;
     return sections
       .map((sec) => {
-        const data = sec.data.filter((g) => String(g.tableId ?? "").trim() === tid);
+        const data =
+          tid === NO_TABLE_FILTER
+            ? sec.data.filter((g) => !String(g.tableId ?? "").trim())
+            : sec.data.filter((g) => String(g.tableId ?? "").trim() === tid);
         const checkedIn = data.reduce((sum, g) => sum + guestArrivedPeople(g), 0);
         const total = data.reduce((sum, g) => sum + guestInvitedPeople(g), 0);
         return { ...sec, data, checkedIn, total };
@@ -515,21 +545,26 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
 
   const tableFilterLabel = useMemo(() => {
     if (!tableFilterId) return null;
+    if (tableFilterId === NO_TABLE_FILTER) return "ללא שולחן";
     const t = tableById.get(String(tableFilterId).trim());
     if (!t) return "שולחן";
     const n = typeof t.number === "number" ? t.number : null;
     return n !== null ? `שולחן ${n}` : t.name ? `שולחן ${t.name}` : "שולחן";
   }, [tableById, tableFilterId]);
 
-  // רינדור הדרגתי: בניית מאות כרטיסי אורחים בבת אחת חוסמת את ה-JS לכמה שניות
-  // בכניסה למסך. מציגים מנה ראשונה מיד, והשאר מתווספות ברקע מנה אחר מנה
-  // בזמן שהמסך כבר מוצג ושמיש.
+  // רינדור הדרגתי עם תקרה: ציור כל מאות כרטיסי האורחים בתוך ScrollView הפך כל
+  // הקלדה בחיפוש לרינדור-מחדש של כל הכרטיסים (שניות של קפיאה בטלפון). מציגים
+  // מנה ראשונה מיד, ממשיכים ברקע עד תקרה, והשאר נחשפים בכפתור "הצג עוד".
   const INITIAL_RENDER_ROWS = 30;
-  const RENDER_ROWS_PER_BATCH = 80;
+  const RENDER_ROWS_PER_BATCH = 60;
+  const AUTO_RENDER_ROW_CAP = 120;
+  const SHOW_MORE_STEP = 200;
   const [rowRenderLimit, setRowRenderLimit] = useState(INITIAL_RENDER_ROWS);
+  const [renderCap, setRenderCap] = useState(AUTO_RENDER_ROW_CAP);
 
   useEffect(() => {
     setRowRenderLimit(INITIAL_RENDER_ROWS);
+    setRenderCap(AUTO_RENDER_ROW_CAP);
   }, [query, filter, tableFilterId]);
 
   const totalListRows = useMemo(() => {
@@ -538,12 +573,18 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
   }, [isTablet, visibleSections, tableSections]);
 
   useEffect(() => {
-    if (rowRenderLimit >= totalListRows) return;
+    const target = Math.min(totalListRows, renderCap);
+    if (rowRenderLimit >= target) return;
     const t = setTimeout(() => {
-      setRowRenderLimit((prev) => prev + RENDER_ROWS_PER_BATCH);
+      setRowRenderLimit((prev) => Math.min(prev + RENDER_ROWS_PER_BATCH, target));
     }, 32);
     return () => clearTimeout(t);
-  }, [rowRenderLimit, totalListRows]);
+  }, [renderCap, rowRenderLimit, totalListRows]);
+
+  const hiddenListRows = Math.max(0, totalListRows - Math.min(rowRenderLimit, renderCap, totalListRows));
+  const showMoreRows = useCallback(() => {
+    setRenderCap((prev) => prev + SHOW_MORE_STEP);
+  }, []);
 
   const limitSectionRows = useCallback(
     <T extends { data: Guest[] }>(secs: T[], limit: number): T[] => {
@@ -614,6 +655,18 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
     });
   }, [arrivedPeopleByTableId, mapTables]);
 
+  const tableFilterOptions = useMemo(
+    () => [
+      ...tableOptions.map((opt) => ({
+        id: opt.id,
+        label: opt.label,
+        meta: opt.capacity > 0 ? `${opt.seated}/${opt.capacity}` : undefined,
+      })),
+      { id: NO_TABLE_FILTER, label: "ללא שולחן" },
+    ],
+    [tableOptions]
+  );
+
   const addTableOptions = useMemo(() => {
     const q = addTableQuery.trim().toLowerCase();
     if (!q) return tableOptions;
@@ -631,7 +684,8 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
     setAddPeople(1);
     setAddTableQuery("");
     setAddError(null);
-    const focused = tableFilterId ? String(tableFilterId).trim() || null : null;
+    const focused =
+      tableFilterId && tableFilterId !== NO_TABLE_FILTER ? String(tableFilterId).trim() || null : null;
     setAddTableId(focused);
     setAddTablePickerExpanded(!focused);
     setAddOpen(true);
@@ -833,39 +887,6 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
     void refreshMap();
   }, [refreshGuests, refreshMap]);
 
-  if (loading) {
-    return (
-      <BackSwipe fallbackHref={backHref} onBack={handleBack}>
-        <Stack.Screen
-          options={isAdminStyledMobile ? { headerShown: false } : { header: () => <AppHeader canGoBack onPressBack={handleBack} /> }}
-        />
-        <View style={styles.screen}>
-          {isAdminStyledMobile ? (
-            <>
-              <LinearGradient colors={["#F7FAFF", "#E8F1FF", "#F2E0BA"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.bg} />
-              <LinearGradient
-                colors={["rgba(255,255,255,0.68)", "rgba(255,255,255,0)"]}
-                start={{ x: 0.05, y: 0 }}
-                end={{ x: 0.75, y: 0.55 }}
-                style={styles.bgHighlight}
-              />
-              <LinearGradient
-                colors={["rgba(232,196,122,0.58)", "rgba(244,224,186,0.22)", "rgba(244,224,186,0)"]}
-                start={{ x: 1, y: 0.95 }}
-                end={{ x: 0.18, y: 0.22 }}
-                style={styles.bgWarmGlow}
-              />
-            </>
-          ) : null}
-          <SafeAreaView style={[styles.center, isAdminStyledMobile ? styles.centerTransparent : null, { paddingTop: isAdminStyledMobile ? 0 : insets.top }]}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>טוען...</Text>
-          </SafeAreaView>
-        </View>
-      </BackSwipe>
-    );
-  }
-
   if (!resolvedEventId) {
     const listHref = isAdminContext ? "/(admin)/admin-events" : "/(employee)/employee-events";
     return (
@@ -1020,42 +1041,28 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                 scrollEventThrottle={16}
                 onScroll={onListScroll}
               >
-                {tableFilterId ? (
-                  <View style={styles.tableFilterRow}>
-                    <TouchableOpacity
-                      onPress={() => setTableFilterId(null)}
-                      style={styles.tableFilterClearBtn}
-                      activeOpacity={0.9}
-                      accessibilityRole="button"
-                      accessibilityLabel="נקה סינון שולחן"
-                    >
-                      <Ionicons name="close" size={16} color={colors.primary} />
-                      <Text style={styles.tableFilterClearText}>נקה</Text>
-                    </TouchableOpacity>
-                    <View style={styles.tableFilterPill}>
-                      <Ionicons name="restaurant" size={14} color={colors.primary} />
-                      <Text style={styles.tableFilterText} numberOfLines={1}>
-                        {tableFilterLabel || "שולחן"}
-                      </Text>
-                    </View>
-                  </View>
-                ) : null}
-
                 {/* Search */}
                 <View style={styles.searchCard}>
                   <Text>
                     <Ionicons name="search" size={18} color={colors.gray[500]} />
                   </Text>
                   <TextInput
-                    value={query}
-                    onChangeText={setQuery}
+                    defaultValue={query}
+                    onChangeText={onChangeQuery}
                     placeholder="חיפוש שם או טלפון..."
                     placeholderTextColor={colors.gray[500]}
                     style={styles.searchInput}
                     textAlign="right"
                     returnKeyType="search"
                   />
+                  {searching ? <ActivityIndicator size="small" color={colors.primary} /> : null}
                 </View>
+                <TableNumberFilter
+                  options={tableFilterOptions}
+                  selectedId={tableFilterId}
+                  onSelect={setTableFilterId}
+                />
+                {listHint ? <Text style={styles.listHint}>{listHint}</Text> : null}
 
                 {/* Filters */}
                 <View style={styles.filtersRow}>
@@ -1252,10 +1259,29 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
 
                   {visibleSections.length === 0 ? (
                     <View style={styles.emptyCard}>
-                      <Ionicons name="people-outline" size={42} color={colors.gray[500]} />
-                      <Text style={styles.emptyTitle}>לא נמצאו אורחים</Text>
-                      <Text style={styles.emptyText}>נסה לשנות את החיפוש או הפילטר{tableFilterId ? " או לנקות שולחן" : ""}</Text>
+                      {loading || searching ? (
+                        <ActivityIndicator size="large" color={colors.primary} />
+                      ) : (
+                        <Ionicons name="people-outline" size={42} color={colors.gray[500]} />
+                      )}
+                      <Text style={styles.emptyTitle}>
+                        {searching ? "מחפש…" : loading ? "טוען אורחים…" : "לא נמצאו אורחים"}
+                      </Text>
+                      {loading || searching ? null : (
+                        <Text style={styles.emptyText}>נסה לשנות את החיפוש או הפילטר{tableFilterId ? " או לנקות שולחן" : ""}</Text>
+                      )}
                     </View>
+                  ) : hiddenListRows > 0 ? (
+                    <TouchableOpacity
+                      onPress={showMoreRows}
+                      style={styles.showMoreBtn}
+                      activeOpacity={0.9}
+                      accessibilityRole="button"
+                      accessibilityLabel="הצגת אורחים נוספים ברשימה"
+                    >
+                      <Ionicons name="chevron-down" size={16} color={colors.primary} />
+                      <Text style={styles.showMoreBtnText}>הצג עוד אורחים ({hiddenListRows})</Text>
+                    </TouchableOpacity>
                   ) : null}
                 </View>
               </AppKeyboardAwareScrollView>
@@ -1415,14 +1441,15 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                   <Ionicons name="search" size={18} color={colors.gray[500]} />
                 </Text>
                 <TextInput
-                  value={query}
-                  onChangeText={setQuery}
+                  defaultValue={query}
+                  onChangeText={onChangeQuery}
                   placeholder="חיפוש שם או טלפון..."
                   placeholderTextColor={colors.gray[500]}
                   style={styles.searchInput}
                   textAlign="right"
                   returnKeyType="search"
                 />
+                {searching ? <ActivityIndicator size="small" color={colors.primary} /> : null}
               </View>
               <TouchableOpacity
                 onPress={openAddSheet}
@@ -1434,6 +1461,12 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                 <Ionicons name="person-add" size={22} color={colors.white} />
               </TouchableOpacity>
             </View>
+            <TableNumberFilter
+              options={tableFilterOptions}
+              selectedId={tableFilterId}
+              onSelect={setTableFilterId}
+            />
+            {listHint ? <Text style={styles.listHint}>{listHint}</Text> : null}
 
             {/* Filters */}
             <View style={styles.filtersRow}>
@@ -1584,10 +1617,29 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
 
               {tableSections.length === 0 ? (
                 <View style={styles.emptyCard}>
-                  <Ionicons name="people-outline" size={42} color={colors.gray[500]} />
-                  <Text style={styles.emptyTitle}>לא נמצאו אורחים</Text>
-                  <Text style={styles.emptyText}>נסה לשנות את החיפוש או הפילטר</Text>
+                  {loading || searching ? (
+                    <ActivityIndicator size="large" color={colors.primary} />
+                  ) : (
+                    <Ionicons name="people-outline" size={42} color={colors.gray[500]} />
+                  )}
+                  <Text style={styles.emptyTitle}>
+                    {searching ? "מחפש…" : loading ? "טוען אורחים…" : "לא נמצאו אורחים"}
+                  </Text>
+                  {loading || searching ? null : (
+                    <Text style={styles.emptyText}>נסה לשנות את החיפוש או הפילטר{tableFilterId ? " או לנקות שולחן" : ""}</Text>
+                  )}
                 </View>
+              ) : hiddenListRows > 0 ? (
+                <TouchableOpacity
+                  onPress={showMoreRows}
+                  style={styles.showMoreBtn}
+                  activeOpacity={0.9}
+                  accessibilityRole="button"
+                  accessibilityLabel="הצגת אורחים נוספים ברשימה"
+                >
+                  <Ionicons name="chevron-down" size={16} color={colors.primary} />
+                  <Text style={styles.showMoreBtnText}>הצג עוד אורחים ({hiddenListRows})</Text>
+                </TouchableOpacity>
               ) : null}
             </View>
             {isAdminStyledMobile ? <View style={styles.bottomContentSpacer} /> : null}
@@ -2646,6 +2698,21 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { marginTop: 10, fontSize: 16, fontWeight: "900", color: colors.text, textAlign: "center" },
   emptyText: { marginTop: 6, fontSize: 13, fontWeight: "700", color: colors.gray[600], textAlign: "center" },
+  listHint: { marginTop: 8, fontSize: 12, fontWeight: "600", color: colors.gray[600], textAlign: "center" },
+  showMoreBtn: {
+    marginTop: 4,
+    alignSelf: "center",
+    flexDirection: ROW_DIR,
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+    borderRadius: 16,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.08)",
+  },
+  showMoreBtnText: { fontSize: 13, fontWeight: "800", color: colors.primary },
 
   mapCard: {
     flex: 1,

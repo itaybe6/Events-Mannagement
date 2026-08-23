@@ -20,6 +20,10 @@ import { supabase } from '@/lib/supabase';
 import { authService } from '@/lib/services/authService';
 import { eventService } from '@/lib/services/eventService';
 
+if (typeof window !== 'undefined') {
+  void import('@/features/admin/admin-events-desktop.web').catch(() => undefined);
+}
+
 export default function LoginWebScreen() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -174,7 +178,7 @@ export default function LoginWebScreen() {
         router.replace('/(admin)/admin-events');
       } else if (userRow.user_type === 'employee') {
         eventService.prefetchEventsList();
-        router.replace('/(employee)/employee-events');
+        router.replace('/(admin)/admin-events-list');
       } else {
         router.replace('/(couple)');
       }
