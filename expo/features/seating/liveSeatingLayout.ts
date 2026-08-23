@@ -40,6 +40,40 @@ const MAX_TILE = 92;
  */
 const MIN_COMFORT_TILE = 46;
 
+/**
+ * Longest empty stretch kept between neighbouring rows/columns, in spacing
+ * units. Sketches often hold a dance floor or a stage as a huge blank area;
+ * drawn at scale it pushes tables off-screen and leaves the map mostly white.
+ * Capping the gap keeps the hall's structure (order and grouping) while
+ * pulling everything into view.
+ */
+const MAX_GAP_IN_CELLS = 1.6;
+
+/** Breathing room around the hall inside the canvas. */
+const CANVAS_PADDING = 14;
+
+/**
+ * Remaps one axis so runs of empty space wider than `MAX_GAP_IN_CELLS` cells
+ * shrink to that cap. Order is preserved; close neighbours are untouched.
+ */
+function collapseAxis(values: number[], spacing: number): Map<number, number> {
+  const sorted = Array.from(new Set(values)).sort((a, b) => a - b);
+  const maxDelta = spacing * MAX_GAP_IN_CELLS;
+
+  const mapped = new Map<number, number>();
+  let prevOriginal = sorted[0] ?? 0;
+  let prevMapped = 0;
+  if (sorted.length) mapped.set(sorted[0], 0);
+
+  for (let i = 1; i < sorted.length; i += 1) {
+    prevMapped += Math.min(sorted[i] - prevOriginal, maxDelta);
+    mapped.set(sorted[i], prevMapped);
+    prevOriginal = sorted[i];
+  }
+
+  return mapped;
+}
+
 export type PlacedTable = {
   table: LiveSeatingTable;
   left: number;
@@ -165,15 +199,18 @@ function positionedLayout(
   const tile = spacing * TILE_TO_SPACING;
   if (!Number.isFinite(tile) || tile <= 0) return null;
 
-  const minX = Math.min(...points.map((p) => p.x));
-  const minY = Math.min(...points.map((p) => p.y));
+  // Collapse oversized blank stretches on each axis independently. This keeps
+  // rows as rows and columns as columns while pulling distant groups (tables
+  // around a dance floor, a lone head table) close enough to read together.
+  const xMap = collapseAxis(points.map((p) => p.x), spacing);
+  const yMap = collapseAxis(points.map((p) => p.y), spacing);
 
   const raw: PlacedTable[] = points.map((point) => {
     const size = tileSizeFor(point.table, tile);
     return {
       table: point.table,
-      left: point.x - minX,
-      top: point.y - minY,
+      left: xMap.get(point.x) ?? 0,
+      top: yMap.get(point.y) ?? 0,
       width: size.width,
       height: size.height,
       auto: false,
@@ -209,7 +246,7 @@ function positionedLayout(
   // hall squeezed to thumbnail dots is no longer that plan. One uniform scale
   // throughout — clamping tiles individually would break the no-overlap
   // guarantee and push the outer ones past the canvas edge.
-  const widthFit = viewport.width / rawWidth;
+  const widthFit = Math.max(viewport.width - CANVAS_PADDING * 2, 120) / rawWidth;
   const comfortScale = MIN_COMFORT_TILE / tile;
   const maxScale = MAX_TILE / tile;
   const chosen = Math.min(Math.max(widthFit, comfortScale), maxScale);
@@ -220,13 +257,13 @@ function positionedLayout(
     mode: 'positioned',
     placed: raw.map((p) => ({
       ...p,
-      left: p.left * scale,
-      top: p.top * scale,
+      left: p.left * scale + CANVAS_PADDING,
+      top: p.top * scale + CANVAS_PADDING,
       width: p.width * scale,
       height: p.height * scale,
     })),
-    width: Math.max(rawWidth * scale, 1),
-    height: Math.max(rawHeight * scale, 1),
+    width: Math.max(rawWidth * scale, 1) + CANVAS_PADDING * 2,
+    height: Math.max(rawHeight * scale, 1) + CANVAS_PADDING * 2,
     tile: tile * scale,
     gap: tile * scale * 0.28,
     autoPlacedCount: loose.length,

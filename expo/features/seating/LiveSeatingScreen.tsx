@@ -26,6 +26,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors } from '@/constants/colors';
 import BackSwipe from '@/components/BackSwipe';
+import { getFloatingTabBarContentPadding } from '@/lib/floatingTabBarInset';
 import { ROW_DIR, TEXT_RIGHT } from '@/lib/rtl';
 import {
   useLiveSeatingModel,
@@ -41,17 +42,7 @@ const PALETTE = {
   live: '#FF4D4D',
 } as const;
 
-type LiveFilter = 'all' | 'partial' | 'full' | 'empty' | 'over' | 'adjusted';
 type LiveView = 'map' | 'list';
-
-const FILTERS: Array<{ key: LiveFilter; label: string }> = [
-  { key: 'all', label: 'הכל' },
-  { key: 'partial', label: 'חלקיים' },
-  { key: 'full', label: 'מלאים' },
-  { key: 'empty', label: 'ריקים' },
-  { key: 'over', label: 'מעל תפוסה' },
-  { key: 'adjusted', label: 'עודכנו ידנית' },
-];
 
 const STATUS_STYLE: Record<
   LiveTableStatus,
@@ -105,7 +96,6 @@ export default function LiveSeatingScreen() {
   } = useLiveSeatingModel(resolvedEventId || null);
 
   const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<LiveFilter>('all');
   const [view, setView] = useState<LiveView>('map');
   const [activeTableId, setActiveTableId] = useState<string | null>(null);
 
@@ -113,16 +103,9 @@ export default function LiveSeatingScreen() {
 
   const visibleTables = useMemo(() => {
     const q = query.trim().toLowerCase();
+    if (!q) return tables;
 
     return tables.filter((table) => {
-      if (filter === 'adjusted') {
-        if (table.manualExtra === 0) return false;
-      } else if (filter !== 'all' && table.status !== filter) {
-        return false;
-      }
-
-      if (!q) return true;
-
       if (String(table.number ?? '').includes(q)) return true;
       if (String(table.name || '').toLowerCase().includes(q)) return true;
       if (String(table.area || '').toLowerCase().includes(q)) return true;
@@ -131,7 +114,7 @@ export default function LiveSeatingScreen() {
       const seated = guestsByTable.get(table.id) || [];
       return seated.some((g) => String(g.name || '').toLowerCase().includes(q));
     });
-  }, [filter, guestsByTable, query, tables]);
+  }, [guestsByTable, query, tables]);
 
   // The map fills whatever the controls leave behind, measured rather than
   // guessed — a guess based on window height is wrong the moment the notice
@@ -148,12 +131,14 @@ export default function LiveSeatingScreen() {
 
   const mapViewport = useMemo(() => {
     if (!bodySize) return null;
-    // Card padding (10 each side) plus the legend and hint that sit under it.
+    // Card padding (10 each side), and enough clearance at the bottom so the
+    // map card ends above the floating tab bar instead of hiding behind it.
+    const tabBarClearance = getFloatingTabBarContentPadding(insets.bottom) - 24;
     return {
       width: Math.max(200, bodySize.width - 20),
-      height: Math.max(220, bodySize.height - 20 - 62),
+      height: Math.max(220, bodySize.height - 20 - Math.max(0, tabBarClearance)),
     };
-  }, [bodySize]);
+  }, [bodySize, insets.bottom]);
 
   const activeTable = useMemo(
     () => (activeTableId ? tables.find((t) => t.id === activeTableId) ?? null : null),
@@ -257,24 +242,6 @@ export default function LiveSeatingScreen() {
           })}
         </View>
       </View>
-
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
-        {FILTERS.map((item) => {
-          const active = filter === item.key;
-          return (
-            <TouchableOpacity
-              key={item.key}
-              onPress={() => setFilter(item.key)}
-              style={[styles.filterChip, active && styles.filterChipActive]}
-              activeOpacity={0.85}
-              accessibilityRole="button"
-              accessibilityState={{ selected: active }}
-            >
-              <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>{item.label}</Text>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
     </View>
   );
 
@@ -284,11 +251,11 @@ export default function LiveSeatingScreen() {
         <Ionicons name="grid-outline" size={30} color="rgba(6,23,62,0.35)" />
       </View>
       <Text style={styles.emptyTitle}>
-        {tables.length ? 'אין שולחנות שתואמים לסינון' : 'אין שולחנות באירוע'}
+        {tables.length ? 'אין שולחנות שתואמים לחיפוש' : 'אין שולחנות באירוע'}
       </Text>
       <Text style={styles.emptyText}>
         {tables.length
-          ? 'נסו לשנות את החיפוש או הסינון'
+          ? 'נסו לשנות את החיפוש'
           : 'יש לבנות את מפת ההושבה לפני שימוש במפת הלייב'}
       </Text>
     </View>
@@ -326,9 +293,6 @@ export default function LiveSeatingScreen() {
                   מפת לייב
                 </Text>
               </View>
-              <Text style={styles.topStatLine} numberOfLines={1}>
-                {`${totals.livePeople} מתוך ${totals.capacity} יושבים · ${totals.freeSeats} פנויים`}
-              </Text>
             </View>
 
             <TouchableOpacity
@@ -779,13 +743,6 @@ const styles = StyleSheet.create({
   topTitleWrap: { flex: 1, alignItems: 'center' },
   topTitleRow: { flexDirection: ROW_DIR, alignItems: 'center', gap: 7 },
   topTitle: { fontSize: 17, fontWeight: '900', color: colors.white },
-  topStatLine: {
-    marginTop: 2,
-    fontSize: 11.5,
-    fontWeight: '700',
-    color: 'rgba(255,255,255,0.66)',
-    textAlign: 'center',
-  },
 
   // The map/list fills whatever the controls leave behind.
   body: { flex: 1, paddingHorizontal: 12 },
@@ -823,7 +780,7 @@ const styles = StyleSheet.create({
   },
   gridRow: { flexDirection: ROW_DIR },
 
-  controlsBlock: { gap: 12, paddingBottom: 14 },
+  controlsBlock: { gap: 12, paddingTop: 14, paddingHorizontal: 12, paddingBottom: 12 },
   noticeBox: {
     flexDirection: ROW_DIR,
     alignItems: 'center',
@@ -869,19 +826,6 @@ const styles = StyleSheet.create({
   },
   viewToggleBtn: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   viewToggleBtnActive: { backgroundColor: PALETTE.ink },
-
-  filterRow: { flexDirection: ROW_DIR, gap: 7, paddingVertical: 1 },
-  filterChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: colors.white,
-    borderWidth: 1,
-    borderColor: 'rgba(6,23,62,0.07)',
-  },
-  filterChipActive: { backgroundColor: PALETTE.ink, borderColor: PALETTE.ink },
-  filterChipText: { fontSize: 12, fontWeight: '800', color: 'rgba(6,23,62,0.6)' },
-  filterChipTextActive: { color: colors.white },
 
   // ----- Map -----
 

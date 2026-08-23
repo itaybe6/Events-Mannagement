@@ -25,17 +25,7 @@ import LiveMapCanvas from '@/features/seating/LiveMapCanvas';
 
 const WEB_RTL = Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null;
 
-type LiveFilter = 'all' | 'partial' | 'full' | 'empty' | 'over' | 'adjusted';
 type LiveView = 'map' | 'list';
-
-const FILTERS: Array<{ key: LiveFilter; label: string }> = [
-  { key: 'all', label: 'הכל' },
-  { key: 'partial', label: 'חלקיים' },
-  { key: 'full', label: 'מלאים' },
-  { key: 'empty', label: 'ריקים' },
-  { key: 'over', label: 'מעל תפוסה' },
-  { key: 'adjusted', label: 'עודכנו ידנית' },
-];
 
 const STATUS_STYLE: Record<
   LiveTableStatus,
@@ -90,7 +80,6 @@ export default function LiveSeatingWebScreen() {
   } = useLiveSeatingModel(resolvedEventId || null);
 
   const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<LiveFilter>('all');
   const [view, setView] = useState<LiveView>('map');
   const [activeTableId, setActiveTableId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -102,16 +91,9 @@ export default function LiveSeatingWebScreen() {
 
   const visibleTables = useMemo(() => {
     const q = query.trim().toLowerCase();
+    if (!q) return tables;
 
     return tables.filter((table) => {
-      if (filter === 'adjusted') {
-        if (table.manualExtra === 0) return false;
-      } else if (filter !== 'all' && table.status !== filter) {
-        return false;
-      }
-
-      if (!q) return true;
-
       if (String(table.number ?? '').includes(q)) return true;
       if (String(table.name || '').toLowerCase().includes(q)) return true;
       if (String(table.area || '').toLowerCase().includes(q)) return true;
@@ -119,7 +101,7 @@ export default function LiveSeatingWebScreen() {
       const seated = guestsByTable.get(table.id) || [];
       return seated.some((g) => String(g.name || '').toLowerCase().includes(q));
     });
-  }, [filter, guestsByTable, query, tables]);
+  }, [guestsByTable, query, tables]);
 
   // A fixed window the whole hall is scaled into, so the plan reads at a glance
   // instead of needing to be panned around. The detail panel eats into it.
@@ -284,27 +266,6 @@ export default function LiveSeatingWebScreen() {
           ) : null}
         </View>
 
-        <View style={styles.filterRow}>
-          {FILTERS.map((item) => {
-            const active = filter === item.key;
-            return (
-              <Pressable
-                key={item.key}
-                onPress={() => setFilter(item.key)}
-                style={({ hovered }: any) => [
-                  styles.filterChip,
-                  active && styles.filterChipActive,
-                  hovered && !active && styles.filterChipHover,
-                ]}
-                accessibilityRole="button"
-                accessibilityState={{ selected: active }}
-              >
-                <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>{item.label}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
         <View style={styles.viewToggle}>
           {(['map', 'list'] as const).map((key) => {
             const active = view === key;
@@ -357,11 +318,11 @@ export default function LiveSeatingWebScreen() {
             <View style={styles.emptyBox}>
               <Ionicons name="grid-outline" size={38} color={colors.gray[400]} />
               <Text style={styles.emptyTitle}>
-                {tables.length ? 'אין שולחנות שתואמים לסינון' : 'אין שולחנות באירוע'}
+                {tables.length ? 'אין שולחנות שתואמים לחיפוש' : 'אין שולחנות באירוע'}
               </Text>
               <Text style={styles.emptyText}>
                 {tables.length
-                  ? 'נסו לשנות את החיפוש או הסינון'
+                  ? 'נסו לשנות את החיפוש'
                   : 'יש לבנות את מפת ההושבה לפני שימוש במפת הלייב'}
               </Text>
             </View>
@@ -386,7 +347,6 @@ export default function LiveSeatingWebScreen() {
               viewport={mapViewport}
               selectedId={activeTableId}
               onSelectTable={(id) => setActiveTableId((prev) => (prev === id ? null : id))}
-              actionWord="לחצו"
             />
           )}
         </View>
@@ -811,21 +771,6 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : null),
   },
-  filterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, ...WEB_RTL },
-  filterChip: {
-    paddingHorizontal: 13,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: colors.white,
-    borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.10)',
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
-  },
-  filterChipHover: { backgroundColor: '#F1F5F9' },
-  filterChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  filterChipText: { fontSize: 12, fontWeight: '800', color: colors.gray[700] },
-  filterChipTextActive: { color: colors.white },
-
   body: { gap: 16, ...WEB_RTL },
   bodyWithPanel: { flexDirection: 'row', alignItems: 'flex-start' },
   gridWrap: { flex: 1, minWidth: 0 },

@@ -12,13 +12,16 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 
 import { colors } from '@/constants/colors';
-import { ROW_DIR } from '@/lib/rtl';
 
 export type TableNumberFilterOption = {
   id: string;
   label: string;
   meta?: string;
 };
+
+const webShadow = Platform.OS === 'web'
+  ? ({ boxShadow: '0 8px 28px rgba(6,23,62,0.14)' } as object)
+  : null;
 
 function optionMatchesQuery(opt: TableNumberFilterOption, query: string) {
   const q = query.trim().toLowerCase();
@@ -78,53 +81,54 @@ export function TableNumberFilter({
         onPress={() => setOpen(true)}
         accessibilityRole="button"
         accessibilityLabel={isActive ? `סינון לפי ${triggerLabel}` : 'סינון לפי מספר שולחן'}
-        style={({ pressed }) => [
-          styles.trigger,
-          compact ? styles.triggerCompact : null,
-          isActive ? styles.triggerActive : null,
-          pressed ? { opacity: 0.92 } : null,
-        ]}
       >
-        <Ionicons name="chevron-down" size={compact ? 16 : 18} color={isActive ? colors.primary : colors.gray[500]} />
-        {isActive ? (
-          <Pressable
-            onPress={(e) => {
-              e.stopPropagation?.();
-              onSelect(null);
-            }}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel="נקה סינון שולחן"
-            style={({ pressed }) => [styles.clearBtn, pressed ? { opacity: 0.8 } : null]}
-          >
-            <Ionicons name="close" size={16} color={colors.primary} />
-          </Pressable>
-        ) : null}
-        <Text
-          style={[styles.triggerText, compact ? styles.triggerTextCompact : null, isActive ? styles.triggerTextActive : null]}
-          numberOfLines={1}
+        <View
+          style={[
+            styles.trigger,
+            compact ? styles.triggerCompact : null,
+            isActive ? styles.triggerActive : null,
+          ]}
         >
-          {triggerLabel}
-        </Text>
-        <View style={[styles.triggerIcon, compact ? styles.triggerIconCompact : null]}>
-          <Ionicons name="restaurant" size={compact ? 14 : 16} color={colors.primary} />
+          <View style={[styles.iconBox, compact ? styles.iconBoxCompact : null]}>
+            <Ionicons name="restaurant" size={compact ? 15 : 17} color={colors.primary} />
+          </View>
+          <Text
+            style={[styles.triggerText, compact ? styles.triggerTextCompact : null, isActive ? styles.triggerTextActive : null]}
+            numberOfLines={1}
+          >
+            {triggerLabel}
+          </Text>
+          {isActive ? (
+            <Pressable
+              onPress={(e) => {
+                e.stopPropagation?.();
+                onSelect(null);
+              }}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="נקה סינון שולחן"
+              style={styles.clearBtn}
+            >
+              <Ionicons name="close" size={16} color={colors.primary} />
+            </Pressable>
+          ) : (
+            <View style={styles.chevronBox}>
+              <Ionicons name="chevron-down" size={18} color={colors.gray[600]} />
+            </View>
+          )}
         </View>
       </Pressable>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={close}>
-        <Pressable style={styles.overlay} onPress={close}>
-          <Pressable style={[styles.sheet, compact ? styles.sheetCompact : null]} onPress={() => null}>
+        <View style={styles.overlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={close} />
+          <View style={[styles.sheet, compact ? styles.sheetCompact : null]}>
             <View style={styles.sheetHeader}>
-              <Pressable
-                onPress={close}
-                style={({ pressed }) => [styles.sheetClose, pressed ? { opacity: 0.85 } : null]}
-                accessibilityRole="button"
-                accessibilityLabel="סגירה"
-              >
-                <Ionicons name="close" size={18} color="rgba(17,24,39,0.7)" />
+              <Pressable onPress={close} style={styles.sheetClose} accessibilityRole="button" accessibilityLabel="סגירה">
+                <Ionicons name="close" size={18} color={colors.text} />
               </Pressable>
               <Text style={styles.sheetTitle}>בחירת שולחן</Text>
-              <View style={{ width: 36 }} />
+              <View style={styles.sheetCloseSpacer} />
             </View>
 
             <View style={[styles.searchBox, compact ? styles.searchBoxCompact : null]}>
@@ -148,132 +152,155 @@ export function TableNumberFilter({
             </View>
 
             <ScrollView style={styles.list} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-              <Pressable
+              <OptionRow
+                selected={!selectedId}
+                label="כל השולחנות"
                 onPress={() => pick(null)}
-                style={({ pressed }) => [
-                  styles.option,
-                  !selectedId ? styles.optionSelected : null,
-                  pressed ? { opacity: 0.9 } : null,
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel="הצג את כל השולחנות"
-              >
-                <Ionicons
-                  name={!selectedId ? 'checkmark-circle' : 'ellipse-outline'}
-                  size={22}
-                  color={!selectedId ? colors.primary : 'rgba(156,163,175,0.9)'}
+              />
+              {visibleOptions.map((opt) => (
+                <OptionRow
+                  key={opt.id}
+                  selected={selectedId === opt.id}
+                  label={opt.label}
+                  meta={opt.meta}
+                  onPress={() => pick(opt.id)}
                 />
-                <Text style={styles.optionText}>כל השולחנות</Text>
-              </Pressable>
-
-              {visibleOptions.map((opt) => {
-                const selectedRow = selectedId === opt.id;
-                return (
-                  <Pressable
-                    key={opt.id}
-                    onPress={() => pick(opt.id)}
-                    style={({ pressed }) => [
-                      styles.option,
-                      selectedRow ? styles.optionSelected : null,
-                      pressed ? { opacity: 0.9 } : null,
-                    ]}
-                    accessibilityRole="button"
-                    accessibilityLabel={`הצג אורחים ב${opt.label}`}
-                  >
-                    <Ionicons
-                      name={selectedRow ? 'checkmark-circle' : 'ellipse-outline'}
-                      size={22}
-                      color={selectedRow ? colors.primary : 'rgba(156,163,175,0.9)'}
-                    />
-                    <View style={styles.optionInfo}>
-                      <Text style={styles.optionText} numberOfLines={1}>
-                        {opt.label}
-                      </Text>
-                      {opt.meta ? (
-                        <Text style={styles.optionMeta} numberOfLines={1}>
-                          {opt.meta}
-                        </Text>
-                      ) : null}
-                    </View>
-                  </Pressable>
-                );
-              })}
-
+              ))}
               {visibleOptions.length === 0 ? (
                 <Text style={styles.emptyText}>
                   {options.length === 0 ? 'לא הוגדרו שולחנות לאירוע.' : 'לא נמצאו שולחנות מתאימים לחיפוש.'}
                 </Text>
               ) : null}
             </ScrollView>
-          </Pressable>
-        </Pressable>
+          </View>
+        </View>
       </Modal>
     </View>
   );
 }
 
+function OptionRow({
+  selected,
+  label,
+  meta,
+  onPress,
+}: {
+  selected: boolean;
+  label: string;
+  meta?: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label}>
+      <View style={[styles.option, selected ? styles.optionSelected : null]}>
+        <View style={styles.radioBox}>
+          <Ionicons
+            name={selected ? 'checkmark-circle' : 'ellipse-outline'}
+            size={22}
+            color={selected ? colors.primary : 'rgba(156,163,175,0.95)'}
+          />
+        </View>
+        <View style={styles.optionInfo}>
+          <Text style={styles.optionText} numberOfLines={1}>
+            {label}
+          </Text>
+          {meta ? (
+            <Text style={styles.optionMeta} numberOfLines={1}>
+              {meta}
+            </Text>
+          ) : null}
+        </View>
+      </View>
+    </Pressable>
+  );
+}
+
+const rowRtl = {
+  flexDirection: 'row' as const,
+  direction: 'rtl' as const,
+  alignItems: 'center' as const,
+};
+
 const styles = StyleSheet.create({
-  wrap: { marginTop: 10 },
-  wrapCompact: { marginTop: 8 },
+  wrap: { marginTop: 10, alignSelf: 'stretch', width: '100%' },
+  wrapCompact: { marginTop: 8, alignSelf: 'stretch', width: '100%' },
   trigger: {
-    minHeight: 48,
+    ...rowRtl,
+    minHeight: 52,
     borderRadius: 18,
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: colors.white,
+    paddingVertical: 8,
+    gap: 10,
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.08)',
+    borderColor: 'rgba(6,23,62,0.12)',
+    elevation: 2,
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 1px 4px rgba(6,23,62,0.06)' } as object) : null),
   },
-  triggerCompact: { minHeight: 42, borderRadius: 14, paddingVertical: 8 },
+  triggerCompact: { minHeight: 44, borderRadius: 14 },
   triggerActive: {
-    backgroundColor: 'rgba(17, 82, 212, 0.08)',
-    borderColor: 'rgba(17, 82, 212, 0.22)',
+    backgroundColor: 'rgba(6,23,62,0.05)',
+    borderColor: 'rgba(6,23,62,0.22)',
   },
-  triggerIcon: {
-    width: 30,
-    height: 30,
+  iconBox: {
+    width: 32,
+    height: 32,
     borderRadius: 10,
+    backgroundColor: 'rgba(6,23,62,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(15,69,230,0.08)',
+    flexShrink: 0,
   },
-  triggerIconCompact: { width: 26, height: 26, borderRadius: 8 },
-  triggerText: { flex: 1, fontSize: 15, fontWeight: '800', color: colors.text, textAlign: 'right' },
+  iconBoxCompact: { width: 28, height: 28, borderRadius: 8 },
+  triggerText: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: 15,
+    fontWeight: '800',
+    color: colors.text,
+    textAlign: 'right',
+  },
   triggerTextCompact: { fontSize: 13 },
   triggerTextActive: { color: colors.primary, fontWeight: '900' },
+  chevronBox: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
   clearBtn: {
     width: 28,
     height: 28,
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(17, 82, 212, 0.10)',
+    backgroundColor: 'rgba(6,23,62,0.08)',
+    flexShrink: 0,
   },
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(15,23,42,0.45)',
+    backgroundColor: 'rgba(15,23,42,0.48)',
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 18,
-    ...(Platform.OS === 'web' ? ({ zIndex: 80 } as object) : null),
   },
   sheet: {
     width: '100%',
     maxWidth: 420,
     maxHeight: '82%',
     borderRadius: 22,
-    backgroundColor: colors.white,
+    backgroundColor: '#FFFFFF',
     padding: 14,
-    gap: 10,
+    gap: 12,
+    elevation: 12,
+    ...(webShadow ?? {}),
   },
   sheetCompact: { maxWidth: 460 },
   sheetHeader: {
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
+    ...rowRtl,
     justifyContent: 'space-between',
+    minHeight: 36,
   },
   sheetClose: {
     width: 36,
@@ -282,42 +309,55 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(17,24,39,0.06)',
+    flexShrink: 0,
   },
-  sheetTitle: { flex: 1, fontSize: 16, fontWeight: '900', color: colors.text, textAlign: 'center' },
+  sheetCloseSpacer: { width: 36, height: 36 },
+  sheetTitle: {
+    flex: 1,
+    fontSize: 17,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'center',
+  },
   searchBox: {
+    ...rowRtl,
     height: 48,
     borderRadius: 16,
     paddingHorizontal: 12,
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
     gap: 8,
-    backgroundColor: 'rgba(248,250,252,1)',
+    backgroundColor: '#F8FAFC',
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.08)',
+    borderColor: 'rgba(6,23,62,0.12)',
   },
-  searchBoxCompact: { height: 42, borderRadius: 14 },
-  searchInput: { flex: 1, fontSize: 15, fontWeight: '700', color: colors.text },
+  searchBoxCompact: { height: 44, borderRadius: 14 },
+  searchInput: { flex: 1, minWidth: 0, fontSize: 15, fontWeight: '700', color: colors.text },
   list: { maxHeight: 360 },
   option: {
+    ...rowRtl,
     marginTop: 8,
-    minHeight: 48,
-    borderRadius: 14,
+    minHeight: 52,
+    borderRadius: 16,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
     gap: 10,
-    backgroundColor: colors.white,
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.08)',
+    borderColor: 'rgba(6,23,62,0.10)',
   },
   optionSelected: {
-    backgroundColor: 'rgba(17, 82, 212, 0.07)',
-    borderColor: 'rgba(17, 82, 212, 0.45)',
-    borderWidth: 2,
+    backgroundColor: 'rgba(6,23,62,0.06)',
+    borderColor: colors.primary,
+    borderWidth: 1.5,
   },
-  optionInfo: { flex: 1, minWidth: 0, alignItems: 'flex-end', gap: 2 },
-  optionText: { fontSize: 15, fontWeight: '900', color: colors.text, textAlign: 'right' },
-  optionMeta: { fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'right' },
-  emptyText: { marginTop: 12, fontSize: 13, fontWeight: '700', color: colors.gray[600], textAlign: 'center' },
+  radioBox: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  optionInfo: { flex: 1, minWidth: 0, alignItems: 'flex-end', justifyContent: 'center', gap: 2 },
+  optionText: { width: '100%', fontSize: 15, fontWeight: '900', color: colors.text, textAlign: 'right' },
+  optionMeta: { width: '100%', fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'right' },
+  emptyText: { marginTop: 14, fontSize: 13, fontWeight: '700', color: colors.gray[600], textAlign: 'center' },
 });

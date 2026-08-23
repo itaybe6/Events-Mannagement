@@ -3,7 +3,7 @@ import { Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from '
 
 import { colors } from '@/constants/colors';
 import { ROW_DIR } from '@/lib/rtl';
-import { buildLiveMapLayout, type PlacedTable } from '@/features/seating/liveSeatingLayout';
+import { buildLiveMapLayout } from '@/features/seating/liveSeatingLayout';
 import type { LiveSeatingTable, LiveTableStatus } from '@/features/seating/useLiveSeatingModel';
 
 /**
@@ -34,8 +34,6 @@ export const LIVE_STATUS_STYLE: Record<
   over: { bar: '#F59E0B', tint: '#FEF3C7', border: 'rgba(245,158,11,0.50)', label: 'מעל תפוסה' },
 };
 
-const LEGEND: LiveTableStatus[] = ['empty', 'partial', 'full', 'over'];
-
 const CARD_PADDING = 10;
 
 function tableShortLabel(table: Pick<LiveSeatingTable, 'number' | 'name'>) {
@@ -58,8 +56,6 @@ export type LiveMapCanvasProps = {
   viewport: { width: number; height: number };
   selectedId?: string | null;
   onSelectTable: (tableId: string) => void;
-  /** Verb differs by platform: tap on a phone, click on a desktop. */
-  actionWord?: string;
 };
 
 export default function LiveMapCanvas({
@@ -67,7 +63,6 @@ export default function LiveMapCanvas({
   viewport,
   selectedId,
   onSelectTable,
-  actionWord = 'הקישו',
 }: LiveMapCanvasProps) {
   const layout = useMemo(() => buildLiveMapLayout(tables, viewport), [tables, viewport]);
 
@@ -83,85 +78,65 @@ export default function LiveMapCanvas({
     );
   }
 
+  if (layout.mode === 'grid') {
+    // Reading order: a wrapped flex row, sized to fit. No absolute placement.
+    return (
+      <View style={[styles.card, { height: cardHeight }]}>
+        <ScrollView
+          style={styles.flowScroll}
+          contentContainerStyle={[styles.flowContent, { gap: layout.gap }]}
+          showsVerticalScrollIndicator={false}
+        >
+          {layout.placed.map(({ table }) => (
+            <MapTile
+              key={table.id}
+              table={table}
+              width={layout.tile}
+              height={layout.tile}
+              selected={table.id === selectedId}
+              onPress={() => onSelectTable(table.id)}
+            />
+          ))}
+        </ScrollView>
+      </View>
+    );
+  }
+
+  // The sketch at its real scale, panned in both directions when it is
+  // larger than the screen, centred when it is smaller. Every level carries
+  // an explicit size — an unsized scroll container collapses and takes the
+  // canvas with it.
   return (
-    <View style={styles.wrap}>
-      {layout.mode === 'grid' ? (
-        // Reading order: a wrapped flex row, sized to fit. No absolute placement.
-        <View style={[styles.card, { height: cardHeight }]}>
-          <ScrollView
-            style={styles.flowScroll}
-            contentContainerStyle={[styles.flowContent, { gap: layout.gap }]}
-            showsVerticalScrollIndicator={false}
-          >
-            {layout.placed.map(({ table }) => (
+    <View style={[styles.card, styles.cardMap, { height: cardHeight }]}>
+      <ScrollView
+        style={styles.mapScrollY}
+        contentContainerStyle={styles.mapScrollYContent}
+        showsVerticalScrollIndicator={false}
+        directionalLockEnabled
+      >
+        <ScrollView
+          horizontal
+          style={{ height: layout.height }}
+          contentContainerStyle={[styles.mapScrollXContent, { height: layout.height }]}
+          showsHorizontalScrollIndicator={false}
+          directionalLockEnabled
+        >
+          <View style={[styles.canvas, { width: layout.width, height: layout.height }]}>
+            {layout.placed.map((placed) => (
               <MapTile
-                key={table.id}
-                table={table}
-                width={layout.tile}
-                height={layout.tile}
-                selected={table.id === selectedId}
-                onPress={() => onSelectTable(table.id)}
+                key={placed.table.id}
+                table={placed.table}
+                width={placed.width}
+                height={placed.height}
+                left={placed.left}
+                top={placed.top}
+                selected={placed.table.id === selectedId}
+                onPress={() => onSelectTable(placed.table.id)}
               />
             ))}
-          </ScrollView>
-        </View>
-      ) : (
-        // The sketch at its real scale, panned in both directions when it is
-        // larger than the screen. Every level carries an explicit size — an
-        // unsized scroll container collapses and takes the canvas with it.
-        <View style={[styles.card, styles.cardMap, { height: cardHeight }]}>
-          <ScrollView
-            style={styles.mapScrollY}
-            contentContainerStyle={styles.mapScrollYContent}
-            showsVerticalScrollIndicator={false}
-            directionalLockEnabled
-          >
-            <ScrollView
-              horizontal
-              style={{ height: layout.height }}
-              contentContainerStyle={{ width: layout.width, height: layout.height }}
-              showsHorizontalScrollIndicator={false}
-              directionalLockEnabled
-            >
-              <View style={[styles.canvas, { width: layout.width, height: layout.height }]}>
-                {layout.placed.map((placed) => (
-                  <MapTile
-                    key={placed.table.id}
-                    table={placed.table}
-                    width={placed.width}
-                    height={placed.height}
-                    left={placed.left}
-                    top={placed.top}
-                    selected={placed.table.id === selectedId}
-                    onPress={() => onSelectTable(placed.table.id)}
-                  />
-                ))}
-              </View>
-            </ScrollView>
-          </ScrollView>
-        </View>
-      )}
-
-      <View style={styles.legendRow}>
-        {LEGEND.map((key) => (
-          <View key={key} style={styles.legendItem}>
-            <View style={[styles.legendDot, { backgroundColor: LIVE_STATUS_STYLE[key].bar }]} />
-            <Text style={styles.legendText}>{LIVE_STATUS_STYLE[key].label}</Text>
           </View>
-        ))}
-      </View>
-
-      <Text style={styles.hint}>
-        {layout.usedFallbackGrid
-          ? `לא ניתן לשרטט את מיקומי השולחנות מהסקיצה — מוצגים לפי סדר. ${actionWord} על שולחן לעדכון`
-          : layout.autoPlacedCount > 0
-          ? `${actionWord} על שולחן לעדכון · ${
-              layout.autoPlacedCount === 1
-                ? 'שולחן אחד ללא מיקום בסקיצה מסודר'
-                : `${layout.autoPlacedCount} שולחנות ללא מיקום בסקיצה מסודרים`
-            } בתחתית המפה`
-          : `${actionWord} על שולחן כדי לעדכן את מספר היושבים`}
-      </Text>
+        </ScrollView>
+      </ScrollView>
     </View>
   );
 }
@@ -241,7 +216,6 @@ function MapTile({
 }
 
 const styles = StyleSheet.create({
-  wrap: { gap: 12 },
   card: {
     backgroundColor: colors.white,
     borderRadius: 22,
@@ -259,7 +233,10 @@ const styles = StyleSheet.create({
   },
   cardMap: { alignItems: 'stretch', justifyContent: 'flex-start' },
   mapScrollY: { alignSelf: 'stretch' },
-  mapScrollYContent: { flexGrow: 1 },
+  // flexGrow + centring floats a small hall in the middle of the card instead
+  // of pinning it to a corner; a large hall still scrolls normally.
+  mapScrollYContent: { flexGrow: 1, justifyContent: 'center' },
+  mapScrollXContent: { flexGrow: 1, justifyContent: 'center' },
   cardFallback: { gap: 6, paddingHorizontal: 24 },
   fallbackTitle: { fontSize: 15, fontWeight: '900', color: INK, textAlign: 'center' },
   fallbackText: { fontSize: 12.5, fontWeight: '700', color: 'rgba(6,23,62,0.48)', textAlign: 'center' },
@@ -277,6 +254,11 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: INK,
+    shadowOpacity: 0.06,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
   tileSelected: { borderColor: INK, borderWidth: 2.5 },
@@ -291,18 +273,5 @@ const styles = StyleSheet.create({
     height: 7,
     borderRadius: 4,
     backgroundColor: '#F59E0B',
-  },
-
-  legendRow: { flexDirection: ROW_DIR, flexWrap: 'wrap', justifyContent: 'center', gap: 14 },
-  legendItem: { flexDirection: ROW_DIR, alignItems: 'center', gap: 5 },
-  legendDot: { width: 9, height: 9, borderRadius: 5 },
-  legendText: { fontSize: 11.5, fontWeight: '800', color: 'rgba(6,23,62,0.55)' },
-
-  hint: {
-    fontSize: 11.5,
-    fontWeight: '700',
-    color: 'rgba(6,23,62,0.42)',
-    textAlign: 'center',
-    paddingHorizontal: 10,
   },
 });
