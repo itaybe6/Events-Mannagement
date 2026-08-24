@@ -291,6 +291,7 @@ export function AdminEventsListWebScreen() {
   const {
     events,
     loading,
+    error,
     query,
     setQuery,
     filterDate,
@@ -853,6 +854,24 @@ export function AdminEventsListWebScreen() {
               <ActivityIndicator size="large" color={colors.primary} />
               <Text style={styles.centerStateTitle}>טוען אירועים...</Text>
               <Text style={styles.centerStateText}>אנחנו אוספים עבורך את כל האירועים במערכת.</Text>
+            </View>
+          ) : error && events.length === 0 ? (
+            <View style={styles.centerState}>
+              <Ionicons name="cloud-offline-outline" size={42} color={colors.gray[500]} />
+              <Text style={styles.centerStateTitle}>לא הצלחנו לטעון את האירועים</Text>
+              <Text style={styles.centerStateText}>{error}</Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="נסה שוב לטעון אירועים"
+                onPress={() => void refresh({ force: true })}
+                style={({ hovered, pressed }: any) => [
+                  styles.emptyCreateBtn,
+                  Platform.OS === 'web' && hovered ? styles.createEventBtnHover : null,
+                  pressed ? styles.createEventBtnPressed : null,
+                ]}
+              >
+                <Text style={styles.emptyCreateBtnText}>נסה שוב</Text>
+              </Pressable>
             </View>
           ) : displayEvents.length === 0 ? (
             <View style={styles.centerState}>

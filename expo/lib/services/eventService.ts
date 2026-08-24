@@ -1,4 +1,4 @@
-import { supabase, supabaseAdmin } from '../supabase';
+import { supabase, supabaseAdmin, requireSession } from '../supabase';
 import { cachedQuery, invalidateCache, peekCached } from '../queryCache';
 import { Event, Task } from '@/types';
 import { guestService } from './guestService';
@@ -61,6 +61,10 @@ export const eventService = {
 
   fetchEvents: async (): Promise<Event[]> => {
     try {
+      // Reads before the session is restored come back empty (RLS), and
+      // `cachedQuery` would then serve that empty list for the next minute.
+      await requireSession();
+
       const { data, error } = await supabase
         .from('events')
         .select(EVENT_LIST_COLUMNS)
@@ -82,6 +86,8 @@ export const eventService = {
     return cachedQuery(
       EVENTS_UPCOMING_KEY,
       async () => {
+        await requireSession();
+
         const { data, error } = await supabase
           .from('events')
           .select(EVENT_LIST_COLUMNS)

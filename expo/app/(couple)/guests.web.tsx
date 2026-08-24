@@ -291,24 +291,39 @@ export default function CoupleGuestsWebScreen() {
     if (!name) return;
     const peopleCount = Math.max(1, Number.parseInt(editPeopleCount || '1', 10) || 1);
     const phone = normalizeGuestPhone(editPhone);
-    try {
-      await guestService.updateGuest(editingGuest.id, {
-        name,
-        phone,
-        status: editStatus,
-        numberOfPeople: peopleCount,
-      } as any);
-      setGuests((prev) =>
-        prev.map((g) =>
-          g.id === editingGuest.id
-            ? { ...g, name, phone, status: editStatus, numberOfPeople: peopleCount }
-            : g
-        )
-      );
+
+    const guestId = editingGuest.id;
+    const prevRow = guests.find((g) => g.id === guestId) ?? editingGuest;
+
+    // Send only what actually changed — an unchanged phone used to trigger a
+    // full duplicate scan on the server before every save.
+    const updates: any = {};
+    if (name !== String(prevRow.name || '').trim()) updates.name = name;
+    if (phone !== normalizeGuestPhone(prevRow.phone || '')) updates.phone = phone;
+    if (editStatus !== prevRow.status) updates.status = editStatus;
+    if (peopleCount !== (Number(prevRow.numberOfPeople) || 1)) updates.numberOfPeople = peopleCount;
+
+    if (Object.keys(updates).length === 0) {
       closeEdit();
+      return;
+    }
+
+    // Optimistic: close immediately, roll the row back if the server rejects.
+    setGuests((prev) =>
+      prev.map((g) =>
+        g.id === guestId
+          ? { ...g, name, phone, status: editStatus, numberOfPeople: peopleCount }
+          : g
+      )
+    );
+    closeEdit();
+
+    try {
+      await guestService.updateGuest(guestId, updates);
     } catch (e: any) {
       console.error('Save guest error:', e);
-      Alert.alert('שגיאה', e?.message === DUPLICATE_GUEST_ERROR ? `${editName.trim()} כבר קיים באירוע לפי מספר הטלפון.` : 'לא ניתן לשמור את השינויים.');
+      setGuests((prev) => prev.map((g) => (g.id === guestId ? { ...prevRow } : g)));
+      Alert.alert('שגיאה', e?.message === DUPLICATE_GUEST_ERROR ? `${name} כבר קיים באירוע לפי מספר הטלפון.` : 'לא ניתן לשמור את השינויים.');
     }
   };
 

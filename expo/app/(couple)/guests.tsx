@@ -360,38 +360,40 @@ export default function GuestsScreen() {
 
   const handleEditGuest = async () => {
     if (!selectedGuest || !editGuestName.trim()) return;
-    
+
+    const guestId = selectedGuest.id;
+    const name = editGuestName.trim();
+    const peopleCount = parseInt(editGuestPeopleCount) || 1;
+    const savedPhone = normalizeGuestPhone(editGuestPhone);
+    const prevRow = guests.find((g) => g.id === guestId) ?? selectedGuest;
+
+    // Send only what actually changed — an unchanged phone used to trigger a
+    // full duplicate scan on the server before every save.
+    const updates: any = {};
+    if (name !== String(prevRow.name || '').trim()) updates.name = name;
+    if (savedPhone !== normalizeGuestPhone(String(prevRow.phone || ''))) updates.phone = savedPhone;
+    if (editGuestStatus !== prevRow.status) updates.status = editGuestStatus;
+    if (peopleCount !== (Number(prevRow.numberOfPeople) || 1)) updates.numberOfPeople = peopleCount;
+
+    // Optimistic: close immediately, roll the row back if the server rejects.
+    setGuests(prev => prev.map(g =>
+      g.id === guestId
+        ? { ...g, name, phone: savedPhone, status: editGuestStatus, numberOfPeople: peopleCount }
+        : g
+    ));
+    setEditModalVisible(false);
+    setSelectedGuest(null);
+    setEditGuestName('');
+    setEditGuestPhone('');
+    setEditGuestStatus('ממתין');
+    setEditGuestPeopleCount('1');
+
+    if (Object.keys(updates).length === 0) return;
+
     try {
-      const peopleCount = parseInt(editGuestPeopleCount) || 1;
-      
-      await guestService.updateGuest(selectedGuest.id, {
-        name: editGuestName.trim(),
-        phone: editGuestPhone.trim(),
-        status: editGuestStatus,
-        numberOfPeople: peopleCount,
-      });
-      
-      const savedPhone = normalizeGuestPhone(editGuestPhone);
-      // עדכן את הרשימה המקומית
-      setGuests(prev => prev.map(g => 
-        g.id === selectedGuest.id 
-          ? { 
-              ...g, 
-              name: editGuestName.trim(), 
-              phone: savedPhone,
-              status: editGuestStatus,
-              numberOfPeople: peopleCount
-            }
-          : g
-      ));
-      
-      setEditModalVisible(false);
-      setSelectedGuest(null);
-      setEditGuestName('');
-      setEditGuestPhone('');
-      setEditGuestStatus('ממתין');
-      setEditGuestPeopleCount('1');
+      await guestService.updateGuest(guestId, updates);
     } catch (e: any) {
+      setGuests(prev => prev.map(g => (g.id === guestId ? { ...prevRow } : g)));
       Alert.alert('שגיאה', e?.message === DUPLICATE_GUEST_ERROR ? DUPLICATE_GUEST_ERROR : 'לא ניתן לעדכן את האורח');
     }
   };

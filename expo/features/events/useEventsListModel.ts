@@ -1,13 +1,15 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
-import { Alert } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Platform } from 'react-native';
 import { Event } from '@/types';
 import { matchesEventSearch } from '@/features/events/eventsConstants';
+import { supabase } from '@/lib/supabase';
 
 export type SortOrder = 'asc' | 'desc';
 
 export type EventsListModel = {
   events: Event[];
   loading: boolean;
+  error: string | null;
   query: string;
   setQuery: (value: string) => void;
   filterDate: Date | null;
@@ -33,6 +35,7 @@ export function useEventsListModel(
   // With a cached list to show we revalidate in the background rather than
   // replacing the screen with a spinner the user has already waited through.
   const [loading, setLoading] = useState(!initialEvents?.length);
+  const [error, setError] = useState<string | null>(null);
   const [filterDate, setFilterDate] = useState<Date | null>(null);
   const [filterStartDate, setFilterStartDate] = useState<Date | null>(null);
   const [filterEndDate, setFilterEndDate] = useState<Date | null>(null);
@@ -49,18 +52,46 @@ export function useEventsListModel(
         const data = await loadEvents(options);
         const next = Array.isArray(data) ? data : [];
         hasEventsRef.current = next.length > 0;
+        setError(null);
         setEvents(next);
       } catch (e) {
         console.error('Events list refresh error:', e);
-        Alert.alert(opts?.errorTitle ?? 'שגיאה', opts?.errorMessage ?? 'לא ניתן לטעון אירועים כרגע');
-        hasEventsRef.current = false;
-        setEvents([]);
+        // A failed read is not an empty list. Blanking `events` here rendered
+        // the "no events" state for what is really a session/network problem,
+        // and `Alert` is a no-op on react-native-web, so web users saw nothing
+        // at all. Keep whatever is on screen and report the failure instead.
+        const message = opts?.errorMessage ?? 'לא ניתן לטעון אירועים כרגע';
+        setError(message);
+        if (Platform.OS !== 'web') {
+          Alert.alert(opts?.errorTitle ?? 'שגיאה', message);
+        }
       } finally {
         setLoading(false);
       }
     },
     [loadEvents, opts?.errorMessage, opts?.errorTitle]
   );
+
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
+
+  // The web build routes an already-persisted user straight to their events
+  // screen, so this list can mount and fetch before Supabase has restored or
+  // refreshed the session. When the session does land, recover the screen
+  // rather than leaving it on a stale empty/error state until a page reload.
+  useEffect(() => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!session) return;
+      if (event !== 'INITIAL_SESSION' && event !== 'SIGNED_IN' && event !== 'TOKEN_REFRESHED') return;
+      // Nothing to recover while real events are already showing.
+      if (hasEventsRef.current) return;
+      void refreshRef.current({ force: true });
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   const filteredEvents = useMemo(() => {
     // Filtering
@@ -118,6 +149,7 @@ export function useEventsListModel(
   return {
     events,
     loading,
+    error,
     query,
     setQuery,
     filterDate,

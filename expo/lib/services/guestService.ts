@@ -740,8 +740,10 @@ export const guestService = {
   addGuest: async (eventId: string, guest: Omit<Guest, 'id'>): Promise<Guest> => {
     try {
       const normalizedGuest = withNormalizedPhone(guest);
-      await ensureGuestIsUniqueForEvent(eventId, normalizedGuest);
-      await ensureUnapprovedEventGuestLimit(eventId);
+      await Promise.all([
+        ensureGuestIsUniqueForEvent(eventId, normalizedGuest),
+        ensureUnapprovedEventGuestLimit(eventId),
+      ]);
       const { data, error } = await supabase
         .from('guests')
         .insert({
@@ -783,27 +785,32 @@ export const guestService = {
   updateGuest: async (guestId: string, updates: Partial<Omit<Guest, 'id'>>): Promise<Guest> => {
     try {
       const updateData: any = {};
-      let currentGuest: any = null;
 
-      if (updates.name !== undefined || updates.phone !== undefined) {
+      // The duplicate check is phone-based, so it only matters when the phone
+      // actually changes. It used to run on every name edit too — downloading
+      // every guest in the event before a simple save.
+      if (updates.phone !== undefined) {
+        const nextPhone = normalizeGuestPhone(updates.phone);
+
         const { data: current, error: currentError } = await supabase
           .from('guests')
-          .select('id, event_id, name, phone')
+          .select('id, event_id, phone')
           .eq('id', guestId)
           .single();
 
         if (currentError) throw currentError;
-        currentGuest = current;
-        const nextPhone =
-          updates.phone !== undefined ? normalizeGuestPhone(updates.phone) : String((currentGuest as any)?.phone ?? '');
-        await ensureGuestIsUniqueForEvent(
-          String((currentGuest as any)?.event_id || ''),
-          {
-            name: updates.name ?? String((currentGuest as any)?.name ?? ''),
-            phone: nextPhone,
-          } as Pick<Guest, 'name' | 'phone'>,
-          guestId
-        );
+
+        const currentPhone = normalizeGuestPhone(String((current as any)?.phone ?? ''));
+        if (nextPhone && nextPhone !== currentPhone) {
+          await ensureGuestIsUniqueForEvent(
+            String((current as any)?.event_id || ''),
+            {
+              name: updates.name ?? '',
+              phone: nextPhone,
+            } as Pick<Guest, 'name' | 'phone'>,
+            guestId
+          );
+        }
       }
       
       if (updates.name) updateData.name = updates.name;

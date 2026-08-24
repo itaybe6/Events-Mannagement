@@ -96,3 +96,30 @@ if (!supabaseServiceKey) {
     '[supabase] EXPO_PUBLIC_SUPABASE_SERVICE_KEY is not set. supabaseAdmin falls back to the anon client; admin-only operations may fail due to RLS.'
   );
 }
+
+/** Thrown when an RLS-dependent read is attempted with no signed-in session. */
+export class NoSupabaseSessionError extends Error {
+  constructor() {
+    super('No active Supabase session');
+    this.name = 'NoSupabaseSessionError';
+  }
+}
+
+/**
+ * Awaits the client's session restore and fails loudly when there is none.
+ *
+ * Every table policy here is keyed on `auth.uid()`, so PostgREST answers a
+ * signed-out request with an empty result set and no error — indistinguishable
+ * from "this account really has no rows". On web the router sends an already
+ * persisted user straight into the app, so a screen can fire its first query
+ * before `supabase.auth` has finished reading the session out of storage.
+ * `getSession()` resolves only after that restore, so awaiting it both
+ * serialises the read behind auth init and lets the caller throw instead of
+ * caching an empty list as if it were real data.
+ */
+export async function requireSession() {
+  const { data, error } = await supabase.auth.getSession();
+  if (error) throw error;
+  if (!data.session) throw new NoSupabaseSessionError();
+  return data.session;
+}
