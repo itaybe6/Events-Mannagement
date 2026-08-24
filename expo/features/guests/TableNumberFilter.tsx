@@ -12,6 +12,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 
 import { colors } from '@/constants/colors';
+import { ALIGN_RIGHT, ROW_DIR, TEXT_RIGHT } from '@/lib/rtl';
 
 export type TableNumberFilterOption = {
   id: string;
@@ -215,9 +216,11 @@ function OptionRow({
   );
 }
 
+// Yoga stays LTR app-wide (see `lib/rtl.ts`). Hebrew rows are mirrored with
+// `row-reverse` only - setting `direction: 'rtl'` here would inherit down and
+// flip `textAlign: 'right'` to the physical left on native.
 const rowRtl = {
-  flexDirection: 'row' as const,
-  direction: 'rtl' as const,
+  flexDirection: ROW_DIR,
   alignItems: 'center' as const,
 };
 
@@ -258,7 +261,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '800',
     color: colors.text,
-    textAlign: 'right',
+    textAlign: TEXT_RIGHT,
   },
   triggerTextCompact: { fontSize: 13 },
   triggerTextActive: { color: colors.primary, fontWeight: '900' },
@@ -356,8 +359,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
   },
-  optionInfo: { flex: 1, minWidth: 0, alignItems: 'flex-end', justifyContent: 'center', gap: 2 },
-  optionText: { width: '100%', fontSize: 15, fontWeight: '900', color: colors.text, textAlign: 'right' },
-  optionMeta: { width: '100%', fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'right' },
+  optionInfo: { flex: 1, minWidth: 0, alignItems: ALIGN_RIGHT, justifyContent: 'center', gap: 2 },
+  optionText: { width: '100%', fontSize: 15, fontWeight: '900', color: colors.text, textAlign: TEXT_RIGHT },
+  optionMeta: { width: '100%', fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: TEXT_RIGHT },
   emptyText: { marginTop: 14, fontSize: 13, fontWeight: '700', color: colors.gray[600], textAlign: 'center' },
 });

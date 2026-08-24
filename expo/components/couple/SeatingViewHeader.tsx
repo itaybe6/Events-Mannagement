@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Reanimated, {
   Easing,
@@ -14,9 +14,6 @@ export type SeatingViewMode = 'map' | 'grid';
 
 const DNAVY = '#152949';
 const DACC = '#7FA8E8';
-const TRACK_PAD = 4;
-const SEGMENT_HEIGHT = 40;
-const PILL_TIMING = { duration: 190, easing: Easing.out(Easing.cubic) } as const;
 
 type SeatingViewHeaderProps = {
   viewMode: SeatingViewMode;
@@ -30,12 +27,11 @@ type SeatingViewHeaderProps = {
 };
 
 /**
- * One half of the toggle. The white "selected" pill is a background layer of the
- * segment itself — not an absolutely positioned slider measured with onLayout —
- * so it can never end up mis-sized (missing measurement) or painted on top of
- * the icon + label (Android draws `elevation` siblings above `zIndex` ones).
+ * Standalone mode button — deliberately NOT a segmented toggle. Every flex /
+ * measurement / absolute-position variant of a shared track mis-rendered on
+ * device, so each button is content-sized and owns its own pill background.
  */
-function ToggleSegment({
+function ModeButton({
   label,
   icon,
   accessibilityLabel,
@@ -48,40 +44,27 @@ function ToggleSegment({
   selected: boolean;
   onPress: () => void;
 }) {
-  const progress = useSharedValue(selected ? 1 : 0);
-
-  useEffect(() => {
-    progress.value = withTiming(selected ? 1 : 0, PILL_TIMING);
-  }, [progress, selected]);
-
-  const pillStyle = useAnimatedStyle(() => ({
-    opacity: progress.value,
-    transform: [{ scale: 0.94 + progress.value * 0.06 }],
-  }));
-
   return (
-    <Pressable
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.85}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       accessibilityState={{ selected }}
-      onPress={onPress}
-      style={({ pressed }) => [styles.toggleSegment, pressed ? styles.toggleSegmentPressed : null]}
+      style={[styles.modeBtn, selected && styles.modeBtnSelected]}
     >
-      <Reanimated.View style={[styles.segmentPill, pillStyle]} />
-      <View style={[styles.segmentContent, { flexDirection: ROW_DIR }]}>
-        <Ionicons name={icon} size={16} color={selected ? DNAVY : 'rgba(255,255,255,0.92)'} />
-        <Text
-          numberOfLines={1}
-          style={[styles.toggleText, selected ? styles.toggleTextActive : styles.toggleTextInactive]}
-        >
-          {label}
-        </Text>
-      </View>
-    </Pressable>
+      <Ionicons name={icon} size={16} color={selected ? DNAVY : 'rgba(255,255,255,0.92)'} />
+      <Text
+        numberOfLines={1}
+        style={[styles.modeBtnText, selected ? styles.modeBtnTextSelected : styles.modeBtnTextIdle]}
+      >
+        {label}
+      </Text>
+    </TouchableOpacity>
   );
 }
 
-function ViewModeToggle({
+function ViewModeButtons({
   viewMode,
   onChangeViewMode,
 }: {
@@ -89,15 +72,16 @@ function ViewModeToggle({
   onChangeViewMode: (mode: SeatingViewMode) => void;
 }) {
   return (
-    <View style={[styles.toggleTrack, { flexDirection: ROW_DIR }]}>
-      <ToggleSegment
+    <View style={styles.modeRow}>
+      {/* row-reverse: "מפה" ends up on the visual right, Hebrew reading order. */}
+      <ModeButton
         label="מפה"
         icon="location-sharp"
         accessibilityLabel="תצוגת מפה"
         selected={viewMode === 'map'}
         onPress={() => onChangeViewMode('map')}
       />
-      <ToggleSegment
+      <ModeButton
         label="רשת"
         icon="grid"
         accessibilityLabel="תצוגת רשת"
@@ -143,7 +127,7 @@ export function SeatingViewHeader({
     <View style={[styles.root, flush && styles.rootFlush]}>
       {!flush ? <NavyCardBackground variant="compact" /> : null}
       <View style={[styles.content, flush && styles.contentFlush]}>
-        <ViewModeToggle viewMode={viewMode} onChangeViewMode={onChangeViewMode} />
+        <ViewModeButtons viewMode={viewMode} onChangeViewMode={onChangeViewMode} />
 
         <View style={[styles.progressRow, { flexDirection: ROW_DIR }]}>
           <Text style={styles.progressPct}>{pct}% שובצו</Text>
@@ -195,45 +179,38 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     paddingBottom: 16,
   },
-  toggleTrack: {
+  modeRow: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  // Content-sized chip: no flex, no measuring, nothing that can collapse.
+  modeBtn: {
+    flexDirection: ROW_DIR,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    height: 40,
+    minWidth: 130,
+    paddingHorizontal: 22,
     borderRadius: 999,
     backgroundColor: 'rgba(0,0,0,0.24)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.16)',
-    padding: TRACK_PAD,
-    overflow: 'hidden',
   },
-  toggleSegment: {
-    flex: 1,
-    height: SEGMENT_HEIGHT,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 999,
-  },
-  toggleSegmentPressed: {
-    opacity: 0.88,
-  },
-  // Rendered before the label so it always paints behind it, on every platform.
-  segmentPill: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: 999,
+  modeBtnSelected: {
     backgroundColor: '#FFFFFF',
-    pointerEvents: 'none',
+    borderColor: '#FFFFFF',
   },
-  segmentContent: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 7,
-    paddingHorizontal: 10,
-  },
-  toggleText: {
+  modeBtnText: {
     fontSize: 14,
     fontWeight: '800',
   },
-  toggleTextInactive: {
+  modeBtnTextIdle: {
     color: 'rgba(255,255,255,0.88)',
   },
-  toggleTextActive: {
+  modeBtnTextSelected: {
     color: DNAVY,
   },
   progressRow: {
