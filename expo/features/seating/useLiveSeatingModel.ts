@@ -16,7 +16,10 @@ import type { Guest } from '@/types';
  * plus-one, or a guest who took a chair at a different table.
  */
 
-export type LiveTableStatus = 'empty' | 'partial' | 'full' | 'over';
+export type LiveTableStatus = 'empty' | 'partial' | 'near' | 'full' | 'over';
+
+/** A table is "almost full" when this many seats or fewer remain open. */
+const NEAR_CAPACITY_FREE_SEATS = 2;
 
 export type LiveSeatingTable = {
   id: string;
@@ -84,6 +87,7 @@ function tableStatus(livePeople: number, capacity: number): LiveTableStatus {
   if (capacity > 0 && livePeople > capacity) return 'over';
   if (livePeople <= 0) return 'empty';
   if (capacity > 0 && livePeople >= capacity) return 'full';
+  if (capacity > 0 && capacity - livePeople <= NEAR_CAPACITY_FREE_SEATS) return 'near';
   return 'partial';
 }
 

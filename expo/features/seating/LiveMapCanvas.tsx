@@ -30,8 +30,9 @@ export const LIVE_STATUS_STYLE: Record<
 > = {
   empty: { bar: '#94A3B8', tint: '#EEF2F7', border: 'rgba(100,116,139,0.30)', label: 'ריק' },
   partial: { bar: '#3B82F6', tint: '#E6F0FF', border: 'rgba(59,130,246,0.40)', label: 'חלקי' },
+  near: { bar: '#F59E0B', tint: '#FEF3C7', border: 'rgba(245,158,11,0.50)', label: 'כמעט מלא' },
   full: { bar: '#16A34A', tint: '#DCFCE7', border: 'rgba(22,163,74,0.44)', label: 'מלא' },
-  over: { bar: '#F59E0B', tint: '#FEF3C7', border: 'rgba(245,158,11,0.50)', label: 'מעל תפוסה' },
+  over: { bar: '#DC2626', tint: '#FEE2E2', border: 'rgba(220,38,38,0.52)', label: 'מעל תפוסה' },
 };
 
 const CARD_PADDING = 10;

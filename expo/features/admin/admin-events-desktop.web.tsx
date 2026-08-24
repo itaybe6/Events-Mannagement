@@ -2789,6 +2789,7 @@ export default function AdminEventsWebScreen() {
   const {
     events,
     loading,
+    error,
     query,
     setQuery,
     filterDate,
@@ -3731,6 +3732,22 @@ export default function AdminEventsWebScreen() {
                   <View style={dashboardStyles.sectionState}>
                     <ActivityIndicator color={colors.primary} />
                     <Text style={dashboardStyles.sectionStateText}>טוען אירועים...</Text>
+                  </View>
+                ) : error && events.length === 0 ? (
+                  <View style={dashboardStyles.sectionState}>
+                    <Text style={dashboardStyles.sectionStateText}>{error}</Text>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="נסה שוב לטעון אירועים"
+                      onPress={() => void refresh({ force: true })}
+                      style={({ hovered, pressed }: any) => [
+                        dashboardStyles.inlineActionBtn,
+                        Platform.OS === 'web' && hovered ? dashboardStyles.inlineActionBtnHover : null,
+                        pressed ? dashboardStyles.actionPressed : null,
+                      ]}
+                    >
+                      <Text style={dashboardStyles.inlineActionBtnText}>נסה שוב</Text>
+                    </Pressable>
                   </View>
                 ) : (
                   <View style={dashboardStyles.recentEventsList}>

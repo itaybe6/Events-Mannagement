@@ -63,7 +63,9 @@ export default function AdminEventsScreen() {
   );
 
   const {
+    events,
     loading,
+    error,
     query,
     setQuery,
     filterDate,
@@ -323,6 +325,20 @@ export default function AdminEventsScreen() {
           {loading ? (
             <View style={{ paddingTop: 30 }}>
               <ActivityIndicator size="large" color={EVENT_BLUE.mid} />
+            </View>
+          ) : error && events.length === 0 ? (
+            <View style={styles.emptyStateCard}>
+              <View style={styles.emptyStateIconWrap}>
+                <Ionicons name="cloud-offline-outline" size={30} color={EVENT_BLUE.mid} />
+              </View>
+              <Text style={styles.emptyStateText}>{error}</Text>
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="נסה שוב לטעון אירועים"
+                onPress={() => void refresh({ force: true })}
+              >
+                <Text style={[styles.emptyStateSubtext, { color: EVENT_BLUE.mid }]}>נסה שוב</Text>
+              </TouchableOpacity>
             </View>
           ) : visibleEvents.length === 0 ? (
             <View style={styles.emptyStateCard}>

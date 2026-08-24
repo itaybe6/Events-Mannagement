@@ -1,11 +1,10 @@
-import React, { useEffect, useState } from 'react';
-import { LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Reanimated, {
   Easing,
   useAnimatedStyle,
   useSharedValue,
-  withSpring,
   withTiming,
 } from 'react-native-reanimated';
 import { NavyCardBackground } from '@/components/couple/NavyCardBackground';
@@ -15,8 +14,9 @@ export type SeatingViewMode = 'map' | 'grid';
 
 const DNAVY = '#152949';
 const DACC = '#7FA8E8';
-const SLIDE_SPRING = { damping: 20, stiffness: 260, mass: 0.75 };
 const TRACK_PAD = 4;
+const SEGMENT_HEIGHT = 40;
+const PILL_TIMING = { duration: 190, easing: Easing.out(Easing.cubic) } as const;
 
 type SeatingViewHeaderProps = {
   viewMode: SeatingViewMode;
@@ -29,6 +29,58 @@ type SeatingViewHeaderProps = {
   flush?: boolean;
 };
 
+/**
+ * One half of the toggle. The white "selected" pill is a background layer of the
+ * segment itself — not an absolutely positioned slider measured with onLayout —
+ * so it can never end up mis-sized (missing measurement) or painted on top of
+ * the icon + label (Android draws `elevation` siblings above `zIndex` ones).
+ */
+function ToggleSegment({
+  label,
+  icon,
+  accessibilityLabel,
+  selected,
+  onPress,
+}: {
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  accessibilityLabel: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  const progress = useSharedValue(selected ? 1 : 0);
+
+  useEffect(() => {
+    progress.value = withTiming(selected ? 1 : 0, PILL_TIMING);
+  }, [progress, selected]);
+
+  const pillStyle = useAnimatedStyle(() => ({
+    opacity: progress.value,
+    transform: [{ scale: 0.94 + progress.value * 0.06 }],
+  }));
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ selected }}
+      onPress={onPress}
+      style={({ pressed }) => [styles.toggleSegment, pressed ? styles.toggleSegmentPressed : null]}
+    >
+      <Reanimated.View style={[styles.segmentPill, pillStyle]} />
+      <View style={[styles.segmentContent, { flexDirection: ROW_DIR }]}>
+        <Ionicons name={icon} size={16} color={selected ? DNAVY : 'rgba(255,255,255,0.92)'} />
+        <Text
+          numberOfLines={1}
+          style={[styles.toggleText, selected ? styles.toggleTextActive : styles.toggleTextInactive]}
+        >
+          {label}
+        </Text>
+      </View>
+    </Pressable>
+  );
+}
+
 function ViewModeToggle({
   viewMode,
   onChangeViewMode,
@@ -36,60 +88,22 @@ function ViewModeToggle({
   viewMode: SeatingViewMode;
   onChangeViewMode: (mode: SeatingViewMode) => void;
 }) {
-  const [trackWidth, setTrackWidth] = useState(0);
-  const slideIndex = useSharedValue(viewMode === 'map' ? 1 : 0);
-
-  useEffect(() => {
-    slideIndex.value = withSpring(viewMode === 'map' ? 1 : 0, SLIDE_SPRING);
-  }, [slideIndex, viewMode]);
-
-  const innerWidth = Math.max(0, trackWidth - TRACK_PAD * 2);
-  const segmentWidth = innerWidth > 0 ? innerWidth / 2 : 0;
-
-  const sliderStyle = useAnimatedStyle(() => ({
-    width: segmentWidth,
-    transform: [{ translateX: slideIndex.value * segmentWidth }],
-  }));
-
-  const onTrackLayout = (e: LayoutChangeEvent) => {
-    const w = e.nativeEvent.layout.width;
-    if (w > 0 && w !== trackWidth) setTrackWidth(w);
-  };
-
-  const renderSegment = (
-    mode: SeatingViewMode,
-    label: string,
-    icon: keyof typeof Ionicons.glyphMap,
-    accessibilityLabel: string
-  ) => {
-    const selected = viewMode === mode;
-    return (
-      <Pressable
-        key={mode}
-        accessibilityRole="button"
-        accessibilityLabel={accessibilityLabel}
-        accessibilityState={{ selected }}
-        onPress={() => onChangeViewMode(mode)}
-        style={({ pressed }) => [styles.toggleSegment, pressed ? styles.toggleSegmentPressed : null]}
-      >
-        <Ionicons name={icon} size={16} color={selected ? DNAVY : 'rgba(255,255,255,0.92)'} />
-        <Text style={[styles.toggleText, selected ? styles.toggleTextActive : styles.toggleTextInactive]}>
-          {label}
-        </Text>
-      </Pressable>
-    );
-  };
-
   return (
-    <View style={styles.toggleTrack} onLayout={onTrackLayout}>
-      {segmentWidth > 0 ? (
-        <Reanimated.View style={[styles.toggleSlider, sliderStyle]} />
-      ) : null}
-
-      <View style={[styles.toggleSegments, { flexDirection: ROW_DIR }]}>
-        {renderSegment('map', 'מפה', 'location-sharp', 'תצוגת מפה')}
-        {renderSegment('grid', 'רשת', 'grid', 'תצוגת רשת')}
-      </View>
+    <View style={[styles.toggleTrack, { flexDirection: ROW_DIR }]}>
+      <ToggleSegment
+        label="מפה"
+        icon="location-sharp"
+        accessibilityLabel="תצוגת מפה"
+        selected={viewMode === 'map'}
+        onPress={() => onChangeViewMode('map')}
+      />
+      <ToggleSegment
+        label="רשת"
+        icon="grid"
+        accessibilityLabel="תצוגת רשת"
+        selected={viewMode === 'grid'}
+        onPress={() => onChangeViewMode('grid')}
+      />
     </View>
   );
 }
@@ -182,44 +196,35 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
   },
   toggleTrack: {
-    position: 'relative',
     borderRadius: 999,
     backgroundColor: 'rgba(0,0,0,0.24)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.16)',
     padding: TRACK_PAD,
-    minHeight: 48,
     overflow: 'hidden',
-  },
-  toggleSlider: {
-    position: 'absolute',
-    top: TRACK_PAD,
-    left: TRACK_PAD,
-    bottom: TRACK_PAD,
-    borderRadius: 999,
-    backgroundColor: '#FFFFFF',
-    shadowColor: '#000000',
-    shadowOpacity: 0.22,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 4,
-  },
-  toggleSegments: {
-    flexDirection: 'row',
-    zIndex: 1,
   },
   toggleSegment: {
     flex: 1,
-    flexDirection: 'row',
+    height: SEGMENT_HEIGHT,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 7,
-    paddingVertical: 11,
-    paddingHorizontal: 10,
     borderRadius: 999,
   },
   toggleSegmentPressed: {
     opacity: 0.88,
+  },
+  // Rendered before the label so it always paints behind it, on every platform.
+  segmentPill: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 999,
+    backgroundColor: '#FFFFFF',
+    pointerEvents: 'none',
+  },
+  segmentContent: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    paddingHorizontal: 10,
   },
   toggleText: {
     fontSize: 14,

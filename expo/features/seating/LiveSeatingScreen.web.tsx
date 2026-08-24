@@ -33,8 +33,9 @@ const STATUS_STYLE: Record<
 > = {
   empty: { bar: '#94A3B8', tint: '#F8FAFC', border: 'rgba(15,23,42,0.08)', label: 'ריק' },
   partial: { bar: '#3B82F6', tint: '#EFF6FF', border: 'rgba(59,130,246,0.28)', label: 'חלקי' },
+  near: { bar: '#F59E0B', tint: '#FFFBEB', border: 'rgba(245,158,11,0.38)', label: 'כמעט מלא' },
   full: { bar: '#16A34A', tint: '#ECFDF5', border: 'rgba(22,163,74,0.32)', label: 'מלא' },
-  over: { bar: '#F59E0B', tint: '#FFFBEB', border: 'rgba(245,158,11,0.38)', label: 'מעל תפוסה' },
+  over: { bar: '#DC2626', tint: '#FEF2F2', border: 'rgba(220,38,38,0.4)', label: 'מעל תפוסה' },
 };
 
 function tableLabel(table: Pick<LiveSeatingTable, 'number' | 'name'>) {
@@ -577,7 +578,6 @@ function TableDetailPanel({
               style={styles.bigCounterValueWrap}
             >
               <Text style={[styles.bigCounterValue, { color: palette.bar }]}>{table.livePeople}</Text>
-              {canEdit ? <Ionicons name="create-outline" size={14} color={colors.gray[500]} /> : null}
             </Pressable>
           )}
           <Text style={styles.bigCounterCaption}>

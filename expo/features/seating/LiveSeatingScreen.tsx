@@ -4,11 +4,9 @@ import {
   Alert,
   Animated,
   Easing,
-  FlatList,
   Modal,
   Platform,
   Pressable,
-  RefreshControl,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -16,7 +14,6 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-  useWindowDimensions,
 } from 'react-native';
 import type { LayoutChangeEvent } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -42,16 +39,15 @@ const PALETTE = {
   live: '#FF4D4D',
 } as const;
 
-type LiveView = 'map' | 'list';
-
 const STATUS_STYLE: Record<
   LiveTableStatus,
   { bar: string; tint: string; border: string; label: string }
 > = {
   empty: { bar: '#94A3B8', tint: '#EEF2F7', border: 'rgba(100,116,139,0.28)', label: 'ריק' },
   partial: { bar: '#3B82F6', tint: '#E6F0FF', border: 'rgba(59,130,246,0.38)', label: 'חלקי' },
+  near: { bar: '#F59E0B', tint: '#FEF3C7', border: 'rgba(245,158,11,0.48)', label: 'כמעט מלא' },
   full: { bar: '#16A34A', tint: '#DCFCE7', border: 'rgba(22,163,74,0.42)', label: 'מלא' },
-  over: { bar: '#F59E0B', tint: '#FEF3C7', border: 'rgba(245,158,11,0.48)', label: 'מעל תפוסה' },
+  over: { bar: '#DC2626', tint: '#FEE2E2', border: 'rgba(220,38,38,0.5)', label: 'מעל תפוסה' },
 };
 
 function tableLabel(table: Pick<LiveSeatingTable, 'number' | 'name'>) {
@@ -67,7 +63,6 @@ function signed(value: number) {
 export default function LiveSeatingScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { width: windowWidth } = useWindowDimensions();
   const { eventId, returnTo } = useLocalSearchParams<{ eventId?: string; returnTo?: string }>();
 
   const resolvedEventId = useMemo(() => String(eventId || '').trim(), [eventId]);
@@ -83,10 +78,7 @@ export default function LiveSeatingScreen() {
     loading,
     refreshing,
     error,
-    eventTitle,
     tables,
-    totals,
-    guestsByTable,
     supportsManualEdit,
     savingTableIds,
     refresh,
@@ -95,26 +87,7 @@ export default function LiveSeatingScreen() {
     clearTable,
   } = useLiveSeatingModel(resolvedEventId || null);
 
-  const [query, setQuery] = useState('');
-  const [view, setView] = useState<LiveView>('map');
   const [activeTableId, setActiveTableId] = useState<string | null>(null);
-
-  const columns = windowWidth >= 700 ? 3 : 2;
-
-  const visibleTables = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return tables;
-
-    return tables.filter((table) => {
-      if (String(table.number ?? '').includes(q)) return true;
-      if (String(table.name || '').toLowerCase().includes(q)) return true;
-      if (String(table.area || '').toLowerCase().includes(q)) return true;
-
-      // Searching a guest's name should land on the table they are seated at.
-      const seated = guestsByTable.get(table.id) || [];
-      return seated.some((g) => String(g.name || '').toLowerCase().includes(q));
-    });
-  }, [guestsByTable, query, tables]);
 
   // The map fills whatever the controls leave behind, measured rather than
   // guessed — a guess based on window height is wrong the moment the notice
@@ -183,81 +156,34 @@ export default function LiveSeatingScreen() {
     );
   }
 
-  const controls = (
-    <View style={styles.controlsBlock}>
-      {error ? (
-        <View style={styles.noticeBox}>
-          <Ionicons name="warning-outline" size={16} color="#B45309" />
-          <Text style={styles.noticeText}>{error}</Text>
-        </View>
-      ) : null}
+  const notices =
+    error || !supportsManualEdit ? (
+      <View style={styles.controlsBlock}>
+        {error ? (
+          <View style={styles.noticeBox}>
+            <Ionicons name="warning-outline" size={16} color="#B45309" />
+            <Text style={styles.noticeText}>{error}</Text>
+          </View>
+        ) : null}
 
-      {!supportsManualEdit ? (
-        <View style={styles.noticeBox}>
-          <Ionicons name="information-circle-outline" size={16} color="#B45309" />
-          <Text style={styles.noticeText}>
-            עדכון ידני של כמות היושבים לא זמין — יש להריץ את מיגרציית מפת הלייב במסד הנתונים.
-          </Text>
-        </View>
-      ) : null}
-
-      <View style={styles.controlsRow}>
-        <View style={styles.searchWrap}>
-          <Ionicons name="search" size={17} color={colors.gray[500]} />
-          <TextInput
-            value={query}
-            onChangeText={setQuery}
-            placeholder="חיפוש שולחן או שם אורח"
-            placeholderTextColor={colors.gray[500]}
-            style={styles.searchInput}
-            returnKeyType="search"
-          />
-          {query ? (
-            <TouchableOpacity onPress={() => setQuery('')} hitSlop={10} accessibilityLabel="ניקוי חיפוש">
-              <Ionicons name="close-circle" size={17} color={colors.gray[500]} />
-            </TouchableOpacity>
-          ) : null}
-        </View>
-
-        <View style={styles.viewToggle}>
-          {(['map', 'list'] as const).map((key) => {
-            const active = view === key;
-            return (
-              <TouchableOpacity
-                key={key}
-                onPress={() => setView(key)}
-                style={[styles.viewToggleBtn, active && styles.viewToggleBtnActive]}
-                activeOpacity={0.85}
-                accessibilityRole="button"
-                accessibilityLabel={key === 'map' ? 'תצוגת מפה' : 'תצוגת רשימה'}
-                accessibilityState={{ selected: active }}
-              >
-                <Ionicons
-                  name={key === 'map' ? 'map' : 'list'}
-                  size={17}
-                  color={active ? colors.white : 'rgba(6,23,62,0.45)'}
-                />
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+        {!supportsManualEdit ? (
+          <View style={styles.noticeBox}>
+            <Ionicons name="information-circle-outline" size={16} color="#B45309" />
+            <Text style={styles.noticeText}>
+              עדכון ידני של כמות היושבים לא זמין — יש להריץ את מיגרציית מפת הלייב במסד הנתונים.
+            </Text>
+          </View>
+        ) : null}
       </View>
-    </View>
-  );
+    ) : null;
 
   const emptyBlock = (
     <View style={styles.emptyBox}>
       <View style={styles.emptyIconWrap}>
         <Ionicons name="grid-outline" size={30} color="rgba(6,23,62,0.35)" />
       </View>
-      <Text style={styles.emptyTitle}>
-        {tables.length ? 'אין שולחנות שתואמים לחיפוש' : 'אין שולחנות באירוע'}
-      </Text>
-      <Text style={styles.emptyText}>
-        {tables.length
-          ? 'נסו לשנות את החיפוש'
-          : 'יש לבנות את מפת ההושבה לפני שימוש במפת הלייב'}
-      </Text>
+      <Text style={styles.emptyTitle}>אין שולחנות באירוע</Text>
+      <Text style={styles.emptyText}>יש לבנות את מפת ההושבה לפני שימוש במפת הלייב</Text>
     </View>
   );
 
@@ -312,7 +238,7 @@ export default function LiveSeatingScreen() {
         </View>
 
         <View style={styles.sheet}>
-          {controls}
+          {notices}
 
           <View style={styles.body} onLayout={onBodyLayout}>
             {loading && !tables.length ? (
@@ -320,38 +246,11 @@ export default function LiveSeatingScreen() {
                 <ActivityIndicator size="large" color={PALETTE.ink} />
                 <Text style={styles.loadingText}>טוען את מפת הלייב...</Text>
               </View>
-            ) : visibleTables.length === 0 ? (
+            ) : tables.length === 0 ? (
               emptyBlock
-            ) : view === 'list' ? (
-              <FlatList
-                data={visibleTables}
-                key={`live-cols-${columns}`}
-                numColumns={columns}
-                keyExtractor={(item) => item.id}
-                columnWrapperStyle={styles.gridRow}
-                contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 110 }]}
-                showsVerticalScrollIndicator={false}
-                refreshControl={
-                  <RefreshControl
-                    refreshing={refreshing}
-                    onRefresh={() => void refresh({ silent: true })}
-                    tintColor={PALETTE.ink}
-                  />
-                }
-                renderItem={({ item }) => (
-                  <TableCard
-                    table={item}
-                    columns={columns}
-                    saving={savingTableIds.has(item.id)}
-                    canEdit={supportsManualEdit}
-                    onOpen={() => setActiveTableId(item.id)}
-                    onAdjust={(delta) => void handleAdjust(item.id, delta)}
-                  />
-                )}
-              />
             ) : mapViewport ? (
               <LiveMapCanvas
-                tables={visibleTables}
+                tables={tables}
                 viewport={mapViewport}
                 selectedId={activeTableId}
                 onSelectTable={setActiveTableId}
@@ -406,85 +305,6 @@ function LiveDot() {
     <View style={styles.liveDotWrap}>
       <Animated.View style={[styles.liveDotRing, ringStyle]} />
       <View style={styles.liveDot} />
-    </View>
-  );
-}
-
-function TableCard({
-  table,
-  columns,
-  saving,
-  canEdit,
-  onOpen,
-  onAdjust,
-}: {
-  table: LiveSeatingTable;
-  columns: number;
-  saving: boolean;
-  canEdit: boolean;
-  onOpen: () => void;
-  onAdjust: (delta: number) => void;
-}) {
-  const palette = STATUS_STYLE[table.status];
-  const fill = table.capacity > 0 ? Math.min(1, table.livePeople / table.capacity) : 0;
-
-  return (
-    <View style={[styles.card, { maxWidth: `${100 / columns}%` }]}>
-      <View style={styles.cardInner}>
-        <Pressable
-          onPress={onOpen}
-          style={({ pressed }) => [styles.cardHeadArea, pressed && { opacity: 0.86 }]}
-          accessibilityRole="button"
-          accessibilityLabel={`${tableLabel(table)}, ${table.livePeople} מתוך ${table.capacity} יושבים`}
-        >
-          <View style={styles.cardTopRow}>
-            <Text style={styles.cardTitle} numberOfLines={1}>
-              {tableLabel(table)}
-            </Text>
-            <View style={[styles.cardStatusDot, { backgroundColor: palette.bar }]} />
-          </View>
-
-          <View style={styles.cardCountRow}>
-            <Text style={[styles.cardCount, { color: palette.bar }]}>{table.livePeople}</Text>
-            <Text style={styles.cardCapacity}>{`/ ${table.capacity}`}</Text>
-            {table.manualExtra !== 0 ? (
-              <View style={styles.manualBadge}>
-                <Text style={styles.manualBadgeText}>{signed(table.manualExtra)}</Text>
-              </View>
-            ) : null}
-          </View>
-
-          <View style={styles.progressTrack}>
-            <View style={[styles.progressFill, { width: `${fill * 100}%`, backgroundColor: palette.bar }]} />
-          </View>
-
-          <Text style={styles.cardMeta} numberOfLines={1}>
-            {table.status === 'over'
-              ? `${table.livePeople - table.capacity} מעל התפוסה`
-              : `${table.freeSeats} מקומות פנויים`}
-          </Text>
-        </Pressable>
-
-        <View style={styles.stepperRow}>
-          <StepperButton
-            icon="remove"
-            disabled={!canEdit || saving || table.livePeople <= 0}
-            onPress={() => onAdjust(-1)}
-            accessibilityLabel={`הפחתת יושב אחד מ${tableLabel(table)}`}
-          />
-          {saving ? (
-            <ActivityIndicator size="small" color={colors.gray[600]} style={styles.stepperSpinner} />
-          ) : (
-            <Text style={styles.stepperHint}>יושבים</Text>
-          )}
-          <StepperButton
-            icon="add"
-            disabled={!canEdit || saving}
-            onPress={() => onAdjust(1)}
-            accessibilityLabel={`הוספת יושב אחד ל${tableLabel(table)}`}
-          />
-        </View>
-      </View>
     </View>
   );
 }
@@ -610,9 +430,6 @@ function TableDetailModal({
                         <Text style={[styles.bigCounterValue, { color: palette.bar }]}>
                           {table.livePeople}
                         </Text>
-                        {canEdit ? (
-                          <Ionicons name="create-outline" size={14} color="rgba(6,23,62,0.32)" />
-                        ) : null}
                       </TouchableOpacity>
                     )}
                     <Text style={styles.bigCounterCaption}>
@@ -728,7 +545,9 @@ const styles = StyleSheet.create({
   screenRoot: { flex: 1, backgroundColor: PALETTE.sheet },
 
   // ----- Slim top bar -----
-  topBar: { position: 'relative', paddingHorizontal: 12, paddingBottom: 14, overflow: 'hidden' },
+  // Enough bottom padding that the sheet's rounded overlap stays clear of the
+  // back/refresh buttons.
+  topBar: { position: 'relative', paddingHorizontal: 12, paddingBottom: 30, overflow: 'hidden' },
   topBarRow: { flexDirection: ROW_DIR, alignItems: 'center', gap: 10 },
   topIconBtn: {
     width: 38,
@@ -744,9 +563,8 @@ const styles = StyleSheet.create({
   topTitleRow: { flexDirection: ROW_DIR, alignItems: 'center', gap: 7 },
   topTitle: { fontSize: 17, fontWeight: '900', color: colors.white },
 
-  // The map/list fills whatever the controls leave behind.
-  body: { flex: 1, paddingHorizontal: 12 },
-  listContent: { paddingTop: 2 },
+  // The map fills the whole sheet.
+  body: { flex: 1, paddingHorizontal: 12, paddingTop: 12 },
   center: {
     flex: 1,
     backgroundColor: PALETTE.sheet,
@@ -778,9 +596,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 30,
     overflow: 'hidden',
   },
-  gridRow: { flexDirection: ROW_DIR },
-
-  controlsBlock: { gap: 12, paddingTop: 14, paddingHorizontal: 12, paddingBottom: 12 },
+  controlsBlock: { gap: 12, paddingTop: 14, paddingHorizontal: 12 },
   noticeBox: {
     flexDirection: ROW_DIR,
     alignItems: 'center',
@@ -794,80 +610,6 @@ const styles = StyleSheet.create({
   },
   noticeText: { flex: 1, fontSize: 12, fontWeight: '700', color: '#92400E', textAlign: TEXT_RIGHT },
 
-  controlsRow: { flexDirection: ROW_DIR, alignItems: 'center', gap: 8 },
-  searchWrap: {
-    flex: 1,
-    flexDirection: ROW_DIR,
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: colors.white,
-    borderRadius: 15,
-    borderWidth: 1,
-    borderColor: 'rgba(6,23,62,0.07)',
-    paddingHorizontal: 13,
-    height: 46,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: '700',
-    color: PALETTE.ink,
-    textAlign: TEXT_RIGHT,
-    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : null),
-  },
-  viewToggle: {
-    flexDirection: ROW_DIR,
-    backgroundColor: colors.white,
-    borderRadius: 15,
-    borderWidth: 1,
-    borderColor: 'rgba(6,23,62,0.07)',
-    padding: 3,
-    gap: 3,
-  },
-  viewToggleBtn: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  viewToggleBtnActive: { backgroundColor: PALETTE.ink },
-
-  // ----- Map -----
-
-
-  // ----- List cards -----
-  card: { flex: 1, padding: 5 },
-  cardInner: {
-    borderRadius: 20,
-    backgroundColor: colors.white,
-    borderWidth: 1,
-    borderColor: 'rgba(6,23,62,0.06)',
-    padding: 13,
-    gap: 11,
-    shadowColor: PALETTE.ink,
-    shadowOpacity: 0.04,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 1,
-  },
-  cardHeadArea: { gap: 8 },
-  cardTopRow: { flexDirection: ROW_DIR, alignItems: 'center', justifyContent: 'space-between', gap: 6 },
-  cardTitle: { flex: 1, fontSize: 13, fontWeight: '900', color: PALETTE.ink, textAlign: TEXT_RIGHT },
-  cardStatusDot: { width: 9, height: 9, borderRadius: 5 },
-  manualBadge: {
-    backgroundColor: 'rgba(245,158,11,0.14)',
-    borderRadius: 999,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-  },
-  manualBadgeText: { fontSize: 10.5, fontWeight: '900', color: '#B45309' },
-
-  cardCountRow: { flexDirection: ROW_DIR, alignItems: 'baseline', gap: 5 },
-  cardCount: { fontSize: 28, fontWeight: '900', lineHeight: 32 },
-  cardCapacity: { fontSize: 13.5, fontWeight: '800', color: 'rgba(6,23,62,0.45)' },
-
-  progressTrack: { height: 6, borderRadius: 999, backgroundColor: 'rgba(6,23,62,0.07)', overflow: 'hidden' },
-  progressFill: { height: '100%', borderRadius: 999 },
-  cardMeta: { fontSize: 11, fontWeight: '700', color: 'rgba(6,23,62,0.45)', textAlign: TEXT_RIGHT },
-
-  stepperRow: { flexDirection: ROW_DIR, alignItems: 'center', justifyContent: 'space-between' },
-  stepperHint: { fontSize: 11, fontWeight: '800', color: 'rgba(6,23,62,0.32)' },
-  stepperSpinner: { width: 34 },
   stepperBtn: {
     width: 36,
     height: 36,
