@@ -10,8 +10,8 @@ module.exports = {
   expo: {
     name: "Moon",
     slug: "euroe-nitgmal-eiroom-mekapim",
-    version: "1.0.8",
-    runtimeVersion: "1.0.8",
+    version: "1.0.9",
+    runtimeVersion: "1.0.9",
     updates: {
       url: "https://u.expo.dev/292e2bf1-e784-4c87-9375-36040694dec9",
       // Never block startup on (or instantly apply) an OTA update.

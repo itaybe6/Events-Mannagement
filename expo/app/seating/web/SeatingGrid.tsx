@@ -43,7 +43,15 @@ type EditState =
 
 type ActiveEditState = NonNullable<EditState>;
 
-export function SeatingGrid({ api, fitToGrid = false }: { api: UseSeatingStateApi; fitToGrid?: boolean }) {
+export function SeatingGrid({
+  api,
+  fitToGrid = false,
+  onDeleteSelected,
+}: {
+  api: UseSeatingStateApi;
+  fitToGrid?: boolean;
+  onDeleteSelected?: () => void;
+}) {
   const isWeb = Platform.OS === 'web';
   const contentRect = useMemo(() => {
     if (fitToGrid) {
@@ -454,7 +462,7 @@ export function SeatingGrid({ api, fitToGrid = false }: { api: UseSeatingStateAp
       const key = e?.key;
       if (key === 'Delete' || key === 'Backspace') {
         if (api.selectedIds.size) {
-          api.removeSelected();
+          (onDeleteSelected ?? api.removeSelected)();
           e?.preventDefault?.();
         }
       }
@@ -462,7 +470,7 @@ export function SeatingGrid({ api, fitToGrid = false }: { api: UseSeatingStateAp
         setEdit(null);
       }
     },
-    [api]
+    [api, onDeleteSelected]
   );
 
   const startResize = useCallback(

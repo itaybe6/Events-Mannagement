@@ -10,6 +10,7 @@ import {
   Pressable,
   SafeAreaView,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -30,6 +31,7 @@ import AppHeader from "@/components/AppHeader";
 import { guestArrivedPeople, guestInvitedPeople, useGuestCheckInModel } from "@/features/guests/useGuestCheckInModel";
 import { TableNumberFilter } from "@/features/guests/TableNumberFilter";
 import { useSeatingMapModel } from "@/features/seating/useSeatingMapModel";
+import { eventService } from "@/lib/services/eventService";
 import { supabase } from "@/lib/supabase";
 import { ALIGN_RIGHT, ROW_DIR, ROW_REVERSE_DIR } from "@/lib/rtl";
 import type { Guest } from "@/types";
@@ -329,6 +331,7 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
     searching,
     listHint,
     guests,
+    categories,
     filteredGuests,
     query,
     setQuery,
@@ -634,6 +637,7 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
   const [addTableId, setAddTableId] = useState<string | null>(null);
   const [addTablePickerExpanded, setAddTablePickerExpanded] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
+  const [exportingExcel, setExportingExcel] = useState(false);
 
   const tableOptions = useMemo(() => {
     const sorted = [...mapTables].sort((a, b) => {
@@ -690,6 +694,60 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
     setAddTablePickerExpanded(!focused);
     setAddOpen(true);
   }, [tableFilterId]);
+
+  const handleExportArrivedExcel = useCallback(async () => {
+    if (exportingExcel) return;
+    const arrived = guests.filter((g) => Boolean(g.checkedIn));
+    if (!arrived.length) {
+      Alert.alert("אין אורחים לייצוא", "עדיין אין מוזמנים שסומנו כהגיעו לאולם.");
+      return;
+    }
+
+    setExportingExcel(true);
+    try {
+      let eventTitle = "אירוע";
+      if (resolvedEventId) {
+        try {
+          const ev = await eventService.getEventLite(resolvedEventId);
+          if (ev?.title) eventTitle = String(ev.title).trim() || eventTitle;
+        } catch {
+          // Filename can fall back to a generic title.
+        }
+      }
+
+      const tables = mapTables.map((t) => ({
+        id: String(t.id),
+        number: typeof t.number === "number" ? t.number : null,
+        name: t.name,
+        capacity: t.capacity,
+      }));
+
+      if (Platform.OS === "web") {
+        const { exportCheckInGuestsToExcel } = await import("@/lib/exportCheckInGuestsExcel");
+        exportCheckInGuestsToExcel(guests, { eventTitle, categories, tables });
+        return;
+      }
+
+      const { buildCheckInGuestsCsv } = await import("@/lib/exportCheckInGuestsExcel");
+      const { csv, fileName } = buildCheckInGuestsCsv(guests, { eventTitle, categories, tables });
+      try {
+        await Share.share({ title: fileName, message: csv });
+      } catch (shareError) {
+        const msg = String((shareError as any)?.message ?? "");
+        if (/cancel|dismiss/i.test(msg)) return;
+        throw shareError;
+      }
+    } catch (e) {
+      console.error("Export check-in Excel error:", e);
+      const message =
+        e instanceof Error && e.message === "אין אורחים שהגיעו לייצוא"
+          ? "עדיין אין מוזמנים שסומנו כהגיעו לאולם."
+          : "אירעה תקלה בייצוא לאקסל. נסו שוב.";
+      Alert.alert("שגיאה", message);
+    } finally {
+      setExportingExcel(false);
+    }
+  }, [categories, exportingExcel, guests, mapTables, resolvedEventId]);
 
   const closeAddSheet = useCallback(() => {
     setAddOpen(false);
@@ -963,6 +1021,20 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                 </TouchableOpacity>
                 <Text style={styles.screenTitle}>צ׳ק-אין אורחים</Text>
                 <TouchableOpacity
+                  onPress={() => void handleExportArrivedExcel()}
+                  style={styles.backButton}
+                  activeOpacity={0.86}
+                  disabled={exportingExcel}
+                  accessibilityRole="button"
+                  accessibilityLabel="ייצוא אקסל של אורחים שהגיעו"
+                >
+                  {exportingExcel ? (
+                    <ActivityIndicator size={16} color={colors.primary} />
+                  ) : (
+                    <Ionicons name="download-outline" size={20} color={colors.primary} />
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity
                   onPress={openLiveMap}
                   style={styles.liveMapBtn}
                   activeOpacity={0.86}
@@ -999,6 +1071,21 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
             </View>
 
             <View style={styles.topActions}>
+              <TouchableOpacity
+                onPress={() => void handleExportArrivedExcel()}
+                style={styles.topIconBtn}
+                activeOpacity={0.85}
+                disabled={exportingExcel}
+                accessibilityRole="button"
+                accessibilityLabel="ייצוא אקסל של אורחים שהגיעו"
+              >
+                {exportingExcel ? (
+                  <ActivityIndicator size={18} color={colors.primary} />
+                ) : (
+                  <Ionicons name="download-outline" size={20} color={colors.primary} />
+                )}
+              </TouchableOpacity>
+
               <TouchableOpacity
                 onPress={openLiveMap}
                 style={styles.topIconBtn}
@@ -1097,6 +1184,21 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                 >
                   <Ionicons name="person-add" size={18} color={colors.white} />
                   <Text style={styles.addGuestBtnText}>הוסף מוזמן שלא ברשימה</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => void handleExportArrivedExcel()}
+                  style={styles.exportExcelBtn}
+                  activeOpacity={0.9}
+                  disabled={exportingExcel}
+                  accessibilityRole="button"
+                  accessibilityLabel="ייצוא אקסל של אורחים שהגיעו"
+                >
+                  {exportingExcel ? (
+                    <ActivityIndicator size={18} color={colors.primary} />
+                  ) : (
+                    <Ionicons name="download-outline" size={18} color={colors.primary} />
+                  )}
+                  <Text style={styles.exportExcelBtnText}>{exportingExcel ? "מייצא…" : "ייצוא אקסל"}</Text>
                 </TouchableOpacity>
 
                 {/* Categories */}
@@ -1459,6 +1561,20 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                 accessibilityLabel="הוספת מוזמן שלא נמצא ברשימה"
               >
                 <Ionicons name="person-add" size={22} color={colors.white} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => void handleExportArrivedExcel()}
+                style={styles.exportExcelIconBtn}
+                activeOpacity={0.9}
+                disabled={exportingExcel}
+                accessibilityRole="button"
+                accessibilityLabel="ייצוא אקסל של אורחים שהגיעו"
+              >
+                {exportingExcel ? (
+                  <ActivityIndicator size={18} color={colors.primary} />
+                ) : (
+                  <Ionicons name="download-outline" size={22} color={colors.primary} />
+                )}
               </TouchableOpacity>
             </View>
             <TableNumberFilter
@@ -2165,6 +2281,16 @@ const styles = StyleSheet.create({
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 8 },
     elevation: 4,
+  },
+  exportExcelIconBtn: {
+    width: 54,
+    height: 54,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: "rgba(6,23,62,0.16)",
   },
 
   filtersRow: {
@@ -2942,6 +3068,20 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   addGuestBtnText: { fontSize: 14, fontWeight: "900", color: colors.white, textAlign: "center" },
+  exportExcelBtn: {
+    marginTop: 8,
+    minHeight: 50,
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    flexDirection: ROW_DIR,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: "rgba(6,23,62,0.16)",
+  },
+  exportExcelBtnText: { fontSize: 14, fontWeight: "900", color: colors.primary, textAlign: "center" },
 
   addSheetScroll: { flexGrow: 0, flexShrink: 1 },
   formField: { gap: 8 },

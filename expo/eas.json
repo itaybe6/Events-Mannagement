@@ -21,11 +21,15 @@
       }
     }
   },
-    "submit": {
-      "production": {
-        "ios": {
-          "ascAppId": "6760226644"
-        }
+  "submit": {
+    "production": {
+      "ios": {
+        "ascAppId": "6760226644"
+      },
+      "android": {
+        "track": "production",
+        "releaseStatus": "draft"
       }
     }
   }
+}

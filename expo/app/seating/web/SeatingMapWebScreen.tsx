@@ -9,7 +9,8 @@ import AdminWebPageHeader from '@/components/desktop/AdminWebPageHeader';
 import { SeatingGrid } from './SeatingGrid';
 import { TableSidebar } from './TableSidebar';
 import { useSeatingState } from './_useSeatingState';
-import { CELL_SIZE, DEFAULT_GRID_COLS, DEFAULT_GRID_ROWS, tableCellSize, type TableConfig, type PlacedTable, type Zone, type TextLabel } from './_types';
+import { attachDbIdsToTables, findDuplicateTableNumbers, syncEventTables } from './_syncEventTables';
+import { CELL_SIZE, DEFAULT_GRID_COLS, DEFAULT_GRID_ROWS, tableCellSize, type TableConfig, type PlacedTable } from './_types';
 
 type SeatingMapsRow = {
   event_id: string;
@@ -57,6 +58,7 @@ export default function SeatingMapWebScreen() {
   const [saving, setSaving] = useState(false);
   const [existingRow, setExistingRow] = useState<SeatingMapsRow | null>(null);
   const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
+  const [occupiedByDbId, setOccupiedByDbId] = useState<Record<string, number>>({});
 
   type Snap = {
     gridCols: number;
@@ -81,6 +83,7 @@ export default function SeatingMapWebScreen() {
         gridX: t.gridX,
         gridY: t.gridY,
         number: t.number,
+        dbId: t.dbId || undefined,
       })),
       zones: [...(s.zones || [])].sort(byId).map(z => ({
         id: z.id,
@@ -128,16 +131,28 @@ export default function SeatingMapWebScreen() {
       }
       setLoading(true);
       try {
-        const { data, error } = await supabase
-          .from('seating_maps')
-          .select('*')
-          .eq('event_id', eventId)
-          .maybeSingle();
+        const [mapRes, tablesRes, guestsRes] = await Promise.all([
+          supabase.from('seating_maps').select('*').eq('event_id', eventId).maybeSingle(),
+          supabase.from('tables').select('id,number,name,capacity').eq('event_id', eventId),
+          supabase.from('guests').select('table_id,number_of_people').eq('event_id', eventId),
+        ]);
 
         if (!active) return;
-        if (error) throw error;
+        if (mapRes.error) throw mapRes.error;
+        if (tablesRes.error) throw tablesRes.error;
 
-        const row = (data as any) as SeatingMapsRow | null;
+        const dbTables = ((tablesRes.data as any[]) || []).filter(Boolean);
+        const occupied: Record<string, number> = {};
+        if (!guestsRes.error) {
+          for (const guest of (guestsRes.data as any[]) || []) {
+            const tid = String(guest?.table_id || '').trim();
+            if (!tid) continue;
+            occupied[tid] = (occupied[tid] || 0) + (Number(guest?.number_of_people) || 1);
+          }
+        }
+        setOccupiedByDbId(occupied);
+
+        const row = (mapRes.data as any) as SeatingMapsRow | null;
         setExistingRow(row);
 
         const webV2 = getWebV2FromAnnotations(row?.annotations);
@@ -146,10 +161,11 @@ export default function SeatingMapWebScreen() {
             typeof webV2?.grid?.cols === 'number' && webV2.grid.cols > 0 ? Math.round(webV2.grid.cols) : DEFAULT_GRID_COLS;
           const rows =
             typeof webV2?.grid?.rows === 'number' && webV2.grid.rows > 0 ? Math.round(webV2.grid.rows) : DEFAULT_GRID_ROWS;
+          const tables = attachDbIdsToTables(Array.isArray(webV2.tables) ? webV2.tables : [], dbTables);
           const snap = toSnapshot({
             gridCols: cols,
             gridRows: rows,
-            tables: Array.isArray(webV2.tables) ? webV2.tables : [],
+            tables,
             zones: Array.isArray(webV2.zones) ? webV2.zones : [],
             labels: Array.isArray(webV2.labels) ? webV2.labels : [],
             tableCounter: typeof webV2.tableCounter === 'number' ? webV2.tableCounter : 1,
@@ -158,7 +174,7 @@ export default function SeatingMapWebScreen() {
           api.hydrate({
             gridCols: cols,
             gridRows: rows,
-            tables: Array.isArray(webV2.tables) ? webV2.tables : [],
+            tables,
             zones: Array.isArray(webV2.zones) ? webV2.zones : [],
             labels: Array.isArray(webV2.labels) ? webV2.labels : [],
             tableCounter: typeof webV2.tableCounter === 'number' ? webV2.tableCounter : 1,
@@ -167,23 +183,26 @@ export default function SeatingMapWebScreen() {
         } else if (Array.isArray(row?.tables) && row?.tables.length) {
           // Fallback: convert legacy pixel tables into grid cells (scale ~40px per cell)
           const legacy = row.tables as any[];
-          const tables: PlacedTable[] = legacy
-            .filter(Boolean)
-            .map((t: any, idx: number) => {
-              const type = t.isReserve ? 'reserve' : t.isKnight ? 'knight' : 'regular';
-              const num = typeof t.id === 'number' ? t.id : idx + 1;
-              const gridX = Math.round((Number(t.x) || 0) / 40);
-              const gridY = Math.round((Number(t.y) || 0) / 40);
-              return {
-                id: `table-legacy-${num}`,
-                type,
-                seats: Number(t.seats) || (type === 'knight' ? 20 : 12),
-                orientation: 'row',
-                gridX,
-                gridY,
-                number: num,
-              } as PlacedTable;
-            });
+          const tables: PlacedTable[] = attachDbIdsToTables(
+            legacy
+              .filter(Boolean)
+              .map((t: any, idx: number) => {
+                const type = t.isReserve ? 'reserve' : t.isKnight ? 'knight' : 'regular';
+                const num = typeof t.id === 'number' ? t.id : idx + 1;
+                const gridX = Math.round((Number(t.x) || 0) / 40);
+                const gridY = Math.round((Number(t.y) || 0) / 40);
+                return {
+                  id: `table-legacy-${num}`,
+                  type,
+                  seats: Number(t.seats) || (type === 'knight' ? 20 : 12),
+                  orientation: 'row',
+                  gridX,
+                  gridY,
+                  number: num,
+                } as PlacedTable;
+              }),
+            dbTables
+          );
 
           const maxNum = tables.reduce((m, t) => Math.max(m, t.number || 0), 0);
           // Ensure grid is large enough to contain legacy content (plus padding)
@@ -282,8 +301,44 @@ export default function SeatingMapWebScreen() {
 
   const onDeleteSelected = useCallback(() => {
     if (!api.selectedIds.size) return;
+    const seatedCount = api.tables.reduce((sum, table) => {
+      if (!api.selectedIds.has(table.id) || !table.dbId) return sum;
+      return sum + (occupiedByDbId[table.dbId] || 0);
+    }, 0);
+    if (seatedCount > 0) {
+      Alert.alert(
+        'מחיקת שולחן',
+        `בשולחנות שנבחרו יש ${seatedCount} מוזמנים משובצים. המחיקה תוריד אותם מהשולחן.`,
+        [
+          { text: 'ביטול', style: 'cancel' },
+          { text: 'מחק', style: 'destructive', onPress: () => api.removeSelected() },
+        ]
+      );
+      return;
+    }
     api.removeSelected();
-  }, [api]);
+  }, [api, occupiedByDbId]);
+
+  const selectedTable = useMemo(() => {
+    if (api.selectedIds.size !== 1) return null;
+    const id = Array.from(api.selectedIds)[0];
+    return api.tables.find((t) => t.id === id) ?? null;
+  }, [api.selectedIds, api.tables]);
+
+  const selectedOccupied = selectedTable?.dbId ? occupiedByDbId[selectedTable.dbId] ?? 0 : 0;
+
+  const onUpdateSelectedTable = useCallback(
+    (patch: Partial<Pick<PlacedTable, 'number' | 'seats' | 'type' | 'orientation'>>) => {
+      if (!selectedTable) return;
+      const nextSeats = patch.seats ?? selectedTable.seats;
+      const nextType = patch.type ?? selectedTable.type;
+      const nextOrientation = patch.orientation ?? selectedTable.orientation;
+      const sz = tableCellSize(nextType, nextSeats, nextOrientation);
+      ensureGridMin(selectedTable.gridX + sz.w + 6, selectedTable.gridY + sz.h + 6);
+      api.updateTable(selectedTable.id, patch);
+    },
+    [api, ensureGridMin, selectedTable]
+  );
 
   const saveMap = useCallback(async (pendingGrid?: { cols: number; rows: number }) => {
     if (!eventId) {
@@ -299,11 +354,23 @@ export default function SeatingMapWebScreen() {
         api.setGrid(cols, rows);
       }
 
+      const duplicates = findDuplicateTableNumbers(api.tables);
+      if (duplicates.length) {
+        Alert.alert('מספר שולחן כפול', `אי אפשר לשמור: המספרים ${duplicates.join(', ')} מופיעים יותר מפעם אחת.`);
+        return false;
+      }
+
+      const dbIdsByCanvasId = await syncEventTables(eventId, api.tables);
+      const tablesWithIds = api.tables.map((t) => ({
+        ...t,
+        dbId: dbIdsByCanvasId[t.id] ?? t.dbId,
+      }));
+
       const webV2 = {
         type: 'web_v2',
         version: 2,
         grid: { cols, rows, cellSize: CELL_SIZE },
-        tables: api.tables,
+        tables: tablesWithIds,
         zones: api.zones,
         labels: api.labels,
         tableCounter: api.tableCounter,
@@ -313,9 +380,9 @@ export default function SeatingMapWebScreen() {
       const prevAnnotations = existingRow?.annotations;
       const nextAnnotations = mergeWebV2IntoAnnotations(prevAnnotations, webV2);
 
-      // Compatibility layer: also write legacy seating_maps.tables + public.tables records
-      // so the rest of the app keeps working (mobile/other screens).
-      const legacyTables = api.tables.map((t, idx) => {
+      // Compatibility layer: also write legacy seating_maps.tables
+      // so older mobile/viewers keep working.
+      const legacyTables = tablesWithIds.map((t, idx) => {
         const num = typeof t.number === 'number' ? t.number : idx + 1;
         const isKnight = t.type === 'knight';
         const isReserve = t.type === 'reserve';
@@ -329,7 +396,6 @@ export default function SeatingMapWebScreen() {
           isReserve,
           rotation: 0,
           seats: t.seats,
-          seated_guests: 0,
         };
       });
 
@@ -349,35 +415,23 @@ export default function SeatingMapWebScreen() {
         );
       if (seatingMapError && (seatingMapError as any).code !== 'PGRST205') throw seatingMapError;
 
-      // Replace public.tables records (idempotent)
-      const { error: deleteError } = await supabase.from('tables').delete().eq('event_id', eventId);
-      if (deleteError) throw deleteError;
-
-      const tableRecords = legacyTables.map((t) => {
-        const shape = t.isKnight ? 'rectangle' : t.isReserve ? 'reserve' : 'square';
-        return {
-          event_id: eventId,
-          number: t.id,
-          capacity: t.seats,
-          shape,
-          name: `שולחן ${t.id}`,
-          x: t.x,
-          y: t.y,
-          seated_guests: 0,
-        };
-      });
-      if (tableRecords.length) {
-        const { error: insertError } = await supabase.from('tables').insert(tableRecords);
-        if (insertError) throw insertError;
-      }
-
-      Alert.alert('נשמר', 'מפת ההושבה נשמרה בהצלחה');
+      api.setTableDbIds(dbIdsByCanvasId);
+      setExistingRow((prev) => ({
+        ...(prev || { event_id: eventId }),
+        event_id: eventId,
+        num_tables: legacyTables.length,
+        tables: legacyTables,
+        annotations: nextAnnotations,
+        map_cols: cols,
+        map_rows: rows,
+      }));
+      Alert.alert('נשמר', 'מפת ההושבה נשמרה. שיבוץ המוזמנים לשולחנות הקיימים נשמר.');
       setSavedSnapshot(
         toSnapshot({
           gridCols: cols,
           gridRows: rows,
           tableCounter: api.tableCounter,
-          tables: api.tables,
+          tables: tablesWithIds,
           zones: api.zones,
           labels: api.labels,
         })
@@ -385,7 +439,8 @@ export default function SeatingMapWebScreen() {
       return true;
     } catch (e) {
       console.error('SeatingMapWeb save error:', e);
-      Alert.alert('שגיאה', 'לא ניתן לשמור את המפה');
+      const message = e instanceof Error && e.message ? e.message : 'לא ניתן לשמור את המפה';
+      Alert.alert('שגיאה', message);
       return false;
     } finally {
       setSaving(false);
@@ -555,6 +610,17 @@ export default function SeatingMapWebScreen() {
           gridCols={api.gridCols}
           gridRows={api.gridRows}
           nextTableNumber={api.tableCounter}
+          selectedTable={selectedTable}
+          selectedOccupied={selectedOccupied}
+          usedNumbers={
+            new Set(
+              api.tables
+                .filter((t) => t.id !== selectedTable?.id)
+                .map((t) => t.number)
+                .filter((n): n is number => typeof n === 'number')
+            )
+          }
+          onUpdateSelectedTable={onUpdateSelectedTable}
           onSetGrid={(cols, rows) => {
             api.setGrid(cols, rows);
           }}
@@ -578,7 +644,7 @@ export default function SeatingMapWebScreen() {
           </View>
 
           <View style={styles.canvas}>
-            <SeatingGrid api={api} fitToGrid />
+            <SeatingGrid api={api} fitToGrid onDeleteSelected={onDeleteSelected} />
           </View>
         </View>
       </View>

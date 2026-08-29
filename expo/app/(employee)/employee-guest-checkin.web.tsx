@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Platform,
   Pressable,
   ScrollView,
@@ -16,6 +17,7 @@ import { useLocalSearchParams, usePathname, useRouter } from 'expo-router';
 import { colors } from '@/constants/colors';
 import { useGuestCheckInModel } from '@/features/guests/useGuestCheckInModel';
 import { TableNumberFilter } from '@/features/guests/TableNumberFilter';
+import { eventService } from '@/lib/services/eventService';
 import { tableService } from '@/lib/services/tableService';
 import { supabase } from '@/lib/supabase';
 import { SeatingGridReadonly } from '../seating/web/SeatingGridReadonly';
@@ -254,6 +256,7 @@ function EmployeeGuestCheckinWebDesktopScreen() {
     searching,
     listHint,
     guests,
+    categories,
     filteredGuests,
     counts,
     query,
@@ -291,6 +294,7 @@ function EmployeeGuestCheckinWebDesktopScreen() {
     };
   }, []);
 
+  const [exportingExcel, setExportingExcel] = useState(false);
   const [moveGuest, setMoveGuest] = useState<Guest | null>(null);
   const [moveTableQuery, setMoveTableQuery] = useState('');
   const [moveSelectedTableId, setMoveSelectedTableId] = useState<string | null>(null);
@@ -374,6 +378,49 @@ function EmployeeGuestCheckinWebDesktopScreen() {
     void refresh();
     void loadTables();
   }, [refresh, loadTables]);
+
+  const handleExportArrivedExcel = useCallback(async () => {
+    if (exportingExcel) return;
+    const arrived = guests.filter((g) => Boolean(g.checkedIn));
+    if (!arrived.length) {
+      Alert.alert('אין אורחים לייצוא', 'עדיין אין מוזמנים שסומנו כהגיעו לאולם.');
+      return;
+    }
+
+    setExportingExcel(true);
+    try {
+      let eventTitle = 'אירוע';
+      if (resolvedEventId) {
+        try {
+          const ev = await eventService.getEventLite(resolvedEventId);
+          if (ev?.title) eventTitle = String(ev.title).trim() || eventTitle;
+        } catch {
+          // Filename can fall back to a generic title.
+        }
+      }
+
+      const { exportCheckInGuestsToExcel } = await import('@/lib/exportCheckInGuestsExcel');
+      exportCheckInGuestsToExcel(guests, {
+        eventTitle,
+        categories,
+        tables: tables.map((t) => ({
+          id: t.id,
+          number: parseTableNumber((t as any).number),
+          name: t.name,
+          capacity: t.capacity,
+        })),
+      });
+    } catch (e) {
+      console.error('Export check-in Excel error:', e);
+      const message =
+        e instanceof Error && e.message === 'אין אורחים שהגיעו לייצוא'
+          ? 'עדיין אין מוזמנים שסומנו כהגיעו לאולם.'
+          : 'אירעה תקלה בייצוא לאקסל. נסו שוב.';
+      Alert.alert('שגיאה', message);
+    } finally {
+      setExportingExcel(false);
+    }
+  }, [categories, exportingExcel, guests, resolvedEventId, tables]);
 
   const tablesSorted = useMemo(() => {
     const copy = [...tables];
@@ -1495,6 +1542,26 @@ function EmployeeGuestCheckinWebDesktopScreen() {
                   <Text style={styles.liveMapBtnText}>מפת לייב</Text>
                 </Pressable>
 
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="ייצוא אקסל של אורחים שהגיעו"
+                  onPress={() => void handleExportArrivedExcel()}
+                  disabled={exportingExcel}
+                  style={({ hovered, pressed }: any) => [
+                    styles.exportExcelBtn,
+                    Platform.OS === 'web' && hovered ? styles.exportExcelBtnHover : null,
+                    pressed ? { opacity: 0.92 } : null,
+                    exportingExcel ? { opacity: 0.7 } : null,
+                  ]}
+                >
+                  {exportingExcel ? (
+                    <ActivityIndicator size={14} color={colors.primary} />
+                  ) : (
+                    <Ionicons name="download-outline" size={15} color={colors.primary} />
+                  )}
+                  <Text style={styles.exportExcelBtnText}>{exportingExcel ? 'מייצא…' : 'ייצוא אקסל'}</Text>
+                </Pressable>
+
                 <View style={[styles.metricsGrid, metricsInOneRow ? styles.metricsGridTop : null]}>
                   <CheckinOverviewStat label='סה"כ מוזמנים' value={eventOverview.invitedPeople} icon="people-outline" />
                   <CheckinOverviewStat label="הגיעו לאולם" value={counts.checkedIn} icon="walk-outline" highlight />
@@ -1541,37 +1608,61 @@ function EmployeeGuestCheckinWebDesktopScreen() {
                     <View style={styles.panelHeaderCopy}>
                       <Text style={styles.panelTitle}>רשימת צ'ק אין</Text>
                     </View>
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="הוספת מוזמן שלא נמצא ברשימה"
-                      onPress={openAddModal}
-                      style={({ hovered, pressed }: any) => [
-                        styles.addGuestBtn,
-                        isTouchLayout ? styles.addGuestBtnTouch : null,
-                        Platform.OS === 'web' && hovered ? styles.addGuestBtnHover : null,
-                        pressed ? { opacity: 0.92 } : null,
-                      ]}
-                    >
-                      <Ionicons name="person-add" size={16} color={colors.white} />
-                      {!isNarrow ? <Text style={styles.addGuestBtnText}>הוסף מוזמן</Text> : null}
-                    </Pressable>
-                    {tableFilter ? (
+                    <View style={styles.cardHeaderActions}>
                       <Pressable
                         accessibilityRole="button"
-                        accessibilityLabel="נקה סינון שולחן"
-                        onPress={() => {
-                          setSelectedTableNumber(null);
-                          setTableFilter(null);
-                        }}
+                        accessibilityLabel="ייצוא אקסל של אורחים שהגיעו"
+                        onPress={() => void handleExportArrivedExcel()}
+                        disabled={exportingExcel}
                         style={({ hovered, pressed }: any) => [
-                          styles.linkBtn,
-                          Platform.OS === 'web' && hovered ? styles.linkBtnHover : null,
+                          styles.exportExcelHeaderBtn,
+                          isTouchLayout ? styles.exportExcelHeaderBtnTouch : null,
+                          Platform.OS === 'web' && hovered ? styles.exportExcelHeaderBtnHover : null,
+                          pressed ? { opacity: 0.92 } : null,
+                          exportingExcel ? { opacity: 0.7 } : null,
+                        ]}
+                      >
+                        {exportingExcel ? (
+                          <ActivityIndicator size={14} color={colors.primary} />
+                        ) : (
+                          <Ionicons name="download-outline" size={16} color={colors.primary} />
+                        )}
+                        {!isNarrow ? (
+                          <Text style={styles.exportExcelHeaderBtnText}>{exportingExcel ? 'מייצא…' : 'ייצוא אקסל'}</Text>
+                        ) : null}
+                      </Pressable>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="הוספת מוזמן שלא נמצא ברשימה"
+                        onPress={openAddModal}
+                        style={({ hovered, pressed }: any) => [
+                          styles.addGuestBtn,
+                          isTouchLayout ? styles.addGuestBtnTouch : null,
+                          Platform.OS === 'web' && hovered ? styles.addGuestBtnHover : null,
                           pressed ? { opacity: 0.92 } : null,
                         ]}
                       >
-                        <Text style={styles.linkBtnText}>נקה שולחן</Text>
+                        <Ionicons name="person-add" size={16} color={colors.white} />
+                        {!isNarrow ? <Text style={styles.addGuestBtnText}>הוסף מוזמן</Text> : null}
                       </Pressable>
-                    ) : null}
+                      {tableFilter ? (
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel="נקה סינון שולחן"
+                          onPress={() => {
+                            setSelectedTableNumber(null);
+                            setTableFilter(null);
+                          }}
+                          style={({ hovered, pressed }: any) => [
+                            styles.linkBtn,
+                            Platform.OS === 'web' && hovered ? styles.linkBtnHover : null,
+                            pressed ? { opacity: 0.92 } : null,
+                          ]}
+                        >
+                          <Text style={styles.linkBtnText}>נקה שולחן</Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
                   </View>
 
                   {groupedVisibleGuests.length > 1 ? (
@@ -2535,6 +2626,21 @@ const styles = StyleSheet.create({
   liveMapBtnHover: { backgroundColor: '#FEF2F2' },
   liveMapDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#DC2626' },
   liveMapBtnText: { fontSize: 12, fontWeight: '900', color: '#B91C1C' },
+  exportExcelBtn: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 7,
+    paddingHorizontal: 12,
+    minHeight: 32,
+    borderRadius: 999,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.18)',
+    flexShrink: 0,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  exportExcelBtnHover: { backgroundColor: 'rgba(6,23,62,0.05)' },
+  exportExcelBtnText: { fontSize: 12, fontWeight: '900', color: colors.primary, textAlign: 'right' },
   metricsStripLive: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
@@ -2892,6 +2998,7 @@ const styles = StyleSheet.create({
   summaryPillText: { fontSize: 12, fontWeight: '900', color: colors.primary, textAlign: 'right' },
 
   cardHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  cardHeaderActions: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, flexShrink: 0 },
   panelHeaderCopy: { flex: 1, minWidth: 0, gap: 2 },
   panelEyebrow: {
     fontSize: 10,
@@ -3659,6 +3766,22 @@ const styles = StyleSheet.create({
       : ({ opacity: 0.94 } as any)),
   },
   addGuestBtnText: { fontSize: 12, fontWeight: '900', color: colors.white, textAlign: 'right' },
+  exportExcelHeaderBtn: {
+    flexShrink: 0,
+    minHeight: 34,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.16)',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer', transition: 'background-color 140ms ease' } as any) : null),
+  },
+  exportExcelHeaderBtnTouch: { minHeight: 48, paddingHorizontal: 16 },
+  exportExcelHeaderBtnHover: { backgroundColor: 'rgba(6,23,62,0.05)' },
+  exportExcelHeaderBtnText: { fontSize: 12, fontWeight: '900', color: colors.primary, textAlign: 'right' },
   addGuestEmptyBtn: {
     marginTop: 6,
     flexDirection: 'row-reverse',

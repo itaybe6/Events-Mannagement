@@ -10,9 +10,9 @@ import {
   MIN_TABLE_NUMBER,
   MIN_TABLE_SEATS,
   SEAT_PRESETS,
-  TABLE_LABELS,
   type NumberingAnchor,
   type Orientation,
+  type PlacedTable,
   type TableConfig,
   type TableType,
 } from './_types';
@@ -34,6 +34,10 @@ type Props = {
   compact?: boolean;
   hideHeader?: boolean;
   nextTableNumber?: number;
+  selectedTable?: PlacedTable | null;
+  selectedOccupied?: number;
+  usedNumbers?: Set<number>;
+  onUpdateSelectedTable?: (patch: Partial<Pick<PlacedTable, 'number' | 'seats' | 'type' | 'orientation'>>) => void;
 };
 
 export function TableSidebar({
@@ -51,6 +55,10 @@ export function TableSidebar({
   compact = false,
   hideHeader = false,
   nextTableNumber = 1,
+  selectedTable = null,
+  selectedOccupied = 0,
+  usedNumbers,
+  onUpdateSelectedTable,
 }: Props) {
   const [tab, setTab] = useState<TabKey>('tables');
 
@@ -61,6 +69,10 @@ export function TableSidebar({
   const [startNumber, setStartNumber] = useState(nextTableNumber);
   const [startNumberTouched, setStartNumberTouched] = useState(false);
   const [numberingAnchor, setNumberingAnchor] = useState<NumberingAnchor>('start');
+
+  useEffect(() => {
+    if (selectedTable) setTab('tables');
+  }, [selectedTable?.id]);
 
   useEffect(() => {
     setSeatCount(defaultSeatsForType(tableType));
@@ -88,6 +100,8 @@ export function TableSidebar({
           ? `${tableStart} בהתחלה`
           : `${tableStart} בסוף`;
   const numberingPreview = numberingPosition ? `${numberingRange} · ${numberingPosition}` : numberingRange;
+  const selectedNumberTaken =
+    typeof selectedTable?.number === 'number' && Boolean(usedNumbers?.has(selectedTable.number));
 
   const config: TableConfig = useMemo(
     () => ({
@@ -173,6 +187,129 @@ export function TableSidebar({
 
           {tab === 'tables' ? (
             <>
+              {selectedTable && onUpdateSelectedTable ? (
+                <View style={styles.editCard}>
+                  <SectionTitle title={`עריכת שולחן ${selectedTable.number ?? ''}`} />
+                  <Text style={styles.editHint}>
+                    אפשר לשנות מספר או גודל. המוזמנים שכבר משובצים לשולחן יישארו במקום.
+                  </Text>
+
+                  <View style={styles.customSeatsRow}>
+                    <Text style={styles.customSeatsLabel}>מספר שולחן</Text>
+                    <TextInput
+                      value={String(selectedTable.number ?? '')}
+                      onChangeText={(text) => {
+                        const digits = text.replace(/[^\d]/g, '');
+                        if (!digits) return;
+                        onUpdateSelectedTable({ number: clampTableNumber(Number(digits)) });
+                      }}
+                      keyboardType="number-pad"
+                      style={styles.customSeatsInput}
+                      {...(Platform.OS === 'web'
+                        ? ({ inputMode: 'numeric', pattern: '[0-9]*' } as any)
+                        : null)}
+                    />
+                  </View>
+                  <Stepper
+                    value={typeof selectedTable.number === 'number' ? selectedTable.number : MIN_TABLE_NUMBER}
+                    onChange={(v) => onUpdateSelectedTable({ number: v })}
+                    min={MIN_TABLE_NUMBER}
+                    max={MAX_TABLE_NUMBER}
+                  />
+                  {selectedNumberTaken ? (
+                    <Text style={styles.editWarn}>{`המספר ${selectedTable.number} כבר בשימוש בשולחן אחר`}</Text>
+                  ) : null}
+
+                  <SectionTitle title="גודל (מקומות)" />
+                  <View style={styles.presetRow}>
+                    {SEAT_PRESETS.map((preset) => (
+                      <Pressable
+                        key={`edit-${preset}`}
+                        onPress={() => onUpdateSelectedTable({ seats: preset })}
+                        style={({ pressed }) => [
+                          styles.presetBtn,
+                          selectedTable.seats === preset ? styles.presetBtnActive : null,
+                          pressed && { opacity: 0.88 },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.presetText,
+                            selectedTable.seats === preset ? styles.presetTextActive : null,
+                          ]}
+                        >
+                          {preset}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                  <View style={styles.customSeatsRow}>
+                    <Text style={styles.customSeatsLabel}>מותאם אישית</Text>
+                    <TextInput
+                      value={String(selectedTable.seats)}
+                      onChangeText={(text) => {
+                        const digits = text.replace(/[^\d]/g, '');
+                        if (!digits) return;
+                        onUpdateSelectedTable({ seats: clampTableSeats(Number(digits)) });
+                      }}
+                      keyboardType="number-pad"
+                      style={styles.customSeatsInput}
+                      {...(Platform.OS === 'web'
+                        ? ({ inputMode: 'numeric', pattern: '[0-9]*' } as any)
+                        : null)}
+                    />
+                  </View>
+                  <Stepper
+                    value={selectedTable.seats}
+                    onChange={(v) => onUpdateSelectedTable({ seats: v })}
+                    min={MIN_TABLE_SEATS}
+                    max={MAX_TABLE_SEATS}
+                  />
+                  {selectedOccupied > 0 ? (
+                    <Text style={styles.editOccupied}>{`${selectedOccupied} מוזמנים משובצים כרגע`}</Text>
+                  ) : null}
+                  {selectedOccupied > selectedTable.seats ? (
+                    <Text style={styles.editWarn}>
+                      יש יותר מוזמנים מקיבולת השולחן. הם יישארו משובצים, אבל השולחן יהיה מעל הקיבולת.
+                    </Text>
+                  ) : null}
+
+                  <SectionTitle title="סוג שולחן" />
+                  <View style={styles.typeRow}>
+                    <TypeButton
+                      label="רגיל"
+                      icon={(c) => <Ionicons name="square-outline" size={18} color={c} />}
+                      active={selectedTable.type === 'regular'}
+                      color="#2563EB"
+                      onPress={() => onUpdateSelectedTable({ type: 'regular' })}
+                    />
+                    <TypeButton
+                      label="רזרבה"
+                      icon={(c) => (
+                        <View style={styles.iconStack}>
+                          <Ionicons name="square-outline" size={18} color={c} />
+                          <Ionicons name="help" size={12} color={c} style={styles.iconOverlay} />
+                        </View>
+                      )}
+                      active={selectedTable.type === 'reserve'}
+                      color="#F59E0B"
+                      onPress={() => onUpdateSelectedTable({ type: 'reserve' })}
+                    />
+                    <TypeButton
+                      label="אביר"
+                      icon={(c) => <View style={[styles.iconRect, { borderColor: c }]} />}
+                      active={selectedTable.type === 'knight'}
+                      color="#7C3AED"
+                      onPress={() => onUpdateSelectedTable({ type: 'knight' })}
+                    />
+                  </View>
+                </View>
+              ) : (
+                <Text style={styles.editHint}>בחרו שולחן במפה כדי לערוך את המספר או הגודל שלו.</Text>
+              )}
+
+              <SectionTitle title="הוספת שולחנות" />
+              <Text style={styles.editHint}>שולחנות חדשים יתווספו לסקיצה בלי לשנות שיבוץ קיים.</Text>
               <SectionTitle title="סוג שולחן" />
               <View style={styles.typeRow}>
                 <TypeButton
@@ -773,6 +910,33 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '800',
     color: '#2b8cee',
+    textAlign: 'right',
+  },
+  editCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(25,93,230,0.16)',
+    backgroundColor: 'rgba(247,250,255,0.96)',
+    padding: 12,
+    gap: 8,
+  },
+  editHint: {
+    fontSize: 12,
+    fontWeight: '700',
+    lineHeight: 18,
+    color: 'rgba(17,24,39,0.58)',
+    textAlign: 'right',
+  },
+  editOccupied: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#1D4ED8',
+    textAlign: 'right',
+  },
+  editWarn: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#B45309',
     textAlign: 'right',
   },
 

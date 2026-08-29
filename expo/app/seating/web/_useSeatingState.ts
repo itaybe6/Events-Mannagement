@@ -1,14 +1,14 @@
-import { useCallback, useMemo, useReducer } from 'react';
+import { useMemo, useReducer } from 'react';
 import {
   clamp,
+  clampTableNumber,
+  clampTableSeats,
   FIXED_SEATS,
   DEFAULT_GRID_COLS,
   DEFAULT_GRID_ROWS,
   makeId,
-  type Orientation,
   type PlacedTable,
   type TableConfig,
-  type TableType,
   tableCellSize,
   type TextLabel,
   type Zone,
@@ -42,6 +42,8 @@ type Action =
   | { type: 'renameZone'; id: string; name: string }
   | { type: 'renameLabel'; id: string; text: string }
   | { type: 'renumberTable'; id: string; num: number | undefined }
+  | { type: 'updateTable'; id: string; patch: Partial<Pick<PlacedTable, 'number' | 'seats' | 'type' | 'orientation' | 'dbId'>> }
+  | { type: 'setTableDbIds'; ids: Record<string, string> }
   ;
 
 const initialState: State = {
@@ -142,10 +144,25 @@ function reducer(state: State, action: Action): State {
 
       const nextTables: PlacedTable[] = [];
       const anchorEnd = action.config.numberingAnchor === 'end';
+      const usedNumbers = new Set(
+        state.tables.map((t) => t.number).filter((n): n is number => typeof n === 'number')
+      );
+
+      const takeFreeNumber = (preferred: number) => {
+        let n = clampTableNumber(preferred);
+        while (usedNumbers.has(n) && n < 999) n += 1;
+        usedNumbers.add(n);
+        return n;
+      };
+
+      const numbers: number[] = [];
+      for (let i = 0; i < qty; i++) {
+        numbers.push(takeFreeNumber(startNum + i));
+      }
+      if (anchorEnd) numbers.reverse();
 
       for (let i = 0; i < qty; i++) {
         const p = clampRectToGrid(state.gridCols, state.gridRows, start.x + i * stepX, start.y + i * stepY, w, h);
-        const number = anchorEnd ? startNum + (qty - 1 - i) : startNum + i;
         nextTables.push({
           id: makeId('table'),
           type,
@@ -153,7 +170,7 @@ function reducer(state: State, action: Action): State {
           orientation,
           gridX: p.x,
           gridY: p.y,
-          number,
+          number: numbers[i],
         });
       }
 
@@ -284,7 +301,68 @@ function reducer(state: State, action: Action): State {
     }
 
     case 'renumberTable': {
-      return { ...state, tables: state.tables.map(t => (t.id === action.id ? { ...t, number: action.num } : t)) };
+      const nextTables = state.tables.map(t => (t.id === action.id ? { ...t, number: action.num } : t));
+      const maxNumber = nextTables.reduce(
+        (m, t) => Math.max(m, typeof t.number === 'number' ? t.number : 0),
+        0
+      );
+      return { ...state, tables: nextTables, tableCounter: Math.max(state.tableCounter, maxNumber + 1) };
+    }
+
+    case 'updateTable': {
+      const idx = state.tables.findIndex(t => t.id === action.id);
+      if (idx < 0) return state;
+      const prev = state.tables[idx];
+      const nextSeats =
+        action.patch.seats !== undefined ? clampTableSeats(action.patch.seats) : prev.seats;
+      const nextType = action.patch.type ?? prev.type;
+      const nextOrientation = action.patch.orientation ?? prev.orientation;
+      const nextNumber =
+        action.patch.number === undefined
+          ? prev.number
+          : action.patch.number == null
+            ? undefined
+            : clampTableNumber(action.patch.number);
+      const { w, h } = tableCellSize(nextType, nextSeats, nextOrientation);
+      const nextCols = clamp(Math.max(state.gridCols, prev.gridX + w + 2), 20, 300);
+      const nextRows = clamp(Math.max(state.gridRows, prev.gridY + h + 2), 20, 300);
+      const p = clampRectToGrid(nextCols, nextRows, prev.gridX, prev.gridY, w, h);
+      const next: PlacedTable = {
+        ...prev,
+        ...action.patch,
+        seats: nextSeats,
+        type: nextType,
+        orientation: nextOrientation,
+        number: nextNumber,
+        gridX: p.x,
+        gridY: p.y,
+      };
+      const nextTables = state.tables.slice();
+      nextTables[idx] = next;
+      const maxNumber = nextTables.reduce(
+        (m, t) => Math.max(m, typeof t.number === 'number' ? t.number : 0),
+        0
+      );
+      return {
+        ...state,
+        gridCols: nextCols,
+        gridRows: nextRows,
+        tables: nextTables,
+        tableCounter: Math.max(state.tableCounter, maxNumber + 1),
+      };
+    }
+
+    case 'setTableDbIds': {
+      const ids = action.ids;
+      if (!ids || !Object.keys(ids).length) return state;
+      let changed = false;
+      const nextTables = state.tables.map((t) => {
+        const dbId = ids[t.id];
+        if (!dbId || t.dbId === dbId) return t;
+        changed = true;
+        return { ...t, dbId };
+      });
+      return changed ? { ...state, tables: nextTables } : state;
     }
 
     default:
@@ -326,6 +404,11 @@ export function useSeatingState() {
       renameZone: (id: string, name: string) => dispatch({ type: 'renameZone', id, name }),
       renameLabel: (id: string, text: string) => dispatch({ type: 'renameLabel', id, text }),
       renumberTable: (id: string, num: number | undefined) => dispatch({ type: 'renumberTable', id, num }),
+      updateTable: (
+        id: string,
+        patch: Partial<Pick<PlacedTable, 'number' | 'seats' | 'type' | 'orientation' | 'dbId'>>
+      ) => dispatch({ type: 'updateTable', id, patch }),
+      setTableDbIds: (ids: Record<string, string>) => dispatch({ type: 'setTableDbIds', ids }),
 
       toggleSelect: (id: string, multi: boolean) => dispatch({ type: 'toggleSelect', id, multi }),
       clearSelection: () => dispatch({ type: 'clearSelection' }),

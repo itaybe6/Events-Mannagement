@@ -52,6 +52,8 @@ export interface PlacedTable {
   gridX: number;
   gridY: number;
   number?: number;
+  /** Stable `public.tables.id`. Kept across sketch saves so guest seating is not wiped. */
+  dbId?: string;
 }
 
 export interface Zone {
@@ -116,6 +118,12 @@ export function tableCellSize(type: TableType, seats: number, orientation: Orien
   }
   const side = squareSideForSeats(seats);
   return { w: side, h: side };
+}
+
+export function tableShape(type: TableType): 'square' | 'rectangle' | 'reserve' {
+  if (type === 'knight') return 'rectangle';
+  if (type === 'reserve') return 'reserve';
+  return 'square';
 }
 
 export function tableFillColor(type: TableType, seats: number): { fill: string; border: string } {
