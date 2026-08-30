@@ -25,10 +25,12 @@ import { guestService } from '@/lib/services/guestService';
 import { supabase } from '@/lib/supabase';
 import { Event } from '@/types';
 import {
-  inferEventType,
+  getEventHeading,
+  getEventImageByType,
   isFutureEventDate,
   isPastEventDate,
   MONTHS,
+  resolveEventTypeLabel,
   type EventTimeFilter,
 } from '@/features/events/eventsConstants';
 import { useEventsListModel } from '@/features/events/useEventsListModel';
@@ -44,11 +46,6 @@ const PAGE_GUTTER = 24;
 /** Below this an event card's date, status and action row stop fitting on one line. */
 const MIN_EVENT_CARD_WIDTH = 340;
 
-const HERO_IMAGES = {
-  baby: require('../../assets/images/baby.jpg'),
-  barMitzvah: require('../../assets/images/Bar Mitzvah.jpg'),
-  wedding: require('../../assets/images/wedding.jpg'),
-} as const;
 const EVENT_TYPE_META = {
   חתונה: {
     background: 'rgba(239, 221, 184, 0.96)',
@@ -80,22 +77,16 @@ const EVENT_TYPE_META = {
     border: 'rgba(6, 23, 62, 0.12)',
     text: colors.yaleBlue,
   },
+  אירוע: {
+    background: 'rgba(228, 238, 247, 0.96)',
+    border: 'rgba(6, 23, 62, 0.12)',
+    text: colors.yaleBlue,
+  },
 } as const;
 const SHORT_MONTHS_HE = ['ינו', 'פבר', 'מרץ', 'אפר', 'מאי', 'יונ', 'יול', 'אוג', 'ספט', 'אוק', 'נוב', 'דצמ'];
 
 function getHeroImageSource(title: string) {
-  const t = String(title || '').toLowerCase();
-  const hasBarMitzvah = t.includes('בר מצו') || t.includes('בר-מצו') || t.includes('bar mitz');
-  const hasBaby =
-    t.includes('ברית') ||
-    t.includes('בריתה') ||
-    t.includes('תינוק') ||
-    t.includes('תינוקת') ||
-    t.includes('baby') ||
-    t.includes('בייבי');
-  if (hasBarMitzvah) return HERO_IMAGES.barMitzvah;
-  if (hasBaby) return HERO_IMAGES.baby;
-  return HERO_IMAGES.wedding;
+  return getEventImageByType(resolveEventTypeLabel(title));
 }
 
 function formatDateLabel(date: Date | string) {
@@ -138,20 +129,14 @@ function daysLeftLabel(date: Date | string) {
   return diff >= 0 ? `עוד ${diff} ימים` : 'עבר';
 }
 
-function getEventSubtitle(e: Event) {
+function getEventSubtitle(e: Event, heading?: string) {
   const g = String(e.groomName ?? '').trim();
   const b = String(e.brideName ?? '').trim();
-  if (g && b) return `${g} & ${b}`;
-  return [e.city, e.location].filter(Boolean).join(' · ');
-}
-
-function getEventDisplayTitle(rawTitle: string) {
-  const title = String(rawTitle || '').trim();
-  if (!title) return '';
-  const eventType = inferEventType(title);
-  if (!eventType) return title;
-  const withoutTypePrefix = title.replace(new RegExp(`^${eventType}\\s*[–—-]\\s*`), '').trim();
-  return withoutTypePrefix || title;
+  const couple = g && b ? `${g} & ${b}` : '';
+  if (couple && couple !== heading) return couple;
+  const place = [e.city, e.location].filter(Boolean).join(' · ');
+  if (place && place !== heading) return place;
+  return '';
 }
 
 function initialsLabel(name: string) {
@@ -902,16 +887,16 @@ export function AdminEventsListWebScreen() {
               {displayEvents.map((e) => {
                 const ownerName = String((e as any).userName || e.userName || '').trim();
                 const invitationImageUrl = String((e as any).invitationImageUrl ?? e.invitationImageUrl ?? '').trim();
-                const subtitle = rtlText(getEventSubtitle(e));
+                const { eventType, heading } = getEventHeading(e);
+                const subtitleText = getEventSubtitle(e, heading);
+                const subtitle = subtitleText ? rtlText(subtitleText) : '';
                 const status = getStatusMeta(e.date);
                 const guestStats = guestStatsByEventId[String(e.id)] || null;
                 const coverSource: any = invitationImageUrl ? { uri: invitationImageUrl } : getHeroImageSource(e.title);
-                const eventType = inferEventType(e.title) || 'חתונה';
-                const eventTypeLabel = rtlText(eventType);
-                const eventTitleLabel = rtlText(String(e.title ?? '').trim());
+                const eventTitleLabel = rtlText(heading);
                 const ownerNameLabel = rtlText(ownerName || 'ללא לקוח');
                 const ownerDateLabel = rtlText(formatDateLabel(e.date));
-                const typeMeta = EVENT_TYPE_META[eventType as keyof typeof EVENT_TYPE_META] ?? EVENT_TYPE_META['חתונה'];
+                const typeMeta = EVENT_TYPE_META[eventType as keyof typeof EVENT_TYPE_META] ?? EVENT_TYPE_META['אירוע'];
                 const statusToneStyle =
                   status.tone === 'active'
                     ? styles.statusPillActive
@@ -969,9 +954,11 @@ export function AdminEventsListWebScreen() {
                             <Text style={[styles.eventOverviewTypeText, { color: typeMeta.text }]}>{eventType}</Text>
                           </View>
                         </View>
-                        <Text style={styles.eventOverviewSubtitle} numberOfLines={1}>
-                          {subtitle}
-                        </Text>
+                        {subtitle ? (
+                          <Text style={styles.eventOverviewSubtitle} numberOfLines={1}>
+                            {subtitle}
+                          </Text>
+                        ) : null}
                       </View>
 
                       <View style={styles.eventOverviewMetaRow}>
@@ -2886,7 +2873,7 @@ export default function AdminEventsWebScreen() {
     () =>
       filteredEvents.filter((event) => {
         const statusTone = getStatusMeta(event.date).tone;
-        const eventType = inferEventType(event.title) || 'חתונה';
+        const eventType = resolveEventTypeLabel(event.title);
 
         if (statusFilter !== 'all' && statusTone !== statusFilter) {
           return false;
@@ -2970,7 +2957,7 @@ export default function AdminEventsWebScreen() {
 
   const eventTypeOptions = useMemo(() => {
     const uniqueTypes = new Set<string>();
-    events.forEach((event) => uniqueTypes.add(inferEventType(event.title) || 'חתונה'));
+    events.forEach((event) => uniqueTypes.add(resolveEventTypeLabel(event.title)));
     return Array.from(uniqueTypes);
   }, [events]);
 
@@ -3755,8 +3742,8 @@ export default function AdminEventsWebScreen() {
                       const coverSource: any = String(event.invitationImageUrl ?? '').trim()
                         ? { uri: String(event.invitationImageUrl).trim() }
                         : getHeroImageSource(event.title);
-                      const eventType = inferEventType(event.title) || 'חתונה';
-                      const eventTypeMeta = EVENT_TYPE_META[eventType as keyof typeof EVENT_TYPE_META] ?? EVENT_TYPE_META['אירוע חברה'];
+                      const { eventType, heading } = getEventHeading(event);
+                      const eventTypeMeta = EVENT_TYPE_META[eventType as keyof typeof EVENT_TYPE_META] ?? EVENT_TYPE_META['אירוע'];
 
                       return (
                         <Pressable
@@ -3777,7 +3764,7 @@ export default function AdminEventsWebScreen() {
                           <View style={dashboardStyles.recentEventContent}>
                             <View style={dashboardStyles.recentEventTitleRow}>
                               <Text style={dashboardStyles.recentEventTitle} numberOfLines={1}>
-                                {event.title}
+                                {heading}
                               </Text>
                               <View
                                 style={[
@@ -3789,7 +3776,7 @@ export default function AdminEventsWebScreen() {
                               </View>
                             </View>
                             <Text style={dashboardStyles.recentEventSubtitle} numberOfLines={1}>
-                              {getEventSubtitle(event) || 'ללא פרטים נוספים'}
+                              {getEventSubtitle(event, heading) || 'ללא פרטים נוספים'}
                             </Text>
                             <View style={dashboardStyles.recentEventMetaRow}>
                               <Text style={dashboardStyles.recentEventMetaText}>{formatDateLabel(event.date)}</Text>

@@ -122,6 +122,7 @@ export default function CoupleGuestsWebScreen() {
   const [importOpen, setImportOpen] = useState(false);
   const [importBusy, setImportBusy] = useState(false);
   const [importStatusText, setImportStatusText] = useState('');
+  const [importAsComing, setImportAsComing] = useState(false);
   const [importSummary, setImportSummary] = useState<{
     added: number;
     duplicates: number;
@@ -129,6 +130,7 @@ export default function CoupleGuestsWebScreen() {
     skipped: number;
     newCategories: number;
     mergedIntoExisting: number;
+    initialStatus: GuestStatus;
   } | null>(null);
 
   useEffect(() => {
@@ -707,6 +709,7 @@ export default function CoupleGuestsWebScreen() {
     setImportSummary(null);
     setImportStatusText('');
     setImportBusy(false);
+    setImportAsComing(false);
     setImportOpen(true);
   };
 
@@ -715,6 +718,7 @@ export default function CoupleGuestsWebScreen() {
     setImportOpen(false);
     setImportSummary(null);
     setImportStatusText('');
+    setImportAsComing(false);
   };
 
   const handleDownloadTemplate = async () => {
@@ -799,6 +803,7 @@ export default function CoupleGuestsWebScreen() {
         }
       }
 
+      const initialStatus: GuestStatus = importAsComing ? 'מגיע' : 'ממתין';
       setImportStatusText(`מוסיף ${parsed.rows.length} מוזמנים...`);
       const guestsToAdd = parsed.rows.map((row) => {
         const key = normalizeCatKey(String(row.category || ''));
@@ -806,12 +811,12 @@ export default function CoupleGuestsWebScreen() {
         return {
           name: row.name,
           phone: row.phone,
-          status: 'ממתין' as GuestStatus,
+          status: initialStatus,
           tableId: null,
           gift: 0,
           message: '',
           category_id: categoryId,
-          numberOfPeople: row.numberOfPeople,
+          numberOfPeople: Math.max(1, Number(row.numberOfPeople) || 1),
         };
       });
 
@@ -847,6 +852,7 @@ export default function CoupleGuestsWebScreen() {
         skipped: parsed.skipped,
         newCategories: createdCategories.length,
         mergedIntoExisting,
+        initialStatus,
       });
       setImportStatusText('');
     } catch (e: any) {
@@ -1835,6 +1841,12 @@ export default function CoupleGuestsWebScreen() {
                         <Text style={styles.importSummaryLabel}>שורות ללא שם דולגו</Text>
                       </View>
                     ) : null}
+                    <View style={styles.importSummaryRow}>
+                      <Text style={styles.importSummaryValue}>
+                        {importSummary.initialStatus === 'מגיע' ? 'מגיעים' : 'ממתינים'}
+                      </Text>
+                      <Text style={styles.importSummaryLabel}>סטטוס התחלתי</Text>
+                    </View>
                   </View>
                 </View>
               ) : (
@@ -1851,6 +1863,7 @@ export default function CoupleGuestsWebScreen() {
                       { col: 'שם', req: 'חובה', desc: 'שם המוזמן' },
                       { col: 'טלפון', req: 'מומלץ', desc: 'מספר נייד, למשל 0501234567' },
                       { col: 'קטגוריה', req: 'רשות', desc: 'שם קבוצה (תיווצר אוטומטית אם לא קיימת)' },
+                      { col: 'כמות אנשים', req: 'רשות', desc: 'כמה מוזמנים לאותו מספר פלאפון (ברירת מחדל 1)' },
                     ].map((row) => (
                       <View key={row.col} style={styles.importColRow}>
                         <View style={styles.importColNameWrap}>
@@ -1867,6 +1880,61 @@ export default function CoupleGuestsWebScreen() {
                         <Text style={styles.importColDesc}>{row.desc}</Text>
                       </View>
                     ))}
+                  </View>
+
+                  <View style={styles.importStatusBox}>
+                    <Text style={styles.importStatusTitle}>סטטוס התחלתי של המוזמנים</Text>
+                    <Text style={styles.importStatusHint}>
+                      בחרו לפני העלאת הקובץ. מתאים גם כשחברה חיצונית כבר אישרה הגעה ואתם מטפלים רק בהושבה.
+                    </Text>
+
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="ממתינים לאישור הגעה"
+                      accessibilityState={{ selected: !importAsComing }}
+                      onPress={() => setImportAsComing(false)}
+                      disabled={importBusy}
+                      style={({ hovered, pressed }: any) => [
+                        styles.importStatusOption,
+                        !importAsComing ? styles.importStatusOptionActive : null,
+                        Platform.OS === 'web' && hovered ? styles.importStatusOptionHover : null,
+                        pressed ? styles.btnPressed : null,
+                      ]}
+                    >
+                      <View style={[styles.importStatusRadio, !importAsComing ? styles.importStatusRadioActive : null]}>
+                        {!importAsComing ? <View style={styles.importStatusRadioDot} /> : null}
+                      </View>
+                      <View style={styles.importStatusOptionText}>
+                        <Text style={styles.importStatusOptionTitle}>ממתינים לאישור הגעה</Text>
+                        <Text style={styles.importStatusOptionDesc}>
+                          המוזמנים ייכנסו כממתינים ויוכלו לאשר הגעה בעצמם
+                        </Text>
+                      </View>
+                    </Pressable>
+
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="כולם מגיעים"
+                      accessibilityState={{ selected: importAsComing }}
+                      onPress={() => setImportAsComing(true)}
+                      disabled={importBusy}
+                      style={({ hovered, pressed }: any) => [
+                        styles.importStatusOption,
+                        importAsComing ? styles.importStatusOptionComing : null,
+                        Platform.OS === 'web' && hovered ? styles.importStatusOptionHover : null,
+                        pressed ? styles.btnPressed : null,
+                      ]}
+                    >
+                      <View style={[styles.importStatusRadio, importAsComing ? styles.importStatusRadioComing : null]}>
+                        {importAsComing ? <View style={styles.importStatusRadioDotComing} /> : null}
+                      </View>
+                      <View style={styles.importStatusOptionText}>
+                        <Text style={styles.importStatusOptionTitle}>כולם מגיעים</Text>
+                        <Text style={styles.importStatusOptionDesc}>
+                          כולם ייכנסו כסטטוס מגיעים — בלי צורך באישור הגעה נוסף
+                        </Text>
+                      </View>
+                    </Pressable>
                   </View>
 
                   <Pressable
@@ -3926,7 +3994,7 @@ const styles = StyleSheet.create({
     borderBottomColor: 'rgba(15,23,42,0.06)',
   },
   importColNameWrap: {
-    width: 96,
+    width: 118,
     flexDirection: 'row-reverse',
     alignItems: 'center',
     gap: 6,
@@ -3960,6 +4028,95 @@ const styles = StyleSheet.create({
     color: colors.gray[600],
     textAlign: 'right',
     writingDirection: 'rtl',
+  },
+  importStatusBox: {
+    marginTop: 16,
+    padding: 14,
+    borderRadius: 14,
+    backgroundColor: '#F8FAFF',
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.10)',
+    gap: 10,
+  },
+  importStatusTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  importStatusHint: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.gray[600],
+    textAlign: 'right',
+    writingDirection: 'rtl',
+    lineHeight: 18,
+    marginBottom: 2,
+  },
+  importStatusOption: {
+    flexDirection: 'row-reverse',
+    alignItems: 'flex-start',
+    gap: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: colors.white,
+    borderWidth: 1.5,
+    borderColor: 'rgba(15,23,42,0.10)',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  importStatusOptionHover: { backgroundColor: colors.gray[50] },
+  importStatusOptionActive: {
+    borderColor: colors.primary,
+    backgroundColor: 'rgba(6,23,62,0.04)',
+  },
+  importStatusOptionComing: {
+    borderColor: colors.success,
+    backgroundColor: 'rgba(76,175,80,0.08)',
+  },
+  importStatusRadio: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: colors.gray[400],
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  importStatusRadioActive: { borderColor: colors.primary },
+  importStatusRadioComing: { borderColor: colors.success },
+  importStatusRadioDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.primary,
+  },
+  importStatusRadioDotComing: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.success,
+  },
+  importStatusOptionText: {
+    flex: 1,
+    gap: 2,
+  },
+  importStatusOptionTitle: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: colors.text,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  importStatusOptionDesc: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.gray[600],
+    textAlign: 'right',
+    writingDirection: 'rtl',
+    lineHeight: 18,
   },
   importTemplateLink: {
     marginTop: 14,

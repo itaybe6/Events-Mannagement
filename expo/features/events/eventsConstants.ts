@@ -36,6 +36,17 @@ export const EVENT_BLUE = {
 
 export const EVENT_TYPES = ['חתונה', 'חינה', 'בר מצווה', 'בת מצווה', 'ברית', 'אירוע חברה'] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
+export const GENERIC_EVENT_LABEL = 'אירוע';
+
+const EVENT_TYPE_PREFIXES: { prefix: string; type: EventType }[] = [
+  ...EVENT_TYPES.map((type) => ({ prefix: type, type })),
+  { prefix: 'בריתה', type: 'ברית' },
+].sort((a, b) => b.prefix.length - a.prefix.length);
+
+function isTypeBoundary(title: string, prefixLength: number) {
+  if (title.length === prefixLength) return true;
+  return /[\s\-–—:|·•]/.test(title.charAt(prefixLength));
+}
 
 export const EVENT_BADGE_META: Record<
   EventType,
@@ -59,9 +70,80 @@ export const EVENT_IMAGE_BY_TYPE: Record<EventType, number> = {
 };
 
 export function inferEventType(title: string): EventType | null {
-  const t = (title || '').trim();
-  const match = EVENT_TYPES.find((et) => t.startsWith(et) || t.includes(et));
-  return match || null;
+  const t = String(title || '').trim();
+  if (!t) return null;
+
+  for (const { prefix, type } of EVENT_TYPE_PREFIXES) {
+    if (t === prefix || (t.startsWith(prefix) && isTypeBoundary(t, prefix.length))) {
+      return type;
+    }
+  }
+
+  for (const { prefix, type } of EVENT_TYPE_PREFIXES) {
+    if (t.includes(prefix)) return type;
+  }
+
+  return null;
+}
+
+export function resolveEventTypeLabel(title: string): string {
+  return inferEventType(title) ?? GENERIC_EVENT_LABEL;
+}
+
+function stripKnownTypePrefix(title: string): string {
+  const t = title.trim();
+  for (const { prefix } of EVENT_TYPE_PREFIXES) {
+    if (t === prefix) return t;
+    if (t.startsWith(prefix) && isTypeBoundary(t, prefix.length)) {
+      return t.slice(prefix.length).replace(/^[\s\-–—:|·•]+/, '').trim() || t;
+    }
+  }
+  return t;
+}
+
+export function getEventDisplayTitle(rawTitle: string): string {
+  const title = String(rawTitle || '').trim();
+  if (!title) return '';
+  return stripKnownTypePrefix(title);
+}
+
+export function getEventHeading(event: {
+  title?: string | null;
+  groomName?: string | null;
+  brideName?: string | null;
+  location?: string | null;
+  userName?: string | null;
+}): { eventType: string; heading: string } {
+  const title = String(event.title ?? '');
+  const eventType = resolveEventTypeLabel(title);
+  const stripped = getEventDisplayTitle(title);
+  const couple = [event.groomName, event.brideName]
+    .map((value) => String(value ?? '').trim())
+    .filter(Boolean)
+    .join(' & ');
+  const owner = String(event.userName ?? '').trim();
+  const venue = String(event.location ?? '').trim();
+
+  const heading =
+    (stripped && stripped !== eventType ? stripped : '') || couple || owner || venue || eventType;
+
+  return { eventType, heading };
+}
+
+export function getEventBadgeMeta(eventType: string): {
+  icon: keyof typeof Ionicons.glyphMap;
+  tint: string;
+} {
+  return (
+    EVENT_BADGE_META[eventType as EventType] ?? {
+      icon: 'calendar-outline',
+      tint: 'rgba(0, 53, 102, 0.85)',
+    }
+  );
+}
+
+export function getEventImageByType(eventType: string): number {
+  return EVENT_IMAGE_BY_TYPE[eventType as EventType] ?? EVENT_IMAGE_BY_TYPE['אירוע חברה'];
 }
 
 export type EventTimeFilter = 'future' | 'completed';
@@ -87,12 +169,7 @@ function normalizeSearchText(value: string) {
 }
 
 function getEventDisplayTitleForSearch(rawTitle: string) {
-  const title = String(rawTitle || '').trim();
-  if (!title) return '';
-  const eventType = inferEventType(title);
-  if (!eventType) return title;
-  const withoutTypePrefix = title.replace(new RegExp(`^${eventType}\\s*[–—-]\\s*`), '').trim();
-  return withoutTypePrefix || title;
+  return getEventDisplayTitle(rawTitle);
 }
 
 export function buildEventSearchHaystack(event: Event): string {

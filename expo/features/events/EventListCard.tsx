@@ -9,21 +9,11 @@ import { Event } from '@/types';
 import { ALIGN_RIGHT, ROW_DIR, TEXT_RIGHT, rtlText } from '@/lib/rtl';
 import { softTileShadow } from '@/lib/platformShadow';
 import {
-  EVENT_BADGE_META,
   EVENT_BLUE,
-  EVENT_IMAGE_BY_TYPE,
-  inferEventType,
-  type EventType,
+  getEventBadgeMeta,
+  getEventHeading,
+  getEventImageByType,
 } from '@/features/events/eventsConstants';
-
-function getEventDisplayTitle(rawTitle: string) {
-  const title = String(rawTitle || '').trim();
-  if (!title) return '';
-  const eventType = inferEventType(title);
-  if (!eventType) return title;
-  const withoutTypePrefix = title.replace(new RegExp(`^${eventType}\\s*[–—-]\\s*`), '').trim();
-  return withoutTypePrefix || title;
-}
 
 function getDaysLeftLabel(date: Date | string) {
   const d = new Date(date);
@@ -69,18 +59,12 @@ export function EventListCard({
   const dateLabel = rtlText(
     dateObj.toLocaleDateString('he-IL', { weekday: 'long', day: '2-digit', month: 'long' })
   );
-  const eventType = inferEventType(event.title) || 'חתונה';
-  const badgeMeta = EVENT_BADGE_META[eventType as EventType];
+  const { eventType, heading } = getEventHeading(event);
+  const badgeMeta = getEventBadgeMeta(eventType);
   const invitationImageUrl = String(event.invitationImageUrl ?? '').trim();
-  const coverSource = invitationImageUrl
-    ? { uri: invitationImageUrl }
-    : EVENT_IMAGE_BY_TYPE[eventType as EventType];
+  const coverSource = invitationImageUrl ? { uri: invitationImageUrl } : getEventImageByType(eventType);
 
   const ownerName = String(event.userName ?? '').trim();
-  const displayTitle = getEventDisplayTitle(String(event.title ?? ''));
-  // Most events are stored with the type as their whole title, so showing both a
-  // type chip and that same word as the heading wastes the most prominent line.
-  const heading = displayTitle && displayTitle !== eventType ? displayTitle : ownerName || eventType;
   const showOwnerRow = Boolean(ownerName) && ownerName !== heading;
 
   const headingLabel = rtlText(heading);
@@ -210,8 +194,6 @@ export function EventListCard({
     </MotiView>
   );
 }
-
-export { getEventDisplayTitle };
 
 const POSTER_WIDTH = 104;
 const POSTER_HEIGHT = 132;

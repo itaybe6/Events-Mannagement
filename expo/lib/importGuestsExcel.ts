@@ -5,11 +5,13 @@ export type ParsedGuestRow = {
   name: string;
   phone: string;
   category: string;
-  /** Always 1 — each row represents a single guest invite. */
-  numberOfPeople: 1;
+  /** How many people are invited under this phone number. Defaults to 1 when the column is empty. */
+  numberOfPeople: number;
   /** 1-based row number in the source sheet (header is row 1), useful for error messages. */
   sourceRow: number;
 };
+
+type LogicalColumn = 'name' | 'phone' | 'category' | 'people';
 
 export type ParseGuestsResult = {
   rows: ParsedGuestRow[];
@@ -24,7 +26,7 @@ export type ParseGuestsResult = {
  * Supports both Hebrew and English so couples can use whichever template
  * they're comfortable with.
  */
-const HEADER_ALIASES: Record<'name' | 'phone' | 'category', string[]> = {
+const HEADER_ALIASES: Record<LogicalColumn, string[]> = {
   name: ['שם', 'שם מלא', 'שם המוזמן', 'שם מוזמן', 'name', 'full name', 'guest', 'guest name'],
   phone: [
     'טלפון',
@@ -39,6 +41,25 @@ const HEADER_ALIASES: Record<'name' | 'phone' | 'category', string[]> = {
     'telephone',
   ],
   category: ['קטגוריה', 'קבוצה', 'שיוך', 'category', 'group', 'tag'],
+  people: [
+    'כמות אנשים',
+    'כמות מוזמנים',
+    'מספר אנשים',
+    'מספר מוזמנים',
+    'כמות',
+    'אנשים',
+    "מס' אורחים שהוזמנו",
+    'מס אורחים שהוזמנו',
+    'מספר אורחים שהוזמנו',
+    'מספר אורחים',
+    'people',
+    'number of people',
+    'guests count',
+    'party size',
+    'qty',
+    'quantity',
+    'count',
+  ],
 };
 
 function normalizeHeader(value: unknown): string {
@@ -48,10 +69,10 @@ function normalizeHeader(value: unknown): string {
     .toLowerCase();
 }
 
-function matchColumn(header: string): 'name' | 'phone' | 'category' | null {
+function matchColumn(header: string): LogicalColumn | null {
   const normalized = normalizeHeader(header);
   if (!normalized) return null;
-  for (const key of Object.keys(HEADER_ALIASES) as Array<keyof typeof HEADER_ALIASES>) {
+  for (const key of Object.keys(HEADER_ALIASES) as LogicalColumn[]) {
     if (HEADER_ALIASES[key].some((alias) => alias === normalized)) return key;
   }
   return null;
@@ -65,6 +86,17 @@ function cleanPhone(value: unknown): string {
     raw = String(value);
   }
   return normalizeGuestPhone(raw);
+}
+
+const MAX_PEOPLE_PER_GUEST = 99;
+
+function parsePeopleCount(value: unknown): number {
+  if (value === null || value === undefined || value === '') return 1;
+  const raw = typeof value === 'number' ? value : Number.parseFloat(String(value).trim().replace(/,/g, ''));
+  if (!Number.isFinite(raw)) return 1;
+  const n = Math.round(raw);
+  if (n < 1) return 1;
+  return Math.min(MAX_PEOPLE_PER_GUEST, n);
 }
 
 /**
@@ -90,10 +122,10 @@ export function parseGuestsArrayBuffer(buffer: ArrayBuffer): ParseGuestsResult {
 
   // Locate the header row (first row that contains at least a name column).
   let headerRowIndex = -1;
-  let columnMap: Record<number, keyof Omit<ParsedGuestRow, 'sourceRow'>> = {};
+  let columnMap: Record<number, LogicalColumn> = {};
   for (let i = 0; i < Math.min(matrix.length, 5); i++) {
     const row = matrix[i] || [];
-    const map: Record<number, keyof Omit<ParsedGuestRow, 'sourceRow'>> = {};
+    const map: Record<number, LogicalColumn> = {};
     row.forEach((cell, colIdx) => {
       const matched = matchColumn(cell);
       if (matched && map[colIdx] === undefined) map[colIdx] = matched;
@@ -106,10 +138,10 @@ export function parseGuestsArrayBuffer(buffer: ArrayBuffer): ParseGuestsResult {
     }
   }
 
-  // Fallback: no recognizable header -> assume column order [name, phone, category].
+  // Fallback: no recognizable header -> assume column order [name, phone, category, people].
   if (headerRowIndex === -1) {
     headerRowIndex = -1; // treat all rows as data
-    columnMap = { 0: 'name', 1: 'phone', 2: 'category' };
+    columnMap = { 0: 'name', 1: 'phone', 2: 'category', 3: 'people' };
   }
 
   const rows: ParsedGuestRow[] = [];
@@ -125,6 +157,7 @@ export function parseGuestsArrayBuffer(buffer: ArrayBuffer): ParseGuestsResult {
     let name = '';
     let phone = '';
     let category = '';
+    let numberOfPeople = 1;
 
     Object.entries(columnMap).forEach(([colIdxStr, key]) => {
       const colIdx = Number(colIdxStr);
@@ -132,6 +165,7 @@ export function parseGuestsArrayBuffer(buffer: ArrayBuffer): ParseGuestsResult {
       if (key === 'name') name = String(value ?? '').trim();
       else if (key === 'phone') phone = cleanPhone(value);
       else if (key === 'category') category = String(value ?? '').trim();
+      else if (key === 'people') numberOfPeople = parsePeopleCount(value);
     });
 
     if (!name) {
@@ -143,7 +177,7 @@ export function parseGuestsArrayBuffer(buffer: ArrayBuffer): ParseGuestsResult {
       name,
       phone,
       category,
-      numberOfPeople: 1,
+      numberOfPeople,
       sourceRow: i + 1,
     });
   }
@@ -227,15 +261,15 @@ export function downloadGuestImportTemplate(opts?: { eventTitle?: string }) {
     throw new Error('הורדת תבנית זמינה רק בדפדפן');
   }
 
-  const headers = ['שם', 'טלפון', 'קטגוריה'];
+  const headers = ['שם', 'טלפון', 'קטגוריה', 'כמות אנשים'];
   const example = [
-    ['ישראל ישראלי', '0501234567', 'משפחת החתן'],
-    ['מאיה כהן', '0521234567', 'חברים'],
-    ['דנה לוי', '0541234567', 'משפחת הכלה'],
+    ['ישראל ישראלי', '0501234567', 'משפחת החתן', 2],
+    ['מאיה כהן', '0521234567', 'חברים', 1],
+    ['דנה לוי', '0541234567', 'משפחת הכלה', 3],
   ];
 
   const worksheet = XLSX.utils.aoa_to_sheet([headers, ...example]);
-  worksheet['!cols'] = [{ wch: 26 }, { wch: 16 }, { wch: 20 }];
+  worksheet['!cols'] = [{ wch: 26 }, { wch: 16 }, { wch: 20 }, { wch: 14 }];
 
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, 'מוזמנים');
