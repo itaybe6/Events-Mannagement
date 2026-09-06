@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, usePathname, useRouter } from 'expo-router';
 
 import { colors } from '@/constants/colors';
+import { CheckInStatusFilter } from '@/features/guests/CheckInStatusFilter';
 import { useGuestCheckInModel } from '@/features/guests/useGuestCheckInModel';
 import { TableNumberFilter } from '@/features/guests/TableNumberFilter';
 import { eventService } from '@/lib/services/eventService';
@@ -779,12 +780,12 @@ function EmployeeGuestCheckinWebDesktopScreen() {
 
   const pendingPeopleCount = useMemo(() => Math.max(0, counts.total - counts.checkedIn), [counts.checkedIn, counts.total]);
 
-  const filterOptions = useMemo(
-    () => [
-      { key: 'all' as const, label: 'כל המוזמנים', count: counts.total },
-      { key: 'checked_in' as const, label: 'הגיעו', count: counts.checkedIn },
-      { key: 'not_checked_in' as const, label: 'טרם הגיעו', count: pendingPeopleCount },
-    ],
+  const statusFilterCounts = useMemo(
+    () => ({
+      all: counts.total,
+      checkedIn: counts.checkedIn,
+      pending: pendingPeopleCount,
+    }),
     [counts.checkedIn, counts.total, pendingPeopleCount]
   );
 
@@ -1607,6 +1608,26 @@ function EmployeeGuestCheckinWebDesktopScreen() {
                   <View style={styles.cardHeaderRow}>
                     <View style={styles.panelHeaderCopy}>
                       <Text style={styles.panelTitle}>רשימת צ'ק אין</Text>
+                      {groupedVisibleGuests.length > 1 ? (
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={allGroupsCollapsed ? 'פתח את כל השולחנות' : 'סגור את כל השולחנות'}
+                          onPress={toggleCollapseAllGroups}
+                          style={({ hovered, pressed }: any) => [
+                            styles.collapseAllBtn,
+                            (isMobile || isNarrow) ? styles.collapseAllBtnInline : null,
+                            Platform.OS === 'web' && hovered ? styles.collapseAllBtnHover : null,
+                            pressed ? { opacity: 0.92 } : null,
+                          ]}
+                        >
+                          <Ionicons
+                            name={allGroupsCollapsed ? 'chevron-expand-outline' : 'chevron-collapse-outline'}
+                            size={14}
+                            color={colors.primary}
+                          />
+                          <Text style={styles.collapseAllBtnText}>{allGroupsCollapsed ? 'פתח הכל' : 'סגור הכל'}</Text>
+                        </Pressable>
+                      ) : null}
                     </View>
                     <View style={styles.cardHeaderActions}>
                       <Pressable
@@ -1665,59 +1686,13 @@ function EmployeeGuestCheckinWebDesktopScreen() {
                     </View>
                   </View>
 
-                  {groupedVisibleGuests.length > 1 ? (
-                    <View style={styles.panelMetaRow}>
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel={allGroupsCollapsed ? 'פתח את כל השולחנות' : 'סגור את כל השולחנות'}
-                        onPress={toggleCollapseAllGroups}
-                        style={({ hovered, pressed }: any) => [
-                          styles.collapseAllBtn,
-                          Platform.OS === 'web' && hovered ? styles.collapseAllBtnHover : null,
-                          pressed ? { opacity: 0.92 } : null,
-                        ]}
-                      >
-                        <Ionicons
-                          name={allGroupsCollapsed ? 'chevron-expand-outline' : 'chevron-collapse-outline'}
-                          size={14}
-                          color={colors.primary}
-                        />
-                        <Text style={styles.collapseAllBtnText}>{allGroupsCollapsed ? 'פתח הכל' : 'סגור הכל'}</Text>
-                      </Pressable>
-                    </View>
-                  ) : null}
-
-                  <View style={styles.panelFilterChipsRow}>
-                    {filterOptions.map((option) => {
-                      const active = filter === option.key;
-                      return (
-                        <Pressable
-                          key={option.key}
-                          accessibilityRole="button"
-                          accessibilityLabel={`סנן ${option.label}`}
-                          accessibilityState={{ selected: active }}
-                          onPress={() => setFilter(option.key)}
-                          style={({ hovered, pressed }: any) => [
-                            styles.panelFilterChip,
-                            isTouchLayout ? styles.panelFilterChipTouch : null,
-                            active ? styles.panelFilterChipActive : null,
-                            Platform.OS === 'web' && hovered && !active ? styles.panelFilterChipHover : null,
-                            pressed ? { opacity: 0.94 } : null,
-                          ]}
-                        >
-                          <Text style={[styles.panelFilterChipText, active ? styles.panelFilterChipTextActive : null]}>
-                            {option.label}
-                          </Text>
-                          <View style={[styles.panelFilterChipCount, active ? styles.panelFilterChipCountActive : null]}>
-                            <Text
-                              style={[styles.panelFilterChipCountText, active ? styles.panelFilterChipCountTextActive : null]}
-                            >
-                              {option.count}
-                            </Text>
-                          </View>
-                        </Pressable>
-                      );
-                    })}
+                  <View style={[styles.statusFilterWrap, (isMobile || isNarrow) ? styles.statusFilterWrapPhone : null]}>
+                    <CheckInStatusFilter
+                      value={filter}
+                      onChange={setFilter}
+                      counts={statusFilterCounts}
+                      compact={isMobile || isNarrow}
+                    />
                   </View>
 
                   <View style={[styles.mainSearchWrap, { marginTop: 8 }]}>
@@ -2999,7 +2974,7 @@ const styles = StyleSheet.create({
 
   cardHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   cardHeaderActions: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, flexShrink: 0 },
-  panelHeaderCopy: { flex: 1, minWidth: 0, gap: 2 },
+  panelHeaderCopy: { flex: 1, minWidth: 0, gap: 6, alignItems: 'flex-end' },
   panelEyebrow: {
     fontSize: 10,
     fontWeight: '900',
@@ -3010,8 +2985,8 @@ const styles = StyleSheet.create({
   },
   panelTitle: { fontSize: 16, fontWeight: '900', color: colors.primary, textAlign: 'right', letterSpacing: 0.1 },
   panelSubtitle: { fontSize: 11, fontWeight: '700', color: colors.gray[600], lineHeight: 16, textAlign: 'right' },
-  panelMetaRow: { marginTop: 8, flexDirection: 'row', flexWrap: 'nowrap', gap: 8 },
   collapseAllBtn: {
+    alignSelf: 'flex-end',
     flexDirection: 'row-reverse',
     alignItems: 'center',
     gap: 5,
@@ -3023,43 +2998,16 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(6,23,62,0.10)',
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer', transition: 'background-color 140ms ease' } as any) : null),
   },
+  collapseAllBtnInline: {
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+  },
   collapseAllBtnHover: { backgroundColor: 'rgba(6,23,62,0.09)' },
   collapseAllBtnText: { fontSize: 11, fontWeight: '900', color: colors.primary, textAlign: 'right' },
-  panelFilterChipsRow: { marginTop: 8, flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  panelFilterChip: {
-    minHeight: 32,
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
-    backgroundColor: 'rgba(248,250,252,0.96)',
-    borderWidth: 1,
-    borderColor: 'rgba(203,213,225,0.9)',
-    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
-  },
-  panelFilterChipTouch: { minHeight: 40, paddingHorizontal: 14, paddingVertical: 8 },
-  panelFilterChipHover: { backgroundColor: 'rgba(241,245,249,1)', borderColor: 'rgba(148,163,184,0.45)' },
-  panelFilterChipActive: {
-    backgroundColor: 'rgba(6,23,62,0.08)',
-    borderColor: 'rgba(6,23,62,0.26)',
-    ...(Platform.OS === 'web' ? ({ boxShadow: '0 10px 24px rgba(6,23,62,0.10)' } as any) : null),
-  },
-  panelFilterChipText: { fontSize: 12, fontWeight: '900', color: colors.gray[700], textAlign: 'right' },
-  panelFilterChipTextActive: { color: colors.primary },
-  panelFilterChipCount: {
-    minWidth: 22,
-    height: 22,
-    paddingHorizontal: 6,
-    borderRadius: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(15,23,42,0.06)',
-  },
-  panelFilterChipCountActive: { backgroundColor: colors.primary },
-  panelFilterChipCountText: { fontSize: 12, fontWeight: '900', color: colors.gray[700], textAlign: 'center' },
-  panelFilterChipCountTextActive: { color: '#fff' },
+  statusFilterWrap: { marginTop: 10 },
+  statusFilterWrapPhone: { marginTop: 12, marginBottom: 2 },
   linkBtn: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, backgroundColor: 'rgba(15,23,42,0.04)' },
   linkBtnHover: { backgroundColor: 'rgba(15,23,42,0.06)' },
   linkBtnText: { fontSize: 12, fontWeight: '900', color: colors.primary, textAlign: 'right' },

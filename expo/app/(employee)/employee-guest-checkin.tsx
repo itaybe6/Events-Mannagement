@@ -28,6 +28,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "@/constants/colors";
 import BackSwipe from "@/components/BackSwipe";
 import AppHeader from "@/components/AppHeader";
+import { CheckInStatusFilter } from "@/features/guests/CheckInStatusFilter";
 import { guestArrivedPeople, guestInvitedPeople, useGuestCheckInModel } from "@/features/guests/useGuestCheckInModel";
 import { TableNumberFilter } from "@/features/guests/TableNumberFilter";
 import { useSeatingMapModel } from "@/features/seating/useSeatingMapModel";
@@ -437,6 +438,18 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
   const TAB_BAR_BOTTOM_GAP = Platform.OS === "ios" ? 30 : 20;
   const bottomReserve = TAB_BAR_HEIGHT + TAB_BAR_BOTTOM_GAP + 18;
   const contentBottomPadding = bottomReserve + (isAdminStyledMobile ? 42 : insets.bottom);
+  const pendingPeopleCount = useMemo(
+    () => Math.max(0, counts.total - counts.checkedIn),
+    [counts.checkedIn, counts.total]
+  );
+  const statusFilterCounts = useMemo(
+    () => ({
+      all: counts.total,
+      checkedIn: counts.checkedIn,
+      pending: pendingPeopleCount,
+    }),
+    [counts.checkedIn, counts.total, pendingPeopleCount]
+  );
   const listScrollRef = useRef<any>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
 
@@ -1151,28 +1164,12 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                 />
                 {listHint ? <Text style={styles.listHint}>{listHint}</Text> : null}
 
-                {/* Filters */}
-                <View style={styles.filtersRow}>
-                  {[
-                    { key: "all" as const, label: "הכל" },
-                    { key: "checked_in" as const, label: "הגיעו" },
-                    { key: "not_checked_in" as const, label: "לא הגיעו" },
-                    { key: "maybe_coming" as const, label: "אולי מגיעים" },
-                  ].map((opt) => {
-                    const active = filter === opt.key;
-                    return (
-                      <TouchableOpacity
-                        key={opt.key}
-                        style={[styles.filterChip, active && styles.filterChipActive]}
-                        onPress={() => setFilter(opt.key)}
-                        activeOpacity={0.9}
-                        accessibilityRole="button"
-                        accessibilityLabel={`סינון: ${opt.label}`}
-                      >
-                        <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>{opt.label}</Text>
-                      </TouchableOpacity>
-                    );
-                  })}
+                <View style={styles.statusFilterWrap}>
+                  <CheckInStatusFilter
+                    value={filter}
+                    onChange={setFilter}
+                    counts={statusFilterCounts}
+                  />
                 </View>
 
                 <TouchableOpacity
@@ -1577,36 +1574,20 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                 )}
               </TouchableOpacity>
             </View>
+            <View style={styles.statusFilterWrap}>
+              <CheckInStatusFilter
+                value={filter}
+                onChange={setFilter}
+                counts={statusFilterCounts}
+                compact
+              />
+            </View>
             <TableNumberFilter
               options={tableFilterOptions}
               selectedId={tableFilterId}
               onSelect={setTableFilterId}
             />
             {listHint ? <Text style={styles.listHint}>{listHint}</Text> : null}
-
-            {/* Filters */}
-            <View style={styles.filtersRow}>
-              {[
-                { key: "all" as const, label: "הכל" },
-                { key: "checked_in" as const, label: "הגיעו" },
-                { key: "not_checked_in" as const, label: "לא הגיעו" },
-                { key: "maybe_coming" as const, label: "אולי מגיעים" },
-              ].map((opt) => {
-                const active = filter === opt.key;
-                return (
-                  <TouchableOpacity
-                    key={opt.key}
-                    style={[styles.filterChip, active && styles.filterChipActive]}
-                    onPress={() => setFilter(opt.key)}
-                    activeOpacity={0.9}
-                    accessibilityRole="button"
-                    accessibilityLabel={`סינון: ${opt.label}`}
-                  >
-                    <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>{opt.label}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
 
             {/* Grouped by table */}
             <View style={{ gap: 12, marginTop: 12 }}>
@@ -2293,26 +2274,9 @@ const styles = StyleSheet.create({
     borderColor: "rgba(6,23,62,0.16)",
   },
 
-  filtersRow: {
+  statusFilterWrap: {
     marginTop: 12,
-    flexDirection: ROW_DIR,
-    flexWrap: "wrap",
-    gap: 10,
   },
-  filterChip: {
-    backgroundColor: "rgba(0,0,0,0.04)",
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.06)",
-  },
-  filterChipActive: {
-    backgroundColor: "rgba(17, 82, 212, 0.10)",
-    borderColor: "rgba(17, 82, 212, 0.22)",
-  },
-  filterChipText: { fontSize: 12, fontWeight: "900", color: colors.gray[800] },
-  filterChipTextActive: { color: colors.primary },
 
   categoryCard: {
     backgroundColor: colors.white,

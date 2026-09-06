@@ -276,6 +276,32 @@ function mapLiveSeatingRow(row: Record<string, any>): LiveSeatingTableRow {
   };
 }
 
+/**
+ * Merge a realtime `tables` row into local state without wiping fields the
+ * payload omitted (or temporarily nulled, e.g. number during a sketch save).
+ */
+export function applyLiveSeatingRealtimeRow(
+  current: LiveSeatingTableRow | null,
+  row: Record<string, any>
+): LiveSeatingTableRow {
+  const mapped = mapLiveSeatingRow(row);
+  if (!current) return mapped;
+
+  const has = (key: string) => Object.prototype.hasOwnProperty.call(row, key);
+
+  return {
+    id: mapped.id,
+    number: has('number') ? (mapped.number ?? current.number) : current.number,
+    name: has('name') ? (mapped.name ?? current.name) : current.name,
+    capacity: has('capacity') && mapped.capacity > 0 ? mapped.capacity : current.capacity,
+    area: has('area') ? mapped.area : current.area,
+    shape: has('shape') ? mapped.shape : current.shape,
+    x: has('x') && row.x != null ? mapped.x : current.x,
+    y: has('y') && row.y != null ? mapped.y : current.y,
+    liveExtraSeated: has('live_extra_seated') ? mapped.liveExtraSeated : current.liveExtraSeated,
+  };
+}
+
 export const liveSeatingService = {
   /**
    * Tables of an event with their manual live corrections.

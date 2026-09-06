@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { supabase } from '@/lib/supabase';
 import { guestService, mapGuestRowFromDb } from '@/lib/services/guestService';
-import { liveSeatingService, type LiveSeatingTableRow } from '@/lib/services/tableService';
+import { liveSeatingService, applyLiveSeatingRealtimeRow, type LiveSeatingTableRow } from '@/lib/services/tableService';
 import { guestArrivedPeople, guestInvitedPeople } from '@/features/guests/useGuestCheckInModel';
 import type { Guest } from '@/types';
 
@@ -238,19 +238,10 @@ export function useLiveSeatingModel(eventId: string | null) {
 
           setTableRows((prev) => {
             const idx = prev.findIndex((t) => t.id === id);
-            if (idx === -1) {
-              // A table added from another screen; a refresh brings the full row.
-              void refresh({ silent: true });
-              return prev;
-            }
+            const merged = applyLiveSeatingRealtimeRow(idx === -1 ? null : prev[idx], row);
+            if (idx === -1) return [...prev, merged];
             const next = prev.slice();
-            next[idx] = {
-              ...next[idx],
-              number: row.number ?? next[idx].number,
-              name: row.name ?? next[idx].name,
-              capacity: Number(row.capacity) || next[idx].capacity,
-              liveExtraSeated: Number(row.live_extra_seated) || 0,
-            };
+            next[idx] = merged;
             return next;
           });
         }
@@ -264,7 +255,7 @@ export function useLiveSeatingModel(eventId: string | null) {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [cleanEventId, refresh]);
+  }, [cleanEventId]);
 
   useEffect(() => {
     if (!cleanEventId) return;
