@@ -87,8 +87,16 @@ export function getWebAppNav(args: {
               key: 'guests',
               href: '/(couple)/guests',
               label: 'אישורי הגעה',
-              icon: 'checkbox-outline',
+              icon: 'people-outline',
               matchLeaves: ['guests'],
+              params: eventId ? eventParams(eventId) : undefined,
+            },
+            {
+              key: 'checkin',
+              href: '/(couple)/guest-checkin',
+              label: 'צ׳ק אין מאשרים',
+              icon: 'checkbox-outline',
+              matchLeaves: ['guest-checkin'],
               params: eventId ? eventParams(eventId) : undefined,
             },
             {

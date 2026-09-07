@@ -30,7 +30,7 @@ function isWebSelfScrollingCoupleRoute(pathname: string) {
   const leaf = segments[segments.length - 1];
   // Keep this list stable: flipping shell structure mid-navigation remounts <Slot>
   // and can reset Expo Router back to the couple home route.
-  return leaf === 'TablesList';
+  return leaf === 'TablesList' || leaf === 'guest-checkin';
 }
 
 export default function CoupleWebLayout() {

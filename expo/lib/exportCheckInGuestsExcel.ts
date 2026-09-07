@@ -277,28 +277,77 @@ export function buildCheckInGuestsCsv(guests: CheckInExportGuest[], opts?: Check
   };
 }
 
+function pendingConfirmerRows(
+  guests: CheckInExportGuest[],
+  opts?: CheckInExportOpts
+): { rows: (string | number)[][]; count: number } {
+  const categoryLookup = buildCategoryLookup(opts?.categories ?? []);
+  const tableLookup = buildTableLookup(opts?.tables ?? []);
+  const pending = sortArrivedGuests(
+    guests.filter((guest) => String(guest.status || '').trim() === 'מגיע' && !guest.checkedIn),
+    tableLookup
+  );
+  const rows = pending.map((guest) => {
+    const category = guest.category_id ? categoryLookup.get(String(guest.category_id).trim()) : undefined;
+    const table = guest.tableId ? tableLookup.get(String(guest.tableId).trim()) : undefined;
+    return [
+      tableNumberCell(table),
+      guestName(guest),
+      invitedPeople(guest),
+      String(category?.name ?? '').trim(),
+      sideLabel(category?.side),
+      String(guest.phone ?? '').trim(),
+    ];
+  });
+  return { rows, count: pending.length };
+}
+
 export function exportCheckInGuestsToExcel(guests: CheckInExportGuest[], opts?: CheckInExportOpts) {
   if (typeof window === 'undefined' || typeof document === 'undefined') {
     throw new Error('ייצוא לאקסל זמין רק בדפדפן');
   }
 
-  const prepared = prepareCheckInExport(guests, opts);
-  const guestsSheet = XLSX.utils.aoa_to_sheet([GUESTS_HEADERS, ...prepared.guestRows]);
-  applySheetView(guestsSheet, [14, 28, 16, 16, 18, 10, 16, 18], 'H', prepared.arrivedGuests.length + 1);
+  const pending = pendingConfirmerRows(guests, opts);
+  let prepared: PreparedCheckInExport | null = null;
+  try {
+    prepared = prepareCheckInExport(guests, opts);
+  } catch (error) {
+    if (!(error instanceof Error) || error.message !== 'אין אורחים שהגיעו לייצוא' || pending.count === 0) {
+      throw error;
+    }
+  }
 
-  const byTableSheet = XLSX.utils.aoa_to_sheet(prepared.byTableRows);
-  byTableSheet['!cols'] = [{ wch: 18 }, { wch: 36 }, { wch: 16 }, { wch: 16 }, { wch: 16 }];
+  if (!prepared && pending.count === 0) {
+    throw new Error('אין אורחים שהגיעו לייצוא');
+  }
 
   const workbook = XLSX.utils.book_new();
   workbook.Workbook = { Views: [{ RTL: true }] };
-  XLSX.utils.book_append_sheet(workbook, guestsSheet, 'אורחים שהגיעו');
-  XLSX.utils.book_append_sheet(workbook, byTableSheet, 'לפי שולחן');
 
-  XLSX.writeFile(workbook, prepared.fileName);
+  if (prepared) {
+    const guestsSheet = XLSX.utils.aoa_to_sheet([GUESTS_HEADERS, ...prepared.guestRows]);
+    applySheetView(guestsSheet, [14, 28, 16, 16, 18, 10, 16, 18], 'H', prepared.arrivedGuests.length + 1);
+    XLSX.utils.book_append_sheet(workbook, guestsSheet, 'אורחים שהגיעו');
+
+    const byTableSheet = XLSX.utils.aoa_to_sheet(prepared.byTableRows);
+    byTableSheet['!cols'] = [{ wch: 18 }, { wch: 36 }, { wch: 16 }, { wch: 16 }, { wch: 16 }];
+    XLSX.utils.book_append_sheet(workbook, byTableSheet, 'לפי שולחן');
+  }
+
+  if (pending.count > 0) {
+    const pendingHeaders = ['מספר שולחן', 'שם', 'מספר שהוזמנו', 'קבוצה', 'צד', 'טלפון'];
+    const pendingSheet = XLSX.utils.aoa_to_sheet([pendingHeaders, ...pending.rows]);
+    applySheetView(pendingSheet, [14, 28, 16, 18, 10, 16], 'F', pending.count);
+    XLSX.utils.book_append_sheet(workbook, pendingSheet, 'טרם הגיעו');
+  }
+
+  const fileName = prepared?.fileName || exportFileName(opts?.eventTitle, 'xlsx');
+  XLSX.writeFile(workbook, fileName);
 
   return {
-    fileName: prepared.fileName,
-    count: prepared.arrivedGuests.length,
-    arrivedPeople: prepared.totalArrivedPeople,
+    fileName,
+    count: prepared?.arrivedGuests.length ?? 0,
+    arrivedPeople: prepared?.totalArrivedPeople ?? 0,
+    pendingCount: pending.count,
   };
 }

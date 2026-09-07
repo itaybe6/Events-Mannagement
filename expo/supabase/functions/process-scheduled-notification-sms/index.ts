@@ -274,13 +274,25 @@ serve(async (req) => {
     const waToken = getWhatsappToken();
     const waPhoneId = String(Deno.env.get("WHATSAPP_PHONE_NUMBER_ID") ?? "").trim();
 
-    const { data: jobs, error: claimError } = await adminClient.rpc(
-      "claim_due_sms_notification_settings",
-      { p_limit: limit },
-    );
-    if (claimError) return json({ error: claimError.message }, { status: 500 });
+    // Scheduled notifications are claimed first so leftover catch-up batches
+    // can never starve a time-based send. Catch-up fills leftover slots only.
+    const scheduledRes = await adminClient.rpc("claim_due_scheduled_notification_settings", {
+      p_limit: limit,
+    });
+    if (scheduledRes.error) return json({ error: scheduledRes.error.message }, { status: 500 });
+    const scheduledJobs: ClaimedJob[] = Array.isArray(scheduledRes.data) ? scheduledRes.data : [];
 
-    const claimed: ClaimedJob[] = Array.isArray(jobs) ? jobs : [];
+    const remaining = Math.max(0, limit - scheduledJobs.length);
+    let catchupJobs: ClaimedJob[] = [];
+    if (remaining > 0) {
+      const catchupRes = await adminClient.rpc("claim_due_catchup_notification_settings", {
+        p_limit: remaining,
+      });
+      if (catchupRes.error) return json({ error: catchupRes.error.message }, { status: 500 });
+      catchupJobs = Array.isArray(catchupRes.data) ? catchupRes.data : [];
+    }
+
+    const claimed: ClaimedJob[] = [...scheduledJobs, ...catchupJobs];
     if (claimed.length === 0) {
       return json({ ok: true, processed: 0, dryRun });
     }
@@ -582,6 +594,7 @@ serve(async (req) => {
           },
           error: waFailed === 0 ? null : "some_messages_failed",
         });
+        await finalizeCatchupQueueForRun(adminClient, runId);
         continue;
       }
 

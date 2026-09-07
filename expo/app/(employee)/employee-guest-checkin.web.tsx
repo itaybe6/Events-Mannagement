@@ -778,15 +778,18 @@ function EmployeeGuestCheckinWebDesktopScreen() {
     return Math.max(0, Math.min(100, Math.round((eventOverview.arrivedPeople / eventOverview.invitedPeople) * 100)));
   }, [eventOverview.arrivedPeople, eventOverview.invitedPeople]);
 
-  const pendingPeopleCount = useMemo(() => Math.max(0, counts.total - counts.checkedIn), [counts.checkedIn, counts.total]);
+  const pendingPeopleCount = useMemo(
+    () => counts.pending ?? Math.max(0, counts.total - counts.checkedIn),
+    [counts.pending, counts.checkedIn, counts.total]
+  );
 
   const statusFilterCounts = useMemo(
     () => ({
-      all: counts.total,
+      all: counts.confirmed ?? counts.total,
       checkedIn: counts.checkedIn,
       pending: pendingPeopleCount,
     }),
-    [counts.checkedIn, counts.total, pendingPeopleCount]
+    [counts.checkedIn, counts.confirmed, counts.total, pendingPeopleCount]
   );
 
   const visibleGuests = useMemo(() => {
@@ -797,7 +800,7 @@ function EmployeeGuestCheckinWebDesktopScreen() {
     return filteredGuests.filter((g) => String(g.tableId ?? '').trim() === tableFilter);
   }, [filteredGuests, tableFilter]);
 
-  const groupedVisibleGuests = useMemo(() => {
+  const groupGuestsByTable = useCallback((list: typeof visibleGuests) => {
     const groups = new Map<
       string,
       {
@@ -812,7 +815,7 @@ function EmployeeGuestCheckinWebDesktopScreen() {
       }
     >();
 
-    for (const g of visibleGuests) {
+    for (const g of list) {
       const tableIdKey = g.tableId === null || g.tableId === undefined ? '' : String(g.tableId).trim();
       const tableNumber = tableIdKey ? (tableNumberById.get(tableIdKey) ?? null) : null;
       const capacity =
@@ -865,7 +868,20 @@ function EmployeeGuestCheckinWebDesktopScreen() {
       return String(a.label).localeCompare(String(b.label), 'he');
     });
     return arr;
-  }, [tableCapacityById, tableCapacityByNumber, tableLabelById, tableNumberById, visibleGuests]);
+  }, [tableCapacityById, tableCapacityByNumber, tableLabelById, tableNumberById]);
+
+  const groupedVisibleGuests = useMemo(
+    () => groupGuestsByTable(visibleGuests),
+    [groupGuestsByTable, visibleGuests]
+  );
+  const pendingGroupedGuests = useMemo(
+    () => groupGuestsByTable(visibleGuests.filter((g) => !Boolean(g.checkedIn))),
+    [groupGuestsByTable, visibleGuests]
+  );
+  const arrivedGroupedGuests = useMemo(
+    () => groupGuestsByTable(visibleGuests.filter((g) => Boolean(g.checkedIn))),
+    [groupGuestsByTable, visibleGuests]
+  );
 
   // Progressive render with a cap: painting every guest card made each search
   // keystroke re-render the whole list. Beyond the cap a "show more" button
@@ -1234,9 +1250,30 @@ function EmployeeGuestCheckinWebDesktopScreen() {
     }
   }, [assignGuestToTable, closeMoveModal, moveGuest, moveSelectedTableId, sendTableUpdateSms]);
 
-  const guestsListContent = (
-    <View style={styles.tableGroupsWrap}>
-      {renderedGroupedGuests.map((group) => {
+  const sliceGroupedGuests = useCallback((groups: typeof groupedVisibleGuests, limit: number) => {
+    const total = groups.reduce((sum, group) => sum + group.guests.length, 0);
+    if (limit >= total) return groups;
+    let used = 0;
+    const out: typeof groups = [];
+    for (const group of groups) {
+      if (used >= limit) break;
+      const remaining = limit - used;
+      if (group.guests.length <= remaining) {
+        out.push(group);
+        used += group.guests.length;
+      } else {
+        out.push({ ...group, guests: group.guests.slice(0, remaining) });
+        used = limit;
+      }
+    }
+    return out;
+  }, []);
+
+  const showDualBoard = filter === 'all';
+  const dualSideBySide = showDualBoard && width >= 880 && !isSideBySide;
+
+  const renderGroupCards = (groups: typeof groupedVisibleGuests) =>
+    groups.map((group) => {
         const collapsed = Boolean(collapsedTableGroups[group.key]);
         const maxPeople = (Number((group as any).maxPeople) || 0) > 0 ? Number((group as any).maxPeople) || 0 : group.peopleTotal;
         const overflow = Math.max(0, (Number(group.arrivedPeople) || 0) - (Number(maxPeople) || 0));
@@ -1466,22 +1503,64 @@ function EmployeeGuestCheckinWebDesktopScreen() {
             )}
           </View>
         );
-      })}
-      {hiddenListRows > 0 ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="הצגת אורחים נוספים ברשימה"
-          onPress={showMoreRows}
-          style={({ hovered, pressed }: any) => [
-            styles.showMoreBtn,
-            Platform.OS === 'web' && hovered ? { backgroundColor: 'rgba(17,24,39,0.03)' } : null,
-            pressed ? { opacity: 0.92 } : null,
-          ]}
-        >
-          <Ionicons name="chevron-down" size={16} color={colors.primary} />
-          <Text style={styles.showMoreBtnText}>הצג עוד אורחים ({hiddenListRows})</Text>
-        </Pressable>
-      ) : null}
+      });
+
+  const showMoreBlock =
+    hiddenListRows > 0 ? (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="הצגת אורחים נוספים ברשימה"
+        onPress={showMoreRows}
+        style={({ hovered, pressed }: any) => [
+          styles.showMoreBtn,
+          Platform.OS === 'web' && hovered ? { backgroundColor: 'rgba(17,24,39,0.03)' } : null,
+          pressed ? { opacity: 0.92 } : null,
+        ]}
+      >
+        <Ionicons name="chevron-down" size={16} color={colors.primary} />
+        <Text style={styles.showMoreBtnText}>הצג עוד אורחים ({hiddenListRows})</Text>
+      </Pressable>
+    ) : null;
+
+  const guestsListContent = showDualBoard ? (
+    <View style={[styles.dualBoard, dualSideBySide ? styles.dualBoardRow : null]}>
+      <View style={[styles.dualCol, styles.dualColPending]}>
+        <View style={styles.dualColHeader}>
+          <Text style={styles.dualColTitle}>טרם הגיעו</Text>
+          <View style={styles.dualColCount}>
+            <Text style={styles.dualColCountText}>{pendingPeopleCount}</Text>
+          </View>
+        </View>
+        <View style={styles.tableGroupsWrap}>
+          {pendingGroupedGuests.length === 0 ? (
+            <Text style={styles.dualEmptyText}>כל המאשרים כבר סומנו כהגיעו</Text>
+          ) : (
+            renderGroupCards(sliceGroupedGuests(pendingGroupedGuests, rowRenderLimit))
+          )}
+        </View>
+      </View>
+      <View style={[styles.dualCol, styles.dualColArrived]}>
+        <View style={styles.dualColHeader}>
+          <Text style={styles.dualColTitle}>הגיעו</Text>
+          <View style={styles.dualColCount}>
+            <Text style={styles.dualColCountText}>{counts.checkedIn}</Text>
+          </View>
+        </View>
+        <View style={styles.tableGroupsWrap}>
+          {arrivedGroupedGuests.length === 0 ? (
+            <Text style={styles.dualEmptyText}>עדיין אין הגעות לאולם</Text>
+          ) : (
+            renderGroupCards(sliceGroupedGuests(arrivedGroupedGuests, rowRenderLimit))
+          )}
+        </View>
+      </View>
+      {showMoreBlock}
+      {listHint ? <Text style={styles.listHint}>{listHint}</Text> : null}
+    </View>
+  ) : (
+    <View style={styles.tableGroupsWrap}>
+      {renderGroupCards(renderedGroupedGuests)}
+      {showMoreBlock}
       {listHint ? <Text style={styles.listHint}>{listHint}</Text> : null}
     </View>
   );
@@ -1564,7 +1643,7 @@ function EmployeeGuestCheckinWebDesktopScreen() {
                 </Pressable>
 
                 <View style={[styles.metricsGrid, metricsInOneRow ? styles.metricsGridTop : null]}>
-                  <CheckinOverviewStat label='סה"כ מוזמנים' value={eventOverview.invitedPeople} icon="people-outline" />
+                  <CheckinOverviewStat label="מאשרים" value={eventOverview.invitedPeople} icon="people-outline" />
                   <CheckinOverviewStat label="הגיעו לאולם" value={counts.checkedIn} icon="walk-outline" highlight />
                   <CheckinOverviewStat label="שולחנות ריקים" value={eventOverview.emptyTables} icon="grid-outline" />
                   <CheckinOverviewStat label="שולחנות מלאים" value={eventOverview.fullTables} icon="checkmark-circle-outline" />
@@ -1582,7 +1661,7 @@ function EmployeeGuestCheckinWebDesktopScreen() {
                   <View style={[styles.arrivalProgressFill, { width: `${attendanceRate}%` } as any]} />
                 </View>
                 <Text style={styles.arrivalProgressText}>
-                  {eventOverview.arrivedPeople} מתוך {eventOverview.invitedPeople} אורחים באולם
+                  {eventOverview.arrivedPeople} מתוך {eventOverview.invitedPeople} מאשרים באולם
                 </Text>
               </View>
             </View>
@@ -1607,7 +1686,7 @@ function EmployeeGuestCheckinWebDesktopScreen() {
                 <View style={[styles.card, styles.guestListCard, isSideBySide ? ({ height: workspaceHeight } as any) : null]}>
                   <View style={styles.cardHeaderRow}>
                     <View style={styles.panelHeaderCopy}>
-                      <Text style={styles.panelTitle}>רשימת צ'ק אין</Text>
+                      <Text style={styles.panelTitle}>מאשרים — הגיעו / טרם הגיעו</Text>
                       {groupedVisibleGuests.length > 1 ? (
                         <Pressable
                           accessibilityRole="button"
@@ -3054,6 +3133,47 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? ({ display: 'flex', flexDirection: 'column' } as any) : null),
   },
   tableGroupsWrap: { gap: 8 },
+  dualBoard: { gap: 12 },
+  dualBoardRow: { flexDirection: 'row', alignItems: 'flex-start' },
+  dualCol: {
+    flex: 1,
+    minWidth: 0,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.08)',
+    backgroundColor: 'rgba(248,250,252,0.9)',
+    overflow: 'hidden',
+    paddingBottom: 8,
+  },
+  dualColPending: { borderTopWidth: 3, borderTopColor: '#F59E0B' },
+  dualColArrived: { borderTopWidth: 3, borderTopColor: '#0E9F6E' },
+  dualColHeader: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(6,23,62,0.06)',
+  },
+  dualColTitle: { fontSize: 14, fontWeight: '900', color: colors.primary, textAlign: 'right' },
+  dualColCount: {
+    minWidth: 28,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    backgroundColor: 'rgba(6,23,62,0.06)',
+    alignItems: 'center',
+  },
+  dualColCountText: { fontSize: 12, fontWeight: '900', color: colors.primary },
+  dualEmptyText: {
+    paddingHorizontal: 14,
+    paddingVertical: 18,
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.gray[500],
+    textAlign: 'center',
+  },
   tableGroupCard: {
     borderRadius: 16,
     borderWidth: 1,

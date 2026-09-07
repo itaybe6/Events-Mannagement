@@ -2,5 +2,6 @@ node_modules
 .env
 .expo
 .cursor/mcp.json
+.codex/
 .vercel
 .env*

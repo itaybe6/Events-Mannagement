@@ -493,6 +493,34 @@ export default function CoupleHomeWebScreen() {
           </Surface>
         </View>
 
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="פתיחת צ׳ק אין מאשרים"
+          onPress={() =>
+            router.push({
+              pathname: '/(couple)/guest-checkin',
+              params: resolvedEventId ? { eventId: resolvedEventId } : undefined,
+            } as any)
+          }
+          style={({ hovered, pressed }: any) => [
+            styles.checkInLaunch,
+            isMobile ? styles.checkInLaunchMobile : null,
+            Platform.OS === 'web' && hovered ? styles.checkInLaunchHover : null,
+            pressed ? { opacity: 0.94 } : null,
+          ]}
+        >
+          <View style={styles.checkInLaunchIcon}>
+            <Ionicons name="checkbox-outline" size={20} color="#0E9F6E" />
+          </View>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.checkInLaunchTitle}>צ׳ק אין מאשרים</Text>
+            <Text style={styles.checkInLaunchText}>
+              רשימה חיה של מי שאישר הגעה — מי כבר באולם ומי עדיין בדרך.
+            </Text>
+          </View>
+          <Ionicons name="chevron-back" size={18} color={colors.primary} />
+        </Pressable>
+
         <View style={[styles.analyticsSection, isMobile ? styles.analyticsSectionMobile : null]}>
           <View style={[styles.analyticsGrid, isCompactDesktop ? styles.analyticsGridStack : null]}>
             <Surface style={[styles.analyticsMainCard, isMobile ? styles.cardPadMobile : null]} hoverStyle={styles.surfaceHoverSoft}>
@@ -1952,6 +1980,49 @@ const styles = StyleSheet.create({
     marginTop: 6,
     fontSize: 13,
     fontWeight: '700',
+    color: colors.gray[600],
+    textAlign: 'right',
+  },
+  checkInLaunch: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 14,
+    marginBottom: 18,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: 'rgba(14,159,110,0.18)',
+    backgroundColor: 'rgba(14,159,110,0.07)',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  checkInLaunchMobile: {
+    marginBottom: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: 18,
+  },
+  checkInLaunchHover: {
+    backgroundColor: 'rgba(14,159,110,0.11)',
+  },
+  checkInLaunchIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: 'rgba(14,159,110,0.14)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkInLaunchTitle: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: colors.primary,
+    textAlign: 'right',
+  },
+  checkInLaunchText: {
+    marginTop: 2,
+    fontSize: 13,
+    fontWeight: '600',
     color: colors.gray[600],
     textAlign: 'right',
   },

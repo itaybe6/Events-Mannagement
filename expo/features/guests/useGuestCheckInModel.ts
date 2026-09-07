@@ -48,6 +48,16 @@ function guestArrivedPeople(g: Guest): number {
 
 export { guestInvitedPeople, guestArrivedPeople };
 
+/** RSVP confirmed — the night-of roster, excluding pending / declined. */
+export function isConfirmedGuest(g: Pick<Guest, 'status'>): boolean {
+  return g.status === 'מגיע';
+}
+
+/** Confirmers plus anyone already at the door (walk-ins / unexpected arrivals). */
+export function isCheckInRosterGuest(g: Pick<Guest, 'status' | 'checkedIn'>): boolean {
+  return isConfirmedGuest(g) || Boolean(g.checkedIn);
+}
+
 function notifyGuestTableNumber(
   eventId: string | null,
   guestId: string,
@@ -595,9 +605,10 @@ export function useGuestCheckInModel(params: {
 
   const matchesFilter = useCallback((g: Guest) => {
     if (filter === 'checked_in') return Boolean(g.checkedIn);
-    if (filter === 'not_checked_in') return !Boolean(g.checkedIn);
+    if (filter === 'not_checked_in') return isConfirmedGuest(g) && !Boolean(g.checkedIn);
     if (filter === 'maybe_coming') return g.status === 'אולי מגיע';
-    return true;
+    // Default roster: confirmers, plus anyone already marked as arrived.
+    return isCheckInRosterGuest(g);
   }, [filter]);
 
   const filteredGuests = useMemo(() => {
@@ -614,13 +625,32 @@ export function useGuestCheckInModel(params: {
       });
     };
 
+    // While searching, scan the full guest list so an unexpected arrival
+    // (pending / maybe / declined) can still be found and checked in.
+    const source = q ? guests : guests.filter((g) => (filter === 'all' ? isCheckInRosterGuest(g) : matchesFilter(g)));
+    const searched = applySearch(source);
+    const matched = q
+      ? searched.filter((g) => {
+          if (filter === 'checked_in') return Boolean(g.checkedIn);
+          if (filter === 'not_checked_in') return !Boolean(g.checkedIn);
+          if (filter === 'maybe_coming') return g.status === 'אולי מגיע';
+          return true;
+        })
+      : searched;
+
     if (q && !listReady) {
-      return (serverSearchGuests ?? []).filter(matchesFilter).slice(0, SEARCH_RESULT_CAP);
+      return (serverSearchGuests ?? [])
+        .filter((g) => {
+          if (filter === 'checked_in') return Boolean(g.checkedIn);
+          if (filter === 'not_checked_in') return !Boolean(g.checkedIn);
+          if (filter === 'maybe_coming') return g.status === 'אולי מגיע';
+          return true;
+        })
+        .slice(0, SEARCH_RESULT_CAP);
     }
 
-    const matched = applySearch(guests.filter(matchesFilter));
     return q ? matched.slice(0, SEARCH_RESULT_CAP) : matched;
-  }, [deferredQuery, guests, listReady, matchesFilter, searchIndex, serverSearchGuests]);
+  }, [deferredQuery, guests, listReady, matchesFilter, searchIndex, serverSearchGuests, filter]);
 
   const listHint = useMemo(() => {
     const q = query.trim();
@@ -637,18 +667,40 @@ export function useGuestCheckInModel(params: {
   }, [bootstrapStats?.guestRows, filteredGuests.length, guests.length, listReady, query, serverSearchGuests]);
 
   const counts = useMemo(() => {
-    if (!listReady && bootstrapStats) {
-      return { total: bootstrapStats.total, checkedIn: bootstrapStats.checkedIn };
-    }
-    let totalPeople = 0;
+    let confirmedPeople = 0;
     let arrivedPeople = 0;
+    let pendingPeople = 0;
+    let unexpectedArrivedPeople = 0;
+
     for (const g of guests) {
-      totalPeople += guestInvitedPeople(g);
-      arrivedPeople += guestArrivedPeople(g);
+      const invited = guestInvitedPeople(g);
+      const arrived = guestArrivedPeople(g);
+      if (isConfirmedGuest(g)) {
+        confirmedPeople += invited;
+        if (g.checkedIn) arrivedPeople += arrived;
+        else pendingPeople += invited;
+      } else if (g.checkedIn) {
+        arrivedPeople += arrived;
+        unexpectedArrivedPeople += arrived;
+      }
     }
+
+    if (!listReady && bootstrapStats && guests.length === 0) {
+      return {
+        total: bootstrapStats.total,
+        checkedIn: bootstrapStats.checkedIn,
+        confirmed: bootstrapStats.total,
+        pending: Math.max(0, bootstrapStats.total - bootstrapStats.checkedIn),
+        unexpectedArrived: 0,
+      };
+    }
+
     return {
-      total: totalPeople,
+      total: confirmedPeople,
       checkedIn: arrivedPeople,
+      confirmed: confirmedPeople,
+      pending: pendingPeople,
+      unexpectedArrived: unexpectedArrivedPeople,
     };
   }, [bootstrapStats, guests, listReady]);
 

@@ -9,7 +9,7 @@ import type { GuestCheckInFilter } from './useGuestCheckInModel';
 export type CheckInStatusFilterKey = Extract<GuestCheckInFilter, 'all' | 'checked_in' | 'not_checked_in'>;
 
 const OPTIONS: { key: CheckInStatusFilterKey; label: string }[] = [
-  { key: 'all', label: 'כל המוזמנים' },
+  { key: 'all', label: 'כל המאשרים' },
   { key: 'checked_in', label: 'הגיעו' },
   { key: 'not_checked_in', label: 'טרם הגיעו' },
 ];

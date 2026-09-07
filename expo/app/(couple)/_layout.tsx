@@ -156,6 +156,13 @@ export default function CoupleTabsLayout() {
           }}
         />
         <Tabs.Screen
+          name="guest-checkin"
+          options={{
+            href: null,
+            headerShown: false,
+          }}
+        />
+        <Tabs.Screen
           name="select-category"
           options={{
             href: null,

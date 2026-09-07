@@ -1013,6 +1013,27 @@ export default function CoupleGuestsWebScreen() {
                       </Pressable>
                     ) : null}
 
+                    {!isAdminRouteContext ? (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="צ׳ק אין מאשרים"
+                        onPress={() =>
+                          router.push({
+                            pathname: '/(couple)/guest-checkin',
+                            params: resolvedEventId ? { eventId: resolvedEventId } : undefined,
+                          } as any)
+                        }
+                        style={({ hovered, pressed }: any) => [
+                          styles.adminHeaderImportBtn,
+                          Platform.OS === 'web' && hovered ? styles.adminHeaderImportBtnHover : null,
+                          pressed ? styles.btnPressed : null,
+                        ]}
+                      >
+                        <Ionicons name="checkbox-outline" size={16} color={colors.primary} />
+                        <Text style={styles.adminHeaderImportBtnText}>צ׳ק אין</Text>
+                      </Pressable>
+                    ) : null}
+
                     <Pressable
                       accessibilityRole="button"
                       accessibilityLabel="הוסף מוזמנים"

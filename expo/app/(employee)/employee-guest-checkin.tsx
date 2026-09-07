@@ -439,16 +439,16 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
   const bottomReserve = TAB_BAR_HEIGHT + TAB_BAR_BOTTOM_GAP + 18;
   const contentBottomPadding = bottomReserve + (isAdminStyledMobile ? 42 : insets.bottom);
   const pendingPeopleCount = useMemo(
-    () => Math.max(0, counts.total - counts.checkedIn),
-    [counts.checkedIn, counts.total]
+    () => counts.pending ?? Math.max(0, counts.total - counts.checkedIn),
+    [counts.pending, counts.checkedIn, counts.total]
   );
   const statusFilterCounts = useMemo(
     () => ({
-      all: counts.total,
+      all: counts.confirmed ?? counts.total,
       checkedIn: counts.checkedIn,
       pending: pendingPeopleCount,
     }),
-    [counts.checkedIn, counts.total, pendingPeopleCount]
+    [counts.checkedIn, counts.confirmed, counts.total, pendingPeopleCount]
   );
   const listScrollRef = useRef<any>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
@@ -1079,7 +1079,7 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                 צ׳ק-אין אורחים
               </Text>
               <Text style={styles.topSubtitle} numberOfLines={1}>
-                {`${counts.checkedIn}/${counts.total} מוזמנים באולם`}
+                {`${counts.checkedIn}/${counts.total} מאשרים באולם`}
               </Text>
             </View>
 
