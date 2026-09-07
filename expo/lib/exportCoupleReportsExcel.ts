@@ -10,7 +10,7 @@ import {
   type CoupleReportGuest,
   type CoupleReportTable,
   type RsvpBucket,
-} from '@/lib/coupleReports';
+} from './coupleReports';
 
 type ReportOpts = {
   eventTitle?: string;
@@ -186,9 +186,7 @@ function sumPeople(guests: CoupleReportGuest[], arrivedOnly = false) {
   return guests.reduce((sum, guest) => sum + (arrivedOnly ? arrivedPeople(guest) : invitedPeople(guest)), 0);
 }
 
-export function exportCheckInReportToExcel(guests: CoupleReportGuest[], opts?: ReportOpts) {
-  assertBrowser();
-
+export function buildCheckInReportWorkbook(guests: CoupleReportGuest[], opts?: ReportOpts) {
   const categories = buildCategoryLookup(opts?.categories ?? []);
   const tables = buildTableLookup(opts?.tables ?? []);
   const confirmers = sortGuests(guests.filter(isConfirmedGuest), tables);
@@ -218,14 +216,16 @@ export function exportCheckInReportToExcel(guests: CoupleReportGuest[], opts?: R
   appendSheet(workbook, 'הגיעו', CHECKIN_HEADERS, arrived.map((g) => checkInRow(g, categories, tables)), widths, 'I');
   appendSheet(workbook, 'לא הגיעו', CHECKIN_HEADERS, missing.map((g) => checkInRow(g, categories, tables)), widths, 'I');
 
-  const name = fileName('דוח-צק-אין', opts?.eventTitle);
-  XLSX.writeFile(workbook, name);
-  return { fileName: name, arrived: arrived.length, missing: missing.length, confirmers: confirmers.length };
+  return {
+    workbook,
+    fileName: fileName('דוח-צק-אין', opts?.eventTitle),
+    arrived: arrived.length,
+    missing: missing.length,
+    confirmers: confirmers.length,
+  };
 }
 
-export function exportRsvpReportToExcel(guests: CoupleReportGuest[], opts?: ReportOpts) {
-  assertBrowser();
-
+export function buildRsvpReportWorkbook(guests: CoupleReportGuest[], opts?: ReportOpts) {
   const categories = buildCategoryLookup(opts?.categories ?? []);
   const tables = buildTableLookup(opts?.tables ?? []);
   const all = sortGuests(guests, tables);
@@ -275,7 +275,28 @@ export function exportRsvpReportToExcel(guests: CoupleReportGuest[], opts?: Repo
     appendSheet(workbook, sheet.name, RSVP_HEADERS, sheet.rows.map((g) => rsvpRow(g, categories, tables)), widths, 'G');
   }
 
-  const name = fileName('דוח-אישורי-הגעה', opts?.eventTitle);
-  XLSX.writeFile(workbook, name);
-  return { fileName: name, total: all.length };
+  return {
+    workbook,
+    fileName: fileName('דוח-אישורי-הגעה', opts?.eventTitle),
+    total: all.length,
+  };
+}
+
+export function exportCheckInReportToExcel(guests: CoupleReportGuest[], opts?: ReportOpts) {
+  assertBrowser();
+  const built = buildCheckInReportWorkbook(guests, opts);
+  XLSX.writeFile(built.workbook, built.fileName);
+  return {
+    fileName: built.fileName,
+    arrived: built.arrived,
+    missing: built.missing,
+    confirmers: built.confirmers,
+  };
+}
+
+export function exportRsvpReportToExcel(guests: CoupleReportGuest[], opts?: ReportOpts) {
+  assertBrowser();
+  const built = buildRsvpReportWorkbook(guests, opts);
+  XLSX.writeFile(built.workbook, built.fileName);
+  return { fileName: built.fileName, total: built.total };
 }

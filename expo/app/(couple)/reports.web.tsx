@@ -18,14 +18,19 @@ import { guestMatchesSearch } from '@/lib/guestPhone';
 import {
   RSVP_BUCKET_LABELS,
   arrivedPeople,
+  buildCheckInStats,
+  buildRsvpStats,
+  filterCoupleReportGuests,
   invitedPeople,
-  isConfirmedGuest,
   rsvpBucket,
   rsvpBucketLabel,
+  type CheckInFilter,
   type CoupleReportCategory,
   type CoupleReportGuest,
+  type CoupleReportKind,
   type CoupleReportTable,
   type RsvpBucket,
+  type RsvpFilter,
 } from '@/lib/coupleReports';
 import { eventService } from '@/lib/services/eventService';
 import { guestService } from '@/lib/services/guestService';
@@ -33,9 +38,7 @@ import { tableService } from '@/lib/services/tableService';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import { useUserStore } from '@/store/userStore';
 
-type ReportKind = 'checkin' | 'rsvp';
-type CheckInFilter = 'all' | 'arrived' | 'missing';
-type RsvpFilter = 'all' | RsvpBucket;
+type ReportKind = CoupleReportKind;
 
 const WEB_RTL = Platform.OS === 'web' ? ({ direction: 'rtl' } as any) : null;
 
@@ -194,71 +197,19 @@ export default function CoupleReportsWebScreen() {
     return map;
   }, [tables]);
 
-  const confirmers = useMemo(() => guests.filter(isConfirmedGuest), [guests]);
-
-  const checkInStats = useMemo(() => {
-    const arrived = confirmers.filter((g) => Boolean(g.checkedIn));
-    const missing = confirmers.filter((g) => !g.checkedIn);
-    const arrivedPeopleCount = arrived.reduce((sum, g) => sum + arrivedPeople(g), 0);
-    const missingPeopleCount = missing.reduce((sum, g) => sum + invitedPeople(g), 0);
-    const confirmedPeople = confirmers.reduce((sum, g) => sum + invitedPeople(g), 0);
-    return {
-      arrived,
-      missing,
-      arrivedCount: arrived.length,
-      missingCount: missing.length,
-      arrivedPeople: arrivedPeopleCount,
-      missingPeople: missingPeopleCount,
-      confirmedCount: confirmers.length,
-      confirmedPeople,
-      rate: confirmedPeople > 0 ? Math.round((arrivedPeopleCount / confirmedPeople) * 100) : 0,
-    };
-  }, [confirmers]);
-
-  const rsvpStats = useMemo(() => {
-    const buckets: Record<RsvpBucket, CoupleReportGuest[]> = {
-      confirmed: [],
-      declined: [],
-      pending: [],
-      maybe: [],
-    };
-    for (const guest of guests) buckets[rsvpBucket(guest.status)].push(guest);
-    const people = (rows: CoupleReportGuest[]) => rows.reduce((sum, g) => sum + invitedPeople(g), 0);
-    return {
-      buckets,
-      counts: {
-        confirmed: people(buckets.confirmed),
-        declined: people(buckets.declined),
-        pending: people(buckets.pending),
-        maybe: people(buckets.maybe),
-        total: people(guests),
-      },
-      invites: {
-        confirmed: buckets.confirmed.length,
-        declined: buckets.declined.length,
-        pending: buckets.pending.length,
-        maybe: buckets.maybe.length,
-        total: guests.length,
-      },
-    };
-  }, [guests]);
+  const checkInStats = useMemo(() => buildCheckInStats(guests), [guests]);
+  const rsvpStats = useMemo(() => buildRsvpStats(guests), [guests]);
+  const confirmers = checkInStats.confirmers;
 
   const visibleGuests = useMemo(() => {
-    const q = query.trim();
-    const source = kind === 'checkin' ? confirmers : guests;
-    return source
-      .filter((guest) => {
-        if (q && !guestMatchesSearch(guest, q)) return false;
-        if (kind === 'checkin') {
-          if (checkInFilter === 'arrived') return Boolean(guest.checkedIn);
-          if (checkInFilter === 'missing') return !guest.checkedIn;
-          return true;
-        }
-        if (rsvpFilter === 'all') return true;
-        return rsvpBucket(guest.status) === rsvpFilter;
-      })
-      .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'he'));
-  }, [checkInFilter, confirmers, guests, kind, query, rsvpFilter]);
+    return filterCoupleReportGuests(guests, {
+      kind,
+      query,
+      checkInFilter,
+      rsvpFilter,
+      matchesSearch: guestMatchesSearch,
+    }).sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'he'));
+  }, [checkInFilter, guests, kind, query, rsvpFilter]);
 
   const exportOpts = useMemo(
     () => ({
