@@ -163,6 +163,13 @@ export default function CoupleTabsLayout() {
           }}
         />
         <Tabs.Screen
+          name="reports"
+          options={{
+            href: null,
+            headerShown: Platform.OS === 'web',
+          }}
+        />
+        <Tabs.Screen
           name="select-category"
           options={{
             href: null,

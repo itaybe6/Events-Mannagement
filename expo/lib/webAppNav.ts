@@ -100,6 +100,14 @@ export function getWebAppNav(args: {
               params: eventId ? eventParams(eventId) : undefined,
             },
             {
+              key: 'reports',
+              href: '/(couple)/reports',
+              label: 'דוחות',
+              icon: 'bar-chart-outline',
+              matchLeaves: ['reports'],
+              params: eventId ? eventParams(eventId) : undefined,
+            },
+            {
               key: 'seating',
               href: '/(couple)/BrideGroomSeating',
               label: 'מפת הושבה',

@@ -9,6 +9,7 @@ const NAV_ITEMS = [
   { href: '/(couple)', label: 'בית', icon: 'home-outline' },
   { href: '/(couple)/guests', label: 'אישורי הגעה', icon: 'people-outline' },
   { href: '/(couple)/guest-checkin', label: 'צ׳ק אין מאשרים', icon: 'checkbox-outline' },
+  { href: '/(couple)/reports', label: 'דוחות', icon: 'bar-chart-outline' },
   { href: '/(couple)/BrideGroomSeating', label: 'מפת הושבה', icon: 'grid-outline' },
   { href: '/(couple)/TablesList', label: 'רשימת שולחנות', icon: 'list-outline' },
   { href: '/(couple)/automatic-notifications', label: 'עריכת הודעות', icon: 'chatbox-ellipses-outline' },

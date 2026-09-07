@@ -493,33 +493,63 @@ export default function CoupleHomeWebScreen() {
           </Surface>
         </View>
 
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="פתיחת צ׳ק אין מאשרים"
-          onPress={() =>
-            router.push({
-              pathname: '/(couple)/guest-checkin',
-              params: resolvedEventId ? { eventId: resolvedEventId } : undefined,
-            } as any)
-          }
-          style={({ hovered, pressed }: any) => [
-            styles.checkInLaunch,
-            isMobile ? styles.checkInLaunchMobile : null,
-            Platform.OS === 'web' && hovered ? styles.checkInLaunchHover : null,
-            pressed ? { opacity: 0.94 } : null,
-          ]}
-        >
-          <View style={styles.checkInLaunchIcon}>
-            <Ionicons name="checkbox-outline" size={20} color="#0E9F6E" />
-          </View>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={styles.checkInLaunchTitle}>צ׳ק אין מאשרים</Text>
-            <Text style={styles.checkInLaunchText}>
-              רשימה חיה של מי שאישר הגעה — מי כבר באולם ומי עדיין בדרך.
-            </Text>
-          </View>
-          <Ionicons name="chevron-back" size={18} color={colors.primary} />
-        </Pressable>
+        <View style={[styles.launchRow, isMobile ? styles.launchRowMobile : null]}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="פתיחת צ׳ק אין מאשרים"
+            onPress={() =>
+              router.push({
+                pathname: '/(couple)/guest-checkin',
+                params: resolvedEventId ? { eventId: resolvedEventId } : undefined,
+              } as any)
+            }
+            style={({ hovered, pressed }: any) => [
+              styles.checkInLaunch,
+              isMobile ? styles.checkInLaunchMobile : null,
+              Platform.OS === 'web' && hovered ? styles.checkInLaunchHover : null,
+              pressed ? { opacity: 0.94 } : null,
+            ]}
+          >
+            <View style={styles.checkInLaunchIcon}>
+              <Ionicons name="checkbox-outline" size={20} color="#0E9F6E" />
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.checkInLaunchTitle}>צ׳ק אין מאשרים</Text>
+              <Text style={styles.checkInLaunchText}>
+                רשימה חיה של מי שאישר הגעה — מי כבר באולם ומי עדיין בדרך.
+              </Text>
+            </View>
+            <Ionicons name="chevron-back" size={18} color={colors.primary} />
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="פתיחת דוחות"
+            onPress={() =>
+              router.push({
+                pathname: '/(couple)/reports',
+                params: resolvedEventId ? { eventId: resolvedEventId } : undefined,
+              } as any)
+            }
+            style={({ hovered, pressed }: any) => [
+              styles.reportsLaunch,
+              isMobile ? styles.checkInLaunchMobile : null,
+              Platform.OS === 'web' && hovered ? styles.reportsLaunchHover : null,
+              pressed ? { opacity: 0.94 } : null,
+            ]}
+          >
+            <View style={styles.reportsLaunchIcon}>
+              <Ionicons name="bar-chart-outline" size={20} color={colors.primary} />
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.checkInLaunchTitle}>דוחות</Text>
+              <Text style={styles.checkInLaunchText}>
+                צ׳ק אין ואישורי הגעה — כולל ייצוא לאקסל.
+              </Text>
+            </View>
+            <Ionicons name="chevron-back" size={18} color={colors.primary} />
+          </Pressable>
+        </View>
 
         <View style={[styles.analyticsSection, isMobile ? styles.analyticsSectionMobile : null]}>
           <View style={[styles.analyticsGrid, isCompactDesktop ? styles.analyticsGridStack : null]}>
@@ -1983,11 +2013,21 @@ const styles = StyleSheet.create({
     color: colors.gray[600],
     textAlign: 'right',
   },
+  launchRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'stretch',
+    gap: 12,
+    marginBottom: 18,
+  },
+  launchRowMobile: {
+    flexDirection: 'column',
+    marginBottom: 14,
+  },
   checkInLaunch: {
+    flex: 1,
     flexDirection: 'row-reverse',
     alignItems: 'center',
     gap: 14,
-    marginBottom: 18,
     paddingVertical: 16,
     paddingHorizontal: 18,
     borderRadius: 22,
@@ -1997,10 +2037,33 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
   checkInLaunchMobile: {
-    marginBottom: 14,
     paddingVertical: 14,
     paddingHorizontal: 14,
     borderRadius: 18,
+  },
+  reportsLaunch: {
+    flex: 1,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.10)',
+    backgroundColor: 'rgba(6,23,62,0.04)',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  reportsLaunchHover: {
+    backgroundColor: 'rgba(6,23,62,0.07)',
+  },
+  reportsLaunchIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: 'rgba(6,23,62,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   checkInLaunchHover: {
     backgroundColor: 'rgba(14,159,110,0.11)',
