@@ -24,9 +24,11 @@ import { supabase } from '@/lib/supabase';
 import { SeatingGridReadonly } from '../seating/web/SeatingGridReadonly';
 import { DEFAULT_GRID_COLS, DEFAULT_GRID_ROWS, tableCellSize, type Orientation, type TableType } from '../seating/web/_types';
 import type { Guest, Table } from '@/types';
+import { getFloatingTabBarContentPadding } from '@/lib/floatingTabBarInset';
 import { touchHitSlop, useResponsive } from '@/lib/responsive';
 import WebAppMenu from '@/components/desktop/WebAppMenu';
 import { useWebAppShell } from '@/components/desktop/WebAppShell';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const NO_TABLE_KEY = '__no_table__' as const;
 
@@ -163,6 +165,7 @@ function EmployeeGuestCheckinWebDesktopScreen() {
   const { eventId, returnTo } = useLocalSearchParams<{ eventId?: string; returnTo?: string }>();
   const resolvedEventId = useMemo(() => String(eventId || '').trim(), [eventId]);
   const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const {
     isPhone,
     isTablet,
@@ -179,6 +182,14 @@ function EmployeeGuestCheckinWebDesktopScreen() {
   // orientation rather than raw width.
   const isSideBySide = isTablet ? !isTabletPortrait : width >= 1024;
   const isNarrow = width < 520;
+  const isPhoneChrome = isMobile || isNarrow;
+  // Floating shopify tab bar + "למעלה" sit over the last guest row on phones.
+  // Keep enough scroll room and lift the FAB so the check-in switch stays tappable.
+  const pageBottomPad = isPhoneChrome
+    ? getFloatingTabBarContentPadding(insets.bottom, { webFallback: 156 })
+    : 22;
+  const listBottomPad = isPhoneChrome ? 88 : 0;
+  const scrollTopFabBottom = isPhoneChrome ? Math.max(insets.bottom, 10) + 88 : 26;
   // Drawers are `position: fixed` to the viewport, so they must sit to the
   // LEFT of the RTL sidebar instead of sliding out underneath it.
   const drawerRight = hasSidebar && !isNarrow && !isMobile ? railInset + 16 : 16;
@@ -1271,6 +1282,9 @@ function EmployeeGuestCheckinWebDesktopScreen() {
 
   const showDualBoard = filter === 'all';
   const dualSideBySide = showDualBoard && width >= 880 && !isSideBySide;
+  const hasSearchQuery = Boolean(query.trim());
+  const showPendingColumn = !isPhoneChrome || !hasSearchQuery || pendingGroupedGuests.length > 0;
+  const showArrivedColumn = !isPhoneChrome || !hasSearchQuery || arrivedGroupedGuests.length > 0;
 
   const renderGroupCards = (groups: typeof groupedVisibleGuests) =>
     groups.map((group) => {
@@ -1523,42 +1537,46 @@ function EmployeeGuestCheckinWebDesktopScreen() {
     ) : null;
 
   const guestsListContent = showDualBoard ? (
-    <View style={[styles.dualBoard, dualSideBySide ? styles.dualBoardRow : null]}>
-      <View style={[styles.dualCol, styles.dualColPending]}>
-        <View style={styles.dualColHeader}>
-          <Text style={styles.dualColTitle}>טרם הגיעו</Text>
-          <View style={styles.dualColCount}>
-            <Text style={styles.dualColCountText}>{pendingPeopleCount}</Text>
+    <View style={[styles.dualBoard, dualSideBySide ? styles.dualBoardRow : null, isPhoneChrome ? { paddingBottom: listBottomPad } : null]}>
+      {showPendingColumn ? (
+        <View style={[styles.dualCol, styles.dualColPending]}>
+          <View style={styles.dualColHeader}>
+            <Text style={styles.dualColTitle}>טרם הגיעו</Text>
+            <View style={styles.dualColCount}>
+              <Text style={styles.dualColCountText}>{pendingPeopleCount}</Text>
+            </View>
+          </View>
+          <View style={styles.tableGroupsWrap}>
+            {pendingGroupedGuests.length === 0 ? (
+              <Text style={styles.dualEmptyText}>כל המאשרים כבר סומנו כהגיעו</Text>
+            ) : (
+              renderGroupCards(sliceGroupedGuests(pendingGroupedGuests, rowRenderLimit))
+            )}
           </View>
         </View>
-        <View style={styles.tableGroupsWrap}>
-          {pendingGroupedGuests.length === 0 ? (
-            <Text style={styles.dualEmptyText}>כל המאשרים כבר סומנו כהגיעו</Text>
-          ) : (
-            renderGroupCards(sliceGroupedGuests(pendingGroupedGuests, rowRenderLimit))
-          )}
-        </View>
-      </View>
-      <View style={[styles.dualCol, styles.dualColArrived]}>
-        <View style={styles.dualColHeader}>
-          <Text style={styles.dualColTitle}>הגיעו</Text>
-          <View style={styles.dualColCount}>
-            <Text style={styles.dualColCountText}>{counts.checkedIn}</Text>
+      ) : null}
+      {showArrivedColumn ? (
+        <View style={[styles.dualCol, styles.dualColArrived]}>
+          <View style={styles.dualColHeader}>
+            <Text style={styles.dualColTitle}>הגיעו</Text>
+            <View style={styles.dualColCount}>
+              <Text style={styles.dualColCountText}>{counts.checkedIn}</Text>
+            </View>
+          </View>
+          <View style={styles.tableGroupsWrap}>
+            {arrivedGroupedGuests.length === 0 ? (
+              <Text style={styles.dualEmptyText}>עדיין אין הגעות לאולם</Text>
+            ) : (
+              renderGroupCards(sliceGroupedGuests(arrivedGroupedGuests, rowRenderLimit))
+            )}
           </View>
         </View>
-        <View style={styles.tableGroupsWrap}>
-          {arrivedGroupedGuests.length === 0 ? (
-            <Text style={styles.dualEmptyText}>עדיין אין הגעות לאולם</Text>
-          ) : (
-            renderGroupCards(sliceGroupedGuests(arrivedGroupedGuests, rowRenderLimit))
-          )}
-        </View>
-      </View>
+      ) : null}
       {showMoreBlock}
       {listHint ? <Text style={styles.listHint}>{listHint}</Text> : null}
     </View>
   ) : (
-    <View style={styles.tableGroupsWrap}>
+    <View style={[styles.tableGroupsWrap, isPhoneChrome ? { paddingBottom: listBottomPad } : null]}>
       {renderGroupCards(renderedGroupedGuests)}
       {showMoreBlock}
       {listHint ? <Text style={styles.listHint}>{listHint}</Text> : null}
@@ -1588,7 +1606,7 @@ function EmployeeGuestCheckinWebDesktopScreen() {
         <ScrollView
           ref={pageScrollRef}
           style={styles.pageScroll}
-          contentContainerStyle={styles.screen}
+          contentContainerStyle={[styles.screen, { paddingBottom: pageBottomPad }]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           scrollEventThrottle={16}
@@ -1843,7 +1861,13 @@ function EmployeeGuestCheckinWebDesktopScreen() {
                               ? ({ maxHeight: guestListMaxHeight } as any)
                               : undefined
                         }
-                        contentContainerStyle={isSideBySide ? ({ flexGrow: 1 } as any) : undefined}
+                        contentContainerStyle={
+                          isSideBySide
+                            ? ({ flexGrow: 1, paddingBottom: isPhoneChrome ? listBottomPad : 0 } as any)
+                            : isPhoneChrome
+                              ? { paddingBottom: listBottomPad }
+                              : undefined
+                        }
                         showsVerticalScrollIndicator={false}
                         nestedScrollEnabled
                         scrollEventThrottle={16}
@@ -1968,7 +1992,7 @@ function EmployeeGuestCheckinWebDesktopScreen() {
           onPress={scrollPageToTop}
           style={({ hovered, pressed }: any) => [
             styles.scrollTopFab,
-            { right: scrollTopFabRight },
+            { right: scrollTopFabRight, bottom: scrollTopFabBottom },
             Platform.OS === 'web' && hovered ? styles.scrollTopFabHover : null,
             pressed ? { opacity: 0.92, transform: [{ translateY: 1 }] } : null,
           ]}
@@ -3399,7 +3423,7 @@ const styles = StyleSheet.create({
   },
   // On phones the name + controls (~196px) cannot fit on one line, so wrap the
   // controls onto a second row beneath the name.
-  guestRowCompactSm: { flexWrap: 'wrap', alignItems: 'flex-start', minHeight: 0, paddingVertical: 12 },
+  guestRowCompactSm: { flexWrap: 'wrap', alignItems: 'flex-start', minHeight: 0, paddingVertical: 12, overflow: 'visible' },
   // Tall enough to hold the 42pt touch stepper plus vertical padding.
   guestRowCompactTablet: { minHeight: 68, paddingVertical: 12 },
   guestRowMainSm: { flexBasis: '100%', flexGrow: 1, flexShrink: 1 },

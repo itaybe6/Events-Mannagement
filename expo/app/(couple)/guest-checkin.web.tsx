@@ -432,7 +432,11 @@ export default function CoupleGuestCheckInWebScreen() {
           <Text style={styles.boardColCountText}>{kind === 'arrived' ? counts.checkedIn : counts.pending}</Text>
         </View>
       </View>
-      <ScrollView style={styles.boardColScroll} contentContainerStyle={styles.boardColScrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.boardColScroll}
+        contentContainerStyle={[styles.boardColScrollContent, isMobile ? styles.boardColScrollContentMobile : null]}
+        showsVerticalScrollIndicator={false}
+      >
         {loading && groups.length === 0 ? (
           <View style={styles.emptyBox}>
             <ActivityIndicator size="large" color={colors.primary} />
@@ -466,7 +470,7 @@ export default function CoupleGuestCheckInWebScreen() {
   );
 
   return (
-    <View style={styles.page}>
+    <View style={[styles.page, isMobile ? styles.pageMobile : null]}>
       {!hasSidebar ? (
         <View style={styles.mobileNavRow}>
           <WebAppMenu compact />
@@ -662,6 +666,9 @@ const styles = StyleSheet.create({
     gap: 12,
     ...(Platform.OS === 'web' ? ({ height: '100%' } as any) : null),
   },
+  pageMobile: {
+    paddingBottom: 96,
+  },
   mobileNavRow: { alignItems: 'flex-start' },
   hero: {
     flexDirection: 'row',
@@ -786,6 +793,7 @@ const styles = StyleSheet.create({
   boardColCountText: { fontSize: 13, fontWeight: '900', color: colors.primary },
   boardColScroll: { flex: 1 },
   boardColScrollContent: { padding: 12, gap: 12, paddingBottom: 20 },
+  boardColScrollContentMobile: { paddingBottom: 120 },
   tableGroup: { gap: 6 },
   tableGroupHeader: { flexDirection: 'row-reverse', justifyContent: 'space-between', paddingHorizontal: 4 },
   tableGroupTitle: { fontSize: 12, fontWeight: '900', color: colors.gray[600] },
