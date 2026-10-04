@@ -209,6 +209,77 @@ async function upsertRecipientRunRows(adminClient: any, rows: RecipientRunRow[])
   }
 }
 
+const GUESTS_SELECT = "id, name, phone, status, invitation_code, invitation_token, table_id";
+
+// Large events (300+ recipients) overflow the GET URL when all ids are passed in
+// one `in(...)` filter and the request dies with an HTTP/2 stream error or a
+// plain 400 before PostgREST ever sees it. Chunk the id list like the immediate
+// send functions do, and page status-based lookups so PostgREST's max-rows cap
+// never silently truncates the recipient list.
+async function fetchAllGuests(
+  adminClient: any,
+  eventId: string,
+  guestIds: string[],
+  statusList: string[] | null,
+): Promise<any[]> {
+  const all: any[] = [];
+
+  if (guestIds.length > 0) {
+    for (const ids of chunk(guestIds, 100)) {
+      const { data, error } = await adminClient
+        .from("guests")
+        .select(GUESTS_SELECT)
+        .eq("event_id", eventId)
+        .in("id", ids);
+      if (error) throw new Error(error.message);
+      if (Array.isArray(data)) all.push(...data);
+    }
+    return all;
+  }
+
+  const pageSize = 200;
+  for (let from = 0; ; from += pageSize) {
+    let q = adminClient.from("guests").select(GUESTS_SELECT).eq("event_id", eventId);
+    if (statusList && statusList.length > 0) {
+      q = statusList.length === 1 ? q.eq("status", statusList[0]) : q.in("status", statusList);
+    }
+    const { data, error } = await q.range(from, from + pageSize - 1);
+    if (error) throw new Error(error.message);
+    const rows = Array.isArray(data) ? data : [];
+    all.push(...rows);
+    if (rows.length < pageSize) break;
+  }
+  return all;
+}
+
+// A run that failed before any message went out (event/guests lookup) is safe
+// to retry. Release the claim so the next cron tick picks it up again while the
+// slot is still inside the on-time window; after that, record the failure.
+const PRE_SEND_RETRY_WINDOW_MS = 8 * 60_000;
+
+async function failOrRelease(
+  adminClient: any,
+  runId: string,
+  scheduledFor: string,
+  error: string,
+) {
+  const dueAt = new Date(scheduledFor).getTime();
+  const canRetry = Number.isFinite(dueAt) && Date.now() - dueAt < PRE_SEND_RETRY_WINDOW_MS;
+  if (!canRetry) {
+    await setRunStatus(adminClient, runId, { status: "failed", error });
+    return;
+  }
+  console.warn("Releasing run for retry after pre-send failure:", { runId, scheduledFor, error });
+  const { error: delError } = await adminClient
+    .from("scheduled_notification_sms_runs")
+    .delete()
+    .eq("id", runId);
+  if (delError) {
+    console.warn("Failed to release run; marking failed instead:", { runId, delError });
+    await setRunStatus(adminClient, runId, { status: "failed", error });
+  }
+}
+
 async function finalizeCatchupQueueForRun(adminClient: any, runId: string) {
   const id = String(runId || "").trim();
   if (!id) return;
@@ -370,37 +441,32 @@ serve(async (req) => {
           .select("id, title, date, location, city, groom_name, bride_name, rsvp_link, invitation_image_url")
           .eq("id", eventId)
           .maybeSingle();
-        if (evErr || !ev) {
-          await setRunStatus(adminClient, runId, {
-            status: "failed",
-            error: evErr?.message || "event_not_found",
-          });
+        if (!ev && !evErr) {
+          await setRunStatus(adminClient, runId, { status: "failed", error: "event_not_found" });
+          continue;
+        }
+        if (evErr) {
+          await failOrRelease(adminClient, runId, scheduledFor, evErr.message || "event_lookup_failed");
           continue;
         }
         eventRow = ev;
         eventCache.set(eventId, eventRow);
       }
 
-      // Load guests
-      let q = adminClient
-        .from("guests")
-        .select("id, name, phone, status, invitation_code, invitation_token, table_id")
-        .eq("event_id", eventId);
-
-      if (recipientIds.length > 0) {
-        q = q.in("id", recipientIds);
-      } else if (isReminder2) {
-        // reminder_2: when list is empty -> send to all pending guests.
-        q = q.in("status", PENDING_STATUSES as any);
-      }
-
-      const { data: guests, error: guestsError } = await q;
-      if (guestsError) {
-        await setRunStatus(adminClient, runId, { status: "failed", error: guestsError.message });
+      // Load guests (chunked; reminder_2 with an empty list -> all pending guests).
+      let list: any[] = [];
+      try {
+        list = await fetchAllGuests(
+          adminClient,
+          eventId,
+          recipientIds,
+          recipientIds.length === 0 && isReminder2 ? (PENDING_STATUSES as string[]) : null,
+        );
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        await failOrRelease(adminClient, runId, scheduledFor, message);
         continue;
       }
-
-      const list = Array.isArray(guests) ? guests : [];
       if (list.length === 0) {
         await setRunStatus(adminClient, runId, { status: "skipped", error: "no_matching_guests" });
         continue;

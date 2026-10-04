@@ -537,6 +537,8 @@ export default function AutomaticNotificationsWebScreen() {
   const [editorKind, setEditorKind] = useState<'template' | 'flow'>('template');
   type EditorWizardStepId = 'schedule' | 'recipients' | 'catchup' | 'message';
   const [editorWizardStepIdx, setEditorWizardStepIdx] = useState(0);
+  // Freshly created flow steps still need the full wizard. Existing messages can be saved from any step.
+  const [editorIsNew, setEditorIsNew] = useState(false);
   const [messageSelection, setMessageSelection] = useState({ start: 0, end: 0 });
   const [recipientsWizardManual, setRecipientsWizardManual] = useState(false);
   const [flowDraft, setFlowDraft] = useState<{
@@ -1779,11 +1781,12 @@ export default function AutomaticNotificationsWebScreen() {
       setRecipientsWizardManual(!isAutoAll || ids.length > 0);
     }
     setFlowDraft(null);
+    setEditorIsNew(false);
     setEditorWizardStepIdx(0);
     setEditorOpen(true);
   };
 
-  const openFlowEditor = (row: NotificationSettingRow, opts?: { sendMode?: 'scheduled' | 'immediate' }) => {
+  const openFlowEditor = (row: NotificationSettingRow, opts?: { sendMode?: 'scheduled' | 'immediate'; isNew?: boolean }) => {
     setEditorKind('flow');
     setFlowSendMode(opts?.sendMode ?? 'scheduled');
     setSelectedType(row.notification_type);
@@ -1865,12 +1868,14 @@ export default function AutomaticNotificationsWebScreen() {
       setCatchupDates(new Set(cdates));
     }
 
+    setEditorIsNew(Boolean(opts?.isNew));
     setEditorWizardStepIdx(0);
     setEditorOpen(true);
   };
 
   const closeEditor = () => {
     setEditorOpen(false);
+    setEditorIsNew(false);
     setEditorType(null);
     setEditorKind('template');
     setMessageSelection({ start: 0, end: 0 });
@@ -2685,6 +2690,17 @@ export default function AutomaticNotificationsWebScreen() {
     }
   };
 
+  const persistEditorChanges = () => {
+    const nt = String(editorRow?.notification_type || '').trim();
+    const includeTemplateRecipients =
+      editorKind === 'template' && (nt === 'reminder_1' || nt === 'reminder_2');
+    void saveDraft({
+      closeOnSuccess: true,
+      toastOnSuccess: true,
+      ...(includeTemplateRecipients ? { recipientGuestIds: Array.from(pickerSelectedIds) } : null),
+    });
+  };
+
   const saveRecipientsForNotificationType = async (notificationType: string, guestIds: string[]) => {
     if (!canEdit) {
       showToast('לצפייה בלבד');
@@ -3180,7 +3196,7 @@ export default function AutomaticNotificationsWebScreen() {
 
       const merged = [...updatedExisting, created].sort((a, b) => (Number((a as any).sort_order ?? 0) || 0) - (Number((b as any).sort_order ?? 0) || 0));
       setFlowSteps(merged);
-      openFlowEditor(created, { sendMode });
+      openFlowEditor(created, { sendMode, isNew: true });
     } catch (e) {
       console.error('Failed to add flow step:', e);
       alert('לא ניתן להוסיף כרטיסיה (בדוק שהרצת את המיגרציה החדשה).');
@@ -6340,21 +6356,36 @@ export default function AutomaticNotificationsWebScreen() {
                       ) : null}
                     </>
                   ) : (
-                    <Pressable
-                      onPress={() => setEditorWizardStepIdx((i) => Math.min(editorWizardSteps.length - 1, i + 1))}
-                      disabled={!editDraft || editorWizardSteps.length <= 1}
-                      style={({ pressed }: any) => [
-                        styles.dialogBtn,
-                        styles.dialogBtnPrimary,
-                        (!editDraft || editorWizardSteps.length <= 1) ? { opacity: 0.6 } : null,
-                        pressed ? { opacity: 0.92 } : null,
-                      ]}
-                    >
-                      <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8 }}>
-                        <Ionicons name="arrow-back" size={16} color="#fff" />
-                        <Text style={styles.dialogBtnPrimaryText}>הבא</Text>
-                      </View>
-                    </Pressable>
+                    <>
+                      {!editorIsNew ? (
+                        <Pressable
+                          onPress={persistEditorChanges}
+                          disabled={saving || !editDraft || !canEdit}
+                          style={({ pressed }: any) => [
+                            styles.saveBtn,
+                            saving || !editDraft || !canEdit ? styles.saveBtnDisabled : null,
+                            pressed ? { opacity: 0.92 } : null,
+                          ]}
+                        >
+                          <Text style={styles.saveBtnText}>{!canEdit ? 'לצפייה בלבד' : saving ? 'שומר...' : 'שמור שינויים'}</Text>
+                        </Pressable>
+                      ) : null}
+                      <Pressable
+                        onPress={() => setEditorWizardStepIdx((i) => Math.min(editorWizardSteps.length - 1, i + 1))}
+                        disabled={!editDraft || editorWizardSteps.length <= 1}
+                        style={({ pressed }: any) => [
+                          styles.dialogBtn,
+                          styles.dialogBtnPrimary,
+                          (!editDraft || editorWizardSteps.length <= 1) ? { opacity: 0.6 } : null,
+                          pressed ? { opacity: 0.92 } : null,
+                        ]}
+                      >
+                        <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8 }}>
+                          <Ionicons name="arrow-back" size={16} color="#fff" />
+                          <Text style={styles.dialogBtnPrimaryText}>הבא</Text>
+                        </View>
+                      </Pressable>
+                    </>
                   )}
                 </>
               ) : flowIsWizard ? (
@@ -6398,21 +6429,36 @@ export default function AutomaticNotificationsWebScreen() {
                       </Pressable>
                     </>
                   ) : (
-                    <Pressable
-                      onPress={() => setEditorWizardStepIdx((i) => Math.min(FLOW_WIZARD_STEPS.length - 1, i + 1))}
-                      disabled={!editDraft}
-                      style={({ pressed }: any) => [
-                        styles.dialogBtn,
-                        styles.dialogBtnPrimary,
-                        !editDraft ? { opacity: 0.6 } : null,
-                        pressed ? { opacity: 0.92 } : null,
-                      ]}
-                    >
-                      <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8 }}>
-                        <Ionicons name="arrow-back" size={16} color="#fff" />
-                        <Text style={styles.dialogBtnPrimaryText}>הבא</Text>
-                      </View>
-                    </Pressable>
+                    <>
+                      {!editorIsNew ? (
+                        <Pressable
+                          onPress={persistEditorChanges}
+                          disabled={saving || !editDraft || !canEdit}
+                          style={({ pressed }: any) => [
+                            styles.saveBtn,
+                            saving || !editDraft || !canEdit ? styles.saveBtnDisabled : null,
+                            pressed ? { opacity: 0.92 } : null,
+                          ]}
+                        >
+                          <Text style={styles.saveBtnText}>{!canEdit ? 'לצפייה בלבד' : saving ? 'שומר...' : 'שמור שינויים'}</Text>
+                        </Pressable>
+                      ) : null}
+                      <Pressable
+                        onPress={() => setEditorWizardStepIdx((i) => Math.min(FLOW_WIZARD_STEPS.length - 1, i + 1))}
+                        disabled={!editDraft}
+                        style={({ pressed }: any) => [
+                          styles.dialogBtn,
+                          styles.dialogBtnPrimary,
+                          !editDraft ? { opacity: 0.6 } : null,
+                          pressed ? { opacity: 0.92 } : null,
+                        ]}
+                      >
+                        <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8 }}>
+                          <Ionicons name="arrow-back" size={16} color="#fff" />
+                          <Text style={styles.dialogBtnPrimaryText}>הבא</Text>
+                        </View>
+                      </Pressable>
+                    </>
                   )}
                 </>
               ) : (
