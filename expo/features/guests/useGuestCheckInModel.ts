@@ -95,6 +95,22 @@ function checkInFieldsEqual(a: Guest, b: Guest): boolean {
 const SEARCH_RESULT_CAP = 40;
 const PREVIEW_LIMIT = 40;
 const SEARCH_DEBOUNCE_MS = 80;
+const WALK_IN_TIMEOUT_MS = 20_000;
+
+function walkInErrorMessage(error: unknown): string {
+  const name = error && typeof error === 'object' && 'name' in error ? String((error as { name?: string }).name || '') : '';
+  const message =
+    error instanceof Error
+      ? error.message
+      : error && typeof error === 'object' && 'message' in error
+        ? String((error as { message?: string }).message || '')
+        : '';
+  const trimmed = message.trim();
+  if (name === 'AbortError' || /aborted|abort|timeout/i.test(trimmed)) {
+    return 'ההוספה לוקחת יותר מדי זמן. בדקו את החיבור, ואם המוזמן לא מופיע ברשימה נסו שוב.';
+  }
+  return trimmed || 'לא ניתן להוסיף את המוזמן. נסו שוב.';
+}
 
 function mutableCheckInFields(g: Guest): Partial<Guest> {
   return {
@@ -495,9 +511,12 @@ export function useGuestCheckInModel(params: {
             if (!row?.id) return;
             advanceWatermark(row);
             const newGuest = mapGuestRowFromDb(row);
+            if (dirtyIdsRef.current.has(newGuest.id)) return;
             setGuests((prev) => {
-              if (prev.some((g) => g.id === newGuest.id)) return prev;
-              return [...prev, newGuest].sort((a, b) => a.name.localeCompare(b.name, 'he'));
+              const existing = prev.find((g) => g.id === newGuest.id);
+              if (!existing) return [...prev, newGuest].sort((a, b) => a.name.localeCompare(b.name, 'he'));
+              if (checkInFieldsEqual(existing, newGuest)) return prev;
+              return prev.map((g) => (g.id === newGuest.id ? { ...g, ...newGuest } : g));
             });
             return;
           }
@@ -834,21 +853,28 @@ export function useGuestCheckInModel(params: {
     const shouldCheckIn = input?.checkInImmediately !== false;
 
     setAddingWalkIn(true);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), WALK_IN_TIMEOUT_MS);
     try {
-      const created = await guestService.addGuest(eventId, {
-        name,
-        phone,
-        status: 'מגיע',
-        tableId,
-        gift: 0,
-        message: '',
-        category_id: (input?.categoryId ?? null) as Guest['category_id'],
-        numberOfPeople: people,
-      });
+      const created = await guestService.addGuest(
+        eventId,
+        {
+          name,
+          phone,
+          status: 'מגיע',
+          tableId,
+          gift: 0,
+          message: '',
+          category_id: (input?.categoryId ?? null) as Guest['category_id'],
+          numberOfPeople: people,
+          checkedIn: shouldCheckIn,
+          checkedInAt: shouldCheckIn ? new Date() : null,
+          checkedInCount: shouldCheckIn ? people : null,
+        },
+        { signal: controller.signal }
+      );
 
-      const guest = shouldCheckIn
-        ? { ...created, ...(await guestService.setGuestCheckedIn(created.id, true, { checkedInCount: people })) }
-        : created;
+      const guest = created;
 
       setGuests((prev) => {
         if (prev.some((g) => g.id === guest.id)) return prev.map((g) => (g.id === guest.id ? { ...g, ...guest } : g));
@@ -874,9 +900,9 @@ export function useGuestCheckInModel(params: {
       return { ok: true, guest };
     } catch (e) {
       console.error('Add walk-in guest error:', e);
-      const message = e instanceof Error ? String(e.message || '').trim() : '';
-      return { ok: false, error: message || 'לא ניתן להוסיף את המוזמן. נסו שוב.' };
+      return { ok: false, error: walkInErrorMessage(e) };
     } finally {
+      clearTimeout(timer);
       setAddingWalkIn(false);
     }
   }, [eventId]);

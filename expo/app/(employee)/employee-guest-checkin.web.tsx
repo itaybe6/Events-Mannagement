@@ -16,6 +16,7 @@ import { useLocalSearchParams, usePathname, useRouter } from 'expo-router';
 
 import { colors } from '@/constants/colors';
 import { CheckInStatusFilter } from '@/features/guests/CheckInStatusFilter';
+import { GuestPhoneRevealButton } from '@/features/guests/GuestPhoneRevealButton';
 import { useGuestCheckInModel } from '@/features/guests/useGuestCheckInModel';
 import { TableNumberFilter } from '@/features/guests/TableNumberFilter';
 import { eventService } from '@/lib/services/eventService';
@@ -293,6 +294,7 @@ function EmployeeGuestCheckinWebDesktopScreen() {
   // Uncontrolled search input: binding value={query} re-rendered the whole
   // screen (including every guest card) on each keystroke.
   const queryDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [searchNonce, setSearchNonce] = useState(0);
   const onChangeQuery = useCallback(
     (text: string) => {
       if (queryDebounceRef.current) clearTimeout(queryDebounceRef.current);
@@ -1012,9 +1014,10 @@ function EmployeeGuestCheckinWebDesktopScreen() {
   const guestsColWidth = useMemo(() => {
     if (!isSideBySide) return undefined as number | undefined;
     const w = Number(width) || 0;
-    if (w < 1200) return Math.max(340, Math.min(400, Math.round(w * 0.4)));
-    if (w < 1600) return Math.max(400, Math.min(440, Math.round(w * 0.34)));
-    return 440;
+    // Wide enough for the guest name plus the phone / count / toggle controls.
+    if (w < 1200) return Math.max(420, Math.min(500, Math.round(w * 0.5)));
+    if (w < 1600) return Math.max(500, Math.min(560, Math.round(w * 0.4)));
+    return 560;
   }, [isSideBySide, width]);
 
   const stickyTop = useMemo(() => {
@@ -1232,11 +1235,17 @@ function EmployeeGuestCheckinWebDesktopScreen() {
       return;
     }
 
-    // Show the full list again — don't leave the screen filtered to the table
-    // the walk-in was just seated at (users had to refresh to "un-stick" it).
+    // Clear the table filter and the previous search, then show this name so
+    // the new guest is on screen instead of buried in the list.
+    if (queryDebounceRef.current) {
+      clearTimeout(queryDebounceRef.current);
+      queryDebounceRef.current = null;
+    }
     setFilter('all');
     setSelectedTableNumber(null);
     setTableFilter(null);
+    setQuery(result.guest.name);
+    setSearchNonce((n) => n + 1);
     closeAddModal();
   }, [
     addName,
@@ -1248,6 +1257,7 @@ function EmployeeGuestCheckinWebDesktopScreen() {
     resolveTableIdForNumber,
     selectedTableNumber,
     setFilter,
+    setQuery,
   ]);
 
   const isMoveSaving = Boolean(moveGuest && savingMoveId === moveGuest.id);
@@ -1382,11 +1392,10 @@ function EmployeeGuestCheckinWebDesktopScreen() {
                           <Text style={styles.avatarText}>{initialsFromName(g.name)}</Text>
                         </View>
 
-                        <View style={{ flex: 1, minWidth: 0 }}>
-                          <Text style={styles.guestNameCompact} numberOfLines={1}>
+                        <View style={styles.guestNameWrap}>
+                          <Text style={styles.guestNameCompact} numberOfLines={2}>
                             {g.name}
                           </Text>
-                         
                         </View>
                       </Pressable>
 
@@ -1397,7 +1406,7 @@ function EmployeeGuestCheckinWebDesktopScreen() {
                           isMobile ? styles.guestRowRightSm : null,
                         ]}
                       >
-                        <View style={styles.arrivalSlot}>
+                        <View style={[styles.arrivalSlot, isTouchLayout ? styles.arrivalSlotTouch : null]}>
                           {checkedIn ? (
                             <View style={[styles.compactStepper, isTouchLayout ? styles.compactStepperTouch : null]}>
                               <Pressable
@@ -1487,6 +1496,16 @@ function EmployeeGuestCheckinWebDesktopScreen() {
                           large={isTouchLayout}
                           accessibilityLabel={checkedIn ? `סמן שלא הגיע: ${g.name}` : `סמן שהגיע: ${g.name}`}
                           onPress={() => void toggleCheckIn(g)}
+                        />
+
+                        <GuestPhoneRevealButton
+                          name={g.name}
+                          phone={g.phone}
+                          arrived={arrivedCount}
+                          invited={people}
+                          checkedIn={checkedIn}
+                          buttonSize={isTouchLayout ? 36 : 30}
+                          iconSize={isTouchLayout ? 16 : 14}
                         />
 
                         <Pressable
@@ -1797,6 +1816,7 @@ function EmployeeGuestCheckinWebDesktopScreen() {
                       <Ionicons name="search" size={18} color={colors.gray[500]} />
                     </View>
                     <TextInput
+                      key={`checkin-search-${searchNonce}`}
                       style={styles.searchInput}
                       placeholder="חיפוש שם או טלפון..."
                       placeholderTextColor={colors.gray[500]}
@@ -2510,10 +2530,8 @@ function EmployeeGuestCheckinWebDesktopScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="ביטול"
                 onPress={closeAddModal}
-                disabled={addingWalkIn}
                 style={({ hovered, pressed }: any) => [
                   styles.modalSecondaryBtn,
-                  addingWalkIn ? styles.modalBtnDisabled : null,
                   Platform.OS === 'web' && hovered ? styles.modalSecondaryBtnHover : null,
                   pressed ? { opacity: 0.92 } : null,
                 ]}
@@ -2613,7 +2631,7 @@ const styles = StyleSheet.create({
   },
   contentSm: { flexDirection: 'column', gap: 8 },
   // Keep side columns tighter to prioritize the map width.
-  guestsCol: { width: 440, flexShrink: 1, minWidth: 340 },
+  guestsCol: { width: 520, flexShrink: 1, minWidth: 420 },
   guestsColLg: {
     alignSelf: 'stretch',
     ...(Platform.OS === 'web' ? ({ display: 'flex', flexDirection: 'column' } as any) : null),
@@ -3438,26 +3456,24 @@ const styles = StyleSheet.create({
   },
   guestRowAccentOn: { backgroundColor: '#10B981' },
   guestRowMain: {
-    minWidth: 0,
+    minWidth: 140,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    // Keep a consistent "name column" width so the toggle aligns vertically across rows.
-    flexBasis: 310,
+    gap: 8,
+    flexBasis: 180,
     flexGrow: 1,
     flexShrink: 1,
   },
-  // Fixed controls width keeps the toggle in the same X position.
-  guestRowRight: { width: 196, flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 },
-  // Touch controls are wider (62pt switch, 40pt move button, 34pt steppers), so
-  // the column has to grow with them or the move button clips.
-  guestRowRightTouch: { width: 240 },
+  // Controls stay compact so the guest name keeps the remaining width.
+  guestRowRight: { width: 230, flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 },
+  // Touch controls are wider (62pt switch, 40pt move button, 34pt steppers).
+  guestRowRightTouch: { width: 286 },
   moveBtn: {
-    width: 36,
-    height: 36,
+    width: 32,
+    height: 32,
     borderRadius: 12,
-    marginLeft: 12,
-    marginRight: -6,
+    marginLeft: 0,
+    marginRight: 0,
     backgroundColor: 'rgba(15,23,42,0.04)',
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.06)',
@@ -3468,9 +3484,11 @@ const styles = StyleSheet.create({
   moveBtnTouch: { width: 40, height: 40, borderRadius: 14 },
   moveBtnHover: { backgroundColor: 'rgba(15,23,42,0.06)' },
   moveBtnDisabled: { opacity: 0.55 },
-  guestNameCompact: { fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'right' },
+  guestNameWrap: { flex: 1, minWidth: 72 },
+  guestNameCompact: { fontSize: 14, fontWeight: '900', color: colors.text, textAlign: 'right', lineHeight: 18 },
   guestMetaCompact: { marginTop: 0, fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'right' },
-  arrivalSlot: { width: 112, alignItems: 'center', justifyContent: 'center' },
+  arrivalSlot: { width: 100, alignItems: 'center', justifyContent: 'center' },
+  arrivalSlotTouch: { width: 124 },
   peoplePill: {
     minWidth: 30,
     textAlign: 'center',

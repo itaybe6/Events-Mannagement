@@ -17,6 +17,7 @@ import { useLocalSearchParams } from 'expo-router';
 import WebAppMenu from '@/components/desktop/WebAppMenu';
 import { useWebAppShell } from '@/components/desktop/WebAppShell';
 import { colors } from '@/constants/colors';
+import { GuestPhoneRevealButton } from '@/features/guests/GuestPhoneRevealButton';
 import {
   guestArrivedPeople,
   guestInvitedPeople,
@@ -189,6 +190,7 @@ export default function CoupleGuestCheckInWebScreen() {
   const [addPeople, setAddPeople] = useState(1);
   const [addError, setAddError] = useState<string | null>(null);
   const queryDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [searchNonce, setSearchNonce] = useState(0);
 
   useEffect(() => {
     setFilter('all');
@@ -317,12 +319,19 @@ export default function CoupleGuestCheckInWebScreen() {
       setAddError(result.error);
       return;
     }
+    if (queryDebounceRef.current) {
+      clearTimeout(queryDebounceRef.current);
+      queryDebounceRef.current = null;
+    }
+    setQuery(result.guest.name);
+    setSearchNonce((n) => n + 1);
+    setFilter('all');
     setAddOpen(false);
     setAddName('');
     setAddPhone('');
     setAddPeople(1);
     setMobileTab('arrived');
-  }, [addName, addPeople, addPhone, addWalkInGuest]);
+  }, [addName, addPeople, addPhone, addWalkInGuest, setFilter, setQuery]);
 
   const renderGuestRow = (guest: Guest) => {
     const checkedIn = Boolean(guest.checkedIn);
@@ -375,6 +384,13 @@ export default function CoupleGuestCheckInWebScreen() {
           </View>
         </View>
         <View style={styles.guestActions}>
+          <GuestPhoneRevealButton
+            name={guest.name}
+            phone={guest.phone}
+            arrived={arrived}
+            invited={invited}
+            checkedIn={checkedIn}
+          />
           {checkedIn ? (
             <View style={styles.stepper}>
               <Pressable
@@ -558,6 +574,7 @@ export default function CoupleGuestCheckInWebScreen() {
       <View style={styles.searchWrap}>
         <Ionicons name="search" size={18} color={colors.gray[500]} />
         <TextInput
+          key={`couple-checkin-search-${searchNonce}`}
           style={styles.searchInput}
           placeholder="חיפוש שם או טלפון מתוך המאשרים…"
           placeholderTextColor={colors.gray[500]}
@@ -606,7 +623,7 @@ export default function CoupleGuestCheckInWebScreen() {
 
       {addOpen ? (
         <View style={styles.modalBackdrop}>
-          <Pressable style={styles.modalScrim} onPress={() => !addingWalkIn && setAddOpen(false)} />
+          <Pressable style={styles.modalScrim} onPress={() => setAddOpen(false)} />
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>מוזמן חדש בכניסה</Text>
             <Text style={styles.modalSubtitle}>מי שלא ברשימת המאשרים יתווסף ויסומן מיד כהגיע.</Text>
@@ -646,7 +663,7 @@ export default function CoupleGuestCheckInWebScreen() {
               >
                 {addingWalkIn ? <ActivityIndicator size={14} color={colors.white} /> : <Text style={styles.primaryBtnText}>הוסף וסמן כהגיע</Text>}
               </Pressable>
-              <Pressable onPress={() => setAddOpen(false)} disabled={addingWalkIn} style={styles.secondaryBtn}>
+              <Pressable onPress={() => setAddOpen(false)} style={styles.secondaryBtn}>
                 <Text style={styles.secondaryBtnText}>ביטול</Text>
               </Pressable>
             </View>

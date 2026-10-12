@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams } from 'expo-router';
 
 import { colors } from '@/constants/colors';
+import { GuestPhoneRevealButton } from '@/features/guests/GuestPhoneRevealButton';
 import {
   guestArrivedPeople,
   guestInvitedPeople,
@@ -92,7 +93,9 @@ export default function CoupleGuestCheckInScreen() {
   const renderRow = useCallback(
     (guest: Guest) => {
       const checkedIn = Boolean(guest.checkedIn);
-      const people = checkedIn ? guestArrivedPeople(guest) : guestInvitedPeople(guest);
+      const invited = guestInvitedPeople(guest);
+      const arrived = guestArrivedPeople(guest);
+      const people = checkedIn ? arrived : invited;
       return (
         <View key={guest.id} style={[styles.row, checkedIn ? styles.rowOn : null]}>
           <View style={{ flex: 1, minWidth: 0 }}>
@@ -104,6 +107,13 @@ export default function CoupleGuestCheckInScreen() {
               {!isConfirmedGuest(guest) ? ` · ${guest.status}` : ''}
             </Text>
           </View>
+          <GuestPhoneRevealButton
+            name={guest.name}
+            phone={guest.phone}
+            arrived={arrived}
+            invited={invited}
+            checkedIn={checkedIn}
+          />
           <Pressable
             accessibilityRole="switch"
             accessibilityState={{ checked: checkedIn }}

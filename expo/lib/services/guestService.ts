@@ -92,15 +92,47 @@ async function fetchExistingGuestsForDuplicateCheck(eventId: string): Promise<Ex
   return ((data as ExistingGuestRow[]) || []);
 }
 
+/**
+ * A single add used to download every guest in the event just to compare phones.
+ * On a night-of list of several hundred people that request is what made the
+ * check-in "add guest" button sit on a spinner. Match the phone directly instead.
+ */
+async function fetchGuestsMatchingPhone(
+  eventId: string,
+  phone: string,
+  signal?: AbortSignal
+): Promise<ExistingGuestRow[]> {
+  const keys = getPhoneDuplicateKeys(phone);
+  if (keys.length === 0) return [];
+
+  const ors = keys.map((key) => `phone.eq.${key}`);
+  const tail = normalizeGuestPhone(phone).slice(-7);
+  if (tail.length >= 7) ors.push(`phone.ilike.%${tail}%`);
+
+  let query = supabase
+    .from('guests')
+    .select('id, name, phone')
+    .eq('event_id', eventId)
+    .or(ors.join(','))
+    .limit(20);
+  if (signal) query = query.abortSignal(signal);
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data as ExistingGuestRow[]) || [];
+}
+
 async function ensureGuestIsUniqueForEvent(
   eventId: string,
   guest: Pick<Guest, 'name' | 'phone'>,
   excludeGuestId?: string,
-  existingRows?: ExistingGuestRow[]
+  existingRows?: ExistingGuestRow[],
+  signal?: AbortSignal
 ): Promise<void> {
   if (!eventId) return;
+  if (getPhoneDuplicateKeys(normalizeGuestPhone(guest.phone || '')).length === 0) return;
 
-  const rows = existingRows ?? (await fetchExistingGuestsForDuplicateCheck(eventId));
+  const rows = existingRows ?? (await fetchGuestsMatchingPhone(eventId, guest.phone || '', signal));
   if (isDuplicateGuestCandidate(guest, rows, excludeGuestId)) {
     throw new Error(DUPLICATE_GUEST_ERROR);
   }
@@ -737,44 +769,49 @@ export const guestService = {
   },
 
   // Add new guest
-  addGuest: async (eventId: string, guest: Omit<Guest, 'id'>): Promise<Guest> => {
+  addGuest: async (
+    eventId: string,
+    guest: Omit<Guest, 'id'>,
+    opts?: { signal?: AbortSignal }
+  ): Promise<Guest> => {
     try {
       const normalizedGuest = withNormalizedPhone(guest);
+      const signal = opts?.signal;
       await Promise.all([
-        ensureGuestIsUniqueForEvent(eventId, normalizedGuest),
+        ensureGuestIsUniqueForEvent(eventId, normalizedGuest, undefined, undefined, signal),
         ensureUnapprovedEventGuestLimit(eventId),
       ]);
-      const { data, error } = await supabase
-        .from('guests')
-        .insert({
-          event_id: eventId,
-          name: normalizedGuest.name,
-          phone: normalizedGuest.phone,
-          status: normalizedGuest.status,
-          table_id: normalizedGuest.tableId,
-          gift_amount: normalizedGuest.gift,
-          message: normalizedGuest.message,
-          category_id: normalizedGuest.category_id,
-          number_of_people: normalizedGuest.numberOfPeople,
-        })
-        .select()
-        .single();
+
+      const insertRow: Record<string, unknown> = {
+        event_id: eventId,
+        name: normalizedGuest.name,
+        phone: normalizedGuest.phone,
+        status: normalizedGuest.status,
+        table_id: normalizedGuest.tableId,
+        gift_amount: normalizedGuest.gift,
+        message: normalizedGuest.message,
+        category_id: normalizedGuest.category_id,
+        number_of_people: normalizedGuest.numberOfPeople,
+      };
+      // Check-in walk-ins are marked arrived in the same insert. A follow-up
+      // update used to leave the sheet spinning if that second request stalled.
+      if (normalizedGuest.checkedIn) {
+        insertRow.checked_in = true;
+        insertRow.checked_in_at = normalizedGuest.checkedInAt
+          ? new Date(normalizedGuest.checkedInAt).toISOString()
+          : new Date().toISOString();
+        if (normalizedGuest.checkedInCount !== undefined && normalizedGuest.checkedInCount !== null) {
+          insertRow.checked_in_count = normalizedGuest.checkedInCount;
+        }
+      }
+
+      let insert = supabase.from('guests').insert(insertRow).select();
+      if (signal) insert = insert.abortSignal(signal);
+      const { data, error } = await insert.single();
 
       if (error) throw error;
 
-      return {
-        id: data.id,
-        name: data.name,
-        phone: data.phone || '',
-        status: data.status as Guest['status'],
-        tableId: data.table_id,
-        gift: Number(data.gift_amount) || 0,
-        message: data.message || '',
-        category_id: data.category_id,
-        numberOfPeople: data.number_of_people || 1,
-        invitationToken: (data as any).invitation_token ? String((data as any).invitation_token) : undefined,
-        invitationCode: (data as any).invitation_code ? String((data as any).invitation_code) : undefined,
-      };
+      return mapGuestRowFromDb(data as Record<string, unknown>);
     } catch (error) {
       console.error('Add guest error:', error);
       throw error;

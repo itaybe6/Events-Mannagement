@@ -4,7 +4,7 @@ import {
   Alert,
   BackHandler,
   Dimensions,
-  Linking,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -29,6 +29,7 @@ import { colors } from "@/constants/colors";
 import BackSwipe from "@/components/BackSwipe";
 import AppHeader from "@/components/AppHeader";
 import { CheckInStatusFilter } from "@/features/guests/CheckInStatusFilter";
+import { GuestPhoneRevealButton } from "@/features/guests/GuestPhoneRevealButton";
 import { guestArrivedPeople, guestInvitedPeople, useGuestCheckInModel } from "@/features/guests/useGuestCheckInModel";
 import { TableNumberFilter } from "@/features/guests/TableNumberFilter";
 import { useSeatingMapModel } from "@/features/seating/useSeatingMapModel";
@@ -369,6 +370,7 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
   // (כולל מאות כרטיסי אורחים) על כל אות שהוקלדה. עדכון ה-state נדחה מעט,
   // כך שההקלדה עצמה נשארת חלקה.
   const queryDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [searchNonce, setSearchNonce] = useState(0);
   const onChangeQuery = useCallback(
     (text: string) => {
       if (queryDebounceRef.current) clearTimeout(queryDebounceRef.current);
@@ -410,28 +412,6 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
     const approxGutters = 60;
     return Math.max(320, Math.round(w - right - approxGutters));
   }, [guestsPaneWidth, isTablet, windowWidth]);
-
-  const phoneToTel = (raw: string) => {
-    const cleaned = String(raw || "").replace(/[^\d+]/g, "").trim();
-    return cleaned || null;
-  };
-
-  const callGuest = async (rawPhone: string, guestName?: string) => {
-    const tel = phoneToTel(rawPhone);
-    if (!tel) return;
-    const url = `tel:${tel}`;
-    try {
-      const supported = await Linking.canOpenURL(url);
-      if (!supported) {
-        Alert.alert("שגיאה", "המכשיר לא תומך בחיוג");
-        return;
-      }
-      await Linking.openURL(url);
-    } catch (e) {
-      console.error("Call guest error:", e);
-      Alert.alert("שגיאה", `לא ניתן לפתוח שיחה${guestName ? ` ל-${guestName}` : ""}`);
-    }
-  };
 
   // Keep content above the custom tab bar
   const TAB_BAR_HEIGHT = 65;
@@ -783,10 +763,18 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
       return;
     }
 
-    // Make sure the freshly added guest is visible in the list.
+    // Drop search and table filters, then show this name so the new guest
+    // isn't hidden under the list the usher was looking at.
+    if (queryDebounceRef.current) {
+      clearTimeout(queryDebounceRef.current);
+      queryDebounceRef.current = null;
+    }
     setFilter("all");
+    setTableFilterId(null);
+    setQuery(result.guest.name);
+    setSearchNonce((n) => n + 1);
     closeAddSheet();
-  }, [addName, addPeople, addPhone, addTableId, addWalkInGuest, closeAddSheet, setFilter]);
+  }, [addName, addPeople, addPhone, addTableId, addWalkInGuest, closeAddSheet, setFilter, setQuery]);
 
   const hasMapData = mapTables.length > 0 || mapAnnotations.length > 0;
 
@@ -1147,6 +1135,7 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                     <Ionicons name="search" size={18} color={colors.gray[500]} />
                   </Text>
                   <TextInput
+                    key={`tablet-search-${searchNonce}`}
                     defaultValue={query}
                     onChangeText={onChangeQuery}
                     placeholder="חיפוש שם או טלפון..."
@@ -1303,20 +1292,14 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                                         )}
                                       </View>
 
-                                      <TouchableOpacity
-                                        onPress={() => void callGuest(g.phone, g.name)}
-                                        disabled={!phoneToTel(g.phone)}
-                                        activeOpacity={0.85}
-                                        style={[styles.phoneBtn, !phoneToTel(g.phone) && styles.phoneBtnDisabled]}
-                                        accessibilityRole="button"
-                                        accessibilityLabel={phoneToTel(g.phone) ? `התקשר ל-${g.name}` : `אין מספר טלפון עבור ${g.name}`}
-                                      >
-                                        <Ionicons
-                                          name="call-outline"
-                                          size={14}
-                                          color={phoneToTel(g.phone) ? colors.primary : "rgba(17,24,39,0.35)"}
-                                        />
-                                      </TouchableOpacity>
+                                      <GuestPhoneRevealButton
+                                        name={g.name}
+                                        phone={g.phone}
+                                        arrived={arrivedCount}
+                                        invited={people}
+                                        checkedIn={checkedIn}
+                                        iconSize={16}
+                                      />
                                     </View>
 
                                     {/* RIGHT column: guest info */}
@@ -1498,6 +1481,14 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                             <Text style={styles.modalGuestName} numberOfLines={1}>
                               {g.name}
                             </Text>
+                            <GuestPhoneRevealButton
+                              name={g.name}
+                              phone={g.phone}
+                              arrived={arrivedCount}
+                              invited={people}
+                              checkedIn={checkedIn}
+                              iconSize={15}
+                            />
                             <TouchableOpacity
                               onPress={() => toggleCheckIn(g)}
                               style={[styles.modalToggleBtn, checkedIn && styles.modalToggleBtnOn]}
@@ -1540,6 +1531,7 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                   <Ionicons name="search" size={18} color={colors.gray[500]} />
                 </Text>
                 <TextInput
+                  key={`phone-search-${searchNonce}`}
                   defaultValue={query}
                   onChangeText={onChangeQuery}
                   placeholder="חיפוש שם או טלפון..."
@@ -1634,7 +1626,6 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                               ? people
                               : Number(g.checkedInCount) || 0;
                           const isSavingCount = savingCountId === g.id;
-                          const canCall = Boolean(phoneToTel(g.phone));
                           return (
                             <View key={g.id} style={[styles.cGuestRow, checkedIn && styles.cGuestRowOn]}>
                               {/* Accent bar on the right edge (RTL) */}
@@ -1676,23 +1667,13 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                                   </View>
                                 )}
 
-                                <TouchableOpacity
-                                  onPress={() => void callGuest(g.phone, g.name)}
-                                  disabled={!canCall}
-                                  activeOpacity={0.82}
-                                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                  style={styles.cActionBtnTouch}
-                                  accessibilityRole="button"
-                                  accessibilityLabel={canCall ? `התקשר ל-${g.name}` : `אין מספר טלפון עבור ${g.name}`}
-                                >
-                                  <View style={[styles.cActionBtn, styles.cPhone, !canCall && styles.cPhoneDisabled]}>
-                                    <Ionicons
-                                      name="call-outline"
-                                      size={16}
-                                      color={canCall ? colors.primary : "rgba(17,24,39,0.35)"}
-                                    />
-                                  </View>
-                                </TouchableOpacity>
+                                <GuestPhoneRevealButton
+                                  name={g.name}
+                                  phone={g.phone}
+                                  arrived={arrivedCount}
+                                  invited={people}
+                                  checkedIn={checkedIn}
+                                />
                               </View>
 
                               {/* LEFT: check-in toggle */}
@@ -1749,6 +1730,7 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
       </View>
 
       <Modal visible={addOpen} transparent animationType="fade" onRequestClose={closeAddSheet}>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.addSheetAvoider}>
         <Pressable style={styles.modalOverlay} onPress={closeAddSheet}>
           <Pressable style={styles.modalCard} onPress={() => null}>
             <View style={styles.modalHeader}>
@@ -1776,11 +1758,13 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
 
             <View style={styles.modalDivider} />
 
-            <AppKeyboardAwareScrollView
-              style={styles.addSheetScroll}
+            <ScrollView
+              style={[styles.addSheetScroll, { maxHeight: Math.max(200, Math.round(windowHeight * 0.38)) }]}
               contentContainerStyle={styles.modalBody}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+              nestedScrollEnabled
             >
               <View style={styles.formField}>
                 <Text style={styles.formLabel}>שם המוזמן</Text>
@@ -1982,7 +1966,7 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
                   </>
                 )}
               </View>
-            </AppKeyboardAwareScrollView>
+            </ScrollView>
 
             {addError ? (
               <View style={styles.formErrorBox}>
@@ -2012,8 +1996,7 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
 
               <TouchableOpacity
                 onPress={closeAddSheet}
-                disabled={addingWalkIn}
-                style={[styles.addSecondaryBtn, addingWalkIn ? styles.addBtnDisabled : null]}
+                style={styles.addSecondaryBtn}
                 activeOpacity={0.9}
                 accessibilityRole="button"
                 accessibilityLabel="ביטול"
@@ -2023,6 +2006,7 @@ export default function EmployeeGuestCheckInScreen({ hideTopBar }: Props) {
             </View>
           </Pressable>
         </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
     </BackSwipe>
   );
@@ -3047,6 +3031,7 @@ const styles = StyleSheet.create({
   },
   exportExcelBtnText: { fontSize: 14, fontWeight: "900", color: colors.primary, textAlign: "center" },
 
+  addSheetAvoider: { flex: 1 },
   addSheetScroll: { flexGrow: 0, flexShrink: 1 },
   formField: { gap: 8 },
   formLabel: { fontSize: 13, fontWeight: "900", color: colors.text, textAlign: "right" },

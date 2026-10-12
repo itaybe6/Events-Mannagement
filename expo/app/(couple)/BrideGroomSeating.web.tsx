@@ -270,6 +270,12 @@ export default function BrideGroomSeatingWebScreen() {
   const [seatedGuestsForTable, setSeatedGuestsForTable] = useState<GuestRow[]>([]);
   const [selectedGuestsToAdd, setSelectedGuestsToAdd] = useState<Set<string>>(new Set());
   const [addingGuestsToTable, setAddingGuestsToTable] = useState(false);
+  const [selectedSeatedGuestIds, setSelectedSeatedGuestIds] = useState<Set<string>>(new Set());
+  const [moveTargetTableId, setMoveTargetTableId] = useState<string | null>(null);
+  const [movePickOnMap, setMovePickOnMap] = useState(false);
+  const [moveConfirmOpen, setMoveConfirmOpen] = useState(false);
+  const [movingGuests, setMovingGuests] = useState(false);
+  const suppressTableGuestSelectRef = useRef(false);
   const [searchQueryTable, setSearchQueryTable] = useState('');
   const [categoryFilterTable, setCategoryFilterTable] = useState('הכל');
   const [categoriesForTable, setCategoriesForTable] = useState<string[]>([]);
@@ -279,6 +285,7 @@ export default function BrideGroomSeatingWebScreen() {
   const [quickAddGuestSearch, setQuickAddGuestSearch] = useState<string>('');
   const [quickSeatFilter, setQuickSeatFilter] = useState<QuickSeatFilterKey>('unseated');
   const [quickStatusFilter, setQuickStatusFilter] = useState<QuickStatusFilterKey>('all');
+  const [collapsedCategoryIds, setCollapsedCategoryIds] = useState<Set<string>>(new Set());
   const [sidePanelTab, setSidePanelTab] = useState<'guests' | 'tables'>('guests');
   const [seatConfirmOpen, setSeatConfirmOpen] = useState(false);
   const [seatConfirmTable, setSeatConfirmTable] = useState<Table | null>(null);
@@ -651,6 +658,11 @@ export default function BrideGroomSeatingWebScreen() {
       setCategoryFilterTable('הכל');
       setSelectedGuestsToAdd(new Set());
       setAddingGuestsToTable(false);
+      setSelectedSeatedGuestIds(new Set());
+      setMoveTargetTableId(null);
+      setMovePickOnMap(false);
+      setMoveConfirmOpen(false);
+      setMovingGuests(false);
 
       setTableModalOpen(true);
       setTabBarVisible(false);
@@ -721,6 +733,16 @@ export default function BrideGroomSeatingWebScreen() {
 
     return sections;
   }, [guests, quickAddGuestSearch, quickSeatFilter, quickStatusFilter]);
+
+  const toggleCategoryCollapsed = useCallback((categoryId: string) => {
+    setCollapsedCategoryIds((prev) => {
+      const next = new Set(prev);
+      const id = String(categoryId);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
 
   const toggleQuickAddGuest = useCallback((guestId: string) => {
     setQuickAddSelectedGuestIds((prev) => {
@@ -928,6 +950,11 @@ export default function BrideGroomSeatingWebScreen() {
     await handleSaveTableName();
     setTableModalOpen(false);
     setSelectedTableForModal(null);
+    setSelectedSeatedGuestIds(new Set());
+    setMoveTargetTableId(null);
+    setMovePickOnMap(false);
+    setMoveConfirmOpen(false);
+    setTableModalView('seated');
     setTabBarVisible(true);
   }, [handleSaveTableName, setTabBarVisible]);
 
@@ -972,13 +999,50 @@ export default function BrideGroomSeatingWebScreen() {
   }, [addingGuestsToTable, closeTableModal, fetchGuests, fetchTables, guests, selectedGuestsToAdd, selectedTableForModal?.id]);
 
   const handleSaveTableModal = useCallback(async () => {
-    if (addingGuestsToTable) return;
+    if (addingGuestsToTable || movingGuests) return;
     if (tableModalView === 'add' && selectedGuestsToAdd.size > 0) {
       await handleAddGuestsToTable();
       return;
     }
     await closeTableModal();
-  }, [addingGuestsToTable, closeTableModal, handleAddGuestsToTable, selectedGuestsToAdd.size, tableModalView]);
+  }, [addingGuestsToTable, closeTableModal, handleAddGuestsToTable, movingGuests, selectedGuestsToAdd.size, tableModalView]);
+
+  const toggleSeatedGuestSelection = useCallback((guestId: string) => {
+    setSelectedSeatedGuestIds((prev) => {
+      const next = new Set(prev);
+      const id = String(guestId);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const toggleSelectAllSeatedGuests = useCallback(() => {
+    setSelectedSeatedGuestIds((prev) => {
+      const ids = seatedGuestsForTable.map((g) => String(g.id));
+      const allSelected = ids.length > 0 && ids.every((id) => prev.has(id));
+      return allSelected ? new Set() : new Set(ids);
+    });
+  }, [seatedGuestsForTable]);
+
+  const openMoveGuestsView = useCallback(async () => {
+    if (!selectedSeatedGuestIds.size || !selectedTableForModal) return;
+    await handleSaveTableName();
+    setMoveTargetTableId(null);
+    setMoveConfirmOpen(false);
+    setMovePickOnMap(true);
+    setTableModalOpen(false);
+    setTabBarVisible(true);
+  }, [handleSaveTableName, selectedSeatedGuestIds.size, selectedTableForModal, setTabBarVisible]);
+
+  const cancelMovePickOnMap = useCallback(() => {
+    setMoveConfirmOpen(false);
+    setMoveTargetTableId(null);
+    setMovePickOnMap(false);
+    setTableModalView('seated');
+    setTableModalOpen(true);
+    setTabBarVisible(false);
+  }, [setTabBarVisible]);
 
   const handleRemoveGuestFromTable = useCallback(
     async (guestId: string) => {
@@ -1000,9 +1064,93 @@ export default function BrideGroomSeatingWebScreen() {
 
       await Promise.all([fetchGuests(), fetchTables()]);
       setSeatedGuestsForTable((prev) => prev.filter((g) => g.id !== guestId));
+      setSelectedSeatedGuestIds((prev) => {
+        if (!prev.has(String(guestId))) return prev;
+        const next = new Set(prev);
+        next.delete(String(guestId));
+        return next;
+      });
     },
     [fetchGuests, fetchTables, guests, selectedTableForModal?.id]
   );
+
+  const selectedPeopleToMove = useMemo(() => {
+    return seatedGuestsForTable.reduce((sum, g) => {
+      if (!selectedSeatedGuestIds.has(String(g.id))) return sum;
+      return sum + (Number(g.numberOfPeople) || 1);
+    }, 0);
+  }, [seatedGuestsForTable, selectedSeatedGuestIds]);
+
+  const handleMoveSelectedGuests = useCallback(async () => {
+    if (movingGuests) return;
+    const fromTable = selectedTableForModal;
+    const toTableId = moveTargetTableId ? String(moveTargetTableId) : '';
+    if (!fromTable?.id || !toTableId || toTableId === String(fromTable.id)) return;
+
+    const ids = seatedGuestsForTable.map((g) => String(g.id)).filter((id) => selectedSeatedGuestIds.has(id));
+    if (!ids.length) return;
+
+    const dest = (tables || []).find((t) => String(t.id) === toTableId);
+    if (!dest) {
+      Alert.alert('שגיאה', 'לא נמצא שולחן יעד.');
+      return;
+    }
+
+    const selectedSet = new Set(ids);
+    const guestsToMove = seatedGuestsForTable.filter((g) => selectedSet.has(String(g.id)));
+    const totalPeopleMoved = guestsToMove.reduce((sum, g) => sum + (Number(g.numberOfPeople) || 1), 0);
+
+    setMovingGuests(true);
+    try {
+      const { error: guestUpdateError } = await supabase.from('guests').update({ table_id: toTableId }).in('id', ids);
+      if (guestUpdateError) {
+        console.error('Error moving guests:', guestUpdateError);
+        Alert.alert('שגיאה', 'לא ניתן להעביר את האורחים לשולחן אחר.');
+        return;
+      }
+
+      const remaining = seatedGuestsForTable.filter((g) => !selectedSet.has(String(g.id)));
+      const newSourceTotal = remaining.reduce((sum, g) => sum + (Number(g.numberOfPeople) || 1), 0);
+      const currentDestTotal = (guests || [])
+        .filter((g) => String(g.table_id || '') === toTableId)
+        .reduce((sum, g) => sum + (Number(g.numberOfPeople) || 1), 0);
+
+      const [sourceRes, destRes] = await Promise.all([
+        supabase.from('tables').update({ seated_guests: newSourceTotal }).eq('id', fromTable.id),
+        supabase.from('tables').update({ seated_guests: currentDestTotal + totalPeopleMoved }).eq('id', toTableId),
+      ]);
+      if (sourceRes.error || destRes.error) {
+        console.error('Error updating table counts:', sourceRes.error || destRes.error);
+      }
+
+      await Promise.all([fetchGuests(), fetchTables()]);
+      setSeatedGuestsForTable(remaining);
+      setSelectedSeatedGuestIds(new Set());
+      setMoveTargetTableId(null);
+      setMoveConfirmOpen(false);
+      setMovePickOnMap(false);
+      setTableModalOpen(false);
+      setSelectedTableForModal(null);
+      setTableModalView('seated');
+      setTabBarVisible(true);
+    } catch (e) {
+      console.error('Error moving guests:', e);
+      Alert.alert('שגיאה', 'אירעה שגיאה בהעברת האורחים.');
+    } finally {
+      setMovingGuests(false);
+    }
+  }, [
+    fetchGuests,
+    fetchTables,
+    guests,
+    moveTargetTableId,
+    movingGuests,
+    seatedGuestsForTable,
+    selectedSeatedGuestIds,
+    selectedTableForModal,
+    setTabBarVisible,
+    tables,
+  ]);
 
   const handleDeleteTable = useCallback(async () => {
     if (!selectedTableForModal) return;
@@ -1078,11 +1226,16 @@ export default function BrideGroomSeatingWebScreen() {
       .map((t: any) => ({ ...t, _seatedPeople: byId.get(String(t.id)) ?? 0 }))
       .sort((a, b) => Number(a.number || 0) - Number(b.number || 0));
   }, [guests, tableListSearch, tables]);
+  const moveTargetTable = useMemo(
+    () => (tables || []).find((t) => String(t.id) === String(moveTargetTableId || '')) ?? null,
+    [moveTargetTableId, tables]
+  );
   const selectedMapTableNumber = useMemo(
     () =>
+      (moveConfirmOpen && moveTargetTable ? Number((moveTargetTable as any).number) : null) ??
       (seatConfirmOpen && seatConfirmTable ? Number((seatConfirmTable as any).number) : null) ??
       (selectedTableForModal ? Number((selectedTableForModal as any).number) : null),
-    [seatConfirmOpen, seatConfirmTable, selectedTableForModal]
+    [moveConfirmOpen, moveTargetTable, seatConfirmOpen, seatConfirmTable, selectedTableForModal]
   );
   const useAdminMapPresentation = showManagerChrome;
 
@@ -1160,6 +1313,13 @@ export default function BrideGroomSeatingWebScreen() {
           if (!num) return;
           const t = tables.find((x: any) => Number(x.number) === Number(num));
           if (!t) return;
+          if (movePickOnMap && selectedSeatedGuestIds.size > 0) {
+            if (String(t.id) !== String(selectedTableForModal?.id || '')) {
+              setMoveTargetTableId(String(t.id));
+              setMoveConfirmOpen(true);
+            }
+            return;
+          }
           if (quickAddSelectedGuestIds.size > 0) {
             openSeatConfirm(t);
             return;
@@ -1171,11 +1331,14 @@ export default function BrideGroomSeatingWebScreen() {
   }, [
     activeWebSketch,
     isNarrow,
+    movePickOnMap,
     openSeatConfirm,
     openTableModal,
     quickAddSelectedGuestIds,
     seatedByNumber,
     selectedMapTableNumber,
+    selectedSeatedGuestIds,
+    selectedTableForModal,
     tables,
     useAdminMapPresentation,
     webSketch,
@@ -1223,6 +1386,9 @@ export default function BrideGroomSeatingWebScreen() {
   const tableOccupancyPercent = tableCapacity ? Math.max(0, Math.min(100, Math.round((seatedPeopleInTableModal / tableCapacity) * 100))) : 0;
   const remainingSeatsInTableModal = tableCapacity ? Math.max(0, tableCapacity - seatedPeopleInTableModal) : 0;
   const selectedTableName = String(selectedTableForModal?.name || '').trim();
+  const allSeatedSelected =
+    seatedGuestsForTable.length > 0 && seatedGuestsForTable.every((g) => selectedSeatedGuestIds.has(String(g.id)));
+  const guestsPendingMove = seatedGuestsForTable.filter((g) => selectedSeatedGuestIds.has(String(g.id)));
 
   return (
     <View style={[styles.page, isAdminContext ? styles.pageAdmin : null]}>
@@ -1586,10 +1752,30 @@ export default function BrideGroomSeatingWebScreen() {
                           </Text>
                         </View>
                       ) : (
-                        quickAddSections.map((section) => (
+                        quickAddSections.map((section) => {
+                          const collapsed = !quickAddGuestSearch.trim() && collapsedCategoryIds.has(section.id);
+                          return (
                           <View key={section.id} style={styles.quickSectionCard}>
-                            <View style={styles.quickSectionHeader}>
+                            <Pressable
+                              accessibilityRole="button"
+                              accessibilityLabel={collapsed ? `פתח קטגוריה ${section.title}` : `סגור קטגוריה ${section.title}`}
+                              accessibilityState={{ expanded: !collapsed }}
+                              onPress={() => toggleCategoryCollapsed(section.id)}
+                              style={({ hovered, pressed }: any) => [
+                                styles.quickSectionHeader,
+                                collapsed ? styles.quickSectionHeaderCollapsed : null,
+                                Platform.OS === 'web' && hovered ? styles.quickSectionHeaderHover : null,
+                                pressed ? styles.btnPressed : null,
+                              ]}
+                            >
                               <View style={styles.quickSectionTitleWrap}>
+                                <View style={styles.quickSectionChevron}>
+                                  <Ionicons
+                                    name={collapsed ? 'chevron-down' : 'chevron-up'}
+                                    size={16}
+                                    color={colors.gray[700]}
+                                  />
+                                </View>
                                 <Text style={styles.quickSectionTitle} numberOfLines={1}>
                                   {section.title}
                                 </Text>
@@ -1597,8 +1783,9 @@ export default function BrideGroomSeatingWebScreen() {
                               <View style={styles.quickSectionPill}>
                                 <Text style={styles.quickSectionPillText}>{section.data.length}</Text>
                               </View>
-                            </View>
+                            </Pressable>
 
+                            {collapsed ? null : (
                             <View style={styles.quickSectionBody}>
                               {section.data.map((g: any) => {
                                 const id = String(g.id);
@@ -1685,8 +1872,10 @@ export default function BrideGroomSeatingWebScreen() {
                                 );
                               })}
                             </View>
+                            )}
                           </View>
-                        ))
+                          );
+                        })
                       )}
                     </View>
                   </View>
@@ -1710,7 +1899,16 @@ export default function BrideGroomSeatingWebScreen() {
                               key={String(t.id)}
                               accessibilityRole="button"
                               accessibilityLabel={`שולחן ${t.number}`}
-                              onPress={() => openTableModal(t)}
+                              onPress={() => {
+                                if (movePickOnMap && selectedSeatedGuestIds.size > 0) {
+                                  if (String(t.id) !== String(selectedTableForModal?.id || '')) {
+                                    setMoveTargetTableId(String(t.id));
+                                    setMoveConfirmOpen(true);
+                                  }
+                                  return;
+                                }
+                                openTableModal(t);
+                              }}
                               style={({ hovered, pressed }: any) => [
                                 styles.tableRow,
                                 Platform.OS === 'web' && hovered ? styles.tableRowHover : null,
@@ -1770,13 +1968,15 @@ export default function BrideGroomSeatingWebScreen() {
                 <View style={styles.mapHeaderText}>
                   <Text style={styles.mapHeaderTitle}>פריסת שולחנות חיה</Text>
                   <Text style={styles.mapHeaderSubtitle}>
-                    {selectedMapTableNumber
-                      ? `השולחן ${selectedMapTableNumber} מודגש כעת במפה`
-                      : 'לחץ על שולחן במפה כדי למקד את הסקיצה'}
+                    {movePickOnMap
+                      ? `לחץ על שולחן במפה כדי להעביר ${selectedSeatedGuestIds.size} אורחים`
+                      : selectedMapTableNumber
+                        ? `השולחן ${selectedMapTableNumber} מודגש כעת במפה`
+                        : 'לחץ על שולחן במפה כדי למקד את הסקיצה'}
                   </Text>
                 </View>
 
-                {useAdminMapPresentation && selectedMapTableNumber ? (
+                {useAdminMapPresentation && selectedMapTableNumber && !movePickOnMap ? (
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel="נקה שולחן נבחר במפה"
@@ -1795,6 +1995,29 @@ export default function BrideGroomSeatingWebScreen() {
                   </Pressable>
                 ) : null}
               </View>
+
+              {movePickOnMap ? (
+                <View style={styles.moveMapBanner}>
+                  <View style={styles.moveMapBannerTextWrap}>
+                    <Text style={styles.moveMapBannerTitle}>בחירת שולחן להעברה</Text>
+                    <Text style={styles.moveMapBannerText}>
+                      {`נבחרו ${selectedSeatedGuestIds.size} אורחים. לחץ על שולחן במפה, ואז אשר את ההעברה.`}
+                    </Text>
+                  </View>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="ביטול העברה"
+                    onPress={cancelMovePickOnMap}
+                    style={({ hovered, pressed }: any) => [
+                      styles.moveMapCancelBtn,
+                      Platform.OS === 'web' && hovered ? styles.moveMapCancelBtnHover : null,
+                      pressed ? styles.btnPressed : null,
+                    ]}
+                  >
+                    <Text style={styles.moveMapCancelText}>ביטול</Text>
+                  </Pressable>
+                </View>
+              ) : null}
 
               <View style={styles.mapBody}>
                 {webSketch ? (
@@ -2090,6 +2313,96 @@ export default function BrideGroomSeatingWebScreen() {
                 ]}
               >
                 <Text style={styles.confirmPrimaryText}>אישור</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={moveConfirmOpen} transparent animationType="fade" onRequestClose={() => { if (!movingGuests) setMoveConfirmOpen(false); }}>
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => {
+            if (movingGuests) return;
+            setMoveConfirmOpen(false);
+            setMoveTargetTableId(null);
+          }}
+        >
+          <Pressable style={styles.confirmCard} onPress={() => {}}>
+            <View style={styles.confirmTopRow}>
+              <View style={styles.confirmIconWrap}>
+                <Ionicons name="swap-horizontal" size={20} color={colors.primary} />
+              </View>
+              <View style={styles.confirmTopText}>
+                <Text style={styles.confirmTitle}>להעביר את האורחים לשולחן הזה?</Text>
+                <Text style={styles.confirmSub} numberOfLines={2}>
+                  {moveTargetTable ? `שולחן ${moveTargetTable.number ?? '—'}` : ''}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.confirmMetaRow}>
+              <View style={styles.confirmMetaPill}>
+                <Text style={styles.confirmMetaPillValue}>{guestsPendingMove.length}</Text>
+                <Text style={styles.confirmMetaPillLabel}>אורחים</Text>
+              </View>
+              <View style={styles.confirmMetaPill}>
+                <Text style={styles.confirmMetaPillValue}>{selectedPeopleToMove}</Text>
+                <Text style={styles.confirmMetaPillLabel}>אנשים</Text>
+              </View>
+            </View>
+
+            {guestsPendingMove.length ? (
+              <View style={styles.confirmNames}>
+                {guestsPendingMove.slice(0, 6).map((g) => (
+                  <View key={String(g.id)} style={styles.confirmNameChip}>
+                    <Text style={styles.confirmName} numberOfLines={1}>
+                      {String(g.name || '').trim()}
+                    </Text>
+                  </View>
+                ))}
+                {guestsPendingMove.length > 6 ? (
+                  <View style={styles.confirmMoreChip}>
+                    <Text style={styles.confirmMore} numberOfLines={1}>
+                      {`+ עוד ${guestsPendingMove.length - 6}`}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
+
+            <View style={styles.confirmActions}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="ביטול"
+                disabled={movingGuests}
+                onPress={() => {
+                  setMoveConfirmOpen(false);
+                  setMoveTargetTableId(null);
+                }}
+                style={({ hovered, pressed }: any) => [
+                  styles.confirmBtn,
+                  styles.confirmBtnGhost,
+                  Platform.OS === 'web' && hovered && !movingGuests ? styles.confirmBtnGhostHover : null,
+                  pressed ? styles.btnPressed : null,
+                ]}
+              >
+                <Text style={styles.confirmGhostText}>ביטול</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="אישור העברה"
+                disabled={movingGuests || !moveTargetTable || guestsPendingMove.length === 0}
+                onPress={() => void handleMoveSelectedGuests()}
+                style={({ hovered, pressed }: any) => [
+                  styles.confirmBtn,
+                  styles.confirmBtnPrimary,
+                  movingGuests || !moveTargetTable || guestsPendingMove.length === 0 ? styles.confirmBtnDisabled : null,
+                  Platform.OS === 'web' && hovered && !movingGuests && moveTargetTable ? styles.confirmBtnPrimaryHover : null,
+                  pressed ? styles.btnPressed : null,
+                ]}
+              >
+                <Text style={styles.confirmPrimaryText}>{movingGuests ? 'מעביר...' : 'אישור'}</Text>
               </Pressable>
             </View>
           </Pressable>
@@ -2416,55 +2729,113 @@ export default function BrideGroomSeatingWebScreen() {
                     <Text style={styles.tableGuestsEmptySubtitle}>אפשר להוסיף אורחים בלחיצה על הכפתור למעלה.</Text>
                   </View>
                 ) : (
-                  <View style={styles.tableGuestsList}>
-                    {seatedGuestsForTable.map((g: any) => {
-                      const name = String(g?.name || '').trim();
-                      const initial = name ? name[0] : '?';
-                      const ppl = Number(g?.numberOfPeople ?? 1) || 1;
-                      const cat = g?.guest_categories?.name || 'ללא קטגוריה';
-                      return (
-                        <Pressable
-                          key={String(g.id)}
-                          style={({ hovered }: any) => [
-                            styles.tableGuestRow,
-                            Platform.OS === 'web' && hovered ? styles.tableGuestRowHover : null,
-                          ]}
-                        >
-                          <View style={styles.tableGuestRight}>
-                            <View style={styles.tableGuestAvatar}>
-                              <Text style={styles.tableGuestAvatarText}>{initial}</Text>
+                  <>
+                    <View style={styles.seatedMoveToolbar}>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={allSeatedSelected ? 'בטל סימון של כל האורחים' : 'סמן את כל האורחים'}
+                        onPress={toggleSelectAllSeatedGuests}
+                        style={({ hovered, pressed }: any) => [
+                          styles.seatedMoveSelectAllBtn,
+                          Platform.OS === 'web' && hovered ? styles.seatedMoveSelectAllBtnHover : null,
+                          pressed ? styles.btnPressed : null,
+                        ]}
+                      >
+                        <Ionicons
+                          name={allSeatedSelected ? 'checkbox' : 'square-outline'}
+                          size={18}
+                          color={allSeatedSelected ? colors.primary : colors.gray[500]}
+                        />
+                        <Text style={styles.seatedMoveSelectAllText}>{allSeatedSelected ? 'בטל סימון' : 'סמן הכל'}</Text>
+                      </Pressable>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="העבר אורחים מסומנים לשולחן אחר"
+                        disabled={selectedSeatedGuestIds.size === 0}
+                        onPress={openMoveGuestsView}
+                        style={({ hovered, pressed }: any) => [
+                          styles.seatedMoveBtn,
+                          selectedSeatedGuestIds.size === 0 ? styles.primaryBtnDisabled : null,
+                          Platform.OS === 'web' && hovered && selectedSeatedGuestIds.size > 0 ? styles.seatedMoveBtnHover : null,
+                          pressed ? styles.btnPressed : null,
+                        ]}
+                      >
+                        <Ionicons name="swap-horizontal" size={16} color={colors.white} />
+                        <Text style={styles.seatedMoveBtnText}>
+                          {selectedSeatedGuestIds.size > 0 ? `העבר (${selectedSeatedGuestIds.size})` : 'העבר'}
+                        </Text>
+                      </Pressable>
+                    </View>
+                    <View style={styles.tableGuestsList}>
+                      {seatedGuestsForTable.map((g: any) => {
+                        const name = String(g?.name || '').trim();
+                        const initial = name ? name[0] : '?';
+                        const ppl = Number(g?.numberOfPeople ?? 1) || 1;
+                        const cat = g?.guest_categories?.name || 'ללא קטגוריה';
+                        const selected = selectedSeatedGuestIds.has(String(g.id));
+                        return (
+                          <Pressable
+                            key={String(g.id)}
+                            accessibilityRole="button"
+                            accessibilityLabel={selected ? `בטל סימון ${name}` : `סמן ${name}`}
+                            accessibilityState={{ selected }}
+                            onPress={() => {
+                              if (suppressTableGuestSelectRef.current) {
+                                suppressTableGuestSelectRef.current = false;
+                                return;
+                              }
+                              toggleSeatedGuestSelection(String(g.id));
+                            }}
+                            style={({ hovered }: any) => [
+                              styles.tableGuestRow,
+                              selected ? styles.tableGuestRowSelected : null,
+                              Platform.OS === 'web' && hovered && !selected ? styles.tableGuestRowHover : null,
+                            ]}
+                          >
+                            <View style={styles.tableGuestRight}>
+                              <Ionicons
+                                name={selected ? 'checkbox' : 'square-outline'}
+                                size={20}
+                                color={selected ? colors.primary : colors.gray[300]}
+                              />
+                              <View style={styles.tableGuestAvatar}>
+                                <Text style={styles.tableGuestAvatarText}>{initial}</Text>
+                              </View>
+                              <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-end' }}>
+                                <Text style={styles.tableGuestName} numberOfLines={1}>
+                                  {name}
+                                </Text>
+                                <Text style={styles.tableGuestSub} numberOfLines={1}>
+                                  {cat}
+                                </Text>
+                              </View>
                             </View>
-                            <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-end' }}>
-                              <Text style={styles.tableGuestName} numberOfLines={1}>
-                                {name}
-                              </Text>
-                              <Text style={styles.tableGuestSub} numberOfLines={1}>
-                                {cat}
-                              </Text>
-                            </View>
-                          </View>
 
-                          <View style={styles.tableGuestLeft}>
-                            <View style={styles.tableGuestSeatsPill}>
-                              <Ionicons name="person" size={12} color={colors.gray[700]} />
-                              <Text style={styles.tableGuestSeatsText}>{ppl} מושב</Text>
+                            <View style={styles.tableGuestLeft}>
+                              <View style={styles.tableGuestSeatsPill}>
+                                <Ionicons name="person" size={12} color={colors.gray[700]} />
+                                <Text style={styles.tableGuestSeatsText}>{ppl} מושב</Text>
+                              </View>
+                              <Pressable
+                                accessibilityRole="button"
+                                accessibilityLabel="הסר אורח"
+                                onPressIn={() => {
+                                  suppressTableGuestSelectRef.current = true;
+                                }}
+                                onPress={() => void handleRemoveGuestFromTable(g.id)}
+                                style={({ hovered }: any) => [
+                                  styles.tableGuestDeleteBtn,
+                                  Platform.OS === 'web' && hovered ? styles.tableGuestDeleteBtnHover : null,
+                                ]}
+                              >
+                                <Ionicons name="trash-outline" size={16} color="#E11D48" />
+                              </Pressable>
                             </View>
-                            <Pressable
-                              accessibilityRole="button"
-                              accessibilityLabel="הסר אורח"
-                              onPress={() => void handleRemoveGuestFromTable(g.id)}
-                              style={({ hovered }: any) => [
-                                styles.tableGuestDeleteBtn,
-                                Platform.OS === 'web' && hovered ? styles.tableGuestDeleteBtnHover : null,
-                              ]}
-                            >
-                              <Ionicons name="trash-outline" size={16} color="#E11D48" />
-                            </Pressable>
-                          </View>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </>
                 )}
               </View>
             ) : (
@@ -2610,11 +2981,11 @@ export default function BrideGroomSeatingWebScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="ביטול"
                 onPress={closeTableModal}
-                disabled={addingGuestsToTable}
+                disabled={addingGuestsToTable || movingGuests}
                 style={({ hovered, pressed }: any) => [
                   styles.footerBtn,
-                  addingGuestsToTable ? styles.primaryBtnDisabled : null,
-                  Platform.OS === 'web' && hovered && !addingGuestsToTable ? styles.footerBtnHover : null,
+                  addingGuestsToTable || movingGuests ? styles.primaryBtnDisabled : null,
+                  Platform.OS === 'web' && hovered && !addingGuestsToTable && !movingGuests ? styles.footerBtnHover : null,
                   pressed ? styles.btnPressed : null,
                 ]}
               >
@@ -2624,16 +2995,16 @@ export default function BrideGroomSeatingWebScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="שמור שינויים"
                 onPress={() => void handleSaveTableModal()}
-                disabled={addingGuestsToTable}
+                disabled={addingGuestsToTable || movingGuests}
                 style={({ hovered, pressed }: any) => [
                   styles.footerBtnPrimary,
-                  addingGuestsToTable ? styles.primaryBtnDisabled : null,
-                  Platform.OS === 'web' && hovered && !addingGuestsToTable ? styles.footerBtnPrimaryHover : null,
+                  addingGuestsToTable || movingGuests ? styles.primaryBtnDisabled : null,
+                  Platform.OS === 'web' && hovered && !addingGuestsToTable && !movingGuests ? styles.footerBtnPrimaryHover : null,
                   pressed ? styles.btnPressed : null,
                 ]}
               >
                 <Text style={styles.footerBtnPrimaryText}>
-                  {addingGuestsToTable
+                  {addingGuestsToTable || movingGuests
                     ? 'שומר...'
                     : tableModalView === 'add' && selectedGuestsToAdd.size > 0
                       ? `שמור (${selectedGuestsToAdd.size} אורחים)`
@@ -3158,6 +3529,35 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     writingDirection: 'rtl',
   },
+  moveMapBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 16,
+    backgroundColor: 'rgba(0,53,102,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(0,53,102,0.16)',
+  },
+  moveMapBannerTextWrap: { flex: 1, minWidth: 0, alignItems: 'flex-end' },
+  moveMapBannerTitle: { fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'right', writingDirection: 'rtl' },
+  moveMapBannerText: { marginTop: 2, fontSize: 12, fontWeight: '800', color: colors.gray[700], textAlign: 'right', writingDirection: 'rtl' },
+  moveMapCancelBtn: {
+    height: 36,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  moveMapCancelBtnHover: { backgroundColor: 'rgba(248,250,252,0.96)' },
+  moveMapCancelText: { fontSize: 12, fontWeight: '900', color: colors.gray[800], writingDirection: 'rtl' },
   mapLegendRow: {
     flexDirection: 'row-reverse',
     flexWrap: 'wrap',
@@ -3495,11 +3895,72 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(226,232,240,0.72)',
     borderRadius: 16,
     backgroundColor: colors.white,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  tableGuestRowSelected: {
+    borderColor: 'rgba(0,53,102,0.35)',
+    backgroundColor: 'rgba(0,53,102,0.06)',
   },
   tableGuestRowHover: {
     backgroundColor: 'rgba(248,250,252,0.96)',
     borderColor: 'rgba(59,130,246,0.16)',
   },
+  seatedMoveToolbar: {
+    paddingHorizontal: 12,
+    paddingTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  seatedMoveSelectAllBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 12,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  seatedMoveSelectAllBtnHover: { backgroundColor: 'rgba(0,53,102,0.06)' },
+  seatedMoveSelectAllText: { fontSize: 12, fontWeight: '900', color: colors.gray[800], writingDirection: 'rtl' },
+  seatedMoveBtn: {
+    height: 36,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: colors.primary,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  seatedMoveBtnHover: { opacity: 0.94 },
+  seatedMoveBtnText: { color: colors.white, fontSize: 12, fontWeight: '900', writingDirection: 'rtl' },
+  movePanel: { padding: 12, gap: 10 },
+  moveTableList: { gap: 0 },
+  moveTableOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(226,232,240,0.9)',
+    backgroundColor: colors.white,
+    marginBottom: 8,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  moveTableOptionActive: {
+    borderColor: 'rgba(0,53,102,0.40)',
+    backgroundColor: 'rgba(0,53,102,0.06)',
+  },
+  moveTableOptionHover: { backgroundColor: 'rgba(248,250,252,0.96)' },
+  moveTableOptionText: { flex: 1, minWidth: 0, alignItems: 'flex-end' },
+  moveTableOptionTitle: { fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'right', writingDirection: 'rtl', alignSelf: 'stretch' },
+  moveTableOptionSub: { marginTop: 2, fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'right', writingDirection: 'rtl', alignSelf: 'stretch' },
+  moveTableOptionWarn: { color: '#B45309' },
   tableGuestRight: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 },
   tableGuestAvatar: { width: 38, height: 38, borderRadius: 999, backgroundColor: 'rgba(59,130,246,0.10)', alignItems: 'center', justifyContent: 'center' },
   tableGuestAvatarText: { fontSize: 16, fontWeight: '900', color: colors.yaleBlue, writingDirection: 'rtl' },
@@ -3967,6 +4428,27 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(15,23,42,0.06)',
     marginBottom: 10,
+    borderRadius: 12,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  quickSectionHeaderCollapsed: {
+    paddingBottom: 0,
+    borderBottomWidth: 0,
+    marginBottom: 0,
+  },
+  quickSectionHeaderHover: {
+    backgroundColor: 'rgba(0,53,102,0.04)',
+  },
+  quickSectionChevron: {
+    width: 28,
+    height: 28,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,53,102,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(0,53,102,0.10)',
+    flexShrink: 0,
   },
   quickSectionTitleWrap: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 },
   quickSectionTitle: {

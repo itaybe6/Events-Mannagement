@@ -1,5 +1,5 @@
-import React, { useEffect } from "react";
-import { Tabs, useGlobalSearchParams, useRouter, useSegments } from "expo-router";
+import React, { useEffect, useState } from "react";
+import { Tabs, useGlobalSearchParams, useRootNavigationState, useRouter, useSegments } from "expo-router";
 import { colors } from "@/constants/colors";
 import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
@@ -22,6 +22,15 @@ import { eventService } from "@/lib/services/eventService";
 
 export default function AdminTabsLayoutShared() {
   const router = useRouter();
+  const rootNavigationState = useRootNavigationState();
+  const isNavigationReady = Boolean(rootNavigationState?.key);
+  const [authHydrated, setAuthHydrated] = useState<boolean>(() => {
+    try {
+      return (useUserStore as any).persist?.hasHydrated?.() ?? false;
+    } catch {
+      return false;
+    }
+  });
   const segments = useSegments();
   const globalParams = useGlobalSearchParams<{ id?: string; eventId?: string }>();
   const { isTabBarVisible, isAdminHeaderVisible, setTabBarVisible, setAdminHeaderVisible } =
@@ -83,23 +92,44 @@ export default function AdminTabsLayoutShared() {
   }, [userType]);
 
   useEffect(() => {
-    if (loading) return;
-    if (!isLoggedIn) {
-      router.replace("/login");
+    const persistApi = (useUserStore as any).persist;
+    if (!persistApi?.onFinishHydration) {
+      setAuthHydrated(true);
       return;
     }
-    if (userType !== "admin" && userType !== "employee") {
-      router.replace("/(couple)");
-    }
-  }, [isLoggedIn, userType, loading, router]);
+    if (persistApi.hasHydrated?.()) setAuthHydrated(true);
+    const unsub = persistApi.onFinishHydration(() => setAuthHydrated(true));
+    return () => {
+      if (typeof unsub === "function") unsub();
+    };
+  }, []);
 
   useEffect(() => {
-    if (!isWebDesktopShell || userType !== "employee") return;
+    if (!isNavigationReady || !authHydrated || loading) return;
 
-    if (currentAdminRoute === "admin-events" || currentAdminRoute === "users") {
-      router.replace("/(admin)/admin-events-list");
+    let targetHref: string | null = null;
+    if (!isLoggedIn) {
+      targetHref = "/login";
+    } else if (userType !== "admin" && userType !== "employee") {
+      targetHref = "/(couple)";
     }
-  }, [currentAdminRoute, router, userType]);
+    if (!targetHref) return;
+
+    const timer = setTimeout(() => {
+      router.replace(targetHref as any);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [authHydrated, isLoggedIn, isNavigationReady, loading, router, userType]);
+
+  useEffect(() => {
+    if (!isNavigationReady || !isWebDesktopShell || userType !== "employee") return;
+    if (currentAdminRoute !== "admin-events" && currentAdminRoute !== "users") return;
+
+    const timer = setTimeout(() => {
+      router.replace("/(admin)/admin-events-list");
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [currentAdminRoute, isNavigationReady, isWebDesktopShell, router, userType]);
 
   const screens: React.ReactElement[] = [];
 
