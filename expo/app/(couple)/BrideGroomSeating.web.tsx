@@ -18,6 +18,7 @@ import { useFocusEffect, useLocalSearchParams, usePathname, useRouter } from 'ex
 
 import { colors } from '@/constants/colors';
 import AdminWebPageHeader from '@/components/desktop/AdminWebPageHeader';
+import { exportSeatingMapToPdf, type SeatingPdfTable } from '@/lib/exportSeatingMapPdf';
 import { supabase } from '@/lib/supabase';
 import { useEventSelectionStore } from '@/store/eventSelectionStore';
 import { useLayoutStore } from '@/store/layoutStore';
@@ -221,6 +222,9 @@ export default function BrideGroomSeatingWebScreen() {
   };
 
   const isNarrow = windowWidth < 980;
+  // Phone-width table dialog (Galaxy and similar). The seat pill otherwise
+  // consumes the row and the guest name collapses to a sliver.
+  const tableModalCompact = windowWidth < 520;
   const isAdminContext = useMemo(
     () => userType === 'admin' || String(pathname || '').toLowerCase().includes('admin'),
     [pathname, userType]
@@ -249,6 +253,7 @@ export default function BrideGroomSeatingWebScreen() {
   }, [isNarrow, windowHeight]);
 
   const [loading, setLoading] = useState(true);
+  const [exportingSeatingPdf, setExportingSeatingPdf] = useState(false);
   const hasLoadedOnceRef = useRef(false);
   const [tables, setTables] = useState<Table[]>([]);
   const [guests, setGuests] = useState<GuestRow[]>([]);
@@ -623,6 +628,85 @@ export default function BrideGroomSeatingWebScreen() {
     });
     return { ...webSketch, tables: mergedTables };
   }, [tables, webSketch]);
+
+  const handleExportSeatingPdf = useCallback(async () => {
+    if (exportingSeatingPdf) return;
+    const sketch = webSketchWithNames ?? webSketch;
+    const sketchTables = sketch?.tables ?? [];
+    if (!tables.length && !sketchTables.length) {
+      Alert.alert('אין שולחנות', 'אין מפת הושבה לייצוא.');
+      return;
+    }
+
+    setExportingSeatingPdf(true);
+    try {
+      let eventTitle = '';
+      if (resolvedEventId) {
+        const { data } = await supabase.from('events').select('title').eq('id', resolvedEventId).maybeSingle();
+        eventTitle = String((data as any)?.title || '').trim();
+      }
+
+      const dbByNumber = new Map<number, Table>();
+      for (const table of tables) {
+        const number = Number(table.number);
+        if (Number.isFinite(number)) dbByNumber.set(number, table);
+      }
+
+      const source = sketchTables.length
+        ? sketchTables
+        : tables.map((table, index) => ({
+            type: 'regular' as const,
+            seats: Number(table.capacity) || 12,
+            orientation: 'row' as const,
+            gridX: 0,
+            gridY: 0,
+            number: Number(table.number) || index + 1,
+            name: table.name,
+          }));
+
+      const pdfTables: SeatingPdfTable[] = source.map((table: any) => {
+        const number = Number(table?.number);
+        const db = Number.isFinite(number) ? dbByNumber.get(number) : undefined;
+        const type: SeatingPdfTable['type'] =
+          table?.type === 'knight' || table?.type === 'reserve' || table?.type === 'regular' ? table.type : 'regular';
+        const orientation: SeatingPdfTable['orientation'] = table?.orientation === 'column' ? 'column' : 'row';
+        return {
+          number: Number.isFinite(number) ? number : null,
+          name: String(table?.name || db?.name || '').trim() || null,
+          seats: Number(table?.seats || db?.capacity || 0) || 0,
+          seated: Number.isFinite(number) ? (seatedByNumber.get(number) ?? 0) : 0,
+          type,
+          orientation,
+          gridX: Number(table?.gridX) || 0,
+          gridY: Number(table?.gridY) || 0,
+        };
+      });
+
+      const ok = await exportSeatingMapToPdf({
+        eventTitle,
+        tables: pdfTables,
+        zones: (sketch?.zones || []).map((zone: any) => ({
+          name: String(zone?.name || ''),
+          gridX: Number(zone?.gridX) || 0,
+          gridY: Number(zone?.gridY) || 0,
+          widthCells: Number(zone?.widthCells) || 1,
+          heightCells: Number(zone?.heightCells) || 1,
+        })),
+        labels: (sketch?.labels || []).map((label: any) => ({
+          text: String(label?.text || ''),
+          gridX: Number(label?.gridX) || 0,
+          gridY: Number(label?.gridY) || 0,
+        })),
+        unseatedPeople: unseatedGuestsCount,
+      });
+      if (!ok) Alert.alert('שגיאה', 'לא הצלחנו להפיק את קובץ ה-PDF. נסו שוב.');
+    } catch (error) {
+      console.error('Export seating PDF failed:', error);
+      Alert.alert('שגיאה', 'אירעה תקלה בייצוא ה-PDF. נסו שוב.');
+    } finally {
+      setExportingSeatingPdf(false);
+    }
+  }, [exportingSeatingPdf, resolvedEventId, seatedByNumber, tables, unseatedGuestsCount, webSketch, webSketchWithNames]);
 
   const openGuestModalWithGuests = useCallback((title: string, list: GuestRow[]) => {
     setGuestModalTitle(title);
@@ -1423,6 +1507,27 @@ export default function BrideGroomSeatingWebScreen() {
               }
               actions={
                 <View style={styles.adminHeaderActions}>
+                  {isAdminContext ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="ייצוא מפת הושבה ל-PDF"
+                      onPress={handleExportSeatingPdf}
+                      disabled={exportingSeatingPdf || (!tables.length && !(webSketch?.tables?.length))}
+                      style={({ hovered, pressed }: any) => [
+                        styles.exportPdfBtn,
+                        Platform.OS === 'web' && hovered ? styles.exportPdfBtnHover : null,
+                        pressed ? styles.btnPressed : null,
+                        exportingSeatingPdf ? styles.exportPdfBtnDisabled : null,
+                      ]}
+                    >
+                      {exportingSeatingPdf ? (
+                        <ActivityIndicator size="small" color={colors.primary} />
+                      ) : (
+                        <Ionicons name="print-outline" size={16} color={colors.primary} />
+                      )}
+                      <Text style={styles.exportPdfBtnText}>{exportingSeatingPdf ? 'מפיק PDF…' : 'ייצוא PDF'}</Text>
+                    </Pressable>
+                  ) : null}
                   <View style={styles.adminHeaderPill}>
                     <View style={[styles.adminHeaderPillDot, { backgroundColor: webSketch ? '#10B981' : 'rgba(148,163,184,0.8)' }]} />
                     <Text style={styles.adminHeaderPillText}>{webSketch ? 'מפה פעילה' : 'ממתין לסקיצה'}</Text>
@@ -2580,8 +2685,8 @@ export default function BrideGroomSeatingWebScreen() {
 
       {/* Table modal */}
       <Modal visible={tableModalOpen} transparent animationType="fade" onRequestClose={closeTableModal}>
-        <Pressable style={styles.modalOverlay} onPress={closeTableModal}>
-          <Pressable style={[styles.tableModalCard, { maxHeight: Math.min(0.92 * windowHeight, 840), maxWidth: 440 }]} onPress={() => {}}>
+        <Pressable style={[styles.modalOverlay, tableModalCompact && styles.modalOverlayCompact]} onPress={closeTableModal}>
+          <Pressable style={[styles.tableModalCard, tableModalCompact && styles.tableModalCardCompact, { maxHeight: Math.min(0.92 * windowHeight, 840), maxWidth: 440 }]} onPress={() => {}}>
             <View style={styles.tableModalHeader}>
               <View style={styles.tableModalHeaderText}>
                 <Text style={styles.tableModalTitle}>שולחן {selectedTableForModal?.number ?? '—'}</Text>
@@ -2619,7 +2724,7 @@ export default function BrideGroomSeatingWebScreen() {
               </Pressable>
             </View>
 
-            <ScrollView contentContainerStyle={styles.tableModalBody} showsVerticalScrollIndicator={false}>
+            <ScrollView contentContainerStyle={[styles.tableModalBody, tableModalCompact && styles.tableModalBodyCompact]} showsVerticalScrollIndicator={false}>
               {/* Settings */}
               <View style={styles.tableSettingsCard}>
                 <View style={styles.tableSectionHeader}>
@@ -2766,7 +2871,7 @@ export default function BrideGroomSeatingWebScreen() {
                         </Text>
                       </Pressable>
                     </View>
-                    <View style={styles.tableGuestsList}>
+                    <View style={[styles.tableGuestsList, tableModalCompact && styles.tableGuestsListCompact]}>
                       {seatedGuestsForTable.map((g: any) => {
                         const name = String(g?.name || '').trim();
                         const initial = name ? name[0] : '?';
@@ -2788,34 +2893,46 @@ export default function BrideGroomSeatingWebScreen() {
                             }}
                             style={({ hovered }: any) => [
                               styles.tableGuestRow,
+                              tableModalCompact ? styles.tableGuestRowCompact : null,
                               selected ? styles.tableGuestRowSelected : null,
                               Platform.OS === 'web' && hovered && !selected ? styles.tableGuestRowHover : null,
                             ]}
                           >
-                            <View style={styles.tableGuestRight}>
+                            <View style={[styles.tableGuestRight, tableModalCompact && styles.tableGuestRightCompact]}>
                               <Ionicons
                                 name={selected ? 'checkbox' : 'square-outline'}
                                 size={20}
                                 color={selected ? colors.primary : colors.gray[300]}
                               />
-                              <View style={styles.tableGuestAvatar}>
+                              <View style={[styles.tableGuestAvatar, tableModalCompact && styles.tableGuestAvatarCompact]}>
                                 <Text style={styles.tableGuestAvatarText}>{initial}</Text>
                               </View>
-                              <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-end' }}>
-                                <Text style={styles.tableGuestName} numberOfLines={1}>
+                              <View style={styles.tableGuestTextCol}>
+                                <Text style={[styles.tableGuestName, tableModalCompact && styles.tableGuestNameCompact]} numberOfLines={1}>
                                   {name}
                                 </Text>
-                                <Text style={styles.tableGuestSub} numberOfLines={1}>
-                                  {cat}
-                                </Text>
+                                {tableModalCompact ? (
+                                  <View style={styles.tableGuestMetaLine}>
+                                    <Text style={[styles.tableGuestSub, styles.tableGuestSubInline]} numberOfLines={1}>
+                                      {cat}
+                                    </Text>
+                                    <Text style={styles.tableGuestSeatsInline}>{`${ppl} מושב`}</Text>
+                                  </View>
+                                ) : (
+                                  <Text style={styles.tableGuestSub} numberOfLines={1}>
+                                    {cat}
+                                  </Text>
+                                )}
                               </View>
                             </View>
 
                             <View style={styles.tableGuestLeft}>
-                              <View style={styles.tableGuestSeatsPill}>
-                                <Ionicons name="person" size={12} color={colors.gray[700]} />
-                                <Text style={styles.tableGuestSeatsText}>{ppl} מושב</Text>
-                              </View>
+                              {tableModalCompact ? null : (
+                                <View style={styles.tableGuestSeatsPill}>
+                                  <Ionicons name="person" size={12} color={colors.gray[700]} />
+                                  <Text style={styles.tableGuestSeatsText}>{ppl} מושב</Text>
+                                </View>
+                              )}
                               <Pressable
                                 accessibilityRole="button"
                                 accessibilityLabel="הסר אורח"
@@ -3117,6 +3234,30 @@ const styles = StyleSheet.create({
   },
   adminHeaderPillDot: { width: 8, height: 8, borderRadius: 999 },
   adminHeaderPillText: { fontSize: 12, fontWeight: '900', color: colors.gray[700], textAlign: 'right', writingDirection: 'rtl' },
+  exportPdfBtn: {
+    minHeight: 38,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(6,23,62,0.16)',
+    backgroundColor: '#FFFFFF',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
+  },
+  exportPdfBtnHover: {
+    backgroundColor: '#F8FAFD',
+    borderColor: 'rgba(6,23,62,0.28)',
+  },
+  exportPdfBtnDisabled: { opacity: 0.7 },
+  exportPdfBtnText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.primary,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
   heroCard: {
     marginBottom: 14,
     padding: 18,
@@ -3615,6 +3756,7 @@ const styles = StyleSheet.create({
         } as any)
       : null),
   },
+  modalOverlayCompact: { padding: 10 },
   modalCard: {
     width: '100%',
     maxWidth: 980,
@@ -3672,6 +3814,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     ...(Platform.OS === 'web' ? ({ boxShadow: '0 6px 26px rgba(0,0,0,0.10)', direction: 'ltr' } as any) : null),
   },
+  tableModalCardCompact: { borderRadius: 18 },
   tableModalHeader: {
     paddingHorizontal: 18,
     paddingVertical: 14,
@@ -3732,6 +3875,7 @@ const styles = StyleSheet.create({
   },
   tableModalCloseBtnHover: { backgroundColor: 'rgba(15,23,42,0.06)' },
   tableModalBody: { padding: 18, gap: 16 },
+  tableModalBodyCompact: { padding: 12, gap: 12 },
 
   tableSettingsCard: {
     backgroundColor: 'rgba(255,255,255,0.96)',
@@ -3885,6 +4029,7 @@ const styles = StyleSheet.create({
   tableGuestsEmptyTitle: { fontSize: 14, fontWeight: '900', color: colors.text, textAlign: 'center', writingDirection: 'rtl' },
   tableGuestsEmptySubtitle: { fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'center', writingDirection: 'rtl' },
   tableGuestsList: { padding: 10, gap: 8 },
+  tableGuestsListCompact: { padding: 8, gap: 8 },
   tableGuestRow: {
     paddingHorizontal: 14,
     paddingVertical: 12,
@@ -3897,6 +4042,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     ...(Platform.OS === 'web' ? ({ cursor: 'pointer' } as any) : null),
   },
+  tableGuestRowCompact: { paddingHorizontal: 10, paddingVertical: 10, gap: 6 },
   tableGuestRowSelected: {
     borderColor: 'rgba(0,53,102,0.35)',
     backgroundColor: 'rgba(0,53,102,0.06)',
@@ -3962,10 +4108,31 @@ const styles = StyleSheet.create({
   moveTableOptionSub: { marginTop: 2, fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'right', writingDirection: 'rtl', alignSelf: 'stretch' },
   moveTableOptionWarn: { color: '#B45309' },
   tableGuestRight: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 },
-  tableGuestAvatar: { width: 38, height: 38, borderRadius: 999, backgroundColor: 'rgba(59,130,246,0.10)', alignItems: 'center', justifyContent: 'center' },
+  tableGuestRightCompact: { gap: 8 },
+  tableGuestAvatar: { width: 38, height: 38, borderRadius: 999, backgroundColor: 'rgba(59,130,246,0.10)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  tableGuestAvatarCompact: { width: 34, height: 34 },
   tableGuestAvatarText: { fontSize: 16, fontWeight: '900', color: colors.yaleBlue, writingDirection: 'rtl' },
-  tableGuestName: { fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'right', alignSelf: 'stretch', writingDirection: 'rtl' },
-  tableGuestSub: { marginTop: 2, fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'right', alignSelf: 'stretch', writingDirection: 'rtl' },
+  tableGuestTextCol: {
+    flexGrow: 1,
+    flexShrink: 1,
+    minWidth: 88,
+    alignItems: 'stretch',
+    ...(Platform.OS === 'web' ? ({ overflow: 'hidden' } as any) : null),
+  },
+  tableGuestName: { width: '100%', fontSize: 13, fontWeight: '900', color: colors.text, textAlign: 'right', writingDirection: 'rtl' },
+  tableGuestNameCompact: { fontSize: 15 },
+  tableGuestSub: { marginTop: 2, width: '100%', fontSize: 12, fontWeight: '800', color: colors.gray[600], textAlign: 'right', writingDirection: 'rtl' },
+  tableGuestMetaLine: {
+    marginTop: 2,
+    width: '100%',
+    minWidth: 0,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    gap: 6,
+  },
+  tableGuestSubInline: { flexShrink: 1, minWidth: 0, marginTop: 0, width: 'auto' },
+  tableGuestSeatsInline: { flexShrink: 0, fontSize: 11, fontWeight: '800', color: colors.gray[600], writingDirection: 'rtl' },
   tableGuestLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   tableGuestSeatsPill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(15,23,42,0.04)', borderWidth: 1, borderColor: 'rgba(15,23,42,0.06)' },
   tableGuestSeatsText: { fontSize: 11, fontWeight: '900', color: colors.gray[700], textAlign: 'right', writingDirection: 'rtl' },
