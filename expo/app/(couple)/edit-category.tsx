@@ -27,7 +27,8 @@ import { ALIGN_RIGHT, IS_RTL, ROW_DIR, TEXT_RIGHT, rtlText } from '@/lib/rtl';
 
 export default function EditCategoryScreen() {
   const router = useRouter();
-  const { isLoggedIn, userData } = useUserStore();
+  const { isLoggedIn, userData, userType } = useUserStore();
+  const canDeleteCategories = userType === 'admin';
   const insets = useSafeAreaInsets();
   const { setTabBarVisible } = useLayoutStore();
   const params = useLocalSearchParams<{ categoryId?: string; eventId?: string }>();
@@ -420,21 +421,25 @@ export default function EditCategoryScreen() {
           );
           return updated as any;
         }}
-        onDeleteCategory={async (category) => {
-          if (!eventId) throw new Error('Missing eventId');
-          const guests = await guestService.getGuests(eventId);
-          const guestsInDeletedCategory = guests.filter((guest: any) => String(guest.category_id || '') === String(category.id));
-          await Promise.all(
-            guestsInDeletedCategory.map((guest: any) =>
-              guestService.updateGuest(String(guest.id), { category_id: null })
-            )
-          );
-          await guestService.deleteGuestCategory(String(category.id));
-          setCategories(prev => prev.filter((item: any) => String(item.id) !== String(category.id)));
-          setPendingMoveTarget(prev => (prev && String(prev.id) === String(category.id) ? null : prev));
-          setConfirmMoveVisible(false);
-          showAppAlert('נמחק', `הקטגוריה "${String(category.name || '')}" נמחקה`, 'success');
-        }}
+        onDeleteCategory={
+          canDeleteCategories
+            ? async (category) => {
+                if (!eventId) throw new Error('Missing eventId');
+                const guests = await guestService.getGuests(eventId);
+                const guestsInDeletedCategory = guests.filter((guest: any) => String(guest.category_id || '') === String(category.id));
+                await Promise.all(
+                  guestsInDeletedCategory.map((guest: any) =>
+                    guestService.updateGuest(String(guest.id), { category_id: null })
+                  )
+                );
+                await guestService.deleteGuestCategory(String(category.id));
+                setCategories(prev => prev.filter((item: any) => String(item.id) !== String(category.id)));
+                setPendingMoveTarget(prev => (prev && String(prev.id) === String(category.id) ? null : prev));
+                setConfirmMoveVisible(false);
+                showAppAlert('נמחק', `הקטגוריה "${String(category.name || '')}" נמחקה`, 'success');
+              }
+            : undefined
+        }
       />
 
       {/* Header */}

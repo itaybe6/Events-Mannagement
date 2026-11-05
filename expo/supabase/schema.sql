@@ -370,9 +370,10 @@ CREATE POLICY "Users can insert guest categories for own events" ON guest_catego
 CREATE POLICY "Users can update guest categories of own events" ON guest_categories FOR UPDATE
     TO authenticated
     USING (EXISTS (SELECT 1 FROM events WHERE events.id = guest_categories.event_id AND events.user_id = auth.uid()));
-CREATE POLICY "Users can delete guest categories of own events" ON guest_categories FOR DELETE
+DROP POLICY IF EXISTS "Admins can delete guest categories" ON guest_categories;
+CREATE POLICY "Admins can delete guest categories" ON guest_categories FOR DELETE
     TO authenticated
-    USING (EXISTS (SELECT 1 FROM events WHERE events.id = guest_categories.event_id AND events.user_id = auth.uid()));
+    USING ((SELECT public.is_admin()));
 
 -- Tables policies
 DROP POLICY IF EXISTS "Users can view tables of own events" ON tables;

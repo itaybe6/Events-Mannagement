@@ -34,7 +34,8 @@ const Ionicons = (props: React.ComponentProps<typeof IoniconsIcon>) => (
 );
 
 export default function GuestsScreen() {
-  const { isLoggedIn, userData } = useUserStore();
+  const { isLoggedIn, userData, userType } = useUserStore();
+  const canDeleteCategories = userType === 'admin';
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const scrollY = React.useRef(new Animated.Value(0)).current;
@@ -902,21 +903,23 @@ export default function GuestsScreen() {
                       </Text>
                     </TouchableOpacity>
 
-                    <TouchableOpacity
-                      onPress={() => handleRequestDeleteCategory(cat)}
-                      style={styles.categoryMenuButton}
-                      disabled={deletingCategoryId === String(cat.id)}
-                      accessibilityRole="button"
-                      accessibilityLabel={`מחיקת קטגוריה ${String(cat?.name ?? '').trim() || ''}`.trim()}
-                    >
-                      <Text>
-                        <Ionicons
-                          name="trash-outline"
-                          size={20}
-                          color={deletingCategoryId === String(cat.id) ? colors.gray[400] : colors.error}
-                        />
-                      </Text>
-                    </TouchableOpacity>
+                    {canDeleteCategories ? (
+                      <TouchableOpacity
+                        onPress={() => handleRequestDeleteCategory(cat)}
+                        style={styles.categoryMenuButton}
+                        disabled={deletingCategoryId === String(cat.id)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`מחיקת קטגוריה ${String(cat?.name ?? '').trim() || ''}`.trim()}
+                      >
+                        <Text>
+                          <Ionicons
+                            name="trash-outline"
+                            size={20}
+                            color={deletingCategoryId === String(cat.id) ? colors.gray[400] : colors.error}
+                          />
+                        </Text>
+                      </TouchableOpacity>
+                    ) : null}
                   </View>
                 </View>
                 <View style={styles.guestsList}>

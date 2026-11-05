@@ -626,7 +626,11 @@ export function GuestCategorySelectionSheet({
                           <>
                             <Text style={styles.manageEyebrow}>אפשרויות קטגוריה</Text>
                             <Text style={styles.manageTitle}>{manageTarget.name}</Text>
-                            <Text style={styles.manageSubtitle}>בלחיצה ארוכה אפשר לערוך את שם הקטגוריה או למחוק אותה.</Text>
+                            <Text style={styles.manageSubtitle}>
+                              {onDeleteCategory
+                                ? 'בלחיצה ארוכה אפשר לערוך את שם הקטגוריה או למחוק אותה.'
+                                : 'בלחיצה ארוכה אפשר לערוך את שם הקטגוריה.'}
+                            </Text>
                             <TouchableOpacity
                               onPress={() => setRenameMode(true)}
                               activeOpacity={0.92}
@@ -640,19 +644,21 @@ export function GuestCategorySelectionSheet({
                                 <Text style={styles.manageActionSubtitle}>עדכון שם בלי לצאת מהחלון</Text>
                               </View>
                             </TouchableOpacity>
-                            <TouchableOpacity
-                              onPress={handleDeleteCategory}
-                              activeOpacity={0.92}
-                              style={[styles.manageActionBtn, styles.manageActionBtnDanger]}
-                            >
-                              <View style={[styles.manageActionIcon, styles.manageActionIconDanger]}>
-                                <Ionicons name="trash-outline" size={18} color="#ef4444" />
-                              </View>
-                              <View style={styles.manageActionTextWrap}>
-                                <Text style={styles.manageActionTitleDanger}>מחיקת קטגוריה</Text>
-                                <Text style={styles.manageActionSubtitle}>הסרה מלאה של הקטגוריה מהרשימה</Text>
-                              </View>
-                            </TouchableOpacity>
+                            {onDeleteCategory ? (
+                              <TouchableOpacity
+                                onPress={handleDeleteCategory}
+                                activeOpacity={0.92}
+                                style={[styles.manageActionBtn, styles.manageActionBtnDanger]}
+                              >
+                                <View style={[styles.manageActionIcon, styles.manageActionIconDanger]}>
+                                  <Ionicons name="trash-outline" size={18} color="#ef4444" />
+                                </View>
+                                <View style={styles.manageActionTextWrap}>
+                                  <Text style={styles.manageActionTitleDanger}>מחיקת קטגוריה</Text>
+                                  <Text style={styles.manageActionSubtitle}>הסרה מלאה של הקטגוריה מהרשימה</Text>
+                                </View>
+                              </TouchableOpacity>
+                            ) : null}
                             <TouchableOpacity
                               onPress={closeManageOverlay}
                               activeOpacity={0.92}
