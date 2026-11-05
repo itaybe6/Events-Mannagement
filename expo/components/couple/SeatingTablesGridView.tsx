@@ -96,12 +96,10 @@ function TableGridCard({
   const ringW = isKnight ? ringBox * 0.92 : ringBox;
   const ringH = isKnight ? ringBox * 0.72 : ringBox;
   const ringSize = isKnight ? Math.min(ringW, ringH) : ringBox;
-  const filledColor = getTableSeatFillColor(seated, cap);
-  const borderColor = getTableSeatBorderColor(
-    seated,
-    cap,
-    isReserve ? 'rgba(245, 158, 11, 0.55)' : 'rgba(203, 213, 225, 0.85)',
-  );
+  const filledColor = isReserve ? '#06173d' : getTableSeatFillColor(seated, cap);
+  const borderColor = isReserve
+    ? 'rgba(245, 158, 11, 0.55)'
+    : getTableSeatBorderColor(seated, cap, 'rgba(203, 213, 225, 0.85)');
 
   return (
     <View style={[styles.cardCol, { width: cardWidth }]}>

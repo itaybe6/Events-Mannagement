@@ -96,7 +96,7 @@ function tablePaint(table: SeatingPdfTable): Paint {
   const seated = Number(table.seated) || 0;
   const cap = Number(table.seats) || 0;
   const full = cap > 0 && seated >= cap;
-  if (table.type === 'reserve' && !full) {
+  if (table.type === 'reserve') {
     return { fill: 'rgba(240,203,70,0.92)', border: '#E2B200', text: '#06173e', sub: '#06173e' };
   }
   return {

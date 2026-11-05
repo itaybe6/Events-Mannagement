@@ -1484,24 +1484,12 @@ export default function BrideGroomSeating() {
             return { seated: seatedByNumber.get(num) ?? 0, capacity: cap };
           }}
           getTableBaseColor={(t: any) => {
-            const num = Number(t?.number);
-            const cap = Number(t?.seats ?? 0) || 0;
-            const seated = Number.isFinite(num) ? (seatedByNumber.get(num) ?? 0) : 0;
-            const full = cap > 0 && seated >= cap;
-            const over = cap > 0 && seated > cap;
-            if (over) return '#06173d';
-            if (full) return '#06173d';
-            return t?.type === 'reserve' ? colors.warning : '#06173d';
+            if (t?.type === 'reserve') return colors.warning;
+            return '#06173d';
           }}
           getTableBackgroundAlpha={(t: any) => {
-            const num = Number(t?.number);
-            const cap = Number(t?.seats ?? 0) || 0;
-            const seated = Number.isFinite(num) ? (seatedByNumber.get(num) ?? 0) : 0;
-            const full = cap > 0 && seated >= cap;
-            const over = cap > 0 && seated > cap;
-            if (over) return 0.82;
-            if (full) return 0.82;
-            return t?.type === 'reserve' ? 0.32 : 0.82;
+            if (t?.type === 'reserve') return 0.32;
+            return 0.82;
           }}
           getTableTooltip={(t: any) => {
             const num = t?.number;
@@ -1597,8 +1585,8 @@ export default function BrideGroomSeating() {
                 styles.table,
                 table.shape === 'rectangle' ? styles.tableRect : styles.tableSquare,
                 isReserveTable && styles.reserveTableStyle,
-                isTableFull && styles.tableFullStyle,
-                isTableOverFull && styles.tableOverFullStyle,
+                !isReserveTable && isTableFull && styles.tableFullStyle,
+                !isReserveTable && isTableOverFull && styles.tableOverFullStyle,
                 selectedTableForDrag === table.id && styles.tableSelected,
                 {
                   transform: [
@@ -1644,8 +1632,8 @@ export default function BrideGroomSeating() {
                   style={[
                     styles.tableName,
                     isReserveTable && styles.reserveTableText,
-                    isTableFull && styles.tableFullText,
-                    isTableOverFull && styles.tableOverFullText,
+                    !isReserveTable && isTableFull && styles.tableFullText,
+                    !isReserveTable && isTableOverFull && styles.tableOverFullText,
                     pressedTable === table.id && { color: isTableFull ? colors.white : colors.textLight },
                   ]}
                 >
@@ -1656,8 +1644,8 @@ export default function BrideGroomSeating() {
                     style={[
                       styles.tableCustomName,
                       isReserveTable && styles.reserveTableCapText,
-                      isTableFull && styles.tableFullCapText,
-                      isTableOverFull && styles.tableOverFullCapText,
+                      !isReserveTable && isTableFull && styles.tableFullCapText,
+                      !isReserveTable && isTableOverFull && styles.tableOverFullCapText,
                     ]}
                     numberOfLines={1}
                   >
@@ -1668,8 +1656,8 @@ export default function BrideGroomSeating() {
                   style={[
                     styles.tableCap,
                     isReserveTable && styles.reserveTableCapText,
-                    isTableFull && styles.tableFullCapText,
-                    isTableOverFull && styles.tableOverFullCapText,
+                    !isReserveTable && isTableFull && styles.tableFullCapText,
+                    !isReserveTable && isTableOverFull && styles.tableOverFullCapText,
                     pressedTable === table.id && { color: isTableFull ? colors.white : colors.gray[500] },
                   ]}
                 >
@@ -2722,11 +2710,9 @@ function MobileSeatingMap({
               const seated = Number(occ?.seated ?? 0) || 0;
               const reserveBorder = 'rgba(245, 158, 11, 0.55)';
               const defaultBorder = 'rgba(203, 213, 225, 0.85)';
-              const border = getTableSeatBorderColor(
-                seated,
-                cap,
-                isReserve ? reserveBorder : defaultBorder,
-              );
+              const border = isReserve
+                ? reserveBorder
+                : getTableSeatBorderColor(seated, cap, defaultBorder);
               const w = sz.w * MAP_CELL;
               const h = sz.h * MAP_CELL;
               const tableName = String(t?.name ?? '').trim();
@@ -2735,7 +2721,7 @@ function MobileSeatingMap({
               const ringW = w - 4;
               const ringH = h - namePad;
               const ringSize = isKnight ? Math.min(ringW, ringH) : Math.min(w, h) - (tableName ? 24 : 8);
-              const filledColor = getTableSeatFillColor(seated, cap);
+              const filledColor = isReserve ? '#06173d' : getTableSeatFillColor(seated, cap);
               return (
                 <Pressable
                   key={String(t.id)}

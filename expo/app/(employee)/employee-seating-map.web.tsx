@@ -342,32 +342,30 @@ export default function EmployeeSeatingMapWebScreen() {
         getTableBaseColor={(t: any) => {
           const selected = Boolean(selectedTableNumber) && Number(t?.number) === Number(selectedTableNumber);
           if (selected) return '#10B981';
+          if (t?.type === 'reserve') return colors.warning;
           const num = t?.number;
           const seated = num ? (seatedByNumber.get(Number(num)) ?? 0) : 0;
           const cap = Number(t?.seats ?? 0) || 0;
           const isFullOrOver = cap > 0 && seated >= cap;
           if (isFullOrOver) return colors.success;
-          return t?.type === 'reserve' ? colors.warning : colors.primary;
+          return colors.primary;
         }}
         getTableBackgroundAlpha={(t: any) => {
           const selected = Boolean(selectedTableNumber) && Number(t?.number) === Number(selectedTableNumber);
           if (selected) return 0.28;
-          const num = t?.number;
-          const seated = num ? (seatedByNumber.get(Number(num)) ?? 0) : 0;
-          const cap = Number(t?.seats ?? 0) || 0;
-          const isFullOrOver = cap > 0 && seated >= cap;
-          if (isFullOrOver) return 0.9;
-          return t?.type === 'reserve' ? 0.72 : 0.9;
+          if (t?.type === 'reserve') return 0.72;
+          return 0.9;
         }}
         getTableBorderColor={(t: any) => {
           const selected = Boolean(selectedTableNumber) && Number(t?.number) === Number(selectedTableNumber);
           if (selected) return '#10B981';
+          if (t?.type === 'reserve') return colors.warning;
           const num = t?.number;
           const seated = num ? (seatedByNumber.get(Number(num)) ?? 0) : 0;
           const cap = Number(t?.seats ?? 0) || 0;
           const isFullOrOver = cap > 0 && seated >= cap;
           if (isFullOrOver) return colors.success;
-          return t?.type === 'reserve' ? colors.warning : '#FFFFFF';
+          return '#FFFFFF';
         }}
         selectedRingColor="#10B981"
         isTableSelected={(t: any) => Boolean(selectedTableNumber) && Number(t?.number) === Number(selectedTableNumber)}

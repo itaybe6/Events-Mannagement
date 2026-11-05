@@ -1345,37 +1345,26 @@ export default function BrideGroomSeatingWebScreen() {
         getTableBaseColor={(t: any) => {
           const selected = Number.isFinite(selectedMapTableNumber as any) && Number(t?.number) === Number(selectedMapTableNumber);
           if (selected) return useAdminMapPresentation ? '#10B981' : '#047857';
-          const num = Number(t?.number);
-          const cap = Number(t?.seats ?? 0) || 0;
-          const seated = Number.isFinite(num) ? (seatedByNumber.get(num) ?? 0) : 0;
-          const full = cap > 0 && seated >= cap;
-          const over = cap > 0 && seated > cap;
-          if (over) return colors.primary;
-          if (full) return colors.primary;
-          return t?.type === 'reserve' ? colors.warning : colors.primary;
+          // Reserve stays yellow at every occupancy so it never looks like a regular table.
+          if (t?.type === 'reserve') return colors.warning;
+          return colors.primary;
         }}
         getTableBackgroundAlpha={(t: any) => {
           const selected = Number.isFinite(selectedMapTableNumber as any) && Number(t?.number) === Number(selectedMapTableNumber);
           if (selected) return useAdminMapPresentation ? 0.28 : 0.52;
-          const num = Number(t?.number);
-          const cap = Number(t?.seats ?? 0) || 0;
-          const seated = Number.isFinite(num) ? (seatedByNumber.get(num) ?? 0) : 0;
-          const full = cap > 0 && seated >= cap;
-          const over = cap > 0 && seated > cap;
-          if (over) return useAdminMapPresentation ? 0.9 : 0.62;
-          if (full) return useAdminMapPresentation ? 0.9 : 0.62;
-          return t?.type === 'reserve' ? (useAdminMapPresentation ? 0.72 : 0.34) : (useAdminMapPresentation ? 0.9 : 0.62);
+          if (t?.type === 'reserve') return useAdminMapPresentation ? 0.72 : 0.34;
+          return useAdminMapPresentation ? 0.9 : 0.62;
         }}
         getTableBorderColor={(t: any) => {
           const selected = Number.isFinite(selectedMapTableNumber as any) && Number(t?.number) === Number(selectedMapTableNumber);
           if (selected) return useAdminMapPresentation ? '#10B981' : '#047857';
+          if (t?.type === 'reserve') return colors.warning;
           const num = Number(t?.number);
           const cap = Number(t?.seats ?? 0) || 0;
           const seated = Number.isFinite(num) ? (seatedByNumber.get(num) ?? 0) : 0;
           const full = cap > 0 && seated >= cap;
-          const over = cap > 0 && seated > cap;
-          if (over || full) return useAdminMapPresentation ? '#10B981' : '#047857';
-          return t?.type === 'reserve' ? colors.warning : '#FFFFFF';
+          if (full) return useAdminMapPresentation ? '#10B981' : '#047857';
+          return '#FFFFFF';
         }}
         selectedRingColor={useAdminMapPresentation ? '#10B981' : '#047857'}
         isTableSelected={(t: any) => Boolean(selectedMapTableNumber) && Number(t?.number) === Number(selectedMapTableNumber)}

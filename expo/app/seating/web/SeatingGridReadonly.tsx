@@ -477,12 +477,10 @@ export function SeatingGridReadonly({
               const ringSize = isKnightTable ? Math.min(ringW, ringH) : Math.min(tableW, tableH) - (name && useRing ? 22 : 8);
               const reserveBorder = 'rgba(245, 158, 11, 0.55)';
               const defaultBorder = 'rgba(203, 213, 225, 0.85)';
-              const filledColor = getTableSeatFillColor(seated, cap);
-              const ringBorder = getTableSeatBorderColor(
-                seated,
-                cap,
-                isReserve ? reserveBorder : defaultBorder,
-              );
+              const filledColor = isReserve ? '#06173d' : getTableSeatFillColor(seated, cap);
+              const ringBorder = isReserve
+                ? reserveBorder
+                : getTableSeatBorderColor(seated, cap, defaultBorder);
               return (
                 <Pressable
                   key={t.id}
